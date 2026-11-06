@@ -22,7 +22,7 @@ import {
   type SweepPlan,
   type SweepRow,
 } from '../../register/sweep.ts';
-import { needsOf } from '../../register/tree.ts';
+import { neededIds } from '../../register/tree.ts';
 import { noPositionals, onePositional, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, sessionIdOf } from '../kit.ts';
@@ -39,10 +39,8 @@ function activeTasks(team: Pick<RolledTeam, 'snapshot'>): Task[] {
 }
 
 /** Every id an active task of `teams`, or one they know of elsewhere, needs; ids are one numbering across a tree. */
-function neededIds(teams: readonly RolledTeam[]): ReadonlySet<string> {
-  const elsewhere = teams.flatMap((team) => [...team.elsewhere.values()].map(({ task }) => task));
-  const tasks = [...teams.flatMap(activeTasks), ...elsewhere.filter((task) => ACTIVE_STATUSES.includes(task.status))];
-  return new Set(tasks.flatMap((task) => needsOf(task)));
+function neededAcross(teams: readonly RolledTeam[]): ReadonlySet<string> {
+  return new Set(teams.flatMap((team) => [...neededIds(team.snapshot.state.tasks.values(), team.elsewhere)]));
 }
 
 /** What the rows of `rolled` are proposed from. */
@@ -79,7 +77,7 @@ export async function sweep(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   noPositionals(args);
   const { teams } = await readRegisters(args, runtime);
   const now = runtime.clock.now();
-  const needed = neededIds(teams);
+  const needed = neededAcross(teams);
   const rows: SweepRow[] = [];
   for (const rolled of teams) {
     warnDamage(runtime, rolled.snapshot, rolled.paths.events);

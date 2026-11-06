@@ -6,6 +6,7 @@ import type { Task } from './fold.ts';
 import type { Band } from './score.ts';
 import {
   decidingKey,
+  neededIds,
   needPath,
   needsElsewhere,
   needsOf,
@@ -135,6 +136,61 @@ describe('planOrder', () => {
     assert.ok(planOrder(early, late) < 0);
     assert.equal(decidingKey(late, { ...late }), undefined);
     assert.equal(planOrder(late, { ...late }), 0);
+  });
+});
+
+describe('neededIds', () => {
+  it('holds what active tasks need here and elsewhere, and leaves what a finished task named', () => {
+    const here = [testTask({ id: 'T1', after: ['T2'] }), testTask({ id: 'T3', status: 'done', after: ['T4'] })];
+    const elsewhere: TasksElsewhere = new Map<string, TaskElsewhere>([
+      ['T8', { team: 'beta', task: testTask({ id: 'T8', status: 'waiting', waits: [{ kind: 'task', id: 'T5' }] }) }],
+      ['T9', { team: 'beta', task: testTask({ id: 'T9', status: 'dropped', after: ['T6'] }) }],
+    ]);
+    assert.deepEqual([...neededIds(here, elsewhere)].sort(), ['T2', 'T5']);
+  });
+});
+
+describe('TaskTree isParked', () => {
+  const QUIET = '2029-12-20T10:00:00.000Z';
+  const parkable = (overrides: Partial<Task> = {}): Task => testTask({ workClass: 'Improvements', updatedAt: QUIET, ...overrides });
+  const rankedTree = (tasks: readonly Task[], elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): TaskTree =>
+    new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, elsewhere, testRanking());
+
+  it('parks a quiet task nothing holds', () => {
+    const task = parkable();
+    assert.equal(rankedTree([task]).isParked(task), true);
+  });
+
+  it('parks nothing in a tree with no ranking', () => {
+    const task = parkable();
+    assert.equal(treeOf(task).isParked(task), false);
+  });
+
+  it('leaves a task with a recent event, so any event brings a parked task back', () => {
+    const task = parkable({ updatedAt: NOW.toISOString() });
+    assert.equal(rankedTree([task]).isParked(task), false);
+  });
+
+  it('leaves a task an active task of the read needs', () => {
+    const task = parkable({ id: 'T2' });
+    assert.equal(rankedTree([task, testTask({ id: 'T3', after: ['T2'] })]).isParked(task), false);
+  });
+
+  it('leaves a task an active task of another register needs', () => {
+    const task = parkable({ id: 'T2' });
+    const elsewhere = new Map<string, TaskElsewhere>([['T9', { team: 'beta', task: testTask({ id: 'T9', after: ['T2'] }) }]]);
+    assert.equal(rankedTree([task], elsewhere).isParked(task), false);
+  });
+
+  it('parks a task only a finished task named', () => {
+    const task = parkable({ id: 'T2' });
+    assert.equal(rankedTree([task, testTask({ id: 'T3', status: 'done', after: ['T2'] })]).isParked(task), true);
+  });
+
+  it('judges a reader\'s row by the same rule', () => {
+    const row: TreeTask = { id: 'T1', status: 'open', owner: 'alpha', priority: 2, due: null, after: [], waits: [], workClass: 'Improvements', updatedAt: QUIET };
+    const tree = new TaskTree<TreeTask>(new Map([[row.id, row]]), NOW, TimeZone.UTC, null, NO_TASKS_ELSEWHERE, testRanking());
+    assert.equal(tree.isParked(row), true);
   });
 });
 

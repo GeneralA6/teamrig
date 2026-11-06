@@ -12,7 +12,7 @@ import type { TreeRanking, TreeTask } from './tree.ts';
  */
 
 /** The `focus` keys a ranking reads. */
-export type RankingFocus = Pick<FocusConfig, 'defaultClass' | 'roadmapClass' | 'maintenanceClass' | 'score' | 'expedite'>;
+export type RankingFocus = Pick<FocusConfig, 'defaultClass' | 'roadmapClass' | 'maintenanceClass' | 'score' | 'expedite' | 'parkAfterDays'>;
 
 /** What is known of a task's size, as a ranking reads it. */
 export type Sizing = (task: TreeTask) => SizeFacts;
