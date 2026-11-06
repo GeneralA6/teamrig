@@ -176,6 +176,15 @@ describe('/teamrig with a command that changes the team files', () => {
     assert.match(unnamed.stdout.join('\n'), /this line came from an unnamed source\. Run it in a terminal instead\.$/);
     assert.deepEqual((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout, (await new CliHarness().run(['inbox', 'status', '--session', 'bravo'])).stdout);
   });
+
+  it('refuses a sweep no person typed, as its --out writes the path the line names', async () => {
+    const kit = new CliHarness();
+    const target = resolve(APP, 'kept.txt');
+    await kit.files.write(target, 'kept');
+    const result = await slash(kit, `sweep --out ${target}`, ALPHA_TAB, { origin: 'channel' });
+    assert.equal(result.code, EXIT.refused);
+    assert.equal(kit.files.get(target), 'kept');
+  });
 });
 
 describe('/teamrig with a line it does not run', () => {

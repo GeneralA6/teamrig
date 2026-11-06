@@ -142,7 +142,7 @@ describe('runCli: help, version and usage errors', () => {
     const group = await kit.run(['inbox']);
     assert.deepEqual([group.code, group.stderr], [EXIT.usage, [`inbox read|status|add\n\n${COMMAND_HELP.forCommand('inbox')}`]]);
     const unknown = await kit.run(['frob']);
-    assert.match(unknown.stderr[0] ?? '', /^unknown command "frob"\n\nteamrig <command>.*\nCommands: add, set, update, refs, approve, list, show, check, plan, verify, stats, report, goal, files, inbox, exec, team, /);
+    assert.match(unknown.stderr[0] ?? '', /^unknown command "frob"\n\nteamrig <command>.*\nCommands: add, set, update, refs, sweep, approve, list, show, check, plan, verify, stats, report, goal, files, inbox, exec, team, /);
   });
 
   it("prints one command's help for <command> --help or -h, or a group's, and exits 0", async () => {

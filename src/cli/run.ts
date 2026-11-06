@@ -108,7 +108,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
   update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
   'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
-  sweep: { effect: 'read', flags: ['session', 'out'], switches: ['tree'], load: async () => (await sweepCommands()).sweep },
+  // No register changes, but --out writes the path the line names: a line no person typed must not reach that.
+  sweep: { effect: 'write', flags: ['session', 'out'], switches: ['tree'], load: async () => (await sweepCommands()).sweep },
   'sweep apply': { effect: 'write', flags: ['session'], switches: ['apply'], load: async () => (await sweepCommands()).apply },
   approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
   list: {
