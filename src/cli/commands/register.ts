@@ -729,7 +729,7 @@ export async function ownRegister(runtime: CliRuntime): Promise<RollUp> {
 }
 
 /** The registers a command reads: those of `--tree`, else the caller's own. */
-async function readRegisters(args: ParsedArgs, runtime: CliRuntime): Promise<RollUp> {
+export async function readRegisters(args: ParsedArgs, runtime: CliRuntime): Promise<RollUp> {
   return args.switches.has('tree') ? rollUp(runtime, callerOf(args.flags, runtime.env)) : ownRegister(runtime);
 }
 
