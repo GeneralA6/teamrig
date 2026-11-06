@@ -2,7 +2,8 @@ import { parseObject, recordVersion } from "../core/jsonl.js";
 import { MS_PER_MINUTE } from "../core/time.js";
 /**
  * The week summaries the budget hooks keep for readers that show them (src/budget/team-week-summary.ts,
- * src/budget/session-week-summary.ts): how they round what they hold, and how a hook writes one.
+ * src/budget/session-week-summary.ts, src/budget/task-week-summary.ts): how they round what they hold, a task's spend
+ * keeping its own finer scale (src/budget/task-week-file.ts), and how a hook writes one.
  */
 const HUNDREDTHS = 100;
 /** A percent as a summary holds it: to two decimals. */
