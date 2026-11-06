@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CliHarness, TEAM } from '../testing/cli-harness.ts';
+import { treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const START = ['set', 'T2', '--status', 'in-progress', '--session', 'alpha'];
@@ -49,6 +50,15 @@ describe('runCli: set and the WIP rule', () => {
   it('says nothing with the rule off', async () => {
     const kit = await ranked(new CliHarness({ ...TEAM, focus: { wip: { mode: 'off', maxInProgress: 3 } } }));
     const start = await kit.run(START);
+    assert.deepEqual([start.code, start.stderr], [EXIT.ok, []]);
+  });
+
+  it('counts Roadmap work planned after a task another team of the tree holds as unable to move', async () => {
+    const kit = await treeHarness({ focus: { wip: { mode: 'warn', maxInProgress: 3 } } });
+    await kit.run(['add', '--title', 'Build the feed', '--description', 'what and why', '--priority', 'p2', '--owner', 'front', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } });
+    await kit.run(['add', '--title', 'Ship the chart', '--description', 'what and why', '--priority', 'p2', '--class', 'Roadmap', '--after', 'T1', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Tidy the tooling', '--description', 'what and why', '--priority', 'p2', '--class', 'Improvements', '--session', 'alpha']);
+    const start = await kit.run(['set', 'T3', '--status', 'in-progress', '--session', 'alpha']);
     assert.deepEqual([start.code, start.stderr], [EXIT.ok, []]);
   });
 });
