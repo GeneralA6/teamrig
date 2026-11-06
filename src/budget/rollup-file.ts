@@ -1,5 +1,6 @@
 import { isRecord, numberField, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
+import { parseUtcDay } from '../core/time.ts';
 
 /**
  * The team's usage rollup: what each session spent in a closed UTC day, by what the use was for, written once a day by
@@ -67,6 +68,12 @@ const ROLLUP_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** The file a team's rollup of `day` sits in, under the team's rollup folder. */
 export function rollupFileName(day: string): string {
   return `${day}.json`;
+}
+
+/** The day a name in the rollup folder holds; undefined for any other file. */
+export function rollupDayOf(name: string): string | undefined {
+  const day = name.slice(0, -rollupFileName('').length);
+  return name === rollupFileName(day) && parseUtcDay(day) !== undefined ? day : undefined;
 }
 
 /** The rollup as its file's text. */

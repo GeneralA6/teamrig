@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { doneGroups, doneGroupTitle, URGENT_PRIORITY, type DoneGroup, type DoneGroupsInput, type DoneGroupTask } from './done-groups.ts';
+import { doneGroups, doneGroupTitle, inWeek, URGENT_PRIORITY, type DoneGroup, type DoneGroupsInput, type DoneGroupTask } from './done-groups.ts';
 import type { Task } from './fold.ts';
 
 const OWNER = 'owner';
@@ -146,6 +146,22 @@ describe('doneGroups', () => {
     );
     assert.equal(result.groups[0]?.tasks[0], owner);
     assert.deepEqual(result.dropped, [dropped]);
+  });
+});
+
+describe('inWeek', () => {
+  const zone = TimeZone.UTC;
+
+  it('holds seven days from the tag, unless the team sets another length', () => {
+    assert.equal(inWeek('2030-01-02', Date.parse('2030-01-02T00:00:00.000Z'), zone), true);
+    assert.equal(inWeek('2030-01-02', Date.parse('2030-01-08T23:59:59.000Z'), zone), true);
+    assert.equal(inWeek('2030-01-02', Date.parse('2030-01-09T00:00:00.000Z'), zone), false);
+    assert.equal(inWeek('2030-01-02', Date.parse('2030-01-09T00:00:00.000Z'), zone, 8), true);
+  });
+
+  it('reads the week on the team clock, and no week from a tag that is no day', () => {
+    assert.equal(inWeek('2030-01-02', Date.parse('2030-01-01T22:30:00.000Z'), JERUSALEM), true);
+    assert.equal(inWeek('not a day', Date.parse('2030-01-02T12:00:00.000Z'), zone), false);
   });
 });
 
