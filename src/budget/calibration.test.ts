@@ -165,6 +165,31 @@ describe('fitRate', () => {
       const quiet = [reading(1, 9_000_000, lastWeek), reading(FIT_SPREAD_PTS, FIT_SPREAD_PTS * 9_000_000, lastWeek), reading(12, 12 * 9_000_000)];
       assert.deepEqual(fitRate(quiet), { wPerPct: 9_000_000, errorPts: 0, readings: 3 });
     });
+
+    describe('readings whose W stood still (T2102)', () => {
+      /** What `wSince` leaves of a day whose W all fell before the period's start hour. */
+      const FLOAT_REMAINDER = 8.381903171539307e-9;
+      const stoodStillAt = (w: number): readonly MeterReading[] => [1, 5, 11, 24].map((pct) => reading(pct, w));
+
+      it('learns no rate from a team whose stores stood still while the account used the points', () => {
+        assert.equal(fitRate(stoodStillAt(FLOAT_REMAINDER)), undefined);
+        assert.equal(fitRate(stoodStillAt(1_000)), undefined);
+      });
+
+      it('keeps the older fit over a newest period that stood still, on a float remainder or a real W', () => {
+        for (const w of [FLOAT_REMAINDER, 1_000]) {
+          assert.equal(fitRate([...atOldLimit, ...stoodStillAt(w)])?.wPerPct, 9_000_000);
+        }
+      });
+
+      it('keeps the older fit over a lone remainder past the points a moved rate needs', () => {
+        assert.equal(fitRate([...atOldLimit, reading(29, FLOAT_REMAINDER)])?.wPerPct, 9_000_000);
+      });
+
+      it('fits the readings that rose, leaving out the ones a stalled store repeated', () => {
+        assert.deepEqual(fitRate([reading(1, 9_000_000), reading(5, 9_000_000), reading(12, 108_000_000)]), { wPerPct: 9_000_000, errorPts: 0, readings: 2 });
+      });
+    });
   });
 });
 

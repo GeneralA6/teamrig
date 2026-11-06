@@ -4512,7 +4512,9 @@ its own rate from its own lines. A fit of W per percent through 0 sets the rate:
 span 10 points, so a limit that moved at a reset stops counting once the new period's readings do, else over the last
 8 weeks' readings once they span 10 points. A newer period's own readings set the rate sooner, from 2%, once their
 rate is at least 1.5 times that fit or at most half of it: a limit moved at a reset, or by a plan changed inside the
-week, shows by then. It stands ahead of `budget.weeklyLimitW` (a starting guess until then),
+week, shows by then. Only readings whose W rose from the one before count, and a newer period's own rate needs two of
+them: a team with no tab metering logs its stores as last stored, so its W stands still while the account's use
+climbs. It stands ahead of `budget.weeklyLimitW` (a starting guess until then),
 ahead of the status line's own estimate (the week's W over its use, once the meter counted the whole week). The
 last line says which rate counts, how far the fit misses its readings and, for the latest 3 periods, how far the
 use it forecast missed the status line. Today's use is read from the meter log too: the use now less the use at
