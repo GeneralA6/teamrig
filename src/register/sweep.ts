@@ -24,6 +24,8 @@ export interface SweepRow {
   readonly id: string;
   readonly team: string;
   readonly owner: string;
+  /** The task's title, so a person can confirm the row without looking up its id; apply never reads it. */
+  readonly title: string;
   readonly class: string;
   /** The goal tag the task serves; null: none proposed, so its goals stay as they are. */
   readonly objective: string | null;
@@ -188,6 +190,7 @@ export function proposeRow<T extends SweepTask>(task: T, input: SweepInput<T>): 
     id: task.id,
     team: input.team,
     owner: task.owner,
+    title: task.title,
     class: proposal.class,
     objective: proposal.objective,
     size: Number(input.sizeOf(task).toFixed(2)),
@@ -236,6 +239,7 @@ export function isSweepRow(value: unknown): value is SweepRow {
     TASK_ID.test(value['id']) &&
     isText(value['team']) &&
     isText(value['owner']) &&
+    typeof value['title'] === 'string' &&
     isText(value['class']) &&
     (value['objective'] === null || isText(value['objective'])) &&
     isRowSize(value['size']) &&
