@@ -274,7 +274,8 @@ export function formatTask(task: Task, team: string | undefined, tree: TaskTree)
   } else if (task.noGoal) {
     parts.push('goals none');
   }
-  if (task.workClass !== null) {
+  // A ranked row names the class in its head already, so only a rankless one (ADDED, SET) prints it here.
+  if (task.workClass !== null && tree.rankedOf(task) === undefined) {
     parts.push(`class ${task.workClass}`);
   }
   return `${parts.join(', ')} | ${task.title}${statusNote(task, tree)}${neededByText(task, tree)}`;

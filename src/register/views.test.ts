@@ -615,6 +615,8 @@ describe('formatEvent and formatTaskDetail', () => {
   it('names a work class on its row after the goals, and prints it on create and its updates, a cleared one as none (T2076)', () => {
     assert.equal(formatTask(testTask({ workClass: 'Roadmap' }), undefined, TREE), 'T1 open, p2, owner alpha, from lead, class Roadmap | Add a health check');
     assert.equal(formatTask(testTask(), undefined, TREE), 'T1 open, p2, owner alpha, from lead | Add a health check', 'unset prints nothing');
+    const classed = testTask({ workClass: 'Roadmap' });
+    assert.doesNotMatch(formatTask(classed, undefined, rankedTree({ classes: { T1: 'Roadmap' } }, classed)), /class Roadmap/, 'a ranked row names it in its head, once');
     const created: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: testTask({ id: 'T1', workClass: 'Maintenance' }) };
     assert.match(formatEvent(created, TimeZone.UTC), / workClass=Maintenance$/);
     const reclassed = (workClass: string | null): RegisterEvent => ({ v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { workClass }, note: null });
