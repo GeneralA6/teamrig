@@ -884,7 +884,8 @@ export class RegisterPolicy {
 
   /** `triage` for the lead of a team above, whom the tree vetted and no roster here holds, so only the field rules judge it. */
   triageFrom(task: Task, asked: TriageChanges, state: RegisterState, elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE, goalTags: ReadonlySet<string> = NO_GOAL_TAGS): Verdict<UpdateChange> {
-    return this.fieldChange(task, clearNoGoal(task, asked), null, state, elsewhere, goalTags);
+    // A row adds to the task's tags and keeps the rest, which a person did not name and which may predate the records.
+    return this.fieldChange(task, clearNoGoal(task, asked), null, state, elsewhere, new Set([...goalTags, ...task.goals]));
   }
 
   /** Why `goals` cannot be named under `register.goals` checked or required: one is no tag of `goalTags`. */
