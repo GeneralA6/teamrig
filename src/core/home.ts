@@ -162,6 +162,8 @@ export interface TeamPaths {
   readonly extraLog: string;
   /** The team's used and planned part of the week, for readers that show it (budget/team-week-summary.ts `TEAM_WEEK_IN_STATE`). */
   readonly teamWeek: string;
+  /** The folder of the team's usage rollup, a file per closed UTC day (budget/rollup-file.ts `ROLLUP_IN_STATE`). */
+  readonly rollup: string;
   /** Each session's use of the week and its hours with work, for readers that show them (budget/session-week-summary.ts `SESSIONS_WEEK_IN_STATE`). */
   readonly sessionsWeek: string;
   /** What each task has cost, for readers that rank tasks without metering them (budget/task-week-summary.ts `TASKS_WEEK_IN_STATE`). */
@@ -302,6 +304,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     meterLog: join(state, 'usage', 'meter-log.jsonl'),
     extraLog: join(state, 'usage', 'extra-log.jsonl'),
     teamWeek: join(state, 'usage', 'team.week.json'),
+    rollup: join(state, 'usage', 'rollup'),
     sessionsWeek: join(state, 'usage', 'sessions.week.json'),
     tasksWeek: join(state, 'usage', 'tasks.week.json'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
