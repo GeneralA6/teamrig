@@ -1,14 +1,17 @@
 import { MS_PER_DAY } from "../core/time.js";
 import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from "../register/card.js";
 import { doneGroups, doneGroupTitle } from "../register/done-groups.js";
+import { isLate } from "../register/goal-board.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
 import { asksOwner, isUngated, ownerLater } from "../register/owner-waits.js";
 import { cut, formatShortTask } from "../register/views.js";
+import { decisionOrder, isImprovementsDay } from "./decision-order.js";
 /**
- * The register's part of the daily meeting's agenda, gathered in one call so the lead spends no turn per item:
- * the owner's decisions as card facts, the late tasks and what finished since the meeting before, in the done groups
- * (src/register/done-groups.ts). The CLI adds
- * the stats' top lines above it, and the lead's inbox and the week's use and fit below (src/cli/commands/meeting.ts).
+ * The register's part of the daily meeting's agenda, gathered in one call so the lead spends no turn per item, in the
+ * order the meeting works through it (T2076 2D): the goal scoreboard, the owner's decisions as card facts, ranked by
+ * what they unblock, the Maintenance incidents, then the waits nobody reads out, the late tasks and what finished since
+ * the meeting before, in the done groups (src/register/done-groups.ts). The CLI hands it the scoreboard's rows, and adds
+ * the stats' top lines, the lead's inbox and the week's use and fit below it (src/cli/commands/meeting.ts).
  */
 /** Each list shows at most this many rows, then a `+N more` line with the command that lists them all. */
 export const AGENDA_ROWS = 10;
@@ -19,7 +22,7 @@ export const DESCRIPTION_CHARS = 400;
 export const NOTE_CHARS = 200;
 /**
  * The finished work goes back at most this many days, inside the working set's finished tasks (a compaction
- * keeps them 8 days, src/register/compaction.ts), so the agenda never reads the whole history.
+ * keeps them 8 days, src/register/compaction.ts), so the DONE block needs no read of the whole history.
  */
 export const DONE_WINDOW_DAYS = 7;
 /** When the agenda's finished work starts: the meeting before's end, else a day back, and never past DONE_WINDOW_DAYS. */
@@ -73,9 +76,13 @@ export function cardFacts(task, tree, team) {
         ...namedLines(task, texts, tree, team),
     ];
 }
-/** The card facts of a register's tasks the lead asks the owner now, in its plan order; `team` labels a register under the lead's. */
-function decisionCards(tasks, tree, ownerMarker, requireGate, team) {
-    return tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))).map((task) => cardFacts(task, tree, team));
+/** A register's tasks the lead asks the owner now, in its plan order; `team` labels a register under the lead's. */
+function decisionRead(register, team) {
+    const { tasks, tree, ownerMarker, requireGate, focus } = register;
+    return { tasks: tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))), tree, team, focus };
+}
+function cardsOf(decisions) {
+    return decisions.flatMap(({ task, tree, team }) => cardFacts(task, tree, team));
 }
 /**
  * How the lead, or a session `meet` brings to the owner (src/meeting/meet.ts), asks the owner the cards it read: in
@@ -94,28 +101,66 @@ export function laterLine(command, ownerMarker, lead, until) {
     return `  A card ${ownerMarker} puts off to a date: ${command} update <id> --later <date> --note "${ownerMarker} put it off: <why>" --session ${lead}; ${until}.`;
 }
 /**
- * DECISIONS: the tasks waiting on the owner, the lead's team's first, then those of each team under it (T1018), each
- * with its card facts, then how to card, ask and record them. The card form is the owner's: each item readable alone,
- * with the numbers to decide by and one exact action.
+ * DECISIONS: the tasks waiting on the owner, the lead's team's and those of each team under it (T1018) in one list
+ * ranked by what they unblock (decisionOrder), a tie keeping the lead's team first, each with its card facts, then how
+ * to card, ask and record them. A decision that frees only Improvements work is asked in its weekly batch, after the
+ * daily cards, and no other day shows it. The card form is the owner's: each item readable alone, with the numbers to
+ * decide by and one exact action.
  */
 function decisionLines(input) {
-    const own = decisionCards(input.tasks, input.tree, input.ownerMarker, input.requireGate);
-    const below = input.below.flatMap((team) => decisionCards(team.tasks, team.tree, team.ownerMarker, team.requireGate, team.team));
-    const head = `DECISIONS ${own.length + below.length} waiting on ${input.ownerMarker} (decision or approval)`;
-    if (own.length + below.length === 0) {
+    const order = decisionOrder([decisionRead(input, undefined), ...input.below.map((team) => decisionRead(team, team.team))]);
+    const batch = isImprovementsDay(input.now, input.improvementsDay) ? order.improvements : [];
+    const asked = [...order.daily, ...batch];
+    const head = `DECISIONS ${asked.length} waiting on ${input.ownerMarker} (decision or approval)`;
+    if (asked.length === 0) {
         return [head];
     }
-    const labelled = below.length === 0 ? '' : ' (<team>/<id> for a task of a team under yours, as its row names it)';
-    const handed = below.length === 0 ? '' : ' (and --team <team> for a team under yours)';
+    const below = asked.some((decision) => decision.team !== undefined);
+    const labelled = below ? ' (<team>/<id> for a task of a team under yours, as its row names it)' : '';
+    const handed = below ? ' (and --team <team> for a team under yours)' : '';
     return [
         head,
-        ...[...own, ...below].flat(),
+        ...cardsOf(order.daily),
+        ...(batch.length === 0 ? [] : [`  Improvements batch ${batch.length}, weekly, after the daily cards:`, ...cardsOf(batch)]),
         `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
         askLine(input.askWith, input.ownerMarker),
         `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
         `  Record each answer in the same turn: ${input.command} update <id>${labelled} --decided --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; the card leaves the agenda, and meeting end tells each task's owner.`,
         laterLine(input.command, input.ownerMarker, input.lead, 'it waits in LATER until then'),
     ];
+}
+/** A goal's row: how far its work came, its spend against its size, its risk and what holds it up. */
+function goalRow(goal) {
+    const slips = `${goal.slips} ${goal.slips === 1 ? 'slip' : 'slips'}`;
+    const waiting = goal.waiting.length === 0 ? '0 waiting' : `${goal.waiting.length} waiting: ${goal.waiting.join(', ')}`;
+    const spend = `spent ${goal.spentPct.toFixed(1)}% of ${goal.sizePct.toFixed(1)}% sized`;
+    return `  #${goal.rank} ${goal.tag} ${cut(oneLine(goal.title), TITLE_CHARS)} (target ${goal.target}): ${goal.done}/${goal.total} done, ${spend}, ${slips}, ${goal.overdue} overdue, ${waiting}`;
+}
+/** GOALS: the scoreboard the meeting opens with, or how to rank the goals that fill it. */
+function goalLines(input) {
+    return input.board.length === 0
+        ? [`GOALS none ranked: ${input.command} goal rank <tag> <n> --session ${input.lead}`]
+        : listed(`GOALS ${input.board.length} ranked, best first: done, spend against size, risk, what waits`, input.board.map(goalRow), `${input.command} goal list`);
+}
+/**
+ * True for an active bug or critical task of the Maintenance class. It reads the ranked class, so a task with none counts
+ * as the default class: this block only adds to what the lead sees, unlike the batch, which hides.
+ */
+function isIncident(task, tree, focus) {
+    return ACTIVE_STATUSES.includes(task.status) && (task.critical || task.type === 'bug') && tree.rankedOf(task)?.workClass === focus.maintenanceClass;
+}
+/** The rows of a register's incidents, in its plan order; `team` labels a register under the lead's. */
+function incidentRows(tasks, tree, focus, team) {
+    return tree.inPlanOrder(tasks.filter((task) => isIncident(task, tree, focus))).map((task) => rowOf(task, tree, team));
+}
+/** INCIDENTS: the Maintenance bugs and critical work, the lead's team's first; no block when none. */
+function incidentLines(input) {
+    const rows = [
+        ...incidentRows(input.tasks, input.tree, input.focus),
+        ...input.below.flatMap((team) => incidentRows(team.tasks, team.tree, team.focus, team.team)),
+    ];
+    // `list` has no class filter, so the command for all is the whole active list.
+    return rows.length === 0 ? [] : listed(`INCIDENTS ${rows.length} active ${input.focus.maintenanceClass} bugs or critical tasks`, rows, `${input.command} list --tree`);
 }
 /** The rows of a register's waits the owner put off (ownerLater), in its plan order; `team` labels a register under the lead's. */
 function laterRows(tasks, tree, ownerMarker, requireGate, team) {
@@ -153,7 +198,7 @@ function ungatedLines(input) {
 /** LATE: the active tasks past their effective due date (their own, or an earlier one of a task that needs them), in plan order. */
 function lateLines(input) {
     const { tree } = input;
-    const late = tree.inPlanOrder(input.tasks.filter((task) => ACTIVE_STATUSES.includes(task.status) && (tree.dueTime(task) ?? Number.POSITIVE_INFINITY) < input.now));
+    const late = tree.inPlanOrder(input.tasks.filter((task) => isLate(task, tree, input.now)));
     return listed(`LATE ${late.length} past their due date`, late.map((task) => rowOf(task, tree)), `${input.command} check`);
 }
 /**
@@ -186,9 +231,10 @@ function doneLines(input) {
     return lines;
 }
 /**
- * The register's agenda: the owner's decisions first, as they are what the meeting is for, then those the owner put
- * off and the ungated waits, which are not, then the late tasks, then the finished ones.
+ * The register's agenda: the goals, to read everything after them against, then the owner's decisions, which are what
+ * the meeting is for, and the incidents, then those the owner put off and the ungated waits, which are not, then the
+ * late tasks, then the finished ones.
  */
 export function agendaLines(input) {
-    return [...decisionLines(input), ...laterLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
+    return [...goalLines(input), ...decisionLines(input), ...incidentLines(input), ...laterLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
 }
