@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import type { TaskStatus } from './model.ts';
 import {
   allReady,
-  canMove,
   isFinished,
   isPeerWait,
   isReady,
@@ -184,31 +183,6 @@ describe('unfinishedAfter', () => {
   it('keeps the tasks of a plan dependency not finished yet, in order', () => {
     assert.deepEqual(unfinishedAfter(['T4', 'T1', 'T3', 'T9'], CONTEXT), ['T4', 'T3']);
     assert.deepEqual(unfinishedAfter([], CONTEXT), []);
-  });
-});
-
-describe('canMove', () => {
-  const on = (...waits: readonly WaitReason[]): boolean => canMove({ after: [], waits }, CONTEXT);
-
-  it('is true with no wait and nothing to come after', () => {
-    assert.equal(on(), true);
-  });
-
-  it('is false while any wait stands: a person, a time to come, a task not finished', () => {
-    assert.equal(on(DECISION), false);
-    assert.equal(on(APPROVAL), false);
-    assert.equal(on({ kind: 'time', at: '2030-01-11 12:00' }), false);
-    assert.equal(on({ kind: 'task', id: 'T3' }), false);
-  });
-
-  it('is true once every wait has cleared, and false while one of several stands', () => {
-    assert.equal(on({ kind: 'task', id: 'T1' }, { kind: 'time', at: '2030-01-09 12:00' }), true);
-    assert.equal(on({ kind: 'task', id: 'T1' }, DECISION), false);
-  });
-
-  it('reads the tasks it comes after, finished or not', () => {
-    assert.equal(canMove({ after: ['T1', 'T2'], waits: [] }, CONTEXT), true);
-    assert.equal(canMove({ after: ['T1', 'T4'], waits: [] }, CONTEXT), false);
   });
 });
 

@@ -191,12 +191,3 @@ export function waitsText(waits: readonly WaitReason[], zone: TimeZone, context?
 export function unfinishedAfter(after: readonly string[], context: WaitContext): string[] {
   return after.filter((id) => !isFinished(id, context));
 }
-
-/**
- * True when nothing holds the task back: every wait cleared and every task it comes after finished. Plan order and the
- * WIP rule both read this, so a task the list ranks as able to move is one the rule counts. A cleared wait holds
- * nothing: its owner only has to set the next status, and ranking it low would hide the work most ready to go on.
- */
-export function canMove(task: { readonly after: readonly string[]; readonly waits: readonly WaitReason[] }, context: WaitContext): boolean {
-  return task.waits.every((reason) => isReady(reason, context)) && unfinishedAfter(task.after, context).length === 0;
-}

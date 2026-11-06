@@ -8,11 +8,12 @@ import { parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { isCold } from '../hooks/cold-send.ts';
 import { answerTo } from '../register/approval.ts';
+import { waitsLetGoOn } from '../register/can-move.ts';
 import { taskNumber, type Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';
 import { wouldPark, type ParkRules } from '../register/park.ts';
 import { neededIds, type TasksElsewhere } from '../register/tree.ts';
-import { isReady, unfinishedAfter, waitContext, type WaitContext } from '../register/waits.ts';
+import { unfinishedAfter, waitContext, type WaitContext } from '../register/waits.ts';
 
 /**
  * Waking a session idle at its prompt when work is handed to it, pure. A wake is a model turn, so only work the
@@ -50,15 +51,6 @@ export const QUIET_PRIORITY = 1;
 /** True for a status whose task names reasons to wait for: it goes on once they all cleared (`check`'s READY). */
 function goesOnByWaits(status: TaskStatus): boolean {
   return status === 'waiting' || status === 'verifying';
-}
-
-/**
- * True when every reason the task waits for cleared, an approval its giver answered counting either way (T996): an
- * approval sends the owner to push or merge, a decline back to work on the note's point. A decided task (a leader
- * recorded the owner's answer to its card, T1366) goes on once its waits left cleared, none counting.
- */
-function waitsLetGoOn(task: Task, context: WaitContext): boolean {
-  return (task.waits.length > 0 || task.decided !== null) && task.waits.every((reason) => isReady(reason, context) || answerTo(task, reason) !== undefined);
 }
 
 /**
