@@ -6,6 +6,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, contextOf } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { ok } from '../testing/hired-team.ts';
+import { treeHarness } from '../testing/team-tree.ts';
 
 /** The harness clock is 2030-01-08 10:00 UTC; a weekly limit of 1,000M W makes 1% of the week 10M W. */
 const LIMITED: JsonRecord = { ...TEAM, budget: { weeklyLimitW: 1_000_000_000 } };
@@ -102,6 +103,27 @@ describe("teamRanking: a team's tree ranks by its focus, sizes and spend (T2076)
     const listed = ok(await kit.run(['list', '--session', 'alpha'], { files })).stdout.filter((line) => ROW.test(line));
     assert.match(listed[0] ?? '', /^T1 open, Improvements, score 4, p2/);
     assert.match(listed[1] ?? '', /^T2 open, Improvements, score 3\.33, p2/, 'its spend of 0.1% unread: the default size');
+  });
+
+  it('values a Roadmap task by the rank of the goal it serves, and names the goal in its reason', async () => {
+    const kit = new CliHarness(LIMITED);
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'Ship the beta', '--target', '2030-02-01', '--session', 'lead']));
+    ok(await kit.run(['goal', 'rank', 'A1', '1', '--session', 'lead']));
+    await add(kit, 'No goal', '--class', 'Roadmap');
+    await add(kit, 'On the goal', '--class', 'Roadmap', '--goals', 'A1');
+    const [first, second] = await rows(kit);
+    assert.match(first ?? '', /^T2 open, Roadmap, score 66\.67, p2, .*ahead: score 66\.67 \(A1 #1\)$/, 'rank 1 is worth 20, over the default size of 0.3%');
+    assert.match(second ?? '', /^T1 open, Roadmap, score 10, p2/, 'no ranked goal: the unranked value of 3');
+  });
+
+  it("reads the rank of a goal held by a team above the task's own", async () => {
+    const kit = await treeHarness();
+    const UI = { env: { TEAMRIG_TEAM: 'ui' } };
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'Ship the beta', '--target', '2030-02-01', '--session', 'lead']));
+    ok(await kit.run(['goal', 'rank', 'A1', '1', '--session', 'lead']));
+    ok(await kit.run(['add', '--owner', 'pixel', '--title', 'New icons', '--description', 'what and why', '--priority', 'p2', '--class', 'Roadmap', '--goals', 'A1', '--session', 'lead'], UI));
+    const listed = ok(await kit.run(['list', '--session', 'pixel'], UI)).stdout.filter((line) => ROW.test(line));
+    assert.match(listed[0] ?? '', /^T1 open, Roadmap, score 66\.67, p2/);
   });
 
   it('gives list, plan, start and the start note one order', async () => {
