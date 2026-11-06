@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { LeadTree } from '../config/lead-tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
+import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { checkTasks, formatFlag, PACE_DAYS, peerWaitFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
-import { TaskTree } from './tree.ts';
+import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
 import { WATCH_USAGE } from './verify.ts';
 import { TimeZone } from '../core/zone.ts';
 
@@ -225,52 +226,80 @@ describe('peerWaitFlags', () => {
 describe('checkTasks: PRIORITY-SKIP', () => {
   const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
   const since = (iso: string) => ({ assignedAt: iso, statusAt: iso, priorityAt: iso });
-  /** alpha's p1 open since 01-08 09:00, and its p3 in progress since 01-08 10:00. */
-  const waiting = testTask({ id: 'T1', priority: 1, ...seen, ...since('2030-01-08T09:00:00.000Z') });
-  const working = testTask({ id: 'T2', priority: 3, status: 'in-progress', ...seen, ...since('2030-01-08T10:00:00.000Z') });
-  const skips = (tasks: Parameters<typeof checkTasks>[0], config = CONFIG) =>
-    checkTasks(tasks, NOW, TimeZone.UTC, null, config).map((flag) => formatFlag(flag, undefined, TREE));
+  /** alpha's task open since 01-08 09:00, Roadmap under `roadmap`, and its unclassed task in progress since 01-08 10:00. */
+  const waiting = testTask({ id: 'T1', ...seen, ...since('2030-01-08T09:00:00.000Z') });
+  const working = testTask({ id: 'T2', status: 'in-progress', ...seen, ...since('2030-01-08T10:00:00.000Z') });
+  const roadmap = testRanking({ classes: { T1: 'Roadmap' } });
+  const firstGoal = { tag: 'A1', rank: 1 };
+  const skips = (tasks: Parameters<typeof checkTasks>[0], ranking = roadmap, config = CONFIG) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config, NO_TASKS_ELSEWHERE, ranking).map((flag) => formatFlag(flag, undefined, TREE));
 
-  it('flags work in progress below its own open p1, counted from the later of the two', () => {
+  it('flags work in progress in a worse band than its own open task, counted from the later of the two', () => {
     assert.deepEqual(skips([waiting, working]), [
-      'PRIORITY-SKIP (p1 T1 waits open, skipped since 01-08 10:00 UTC) T2 in-progress, p3, owner alpha, from lead | Add a health check',
+      'PRIORITY-SKIP (T1 (Roadmap, score 10) waits open, skipped since 01-08 10:00 UTC) T2 in-progress, p2, owner alpha, from lead | Add a health check',
     ]);
   });
 
-  it('leaves a waiting p1, another owner\'s p1, a p1 in progress and work that is not in progress alone', () => {
+  it('flags a lower score in the same band, and leaves a tie on band and score alone', () => {
+    const classes = { T1: 'Roadmap', T2: 'Roadmap' };
+    assert.match(skips([waiting, working], testRanking({ classes, goals: { T1: firstGoal } }))[0] ?? '', /^PRIORITY-SKIP \(T1 \(Roadmap, score 66\.67\) waits open/);
+    assert.deepEqual(skips([waiting, working], testRanking({ classes })), []);
+  });
+
+  it('reads the band before the score', () => {
+    assert.equal(skips([waiting, { ...working, size: 0.05 }]).length, 1, 'a better band with a lower score');
+    assert.deepEqual(skips([{ ...waiting, size: 0.05 }, working], testRanking({ classes: { T2: 'Roadmap' } })), [], 'a worse band with a higher score');
+  });
+
+  it('reads no priority', () => {
+    assert.deepEqual(skips([{ ...waiting, priority: 1 }, { ...working, priority: 3 }], testRanking()), [], 'equals, one of them a p1');
+    assert.equal(skips([{ ...waiting, priority: 3 }, { ...working, priority: 1 }]).length, 1, 'a p1 in progress below a p3 of a better band');
+  });
+
+  it('calls a skipped task of the expedite band that, not by its class', () => {
+    assert.match(skips([{ ...waiting, critical: true }, working], testRanking({ classes: { T1: 'Maintenance' } }))[0] ?? '', /^PRIORITY-SKIP \(T1 \(expedite, score 66\.67\) waits open/);
+  });
+
+  it("leaves a waiting task, another owner's task, one already in progress and work that is not in progress alone", () => {
     assert.deepEqual(skips([{ ...waiting, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD }, working]), []);
     assert.deepEqual(skips([{ ...waiting, owner: 'bravo' }, working]), []);
-    assert.deepEqual(skips([waiting, { ...working, priority: 1 }]), []);
+    assert.deepEqual(skips([{ ...waiting, status: 'in-progress' }, working]), []);
     assert.deepEqual(skips([waiting, { ...working, status: 'open' }]), []);
   });
 
   it('waits the configured hours after the latest owner, status or priority change of either task', () => {
     const recent = '2030-01-10T00:00:00.000Z';
-    assert.deepEqual(skips([{ ...waiting, priorityAt: recent }, working]), [], 'raised to p1 12 h ago');
+    assert.deepEqual(skips([{ ...waiting, priorityAt: recent }, working]), [], 'its priority changed 12 h ago');
     assert.deepEqual(skips([{ ...waiting, statusAt: recent }, working]), [], 'back from waiting 12 h ago');
     assert.deepEqual(skips([waiting, { ...working, assignedAt: recent }]), [], 'handed to alpha 12 h ago');
     const quick = testConfig({ register: { check: { prioritySkipAfterHours: 6 } } }).register;
-    assert.equal(skips([{ ...waiting, statusAt: recent }, working], quick).length, 1);
+    assert.equal(skips([{ ...waiting, statusAt: recent }, working], roadmap, quick).length, 1);
   });
 
-  it('names the p1 that has waited longest', () => {
-    const older = testTask({ id: 'T3', priority: 1, ...seen, ...since('2030-01-07T09:00:00.000Z') });
+  it('names the best-ranked open task, and of equals the one that has stood longest', () => {
+    const older = testTask({ id: 'T3', ...seen, ...since('2030-01-07T09:00:00.000Z') });
     const newer = { ...waiting, ...since('2030-01-08T11:00:00.000Z') };
-    assert.match(skips([newer, older, working])[0] ?? '', /^PRIORITY-SKIP \(p1 T3 waits open, skipped since 01-08 10:00 UTC\) T2 /);
+    const classes = { T1: 'Roadmap', T3: 'Roadmap' };
+    assert.match(skips([newer, older, working], testRanking({ classes }))[0] ?? '', /^PRIORITY-SKIP \(T3 \(Roadmap, score 10\) waits open, skipped since 01-08 10:00 UTC\) T2 /);
+    assert.match(skips([newer, older, working], testRanking({ classes, goals: { T1: firstGoal } }))[0] ?? '', /^PRIORITY-SKIP \(T1 \(Roadmap, score 66\.67\) waits open, skipped since 01-08 11:00 UTC\) T2 /);
   });
 
-  it('leaves a p1 planned after a task not finished yet alone, and counts it once that task finished', () => {
-    const first = testTask({ id: 'T3', priority: 2, status: 'open', ...seen, ...since('2030-01-08T09:00:00.000Z') });
+  it('ranks past a pin, which puts a task first in plan order without outranking anything', () => {
+    const pinned = testTask({ id: 'T3', pin: 'lead', ...seen, ...since('2030-01-07T09:00:00.000Z') });
+    const ranking = testRanking({ classes: { T1: 'Roadmap', T3: 'Roadmap' }, goals: { T1: firstGoal } });
+    assert.match(skips([pinned, waiting, working], ranking)[0] ?? '', /^PRIORITY-SKIP \(T1 \(Roadmap, score 66\.67\) /);
+  });
+
+  it('leaves a task planned after one not finished yet alone, and counts it once that task finished', () => {
+    const first = testTask({ id: 'T3', owner: 'bravo', status: 'open', ...seen, ...since('2030-01-08T09:00:00.000Z') });
     const planned = { ...waiting, after: ['T3'] };
     assert.deepEqual(skips([planned, working, first]), []);
     assert.equal(skips([planned, working, { ...first, status: 'done' }]).length, 1);
     assert.equal(skips([planned, working]).length, 1, 'a task the read lacks was retired, so finished');
   });
 
-  it('takes the top priority from the config, and skips the flag when the config names none', () => {
-    const levels = testConfig({ register: { priorities: [{ id: 2, name: 'now' }, { id: 3, name: 'later' }] } }).register;
-    assert.match(skips([{ ...waiting, priority: 2 }, working], levels)[0] ?? '', /^PRIORITY-SKIP \(p2 T1 /);
-    assert.deepEqual(skips([waiting, working], { ...CONFIG, priorities: [] }), []);
+  it('raises nothing on a read with no ranking', () => {
+    assert.deepEqual(checkTasks([waiting, working], NOW, TimeZone.UTC, null, CONFIG), []);
   });
 });
 

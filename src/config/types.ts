@@ -45,7 +45,7 @@ export interface RegisterCheckConfig {
   readonly staleAfterHours: number;
   /** An open task its owner has not touched this long after assignment is NOT-PICKED-UP. */
   readonly notPickedUpAfterHours: number;
-  /** A session's in-progress task below its own open top-priority task this long is a PRIORITY-SKIP. */
+  /** A session's in-progress task outranked this long by its own open task, on band and score, is a PRIORITY-SKIP. */
   readonly prioritySkipAfterHours: number;
   /**
    * A session that added more tasks for itself (created by it, asked by no one else) in the last 24 h than this is a
