@@ -11,7 +11,7 @@ const SPENT_PCT_SCALE = 10_000;
 export interface TasksWeekInput {
   /** The team's own W per percent of the week. */
   readonly wPerPct: number | undefined;
-  /** Each roster session's usage store and the use outside the team, as `readTaskSpend` (src/cli/task-spend.ts) sums them. */
+  /** Each roster session's usage store and the use outside the team, as `readStoredUsage` (src/cli/stored-week.ts) reads them. */
   readonly states: Iterable<UsageState>;
   readonly now: number;
 }
