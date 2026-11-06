@@ -47,6 +47,13 @@ teamrig plan                                       # the week in force, grouped 
   target with `goal set` and a note, kept as a slip; `goal rank A1 1` puts a goal first, and `goal list` shows them,
   the ranked ones first. With `register.goals` set to `checked`
   a tag must be one of those goals, and with `required` an owner-asked, p0 or p1 task must name one, or `none`.
+- What the plan held: `teamrig stats` closes with `USE` lines, how much of the task work the plan held and what each
+  class took, in W and minutes, against `focus.plannedTargetPct` (70%) and `focus.allocation` (60/25/15):
+  `USE planned 64% of task W, target 70%, gap -6: planned 26.40M W, 201 min; unplanned 14.80M W, 111 min`. A day's
+  work counts as planned when the task's tag that day named a week holding that day, so a later retag changes no past
+  day, and a task tagged mid-week counts from that day on. The numbers come from the daily usage rollup:
+  `teamrig budget rollup --apply` writes each closed UTC day, and with `wake.dayStartUtc` set the day start runs it
+  once a day, so today is not counted yet and `USE 6 of 7 days rolled up` says how many days the lines hold.
 
 More in [week plans](../../plugins/teamrig/skills/teamrig-guide/tasks.md#week-plans).
 

@@ -773,6 +773,21 @@ A LIMIT line names the days of the range the week sat at its usage limit, marked
 as slack. It reads them from the account's meter log, from the week's first reading at 100% to its reset; the log keeps
 8 weeks, so a longer range marks only its last 8 weeks.
 
+The USE lines close the output, and only this command prints them: how much of the range's task work the plan held,
+and each class's share, in W and active minutes, against `focus.plannedTargetPct` and `focus.allocation`; in a tree,
+against the caller's team's. They read the daily rollups (`### teamrig budget rollup`), so only closed UTC days count:
+`USE 6 of 7 days rolled up` says how many the numbers hold, today is never one, and a day with no rows has no file.
+With none, the first line says what writes them.
+
+- Planned: work on a task counts as planned on a day when the tag the task held at that UTC day's end names a week
+  holding the day. A later retag leaves the days before it as they were, and a task tagged mid-week counts from that
+  day on. A task another team holds reads by its tag of today, and a task no team holds as `focus.defaultClass`,
+  unplanned.
+- Class: a task's class of today.
+- A share is of the W with a task. Work that named no task stands apart on the first line, and coordination stays out
+  of these lines. W is raw, before `budget.subagentWeight`. A damaged rollup file is named on stderr and its day left
+  out, so the range reads a day short, never a low day.
+
 Flags:
 
 - `--range 7d|30d|90d|180d|1y|all`: the days counted on the team's clock, today included (default `7d`): the last 7,
@@ -801,6 +816,11 @@ DELAYS overdue 1, p1 0; done by due 3 of 4; late 1 by 2-3 d; due moved 2
 WAITS 3 waiting (decision 1, task 2); on the owner 1, oldest 1.5 d
 BUGS 1 active, 2 opened, 1 fixed
 PEOPLE api 5, web 2
+USE 6 of 7 days rolled up: task work 41.20M W, 312 min; no task 3.10M W, 24 min
+USE planned 64% of task W, target 70%, gap -6: planned 26.40M W, 201 min; unplanned 14.80M W, 111 min
+USE Roadmap 58% of task W, target 60%, gap -2: planned 19.60M W, 150 min; unplanned 4.30M W, 31 min
+USE Maintenance 30% of task W, target 25%, gap +5: planned 5.20M W, 38 min; unplanned 7.20M W, 52 min
+USE Improvements 12% of task W, target 15%, gap -3: planned 1.60M W, 13 min; unplanned 3.30M W, 28 min
 ```
 
 ### teamrig report done
