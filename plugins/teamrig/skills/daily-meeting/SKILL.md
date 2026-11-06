@@ -20,18 +20,24 @@ Until the meeting ends, the `cold-send` hook holds every message to you but one 
 sender to keep working and leave it as an inbox line. So no session is told the meeting started, and none is woken.
 Then it prints the agenda:
 
-- `STATS`, `HEALTH`, `FLOW` and `LIMIT`: the week's numbers of your team and the teams under it, as
-  `teamrig stats --tree` prints them: give the human the Health tiles in one line, each `[bad]` one with its
-  number; a `LIMIT` day sat at the usage limit, so its quiet is no slack;
-- `DECISIONS`: each task waiting on the human's decision or approval, with its card facts;
-- `UNGATED`: the waits on the human's decision whose card names no owner gate or business decision: never read
-  them out; decide those of sessions you lead and send each its answer as an inbox line;
+- `GOALS`: the scoreboard of the ranked goals, best rank first: done against total, spend against size, how often the
+  target slipped, what is overdue and which tasks wait; read everything after it against these goals;
+- `DECISIONS`: each task waiting on the human's decision or approval, with its card facts, ranked by what it
+  unblocks: an expedite first, then those that free Roadmap work, then by best score. A decision that frees only
+  Improvements work waits for the weekly batch, after the daily cards on the `[focus.improvementsDay]` weekday and
+  shown on no other day;
+- `INCIDENTS`: the active Maintenance bugs and critical tasks, yours first, then each team's under you;
 - `LATER`: the cards the human put off to a time still to come (step 4): never read out before that time, then back
   in `DECISIONS`;
+- `UNGATED`: the waits on the human's decision whose card names no owner gate or business decision: never read
+  them out; decide those of sessions you lead and send each its answer as an inbox line;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting, in groups (owner asked, each goal, urgent p1, this week's plan);
   other work and the dropped tasks are one count line each;
+- `STATS`, `HEALTH`, `FLOW` and `LIMIT`: the week's numbers of your team and the teams under it, as
+  `teamrig stats --tree` prints them: give the human the Health tiles in one line, each `[bad]` one with its
+  number; a `LIMIT` day sat at the usage limit, so its quiet is no slack;
 - `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since the last
   meeting, check-clean ones first: news to read, while security samples the check-clean ones weekly;
 - your unread inbox lines, marked read;

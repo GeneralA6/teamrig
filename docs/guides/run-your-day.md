@@ -21,13 +21,18 @@ Once a day the lead meets you: what got done, what is late, and each decision th
 decide from alone. At your first message of the day, or when you ask, the lead runs
 `teamrig meeting start --session lead`, which prints the agenda in one call:
 
-- `HEALTH` and `FLOW`: the last week's numbers, as `teamrig stats` prints them, and `LIMIT`, the days the week sat
-  at its usage limit;
-- `DECISIONS`: each task waiting on your decision or approval, with its card facts;
+- `GOALS`: the scoreboard of the ranked goals, best rank first: done against total, spend against size, how often the
+  target slipped, what is overdue and which tasks wait;
+- `DECISIONS`: each task waiting on your decision or approval, with its card facts, ranked by what it unblocks: an
+  expedite first, then those that free Roadmap work, then by best score. A decision that frees only Improvements work
+  waits for the weekly batch, after the daily cards on the `focus.improvementsDay` weekday and shown on no other day;
+- `INCIDENTS`: the active Maintenance bugs and critical tasks, the lead's team first, then each team under it;
 - `UNGATED`: the waits on you whose card names no owner gate or business decision; the lead decides those itself,
   sends each owner its answer and never reads them out;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them;
 - `DONE`: what finished since the last meeting;
+- `HEALTH` and `FLOW`: the last week's numbers, as `teamrig stats` prints them, and `LIMIT`, the days the week sat
+  at its usage limit;
 - the lead's unread inbox lines, and the week's use with what of the planned week fits the weekly limit.
 
 While the meeting is open the team keeps working and leaves the lead inbox lines: the `cold-send` hook holds every

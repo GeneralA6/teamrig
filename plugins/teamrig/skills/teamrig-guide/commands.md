@@ -2170,10 +2170,21 @@ The lead opens the owner's daily meeting and gets its agenda in one call. Until 
 hook holds every message to the lead but one starting `CRITICAL`, and tells the sender to keep working and leave it
 as an inbox line. So no session is told the meeting started, and none is woken. The agenda:
 
-- `STATS`, `HEALTH`, `FLOW` and `LIMIT`: the top lines of `teamrig stats --tree` over the last 7 days, from the same
-  fold (see `### teamrig stats`), then the command that prints the other sections;
+- `GOALS`: a row per ranked goal, best rank first (`#1 A1 Ship the beta (target 2030-02-01): 1/3 done, spent 1.2% of
+  4.0% sized, 2 slips, 1 overdue, 1 waiting: T4`): its tasks across the tree, done against total with the dropped
+  left out, spend against size in percent of the week, how often its target moved, its overdue and waiting tasks; with
+  no goal ranked, the `goal rank` line that fills it;
 - `DECISIONS`: each task waiting on the owner's decision or approval, with its card facts (what and why, since when
-  it waits and its newest note, where it was asked), then the card form and how to record each answer;
+  it waits and its newest note, where it was asked), then the card form and how to record each answer. They rank by
+  what they unblock, the task itself and every active task that needs it: an expedite first, then those that free
+  Roadmap work, then by best score. A decision is held for the weekly Improvements batch when every task it unblocks
+  has a stored class other than Roadmap and Maintenance and none is an expedite; a task with no stored class stays
+  daily. The batch comes after the daily cards on the UTC weekday `[focus.improvementsDay]` names, and no other day
+  shows it;
+- `INCIDENTS`: the active bugs and critical tasks of the Maintenance class, the lead's team's first, then those of
+  each team under it; no block when none;
+- `LATER`: the cards the owner put off to a time still to come, each with its time, back in `DECISIONS` once it
+  passed; no block when none;
 - `UNGATED`: each wait on the owner's decision whose card names no owner gate or business decision (`gate:`), left
   out of `DECISIONS` while cards are required (`register.requireDecisionCard`): its session's or the lead's to
   decide, never read to the owner (`check` flags each one `UNGATED`);
@@ -2182,24 +2193,28 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
 - `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most), in the groups of
   `teamrig report done`: each group's rows, at most 10 each, then Other work and the dropped tasks as one count
   line each with the command that lists them;
-- `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since then (from
-  `merges.jsonl` in `delivery.dir`), check-clean ones first, marked `CHECK-CLEAN` for security's weekly sample;
+- `STATS`, `HEALTH`, `FLOW` and `LIMIT`: the top lines of `teamrig stats --tree` over the last 7 days, from the same
+  fold (see `### teamrig stats`), then the command that prints the other sections;
 - `MEETINGS`: today's scheduled meetings and the missed ones, as `meeting list` shows them, and how the owner starts
   one or a missed one is moved;
+- `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since then (from
+  `merges.jsonl` in `delivery.dir`), check-clean ones first, marked `CHECK-CLEAN` for security's weekly sample;
 - the lead's unread inbox lines, marked read;
 - the week's use and, under it, the planned week's fit to the weekly limit, as `plan` gives it.
 
 Each list shows 10 rows at most, then the command that lists them all. A meeting left open stops holding messages
 4 hours after it started. Started again while open, it keeps the meeting as it is and prints the agenda. Only the
 lead runs it. A start counts as asking the owner the decisions it lists: `teamrig decisions` then holds only the
-waits set since and the asked ones past due (since 0.126.0).
+waits set since and the asked ones past due (since 0.126.0). `teamrig decisions` has no batch: it still lists a
+decision the agenda holds for the Improvements day.
 
 In a tree of teams only the root team's lead holds it; a child team's lead is refused: `REFUSED team web meets no
 owner: the owner's daily meeting is app/lead's, whose agenda lists web's waits on the owner`. The root lead's
-`DECISIONS` lists its own team's waits, then those of each team under it, depth first, named `<team>/<id>`
-(`web/T2`), each carded by its own team's rule; its hints add `--team <team>` to ask a question of a team under it
-and `<team>/<id>` to record an answer there. The stats lines cover every team under it too (`(tree: app, web)`);
-`UNGATED`, `LATE` and `DONE` stay the root team's own.
+`DECISIONS` ranks its own team's waits and those of each team under it in one list, a tie keeping its own first, then
+the teams depth first, named `<team>/<id>` (`web/T2`), each carded by its own team's rule; its hints add `--team
+<team>` to ask a question of a team under it and `<team>/<id>` to record an answer there. `GOALS` counts every team's
+tasks on the root's goals, `INCIDENTS` and `LATER` list every team's, and the stats lines cover every team under it
+too (`(tree: app, web)`); `UNGATED`, `LATE` and `DONE` stay the root team's own.
 
 With a meeting id, `meeting start M3` starts a scheduled meeting instead, one booked with `meeting schedule`: any
 session runs it, as the owner starts it from whichever tab is at hand. The session met gets the opening prompt (the
@@ -2225,10 +2240,8 @@ Output:
 
 ```text
 MEETING started Thu 10-15 11:00 IDT: messages to shop-lead are held but CRITICAL ones (the hook tells each sender)
-STATS shop, 7 d: 10-09 to 10-15
-HEALTH close/open 1.20 [good] · backlog -2, 14 active [good] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 0.8 d [good] · backlog clears in 7 week(s) [warn]
-FLOW opened 10, closed 12 (1 dropped), net -2; last 28 d net -8
-  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)
+GOALS 1 ranked, best first: done, spend against size, risk, what waits
+  #1 A1 Ship the launch page (target 2030-02-01): 4/9 done, spent 2.1% of 6.0% sized, 1 slip, 0 overdue, 1 waiting: T7
 DECISIONS 1 waiting on owner (decision or approval)
   T7 waiting, Improvements, score 3.33, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.
@@ -2250,11 +2263,15 @@ DONE 2 done, 0 dropped since Wed 10-14 11:30 IDT
   Urgent p1 (1)
     T2 done, Maintenance, p1, owner api | Rate-limit the signup endpoint
   Other work 1: teamrig list --status done
-MERGES 1 merged with no approval since Wed 10-14 11:30 IDT, 0 CHECK-CLEAN (security samples those weekly)
-  Thu 10-15 09:12 IDT api app t4-retry 4f1c2a9e..9a0b1c2d: 3 files, 58 lines, checks lint, test
+STATS shop, 7 d: 10-09 to 10-15
+HEALTH close/open 1.20 [good] · backlog -2, 14 active [good] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 0.8 d [good] · backlog clears in 7 week(s) [warn]
+FLOW opened 10, closed 12 (1 dropped), net -2; last 28 d net -8
+  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)
 MEETINGS 1 today or missed
   M3 scheduled, Thu 10-15 14:00 IDT, 30 min, web with api, tasks T7 | the pricing tiers
   The owner starts one with teamrig meeting start <id>; a missed one is moved (teamrig meeting move <id> --at <time>) or dropped.
+MERGES 1 merged with no approval since Wed 10-14 11:30 IDT, 0 CHECK-CLEAN (security samples those weekly)
+  Thu 10-15 09:12 IDT api app t4-retry 4f1c2a9e..9a0b1c2d: 3 files, 58 lines, checks lint, test
 - 2026-10-15 07:40 api: the signup retry needs the new error codes first
 READ lead: 1 new line, shown above; new ones are shown at your next prompt
 Week: 31.0% used at 11:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT. At the last 24 hours' rise of 9.5 points, it ends the week near 85%.
