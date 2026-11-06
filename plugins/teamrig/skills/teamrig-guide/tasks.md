@@ -44,8 +44,9 @@ active task that needs it, at any depth (its effective due, `due 10-17 (from T9)
 task needs comes first: lists, `plan`, the meeting's late tasks and `check`'s date flags go by it. A row names
 another session's active task that needs it (`· needed by T9 (api, due 10-17)`), `teamrig show T9 --tree`
 prints both ways of the tree and the next move, and `teamrig start` lists the other sessions' tasks waiting on
-yours (`WAITING ON YOU`). A plan or a wait that would close a loop (`T3 -> T9 -> T3`) is refused, since no task
-in a loop can finish: make the step one of them needs its own task.
+yours (`WAITING ON YOU`), the Roadmap work held on you past the limit first (`ROADMAP-WAITS-ON-LEAD`). A plan or a
+wait that would close a loop (`T3 -> T9 -> T3`) is refused, since no task in a loop can finish: make the step one of
+them needs its own task.
 
 A peer's work is never a decision or an approval, so `approval:api` is refused: wait on that work by its task.
 `teamrig set T3 --status waiting --ask api --text "<the work>"` adds it as api's task (from you, at T3's priority
@@ -286,7 +287,7 @@ checkpoint; a session may run it for itself.
 | `LOOP` | active tasks need each other in a circle (`T2 -> T5 -> T2`), planned after or waiting on one another, as an older teamrig could write; raised on the lowest-numbered one | None of them can finish: the owner makes the step its own task (the flag prints the command), or the lead re-plans it (`update --after`). |
 | `VERIFY-BLOCKS` | a `verifying` task another active task needs: planned after it (`--after`) or waiting on it (`--waits task:`) | The owner proves it (`done` with the proof) or reopens it (`in-progress`), so the work on it can start. |
 | `READY` | a `waiting` task whose every reason has cleared, or a `verifying` task whose proof waits all have: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself); or a task decided, the owner's answer recorded with `update --decided`, whose waits left have cleared | The owner goes on: `set --status in-progress`, or the next status; for a verifying one, checks the proof now; for a decided one, acts on the answer `show <id>` prints. |
-| `ROADMAP-WAITS-ON-LEAD` | a task of the `focus.roadmapClass` class has waited on a decision or an approval of one of its owner's leaders, unanswered, past `focus.leaderWaitMinutes` (a `verifying` task's proof wait counts) | That leader answers it first: `approve`, or the decision the task asks for. |
+| `ROADMAP-WAITS-ON-LEAD` | a task of the `focus.roadmapClass` class has waited on a decision or an approval of one of its owner's leaders, unanswered, past `focus.leaderWaitMinutes` (a `verifying` task's proof wait counts), counted from when the task last asked for something new | That leader answers it first: `approve`, or the decision the task asks for. Its `WAITING ON YOU` lists the task at the top, above the plan order. |
 | `NO-REASON` | a `waiting` task with no reason, as a line from an older teamrig reads | The owner sets what it waits for (`set --status waiting --waits ...`) or its next status. |
 | `NO-CARD` | a `waiting` task waits on the owner's decision or approval with no card, as one set before cards reads [register.requireDecisionCard] | The owner sets it waiting again with the card (`set --status waiting --waits ... --question ... --options ... --recommend ... --default ...`). |
 | `OWNER-ORDERED` | a task the owner ordered waits (or its proof waits) on the owner's decision or approval with no `--why-ask`, as one set before it was required, or while cards are not [register.requireDecisionCard], reads | The owner drops the wait on the owner, since the order approves its own work and proof, or sets it again with `--why-ask "<how the order must change, what new it needs, or why only the owner can see the result>"`. |
