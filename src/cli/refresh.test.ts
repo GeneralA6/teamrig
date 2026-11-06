@@ -569,10 +569,10 @@ describe('runCli: context refresh', () => {
 describe('runCli: live tasks in the start note', () => {
   const LIVE =
     'LIVE TASKS of alpha, read from the register at this start (2 active; where your handover or a compaction summary says otherwise, the register wins):\n' +
-    '  T2 in-progress, p2, due 01-10 (from T4) | Write the docs\n' +
-    '  T3 waiting, p2 | Ship the docs (waiting: on T2)\n' +
+    '  T2 in-progress, Improvements, score 18.33, p2, due 01-10 (from T4) | Write the docs\n' +
+    '  T3 waiting, Improvements, score 3.33, p2 | Ship the docs (waiting: on T2)\n' +
     'WAITING ON YOU 1 task(s) of other sessions:\n' +
-    '  T4 open, p2, owner bravo, due 01-10, after T2 | Not mine · needs your T2';
+    '  T4 open, Improvements, score 16.67, p2, owner bravo, due 01-10, after T2 | Not mine · needs your T2';
   const START =
     "START alpha, Tue 01-08 10:00 UTC: this note is your work block's start, so run no `teamrig start` now; it would add only the check flags and the rest of the list (run it at your next work block).";
 

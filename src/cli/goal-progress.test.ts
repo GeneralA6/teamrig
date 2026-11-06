@@ -4,7 +4,7 @@ import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const DAY_MS = 86_400_000;
-const FLAG = 'NO-PROGRESS (no goal or week-plan task moved since 01-08 00:00 UTC (1 day); the first to move) T1 open, p2, owner alpha, week 01-07, from alpha | Ship the CLI';
+const FLAG = 'NO-PROGRESS (no goal or week-plan task moved since 01-08 00:00 UTC (1 day); the first to move) T1 open, Improvements, score 3.33, p2, owner alpha, week 01-07, from alpha | Ship the CLI';
 
 /** Claude Code's status input with the week `usedPct` used. */
 function status(usedPct: number): string {

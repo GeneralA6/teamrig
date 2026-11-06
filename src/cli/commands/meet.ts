@@ -11,6 +11,7 @@ import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, type FoundTeam, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { teamRanking } from '../team-ranking.ts';
 import { teamRegister } from '../team-register.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { openSession, printOpenResult, terminalFlag } from './open.ts';
@@ -43,7 +44,8 @@ async function meetFactsOf(runtime: CliRuntime, ref: string): Promise<MeetFacts>
   const id = sessionIdOf(roster, ref);
   const name = roster.nameOf(id) ?? id;
   const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
-  const tree = taskTreeOf({ snapshot, config, elsewhere }, runtime);
+  const ranking = await teamRanking(runtime, kit.paths, config, snapshot.state.tasks.values());
+  const tree = taskTreeOf({ snapshot, config, elsewhere, ranking }, runtime);
   const { ownerSource, requireDecisionCard } = config.register;
   const cards = ownerCardsBySession([...snapshot.state.tasks.values()], tree, ownerSource, requireDecisionCard).get(id) ?? NO_CARDS;
   if (cards.due.length === 0) {

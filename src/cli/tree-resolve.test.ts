@@ -105,7 +105,7 @@ describe('show of a task another register of the tree holds (T1139)', () => {
     const kit = await seeded();
     const shown = await ok(kit, ['show', 'T1', '--session', 'front'], WEB);
     assert.equal(shown.stdout.length, 3, shown.stdout.join('\n'));
-    assert.match(shown.stdout[0] ?? '', /^app\/T1 open, p2, owner lead\b.*\| Root task$/);
+    assert.match(shown.stdout[0] ?? '', /^app\/T1 open, Improvements, score 3\.33, p2, owner lead\b.*\| Root task$/);
     assert.equal(shown.stdout[1], held);
     assert.equal(shown.stdout[2], `files in ${join(teamHomeOf('app'), 'tasks', 'T1')}: none yet`, 'its files are in the team that holds it');
   });
@@ -114,7 +114,7 @@ describe('show of a task another register of the tree holds (T1139)', () => {
     const kit = await seeded();
     await ok(kit, add('Second root task', '--after', 'T1'));
     const shown = await ok(kit, ['show', 'T3', '--tree', '--session', 'front'], WEB);
-    assert.match(shown.stdout[0] ?? '', /^app\/T3 open, p2, owner lead, after T1\b.*\| Second root task$/);
+    assert.match(shown.stdout[0] ?? '', /^app\/T3 open, Improvements, score 3\.33, p2, owner lead, after T1\b.*\| Second root task$/);
     assert.deepEqual(shown.stdout.slice(1, 3), [held, 'needs:']);
     assert.match(shown.stdout[3] ?? '', /^ {2}app\/T1 open\b/);
     assert.deepEqual(shown.stdout.slice(4), ['needed by: none', 'Next move: lead on team app (app/T1)']);

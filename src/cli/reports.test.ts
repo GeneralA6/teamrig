@@ -88,8 +88,8 @@ describe('listLines', () => {
     const rows = [row({ id: 'T3', priority: 2 }), row({ id: 'T1', priority: 2, due: '2030-01-09' }), row({ id: 'T2', priority: 1, title: LONG_TITLE })];
     assert.deepEqual(listLines(rows, false), [
       'LIST 3 task(s) (short rows; --all for every field)',
-      'T2 open, p1, owner alpha | Move the nightly export onto the shared queue and drop the…',
       'T1 open, p2, owner alpha, due 01-09 | Add a health check · ahead: due',
+      'T2 open, p1, owner alpha | Move the nightly export onto the shared queue and drop the…',
       'T3 open, p2, owner alpha | Add a health check',
     ]);
   });

@@ -64,7 +64,7 @@ describe('teamrig meet --cards', () => {
     const kit = await alphaWithACard();
     const lines = ok(await kit.run(['meet', '--cards', '--session', 'alpha'])).stdout;
     assert.equal(lines[0], 'MEET app-alpha (session alpha): 1 card(s) waiting on owner');
-    assert.ok(lines.some((line) => line.startsWith('  T1 waiting, p1, owner alpha | Pick the pricing tier')), lines.join('\n'));
+    assert.ok(lines.some((line) => line.startsWith('  T1 waiting, Improvements, score 3.33, p1, owner alpha | Pick the pricing tier')), lines.join('\n'));
     assert.ok(lines.some((line) => line.startsWith('  Record each answer in the same turn: teamrig set <id> ')), lines.join('\n'));
   });
 

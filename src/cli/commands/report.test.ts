@@ -45,13 +45,13 @@ async function seeded(): Promise<CliHarness> {
 
 const GROUPED = [
   '  Owner asked (1)',
-  '    T3 done, p3, owner alpha | Pricing',
+  '    T3 done, Improvements, p3, owner alpha | Pricing',
   '  A1 (1)',
-  '    T2 done, p2, owner bravo | Docs',
+  '    T2 done, Improvements, p2, owner bravo | Docs',
   '  Urgent p1 (1)',
-  '    T1 done, p1, owner alpha | Login',
+  '    T1 done, Improvements, p1, owner alpha | Login',
   "  This week's plan (1)",
-  '    T4 done, p3, owner bravo | Cleanup',
+  '    T4 done, Improvements, p3, owner bravo | Cleanup',
 ];
 
 describe('teamrig report done', () => {
@@ -76,9 +76,9 @@ describe('teamrig report done', () => {
       'DONE Wed 01-09 · 5 done · 1 dropped',
       ...GROUPED,
       '  Other work (1)',
-      '    T5 done, p3, owner alpha | Tidy',
+      '    T5 done, Improvements, p3, owner alpha | Tidy',
       '  Dropped (1)',
-      '    T6 dropped, p2, bug, owner alpha | Crash',
+      '    T6 dropped, Improvements, p2, bug, owner alpha | Crash',
     ]);
   });
 
@@ -96,9 +96,9 @@ describe('teamrig report done', () => {
     assert.deepEqual((await kit.run(['report', 'done', '--session', 'alpha'])).stdout, [
       'DONE Wed 01-09 · alpha · 3 done · 1 dropped',
       '  Owner asked (1)',
-      '    T3 done, p3, owner alpha | Pricing',
+      '    T3 done, Improvements, p3, owner alpha | Pricing',
       '  Urgent p1 (1)',
-      '    T1 done, p1, owner alpha | Login',
+      '    T1 done, Improvements, p1, owner alpha | Login',
       '  Other work (1) and dropped (1): teamrig report done --day 2030-01-09 --session alpha --all',
     ]);
     assert.deepEqual((await kit.run(['report', 'done', '--session', 'bravo', '--day', '2030-01-09'])).stdout.slice(0, 1), ['DONE Wed 01-09 · bravo · 2 done · 0 dropped']);

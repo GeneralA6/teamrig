@@ -42,13 +42,13 @@ describe('runCli: the daily meeting', () => {
     ]);
     assert.equal(stdout[4], '  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)');
     assert.equal(stdout[5], 'DECISIONS 1 waiting on owner (decision or approval)');
-    assert.match(stdout[6] ?? '', /^ {2}T1 waiting, p1, owner alpha \| Pick the pricing tier/);
+    assert.match(stdout[6] ?? '', /^ {2}T1 waiting, Improvements, score 3\.33, p1, owner alpha \| Pick the pricing tier/);
     assert.equal(stdout[7], '    what and why: which tier ships first');
     assert.equal(stdout[8], `    decide: ${TEST_CARD.question}`);
     assert.equal(stdout[9], `    gate: ${TEST_GATE}`);
     assert.ok(stdout.includes('    waiting since 01-08 10:00 UTC: two options'), stdout.join('\n'));
     const late = stdout.indexOf('LATE 1 past their due date');
-    assert.match(stdout[late + 1] ?? '', /^ {2}T2 open, p2, owner bravo, due 01-07 \| Ship the docs/);
+    assert.match(stdout[late + 1] ?? '', /^ {2}T2 open, Improvements, score 30, p2, owner bravo, due 01-07 \| Ship the docs/);
     assert.ok(stdout.includes('DONE 0 done, 0 dropped since Mon 01-07 10:00 UTC'), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.endsWith('alpha: the build is green')), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.endsWith(`alpha: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`)), stdout.join('\n'));
@@ -207,7 +207,7 @@ describe('runCli: the daily meeting', () => {
     const putOff = (await kit.run(['meeting', 'agenda', '--session', 'lead'])).stdout;
     const at = putOff.findIndex((line) => line.startsWith('LATER 1 put off by owner'));
     assert.ok(at > 0, putOff.join('\n'));
-    assert.match(putOff[at + 1] ?? '', /^ {2}T1 waiting, p1, owner alpha \| Pick the pricing tier/);
+    assert.match(putOff[at + 1] ?? '', /^ {2}T1 waiting, Improvements, score 3\.33, p1, owner alpha \| Pick the pricing tier/);
     assert.ok(!putOff.some((line) => line.startsWith('DECISIONS 1')), putOff.join('\n'));
     const back = await kit.run(['update', 'T1', '--later', 'none', '--note', 'owner: asks now', '--session', 'alpha']);
     assert.equal(back.code, EXIT.ok, back.stderr.join('\n'));

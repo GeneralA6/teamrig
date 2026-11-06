@@ -37,7 +37,7 @@ describe('runCli: the owner decisions the lead asks in batches', () => {
     const listed = await kit.run(['decisions', '--session', 'alpha']);
     assert.equal(listed.code, EXIT.ok, listed.stderr.join('\n'));
     assert.deepEqual(listed.stdout.slice(0, 2), ['DECISIONS 1 to ask owner, 0 asked and past due; the next batch Tue 01-08 13:03 UTC', 'NOT YET ASKED']);
-    assert.match(listed.stdout[2] ?? '', /^ {2}T1 waiting, p2, owner alpha \| Pick the pricing tier/);
+    assert.match(listed.stdout[2] ?? '', /^ {2}T1 waiting, Improvements, score 3\.33, p2, owner alpha \| Pick the pricing tier/);
     assert.ok(listed.stdout.includes(`    decide: ${TEST_CARD.question}`), listed.stdout.join('\n'));
     assert.deepEqual(await decisionLines(kit, 'lead'), []);
   });

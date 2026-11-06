@@ -40,7 +40,7 @@ describe('the week fit to the weekly limit', () => {
     const text = planned.stdout.join('\n');
     assert.match(
       text,
-      /to do\. From the task register at [^\n]+\n\n- fits: p1 40% · p2 25% \(left 69\.5% of the week\)\n- does not fit: T3 p2 alpha 30% \| Record the demo, \+1 after it\n- 1 to do without a size\n/,
+      /to do\. From the task register at [^\n]+\n\n- fits: p2 55% \(left 69\.5% of the week\)\n- does not fit: T4 p2 alpha 35% \| Tidy the docs, \+1 after it\n- 1 to do without a size\n/,
     );
   });
 
@@ -51,7 +51,7 @@ describe('the week fit to the weekly limit', () => {
     const checked = await kit.run(['check', '--all', '--session', 'alpha']);
     assert.ok(
       checked.stdout.includes(
-        'OVER-LIMIT (size 30%, 4.5% of the week left after the tasks before it (left 69.5%), +1 after it) T3 open, p2, owner alpha, week 01-07, from alpha | Record the demo',
+        'OVER-LIMIT (size 35%, 14.5% of the week left after the tasks before it (left 69.5%), +1 after it) T4 open, Improvements, score 0.03, p2, owner alpha, week 01-07, from alpha | Tidy the docs',
       ),
       checked.stdout.join('\n'),
     );

@@ -622,7 +622,7 @@ async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig,
     return undefined;
   }
   const start = await blockStartOf(runtime, kit, config, id);
-  return { text: await liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime), start), pointer: liveTasksPointer(id, KIT_NAME) };
+  return { text: await liveTasksNoteOf(runtime, kit.paths, config, id, teamZone(config, runtime), start), pointer: liveTasksPointer(id, KIT_NAME) };
 }
 
 /** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */

@@ -97,7 +97,7 @@ describe('teamrig compact', () => {
     assert.equal(done.stdout[2], 'TASKS 1 kept (1 unchanged, 0 changed), 1 retired now, 0 before');
     assert.equal(done.stdout.at(-1), 'DONE the tail is archived as archive/events-000002.jsonl; reads start from the new snapshot');
     assert.deepEqual(ids((await kit.run(['list'], AS_ALPHA)).stdout), ['T2']);
-    assert.deepEqual(ids((await kit.run(['list', '--status', 'all'], AS_ALPHA)).stdout), ['T2', 'T1']);
+    assert.deepEqual(ids((await kit.run(['list', '--status', 'all'], AS_ALPHA)).stdout), ['T1', 'T2']);
     assert.deepEqual(ids((await kit.run(['list', '--status', 'done'], AS_ALPHA)).stdout), ['T1']);
     assert.match((await kit.run(['show', 'T1'], AS_ALPHA)).stdout.join('\n'), /Old plan/);
   });

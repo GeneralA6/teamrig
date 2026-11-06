@@ -8,6 +8,7 @@ import { NO_TASKS_ELSEWHERE } from '../register/tree.ts';
 import { taskLabel } from '../register/views.ts';
 import { TEST_OWNER_CARD } from '../testing/card.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { AskedStore } from './store.ts';
@@ -33,7 +34,7 @@ function tasksOf(...tasks: readonly Task[]): Map<string, Task> {
 
 /** The team's own register of `tasks`, its marker for the owner `owner`, on `zone`'s clock. */
 function own(tasks: ReadonlyMap<string, Task>, zone = TimeZone.UTC): DecisionRegister {
-  return { team: undefined, tasks, ownerMarker: 'owner', requireGate: true, zone, elsewhere: NO_TASKS_ELSEWHERE };
+  return { team: undefined, tasks, ownerMarker: 'owner', requireGate: true, zone, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking() };
 }
 
 const TASKS = tasksOf(ownerWait('T1', '2030-01-07T08:00:00.000Z'), ownerWait('T2', '2030-01-08T09:00:00.000Z'));
@@ -58,6 +59,14 @@ describe("a team's decision batch", () => {
     assert.deepEqual((await teamDecisions(files, PATHS, CONFIG, [own(TASKS)], NOW)).pending, []);
   });
 
+  it("asks the waits in the order of the register's ranking (T2076)", async () => {
+    const ranked: DecisionRegister = { ...own(TASKS), ranking: testRanking({ classes: { T2: 'Maintenance' } }) };
+    assert.deepEqual(
+      (await teamDecisions(new MemoryFiles(), PATHS, CONFIG, [ranked], NOW)).pending.map((wait) => wait.task.id),
+      ['T2', 'T1'],
+    );
+  });
+
   it("reads a due typed on the team's clock, so a wait due before the next batch is asked at once", async () => {
     const urgent = typedDueWait('14:00', JERUSALEM);
     assert.equal(urgent.due, '2030-01-08 12:00', '14:00 IST, stored in UTC');
@@ -73,9 +82,9 @@ describe("a team's decision batch", () => {
     const files = new MemoryFiles();
     await new AskedStore(files, PATHS.decisionsAsked).write({ askedAt: '2030-01-08T08:00:00.000Z', by: 'lead', ids: ['T1', 'web/T1'] });
     const webTasks = tasksOf(ownerWait('T1', '2030-01-07T08:00:00.000Z', 'human'), ownerWait('T2', '2030-01-08T09:00:00.000Z', 'human'), ownerWait('T5', '2030-01-08T09:00:00.000Z'));
-    const web: DecisionRegister = { team: 'web', tasks: webTasks, ownerMarker: 'human', requireGate: true, zone: TimeZone.UTC, elsewhere: NO_TASKS_ELSEWHERE };
+    const web: DecisionRegister = { team: 'web', tasks: webTasks, ownerMarker: 'human', requireGate: true, zone: TimeZone.UTC, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking() };
     const urgent = typedDueWait('14:00', JERUSALEM);
-    const ui: DecisionRegister = { team: 'ui', tasks: tasksOf(urgent, ownerWait('T4', '2030-01-08T09:00:00.000Z')), ownerMarker: 'owner', requireGate: true, zone: JERUSALEM, elsewhere: NO_TASKS_ELSEWHERE };
+    const ui: DecisionRegister = { team: 'ui', tasks: tasksOf(urgent, ownerWait('T4', '2030-01-08T09:00:00.000Z')), ownerMarker: 'owner', requireGate: true, zone: JERUSALEM, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking() };
     const batch = await teamDecisions(files, PATHS, CONFIG, [own(TASKS), web, ui], NOW);
     assert.deepEqual(
       batch.pending.map((wait) => taskLabel(wait.task, wait.team)),
