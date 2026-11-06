@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runWorkOf, shellRunsOf, teamrigArgsOf, type RunWork } from './run-work.ts';
+import { runWorkOf, shellLineRunsOf, shellRunsOf, teamrigArgsOf, type RunWork } from './run-work.ts';
 
 /** What each program a Bash line starts does, in order; `-` for a program that does none of it. */
 function worksOf(command: string, name = 'Bash'): readonly (RunWork | '-')[] {
@@ -19,6 +19,18 @@ describe('shellRunsOf', () => {
     );
     assert.deepEqual(shellRunsOf({ name: 'Read', command: 'git status' }), []);
     assert.deepEqual(shellRunsOf({ name: 'Bash', command: undefined }), []);
+  });
+});
+
+describe('shellLineRunsOf', () => {
+  it('keeps what a call runs that it cannot read beside its programs', () => {
+    assert.deepEqual(shellLineRunsOf({ name: 'Bash', command: '$X list' })?.opaque.map((run) => run.program.text), ['$X']);
+    assert.deepEqual(shellLineRunsOf({ name: 'Bash', command: 'git status' })?.programs.map((run) => run.name), ['git']);
+  });
+
+  it('is undefined for any other tool and a call without a command', () => {
+    assert.equal(shellLineRunsOf({ name: 'Read', command: 'git status' }), undefined);
+    assert.equal(shellLineRunsOf({ name: 'Bash', command: undefined }), undefined);
   });
 });
 

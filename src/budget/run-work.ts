@@ -1,4 +1,4 @@
-import { programsOf, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
+import { runsOf, type LineRuns, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
 import { EXEC_VALUED, NPM_VALUED } from '../package-guard/runners.ts';
 import { programName } from '../push-guard/launchers.ts';
 import type { ShellDialect, ShellWord } from '../push-guard/tokenizer.ts';
@@ -101,10 +101,15 @@ const DEVICE = /^\/dev\/|^nul$/i;
 const SEARCHES: ReadonlySet<string> = new Set(['grep', 'rg', 'find', 'select-string']);
 const NO_VALUED: ReadonlySet<string> = new Set();
 
+/** All a shell tool call runs, with what could not be read; undefined for any other tool or a call without a command. */
+export function shellLineRunsOf(tool: Pick<ToolUse, 'name' | 'command'>): LineRuns | undefined {
+  const dialect = SHELL_DIALECTS.get(tool.name);
+  return dialect === undefined || tool.command === undefined ? undefined : runsOf(tool.command, { ...NO_FOLDER, dialect });
+}
+
 /** The programs a shell tool call starts, in the order it starts them; none for any other tool or a call without a command. */
 export function shellRunsOf(tool: Pick<ToolUse, 'name' | 'command'>): readonly ProgramRun[] {
-  const dialect = SHELL_DIALECTS.get(tool.name);
-  return dialect === undefined || tool.command === undefined ? [] : programsOf(tool.command, { ...NO_FOLDER, dialect });
+  return shellLineRunsOf(tool)?.programs ?? [];
 }
 
 /** The first word that is not an option, skipping the value of each option in `valued`, with its index. */
