@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import { MS_PER_DAY } from '../core/time.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { TEST_OWNER_CARD, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { bash, CONFIG_PATH, EVENTS_PATH, reasonOf } from '../testing/cli-harness.ts';
@@ -157,6 +158,20 @@ describe('teamrig list|check|plan --tree', () => {
       'ui/T3 open, Improvements, score 3.33, p2, owner pixel | Icons',
     ]);
     assert.deepEqual(filesOf(kit), before);
+  });
+
+  it("reads --parked and --untriaged per team, each by that team's own leaders (T2090)", async () => {
+    const kit = await seeded();
+    const fields = ['--description', 'what and why', '--priority', 'p2', '--session', 'pixel'];
+    const asPixel = { env: { TEAMRIG_TEAM: 'ui' } };
+    await kit.run(['add', '--title', 'Nobody classed this', ...fields], asPixel);
+    await kit.run(['add', '--title', 'Old idea', ...fields, '--class', 'Improvements'], asPixel);
+    kit.clock.advance(30 * MS_PER_DAY);
+
+    const untriaged = await kit.run(['list', '--tree', '--all', '--untriaged'], AS_LEAD);
+    assert.deepEqual(untriaged.stdout.map((line) => line.split(' ')[0]), ['ui/T4']);
+    const parked = await kit.run(['list', '--tree', '--all', '--parked'], AS_LEAD);
+    assert.deepEqual(parked.stdout.map((line) => line.split(' ')[0]), ['ui/T5']);
   });
 
   it('checks every team against the lead week, then the shared skills folder once', async () => {

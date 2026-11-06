@@ -789,6 +789,15 @@ function weekMayBeRetired(week: string): HistoryNeed {
   return (retired) => retired.lastWeek !== null && week <= retired.lastWeek;
 }
 
+/** The filter with `list`'s switches read for one team, as `--untriaged` asks for that team's own leaders. */
+function switchedFilter(args: ParsedArgs, filter: ListFilter, { config, above }: Pick<RolledTeam, 'config' | 'above'>): ListFilter {
+  return {
+    ...filter,
+    ...(args.switches.has('parked') ? { parked: true } : {}),
+    ...(args.switches.has('untriaged') ? { untriagedFor: new LeadTree(config, above) } : {}),
+  };
+}
+
 /**
  * `list --tree`: the lead's team and every team under it, ids read `<team>/T12`. As in `check` and
  * `plan`, `--session` (else `$TEAMRIG_SESSION`) names the caller, never an owner to filter: each team
@@ -802,7 +811,7 @@ async function treeRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[
   return teams.flatMap((rolled) => {
     const { team, roster, snapshot } = rolled;
     const tree = taskTreeOf(rolled, runtime);
-    return selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter), tree).map((task) => ({ task, team, tree }));
+    return selectTasks(snapshot.state.tasks.values(), switchedFilter(args, treeFilterOf(roster, filter), rolled), tree).map((task) => ({ task, team, tree }));
   });
 }
 
@@ -811,12 +820,19 @@ async function ownRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]
   const filter = listFilterOf(args.flags, typedTimes(runtime, teamZone(up.own.config, runtime)));
   const { own } = await settle(runtime, up, selectsFinished(filter));
   const tree = taskTreeOf(own, runtime);
-  return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter), tree).map((task) => ({ task, team: undefined, tree }));
+  return selectTasks(own.snapshot.state.tasks.values(), switchedFilter(args, filterIds(own.roster, filter), own), tree).map((task) => ({ task, team: undefined, tree }));
 }
 
-/** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
+/**
+ * `list [--parked|--untriaged] [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of
+ * every task. The two switches never meet: a parked task holds a class and an untriaged one has none, so together they
+ * could only print nothing, which reads as an empty list.
+ */
 export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
+  if (args.switches.has('parked') && args.switches.has('untriaged')) {
+    throw new UsageError('--parked and --untriaged exclude each other: a parked task holds a class, an untriaged one has none');
+  }
   const rows = args.switches.has('tree') ? await treeRows(args, runtime) : await ownRows(args, runtime);
   listLines(rows, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
