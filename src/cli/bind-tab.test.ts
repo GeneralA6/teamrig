@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { indexMarks, readMarks } from '../inbox/marks.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, TEAM, TEAM_HOME, titledPromptOf } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { treeHarness } from '../testing/team-tree.ts';
@@ -103,6 +104,59 @@ describe('runCli: a hand-started tab binds itself by its Claude Code title (T302
       '- 2030-01-08 10:00 UTC lead: third',
       'READ bravo: 1 new line, shown above, and 2 the prompt hook showed this session, now marked read too; new ones are shown at your next prompt',
     ]);
+  });
+});
+
+describe('runCli: a tab $TEAMRIG_SESSION names is bound as it starts (T2130)', () => {
+  const AS_NAMED = { TEAMRIG_SESSION: 'alpha' };
+  const OLD_TAB = '9f8e7d6c-1111-2222-3333-444455556666';
+
+  async function areaOfTab(kit: CliHarness): Promise<string | undefined> {
+    return indexMarks(readMarks((await kit.files.read(MARKS_PATH)) ?? '').marks).areaBySession.get(CLAUDE_SESSION);
+  }
+
+  it('ties the Claude Code session a /clear starts to the session, marking nothing read', async () => {
+    const kit = new CliHarness();
+    await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'old news', '--session', 'lead']);
+    await kit.run(['inbox', 'read', '--session', 'alpha'], { env: { CLAUDE_CODE_SESSION_ID: OLD_TAB } });
+    await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'T7 is yours', '--session', 'lead']);
+    const start = await kit.run(['hook', 'session-start'], { stdin: prompt({ source: 'clear' }), env: AS_NAMED });
+    assert.equal(start.code, EXIT.ok);
+    assert.equal(await areaOfTab(kit), 'alpha');
+    assert.match((await kit.run(['inbox', 'status', '--session', 'alpha'])).stdout[0] ?? '', /^alpha 1 unread .*\(read to line 1 of 2 /);
+  });
+
+  it('ties a first start too, and writes one mark however often the tab starts', async () => {
+    const kit = new CliHarness();
+    for (const source of ['startup', 'compact', 'resume']) {
+      await kit.run(['hook', 'session-start'], { stdin: prompt({ source }), env: AS_NAMED });
+    }
+    assert.equal(await areaOfTab(kit), 'alpha');
+    assert.equal((await kit.files.read(MARKS_PATH))?.trim().split('\n').length, 1);
+  });
+
+  it('leaves a tab that read its inbox as another session on that mark', async () => {
+    const kit = new CliHarness();
+    await kit.run(['inbox', 'read', '--session', 'bravo'], { env: AS_CLAUDE });
+    await kit.run(['hook', 'session-start'], { stdin: prompt({ source: 'clear' }), env: AS_NAMED });
+    assert.equal(await areaOfTab(kit), 'bravo');
+    assert.equal((await kit.files.read(MARKS_PATH))?.trim().split('\n').length, 1);
+  });
+
+  it('binds nothing for a name off the roster or a start with no Claude Code session', async () => {
+    const kit = new CliHarness();
+    await kit.run(['hook', 'session-start'], { stdin: prompt({ source: 'clear' }), env: { TEAMRIG_SESSION: 'nobody' } });
+    await kit.run(['hook', 'session-start'], { stdin: JSON.stringify({ cwd: APP, source: 'clear' }), env: AS_NAMED });
+    assert.equal(await kit.files.read(MARKS_PATH), undefined);
+  });
+
+  it('says so, and still starts the session, when the mark cannot be written', async () => {
+    const kit = new CliHarness();
+    const files = new FaultyFiles(kit.files).fail('append', MARKS_PATH, systemError('EACCES', 'EACCES: permission denied'));
+    const start = await kit.run(['hook', 'session-start'], { stdin: prompt({ source: 'clear' }), env: AS_NAMED, files });
+    assert.equal(start.code, EXIT.ok);
+    assert.ok(contextOf(start).includes('You are the `alpha` session of team `app`'));
+    assert.ok(start.stdout.join('\n').includes('teamrig could not bind this tab to the `alpha` session (EACCES: permission denied); its first `inbox read` does.'), start.stdout.join('\n'));
   });
 });
 

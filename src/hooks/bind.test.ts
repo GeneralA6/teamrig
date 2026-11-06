@@ -9,6 +9,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { renameOf } from '../testing/rename.ts';
 import type { RefreshState } from '../refresh/state.ts';
 import {
+  bindByEnv,
   bindByProcess,
   bindByTitle,
   bindHint,
@@ -131,6 +132,28 @@ describe('bindMarkOf', () => {
 
   it('starts an area never read before its first line, dated now', () => {
     assert.deepEqual(bindMarkOf(undefined, 'alpha', TAB, NOW), { v: 1, area: 'alpha', line: 0, at: NOW.toISOString(), claudeSession: TAB, lastLineHash: null });
+  });
+});
+
+describe('bindByEnv', () => {
+  it("marks the tab at the area's newest read position, so nothing counts as read", async () => {
+    const { files, deps } = setup([readMark('alpha', 4, 'fourth', OTHER_TAB)]);
+    const mark = readMark('alpha', 4, 'fourth', TAB);
+    assert.deepEqual(await bindByEnv(deps.marks, 'alpha', TAB, NOW), mark);
+    assert.equal(await files.read(MARKS), `${markLine(readMark('alpha', 4, 'fourth', OTHER_TAB))}${markLine(mark)}`);
+  });
+
+  it('starts an area never read before its first line', async () => {
+    const { deps } = setup();
+    assert.deepEqual(await bindByEnv(deps.marks, 'alpha', TAB, NOW), bindMarkOf(undefined, 'alpha', TAB, NOW));
+  });
+
+  it('writes nothing for a tab a mark names, as this session or another', async () => {
+    for (const area of ['alpha', 'bravo']) {
+      const { files, deps } = setup([readMark(area, 1, 'first', TAB)]);
+      assert.equal(await bindByEnv(deps.marks, 'alpha', TAB, NOW), undefined);
+      assert.equal(await files.read(MARKS), markLine(readMark(area, 1, 'first', TAB)));
+    }
   });
 });
 

@@ -3,7 +3,7 @@ import type { Roster } from '../../config/roster.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { sessionTitleOf } from '../../names/title.ts';
-import { bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn, type BindOutcome, type TeamRoster } from '../../hooks/bind.ts';
+import { bindByEnv, bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn, type BindOutcome, type TeamRoster } from '../../hooks/bind.ts';
 import { firstHint, JsonlHintLog } from '../../hooks/hint-log.ts';
 import { injectFor } from '../../inbox/inject.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
@@ -86,6 +86,19 @@ export async function bindAfterClear(runtime: CliRuntime, kit: Kit, roster: Rost
     return bound === undefined ? undefined : processBoundNote(bound.id);
   } catch (error) {
     return `${KIT_NAME} could not bind this tab by its Claude Code process (${errorMessage(error)}).`;
+  }
+}
+
+/**
+ * Binds the tab `$TEAMRIG_SESSION` names to session `id` (hooks/bind.ts). It never throws, so the start always
+ * loads: a failure is the SessionStart note, and the tab's first `inbox read` writes the mark.
+ */
+export async function bindNamedTab(runtime: CliRuntime, kit: Kit, id: string, claudeSession: string): Promise<string | undefined> {
+  try {
+    await bindByEnv(inboxDepsOf(runtime, kit.paths).marks, id, claudeSession, new Date(runtime.clock.now()));
+    return undefined;
+  } catch (error) {
+    return `${KIT_NAME} could not bind this tab to the \`${id}\` session (${errorMessage(error)}); its first \`inbox read\` does.`;
   }
 }
 

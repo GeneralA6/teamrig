@@ -51,7 +51,7 @@ import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamZone, type Kit } fro
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
-import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
+import { bindAfterClear, bindHintOnce, bindNamedTab, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { startAutoSync } from './gh-auto.ts';
 import { closedSendHold } from './hook-closed-send.ts';
@@ -399,6 +399,8 @@ type TeamParts = Pick<
 > & {
   /** Why the start's Claude Code process could not be recorded; undefined when it was, or there was nothing to record. */
   readonly recordNote: string | undefined;
+  /** Why the tab `$TEAMRIG_SESSION` names could not be bound to its session; undefined when it was, or nothing names it. */
+  readonly envBindNote: string | undefined;
 };
 
 /**
@@ -408,7 +410,7 @@ type TeamParts = Pick<
  * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
  * tasks; whether it runs on its configured model and effort; its verifying tasks; and where the team sits
  * in a tree of teams, read from every team config of the kit home. It records the Claude Code process the session
- * started in and the team's Claude config dir (budget/config-dir.ts), marks a /clear or a compaction in the session's turn log and prunes the log's old hours (hook-turn-log.ts).
+ * started in and the team's Claude config dir (budget/config-dir.ts), binds a tab `$TEAMRIG_SESSION` names to that session in the inbox marks, marks a /clear or a compaction in the session's turn log and prunes the log's old hours (hook-turn-log.ts).
  */
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
   const title = await readTitle(runtime, payload);
@@ -428,8 +430,10 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     await recordConfigDir(runtime.files, kit.paths.configDirRecord, claudeConfigDir(runtime.env, runtime.userHome)).catch(() => undefined);
   }
   const recorded = id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, roster.ids, id, claudeSession, startTranscriptOf(payload));
+  const envBindNote = fromEnv === undefined || id === undefined || claudeSession === null ? undefined : await bindNamedTab(runtime, kit, id, claudeSession);
   return {
     recordNote: recorded?.failure,
+    envBindNote,
     duplicateNote: recorded?.duplicate,
     teamRules: await readTeamRules(runtime, kit, kitTree),
     keptRulesAbove: keptRulesAboveOf(kit, kitTree),
@@ -843,6 +847,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
       : {
           recordNote: undefined,
+          envBindNote: undefined,
           teamRules: [],
           keptRulesAbove: [],
           renames: [],
@@ -865,6 +870,6 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
     now: new Date(runtime.clock.now()),
     command: KIT_NAME,
   });
-  runtime.out.stdout(sessionStartOutput(context, [parts.duplicateNote, parts.modelNote, parts.recordNote, requirementsNote]));
+  runtime.out.stdout(sessionStartOutput(context, [parts.duplicateNote, parts.modelNote, parts.recordNote, parts.envBindNote, requirementsNote]));
   return EXIT.ok;
 }
