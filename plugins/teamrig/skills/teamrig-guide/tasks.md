@@ -17,7 +17,7 @@ A task is `open` when added. Only its owner sets its status, with `teamrig set <
 | `dropped` | will not be done | `--note` saying why and who decided; `--followups` may name the tasks the work moved to |
 
 `open`, `in-progress`, `verifying` and `waiting` are the active statuses: `list` shows them by default and `check`
-reads only them. Set `verifying` when the work is merged or deployed but its proof does not exist yet, then `done`
+reads only them, less the quiet tasks that park (commands.md, teamrig list). Set `verifying` when the work is merged or deployed but its proof does not exist yet, then `done`
 with that proof as evidence once it does, or `in-progress` again when the proof fails. When tests or a dry run
 already proved it and only a live sighting is left (a night's run, a page a user opens), set it `done` with
 `--watch` instead. Every session needs
