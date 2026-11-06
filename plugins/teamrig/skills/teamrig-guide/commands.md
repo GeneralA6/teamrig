@@ -826,6 +826,14 @@ A LIMIT line names the days of the range the week sat at its usage limit, marked
 as slack. It reads them from the account's meter log, from the week's first reading at 100% to its reset; the log keeps
 8 weeks, so a longer range marks only its last 8 weeks.
 
+A GOALS line counts the goal records of the team and the teams above it by state (with `--tree`, those of each team
+it rolls up) and names the goals at risk and late. A task serves the goal with the longest tag its own tag starts
+with, and that goal's parents: `launch.2b` serves `launch.2`, while `launch.10` is no part of `launch.1`. A goal's
+state reads its whole history, whatever the range: done once it has done tasks and none open, late past its target,
+else on track or at risk by the day its open tasks end at the last 14 days' pace against the target. With open tasks
+and no pace, a goal is at risk once its start has passed. The line ends with the work off goal: the range's done
+tasks with no goal tag; a tag with no record still counts as served.
+
 The USE lines close the output, and only this command prints them: how much of the range's task work the plan held,
 and each class's share, in W and active minutes, against `focus.plannedTargetPct` and `focus.allocation`; in a tree,
 against the caller's team's. They read the daily rollups (`### teamrig budget rollup`), so only closed UTC days count:
@@ -869,6 +877,7 @@ DELAYS overdue 1, p1 0; done by due 3 of 4; late 1 by 2-3 d; due moved 2
 WAITS 3 waiting (decision 1, task 2); on the owner 1, oldest 1.5 d
 BUGS 1 active, 2 opened, 1 fixed
 PEOPLE api 5, web 2
+GOALS 1 on track, 1 at risk (signup); off goal: 2 of 7 done tasks (29%)
 USE 6 of 7 days rolled up: task work 41.20M W, 312 min; no task 3.10M W, 24 min
 USE planned 64% of task W, target 70%, gap -6: planned 26.40M W, 201 min; unplanned 14.80M W, 111 min
 USE Roadmap 58% of task W, target 60%, gap -2: planned 19.60M W, 150 min; unplanned 4.30M W, 31 min
@@ -2357,7 +2366,7 @@ DONE 2 done, 0 dropped since Wed 10-14 11:30 IDT
 STATS shop, 7 d: 10-09 to 10-15
 HEALTH close/open 1.20 [good] · backlog -2, 14 active [good] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 0.8 d [good] · backlog clears in 7 week(s) [warn]
 FLOW opened 10, closed 12 (1 dropped), net -2; last 28 d net -8
-  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)
+  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people, goals)
 MEETINGS 1 today or missed
   M3 scheduled, Thu 10-15 14:00 IDT, 30 min, web with api, tasks T7 | the pricing tiers
   The owner starts one with teamrig meeting start <id>; a missed one is moved (teamrig meeting move <id> --at <time>) or dropped.
