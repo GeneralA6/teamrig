@@ -1,22 +1,27 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type FitRow } from './fit.ts';
 import type { Task } from './fold.ts';
-import { TaskTree } from './tree.ts';
+import { TaskTree, type TreeRanking } from './tree.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const week = '2030-01-07';
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 
-function treeOf(...tasks: Task[]): TaskTree {
-  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
+function treeOf(tasks: readonly Task[] = [], ranking?: TreeRanking): TaskTree {
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, undefined, undefined, ranking);
+}
+
+function rankedRows(ranking: TreeRanking | undefined, ...tasks: Parameters<typeof testTask>[0][]): FitRow[] {
+  const all = tasks.map((fields) => testTask({ week, ...fields }));
+  const tree = treeOf(all, ranking);
+  return all.map((task) => ({ task, tree }));
 }
 
 function rows(...tasks: Parameters<typeof testTask>[0][]): FitRow[] {
-  const all = tasks.map((fields) => testTask({ week, ...fields }));
-  const tree = treeOf(...all);
-  return all.map((task) => ({ task, tree }));
+  return rankedRows(undefined, ...tasks);
 }
 
 describe('leftOfWeek', () => {
@@ -28,8 +33,14 @@ describe('leftOfWeek', () => {
 
 describe('weekFit', () => {
   it('sums the sized to-do tasks per priority in plan order and names the first past the line', () => {
+    // Scores: T2 20/3, T3 (16 + 4 due soon)/5, T1 10/4; T4 and T5 sit a band below.
+    const ranking = testRanking({
+      classes: { T1: 'Maintenance', T2: 'Roadmap', T3: 'Roadmap' },
+      goals: { T2: { tag: 'G1', rank: 1 }, T3: { tag: 'G2', rank: 2 } },
+    });
     const fit = weekFit(
-      rows(
+      rankedRows(
+        ranking,
         { id: 'T1', priority: 2, size: 4 },
         { id: 'T2', priority: 1, size: 3, status: 'in-progress' },
         { id: 'T3', priority: 2, size: 5, due: '2030-01-08' },
@@ -45,6 +56,11 @@ describe('weekFit', () => {
     assert.equal(fit.unfit?.after, 1);
     assert.equal(fit.sized, 4);
     assert.equal(fit.unsized, 1);
+  });
+
+  it('keeps the sums in priority order when a lower priority ranks first', () => {
+    const fit = weekFit(rankedRows(testRanking({ classes: { T1: 'Roadmap' } }), { id: 'T1', priority: 2, size: 1 }, { id: 'T2', priority: 1, size: 1 }), week, 5);
+    assert.deepEqual([...fit.fits], [[1, 1], [2, 1]]);
   });
 
   it('leaves out verifying, finished and other weeks, as their spend is already used or not this week', () => {
@@ -73,8 +89,8 @@ describe('weekFit', () => {
   it('orders a roll-up over teams by plan order and keeps each row\'s team', () => {
     const fit = weekFit(
       [
-        { task: testTask({ id: 'T2', week, priority: 2, size: 3 }), tree: treeOf(), team: 'beta' },
-        { task: testTask({ id: 'T7', week, priority: 1, size: 3 }), tree: treeOf(), team: 'pipeline' },
+        { task: testTask({ id: 'T2', week, size: 3 }), tree: treeOf([], testRanking()), team: 'beta' },
+        { task: testTask({ id: 'T7', week, size: 3 }), tree: treeOf([], testRanking({ classes: { T7: 'Roadmap' } })), team: 'pipeline' },
       ],
       week,
       4,

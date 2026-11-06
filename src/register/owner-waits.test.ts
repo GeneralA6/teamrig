@@ -2,11 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
+import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { Task } from './fold.ts';
 import { askableSince, asksOwner, deferredUntil, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, type OwnerCards } from './owner-waits.ts';
-import { TaskTree } from './tree.ts';
+import { TaskTree, type TreeRanking } from './tree.ts';
 import { waitContext, type WaitReason } from './waits.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -86,14 +87,14 @@ describe('a card the owner put off', () => {
   });
 });
 
-/** A card as {@link decide} makes it, as task `id` of session `owner` at `priority`. */
-function cardOf(id: string, owner: string, times: readonly string[] = [], priority = 2): Task {
-  return { ...decide(times), id, owner, priority };
+/** A card as {@link decide} makes it, as task `id` of session `owner`. */
+function cardOf(id: string, owner: string, times: readonly string[] = []): Task {
+  return { ...decide(times), id, owner };
 }
 
 /** The tree of one read of `tasks` at NOW, in UTC. */
-function treeOf(tasks: readonly Task[]): TaskTree {
-  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
+function treeOf(tasks: readonly Task[], ranking?: TreeRanking): TaskTree {
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC, undefined, undefined, ranking);
 }
 
 /** A session's cards by id, each put-off one with its time; undefined when the session has none. */
@@ -111,8 +112,9 @@ describe("each session's cards on the owner", () => {
   });
 
   it('keeps each list in plan order', () => {
-    const tasks = [cardOf('T1', 'alpha'), cardOf('T5', 'alpha', [], 1), cardOf('T2', 'alpha', ['2030-01-10']), cardOf('T6', 'alpha', ['2030-01-09 12:00'], 1)];
-    assert.deepEqual(idsOf(ownerCardsBySession(tasks, treeOf(tasks), 'owner', true).get('alpha')), {
+    const tasks = [cardOf('T1', 'alpha'), cardOf('T5', 'alpha'), cardOf('T2', 'alpha', ['2030-01-10']), cardOf('T6', 'alpha', ['2030-01-09 12:00'])];
+    const ranking = testRanking({ classes: { T5: 'Roadmap', T6: 'Roadmap' } });
+    assert.deepEqual(idsOf(ownerCardsBySession(tasks, treeOf(tasks, ranking), 'owner', true).get('alpha')), {
       due: ['T5', 'T1'],
       later: [
         ['T6', '2030-01-09 12:00'],

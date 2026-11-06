@@ -31,7 +31,8 @@ import {
   verifySummaryPointer,
 } from './views.ts';
 import type { Task } from './fold.ts';
-import { TaskTree } from './tree.ts';
+import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
+import { TEST_OWNER_SOURCE, testRanking, type TestRankingFacts } from '../testing/ranking.ts';
 import type { WatchedTask } from './verify.ts';
 import type { WaitReason } from './waits.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -47,8 +48,13 @@ function treeOf(...tasks: Task[]): TaskTree {
   return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
 }
 
+/** A read at NOW that ranks its tasks by `facts`. */
+function rankedTree(facts: TestRankingFacts, ...tasks: Task[]): TaskTree {
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, NO_TASKS_ELSEWHERE, testRanking(facts));
+}
+
 describe('byPlanOrder', () => {
-  it('sorts by priority, then due date with undated last, then id number', () => {
+  it('sorts by due date with undated last, then id number, whatever the priority', () => {
     const tasks = [
       testTask({ id: 'T10', priority: 2 }),
       testTask({ id: 'T3', priority: 2, due: '2030-01-09' }),
@@ -56,7 +62,7 @@ describe('byPlanOrder', () => {
       testTask({ id: 'T4', priority: 2, due: '2030-01-08 12:00' }),
       testTask({ id: 'T9', priority: 1 }),
     ];
-    assert.deepEqual(tasks.sort((a, b) => byPlanOrder(a, b, TimeZone.UTC)).map((task) => task.id), ['T9', 'T4', 'T3', 'T2', 'T10']);
+    assert.deepEqual(tasks.sort((a, b) => byPlanOrder(a, b, TimeZone.UTC)).map((task) => task.id), ['T4', 'T3', 'T2', 'T9', 'T10']);
   });
 });
 
@@ -69,7 +75,7 @@ describe('selectTasks', () => {
   const ids = (filter: Parameters<typeof selectTasks>[1]) => selectTasks(tasks, filter, treeOf(...tasks)).map((task) => task.id);
 
   it('shows active tasks by default and filters on every field', () => {
-    assert.deepEqual(ids({}), ['T2', 'T1']);
+    assert.deepEqual(ids({}), ['T1', 'T2']);
     assert.deepEqual(ids({ statuses: ['done'] }), ['T3']);
     assert.deepEqual(ids({ owner: 'alpha' }), ['T1']);
     assert.deepEqual(ids({ source: 'owner' }), ['T2']);
@@ -81,7 +87,7 @@ describe('selectTasks', () => {
     assert.deepEqual(ids({ goal: 'G1' }), ['T1']);
     assert.deepEqual(ids({ types: ['bug'] }), ['T2']);
     assert.deepEqual(ids({ types: ['task'] }), ['T1'], 'a task with no type counts as a task');
-    assert.deepEqual(ids({ types: ['task', 'bug'] }), ['T2', 'T1']);
+    assert.deepEqual(ids({ types: ['task', 'bug'] }), ['T1', 'T2']);
   });
 
   it('reads the effective due: a task inherits the earlier due of a task that needs it', () => {
@@ -303,6 +309,19 @@ describe('formatWaitingOnYou', () => {
   });
 });
 
+describe('a row of a ranked tree', () => {
+  it('shows the class and score right after the status', () => {
+    const task = testTask({ id: 'T12', title: 'Add a health check', size: 3 });
+    const tree = rankedTree({ classes: { T12: 'Roadmap' }, goals: { T12: { tag: 'A1', rank: 1 } } }, task);
+    assert.equal(formatShortTask(task, 60, undefined, tree), 'T12 open, Roadmap, score 6.67, p2, owner alpha | Add a health check');
+  });
+
+  it('shows neither in a tree that does not rank', () => {
+    const task = testTask({ id: 'T12', title: 'Add a health check' });
+    assert.equal(formatShortTask(task, 60, undefined, treeOf(task)), 'T12 open, p2, owner alpha | Add a health check');
+  });
+});
+
 describe('aheadReason and aheadText: why a row sorts ahead of the next', () => {
   const placed = (task: Task, tree: TaskTree = TREE) => ({ task, tree });
   const later = testTask({ id: 'T9' });
@@ -324,8 +343,25 @@ describe('aheadReason and aheadText: why a row sorts ahead of the next', () => {
     assert.equal(aheadReason(placed(work, one), placed(later, one)), 'unblocks T8 p2');
   });
 
+  it('names an expedite, and leaves any other band to the class the row shows', () => {
+    const expedite = testTask({ id: 'T12', source: TEST_OWNER_SOURCE, priority: 1 });
+    const roadmap = testTask({ id: 'T13' });
+    const rest = testTask({ id: 'T14' });
+    const tree = rankedTree({ classes: { T13: 'Roadmap' } }, expedite, roadmap, rest);
+    assert.equal(aheadReason(placed(expedite, tree), placed(roadmap, tree)), 'expedite');
+    assert.equal(aheadReason(placed(roadmap, tree), placed(rest, tree)), undefined);
+  });
+
+  it('names the score, with the ranked goal it serves when it serves one', () => {
+    const first = testTask({ id: 'T12', size: 1 });
+    const second = testTask({ id: 'T13', size: 3 });
+    const third = testTask({ id: 'T14', size: 4 });
+    const tree = rankedTree({ classes: { T12: 'Roadmap', T13: 'Roadmap', T14: 'Roadmap' }, goals: { T12: { tag: 'A1', rank: 1 } } }, first, second, third);
+    assert.equal(aheadReason(placed(first, tree), placed(second, tree)), 'score 20 (A1 #1)');
+    assert.equal(aheadReason(placed(second, tree), placed(third, tree)), 'score 1');
+  });
+
   it('names nothing when the row shows it, the number decides, they tie or the next row sorts ahead', () => {
-    assert.equal(aheadReason(placed(testTask({ id: 'T12', priority: 1 })), placed(later)), undefined);
     assert.equal(aheadReason(placed(testTask({ id: 'T12', pin: 'lead', priority: 3 })), placed(later)), undefined, 'the row says pinned');
     assert.equal(aheadReason(placed(testTask({ id: 'T2' })), placed(later)), undefined);
     assert.equal(aheadReason(placed(later), placed(later)), undefined);

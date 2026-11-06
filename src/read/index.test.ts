@@ -164,14 +164,14 @@ describe('the read entry', () => {
     assert.deepEqual([1, 2, 6].map((id) => read.priorityName(read.DEFAULT_REGISTER.priorities, id)), ['keep the lights on', 'correctness', undefined]);
   });
 
-  it("sorts a reader's own rows in plan order when they carry only an id, a priority and a due", () => {
+  it("sorts a reader's own rows in plan order when they carry only an id and a due", () => {
     const rows: read.PlanOrdered[] = [
-      { id: 'T10', priority: 2, due: null },
-      { id: 'T3', priority: 2, due: '2030-01-09' },
-      { id: 'T4', priority: 2, due: '2030-01-08 12:00' },
-      { id: 'T9', priority: 1, due: null },
+      { id: 'T10', due: null },
+      { id: 'T3', due: '2030-01-09' },
+      { id: 'T4', due: '2030-01-08 12:00' },
+      { id: 'T9', due: null },
     ];
-    assert.deepEqual(rows.sort((a, b) => read.byPlanOrder(a, b, read.TimeZone.UTC)).map((row) => row.id), ['T9', 'T4', 'T3', 'T10']);
+    assert.deepEqual(rows.sort((a, b) => read.byPlanOrder(a, b, read.TimeZone.UTC)).map((row) => row.id), ['T4', 'T3', 'T9', 'T10']);
     assert.equal(read.dueTime({ due: null }, read.TimeZone.UTC), undefined);
   });
 

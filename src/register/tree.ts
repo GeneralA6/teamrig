@@ -2,6 +2,7 @@ import { parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES } from './model.ts';
+import { scoreOf, valueOf, type ScoreFocus, type SizeFacts, type TaskScore, type ValueFacts } from './score.ts';
 import { isFinished, isReady, waitContext, type PersonWait, type PersonWaitKind, type WaitContext } from './waits.ts';
 import { currentWeek } from './week.ts';
 
@@ -65,17 +66,30 @@ export interface Unblocks {
   readonly count: number;
 }
 
+/** The ranked goal a task serves: the best rank on its goals or their ancestors, and the goal that holds it. */
+export interface RankedGoal {
+  readonly tag: string;
+  readonly rank: number;
+}
+
+/** A task's band and score, with the class and goal they were read from, which its row and `ahead:` reason name. */
+export interface RankedPlace extends TaskScore {
+  readonly workClass: string;
+  readonly goal: RankedGoal | null;
+}
+
 /**
- * A task's place in plan order: its priority, its deadline in ms (undefined: none) and its id; a tree's place
- * ({@link TaskTree.placeOf}) adds the rest of {@link PLAN_KEYS}. A place built without a tree leaves those out, so
- * they tie and it falls back to priority, deadline and age.
+ * A task's place in plan order: its deadline in ms (undefined: none) and its id; a tree's place
+ * ({@link TaskTree.placeOf}) adds the rest of {@link PLAN_KEYS}. A place built without a tree or a {@link TreeRanking}
+ * has no band or score, so they tie and it falls back to the keys below them: priority alone ranks nothing (T2076).
  */
 export interface PlanPlace {
   readonly id: string;
-  readonly priority: number;
   readonly at: number | undefined;
   /** Pinned to the top of its owner's list by one of the owner's leaders. */
   readonly pinned?: boolean;
+  /** Its band and score; undefined with no ranking. */
+  readonly ranked?: RankedPlace | undefined;
   /** In progress. */
   readonly started?: boolean;
   /** The best needer; undefined when no active task needs it. */
@@ -87,20 +101,22 @@ export interface PlanPlace {
 }
 
 /**
- * The keys of plan order, in order: the first one on which two tasks differ puts one ahead. No hand-set score, each
- * key a field the task has: `pinned` (a task the owner's leader pinned, above every other key); `priority` (p1 first); `started` (an in-progress task stays on top within its
- * priority); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the
- * active tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size`
- * (the smallest first, unsized last); `age` (the lowest number first).
+ * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `pinned` (a task the
+ * owner's leader pinned, above every other key); `band` (expedite, then Roadmap and Maintenance, then the rest;
+ * score.ts); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of its
+ * equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
+ * tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size` (the smallest
+ * first, unsized last); `age` (the lowest number first).
  */
-export const PLAN_KEYS = ['pinned', 'priority', 'started', 'due', 'unblocks', 'week', 'size', 'age'] as const;
+export const PLAN_KEYS = ['pinned', 'band', 'score', 'started', 'due', 'unblocks', 'week', 'size', 'age'] as const;
 
 /** One of {@link PLAN_KEYS}. */
 export type PlanKey = (typeof PLAN_KEYS)[number];
 
 const BY_KEY: Readonly<Record<PlanKey, (a: PlanPlace, b: PlanPlace) => number>> = {
   pinned: (a, b) => trueFirst(a.pinned, b.pinned),
-  priority: (a, b) => a.priority - b.priority,
+  band: (a, b) => lowFirst(a.ranked?.band, b.ranked?.band),
+  score: (a, b) => highFirst(a.ranked?.score, b.ranked?.score),
   started: (a, b) => trueFirst(a.started, b.started),
   due: (a, b) => lowFirst(a.at, b.at),
   unblocks: (a, b) => lowFirst(a.unblocks?.priority, b.unblocks?.priority) || (b.unblocks?.count ?? 0) - (a.unblocks?.count ?? 0),
@@ -127,6 +143,11 @@ function lowFirst(a: number | undefined, b: number | undefined): number {
   return x === y ? 0 : x < y ? -1 : 1;
 }
 
+/** The higher number first, a missing one last. */
+function highFirst(a: number | undefined, b: number | undefined): number {
+  return lowFirst(a === undefined ? undefined : -a, b === undefined ? undefined : -b);
+}
+
 /** A true flag first. */
 function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
   return Number(b === true) - Number(a === true);
@@ -135,9 +156,26 @@ function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
 /**
  * The fields of a task the tree reads. A reader that keeps rows of its own (a status pane) builds a tree from them as
  * from teamrig's folded tasks, and gets its own rows back from it; a row without `week`, `size` or `pin` counts as
- * untagged, unsized and unpinned.
+ * untagged, unsized and unpinned, one without `type`, `critical` or `source` as a plain task no owner ordered.
  */
-export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> & Partial<Pick<Task, 'week' | 'size' | 'pin'>>;
+export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> & Partial<Pick<Task, 'week' | 'size' | 'pin' | 'type' | 'critical' | 'source'>>;
+
+/**
+ * How a tree ranks its tasks (T2076): the team's `focus` config and the per-task reads a score needs, built once per
+ * register read. It stays out of a tree that only reads dues and needs; such a tree places every task with no band or
+ * score ({@link PlanPlace}), and its rows show neither.
+ */
+export interface TreeRanking {
+  readonly focus: ScoreFocus;
+  /** The `source` of a task the owner ordered. */
+  readonly ownerSource: string;
+  /** The work class a task counts as. */
+  classOf(task: TreeTask): string;
+  /** The ranked goal it serves; null: none. */
+  goalOf(task: TreeTask): RankedGoal | null;
+  /** What is known of its size. */
+  sizingOf(task: TreeTask): SizeFacts;
+}
 
 /** The date a task works to: its own due, or an earlier one of a task that needs it. */
 export interface EffectiveDue {
@@ -209,6 +247,11 @@ export interface WaitingOnYou<T extends TreeTask = Task> {
   readonly asks: readonly PersonWait[];
 }
 
+/** What a task is worth by its class, goal and severity, as `ranking` reads them. */
+function valueFacts(task: TreeTask, ranking: TreeRanking): ValueFacts {
+  return { workClass: ranking.classOf(task), rank: ranking.goalOf(task)?.rank ?? null, type: task.type ?? null, critical: task.critical ?? false };
+}
+
 /**
  * The tree of one register read at `now`, over teamrig's tasks or a reader's own rows ({@link TreeTask}): what it
  * hands back (a needer, a move's task, a waiting task) is one of those rows.
@@ -218,7 +261,7 @@ export class TaskTree<T extends TreeTask = Task> {
   readonly context: WaitContext;
   /** The team's zone: a stored due day is a day of it, and rows show times in it. */
   readonly zone: TimeZone;
-  /** The week plan in force, whose tasks plan order puts first after priority, due and need; null: none. */
+  /** The week plan in force, whose tasks plan order puts first after band, score, due and need; null: none. */
   readonly week: string | null;
   private readonly tasks: ReadonlyMap<string, T>;
   /** The tasks of the team tree's other registers, for a need this read lacks. */
@@ -226,10 +269,15 @@ export class TaskTree<T extends TreeTask = Task> {
   /** Per id, the active tasks that need it, by number. */
   private readonly needers: ReadonlyMap<string, readonly T[]>;
   private readonly dues = new Map<string, EffectiveDue | undefined>();
+  private readonly now: number;
+  private readonly ranking: TreeRanking | undefined;
+  /** Each place's score, kept because a sort reads every task's many times. */
+  private readonly ranked = new Map<string, RankedPlace>();
 
   /**
    * `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows.
    * `elsewhere` holds the tasks of the team tree's other registers, which a need the read lacks is read from.
+   * `ranking` gives its places a band and a score; a read that sorts or lists tasks passes one.
    */
   constructor(
     tasks: ReadonlyMap<string, T>,
@@ -237,11 +285,14 @@ export class TaskTree<T extends TreeTask = Task> {
     zone: TimeZone,
     week: string | null = currentWeek(tasks.values(), now, zone),
     elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
+    ranking?: TreeRanking,
   ) {
     this.tasks = tasks;
     this.elsewhere = elsewhere;
     this.zone = zone;
     this.week = week;
+    this.now = now.getTime();
+    this.ranking = ranking;
     this.context = waitContext(tasks, now, zone, elsewhere);
     const needers = new Map<string, T[]>();
     for (const task of [...tasks.values()].filter(isActive).sort((a, b) => taskNumber(a.id) - taskNumber(b.id))) {
@@ -330,7 +381,7 @@ export class TaskTree<T extends TreeTask = Task> {
     return {
       id: task.id,
       pinned: task.pin !== undefined && task.pin !== null,
-      priority: task.priority,
+      ranked: this.rankedOf(task),
       at: this.dueTime(task),
       started: task.status === 'in-progress',
       unblocks: this.unblocks(task.id),
@@ -342,6 +393,29 @@ export class TaskTree<T extends TreeTask = Task> {
   /** Plan order ({@link PLAN_KEYS}) on effective dues, what each task unblocks and this tree's week. */
   byPlanOrder(a: TreeTask, b: TreeTask): number {
     return planOrder(this.placeOf(a), this.placeOf(b));
+  }
+
+  /** A task's band and score, and the class and goal they come from; undefined with no ranking. */
+  rankedOf(task: TreeTask): RankedPlace | undefined {
+    const { ranking } = this;
+    if (ranking === undefined) {
+      return undefined;
+    }
+    const known = this.ranked.get(task.id);
+    if (known !== undefined) {
+      return known;
+    }
+    const facts = valueFacts(task, ranking);
+    const needers = this.isActiveId(task.id) ? this.neededBy(task.id) : [];
+    const neededValue = needers.length === 0 ? undefined : Math.max(...needers.map((needer) => valueOf(valueFacts(needer, ranking), ranking.focus)));
+    const score = scoreOf(
+      { ...facts, priority: task.priority, ownerSourced: task.source === ranking.ownerSource, dueAt: this.dueTime(task), neededValue, sizing: ranking.sizingOf(task) },
+      ranking.focus,
+      this.now,
+    );
+    const place = { ...score, workClass: facts.workClass, goal: ranking.goalOf(task) };
+    this.ranked.set(task.id, place);
+    return place;
   }
 
   /** The tasks in plan order ({@link byPlanOrder}). */
