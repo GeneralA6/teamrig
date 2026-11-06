@@ -342,6 +342,68 @@ LEFT ops/T4 (other-team): a session of team ops applies it
 dry run: would update 1, left 2; nothing was written: rerun with --yes to write
 ```
 
+### teamrig sweep
+
+Proposes a class, an objective and a size for each active task, one JSONL row each, so a lead can class a whole
+register in one pass. It writes to no register: a person reads the rows, sets `confirm` to `yes` on those they agree
+with, and `teamrig sweep apply` writes them. The first rule that holds decides a row: a class already stored stays
+(`class already set`); a task serving a ranked goal, itself or through a key result, takes `focus.roadmapClass` and
+names that goal; a critical task, a bug, or a title saying incident, outage, security, exposure, leak, data loss,
+backup or restore takes `focus.maintenanceClass`; a title sharing two or more words with a ranked goal's title takes
+`focus.roadmapClass` with low confidence; any other takes `focus.defaultClass`. A row's size is the task's `--size`,
+else twice what it has spent, else `focus.score.defaultSizePct`, and never under `focus.score.minSizePct`. `park` says
+whether the task would park, which only a stored class can do, so a first sweep shows `false` on every row.
+
+Flags:
+
+- `--session <id|name>`: narrows the rows to that owner's tasks; with `--tree` it names the caller instead.
+- `--tree`: for a team's lead, the rows of every team of its tree.
+- `--out <file>`: writes the rows to that file and the counts to stdout; without it the rows go to stdout and the
+  counts to stderr, so `teamrig sweep > rows.jsonl` gives the same file.
+
+Example:
+
+```sh
+teamrig sweep --out rows.jsonl
+```
+
+Output:
+
+```text
+app: Improvements 3, Roadmap 1
+WROTE 4 row(s) to rows.jsonl: set confirm to yes on the rows you agree with, then teamrig sweep apply
+```
+
+### teamrig sweep apply
+
+Writes the class, goal and size of each row of a sweep file whose `confirm` is `yes`, and never deletes or parks a
+task. A row's goal joins the task's goals unless it already serves that goal through a key result; a row whose
+objective or size is null leaves that field as it is. A row needs the task's owner or a leader over it: the caller's
+own team goes by the same rules as `update`, a team below one the caller leads by the tree, and a sibling team or one
+above is refused. A row is refused, with its reason, when its task is missing or finished or the rules refuse it, and
+the others still land, since a person confirmed each on its own. Without `--apply` it is a dry run: it prints each
+row's fate and writes nothing. A missing file, a line that is no sweep row and a task named twice are refused whole,
+writing nothing.
+
+Flags:
+
+- `--session <id|name>`: the caller.
+- `--apply`: writes each confirmed row; it exits 2 (refused) when a row was refused, after writing the rest.
+
+Example:
+
+```sh
+teamrig sweep apply rows.jsonl --session lead
+```
+
+Output:
+
+```text
+WOULD CHANGE app/T1: class Roadmap, goals K1, size 1.5
+REFUSED app/T9: no task T9 in team app
+dry run: inserted 0, changed 1, unchanged 2, unconfirmed 1, refused 1; nothing was written: rerun with --apply to write
+```
+
 ### teamrig approve
 
 The lead's answer to a task waiting on its approval (`--waits approval:<lead>`), say before a push or a merge to
