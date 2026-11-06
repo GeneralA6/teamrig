@@ -7,6 +7,7 @@ import { inMeeting, MeetingStore } from "../../meeting/state.js";
 import { decideCompact, decideMidTurn, handoverHashOf } from "../../refresh/decide.js";
 import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
+import { readContextEstimate } from "../../refresh/usage.js";
 import { noPositionals } from "../args.js";
 import { EXIT } from "../runtime.js";
 import { hookScopeOf, parseJson } from "./hook-input.js";
@@ -120,4 +121,31 @@ export async function compactCheck(args, runtime) {
     }
     const store = new RefreshStore(runtime.files, scope.kit.paths);
     return answer(runtime, decideCompact(await store.state(scope.id), { settings: scope.config.refresh, command: KIT_NAME }, { tokens, window }));
+}
+/**
+ * Claude Code's classic PreCompact hook: `compactCheck`'s hold where the mod's never runs, on a host whose managed
+ * mods seat one first that sends `session.compact` on past the user's mods (T2015). The same decision for a
+ * compaction Claude Code runs on its own (trigger `auto`; a `/compact` the user typed goes), on the context
+ * estimated from the transcript (`readContextEstimate`) and no window, which this hook is not told. A hold answers
+ * `{decision: 'block', reason}`, a go prints nothing, both with exit 0: exit 2 blocks a compaction too, so this hook
+ * never answers by a refusal. stdin: `{session_id, transcript_path, cwd, trigger}`.
+ */
+export async function preCompact(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    if (!isRecord(payload) || stringField(payload, 'trigger') !== 'auto') {
+        return EXIT.ok;
+    }
+    const transcript = stringField(payload, 'transcript_path');
+    const scope = transcript === undefined ? undefined : await hookScopeOf(runtime, payload);
+    if (transcript === undefined || scope === undefined) {
+        return EXIT.ok;
+    }
+    const tokens = await readContextEstimate(runtime.files, transcript);
+    const state = await new RefreshStore(runtime.files, scope.kit.paths).state(scope.id);
+    const decision = tokens === undefined ? GO : decideCompact(state, { settings: scope.config.refresh, command: KIT_NAME }, { tokens, window: undefined });
+    if (decision.kind === 'skip') {
+        runtime.out.stdout(JSON.stringify({ decision: 'block', reason: decision.reason }));
+    }
+    return EXIT.ok;
 }

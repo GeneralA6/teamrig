@@ -262,6 +262,7 @@ const COMMANDS = {
     'hook meeting-due': { effect: 'internal', flags: [], load: async () => (await meetingDueCommand()).meetingDue },
     'hook refresh-mid': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).refreshMid },
     'hook compact-check': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).compactCheck },
+    'hook pre-compact': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).preCompact },
     'hook slash-command': {
         effect: 'internal',
         flags: [],
@@ -746,7 +747,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook pass-record-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
+  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook pass-record-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
