@@ -218,6 +218,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 - `OFF-GOAL`: work in progress with no goal outside the week's plan. If it belongs in this week, plan it in:
   `teamrig update T<n> --session lead --week <week>`. If not, ask the session in one inbox line to tag its goal
   (`update --goals`, only its owner may) or to park it.
+- `UNTRIAGED`: a task no leader of its owner has classed. Class each in your daily batch: `teamrig list --untriaged`
+  prints them, `teamrig update T<n> --session lead --class <name>` classes one.
 - `NO-PROGRESS`: a day ended with no goal or week-plan task moved, and the week has usage left. Ask the owner of
   the task it names, in one inbox line, to move it or the next planned task it can; when something holds the plan (a
   blocker, the order, a plan to re-cut), fix it or tell the human.

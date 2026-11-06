@@ -170,7 +170,8 @@ stateDiagram-v2
   p1 it finished (done or verifying) in the last 7 days and past the first p1, which is in hand, raised on the first p1 in plan order past that pace once
   the session has held tasks for 7 days: p1 then no longer says what comes first, so the lead re-prioritizes. `OFF-GOAL` is a task in progress with no goal outside the week's plan:
   work nothing in the plan asked for. teamrig has no parent tasks yet, so a goal tag or the week is what ties a task
-  to the plan. `NO-PROGRESS` is a plan that stood still: no goal or week-plan task moved by its owner (started, noted, set
+  to the plan. `UNTRIAGED` is a task no leader has classed yet, for its leader's daily batch (`list --untriaged`). A
+  quiet task of the lowest class parks out of these reads until an event brings it back (`list --parked`). `NO-PROGRESS` is a plan that stood still: no goal or week-plan task moved by its owner (started, noted, set
   waiting, shipped or closed) since the start of the day before (`register.check.goalProgressDays`; the day starts at
   `wake.dayStartUtc`, else midnight UTC), while the week has usage left. It names the first planned task its owner
   can move now. `STOPGAP-DONE` is a `stopgap T<id>` tag whose task is done or dropped, in a skill or in the files
