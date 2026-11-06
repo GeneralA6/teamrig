@@ -37,6 +37,7 @@ import { WakePrompts } from '../../wake/prompts.ts';
 import { logWake, WakeStore } from '../../wake/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rosterOf, teamZone, type Kit } from '../kit.ts';
+import { startDailyRollup } from '../rollup-start.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readTodayWPerPct } from '../stored-week.ts';
 import { teamRegister } from '../team-register.ts';
@@ -263,6 +264,8 @@ async function momentsOf(
   if (dayStartUtc === undefined) {
     return { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next: undefined, watch: [] };
   }
+  // Ahead of the startable gate: a day with no work to wake for still closes a day of spend.
+  await startDailyRollup(runtime, kit, id, dayStartUtc, now);
   const next = nextDayStartAt(dayStartUtc, now);
   const none: MomentsCheck = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next, watch: [] };
   const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime));

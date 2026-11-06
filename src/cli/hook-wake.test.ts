@@ -7,8 +7,10 @@ import { MeterLog } from '../budget/calibration.ts';
 import { formatConfig } from '../config/load.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { ENV } from '../core/home.ts';
 import { inboxLineOf } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
+import type { RunRequest } from '../open/processes.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
@@ -1110,5 +1112,52 @@ describe('hook wake-check day start under the login', () => {
     assert.match((await checkTab(kit, OTHER_TAB)).stdout[0] ?? '', DAY_START_TOAST);
     assert.deepEqual(await probeOf(kit), { moment: SIX, tab: OTHER_TAB, at: kit.clock.now(), releasedAt: undefined });
     assert.equal((await probeLines(kit))[1], `day-probe: claimed by app/bravo (${OTHER_TAB}) for the moment at 2030-01-08T06:00:00.000Z, the probe out had no reply in 5 min`);
+  });
+});
+
+describe('hook wake-check, the daily usage rollup', () => {
+  const DAY_START = { ...TEAM, wake: { dayStartUtc: '06:00' } };
+  const RUN_LOG = join(TEAM_HOME, 'state', 'usage', 'rollup', 'runs.log');
+  /** `self` in src/testing/quiet-world.ts. */
+  const NODE = '/usr/bin/node';
+  const SCRIPT = '/opt/teamrig/dist/cli/main.js';
+  const rollupsOf = (processes: FakeProcesses): readonly RunRequest[] => processes.hidden.filter(({ args }) => args.includes('rollup'));
+
+  it('starts one hidden run through the queue for the team, on a day with no work to wake for', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    const processes = new FakeProcesses();
+    await checkUnder(kit, processes);
+    const [run, ...others] = rollupsOf(processes);
+    assert.deepEqual(others, []);
+    assert.equal(run?.command, NODE);
+    assert.deepEqual(run?.args, [SCRIPT, 'queue', '--what', 'usage rollup', '--small', '--session', 'alpha', '--', NODE, SCRIPT, 'budget', 'rollup', '--apply']);
+    assert.equal(run?.env[ENV.team], 'app');
+  });
+
+  it('starts no second run that day, and one again the next day', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    const processes = new FakeProcesses();
+    await checkUnder(kit, processes);
+    await checkUnder(kit, processes);
+    assert.equal(rollupsOf(processes).length, 1);
+    kit.clock.advance(24 * 60 * MINUTE);
+    await checkUnder(kit, processes);
+    assert.equal(rollupsOf(processes).length, 2);
+  });
+
+  it('starts none for a team with no day start', async () => {
+    const kit = await teamWithAlphaTab(TEAM);
+    const processes = new FakeProcesses();
+    await checkUnder(kit, processes);
+    assert.deepEqual(rollupsOf(processes), []);
+  });
+
+  it('logs a start that failed and leaves the day to the next run', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    const processes = new FakeProcesses().onStart(NODE, { kind: 'missing' });
+    await checkUnder(kit, processes);
+    await checkUnder(kit, processes);
+    assert.equal(rollupsOf(processes).length, 1);
+    assert.equal(kit.files.get(RUN_LOG), '2030-01-08T10:00:00.000Z FAILED to start: node was not found\n');
   });
 });

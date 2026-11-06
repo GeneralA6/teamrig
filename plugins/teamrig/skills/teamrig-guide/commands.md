@@ -4766,6 +4766,11 @@ PREVIEW /home/you/.teamrig/teams/shop/state/usage/rollup, 2030-01-01 to 2030-01-
 With `--apply` the first line reads `WROTE <path>, <days>: <counts>; <n> written`, and names any changed days left as
 they are. `UP TO DATE <path>: nothing to roll up` means yesterday is already on disk.
 
+With `wake.dayStartUtc` set, the first wake check after the day start starts `budget rollup --apply` once a day for
+the team, hidden, through `teamrig queue --small`, on a day with no work to wake for too. Each applied run adds its
+counts to `runs.log` in the rollup folder, and a start that failed says so there. It is not tried again that day: the
+next run reads on from the newest day on disk, so it catches the missed day up.
+
 `--rewrite` without `--apply`, a `--from` or `--to` that is no day or has not closed, and `--from` after `--to` are
 usage errors (exit 64).
 
