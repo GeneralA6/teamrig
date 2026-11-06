@@ -151,6 +151,7 @@ const EXPECTED = {
   'hook meeting-due': 'internal',
   'hook refresh-mid': 'internal',
   'hook compact-check': 'internal',
+  'hook pre-compact': 'internal',
   'hook slash-command': 'internal',
 };
 

@@ -195,8 +195,8 @@ describe('smokeDist', () => {
 
   it('asks for a sample when the manifest adds an event the smoke test does not know', () => {
     const runner = new FakeRunner();
-    const findings = smokeDist(input({ manifest: manifestOf({ PreCompact: [execHook('pre-compact')] }) }), runner.run);
-    assert.deepEqual(findings, ['PreCompact (hook pre-compact): no smoke sample for hook pre-compact; add one to tools/ci/dist-smoke.ts']);
+    const findings = smokeDist(input({ manifest: manifestOf({ Notification: [execHook('unsampled')] }) }), runner.run);
+    assert.deepEqual(findings, ['Notification (hook unsampled): no smoke sample for hook unsampled; add one to tools/ci/dist-smoke.ts']);
   });
 });
 
