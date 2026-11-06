@@ -331,6 +331,7 @@ export const DEFAULT_FOCUS: FocusConfig = {
   leaderWaitMinutes: 60,
   parkAfterDays: 14,
   plannedTargetPct: 70,
+  improvementsDay: 'wed',
 };
 
 /**

@@ -1216,6 +1216,8 @@ export interface FocusConfig {
   readonly parkAfterDays: number;
   /** The percent of the week's spend planned work should take. */
   readonly plannedTargetPct: number;
+  /** The UTC weekday whose meeting agenda carries the Improvements decisions, as one batch; no other day's shows them. */
+  readonly improvementsDay: Weekday;
 }
 
 /** Claude Code's effort levels, lowest first: what `claude --effort` and `/effort` take. */

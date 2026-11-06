@@ -1432,7 +1432,8 @@
         },
         "leaderWaitMinutes": { "description": "How long, in minutes, a Roadmap task may wait on a leader's decision or approval before it is flagged.", "type": "integer", "minimum": 0, "maximum": 10080, "default": 60 },
         "parkAfterDays": { "description": "The days without an event after which an Improvements task is parked out of list, plan, check and start; any update brings it back.", "type": "integer", "minimum": 1, "maximum": 365, "default": 14 },
-        "plannedTargetPct": { "description": "The % of the week's spend planned work should take.", "type": "integer", "minimum": 0, "maximum": 100, "default": 70 }
+        "plannedTargetPct": { "description": "The % of the week's spend planned work should take.", "type": "integer", "minimum": 0, "maximum": 100, "default": 70 },
+        "improvementsDay": { "description": "The UTC weekday whose meeting agenda carries the Improvements decisions, as one batch; the default is the first meeting of the plan week, and no other day's agenda shows them.", "type": "string", "enum": ["sun", "mon", "tue", "wed", "thu", "fri", "sat"], "default": "wed" }
       }
     },
     "launch": {

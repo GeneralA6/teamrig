@@ -626,6 +626,7 @@ Goal-first ranking: the work classes a task is filed under (teamrig add and upda
 | `leaderWaitMinutes` | integer (0 to 10080) | `60` | How long, in minutes, a Roadmap task may wait on a leader's decision or approval before it is flagged. |
 | `parkAfterDays` | integer (1 to 365) | `14` | The days without an event after which an Improvements task is parked out of list, plan, check and start; any update brings it back. |
 | `plannedTargetPct` | integer (0 to 100) | `70` | The % of the week's spend planned work should take. |
+| `improvementsDay` | one of `"sun"`, `"mon"`, `"tue"`, `"wed"`, `"thu"`, `"fri"`, `"sat"` | `"wed"` | The UTC weekday whose meeting agenda carries the Improvements decisions, as one batch; the default is the first meeting of the plan week, and no other day's agenda shows them. |
 
 ## `focus.score`
 
