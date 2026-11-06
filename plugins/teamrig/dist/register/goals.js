@@ -2,16 +2,30 @@ import { parseJsonl } from "../core/jsonl.js";
 import { parseUtcDay } from "../core/time.js";
 import { SESSION_NAME } from "./model.js";
 /**
- * Goal records (T1730): a goal's tag, title, planned window and target, and each move of
- * its target with the note saying why (a slip), so a goal's progress reads against a plan. They live in their own
+ * Goal records (T1730): a goal's tag, title, planned window and target, each move of its target with the note saying
+ * why (a slip), and its rank among the team's goals (T2083), so a goal's progress reads against a plan and goal-first
+ * ranking knows which goal comes first. They live in their own
  * append-only file beside the register's `events.jsonl`, never in the event log, so a reader that knows only the
  * events never meets a line it cannot read, and a rotation never touches them. Pure: the caller hands in the text it
  * read (the pane vendors this through `read/index`).
  */
 /** The goal records' file, beside the register's `events.jsonl`. */
 export const GOALS_FILE = 'goals.jsonl';
-/** The format version every goal record is written with. */
-export const GOAL_RECORD_VERSION = 1;
+/**
+ * The newest format of a goal record this teamrig reads and writes: 2 added the rank record (T2083). Each record is
+ * written with the oldest format that holds it, so an older teamrig still reads every goal's add and set; it counts a
+ * rank record as one from a newer teamrig and refuses to write beside it, never folding the goals without their ranks.
+ */
+export const GOAL_RECORD_VERSION = 2;
+/** The format a goal's add and set are written with: they are unchanged since format 1. */
+const GOAL_ADD_SET_VERSION = 1;
+/** The lowest rank, the first goal, and the highest a goal may take. */
+export const FIRST_GOAL_RANK = 1;
+export const MAX_GOAL_RANK = 99;
+/** True for a rank a goal may take: a whole number from FIRST_GOAL_RANK to MAX_GOAL_RANK. */
+export function isGoalRank(value) {
+    return typeof value === 'number' && Number.isInteger(value) && value >= FIRST_GOAL_RANK && value <= MAX_GOAL_RANK;
+}
 /** A goal's tag: a letter, then letters, digits, `.` or `-`, at most 24 characters (`A2`, `A2.1`, `B1-a`). */
 export const GOAL_TAG = /^[A-Za-z][A-Za-z0-9.-]{0,23}$/;
 /** What a task names instead of a goal when it serves none; never a goal's tag. */
@@ -89,19 +103,44 @@ export function parseGoalRecord(line) {
             }
             return { kind: 'record', record: { type: 'goal-set', ...base, target, title, note } };
         }
+        case 'goal-rank': {
+            const rank = record['rank'] ?? null;
+            if (rank !== null && !isGoalRank(rank)) {
+                return { kind: 'unreadable', reason: `rank ${JSON.stringify(rank)} is not a whole number from ${FIRST_GOAL_RANK} to ${MAX_GOAL_RANK}` };
+            }
+            return { kind: 'record', record: { type: 'goal-rank', ...base, rank } };
+        }
         default:
             return { kind: 'unreadable', reason: `unknown type ${JSON.stringify(record['type'])}` };
     }
 }
-/** A record as its line is written: the version first, and a set's kept fields left out. */
+/** A record as its line is written: the oldest format that holds it first, and a set's kept fields left out. */
 export function goalRecordJson(record) {
-    if (record.type === 'goal-add') {
-        return { v: GOAL_RECORD_VERSION, ...record };
+    switch (record.type) {
+        case 'goal-add':
+            return { v: GOAL_ADD_SET_VERSION, ...record };
+        case 'goal-rank':
+            return { v: GOAL_RECORD_VERSION, ...record };
+        case 'goal-set': {
+            const { target, title, ...rest } = record;
+            return { v: GOAL_ADD_SET_VERSION, ...rest, ...(target === null ? {} : { target }), ...(title === null ? {} : { title }) };
+        }
     }
-    const { target, title, ...rest } = record;
-    return { v: GOAL_RECORD_VERSION, ...rest, ...(target === null ? {} : { target }), ...(title === null ? {} : { title }) };
 }
-/** Folds records in write order: a set changes the goal it names; one before its goal's add, or a second add, is ignored. */
+/** The goal a set or a rank record leaves: a set's new title and target (a target move is a slip), a rank's rank. */
+function changedGoal(goal, record) {
+    if (record.type === 'goal-rank') {
+        return { ...goal, rank: record.rank };
+    }
+    const slip = record.target !== null && record.target !== goal.target ? { at: record.at, by: record.by, from: goal.target, to: record.target, note: record.note } : undefined;
+    return {
+        ...goal,
+        title: record.title ?? goal.title,
+        target: record.target ?? goal.target,
+        slips: slip === undefined ? goal.slips : [...goal.slips, slip],
+    };
+}
+/** Folds records in write order: a set or rank changes the goal it names; one before its goal's add, or a second add, is ignored. */
 export function foldGoals(records) {
     const goals = new Map();
     let ignored = 0;
@@ -110,7 +149,7 @@ export function foldGoals(records) {
         if (record.type === 'goal-add') {
             if (goal === undefined) {
                 const { tag, title, start, target, parent, at, by } = record;
-                goals.set(tag, { tag, title, start, target, parent, addedAt: at, addedBy: by, slips: [] });
+                goals.set(tag, { tag, title, start, target, parent, addedAt: at, addedBy: by, slips: [], rank: null });
             }
             else {
                 ignored += 1;
@@ -121,13 +160,7 @@ export function foldGoals(records) {
             ignored += 1;
             continue;
         }
-        const slip = record.target !== null && record.target !== goal.target ? { at: record.at, by: record.by, from: goal.target, to: record.target, note: record.note } : undefined;
-        goals.set(record.tag, {
-            ...goal,
-            title: record.title ?? goal.title,
-            target: record.target ?? goal.target,
-            slips: slip === undefined ? goal.slips : [...goal.slips, slip],
-        });
+        goals.set(record.tag, changedGoal(goal, record));
     }
     return { goals, ignored };
 }
@@ -155,14 +188,18 @@ export function foldGoalLines(parsed) {
     const { goals, ignored } = foldGoals(records);
     return { goals, unreadable, newer, ignored };
 }
+/** The key results (goals with a parent) whose target is `today` or later. */
+export function openKeyResults(goals, today) {
+    return [...goals.values()].filter((goal) => goal.parent !== null && goal.target >= today);
+}
 function tagRefusal(tag) {
     if (tag === NO_GOAL) {
         return `"${NO_GOAL}" is what a task names when it serves no goal, never a goal's tag`;
     }
     return GOAL_TAG.test(tag) ? undefined : `"${tag}" is not a goal tag: a letter, then letters, digits, . or -, at most 24 characters`;
 }
-/** Why `goal add` cannot write its record over `goals`; undefined when it can. */
-export function goalAddRefusal(input, goals) {
+/** Why `goal add` cannot write its record over `goals`, a key result past `cap` among them; undefined when it can. */
+export function goalAddRefusal(input, goals, cap) {
     const badTag = tagRefusal(input.tag);
     if (badTag !== undefined) {
         return badTag;
@@ -181,6 +218,28 @@ export function goalAddRefusal(input, goals) {
     }
     if (input.parent !== null && !goals.has(input.parent)) {
         return `--parent ${input.parent} is not a goal; add it first`;
+    }
+    return input.parent === null ? undefined : keyResultRefusal(goals, cap);
+}
+/** Why one more key result would pass `cap`; undefined while it would not. */
+function keyResultRefusal(goals, cap) {
+    const open = openKeyResults(goals, cap.today).length;
+    if (open < cap.max) {
+        return undefined;
+    }
+    return `the team holds ${open} key results (goals with a parent) with a target of ${cap.today} or later, the most focus.maxActiveKeyResults allows: finish one or move its target first`;
+}
+/** Why `goal rank` cannot write its record over `goals`; undefined when it can. */
+export function goalRankRefusal(input, goals) {
+    const goal = goals.get(input.tag);
+    if (goal === undefined) {
+        return `goal ${input.tag} does not exist; add it with goal add`;
+    }
+    if (input.rank !== null && !isGoalRank(input.rank)) {
+        return `a rank is a whole number from ${FIRST_GOAL_RANK} to ${MAX_GOAL_RANK}, or none`;
+    }
+    if (input.rank === goal.rank) {
+        return input.rank === null ? `goal ${input.tag} is not ranked; nothing to change` : `goal ${input.tag} already ranks ${input.rank}; nothing to change`;
     }
     return undefined;
 }
