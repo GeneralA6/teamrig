@@ -15,7 +15,6 @@ import {
   proposalOf,
   proposeRow,
   refusedPlan,
-  rowSize,
   sweepCounts,
   tallyOf,
   tallyText,
@@ -64,6 +63,7 @@ function row(overrides: Partial<SweepRow> = {}): SweepRow {
     class: 'Roadmap',
     objective: 'G1',
     size: 0.5,
+    proposedSize: 0.3,
     reason: 'serves ranked goal G1 (#1)',
     confidence: 'high',
     park: false,
@@ -317,6 +317,7 @@ describe('proposeRow', () => {
       class: 'Roadmap',
       objective: 'G1',
       size: 1.23,
+      proposedSize: 1.23,
       reason: 'serves ranked goal G1 (#1)',
       confidence: 'high',
       park: false,
@@ -363,6 +364,11 @@ describe('isSweepRow', () => {
     ['a zero size', { ...row(), size: 0 }],
     ['a size past the week', { ...row(), size: 101 }],
     ['a size as text', { ...row(), size: '1' }],
+    ['no proposedSize', { ...row(), proposedSize: undefined }],
+    ['a null proposedSize', { ...row(), proposedSize: null }],
+    ['a proposedSize as text', { ...row(), proposedSize: '0.3' }],
+    ['a proposedSize of 0', { ...row(), proposedSize: 0 }],
+    ['a proposedSize over the week', { ...row(), proposedSize: 101 }],
     ['an unknown confidence', { ...row(), confidence: 'sure' }],
     ['a park as text', { ...row(), park: 'false' }],
     ['no confirm', { ...row(), confirm: null }],
@@ -401,6 +407,16 @@ describe('parseSweepFile', () => {
     assert.match(verdict.ok ? '' : verdict.error, /^line 1 is not a sweep row/);
   });
 
+  it('refuses the whole file on a row an older sweep wrote, saying to sweep again (T2114)', () => {
+    const verdict = parseSweepFile(`${JSON.stringify(row())}\n${JSON.stringify({ ...row({ id: 'T2' }), proposedSize: undefined })}\n`);
+    assert.deepEqual(verdict, { ok: false, error: 'line 2 holds no proposedSize, so an older version wrote it: sweep again on this version' });
+  });
+
+  it('calls a row with a bad proposedSize no sweep row, as an older sweep did not write it (T2114)', () => {
+    const verdict = parseSweepFile(`${JSON.stringify(row({ proposedSize: 0 }))}\n`);
+    assert.match(verdict.ok ? '' : verdict.error, /^line 1 is not a sweep row/);
+  });
+
   it('refuses a task named twice', () => {
     const verdict = parseSweepFile(formatSweepRows([row(), row({ confirm: '' })]));
     assert.equal(verdict.ok, false);
@@ -412,107 +428,88 @@ describe('parseSweepFile', () => {
   });
 });
 
-/** A size reader for a task that reads as `size` percent of the week now. */
-const liveAt =
-  (size: number) =>
-  (): number =>
-    size;
-
 describe('changesOf', () => {
-  const target = { workClass: null, goals: [], status: 'open' } as const;
-  const sizeOf = liveAt(0.3);
+  const target = { workClass: null, goals: [], status: 'open', size: null } as const;
 
   it('writes every field a row holds new', () => {
-    assert.deepEqual(changesOf(row(), target, GOALS, sizeOf), { workClass: 'Roadmap', goals: ['G1'], size: 0.5 });
+    assert.deepEqual(changesOf(row(), target, GOALS), { workClass: 'Roadmap', goals: ['G1'], size: 0.5 });
   });
 
   it('adds the objective after the tags the task holds', () => {
-    assert.deepEqual(changesOf(row({ objective: 'G2' }), { ...target, goals: ['G3'] }, GOALS, sizeOf).goals, ['G3', 'G2']);
+    assert.deepEqual(changesOf(row({ objective: 'G2' }), { ...target, goals: ['G3'] }, GOALS).goals, ['G3', 'G2']);
   });
 
   it('adds no tag the task already holds', () => {
-    assert.equal(changesOf(row(), { ...target, goals: ['G1'] }, GOALS, sizeOf).goals, undefined);
+    assert.equal(changesOf(row(), { ...target, goals: ['G1'] }, GOALS).goals, undefined);
   });
 
   it('adds no tag for a goal the task serves through a key result', () => {
-    assert.equal(changesOf(row(), { ...target, goals: ['K1'] }, GOALS, sizeOf).goals, undefined);
+    assert.equal(changesOf(row(), { ...target, goals: ['K1'] }, GOALS).goals, undefined);
   });
 
   it('keeps a tag with no record and adds its nearest record beside it', () => {
-    assert.deepEqual(changesOf(row({ objective: 'G2' }), { ...target, goals: ['G2a'] }, GOALS, sizeOf).goals, ['G2a', 'G2']);
+    assert.deepEqual(changesOf(row({ objective: 'G2' }), { ...target, goals: ['G2a'] }, GOALS).goals, ['G2a', 'G2']);
   });
 
   it('leaves the goals on a null objective and the size on a null size', () => {
-    assert.deepEqual(changesOf(row({ objective: null, size: null }), target, GOALS, sizeOf), { workClass: 'Roadmap' });
+    assert.deepEqual(changesOf(row({ objective: null, size: null }), target, GOALS), { workClass: 'Roadmap' });
   });
 
   it('holds nothing when the task already matches', () => {
-    assert.deepEqual(changesOf(row(), { workClass: 'Roadmap', goals: ['G1'], status: 'open' }, GOALS, liveAt(0.5)), {});
+    assert.deepEqual(changesOf(row(), { workClass: 'Roadmap', goals: ['G1'], status: 'open', size: 0.5 }, GOALS), {});
   });
 
-  it('holds no size for a row repeating the size the task reads as now, so a median or floor size stays live (T2114)', () => {
-    assert.equal(changesOf(row(), target, GOALS, liveAt(0.5)).size, undefined);
+  it('holds no size for a row still at its proposal, so a median or floor size stays live (T2114)', () => {
+    assert.equal(changesOf(row({ size: 0.12, proposedSize: 0.12 }), target, GOALS).size, undefined);
   });
 
-  it('reads the live size at the two places of a row, or a stored 0.123 would differ from its own 0.12 row (T2114)', () => {
-    assert.equal(changesOf(row({ size: 0.12 }), target, GOALS, liveAt(0.123)).size, undefined);
+  it('leaves a size stored since the sweep to a row still at its proposal (T2114)', () => {
+    assert.equal(changesOf(row({ size: 0.12, proposedSize: 0.12 }), { ...target, size: 0.7 }, GOALS).size, undefined);
   });
 
   it('holds the size a person corrected the row to (T2114)', () => {
-    assert.equal(changesOf(row({ size: 0.13 }), target, GOALS, liveAt(0.123)).size, 0.13);
+    assert.equal(changesOf(row({ size: 0.13, proposedSize: 0.12 }), target, GOALS).size, 0.13);
   });
 
-  it('hands the size reader the task it compares', () => {
-    const seen: unknown[] = [];
-    changesOf(row(), target, GOALS, (task) => {
-      seen.push(task);
-      return 0.5;
-    });
-    assert.deepEqual(seen, [target]);
-  });
-});
-
-describe('rowSize', () => {
-  it('rounds a size to the two places a row holds', () => {
-    assert.deepEqual([rowSize(0.123), rowSize(0.125), rowSize(2.5), rowSize(0.3)], [0.12, 0.13, 2.5, 0.3]);
+  it('holds no size a person corrected to once the task stores it, so a second apply changes nothing (T2114)', () => {
+    assert.equal(changesOf(row({ size: 0.13, proposedSize: 0.12 }), { ...target, size: 0.13 }, GOALS).size, undefined);
   });
 });
 
 describe('planSweepRow', () => {
-  const task = { workClass: null, goals: [], status: 'open' } as const;
+  const task = { workClass: null, goals: [], status: 'open', size: null } as const;
   const allow = (): undefined => undefined;
-  const sizeOf = liveAt(0.3);
 
   it('leaves a row with any confirm but yes, before reading the task', () => {
-    assert.deepEqual(planSweepRow(row({ confirm: '' }), undefined, GOALS, sizeOf, allow).action, 'unconfirmed');
-    assert.deepEqual(planSweepRow(row({ confirm: 'YES' }), task, GOALS, sizeOf, allow).action, 'unconfirmed');
+    assert.deepEqual(planSweepRow(row({ confirm: '' }), undefined, GOALS, allow).action, 'unconfirmed');
+    assert.deepEqual(planSweepRow(row({ confirm: 'YES' }), task, GOALS, allow).action, 'unconfirmed');
   });
 
   it('refuses a task the register lacks', () => {
-    assert.deepEqual(planSweepRow(row(), undefined, GOALS, sizeOf, allow), { row: row(), action: 'refused', reason: 'no task T1 in team alpha' });
+    assert.deepEqual(planSweepRow(row(), undefined, GOALS, allow), { row: row(), action: 'refused', reason: 'no task T1 in team alpha' });
   });
 
   it('refuses a task finished since the sweep', () => {
-    assert.deepEqual(planSweepRow(row(), { ...task, status: 'done' }, GOALS, sizeOf, allow), { row: row(), action: 'refused', reason: 'T1 is done now' });
+    assert.deepEqual(planSweepRow(row(), { ...task, status: 'done' }, GOALS, allow), { row: row(), action: 'refused', reason: 'T1 is done now' });
   });
 
   it('counts a row with nothing new as unchanged, without asking the judge', () => {
-    const plan = planSweepRow(row(), { workClass: 'Roadmap', goals: ['G1'], status: 'open' }, GOALS, liveAt(0.5), () => 'never asked');
+    const plan = planSweepRow(row(), { workClass: 'Roadmap', goals: ['G1'], status: 'open', size: 0.5 }, GOALS, () => 'never asked');
     assert.equal(plan.action, 'unchanged');
   });
 
-  it('counts a row repeating the live size on a task with no stored size as unchanged (T2114)', () => {
-    const plan = planSweepRow(row(), { workClass: 'Roadmap', goals: ['G1'], status: 'open' }, GOALS, liveAt(0.5), allow);
-    assert.deepEqual(plan, { row: row(), action: 'unchanged' });
+  it('counts a row still at its proposal on a task with no stored size as unchanged (T2114)', () => {
+    const still = row({ proposedSize: 0.5 });
+    assert.deepEqual(planSweepRow(still, { workClass: 'Roadmap', goals: ['G1'], status: 'open', size: null }, GOALS, allow), { row: still, action: 'unchanged' });
   });
 
   it('plans a change the judge allows', () => {
-    assert.deepEqual(planSweepRow(row(), task, GOALS, sizeOf, allow), { row: row(), action: 'change', changes: { workClass: 'Roadmap', goals: ['G1'], size: 0.5 } });
+    assert.deepEqual(planSweepRow(row(), task, GOALS, allow), { row: row(), action: 'change', changes: { workClass: 'Roadmap', goals: ['G1'], size: 0.5 } });
   });
 
   it('hands the judge the task and the changes and refuses with its reason', () => {
     const seen: unknown[] = [];
-    const plan = planSweepRow(row(), task, GOALS, sizeOf, (judged, changes) => {
+    const plan = planSweepRow(row(), task, GOALS, (judged, changes) => {
       seen.push(judged, changes);
       return 'not your task';
     });

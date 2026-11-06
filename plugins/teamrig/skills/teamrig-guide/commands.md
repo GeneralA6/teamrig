@@ -371,7 +371,8 @@ nearest record it sits under by name (`K1a` or `K1.2` under `K1`, never `K10`): 
 medium confidence, and the row names it as its objective, unless a title match or a better rank the task names decides
 the row, so apply adds it and a rank given later reaches the task. A row's size is the one the plan's score divides by:
 the task's `--size`, else twice what it has spent, else what done tasks of its class and type took, else
-`focus.score.defaultSizePct`, and never under `focus.score.minSizePct`. `park` says whether the task would park, which
+`focus.score.defaultSizePct`, and never under `focus.score.minSizePct`. `proposedSize` repeats that size for `sweep
+apply` to compare with: correct `size`, and leave `proposedSize` alone. `park` says whether the task would park, which
 only a stored class can do, so a first sweep shows `false` on every row.
 
 Flags:
@@ -399,15 +400,14 @@ WROTE 4 row(s) to rows.jsonl: set confirm to yes on the rows you agree with, the
 Writes the class, goal and size of each row of a sweep file whose `confirm` is `yes`, and never deletes or parks a
 task. A row's goal joins the task's goals unless it already serves that goal through a key result, and the tags the
 task holds stay, even one with no record under `register.goals` checked; a row whose
-objective or size is null leaves that field as it is. A size lands only when it differs from the size the task reads
-as at apply time: a row repeating it stays unstored, so a size that comes from spend, a like-task median or the floor
-stays live, and a hand correction is stored. Sweep again right before an apply, as a size that moved since the sweep
-reads as a correction. A row needs the task's owner or a leader over it: the caller's
-own team goes by the same rules as `update`, a team below one the caller leads by the tree, and a sibling team or one
-above is refused. A row is refused, with its reason, when its task is missing or finished or the rules refuse it, and
+objective or size is null leaves that field as it is. A size lands only when it differs from the row's own
+`proposedSize`, a hand correction: a row still at its proposal stores no size, however far the task has moved since the
+sweep, so a size that comes from a like-task median, the default or the floor stays live. A row needs the task's owner or a
+leader over it: the caller's own team goes by the same rules as `update`, a team below one the caller leads by the
+tree, and a sibling team or one above is refused. A row is refused, with its reason, when its task is missing or finished or the rules refuse it, and
 the others still land, since a person confirmed each on its own. Without `--apply` it is a dry run: it prints each
-row's fate and writes nothing. A missing file, a line that is no sweep row and a task named twice are refused whole,
-writing nothing.
+row's fate and writes nothing. A missing file, a line that is no sweep row, a row with no `proposedSize` (an older
+version wrote the file: sweep again) and a task named twice are refused whole, writing nothing.
 
 Flags:
 
