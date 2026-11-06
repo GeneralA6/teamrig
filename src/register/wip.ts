@@ -3,7 +3,7 @@ import type { Task } from './fold.ts';
 import { classOf } from './focus.ts';
 import type { TaskStatus } from './model.ts';
 import { bandOf } from './score.ts';
-import { unfinishedAfter, type WaitContext } from './waits.ts';
+import { canMove, type WaitContext } from './waits.ts';
 
 /**
  * The WIP rule (T2076): a session finishes what the team ranked first before it opens more. A start of anything but
@@ -30,9 +30,9 @@ export interface WipStart {
   readonly spentClasses?: ReadonlySet<string>;
 }
 
-/** Roadmap work that can move: open or in progress, with no wait, and every task it comes after finished. */
-function canMove(task: Task, context: WaitContext): boolean {
-  return (task.status === 'open' || task.status === 'in-progress') && task.waits.length === 0 && unfinishedAfter(task.after, context).length === 0;
+/** Roadmap work its owner can take up now: open or in progress, with nothing holding it back. */
+function movesNow(task: Task, context: WaitContext): boolean {
+  return (task.status === 'open' || task.status === 'in-progress') && canMove(task, context);
 }
 
 /** An owner's order and an expedite outrank any rule of thumb about what to do first. */
@@ -62,7 +62,7 @@ export function wipHold({ task, status, oneCommit, spentClasses }: WipStart, tas
     if (spentClasses?.has(workClass) === true) {
       return `${task.id} is ${workClass} work and ${workClass} has spent its share of the week [focus.allocation]: it waits for the week's reset, ${ONE_COMMIT_WAY}`;
     }
-    const first = others.filter((held) => classOf(held, focus) === focus.roadmapClass && canMove(held, context));
+    const first = others.filter((held) => classOf(held, focus) === focus.roadmapClass && movesNow(held, context));
     if (first.length > 0) {
       return `${task.id} is ${workClass} work and ${task.owner} holds ${focus.roadmapClass} work that can move: ${namedIds(first)}; work that first [focus.wip], ${ONE_COMMIT_WAY}`;
     }
