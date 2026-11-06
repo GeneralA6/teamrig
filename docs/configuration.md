@@ -620,7 +620,7 @@ Goal-first ranking: the work classes a task is filed under (teamrig add and upda
 | `defaultClass` | string | `"Improvements"` | The class a task with none counts as; it ranks last. One of classes. |
 | `maxActiveKeyResults` | integer (1 to 100) | `5` | The key results (goals with a parent) the team may hold with a target of today or later; teamrig goal add refuses one more. |
 | `score` | [object](#focusscore) |  | The parts of a task's WSJF score: cost of delay (value + urgency + unblocks + owner order) over size, in % of the week. |
-| `expedite` | [object](#focusexpedite) |  | Which tasks go ahead of every score. |
+| `expedite` | [object](#focusexpedite) |  | Which tasks go ahead of every score, beside a p0, which always does. |
 | `wip` | [object](#focuswip) |  | The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt. |
 | `allocation` | map from string (matching `^[A-Za-z][A-Za-z0-9 _-]{0,31}$`) to number (0 to 100) | `{"Roadmap":60,"Maintenance":25,"Improvements":15}` | The % of the week's spend each class is planned to take, by class; every key one of classes, the shares summing to 100. |
 | `leaderWaitMinutes` | integer (0 to 10080) | `60` | How long, in minutes, a Roadmap task may wait on a leader's decision or approval before it is flagged. |
@@ -649,7 +649,7 @@ The parts of a task's WSJF score: cost of delay (value + urgency + unblocks + ow
 
 ## `focus.expedite`
 
-Which tasks go ahead of every score.
+Which tasks go ahead of every score, beside a p0, which always does.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |

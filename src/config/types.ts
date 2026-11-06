@@ -1174,7 +1174,7 @@ export interface FocusScoreConfig {
   readonly minSizePct: number;
 }
 
-/** Which tasks go ahead of every score (band 0). */
+/** Which tasks go ahead of every score (band 0), beside a p0, which always does. */
 export interface FocusExpediteConfig {
   /** A Maintenance task marked critical. */
   readonly critical: boolean;
