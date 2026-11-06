@@ -113,6 +113,12 @@ describe('bandOf', () => {
     assert.equal(bandOf(facts({ workClass: 'Improvements', priority: 1, ownerSourced: true }), FOCUS), 0);
   });
 
+  it('puts a p0 in band 0 in any class, whoever asked, with both expedite arms off', () => {
+    const noArms = { ...FOCUS, expedite: { critical: false, ownerP1: false } };
+    assert.deepEqual(['Roadmap', 'Improvements', 'Sideline'].map((workClass) => bandOf(facts({ workClass, priority: 0 }), noArms)), [0, 0, 0]);
+    assert.equal(bandOf(facts({ workClass: 'Improvements', priority: 0, ownerSourced: true }), FOCUS), 0);
+  });
+
   it('turns each expedite arm off on its own', () => {
     const noCritical = { ...FOCUS, expedite: { critical: false, ownerP1: true } };
     const noOwner = { ...FOCUS, expedite: { critical: true, ownerP1: false } };

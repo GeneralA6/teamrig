@@ -1408,7 +1408,7 @@
           }
         },
         "expedite": {
-          "description": "Which tasks go ahead of every score.",
+          "description": "Which tasks go ahead of every score, beside a p0, which always does.",
           "type": "object",
           "properties": {
             "critical": { "description": "A Maintenance task marked critical.", "type": "boolean", "default": true },
