@@ -111,6 +111,20 @@ export async function bindByProcess(deps, claudeSession, now) {
 export function processBoundNote(id) {
     return `This tab was bound to the \`${id}\` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.`;
 }
+/**
+ * Binds a tab `$TEAMRIG_SESSION` names as `id` under the Claude Code session it just started: a /clear gives the tab
+ * a new one, and the readers that follow a tab by its marks (the pane, the budget, restore) cannot see the environment,
+ * so without this they lose the tab until its first `inbox read`. A tab a mark already names keeps that mark.
+ */
+export async function bindByEnv(marks, id, claudeSession, now) {
+    const { byArea, areaBySession } = indexMarks((await marks.read()).marks);
+    if (areaBySession.has(claudeSession)) {
+        return undefined;
+    }
+    const mark = bindMarkOf(byArea.get(id), id, claudeSession, now);
+    await marks.append(mark);
+    return mark;
+}
 /** The prompt hook's line for a tab just bound: which session it is now, and that nothing was marked read. */
 export function boundPromptNote(outcome, own, command) {
     return outcome.kind === 'bound'
