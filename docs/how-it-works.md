@@ -231,7 +231,8 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   up), else from the metered W at the week's W per percent: learned from `state/usage/meter-log.jsonl` (a line
   each time the status line passes a whole percent, fitted over the newest period whose lines span 10 points, else
   over 8 weeks of lines once they do, so a limit that moves at a reset stops counting, and sooner by a newer period's
-  own lines, from 2%, once their rate is 1.5 times that fit or half of it; a child team on
+  own lines, from 2%, once their rate is 1.5 times that fit or half of it, counting only lines whose W rose from
+  the one before, as a team with no tab metering repeats its W while the account's use climbs; a child team on
   its parent's account reads and writes the one of the highest team above it on that account, each team logging
   and fitting only its own lines, with the W its own usage stores metered), else
   `budget.weeklyLimitW`. Today's use is the use now less the use at today's start, each read between the meter
