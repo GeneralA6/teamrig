@@ -79,7 +79,8 @@ or take it to the lead.
 | `REFUSED T1 keeps a description while register.requireDescription is on: give a new one instead of none` | Give `update --description` a new text instead of `none`. |
 | `REFUSED goal B9 is not a goal record of the team or a team above: teamrig goal list lists them` (from `add`, `update`; `register.goals` `checked` or `required`) | Fix the tag to one `teamrig goal list` shows, here or in the team above, or have its lead add the goal (`teamrig goal add`). |
 | `REFUSED an owner-asked task names its goal: --goals <tag>, or --goals none (register.goals is required)` (or `a p1 task`) | Add `--goals <tag>` for the goal it serves, or `--goals none` when it serves none. |
-| `REFUSED only the lead (shop-lead) adds and changes the team's goals` (from `goal add`, `goal set`) | Ask the lead to add or move the goal. |
+| `REFUSED only the lead (shop-lead) adds and changes the team's goals` (from `goal add`, `goal set`, `goal rank`) | Ask the lead to add, move or rank the goal. |
+| `REFUSED the team holds 5 key results (goals with a parent) with a target of 2026-11-06 or later, the most focus.maxActiveKeyResults allows: finish one or move its target first` (from `goal add --parent`) | Finish a key result first, add the goal as a top goal instead, or have the lead raise `focus.maxActiveKeyResults`. |
 | `REFUSED note has 320 characters; the limit is 300` | Shorten it; point at a file instead. |
 | `REFUSED note looks like it holds a secret (...); refer to where it is kept instead` | Remove the secret and name where it is kept. |
 | `REFUSED due 17-10-2026 is not YYYY-MM-DD or YYYY-MM-DD HH:MM` | Write the date as `2026-10-17`. |

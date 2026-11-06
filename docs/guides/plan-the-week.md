@@ -33,7 +33,8 @@ teamrig plan                                       # the week in force, grouped 
   `OVER-SIZE`.
 - What it serves: a task names the goals it serves (`--goals A1`), or `--goals none`. The lead records the team's
   goals with `teamrig goal add A1 --title "Ship the beta" --target 2026-11-30`, each with its window, and moves a
-  target with `goal set` and a note, kept as a slip; `goal list` shows them. With `register.goals` set to `checked`
+  target with `goal set` and a note, kept as a slip; `goal rank A1 1` puts a goal first, and `goal list` shows them,
+  the ranked ones first. With `register.goals` set to `checked`
   a tag must be one of those goals, and with `required` an owner-asked, p0 or p1 task must name one, or `none`.
 
 More in [week plans](../../plugins/teamrig/skills/teamrig-guide/tasks.md#week-plans).

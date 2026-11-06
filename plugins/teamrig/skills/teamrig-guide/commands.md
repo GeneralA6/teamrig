@@ -772,7 +772,9 @@ ADDED goal A1 2026-10-12 to 2026-11-01 | Ship the beta
 
 Refused, writing nothing: another session (`REFUSED only the lead (shop-lead) adds and changes the team's goals`),
 a tag already added (`goal A1 already exists; move its target with goal set`), a parent not added yet (`--parent C0
-is not a goal; add it first`) and a start after the target. A bad tag, day or title is a usage error.
+is not a goal; add it first`), a start after the target, and a key result (a goal with a parent) past the cap on
+open ones (`the team holds 3 key results (goals with a parent) with a target of 2026-10-12 or later, the most
+focus.maxActiveKeyResults allows: finish one or move its target first`). A bad tag, day or title is a usage error.
 
 ### teamrig goal set
 
@@ -802,11 +804,42 @@ Refused, writing nothing: another session, a goal not added (`goal B9 does not e
 naming neither field (`goal set changes --target, --title or both`) or changing nothing (`goal A1 already reads so;
 nothing to change`), and a target before the start.
 
+### teamrig goal rank
+
+Ranks a goal, 1 first, or takes it off the ranking with `none`; the lead only. Goal-first ranking gives each task the
+best rank among its goals and the goals they are part of, and `goal list` prints the ranked goals first. Two goals
+may share a rank.
+
+Arguments: `<tag> <n>|none`, a whole number from 1 to 99.
+
+Flags:
+
+- `--session <id|name>`: the caller: the lead.
+
+Example:
+
+```sh
+teamrig goal rank A1 1 --session lead
+```
+
+Output:
+
+```text
+RANKED goal A1 2026-10-12 to 2026-11-01, rank 1 | Ship the beta
+```
+
+With `none`: `UNRANKED goal A1 2026-10-12 to 2026-11-01 | Ship the beta`.
+
+Refused, writing nothing: another session, a goal not added (`goal B9 does not exist; add it with goal add`) and a
+rank it already has (`goal A1 already ranks 1; nothing to change`, `goal A1 is not ranked; nothing to change`). A rank
+that is not a whole number from 1 to 99 is a usage error (`"0" is not a rank: a whole number from 1 to 99, or none`).
+
 ### teamrig goal list
 
-Prints the team's goals as a tree, each part under the goal it is part of, with its window, its slips once it
-slipped (`, 1 slip`) and its title. A line of the
-goals file it cannot read is counted in a `WARN` on stderr; the rest still list.
+Prints the team's goals, the ranked ones first by rank, then the rest as a tree, each part under the goal it is part
+of; a part of a ranked goal heads its own branch. Each line has its window, its slips once it slipped (`, 1 slip`),
+the goal it is part of, its rank once ranked and its title. A line of the goals file it cannot read is counted in a
+`WARN` on stderr; the rest still list.
 
 Flags:
 
@@ -821,19 +854,21 @@ teamrig goal list
 Output:
 
 ```text
-GOALS 4 (teamrig goal show <tag> prints one with its slips)
-  A1 2026-10-12 to 2026-11-01 | Ship the beta
-    A1.1 2026-10-13 to 2026-10-24, part of A1 | Login works
-    A2 2026-10-12 to 2026-11-10, part of A1 | Billing
+GOALS 4, 1 ranked first (teamrig goal show <tag> prints one with its slips)
+  A1 2026-10-12 to 2026-11-01, rank 1 | Ship the beta
+  A1.1 2026-10-13 to 2026-10-24, part of A1 | Login works
+  A2 2026-10-12 to 2026-11-10, part of A1 | Billing
   B1 2026-10-12 to 2026-11-20 | Docs site
 ```
+
+With no goal ranked, the header is `GOALS 4` and the list is the tree alone, each part indented under its goal.
 
 With none: `GOALS 0: the lead adds one with teamrig goal add <tag> --title "<title>" --target <YYYY-MM-DD>`.
 
 ### teamrig goal show
 
-Prints one goal: its window (with the target first planned, once it slipped), who added it and when, its parts or
-the goal it is part of, and each slip with its note.
+Prints one goal: its window (with the target first planned, once it slipped), its rank once ranked, who added it and
+when, its parts or the goal it is part of, and each slip with its note.
 
 Flags:
 
@@ -850,6 +885,7 @@ Output:
 ```text
 A1 | Ship the public beta
   window 2026-10-12 to 2026-11-15 (planned 2026-11-01)
+  rank 1
   added Mon 10-12 09:00 IDT by lead
   parts A1.1
   SLIPS 1
