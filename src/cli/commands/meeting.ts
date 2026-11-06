@@ -12,6 +12,8 @@ import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/not
 import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { MergeLog } from '../../merge/merge-log.ts';
+import { goalScores, type BoardTeam, type GoalScore } from '../../register/goal-board.ts';
+import type { Goal } from '../../register/goals.ts';
 import type { StatsRange } from '../../register/stats.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import { fitLines } from '../../register/fit.ts';
@@ -20,6 +22,7 @@ import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { subtreeOf, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { KitTreeGoals } from '../tree-goals.ts';
 import { loadTree, type KitTree } from '../tree.ts';
 import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
@@ -32,9 +35,10 @@ import { foldStats, statsTopLines } from './stats.ts';
  * holds every message to the lead but a CRITICAL one (the cold-send hook tells each sender when it holds one, so no
  * session is told), and prints the agenda; `agenda` prints it again, or before a meeting; `end` closes it and tells
  * each session with a decision the lead recorded on its tasks, by one inbox line, and no other. The agenda is
- * gathered in one call: the stats' Health and flow lines, the owner's decisions as card facts, the late tasks, what
- * finished since the meeting before, the lead's inbox (marked read) and the week's use and fit to the limit. Only a
- * root team's lead holds it: its stats, decisions and end's lines cover every team under the lead's too (T1018).
+ * gathered in one call: the goal scoreboard, the owner's decisions as card facts, the incidents, the late tasks, what
+ * finished since the meeting before, the stats' Health and flow lines, the lead's inbox (marked read) and the week's
+ * use and fit to the limit. Only a root team's lead holds it: its goals, stats, decisions and end's lines cover every
+ * team under the lead's too (T1018).
  */
 
 interface MeetingKit {
@@ -156,16 +160,39 @@ async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number)
 export const AGENDA_STATS_RANGE: StatsRange = '7d';
 
 /**
- * The agenda: the stats' top lines over the lead's tree (Health, flow, the days at the usage limit; statsTopLines, the
- * fold `stats` and the pane's Stats tab print), the register's part (decisions, with those of every team under the
- * lead's, then late and done), today's scheduled meetings and the missed ones, the self-merges since the meeting
- * before, the lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it).
+ * The scoreboard's rows for the root team's ranked goals, over every register of its tree. A team with no ranked goal
+ * reads no history: the done counts need the whole of it, and a meeting opens on this read.
+ */
+async function goalBoard(runtime: CliRuntime, mk: MeetingKit, { own, teams }: RollUp): Promise<GoalScore[]> {
+  const goalsOf = async (rolled: RolledTeam): Promise<ReadonlyMap<string, Goal>> => new KitTreeGoals(runtime, rolled.paths, rolled.config).all();
+  const goals = await goalsOf(own);
+  if (![...goals.values()].some((goal) => goal.rank !== null)) {
+    return [];
+  }
+  const board = await Promise.all(
+    teams.map(
+      async (rolled): Promise<BoardTeam> => ({
+        team: rolled.team === own.team ? undefined : rolled.team,
+        tasks: [...(await rolled.history()).state.tasks.values()],
+        tree: taskTreeOf(rolled, runtime),
+        goals: await goalsOf(rolled),
+        ranking: rolled.ranking,
+      }),
+    ),
+  );
+  return goalScores(goals, board, mk.now);
+}
+
+/**
+ * The agenda: the register's part (the goal scoreboard, then decisions and incidents, with those of every team under
+ * the lead's, then late and done), the stats' top lines over the lead's tree (Health, flow, the days at the usage limit;
+ * statsTopLines, the fold `stats` and the pane's Stats tab print), today's scheduled meetings and the missed ones, the
+ * self-merges since the meeting before, the lead's inbox marked read, then the week's use and, under it, the planned
+ * week's fit (as `plan` gives it).
  */
 async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit, phase: MeetingPhase): Promise<void> {
   const rolled = await meetingRegisters(runtime, mk);
   const { own, teams } = rolled;
-  statsTopLines(await foldStats(runtime, rolled, AGENDA_STATS_RANGE), own.team, teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
-  runtime.out.stdout(`  each other section: ${KIT_NAME} stats --tree --session ${mk.lead} (new work, speed, delays, waits, bugs, people)`);
   const { snapshot } = own;
   const since = agendaSince(previousEnd(phase), mk.now);
   const lines = agendaLines({
@@ -183,12 +210,18 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
         tree: taskTreeOf(rolled, runtime),
         ownerMarker: rolled.config.register.ownerSource,
         requireGate: rolled.config.register.requireDecisionCard,
+        focus: rolled.config.focus,
       })),
     lead: mk.lead,
     command: KIT_NAME,
     askWith: mk.config.decisions.askWith,
+    board: await goalBoard(runtime, mk, rolled),
+    focus: mk.config.focus,
+    improvementsDay: mk.config.focus.improvementsDay,
   });
   lines.forEach((line) => runtime.out.stdout(line));
+  statsTopLines(await foldStats(runtime, rolled, AGENDA_STATS_RANGE), own.team, teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
+  runtime.out.stdout(`  each other section: ${KIT_NAME} stats --tree --session ${mk.lead} (new work, speed, delays, waits, bugs, people)`);
   const scheduled = await new MeetingSchedule(runtime.files, mk.kit.paths.meetings).read();
   agendaMeetingLines(scheduled.meetings, mk.zone, mk.now).forEach((line) => runtime.out.stdout(line));
   mergeDigestLines(await mergeDigestOf(runtime, mk, since)).forEach((line) => runtime.out.stdout(line));

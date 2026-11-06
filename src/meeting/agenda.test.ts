@@ -1,8 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import type { AskWith } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
+import type { GoalScore } from '../register/goal-board.ts';
+import { ownSizing, treeRanking } from '../register/ranking.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
@@ -15,6 +18,13 @@ function treeOf(tasks: readonly Task[]): TaskTree {
   return new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
 }
 
+/** A tree that ranks its tasks, as a real read's does: the decisions' order and INCIDENTS read it. */
+function rankedTreeOf(tasks: readonly Task[]): TaskTree {
+  const ranking = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals: new Map(), sizing: ownSizing });
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC, null, undefined, ranking);
+}
+
+/** NOW is a Tuesday, so the default here is a day the Improvements batch is not asked. */
 function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate = true, below: readonly AgendaTeam[] = [], askWith: AskWith = 'text'): AgendaInput {
   return {
     tasks,
@@ -27,7 +37,23 @@ function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate =
     lead: 'lead',
     command: 'teamrig',
     askWith,
+    board: [],
+    focus: DEFAULT_FOCUS,
+    improvementsDay: 'wed',
   };
+}
+
+function rankedInputOf(tasks: readonly Task[], below: readonly AgendaTeam[] = []): AgendaInput {
+  return { ...inputOf(tasks, NOW - MS_PER_DAY, true, below), tree: rankedTreeOf(tasks) };
+}
+
+function teamOf(team: string, tasks: readonly Task[], tree = treeOf(tasks)): AgendaTeam {
+  return { team, tasks, tree, ownerMarker: 'owner', requireGate: true, focus: DEFAULT_FOCUS };
+}
+
+/** The ids of a section's task rows, in order. */
+function rowIds(lines: readonly string[]): string[] {
+  return lines.flatMap((line) => /^ {2}(\S+) \w+, /.exec(line)?.[1] ?? []);
 }
 
 function section(lines: readonly string[], head: string): string[] {
@@ -114,7 +140,7 @@ describe('the meeting agenda', () => {
   it("lists the decisions of each team under the lead's after its own, by <team>/<id>, and how to ask and record them there", () => {
     const decide = testTask({ id: 'T7', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD });
     const ungated = { ...UNGATED, id: 'T8' };
-    const web: AgendaTeam = { team: 'web', tasks: [decide, ungated], tree: treeOf([decide, ungated]), ownerMarker: 'owner', requireGate: true };
+    const web = teamOf('web', [decide, ungated]);
     const lines = section(agendaLines(inputOf([DECIDE], NOW - MS_PER_DAY, true, [web])), 'DECISIONS');
     assert.equal(lines[0], 'DECISIONS 2 waiting on owner (decision or approval)');
     const rows = lines.filter((line) => /^ {2}\S+ waiting, /.test(line));
@@ -132,7 +158,7 @@ describe('the meeting agenda', () => {
 
   it("counts a team under the lead's alone when the lead's own team waits on nothing", () => {
     const decide = testTask({ id: 'T7', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] });
-    const web: AgendaTeam = { team: 'web', tasks: [decide], tree: treeOf([decide]), ownerMarker: 'owner', requireGate: true };
+    const web = teamOf('web', [decide]);
     const lines = section(agendaLines(inputOf([testTask()], NOW - MS_PER_DAY, true, [web])), 'DECISIONS');
     assert.equal(lines[0], 'DECISIONS 1 waiting on owner (decision or approval)');
     assert.match(lines[1] ?? '', /^ {2}web\/T7 waiting, /);
@@ -159,7 +185,7 @@ describe('the meeting agenda', () => {
 
   it('keeps an ungated wait in DECISIONS while gates are not required', () => {
     const all = agendaLines(inputOf([DECIDE, UNGATED], NOW - MS_PER_DAY, false));
-    assert.equal(all[0], 'DECISIONS 2 waiting on owner (decision or approval)');
+    assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 2 waiting on owner (decision or approval)');
     assert.ok(!all.some((line) => line.startsWith('UNGATED')), all.join('\n'));
   });
 
@@ -167,7 +193,7 @@ describe('the meeting agenda', () => {
   it('moves a card the owner put off out of DECISIONS, into LATER with its time, own team first', () => {
     const later = { ...DECIDE, id: 'T9', waits: [...DECIDE.waits, { kind: 'time' as const, at: '2030-01-09 12:00' }] };
     const webLater = { ...later, id: 'T7' };
-    const web: AgendaTeam = { team: 'web', tasks: [webLater], tree: treeOf([webLater]), ownerMarker: 'owner', requireGate: true };
+    const web = teamOf('web', [webLater]);
     const all = agendaLines(inputOf([DECIDE, later], NOW - MS_PER_DAY, true, [web]));
     assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 1 waiting on owner (decision or approval)');
     assert.ok(!section(all, 'DECISIONS').some((line) => /\bT[79]\b/.test(line)), all.join('\n'));
@@ -177,13 +203,13 @@ describe('the meeting agenda', () => {
       '  web/T7 waiting, p2, owner alpha | Pick the pricing tier (waiting: decision owner · until Wed 01-09 12:00 UTC)',
     ]);
     const heads = all.filter((line) => /^[A-Z]+ /.test(line)).map((line) => line.split(' ')[0]);
-    assert.deepEqual(heads, ['DECISIONS', 'LATER', 'LATE', 'DONE']);
+    assert.deepEqual(heads, ['GOALS', 'DECISIONS', 'LATER', 'LATE', 'DONE']);
   });
 
   it('asks a card put off once its time passed, and shows no LATER block then', () => {
     const back = { ...DECIDE, id: 'T9', waits: [...DECIDE.waits, { kind: 'time' as const, at: '2030-01-08 09:00' }] };
     const all = agendaLines(inputOf([back]));
-    assert.equal(all[0], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 1 waiting on owner (decision or approval)');
     assert.ok(!all.some((line) => line.startsWith('LATER')), all.join('\n'));
   });
 
@@ -195,6 +221,7 @@ describe('the meeting agenda', () => {
 
   it('says so when nothing waits on the owner, nothing is late and nothing finished', () => {
     assert.deepEqual(agendaLines(inputOf([testTask()])), [
+      'GOALS none ranked: teamrig goal rank <tag> <n> --session lead',
       'DECISIONS 0 waiting on owner (decision or approval)',
       'LATE 0 past their due date',
       'DONE 0 done, 0 dropped since Mon 01-07 10:00 UTC',
@@ -257,6 +284,107 @@ describe('the meeting agenda', () => {
     assert.equal(lines[1], `  Urgent p1 (${AGENDA_ROWS + 2})`);
     assert.equal(lines.length, 2 + AGENDA_ROWS + 1);
     assert.equal(lines.at(-1), '    +2 more: teamrig list --status done');
+  });
+});
+
+describe('the meeting agenda: the goal scoreboard (T2092)', () => {
+  const GOAL: GoalScore = { tag: 'A1', title: 'Ship the beta', rank: 1, target: '2030-02-01', done: 1, total: 3, spentPct: 1.2, sizePct: 4, slips: 2, overdue: 1, waiting: ['T4', 'web/T7'] };
+
+  it('opens with a row per ranked goal: done, spend against size, risk and what waits', () => {
+    const all = agendaLines({ ...inputOf([]), board: [GOAL, { ...GOAL, tag: 'B1', title: 'Docs\nsite', rank: 2, slips: 1, overdue: 0, waiting: [] }] });
+    assert.deepEqual(section(all, 'GOALS'), [
+      'GOALS 2 ranked, best first: done, spend against size, risk, what waits',
+      '  #1 A1 Ship the beta (target 2030-02-01): 1/3 done, spent 1.2% of 4.0% sized, 2 slips, 1 overdue, 2 waiting: T4, web/T7',
+      '  #2 B1 Docs site (target 2030-02-01): 1/3 done, spent 1.2% of 4.0% sized, 1 slip, 0 overdue, 0 waiting',
+    ]);
+    assert.equal(all[0], 'GOALS 2 ranked, best first: done, spend against size, risk, what waits');
+  });
+
+  it('lists at most a screen of goals, then the command for all', () => {
+    const board = Array.from({ length: AGENDA_ROWS + 1 }, (_, index) => ({ ...GOAL, rank: index + 1 }));
+    const lines = section(agendaLines({ ...inputOf([]), board }), 'GOALS');
+    assert.equal(lines.length, 1 + AGENDA_ROWS + 1);
+    assert.equal(lines.at(-1), '  +1 more: teamrig goal list');
+  });
+});
+
+describe('the meeting agenda: decisions by what they unblock (T2092)', () => {
+  const IMPROVEMENT = { ...DECIDE, id: 'T9', workClass: 'Improvements' };
+
+  it('asks a decision that frees Roadmap work ahead of one that frees nothing', () => {
+    const plain = { ...DECIDE, id: 'T1', workClass: 'Maintenance' };
+    const freeing = { ...DECIDE, id: 'T2', workClass: 'Maintenance' };
+    const freed = testTask({ id: 'T3', workClass: 'Roadmap', after: ['T2'] });
+    assert.deepEqual(rowIds(section(agendaLines(rankedInputOf([plain, freeing, freed])), 'DECISIONS')), ['T2', 'T1']);
+  });
+
+  it('merges the teams under the lead into the one ranked list', () => {
+    const own = { ...DECIDE, id: 'T1', workClass: 'Maintenance' };
+    const roadmap = { ...DECIDE, id: 'T7', workClass: 'Roadmap' };
+    const web = teamOf('web', [roadmap], rankedTreeOf([roadmap]));
+    assert.deepEqual(rowIds(section(agendaLines(rankedInputOf([own], [web])), 'DECISIONS')), ['web/T7', 'T1']);
+  });
+
+  it('asks the Improvements batch on its day, after the daily cards, and counts it in the head', () => {
+    const tuesday: AgendaInput = { ...inputOf([IMPROVEMENT, DECIDE]), improvementsDay: 'tue' };
+    const lines = section(agendaLines(tuesday), 'DECISIONS');
+    assert.equal(lines[0], 'DECISIONS 2 waiting on owner (decision or approval)');
+    assert.deepEqual(rowIds(lines), ['T4', 'T9']);
+    const batch = lines.indexOf('  Improvements batch 1, weekly, after the daily cards:');
+    assert.ok(batch > lines.findIndex((line) => line.startsWith('  T4 ')), lines.join('\n'));
+    assert.ok(batch < lines.findIndex((line) => line.startsWith('  T9 ')), lines.join('\n'));
+  });
+
+  it('shows the batch nowhere on any other day', () => {
+    const all = agendaLines(inputOf([IMPROVEMENT, DECIDE]));
+    assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 1 waiting on owner (decision or approval)');
+    assert.ok(!all.some((line) => /\bT9\b|Improvements batch/.test(line)), all.join('\n'));
+  });
+
+  it('prints no how-to lines when the batch was all there was to ask', () => {
+    assert.deepEqual(section(agendaLines(inputOf([IMPROVEMENT])), 'DECISIONS'), ['DECISIONS 0 waiting on owner (decision or approval)']);
+  });
+
+  it("names no team in the how-to lines when a team's only decision waits for the batch", () => {
+    const hidden = { ...IMPROVEMENT, id: 'T7' };
+    const lines = section(agendaLines(inputOf([DECIDE], NOW - MS_PER_DAY, true, [teamOf('web', [hidden])])), 'DECISIONS');
+    assert.ok(!lines.some((line) => /<team>/.test(line)), lines.join('\n'));
+  });
+});
+
+describe('the meeting agenda: INCIDENTS (T2092)', () => {
+  const BUG = testTask({ id: 'T1', type: 'bug', workClass: 'Maintenance' });
+
+  it('lists the active Maintenance bugs and critical tasks after the decisions, the own team first', () => {
+    const critical = testTask({ id: 'T2', critical: true, workClass: 'Maintenance' });
+    const webBug = { ...BUG, id: 'T7' };
+    const web = teamOf('web', [webBug], rankedTreeOf([webBug]));
+    const all = agendaLines(rankedInputOf([BUG, critical], [web]));
+    const lines = section(all, 'INCIDENTS');
+    assert.equal(lines[0], 'INCIDENTS 3 active Maintenance bugs or critical tasks');
+    assert.deepEqual(rowIds(lines).sort(), ['T1', 'T2', 'web/T7']);
+    assert.equal(rowIds(lines).at(-1), 'web/T7');
+    assert.deepEqual(
+      all.filter((line) => /^[A-Z]+ /.test(line)).map((line) => line.split(' ')[0]),
+      ['GOALS', 'DECISIONS', 'INCIDENTS', 'LATE', 'DONE'],
+    );
+  });
+
+  it('leaves out other classes, plain Maintenance work and finished bugs, and shows no block with none', () => {
+    const tasks = [
+      { ...BUG, id: 'T1', workClass: 'Improvements' },
+      testTask({ id: 'T2', workClass: 'Maintenance' }),
+      { ...BUG, id: 'T3', status: 'done' as const, statusAt: '2030-01-08T09:00:00.000Z' },
+    ];
+    const all = agendaLines(rankedInputOf(tasks));
+    assert.ok(!all.some((line) => line.startsWith('INCIDENTS')), all.join('\n'));
+  });
+
+  it('lists at most a screen of incidents, then the command for all', () => {
+    const bugs = Array.from({ length: AGENDA_ROWS + 1 }, (_, index) => ({ ...BUG, id: `T${index + 10}` }));
+    const lines = section(agendaLines(rankedInputOf(bugs)), 'INCIDENTS');
+    assert.equal(lines.length, 1 + AGENDA_ROWS + 1);
+    assert.equal(lines.at(-1), '  +1 more: teamrig list --tree');
   });
 });
 
