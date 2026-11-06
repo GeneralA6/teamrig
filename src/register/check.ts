@@ -6,6 +6,7 @@ import type { RegisterCheckConfig, RegisterConfig, RolesConfig } from '../config
 import { approvalCleared, waitAnswerersOf } from './approval.ts';
 import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
+import { leaderHolds, waitedMinutes, type LeaderWaitFocus } from './leader-wait.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
 import { isUngated } from './owner-waits.ts';
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree, type RankedPlace, type TasksElsewhere, type TreeRanking } from './tree.ts';
@@ -21,6 +22,7 @@ export const FLAG_KINDS = [
   'LOOP',
   'VERIFY-BLOCKS',
   'READY',
+  'ROADMAP-WAITS-ON-LEAD',
   'NO-REASON',
   'PEER-WAIT',
   'NO-CARD',
@@ -188,6 +190,20 @@ export function peerWaitFlags(tasks: Iterable<Task>, tree: LeadTree, roles: Pick
     return peer === undefined
       ? []
       : [{ kind: 'PEER-WAIT' as const, task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
+  });
+}
+
+/**
+ * ROADMAP-WAITS-ON-LEAD: Roadmap work held on a leader's answer past `focus.leaderWaitMinutes` ({@link leaderHolds}), in
+ * the order of `tasks`: the work the team ranked highest stands still until the leader answers, so the leader answers it
+ * first. Apart from {@link checkTasks}, whose register config names neither the lead nor the focus.
+ */
+export function leaderWaitFlags(tasks: Iterable<Task>, tree: Pick<LeadTree, 'approversOf'>, focus: LeaderWaitFocus, at: number): Flag[] {
+  return [...tasks].flatMap((task) => {
+    const holds = leaderHolds(task, tree.approversOf(task.owner), focus, at);
+    return holds.length === 0
+      ? []
+      : [{ kind: 'ROADMAP-WAITS-ON-LEAD' as const, task, detail: `${holds.map(waitSpelling).join(', ')} unanswered for ${waitedMinutes(task, at)} min, past the ${focus.leaderWaitMinutes} min limit: answer it first` }];
   });
 }
 

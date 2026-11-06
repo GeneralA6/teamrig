@@ -20,7 +20,7 @@ import { formatTaskLines, taskLinesOf } from '../../inbox/task-lines.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { teamDayStartAt } from '../../wake/day-start.ts';
 import { waitAnswerersOf } from '../../register/approval.ts';
-import { byFlagKind, checkTasks, peerWaitFlags } from '../../register/check.ts';
+import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags } from '../../register/check.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
@@ -930,7 +930,14 @@ function checkRegister(
   const tree = new TaskTree(snapshot.state.tasks, now, zone, week, elsewhere, ranking);
   const dayStart = teamDayStartAt(config.wake.dayStartUtc, now.getTime());
   const progress = noProgressFlag({ tasks, tree, dayStart, days: config.register.check.goalProgressDays, leftPct });
-  const flags = [...checkTasks(tasks, now, zone, week, config.register, elsewhere, ranking), ...peerWaitFlags(tasks, new LeadTree(config, above), config.roles, config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
+  const leads = new LeadTree(config, above);
+  const flags = [
+    ...checkTasks(tasks, now, zone, week, config.register, elsewhere, ranking),
+    ...peerWaitFlags(tasks, leads, config.roles, config.register.ownerSource),
+    // In plan order, so the leader reads the most urgent wait first.
+    ...leaderWaitFlags(tree.inPlanOrder(tasks), leads, config.focus, now.getTime()),
+    ...(progress === undefined ? [] : [progress]),
+  ];
   return { team, flags: flags.sort(byFlagKind), tree };
 }
 
