@@ -81,6 +81,17 @@ describe("teamRanking: a team's tree ranks by its focus, sizes and spend (T2076)
     assert.match((await rows(kit))[0] ?? '', /^T1 open, Improvements, score 3\.33, p2/, 'the 0.1% spent since leaves 0.3%');
   });
 
+  it('keeps a started task that can move ahead of the higher score that needs it (T2109)', async () => {
+    const kit = new CliHarness(LIMITED);
+    await add(kit, 'Started', '--size', '5');
+    await add(kit, 'Needs it', '--size', '0.1', '--after', 'T1');
+    ok(await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']));
+    await spend(kit, { T1: 20_000_000 });
+    const [first, second] = await rows(kit);
+    assert.match(first ?? '', /^T1 in-progress, Improvements, score 0\.5, p2, .*ahead: can move$/, 'value 1.5 over the 3% left of 5%');
+    assert.match(second ?? '', /^T2 open, Improvements, score 10, p2/);
+  });
+
   it('sizes an unsized task, with no spend, by the done tasks of its class and type', async () => {
     const kit = new CliHarness(LIMITED);
     await add(kit, 'Done like it', '--class', 'Maintenance');
