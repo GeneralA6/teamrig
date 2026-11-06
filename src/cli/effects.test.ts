@@ -98,6 +98,7 @@ const EXPECTED = {
   'budget cut': 'write',
   'budget extra': 'write',
   'budget setup': 'write',
+  'budget rollup': 'write',
   burst: 'read',
   'burst start': 'write',
   'burst end': 'write',

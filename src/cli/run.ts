@@ -69,6 +69,7 @@ const restartCommands = () => import('./commands/restart.ts');
 const idleActCommands = () => import('./commands/idle-act.ts');
 const budgetCommands = () => import('./commands/budget.ts');
 const budgetSetupCommands = () => import('./commands/budget-setup.ts');
+const budgetRollupCommands = () => import('./commands/budget-rollup.ts');
 const burstCommands = () => import('./commands/burst.ts');
 const statuslineCommands = () => import('./commands/statusline.ts');
 const automodeCommands = () => import('./commands/automode.ts');
@@ -212,6 +213,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
     switches: ['yes', 'off'],
     load: async () => (await budgetSetupCommands()).setup,
   },
+  'budget rollup': { effect: 'write', flags: ['from', 'to'], switches: ['apply', 'rewrite'], load: async () => (await budgetRollupCommands()).rollup },
   burst: { effect: 'read', flags: [], load: async () => (await burstCommands()).burst },
   'burst start': {
     effect: 'write',
@@ -612,6 +614,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--quiet-action <action>] [--off] [--yes]
       (the lead only) writes the team's budget policy into its config and turns the budget on (--off:
       off); without --yes it shows the change and writes nothing; flags left out keep their values
+  budget rollup [--from <day>] [--to <day>] [--apply] [--rewrite]
+      the team's closed UTC days (from the day after the newest on disk, through yesterday) as a file a day of use
+      by class and task; without --apply it only counts them; --rewrite also replaces a day that reads differently
   burst                        the burst policy, the week's use, its projected surplus at the pace end,
       the burst in force and its hires; it only reads
   burst start surplus|deadline --reason "<why>" [--sessions <ids>] [--helpers <n>] [--hires <n>]
