@@ -53,6 +53,7 @@ describe('teamrig stats', () => {
         'WAITS 0 waiting; on the owner 0',
         'BUGS 0 active, 1 opened, 0 fixed',
         'PEOPLE bravo 1',
+        'USE 0 of 7 days rolled up: teamrig budget rollup --apply writes the closed days',
       ],
       stderr: [],
     });
@@ -110,7 +111,7 @@ describe('teamrig stats', () => {
     ok(result);
     assert.equal(result.stdout[0], 'STATS app, 7 d: 01-02 to 01-08 (tree: app, ops, web, ui)');
     assert.equal(result.stdout[2], 'FLOW opened 2, closed 0 (0 dropped), net +2; last 28 d net +2');
-    assert.equal(result.stdout.at(-1), 'TEAMS app 1 active, overdue 0 · ops 0 active, overdue 0 · web 1 active, overdue 0 · ui 0 active, overdue 0');
+    assert.equal(result.stdout.at(-2), 'TEAMS app 1 active, overdue 0 · ops 0 active, overdue 0 · web 1 active, overdue 0 · ui 0 active, overdue 0');
     assert.deepEqual((await kit.run(['stats', '--tree', '--session', 'lead'])).stdout, result.stdout);
     const refused = await kit.run(['stats', '--tree', '--session', 'alpha']);
     assert.deepEqual(refused, { code: EXIT.refused, stdout: ["REFUSED --tree is for the team's lead (app/lead); app/alpha reads its own team's tasks without it"], stderr: [] });
