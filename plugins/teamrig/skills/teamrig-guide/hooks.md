@@ -69,6 +69,8 @@ The injected context holds:
    ``This tab was bound to the `web` session from its Claude Code title; nothing was marked read.``, or, after a
    `/clear` in a tab whose title names no session, by the Claude Code process the session refreshed in (for 24 hours):
    ``This tab was bound to the `web` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.``
+   A tab `$TEAMRIG_SESSION` names is bound the same way at every start, a `/clear` too, with no note, so the task pane
+   keeps showing its session; only a failure gives a note, and the tab's first `inbox read` then binds it.
 5. **The team's own `rules.md`**, when it exists. In a sub-team, the `rules.md` of each team above comes first, the
    root's first, headed `Team <id>'s rules (a team above yours; they win over a lower team's)`. The files share one
    budget of 2,750 characters, in that order: one that does not fit comes as a pointer to it, with the room that was
