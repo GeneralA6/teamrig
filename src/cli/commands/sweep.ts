@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import type { TeamTree } from '../../config/tree.ts';
+import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
 import type { SizeBase } from '../../register/events.ts';
 import type { Task } from '../../register/fold.ts';
@@ -22,13 +23,14 @@ import {
   type SweepPlan,
   type SweepRow,
 } from '../../register/sweep.ts';
-import { needsOf } from '../../register/tree.ts';
+import { needsOf, type TreeRanking } from '../../register/tree.ts';
 import { noPositionals, onePositional, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, sessionIdOf } from '../kit.ts';
 import type { RolledTeam } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readSizeBase } from '../task-spend.ts';
+import { teamRanking } from '../team-ranking.ts';
 import { KitTreeGoals } from '../tree-goals.ts';
 import { readRegisters, reportRotation, warnDamage } from './register.ts';
 import { teamOf, type Team } from './register-team.ts';
@@ -45,6 +47,11 @@ function neededIds(teams: readonly RolledTeam[]): ReadonlySet<string> {
   return new Set(tasks.flatMap((task) => needsOf(task)));
 }
 
+/** A task's size by the ranking's own chain, so a row proposes, and the apply compares with, what the plan's score divides by. */
+function liveSize(ranking: Pick<TreeRanking, 'sizingOf'>, config: Pick<KitConfig, 'focus'>): (task: Task) => number {
+  return (task) => sizePctOf(ranking.sizingOf(task), config.focus.score);
+}
+
 /** What the rows of `rolled` are proposed from. */
 async function inputOf(runtime: CliRuntime, rolled: RolledTeam, needed: ReadonlySet<string>, now: number): Promise<SweepInput<Task>> {
   const { team, config, paths, ranking } = rolled;
@@ -54,8 +61,7 @@ async function inputOf(runtime: CliRuntime, rolled: RolledTeam, needed: Readonly
     goals: await new KitTreeGoals(runtime, paths, config).all(),
     ownerSource: config.register.ownerSource,
     now,
-    // The ranking's own chain, so a row proposes the size the plan's score divides by.
-    sizeOf: (task) => sizePctOf(ranking.sizingOf(task), config.focus.score),
+    sizeOf: liveSize(ranking, config),
     needed: (id) => needed.has(id),
   };
 }
@@ -149,6 +155,7 @@ async function writerOf(runtime: CliRuntime, from: SessionAddress, name: string)
   const reader = new KitTreeGoals(runtime, team.paths, team.config);
   const [{ snapshot, elsewhere }, goals, goalTags] = await Promise.all([team.register.snapshotWithElsewhere(), reader.all(), reader.read()]);
   const { state } = snapshot;
+  const sizeOf = liveSize(await teamRanking(runtime, team.paths, team.config, state.tasks.values()), team.config);
   const own = name === from.team;
   const by = own ? from.id : formatAddress(from);
   const judge = (task: Task, changes: SweepChanges): string | undefined => {
@@ -157,7 +164,7 @@ async function writerOf(runtime: CliRuntime, from: SessionAddress, name: string)
   };
   return {
     team,
-    planOf: (row) => planSweepRow(row, state.tasks.get(row.id), goals, judge),
+    planOf: (row) => planSweepRow(row, state.tasks.get(row.id), goals, sizeOf, judge),
     write: (id, changes, sizeBase) => (own ? team.register.triage(by, id, changes, sizeBase) : team.register.triageFrom(by, id, changes, sizeBase)),
   };
 }
@@ -180,7 +187,8 @@ async function writeRow(runtime: CliRuntime, writer: SweepWriter, plan: SweepPla
 
 /**
  * `sweep apply <file> [--apply]` (T2076): writes the class, goal and size of each row a person set `confirm` to yes on,
- * as its task's owner or a leader over it, and never deletes or parks. A dry run (the default) writes nothing. One row
+ * as its task's owner or a leader over it, and never deletes or parks. A size lands only when it differs from the size
+ * the task reads as now, so a median or floor size stays live (T2114). A dry run (the default) writes nothing. One row
  * that cannot land leaves the others: a person confirmed each on its own, so a bad one says why and the rest stand.
  * Exits refused when `--apply` left a refused row.
  */
