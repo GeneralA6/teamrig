@@ -18,12 +18,12 @@ async function decisionsKit(args, runtime, access) {
     const config = requireConfig(kit, runtime, access);
     const roster = await rosterOf(runtime, kit, config);
     const lead = config.roles.lead;
-    const { snapshot, elsewhere } = (await ownRegister(runtime)).own;
+    const { snapshot, elsewhere, ranking } = (await ownRegister(runtime)).own;
     const now = runtime.clock.now();
     const zone = teamZone(config, runtime);
     const team = kit.paths.team;
     const loaded = await loadTree(runtime);
-    const { batch, askedBy } = await ownerBatchOf(runtime, { team, config, paths: kit.paths, tasks: snapshot.state.tasks, elsewhere }, loaded, now);
+    const { batch, askedBy } = await ownerBatchOf(runtime, { team, config, paths: kit.paths, tasks: snapshot.state.tasks, elsewhere, ranking }, loaded, now);
     const held = askedBy === undefined ? batch : waitsOfTeams(batch, [team, ...loaded.tree.descendantsOf(team)]);
     return { kit, config, roster, lead, now, zone, batch: held, askedBy };
 }

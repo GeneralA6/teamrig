@@ -104,10 +104,10 @@ const IN_HAND = 1;
  * The three week flags need a week; null skips them, and each task gets at most one of them. A wait on or a plan
  * dependency after a task of another register of the team tree reads that task in `elsewhere`.
  */
-export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_ELSEWHERE) {
+export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_ELSEWHERE, ranking) {
     const at = now.getTime();
     const all = [...tasks];
-    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere);
+    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere, ranking);
     const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
     const plan = weekPlan(week, config.check.weekLengthDays, zone);
     const top = topPriority(config.priorities);

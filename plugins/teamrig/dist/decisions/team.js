@@ -11,6 +11,6 @@ export async function teamDecisions(files, paths, config, registers, now) {
     const [asked, meeting] = await Promise.all([new AskedStore(files, paths.decisionsAsked).read(), new MeetingStore(files, paths.meeting).read()]);
     return decisionBatch({ registers: registers.map((register) => batchRegisterOf(register, now)), now, askedAt: askedAtOf(asked, meeting), config: config.decisions });
 }
-function batchRegisterOf({ team, tasks, ownerMarker, requireGate, zone, elsewhere }, now) {
-    return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere), ownerMarker, requireGate };
+function batchRegisterOf({ team, tasks, ownerMarker, requireGate, zone, elsewhere, ranking }, now) {
+    return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere, ranking), ownerMarker, requireGate };
 }

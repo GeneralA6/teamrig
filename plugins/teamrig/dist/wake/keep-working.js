@@ -19,6 +19,6 @@ export function keepWorkingOf(input) {
 export function keepWorkingReason(session, work, zone) {
     const { waiting, startable } = work;
     return (`${waiting.id} waits (${waitsText(waiting.waits, zone)}), and you own work that does not come after it: ${taskListText(startable)}. ` +
-        `Work it now in priority order (\`${KIT_NAME} list --session ${session}\`); leave a task that is the same change as ${waiting.id}, and say so in one line. ` +
+        `Work it now in plan order (\`${KIT_NAME} list --session ${session}\`); leave a task that is the same change as ${waiting.id}, and say so in one line. ` +
         'If you already work one and wait on a background step, end the turn again.');
 }

@@ -18,10 +18,10 @@ export async function ownerBatchOf(runtime, own, loaded, now) {
     const batch = await teamDecisions(runtime.files, first.paths, first.config, [registerOf(runtime, first, undefined), ...registers], now);
     return { batch, askedBy };
 }
-function batchedOf({ team, config, paths, snapshot, elsewhere }) {
-    return { team, config, paths, tasks: snapshot.state.tasks, elsewhere };
+function batchedOf({ team, config, paths, snapshot, elsewhere, ranking }) {
+    return { team, config, paths, tasks: snapshot.state.tasks, elsewhere, ranking };
 }
 /** A register of the batch, labelled with its team, `label`, unless it is the batch's own. */
-function registerOf(runtime, { config, tasks, elsewhere }, label) {
-    return { team: label, tasks, ownerMarker: config.register.ownerSource, requireGate: config.register.requireDecisionCard, zone: teamZone(config, runtime), elsewhere };
+function registerOf(runtime, { config, tasks, elsewhere, ranking }, label) {
+    return { team: label, tasks, ownerMarker: config.register.ownerSource, requireGate: config.register.requireDecisionCard, zone: teamZone(config, runtime), elsewhere, ranking };
 }

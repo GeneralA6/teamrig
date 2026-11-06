@@ -2,11 +2,14 @@ import { formatAddress } from "../core/address.js";
 import { JsonlEventLog } from "../register/store.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "./kit.js";
 import { RefusedError } from "./runtime.js";
+import { teamRanking } from "./team-ranking.js";
 import { TreeTasks } from "./tree-tasks.js";
 import { loadTree } from "./tree.js";
 async function readOf(runtime, team, { kit, config, roster }, kitTree) {
     const log = new JsonlEventLog(runtime.files, kit.paths.events);
-    return { team, config, paths: kit.paths, roster, snapshot: await log.read(), history: () => log.readHistory(), above: kitTree.tree.parentLeadOf(team) };
+    const snapshot = await log.read();
+    const ranking = await teamRanking(runtime, kit.paths, config, snapshot.state.tasks.values());
+    return { team, config, paths: kit.paths, roster, snapshot, history: () => log.readHistory(), above: kitTree.tree.parentLeadOf(team), ranking };
 }
 /**
  * The registers of the team `own` and of every team under it in `kitTree`, depth-first, its own first, each with the
