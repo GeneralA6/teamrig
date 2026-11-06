@@ -850,6 +850,11 @@ export class RegisterPolicy {
         return refuse(problem);
       }
     }
+    return this.fieldChange(task, changes, text, state, elsewhere, goalTags);
+  }
+
+  /** The field rules every update passes, once who may make it is settled. */
+  private fieldChange(task: Task, changes: Partial<TaskFields>, text: string | null, state: RegisterState, elsewhere: TasksElsewhere, goalTags: ReadonlySet<string>): Verdict<UpdateChange> {
     if (changes.description === null && this.config.register.requireDescription) {
       return refuse(`${task.id} keeps a description while register.requireDescription is on: give a new one instead of none`);
     }
