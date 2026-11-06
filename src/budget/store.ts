@@ -7,7 +7,7 @@ import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
 import { TASK_ID } from '../register/model.ts';
 import { INITIAL_MISS_STATE, parseMissState, type MissState } from './misses.ts';
 import { INITIAL_PATTERN_STATE, parsePatternCounts, parsePatternState, type PatternCounts, type PatternState } from './patterns.ts';
-import { NO_TURN, parseOpenTurn, type OpenTurn } from './tasks.ts';
+import { NO_TURN, parseOpenTurn, TurnTasks, type ChargeTask, type OpenTurn } from './tasks.ts';
 
 /**
  * The format of the usage files this code writes; a damaged file or one older than `OLDEST_READ_FORMAT`
@@ -26,7 +26,8 @@ export const DAYS_KEPT = 8;
 /**
  * Days a transcript's read position is kept after it last moved: today and yesterday. A transcript
  * read again after its position was dropped starts at today's first line, and nothing of today was
- * counted from it, so dropping it never counts a line twice.
+ * counted from it, so dropping it never counts a line twice. Its open turn ends with the position
+ * (`pruneUsage`), and the new position starts with none, so that turn's W reaches its tasks once.
  */
 export const CURSOR_DAYS_KEPT = 2;
 /** How many recent call keys a usage file keeps to skip a call logged twice. */
@@ -225,18 +226,38 @@ export function formatUsage(state: UsageState, rev: number): string {
 }
 
 /**
+ * `byTask` with `turns` ended. A finished transcript has no next prompt to end its last turn, so a position
+ * dropped with its turn open would take that turn's W with it (T2052).
+ */
+function closeTurns(byTask: UsageState['byTask'], turns: readonly OpenTurn[]): UsageState['byTask'] {
+  const closed = new Map(Object.entries(byTask).map(([day, tasks]) => [day, { ...tasks }]));
+  const charge: ChargeTask = (day, task, w) => {
+    const tasks = closed.get(day) ?? {};
+    tasks[task] = (tasks[task] ?? 0) + w;
+    closed.set(day, tasks);
+  };
+  for (const turn of turns) {
+    new TurnTasks(turn, charge).prompt();
+  }
+  return Object.fromEntries(closed);
+}
+
+/**
  * Drops what a usage file no longer needs at `now`: days, their hours and their tasks older than the kept window,
- * transcript positions that have not moved since before yesterday, and all but the latest call keys.
+ * transcript positions that have not moved since before yesterday, whose open turns end here, and all but the
+ * latest call keys.
  */
 export function pruneUsage(state: UsageState, now: number): UsageState {
   const oldestDay = formatUtcDay(new Date(now - (DAYS_KEPT - 1) * MS_PER_DAY));
   const oldestCursor = formatUtcDay(new Date(now - (CURSOR_DAYS_KEPT - 1) * MS_PER_DAY));
+  const cursors = Object.entries(state.cursors);
+  const dropped = cursors.filter(([, cursor]) => cursor.day < oldestCursor).map(([, cursor]) => cursor.turn);
   return {
     byDay: Object.fromEntries(Object.entries(state.byDay).filter(([day]) => day >= oldestDay)),
     // An hour key starts with its day, and a longer key sorts after its prefix.
     byHour: Object.fromEntries(Object.entries(state.byHour).filter(([hour]) => hour >= oldestDay)),
-    byTask: Object.fromEntries(Object.entries(state.byTask).filter(([day]) => day >= oldestDay)),
-    cursors: Object.fromEntries(Object.entries(state.cursors).filter(([, cursor]) => cursor.day >= oldestCursor)),
+    byTask: Object.fromEntries(Object.entries(closeTurns(state.byTask, dropped)).filter(([day]) => day >= oldestDay)),
+    cursors: Object.fromEntries(cursors.filter(([, cursor]) => cursor.day >= oldestCursor)),
     recentKeys: state.recentKeys.slice(-RECENT_KEYS_KEPT),
   };
 }

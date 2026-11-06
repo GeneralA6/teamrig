@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { EMPTY_USAGE, newCursor, type UsageState } from './store.ts';
+import { MS_PER_DAY } from '../core/time.ts';
+import { EMPTY_USAGE, newCursor, pruneUsage, type UsageState } from './store.ts';
 import { attributedW, taskUseOf } from './task-use.ts';
 import type { OpenTurn } from './tasks.ts';
 
@@ -50,5 +51,16 @@ describe('attributedW', () => {
 
   it('is 0 on a day with no task W', () => {
     assert.equal(attributedW(usage({}), DAY), 0);
+  });
+});
+
+describe('a prune that closes an open turn (T2052)', () => {
+  it('reads the same W on a task and a day as before it, so the turn counts once', () => {
+    const state = usage({ [DAY]: { T7: 1_000_000 } }, [{ tasks: ['T7', 'T8'], held: { [DAY]: 3_000_000 } }]);
+    const pruned = pruneUsage(state, Date.parse(`${DAY}T12:00:00Z`) + 2 * MS_PER_DAY);
+
+    assert.deepEqual(pruned.cursors, {});
+    assert.deepEqual(taskUseOf(new Map([['alpha', pruned]]), 'T7'), taskUseOf(new Map([['alpha', state]]), 'T7'));
+    assert.equal(attributedW(pruned, DAY), attributedW(state, DAY));
   });
 });
