@@ -367,8 +367,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       one and empty its target, then runs git worktree remove; REFUSED before any change for the main
       checkout, a dirty tree or a real node_modules folder, and in a team for another session's worktree:
       a session removes its own (its t<id>- branch names a task it owns) and those of the sessions it
-      leads, the lead any. --delete-branch: deletes its branch too, once every commit of it is on --base
-      (default the branch origin/HEAD names); --dry-run: prints the steps
+      leads, the lead any, and any session one on a detached HEAD whose every commit is on the branch
+      origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too, once every
+      commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
   queue --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one queued step
       (a build, a test run, a database script) under the host lock, so the host runs one at a time, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
