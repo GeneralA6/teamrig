@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MeterLog } from '../../budget/calibration.ts';
 import { EVENT_VERSION, type RegisterEvent, type TaskFields } from '../../register/events.ts';
+import type { Goal } from '../../register/goals.ts';
 import { registerHealth } from '../../register/stats-health.ts';
 import { registerStats, type StatsTeam } from '../../register/stats.ts';
 import { CliHarness, TEAM_HOME, type CliResult } from '../../testing/cli-harness.ts';
@@ -53,6 +54,7 @@ describe('teamrig stats', () => {
         'WAITS 0 waiting; on the owner 0',
         'BUGS 0 active, 1 opened, 0 fixed',
         'PEOPLE bravo 1',
+        'GOALS none; off goal: 1 of 1 done tasks (100%)',
         'USE 0 of 7 days rolled up: teamrig budget rollup --apply writes the closed days',
       ],
       stderr: [],
@@ -120,8 +122,59 @@ describe('teamrig stats', () => {
 
 const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
 
-function create(id: string, at: string): RegisterEvent {
-  return { v: EVENT_VERSION, type: 'create', id, at, by: 'lead', task: FIELDS };
+/** The tree app > web > ui and app > ops, one goal record each (A1, B1, D1 and C1), targeted for 2030-02-01. */
+async function goalTree(): Promise<CliHarness> {
+  const kit = await treeHarness();
+  for (const [team, tag] of [['app', 'A1'], ['web', 'B1'], ['ops', 'C1'], ['ui', 'D1']] as const) {
+    ok(await kit.run(['goal', 'add', tag, '--title', `Goal ${tag}`, '--target', '2030-02-01', '--session', 'lead'], { env: { TEAMRIG_TEAM: team } }));
+  }
+  return kit;
+}
+
+function goalsLine(result: CliResult): string | undefined {
+  ok(result);
+  return result.stdout.find((line) => line.startsWith('GOALS '));
+}
+
+describe('teamrig stats: the goals of the team and those above it (T1420)', () => {
+  const UI = { env: { TEAMRIG_TEAM: 'ui' } };
+
+  it("reads a team's own goals and those of the teams above it, none of a sibling's", async () => {
+    const kit = await goalTree();
+    assert.equal(goalsLine(await kit.run(['stats'], UI)), 'GOALS 3 on track; off goal: no task done');
+  });
+
+  it('gives a finer tag to a goal of a team above', async () => {
+    const kit = await goalTree();
+    ok(await kit.run(['add', '--title', 'Icons', '--description', 'what and why', '--priority', 'p2', '--owner', 'pixel', '--goals', 'A1.2', '--session', 'lead'], UI));
+    assert.equal(goalsLine(await kit.run(['stats'], UI)), 'GOALS 2 on track, 1 at risk (A1); off goal: no task done');
+  });
+
+  it("reads every rolled team's goals with --tree", async () => {
+    const kit = await goalTree();
+    assert.equal(goalsLine(await kit.run(['stats', '--tree'], AS_LEAD)), 'GOALS 4 on track; off goal: no task done');
+  });
+
+  it("takes the nearest team's record of a tag", async () => {
+    const kit = await goalTree();
+    ok(await kit.run(['goal', 'add', 'A1', '--title', 'Nearer', '--target', '2030-03-01', '--session', 'lead'], UI));
+    kit.clock.advance(30 * DAY_MS);
+    assert.equal(goalsLine(await kit.run(['stats'], UI)), 'GOALS 1 on track, 2 late (B1, D1); off goal: no task done');
+  });
+});
+
+const FIELDS: TaskFields ={ title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null };
+
+function create(id: string, at: string, goals: readonly string[] = []): RegisterEvent {
+  return { v: EVENT_VERSION, type: 'create', id, at, by: 'lead', task: { ...FIELDS, goals } };
+}
+
+function doneOn(id: string, at: string): RegisterEvent {
+  return { v: EVENT_VERSION, type: 'status', id, at, by: 'alpha', status: 'done', note: 'n', evidence: null, skill: null };
+}
+
+function goalRecord(tag: string, target: string): Goal {
+  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target, parent: null, addedAt: '2030-01-01T00:00:00.000Z', addedBy: 'lead', slips: [] };
 }
 
 function teamOf(name: string, events: readonly RegisterEvent[]): StatsTeam {
@@ -132,13 +185,24 @@ describe('statsLines', () => {
   it("names each person's team in a tree, and each split day a task moved to another team", () => {
     const created = create('T1', '2030-01-05T10:00:00.000Z');
     const moved: RegisterEvent = { v: EVENT_VERSION, type: 'moved', id: 'T1', at: '2030-01-06T10:00:00.000Z', by: 'lead', to: 'web' };
-    const done: RegisterEvent = { v: EVENT_VERSION, type: 'status', id: 'T1', at: '2030-01-08T10:00:00.000Z', by: 'alpha', status: 'done', note: 'n', evidence: null, skill: null };
+    const done = doneOn('T1', '2030-01-08T10:00:00.000Z');
     const stats = registerStats({ teams: [teamOf('app', [created, moved]), teamOf('web', [created, done])], range: '7d', now: new Date('2030-01-10T10:00:00.000Z'), zone: testZone('UTC'), ownerMarker: 'owner' });
     const lines = statsLines({ stats, health: registerHealth(stats) }, 'app', ['app', 'web']);
     assert.equal(lines[0], 'STATS app, 7 d: 01-04 to 01-10 (tree: app, web)');
     assert.equal(lines[8], 'PEOPLE web/alpha 1');
-    assert.equal(lines[9], 'TEAMS app 0 active, overdue 0 · web 0 active, overdue 0');
-    assert.equal(lines[10], 'SPLIT 01-06 1 task(s) moved app -> web: the chart of app before it lacks them');
-    assert.equal(lines.length, 11);
+    assert.equal(lines[9], 'GOALS none; off goal: 1 of 1 done tasks (100%)');
+    assert.equal(lines[10], 'TEAMS app 0 active, overdue 0 · web 0 active, overdue 0');
+    assert.equal(lines[11], 'SPLIT 01-06 1 task(s) moved app -> web: the chart of app before it lacks them');
+    assert.equal(lines.length, 12);
+  });
+
+  it('counts the goals by state, naming those at risk and late, then the share of done tasks that served no goal', () => {
+    const at = '2030-01-05T10:00:00.000Z';
+    const closed = '2030-01-08T10:00:00.000Z';
+    const events = [create('T1', at, ['R1']), create('T2', at, ['R2']), create('T3', at, ['R4']), doneOn('T3', closed), create('T4', at), doneOn('T4', closed)];
+    const goals = new Map([goalRecord('R1', '2030-02-01'), goalRecord('R2', '2030-01-05'), goalRecord('R3', '2030-02-01'), goalRecord('R4', '2030-02-01')].map((goal) => [goal.tag, goal]));
+    const stats = registerStats({ teams: [teamOf('app', events)], range: '7d', now: new Date('2030-01-10T10:00:00.000Z'), zone: testZone('UTC'), ownerMarker: 'owner', goals });
+    const lines = statsLines({ stats, health: registerHealth(stats) }, 'app', ['app']);
+    assert.equal(lines.at(-1), 'GOALS 1 done, 1 on track, 1 at risk (R1), 1 late (R2); off goal: 1 of 2 done tasks (50%)');
   });
 });

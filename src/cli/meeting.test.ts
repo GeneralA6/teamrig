@@ -51,7 +51,7 @@ describe('runCli: the daily meeting', () => {
       'HEALTH close/open 0.00 [bad] · backlog +2, 2 active [bad] · overdue 1, p1 0 [warn] · owner decisions 1, oldest 0.0 d [good] · backlog clears never, at this rate [bad]',
       'FLOW opened 2, closed 0 (0 dropped), net +2; last 28 d net +2',
     ]);
-    assert.equal(stdout[done + 4], '  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)');
+    assert.equal(stdout[done + 4], '  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people, goals)');
     assert.ok(stdout.some((line) => line.endsWith('alpha: the build is green')), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.endsWith(`alpha: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`)), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.startsWith('READ lead: 2 new lines')), stdout.join('\n'));
@@ -299,7 +299,7 @@ describe('runCli: the daily meeting', () => {
     const { stdout } = await kit.run(['meeting', 'agenda', '--session', 'lead']);
     const top = stdout.findIndex((line) => line.startsWith('STATS '));
     assert.deepEqual(stdout.slice(top, top + 4), stats.stdout.slice(0, 4));
-    assert.equal(stdout[top + 4], '  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people)');
+    assert.equal(stdout[top + 4], '  each other section: teamrig stats --tree --session lead (new work, speed, delays, waits, bugs, people, goals)');
     assert.ok(stdout.findIndex((line) => line.startsWith('DONE ')) < top, stdout.join('\n'));
   });
 

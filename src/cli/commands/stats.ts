@@ -1,6 +1,8 @@
 import { MeterLog } from '../../budget/calibration.ts';
 import { limitSpansOf } from '../../budget/extra.ts';
 import { formatAddress } from '../../core/address.ts';
+import { GOAL_STATES, type GoalState, type GoalStats } from '../../register/goal-stats.ts';
+import type { Goal } from '../../register/goals.ts';
 import { registerHealth, type HealthLevel, type RegisterHealth } from '../../register/stats-health.ts';
 import {
   isStatsRange,
@@ -23,7 +25,11 @@ import { sessionIdOf, teamZone } from '../kit.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { useLines, type TeamHistory } from '../stats-use.ts';
+import { KitTreeGoals } from '../tree-goals.ts';
 import { ownRegister, warnDamage } from './register.ts';
+
+/** The goal states worth a look, so the `GOALS` line names their goals; the others it only counts. */
+const NAMED_GOAL_STATES: readonly GoalState[] = ['at risk', 'late'];
 
 /**
  * `teamrig stats [--tree] [--range 7d|30d|90d|180d|1y|all] [--session <id|name>]` (T1771): the register's numbers over a range
@@ -68,8 +74,15 @@ async function foldHistories(runtime: CliRuntime, rolled: RollUp, histories: rea
   const { config } = rolled.own;
   const now = runtime.clock.now();
   const limits = await limitsOf(runtime, rolled.own, now);
-  const stats = registerStats({ teams, range, now: new Date(now), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, limits, ...(scope === undefined ? {} : { session: scope }) });
+  const goals = await goalsOf(runtime, rolled);
+  const stats = registerStats({ teams, range, now: new Date(now), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, limits, goals, ...(scope === undefined ? {} : { session: scope }) });
   return { stats, health: registerHealth(stats) };
+}
+
+/** The goals the rolled teams' tasks can serve: each team's own records and those of the teams above it. */
+async function goalsOf(runtime: CliRuntime, { teams }: RollUp): Promise<ReadonlyMap<string, Goal>> {
+  const reads = await Promise.all(teams.map((team) => new KitTreeGoals(runtime, team.paths, team.config).all()));
+  return new Map(reads.flatMap((goals) => [...goals]));
 }
 
 function rangeOf(value: string | undefined): StatsRange {
@@ -134,6 +147,7 @@ export function statsLines(folded: FoldedStats, name: string, teams: readonly st
     `WAITS ${waitsText(stats)}`,
     `BUGS ${stats.bugs.active} active, ${stats.bugs.opened} opened, ${stats.bugs.fixed} fixed`,
     `PEOPLE ${stats.people.length === 0 ? 'none done' : stats.people.map((person) => `${teams.length > 1 ? `${person.team}/` : ''}${person.session} ${person.done}`).join(', ')}`,
+    `GOALS ${goalsText(stats.goals)}`,
   ];
   if (teams.length > 1) {
     lines.push(`TEAMS ${stats.teams.map((team) => `${team.team} ${team.active} active, overdue ${team.overdue.count}`).join(' · ')}`);
@@ -184,6 +198,19 @@ function waitsText({ waits }: RegisterStats): string {
   const kinds = WAIT_KINDS.filter((kind) => waits.byKind[kind] > 0).map((kind) => `${kind} ${waits.byKind[kind]}`);
   const oldest = waits.ownerDecisions.oldestDays === null ? '' : `, oldest ${days(waits.ownerDecisions.oldestDays)}`;
   return `${waits.waiting} waiting${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}; on the owner ${waits.ownerDecisions.count}${oldest}`;
+}
+
+function goalsText(goals: GoalStats): string {
+  const states = GOAL_STATES.flatMap((state) => {
+    const tags = goals.goals.filter((goal) => goal.state === state).map((goal) => goal.tag);
+    const named = NAMED_GOAL_STATES.includes(state) ? ` (${tags.join(', ')})` : '';
+    return tags.length === 0 ? [] : [`${tags.length} ${state}${named}`];
+  });
+  return `${states.length === 0 ? 'none' : states.join(', ')}; off goal: ${offGoalText(goals)}`;
+}
+
+function offGoalText({ offGoal, doneInRange }: GoalStats): string {
+  return doneInRange === 0 ? 'no task done' : `${offGoal} of ${doneInRange} done tasks (${Math.round((offGoal / doneInRange) * 100)}%)`;
 }
 
 function bandsText(bands: RegisterStats['lateDays'], what: string): string {
