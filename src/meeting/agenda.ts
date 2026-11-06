@@ -3,7 +3,7 @@ import { MS_PER_DAY } from '../core/time.ts';
 import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from '../register/card.ts';
 import { doneGroups, doneGroupTitle } from '../register/done-groups.ts';
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES } from '../register/model.ts';
+import { isLate } from '../register/goal-board.ts';
 import { asksOwner, isUngated, ownerLater } from '../register/owner-waits.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { cut, formatShortTask } from '../register/views.ts';
@@ -206,7 +206,7 @@ function ungatedLines(input: AgendaInput): string[] {
 /** LATE: the active tasks past their effective due date (their own, or an earlier one of a task that needs them), in plan order. */
 function lateLines(input: AgendaInput): string[] {
   const { tree } = input;
-  const late = tree.inPlanOrder(input.tasks.filter((task) => ACTIVE_STATUSES.includes(task.status) && (tree.dueTime(task) ?? Number.POSITIVE_INFINITY) < input.now));
+  const late = tree.inPlanOrder(input.tasks.filter((task) => isLate(task, tree, input.now)));
   return listed(
     `LATE ${late.length} past their due date`,
     late.map((task) => rowOf(task, tree)),
