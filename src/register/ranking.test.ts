@@ -43,6 +43,23 @@ describe('treeRanking (T2076)', () => {
     const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC, undefined, undefined, ranking);
     assert.deepEqual([...tasks].sort((a, b) => tree.byPlanOrder(a, b)).map((task) => task.id), ['T2', 'T1']);
   });
+
+  it('values a Roadmap task by the goal it serves, and names the goal that holds the rank', () => {
+    const goals = new Map([['A1', { parent: null, rank: 1 }], ['A1.1', { parent: 'A1', rank: null }]]);
+    const ranked = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals, sizing: ownSizing });
+    const task = testTask({ id: 'T1', workClass: 'Roadmap', goals: ['A1.1'] });
+    const plain = testTask({ id: 'T2', workClass: 'Roadmap' });
+    const tree = new TaskTree(new Map([[task.id, task], [plain.id, plain]]), new Date(NOW), TimeZone.UTC, undefined, undefined, ranked);
+    assert.deepEqual(tree.rankedOf(task)?.goal, { tag: 'A1', rank: 1 });
+    assert.equal(tree.rankedOf(plain)?.goal, null);
+    assert.ok((tree.rankedOf(task)?.score ?? 0) > (tree.rankedOf(plain)?.score ?? 0));
+  });
+
+  it('reads a row with no goals as serving none', () => {
+    const goals = new Map([['A1', { parent: null, rank: 1 }]]);
+    const ranked = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals, sizing: ownSizing });
+    assert.equal(ranked.goalOf({ id: 'T2', status: 'open', owner: 'alpha', priority: 2, due: null, after: [], waits: [] }), null);
+  });
 });
 
 describe('ownSizing (T2076)', () => {
