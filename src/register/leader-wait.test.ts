@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { leaderHolds, waitedMinutes, type LeaderWaitFocus } from './leader-wait.ts';
+import { heldFirst, leaderHolds, waitedMinutes, type LeaderWaitFocus } from './leader-wait.ts';
+import type { WaitingOnYou } from './tree.ts';
 import type { WaitReason } from './waits.ts';
 
 const FOCUS: LeaderWaitFocus = { roadmapClass: 'Roadmap', defaultClass: 'Improvements', leaderWaitMinutes: 60 };
@@ -67,6 +68,38 @@ describe('leaderHolds', () => {
   it('starts the clock at waitsAt, not at statusAt: a task long parked that only now asks its leader gets the whole limit', () => {
     const parked = waiting([APPROVAL], { statusAt: '2030-01-01T10:00:00.000Z', waitsAt: ASKED });
     assert.deepEqual(leaderHolds(parked, LEADERS, FOCUS, ASKED_AT + 5 * MS_PER_MINUTE), []);
+  });
+});
+
+describe('heldFirst', () => {
+  const TREE = { approversOf: (owner: string): string[] => (owner === 'bravo' ? ['sub', 'lead'] : ['lead']) };
+  /** An entry for a task of `owner` asking the lead's approval since ASKED. */
+  const held = (id: string, owner = 'alpha'): WaitingOnYou => ({ task: waiting([APPROVAL], { id, owner }), needs: [], asks: [APPROVAL] });
+  /** An entry for a task that needs one of the reader's tasks and holds on no leader. */
+  const needing = (id: string): WaitingOnYou => ({ task: waiting([{ kind: 'task', id: 'T9' }], { id }), needs: [testTask({ id: 'T9', owner: 'lead' })], asks: [] });
+  const idsOf = (entries: readonly WaitingOnYou[]): string[] => entries.map(({ task }) => task.id);
+
+  it('puts the tasks held on the session first, the order kept inside each part', () => {
+    const entries = [needing('T1'), held('T2'), needing('T3'), held('T4')];
+    assert.deepEqual(idsOf(heldFirst(entries, 'lead', TREE, FOCUS, LATE)), ['T2', 'T4', 'T1', 'T3']);
+  });
+
+  it('keeps the order when nothing is past the limit', () => {
+    const entries = [needing('T1'), held('T2')];
+    assert.deepEqual(idsOf(heldFirst(entries, 'lead', TREE, FOCUS, ASKED_AT)), ['T1', 'T2']);
+  });
+
+  it("leaves a task held on another leader where it was: it lists here for the reader's task, not its answer", () => {
+    const onSub: WaitReason = { kind: 'approval', who: 'sub' };
+    const elsewhere: WaitingOnYou = { task: waiting([onSub], { id: 'T2', owner: 'bravo' }), needs: [testTask({ id: 'T9', owner: 'lead' })], asks: [] };
+    assert.deepEqual(idsOf(heldFirst([needing('T1'), elsewhere], 'lead', TREE, FOCUS, LATE)), ['T1', 'T2']);
+  });
+
+  it("reads each task's leaders from its own owner", () => {
+    const onSub: WaitReason = { kind: 'decision', who: 'sub' };
+    const own: WaitingOnYou = { task: waiting([onSub], { id: 'T2', owner: 'bravo' }), needs: [], asks: [onSub] };
+    const foreign: WaitingOnYou = { task: waiting([onSub], { id: 'T3', owner: 'alpha' }), needs: [], asks: [onSub] };
+    assert.deepEqual(idsOf(heldFirst([foreign, own], 'sub', TREE, FOCUS, LATE)), ['T2', 'T3']);
   });
 });
 

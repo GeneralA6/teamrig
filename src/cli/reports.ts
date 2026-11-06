@@ -267,7 +267,7 @@ function shortCheck(report: CheckReport): string[] {
 
 /**
  * `start`'s `WAITING ON YOU` block: the active tasks of other sessions that need the session's unfinished tasks or
- * wait on its decision or approval (TaskTree.waitingOn), in plan order, at most MAX_WAITING_ROWS of them unless
+ * wait on its decision or approval (TaskTree.waitingOn), in the order given, at most MAX_WAITING_ROWS of them unless
  * `all`; nothing when none waits.
  */
 export function waitingOnLines(owner: string, waiting: readonly WaitingOnYou[], tree: TaskTree, all: boolean): string[] {

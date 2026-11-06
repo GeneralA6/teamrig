@@ -15,7 +15,7 @@ const WINS = 'where your handover or a compaction summary says otherwise, the re
 function noteOf(tasks: readonly Task[], ranking?: TreeRanking): string {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const tree = new TaskTree(byId, NOW, TimeZone.UTC, undefined, undefined, ranking);
-  return liveTasksNote({ tasks, owner: 'alpha', tree, command: 'teamrig' });
+  return liveTasksNote({ tasks, owner: 'alpha', tree, waiting: tree.waitingOn('alpha'), command: 'teamrig' });
 }
 
 describe('showsLiveTasks', () => {
