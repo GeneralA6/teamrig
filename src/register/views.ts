@@ -77,18 +77,28 @@ export function taskLabel(task: Task, team?: string): string {
 }
 
 /**
- * The fields every task row starts with: `T12 in-progress`, its class and score when `tree` ranks (`Roadmap, score
- * 21.3`), `p2`, its type past a plain task (`bug`, `critical bug`), `owner alpha`, then `due 01-15` and `after T5,T6`
- * (its plan dependency) when it has them. The due is the effective one of `tree`, in its zone: an earlier due of a task
- * that needs it names that task (`due 01-10 (from T194)`).
+ * A row's class and score when `tree` ranks (`Roadmap`, `score 21.3`), nothing when it does not. A finished task keeps
+ * its class but holds no place in the order, so it prints no score.
+ */
+export function rankParts(task: Task, tree: TaskTree): string[] {
+  const ranked = tree.rankedOf(task);
+  if (ranked === undefined) {
+    return [];
+  }
+  return ACTIVE_STATUSES.includes(task.status) ? [ranked.workClass, `score ${ranked.score}`] : [ranked.workClass];
+}
+
+/**
+ * The fields every task row starts with: `T12 in-progress`, its {@link rankParts}, `p2`, its type past a plain task
+ * (`bug`, `critical bug`), `owner alpha`, then `due 01-15` and `after T5,T6` (its plan dependency) when it has them. The
+ * due is the effective one of `tree`, in its zone: an earlier due of a task that needs it names that task (`due 01-10
+ * (from T194)`).
  */
 function rowHead(task: Task, team: string | undefined, tree: TaskTree): string[] {
   const type = itemTypeOf(task);
   const typed = type === 'task' ? [] : [task.critical ? `critical ${type}` : type];
   const pinned = task.pin === null ? [] : ['pinned'];
-  const ranked = tree.rankedOf(task);
-  const scored = ranked === undefined ? [] : [ranked.workClass, `score ${ranked.score}`];
-  const parts = [`${taskLabel(task, team)} ${task.status}`, ...scored, priorityText(task.priority), ...pinned, ...typed, `owner ${task.owner}`];
+  const parts = [`${taskLabel(task, team)} ${task.status}`, ...rankParts(task, tree), priorityText(task.priority), ...pinned, ...typed, `owner ${task.owner}`];
   const inherited = tree.effectiveDue(task.id);
   if (inherited !== undefined && inherited.from !== null) {
     parts.push(`due ${showStored(inherited.due, tree.zone)} (from ${inherited.from})`);

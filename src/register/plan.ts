@@ -4,7 +4,7 @@ import { priorityLevels } from '../config/priorities.ts';
 import type { RegisterConfig } from '../config/types.ts';
 import type { Task } from './fold.ts';
 import { priorityText } from './model.ts';
-import { NO_TASKS_ELSEWHERE, TaskTree, type TasksElsewhere } from './tree.ts';
+import { NO_TASKS_ELSEWHERE, TaskTree, type TasksElsewhere, type TreeRanking } from './tree.ts';
 import { sizeText, taskLabel } from './views.ts';
 import { waitsText } from './waits.ts';
 import { proofOf } from './verify.ts';
@@ -16,6 +16,8 @@ export interface PlanOptions {
   readonly fit?: readonly string[];
   /** The tasks of the team tree's other registers, which a wait on or a dependency after a task this one lacks reads. */
   readonly elsewhere?: TasksElsewhere;
+  /** What ranks the tasks: with none they tie on band and score and fall to the later plan keys. */
+  readonly ranking?: TreeRanking;
 }
 
 /**
@@ -29,10 +31,10 @@ export function renderPlan(
   now: Date,
   zone: TimeZone,
   config: RegisterConfig,
-  { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE }: PlanOptions = {},
+  { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE, ranking }: PlanOptions = {},
 ): string {
   const all = [...tasks];
-  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere);
+  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere, ranking);
   const inWeek = tree.inPlanOrder(all.filter((task) => task.week === week));
   const done = inWeek.filter((task) => task.status === 'done').length;
   const dropped = inWeek.filter((task) => task.status === 'dropped').length;

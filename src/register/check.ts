@@ -8,7 +8,7 @@ import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
 import { isUngated } from './owner-waits.ts';
-import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree, type TasksElsewhere } from './tree.ts';
+import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree, type TasksElsewhere, type TreeRanking } from './tree.ts';
 import { WATCH_USAGE } from './verify.ts';
 import { formatTask } from './views.ts';
 import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type WaitContext } from './waits.ts';
@@ -129,10 +129,11 @@ export function checkTasks(
   week: string | null,
   config: RegisterConfig,
   elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE,
+  ranking?: TreeRanking,
 ): Flag[] {
   const at = now.getTime();
   const all = [...tasks];
-  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere);
+  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere, ranking);
   const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
   const plan = weekPlan(week, config.check.weekLengthDays, zone);
   const top = topPriority(config.priorities);

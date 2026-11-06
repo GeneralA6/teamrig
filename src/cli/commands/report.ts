@@ -37,7 +37,7 @@ export async function reportDone(args: ParsedArgs, runtime: CliRuntime): Promise
   warnDamage(runtime, history, own.paths.events);
   const tasks = [...history.state.tasks.values()].filter((task) => session === undefined || task.owner === session);
   const sorted = doneGroups({ tasks, ownerMarker: own.config.register.ownerSource, zone, from: from.getTime(), to: to.getTime() });
-  const tree = taskTreeOf({ snapshot: history, config: own.config, elsewhere: own.elsewhere }, runtime);
+  const tree = taskTreeOf({ snapshot: history, config: own.config, elsewhere: own.elsewhere, ranking: own.ranking }, runtime);
   const view: ReportDoneView = { day, weekday: zone.weekday(from), session, all: args.switches.has('all'), tree };
   reportDoneLines(sorted, view).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;

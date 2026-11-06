@@ -50,7 +50,7 @@ describe('the CLI on a rotated register', () => {
     assert.deepEqual(checked.stdout.slice(0, 3), [
       'CHECK 2 flag(s), week 2030-01-21 (short form; --all for every flag in full)',
       'NO-PROGRESS 1 (no goal or week-plan task moved since 01-27 00:00 UTC (1 day); the first to move)',
-      '  T3 open, p1, owner alpha | Current plan',
+      '  T3 open, Improvements, score 3.33, p1, owner alpha | Current plan',
     ]);
     const full = await kit.run(['check', '--all'], AS_ALPHA);
     assert.match(full.stdout.join('\n'), /STALE[^\n]*last event 01-08 10:00 UTC by alpha/);

@@ -4,9 +4,10 @@ import { formatAddress, type SessionAddress } from '../core/address.ts';
 import type { TeamPaths } from '../core/home.ts';
 import type { RegisterSnapshot } from '../register/snapshot.ts';
 import { JsonlEventLog } from '../register/store.ts';
-import type { TasksElsewhere } from '../register/tree.ts';
+import type { TasksElsewhere, TreeRanking } from '../register/tree.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from './kit.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
+import { teamRanking } from './team-ranking.ts';
 import { TreeTasks } from './tree-tasks.ts';
 import { loadTree, type KitTree, type TreeTeam } from './tree.ts';
 
@@ -25,6 +26,8 @@ export interface RolledTeam {
   readonly elsewhere: TasksElsewhere;
   /** The parent team's lead, who approves the team's lead's own work (T1140); undefined on a root team. */
   readonly above: SessionAddress | undefined;
+  /** What ranks the team's tasks (team-ranking.ts), for every tree built on this register that sorts or lists. */
+  readonly ranking: TreeRanking;
 }
 
 type ReadTeam = Omit<RolledTeam, 'elsewhere'>;
@@ -37,7 +40,9 @@ export interface RollUp {
 
 async function readOf(runtime: CliRuntime, team: string, { kit, config, roster }: TreeTeam, kitTree: KitTree): Promise<ReadTeam> {
   const log = new JsonlEventLog(runtime.files, kit.paths.events);
-  return { team, config, paths: kit.paths, roster, snapshot: await log.read(), history: () => log.readHistory(), above: kitTree.tree.parentLeadOf(team) };
+  const snapshot = await log.read();
+  const ranking = await teamRanking(runtime, kit.paths, config, snapshot.state.tasks.values());
+  return { team, config, paths: kit.paths, roster, snapshot, history: () => log.readHistory(), above: kitTree.tree.parentLeadOf(team), ranking };
 }
 
 /**

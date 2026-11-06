@@ -3,7 +3,7 @@ import type { TeamPaths } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { MeetingStore } from '../meeting/state.ts';
 import type { Task } from '../register/fold.ts';
-import { TaskTree, type TasksElsewhere } from '../register/tree.ts';
+import { TaskTree, type TasksElsewhere, type TreeRanking } from '../register/tree.ts';
 import { decisionBatch, type BatchConfig, type BatchRegister, type DecisionBatch } from './batch.ts';
 import { askedAtOf, AskedStore } from './store.ts';
 
@@ -20,6 +20,8 @@ export interface DecisionRegister {
   readonly zone: TimeZone;
   /** The tasks the tree's other registers hold, which a wait on one of them is judged against. */
   readonly elsewhere: TasksElsewhere;
+  /** What ranks the register's tasks, so the batch asks them in plan order. */
+  readonly ranking: TreeRanking;
 }
 
 /** The team's own register first, then those of the teams under it. */
@@ -41,6 +43,6 @@ export async function teamDecisions(
   return decisionBatch({ registers: registers.map((register) => batchRegisterOf(register, now)), now, askedAt: askedAtOf(asked, meeting), config: config.decisions });
 }
 
-function batchRegisterOf({ team, tasks, ownerMarker, requireGate, zone, elsewhere }: DecisionRegister, now: number): BatchRegister {
-  return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere), ownerMarker, requireGate };
+function batchRegisterOf({ team, tasks, ownerMarker, requireGate, zone, elsewhere, ranking }: DecisionRegister, now: number): BatchRegister {
+  return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere, ranking), ownerMarker, requireGate };
 }

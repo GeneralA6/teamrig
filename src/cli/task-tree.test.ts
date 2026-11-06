@@ -41,22 +41,22 @@ describe('runCli: the dependency tree', () => {
     const kit = await treeTeam();
     const shown = await kit.run(['show', 'T3', '--tree', '--session', 'bravo']);
     assert.equal(shown.code, EXIT.ok, shown.stdout.join('\n'));
-    assert.match(shown.stdout[0] ?? '', /^T3 open, p2, owner bravo, due 01-12, after T1,T2, .*\| Ship the docs · needed by T4 \(alpha\)$/);
+    assert.match(shown.stdout[0] ?? '', /^T3 open, Improvements, score 5, p2, owner bravo, due 01-12, after T1,T2, .*\| Ship the docs · needed by T4 \(alpha\)$/);
     assert.deepEqual(shown.stdout.slice(1), [
       'needs:',
-      '  T1 open, p2, owner alpha, due 01-12 (from T3) | Write the API',
-      '  T2 waiting, p2, owner bravo, due 01-12 (from T3) | Pick the docs host (waiting: decision lead)',
+      '  T1 open, Improvements, score 5, p2, owner alpha, due 01-12 (from T3) | Write the API',
+      '  T2 waiting, Improvements, score 5, p2, owner bravo, due 01-12 (from T3) | Pick the docs host (waiting: decision lead)',
       'needed by:',
-      '  T4 open, p2, owner alpha, after T3 | Publish the guide',
+      '  T4 open, Improvements, score 3.33, p2, owner alpha, after T3 | Publish the guide',
       'Next move: alpha (T1)',
     ]);
 
     const leaf = await kit.run(['show', 'T4', '--tree', '--session', 'alpha']);
     assert.deepEqual(leaf.stdout.slice(1), [
       'needs:',
-      '  T3 open, p2, owner bravo, due 01-12, after T1,T2 | Ship the docs',
-      '    T1 open, p2, owner alpha, due 01-12 (from T3) | Write the API',
-      '    T2 waiting, p2, owner bravo, due 01-12 (from T3) | Pick the docs host (waiting: decision lead)',
+      '  T3 open, Improvements, score 5, p2, owner bravo, due 01-12, after T1,T2 | Ship the docs',
+      '    T1 open, Improvements, score 5, p2, owner alpha, due 01-12 (from T3) | Write the API',
+      '    T2 waiting, Improvements, score 5, p2, owner bravo, due 01-12 (from T3) | Pick the docs host (waiting: decision lead)',
       'needed by: none',
       'Next move: alpha (T1)',
     ]);
@@ -68,8 +68,8 @@ describe('runCli: the dependency tree', () => {
     const kit = await treeTeam();
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.deepEqual(listed.stdout.slice(1), [
-      'T1 open, p2, owner alpha, due 01-12 (from T3) | Write the API · needed by T3 (bravo) · ahead: due',
-      'T4 open, p2, owner alpha, after T3 | Publish the guide',
+      'T1 open, Improvements, score 5, p2, owner alpha, due 01-12 (from T3) | Write the API · needed by T3 (bravo) · ahead: score 5',
+      'T4 open, Improvements, score 3.33, p2, owner alpha, after T3 | Publish the guide',
     ]);
   });
 
@@ -79,12 +79,12 @@ describe('runCli: the dependency tree', () => {
     assert.equal(alpha.code, EXIT.ok, alpha.stdout.join('\n'));
     assert.deepEqual(block(alpha.stdout, 'WAITING ON YOU'), [
       'WAITING ON YOU 1 task(s) of other sessions wait on alpha',
-      '  T3 open, p2, owner bravo, due 01-12, after T1,T2 | Ship the docs · needs your T1',
+      '  T3 open, Improvements, score 5, p2, owner bravo, due 01-12, after T1,T2 | Ship the docs · needs your T1',
     ]);
     const lead = await kit.run(['start', '--session', 'lead']);
     assert.deepEqual(block(lead.stdout, 'WAITING ON YOU'), [
       'WAITING ON YOU 1 task(s) of other sessions wait on lead',
-      '  T2 waiting, p2, owner bravo, due 01-12 (from T3) | Pick the docs host (waiting: decision lead) · waits on your decision',
+      '  T2 waiting, Improvements, score 5, p2, owner bravo, due 01-12 (from T3) | Pick the docs host (waiting: decision lead) · waits on your decision',
     ]);
     const bravo = await kit.run(['start', '--session', 'bravo']);
     assert.match(block(bravo.stdout, 'WAITING ON YOU')[1] ?? '', /^ {2}T4 .*· needs your T3$/);

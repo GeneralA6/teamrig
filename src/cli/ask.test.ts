@@ -152,7 +152,7 @@ describe('runCli: check flags a peer wait an older teamrig wrote', () => {
     assert.equal(checked.code, EXIT.ok, checked.stderr.join('\n'));
     assert.ok(
       checked.stdout.includes(
-        `PEER-WAIT (approval:bravo is a peer's work: wait on it by its task (set T1 --status waiting --ask bravo --text "<the work>")) T1 waiting, p2, owner alpha, from lead | Ship the release (waiting: approval bravo; n)`,
+        `PEER-WAIT (approval:bravo is a peer's work: wait on it by its task (set T1 --status waiting --ask bravo --text "<the work>")) T1 waiting, Improvements, score 3.33, p2, owner alpha, from lead | Ship the release (waiting: approval bravo; n)`,
       ),
       checked.stdout.join('\n'),
     );

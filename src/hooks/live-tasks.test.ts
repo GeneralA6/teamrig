@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Task } from '../register/fold.ts';
-import { TaskTree } from '../register/tree.ts';
+import { TaskTree, type TreeRanking } from '../register/tree.ts';
+import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { blockStartLines, COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksNote, liveTasksPointer, showsLiveTasks } from './live-tasks.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -10,10 +11,11 @@ const NOW = new Date('2030-01-08T10:00:00.000Z');
 const HEAD = 'LIVE TASKS of alpha, read from the register at this start';
 const WINS = 'where your handover or a compaction summary says otherwise, the register wins';
 
-/** The block for alpha over `tasks`, judged at NOW against those same tasks. */
-function noteOf(tasks: readonly Task[]): string {
+/** The block for alpha over `tasks`, judged at NOW against those same tasks, ranked by `ranking` when given. */
+function noteOf(tasks: readonly Task[], ranking?: TreeRanking): string {
   const byId = new Map(tasks.map((task) => [task.id, task]));
-  return liveTasksNote({ tasks, owner: 'alpha', tree: new TaskTree(byId, NOW, TimeZone.UTC), command: 'teamrig' });
+  const tree = new TaskTree(byId, NOW, TimeZone.UTC, undefined, undefined, ranking);
+  return liveTasksNote({ tasks, owner: 'alpha', tree, command: 'teamrig' });
 }
 
 describe('showsLiveTasks', () => {
@@ -64,21 +66,21 @@ describe('liveTasksNote', () => {
 
   it('lists work in hand first, then what waits, then what is not started, each in plan order', () => {
     const tasks = [
-      testTask({ id: 'T1', title: 'Open p1', priority: 1 }),
-      testTask({ id: 'T2', title: 'Open p0', priority: 0 }),
+      testTask({ id: 'T1', title: 'Open improvement', priority: 1 }),
+      testTask({ id: 'T2', title: 'Open upkeep', priority: 2 }),
       testTask({ id: 'T3', title: 'Started', status: 'in-progress' }),
       testTask({ id: 'T4', title: 'Shipped', status: 'verifying', proof: 'the nightly run' }),
       testTask({ id: 'T5', title: 'Blocked', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] }),
     ];
     assert.equal(
-      noteOf(tasks),
+      noteOf(tasks, testRanking({ classes: { T2: 'Maintenance' } })),
       [
         `${HEAD} (5 active; ${WINS}):`,
-        '  T3 in-progress, p2 | Started',
-        '  T4 verifying, p2 | Shipped',
-        '  T5 waiting, p2 | Blocked (waiting: decision owner)',
-        '  T2 open, p0 | Open p0',
-        '  T1 open, p1 | Open p1',
+        '  T3 in-progress, Improvements, score 3.33, p2 | Started',
+        '  T4 verifying, Improvements, score 3.33, p2 | Shipped',
+        '  T5 waiting, Improvements, score 3.33, p2 | Blocked (waiting: decision owner)',
+        '  T2 open, Maintenance, score 33.33, p2 | Open upkeep',
+        '  T1 open, Improvements, score 3.33, p1 | Open improvement',
       ].join('\n'),
     );
   });

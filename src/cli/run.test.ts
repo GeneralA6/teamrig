@@ -219,9 +219,9 @@ describe('runCli: the task register', () => {
     assert.match(added.stdout[0] ?? '', /^ADDED T1 open, p2, owner alpha, from \S+ \| /);
 
     const listed = await kit.run(['list'], { env: { TEAMRIG_SESSION: 'alpha' } });
-    assert.deepEqual([listed.code, listed.stdout], [EXIT.ok, ['LIST 1 task(s) (short rows; --all for every field)', 'T1 open, p2, owner alpha | Ship the CLI']]);
+    assert.deepEqual([listed.code, listed.stdout], [EXIT.ok, ['LIST 1 task(s) (short rows; --all for every field)', 'T1 open, Improvements, score 3.33, p2, owner alpha | Ship the CLI']]);
     const full = await kit.run(['list', '--all'], { env: { TEAMRIG_SESSION: 'alpha' } });
-    assert.match(full.stdout.join('\n'), /^T1 open, p2, owner alpha, from \S+ \| Ship the CLI$/);
+    assert.match(full.stdout.join('\n'), /^T1 open, Improvements, score 3\.33, p2, owner alpha, from \S+ \| Ship the CLI$/);
 
     const set = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
     assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
@@ -321,7 +321,7 @@ describe('runCli: the task register', () => {
     await kit.files.append(EVENTS_PATH, '{ torn\n');
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.equal(listed.code, EXIT.ok);
-    assert.match(listed.stdout.join('\n'), /^T1 open, p2, owner alpha \| Ship the CLI$/m);
+    assert.match(listed.stdout.join('\n'), /^T1 open, Improvements, score 3\.33, p2, owner alpha \| Ship the CLI$/m);
     assert.deepEqual(listed.stderr, [`WARN ${EVENTS_PATH}: 1 unreadable line(s), 0 line(s) from a newer teamrig, 0 event(s) naming no task`]);
   });
 
@@ -346,7 +346,7 @@ describe('runCli: the task register', () => {
     const weekly = await kit.run(['check', '--week', '2030-01-07', '--session', 'alpha', '--all']);
     assert.equal(weekly.code, EXIT.ok);
     assert.equal(weekly.stdout[0], 'CHECK 1 flag(s), week 2030-01-07');
-    assert.match(weekly.stdout[1] ?? '', /^DUE-UNPLANNED \(due inside week 2030-01-07, not in its plan\) T1 open, p2, owner alpha, due 01-10, from alpha \| Ship the CLI$/);
+    assert.match(weekly.stdout[1] ?? '', /^DUE-UNPLANNED \(due inside week 2030-01-07, not in its plan\) T1 open, Improvements, score 16\.67, p2, owner alpha, due 01-10, from alpha \| Ship the CLI$/);
     const skills = weekly.stdout.findIndex((line) => line.startsWith('SKILLS '));
     assert.match(weekly.stdout[skills] ?? '', /^SKILLS [1-9]\d* flag\(s\) in /);
     assert.match(weekly.stdout[skills + 1] ?? '', /^SKILL \S+ \(.*\) alpha alpha-demo$/);
@@ -356,7 +356,7 @@ describe('runCli: the task register', () => {
     assert.deepEqual(short.stdout.slice(0, 3), [
       'CHECK 1 flag(s), week 2030-01-07 (short form; --all for every flag in full)',
       'DUE-UNPLANNED 1 (due inside week 2030-01-07, not in its plan)',
-      '  T1 open, p2, owner alpha, due 01-10 | Ship the CLI',
+      '  T1 open, Improvements, score 16.67, p2, owner alpha, due 01-10 | Ship the CLI',
     ]);
     assert.match(short.stdout[3] ?? '', /^SKILLS [1-9]\d* flag\(s\) in /);
     assert.match(short.stdout[4] ?? '', /^ {2}SKILL \S+ \(.*\) alpha alpha-demo$/);

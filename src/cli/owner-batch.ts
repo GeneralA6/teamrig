@@ -4,7 +4,7 @@ import type { TeamPaths } from '../core/home.ts';
 import type { DecisionBatch } from '../decisions/batch.ts';
 import { teamDecisions, type DecisionRegister } from '../decisions/team.ts';
 import type { Task } from '../register/fold.ts';
-import type { TasksElsewhere } from '../register/tree.ts';
+import type { TasksElsewhere, TreeRanking } from '../register/tree.ts';
 import { teamZone } from './kit.ts';
 import { subtreeOf, type RolledTeam } from './roll-up.ts';
 import type { CliRuntime } from './runtime.ts';
@@ -20,6 +20,7 @@ export interface BatchedTeam {
   readonly paths: TeamPaths;
   readonly tasks: ReadonlyMap<string, Task>;
   readonly elsewhere: TasksElsewhere;
+  readonly ranking: TreeRanking;
 }
 
 /** The batch of the owner's decisions that holds a team's waits, and who asks it when the team's own lead does not. */
@@ -47,11 +48,11 @@ export async function ownerBatchOf(runtime: CliRuntime, own: BatchedTeam, loaded
   return { batch, askedBy };
 }
 
-function batchedOf({ team, config, paths, snapshot, elsewhere }: RolledTeam): BatchedTeam {
-  return { team, config, paths, tasks: snapshot.state.tasks, elsewhere };
+function batchedOf({ team, config, paths, snapshot, elsewhere, ranking }: RolledTeam): BatchedTeam {
+  return { team, config, paths, tasks: snapshot.state.tasks, elsewhere, ranking };
 }
 
 /** A register of the batch, labelled with its team, `label`, unless it is the batch's own. */
-function registerOf(runtime: CliRuntime, { config, tasks, elsewhere }: BatchedTeam, label: string | undefined): DecisionRegister {
-  return { team: label, tasks, ownerMarker: config.register.ownerSource, requireGate: config.register.requireDecisionCard, zone: teamZone(config, runtime), elsewhere };
+function registerOf(runtime: CliRuntime, { config, tasks, elsewhere, ranking }: BatchedTeam, label: string | undefined): DecisionRegister {
+  return { team: label, tasks, ownerMarker: config.register.ownerSource, requireGate: config.register.requireDecisionCard, zone: teamZone(config, runtime), elsewhere, ranking };
 }

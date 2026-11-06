@@ -3,7 +3,7 @@ import { BLOCK_START_WORDS } from '../core/work-block.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
-import { cut, formatWaitingOnYou } from '../register/views.ts';
+import { cut, formatWaitingOnYou, rankParts } from '../register/views.ts';
 import { unfinishedAfter, waitsText, type WaitContext } from '../register/waits.ts';
 
 /**
@@ -53,11 +53,12 @@ function waitingText(task: Task, context: WaitContext): string {
 }
 
 /**
- * `  T12 in-progress, p2, due 01-15 (from T20), after T5 | <title> (waiting: on T5 ready)`: the effective due, naming
- * the task it comes from when another task's earlier date holds this one, and only the plan dependencies not finished yet.
+ * `  T12 in-progress, Roadmap, score 6.67, p2, due 01-15 (from T20), after T5 | <title> (waiting: on T5 ready)`: the
+ * class and score when the tree ranks, as `list` prints them, the effective due, naming the task it comes from when
+ * another task's earlier date holds this one, and only the plan dependencies not finished yet.
  */
 function liveRow(task: Task, tree: TaskTree): string {
-  const parts = [`${task.id} ${task.status}`, priorityText(task.priority)];
+  const parts = [`${task.id} ${task.status}`, ...rankParts(task, tree), priorityText(task.priority)];
   const due = tree.effectiveDue(task.id);
   if (due !== undefined) {
     parts.push(`due ${showStored(due.due, tree.zone)}${due.from === null ? '' : ` (from ${due.from})`}`);
