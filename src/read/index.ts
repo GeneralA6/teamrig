@@ -49,6 +49,8 @@ export {
 // A task's WSJF rank (T2076): what builds a tree's ranking and what scores a row, so a reader ranks as the CLI does.
 export { ownSizing, treeRanking, type RankingFocus, type RankingInput, type Sizing } from '../register/ranking.ts';
 export { bandOf, scoreOf, sizePctOf, valueOf, type Band as ScoreBand, type ScoreFacts, type ScoreFocus, type SizeFacts, type TaskScore } from '../register/score.ts';
+// The park and untriaged rules (T2076 part 2C), so a reader hides and flags the rows the CLI does.
+export { isUntriaged, wouldPark, type Leaders, type ParkFocus, type ParkInput, type ParkRow } from '../register/park.ts';
 export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
 // The week plan in force (the newest week tag started by now), which a reader's week steps follow, as `plan` does.
 export { currentWeek } from '../register/week.ts';
