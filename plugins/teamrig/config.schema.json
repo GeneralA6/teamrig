@@ -237,7 +237,7 @@
           "properties": {
             "staleAfterHours": { "description": "An active task untouched this long is STALE.", "type": "integer", "minimum": 1, "default": 72 },
             "notPickedUpAfterHours": { "description": "An open task its owner has not touched this long after it was assigned is NOT-PICKED-UP.", "type": "integer", "minimum": 1, "default": 24 },
-            "prioritySkipAfterHours": { "description": "A session's in-progress task below its own open top-priority task this long is a PRIORITY-SKIP.", "type": "integer", "minimum": 1, "default": 24 },
+            "prioritySkipAfterHours": { "description": "A session's in-progress task outranked this long by its own open task, on band and score, is a PRIORITY-SKIP.", "type": "integer", "minimum": 1, "default": 24 },
             "maxSelfMadePerDay": {
               "description": "A session that added more tasks for itself (created by it, asked by no one else) in the last 24 hours than this is a SELF-MADE in teamrig check; 0 turns the flag off.",
               "type": "integer",
