@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Roster } from '../config/roster.ts';
-import { attribute } from './attribute.ts';
+import { TRANSCRIPT_TAIL_BYTES } from '../names/title.ts';
+import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { attribute, transcriptTitleOf } from './attribute.ts';
 import type { ClaudeSessionFiles } from './discover.ts';
 
 const ROSTER = new Roster({ sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'captain' }, roles: { lead: 'lead' } }, 'app');
@@ -21,6 +23,22 @@ const TITLES: Readonly<Record<string, string>> = {
 async function titleOf(path: string): Promise<string | undefined> {
   return TITLES[path];
 }
+
+describe('transcriptTitleOf', () => {
+  const titled = (title: string): string => `${JSON.stringify({ type: 'custom-title', customTitle: title })}\n`;
+
+  it('reads the newest title the user gave, and none from a missing or empty transcript', async () => {
+    const transcripts = new MemoryTranscripts({ '/t.jsonl': `${titled('old')}${titled('alpha')}`, '/empty.jsonl': '' });
+    assert.equal(await transcriptTitleOf(transcripts, '/t.jsonl'), 'alpha');
+    assert.equal(await transcriptTitleOf(transcripts, '/empty.jsonl'), undefined);
+    assert.equal(await transcriptTitleOf(transcripts, '/none.jsonl'), undefined);
+  });
+
+  it('reads only the tail, so a title further back does not count', async () => {
+    const transcripts = new MemoryTranscripts({ '/t.jsonl': `${titled('alpha')}${'x'.repeat(TRANSCRIPT_TAIL_BYTES)}\n` });
+    assert.equal(await transcriptTitleOf(transcripts, '/t.jsonl'), undefined);
+  });
+});
 
 describe('attribute', () => {
   it('goes by the inbox mark first, then by an exact id or current name, else outside', async () => {

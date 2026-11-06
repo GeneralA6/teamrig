@@ -11,12 +11,13 @@ import { PlainLogFile } from '../../core/log-file.ts';
 import { resolveTeam } from '../../core/team.ts';
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from '../../core/time.ts';
 import type { TimeZone } from '../../core/zone.ts';
+import { transcriptTitleOf } from '../../budget/attribute.ts';
 import { activeBurst, burstFloorOf, withBurst, type BurstRecord, type InBurst } from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { calibrationOf } from '../../budget/calibration.ts';
 import { classRowsOf } from '../../budget/class-spend.ts';
 import { activeCut, CutLog, cutText, decideCut, type Cut } from '../../budget/cut.ts';
-import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
+import { claudeProjectsDir } from '../../budget/discover.ts';
 import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
@@ -62,7 +63,6 @@ import { NO_WORK, queuedWork, readTasks, readWork, type WorkByPriority } from '.
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
-import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { TASK_ID } from '../../register/model.ts';
 import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
@@ -83,13 +83,6 @@ import { loadTree } from '../tree.ts';
 
 /** Days the loop table shows by default; `--all` shows every stored day. */
 export const LOOP_DAYS_SHOWN = 4;
-
-/** The title the user gave a Claude Code session, from its transcript's last `TRANSCRIPT_TAIL_BYTES`. */
-async function titleOf(transcripts: TranscriptSource, path: string): Promise<string | undefined> {
-  const size = (await transcripts.size(path)) ?? 0;
-  const length = Math.min(size, TRANSCRIPT_TAIL_BYTES);
-  return length === 0 ? undefined : customTitleOf((await transcripts.read(path, size - length, length)).toString('utf8'));
-}
 
 function dayStartOf(at: number): number {
   return at - (at % MS_PER_DAY);
@@ -122,7 +115,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const measured = await measure(
     {
       transcripts: runtime.transcripts,
-      titleOf: (path) => titleOf(runtime.transcripts, path),
+      titleOf: (path) => transcriptTitleOf(runtime.transcripts, path),
       team: recount ? new MemoryUsageStore() : new UsageStore(files, kit.paths.usage),
       outside: recount ? new MemoryUsageStore() : new UsageStore(files, join(kit.paths.usage, 'outside')),
       clock,
