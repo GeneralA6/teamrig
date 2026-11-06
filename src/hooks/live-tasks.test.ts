@@ -64,6 +64,11 @@ describe('liveTasksNote', () => {
     assert.equal(noteOf([]), `${HEAD}: none active; ${WINS}.`);
   });
 
+  it('leaves a parked task out, as list does', () => {
+    const quiet = testTask({ id: 'T1', workClass: 'Improvements', updatedAt: '2029-12-01T10:00:00.000Z' });
+    assert.equal(noteOf([quiet], testRanking()), `${HEAD}: none active; ${WINS}.`);
+  });
+
   it('lists work in hand first, then what waits, then what is not started, each in plan order', () => {
     const tasks = [
       testTask({ id: 'T1', title: 'Open improvement', priority: 1 }),

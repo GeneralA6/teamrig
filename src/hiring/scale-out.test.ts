@@ -5,8 +5,9 @@ import type { KitConfig } from '../config/types.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { RETAIN_DAYS } from '../register/compaction.ts';
 import type { Task } from '../register/fold.ts';
-import { TaskTree } from '../register/tree.ts';
+import { NO_TASKS_ELSEWHERE, TaskTree } from '../register/tree.ts';
 import { testConfig } from '../testing/config.ts';
+import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import type { HireFlag } from './due.ts';
 import type { HireRecord } from './record.ts';
@@ -66,6 +67,12 @@ describe('scaleOutFlags: when an area is behind', () => {
     const old = finished('alpha', 7, 100, NOW.getTime() - 8 * DAY_MS);
     assert.deepEqual(scaleOut([...old, ...dated('alpha', [1, 2, 3, 4])]), [], 'done before the window does not count');
     assert.deepEqual(scaleOut([...finished('bravo', 7, 100), ...dated('alpha', [1, 2, 3, 4])]), [], "another area's done tasks do not count");
+  });
+
+  it('counts no parked task as work due, as a flag must not name one', () => {
+    const tasks = [...finished('alpha', 7, 100), ...dated('alpha', [1, 2, 3, 4], { workClass: 'Improvements', updatedAt: '2029-12-01T00:00:00.000Z' })];
+    const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, NO_TASKS_ELSEWHERE, testRanking());
+    assert.deepEqual(scaleOut(tasks, { tree }), []);
   });
 
   it('measures the pace only over days a compaction keeps finished tasks in the working set', () => {

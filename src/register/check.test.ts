@@ -27,6 +27,13 @@ describe('checkTasks', () => {
     assert.deepEqual(kinds([testTask({ due: '2030-01-10', ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
   });
 
+  it('flags nothing on a parked task, until an event brings it back', () => {
+    const quiet = testTask({ workClass: 'Improvements', due: '2030-01-09', ownerSeenAt: FRESH, updatedAt: '2029-12-01T09:00:00.000Z' });
+    const ranked = (task: Task) => checkTasks([task], NOW, TimeZone.UTC, null, CONFIG, NO_TASKS_ELSEWHERE, testRanking()).map((flag) => `${flag.kind} ${flag.task.id}`);
+    assert.deepEqual(ranked(quiet), []);
+    assert.deepEqual(ranked({ ...quiet, updatedAt: FRESH }), ['OVERDUE T1']);
+  });
+
   it('flags a verifying task past its verify-by date, not as overdue work', () => {
     const late = testTask({ status: 'verifying', due: '2030-01-09', ownerSeenAt: FRESH, updatedAt: FRESH });
     assert.deepEqual(kinds([late]), ['VERIFY-OVERDUE T1']);

@@ -81,7 +81,7 @@ function topPriorityIds(config: ScaleOutInput['config']): ReadonlySet<number> {
 function datedWork(area: string, tasks: readonly Task[], input: ScaleOutInput): Dated[] {
   const top = topPriorityIds(input.config);
   return tasks
-    .filter((task) => task.owner === area && ACTIVE_STATUSES.includes(task.status) && top.has(task.priority))
+    .filter((task) => task.owner === area && ACTIVE_STATUSES.includes(task.status) && top.has(task.priority) && !input.tree.isParked(task))
     .flatMap((task) => {
       const effective = input.tree.effectiveDue(task.id);
       return effective === undefined ? [] : [{ task, at: effective.at, due: effective.due }];

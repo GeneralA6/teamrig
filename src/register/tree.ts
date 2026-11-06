@@ -468,11 +468,12 @@ export class TaskTree<T extends TreeTask = Task> {
 
   /**
    * What waits on `session`: every active task of another owner that directly needs an unfinished task of the
-   * session, or waits on its decision or approval, in plan order.
+   * session, or waits on its decision or approval, in plan order. A parked task is left out: `list` hides it, so a row
+   * here would name work its owner cannot see.
    */
   waitingOn(session: string): WaitingOnYou<T>[] {
     const waiting = [...this.tasks.values()].flatMap((task) => {
-      if (!isActive(task) || task.owner === session) {
+      if (!isActive(task) || task.owner === session || this.isParked(task)) {
         return [];
       }
       const needs = this.inPlanOrder(this.unfinishedNeeds(task).filter((need) => need.owner === session));

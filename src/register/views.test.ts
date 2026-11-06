@@ -96,6 +96,15 @@ describe('selectTasks', () => {
     assert.deepEqual(selectTasks(held, { dueBefore: new Date('2030-01-10T00:00:00Z') }, tree).map((task) => task.id), ['T1', 'T3']);
     assert.deepEqual(selectTasks(held, {}, tree).map((task) => task.id), ['T1', 'T2', 'T3'], 'T1 is due 01-09 by T3, which cannot move until it is done');
   });
+
+  it('leaves a parked task out, shows only those with parked, and takes one back after an event', () => {
+    const quiet = testTask({ id: 'T1', workClass: 'Improvements', updatedAt: '2029-12-01T09:00:00.000Z' });
+    const live = testTask({ id: 'T2', workClass: 'Improvements', updatedAt: AT });
+    const shown = (held: readonly Task[], filter: Parameters<typeof selectTasks>[1]) => selectTasks(held, filter, rankedTree({}, ...held)).map((task) => task.id);
+    assert.deepEqual(shown([quiet, live], {}), ['T2']);
+    assert.deepEqual(shown([quiet, live], { parked: true }), ['T1']);
+    assert.deepEqual(shown([{ ...quiet, updatedAt: AT }, live], {}), ['T1', 'T2'], 'any event moves updatedAt');
+  });
 });
 
 describe('formatTask', () => {

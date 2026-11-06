@@ -54,7 +54,9 @@ export function leftOfWeek(targetPct: number, usedPct: number): number {
 
 /** The fit of the to-do tasks tagged with `week`, against `leftPct` (undefined: no reading, so nothing is summed). */
 export function weekFit(rows: readonly FitRow[], week: string, leftPct: number | undefined): WeekFit {
-  const toDo = rows.filter(({ task }) => task.week === week && FIT_STATUSES.includes(task.status)).sort((a, b) => planOrder(a.tree.placeOf(a.task), b.tree.placeOf(b.task)));
+  const toDo = rows
+    .filter(({ task, tree }) => task.week === week && FIT_STATUSES.includes(task.status) && !tree.isParked(task))
+    .sort((a, b) => planOrder(a.tree.placeOf(a.task), b.tree.placeOf(b.task)));
   const sized = toDo.filter(({ task }) => task.size !== null);
   const fits = new Map<number, number>();
   let unfit: Unfit | undefined;

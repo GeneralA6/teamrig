@@ -23,6 +23,8 @@ export interface ListFilter {
   readonly goal?: string;
   /** The item types to show; a task with no type counts as a task. */
   readonly types?: readonly ItemType[];
+  /** True shows only the tasks the park rule takes ({@link TaskTree.isParked}); otherwise those stay out. */
+  readonly parked?: boolean;
 }
 
 /** A size as printed: percent of the weekly limit, at most two decimals (`1.5%`). */
@@ -65,7 +67,8 @@ export function selectTasks(tasks: Iterable<Task>, filter: ListFilter, tree: Tas
         (dueBefore === undefined || (due !== undefined && due < dueBefore)) &&
         (filter.week === undefined || task.week === filter.week) &&
         (filter.goal === undefined || task.goals.includes(filter.goal)) &&
-        (filter.types === undefined || filter.types.includes(itemTypeOf(task)))
+        (filter.types === undefined || filter.types.includes(itemTypeOf(task))) &&
+        (filter.parked === true) === tree.isParked(task)
       );
     })
     .sort((a, b) => tree.byPlanOrder(a, b));
