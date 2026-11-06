@@ -241,6 +241,17 @@ REFUSED T2 is new work; T1 (verify by 10-14) is due to verify first (teamrig ver
 With `register.verifyGate` set to `warn`, either start goes through and a `WARN` line names the same tasks (none
 with `--met`).
 
+The WIP rule (`focus.wip`) holds a start too: work outside the Roadmap and Maintenance classes waits while its owner
+holds Roadmap work that can move, and no task starts past `focus.wip.maxInProgress` tasks in progress:
+
+```text
+REFUSED T2 is Improvements work and api holds Roadmap work that can move: T1; work that first [focus.wip], or, for a one-commit fix, start it with --one-commit
+REFUSED api already has 3 tasks in progress, at the limit of 3 [focus.wip.maxInProgress]: finish T1, T3, T4 or put one back (--status open) before T2, or, for a one-commit fix, start it with --one-commit
+```
+
+`--one-commit` starts a one-commit fix all the same. With `focus.wip.mode` set to `warn`, the start goes through and
+a `WARN` line says the same.
+
 The status is a flag, never a word after the id: `teamrig set T1 done` is a usage error (`unexpected "done"`).
 
 ### teamrig update
