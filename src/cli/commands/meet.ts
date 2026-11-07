@@ -2,14 +2,16 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { meetCardLines } from '../../meeting/meet.ts';
+import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
 import { meetAsk, meetPrompt } from '../../open/prompt.ts';
 import { ownerCardsBySession, type OwnerCards } from '../../register/owner-waits.ts';
 import type { TaskTree } from '../../register/tree.ts';
 import { measureSessions, runningPlaces } from '../../sessions/measure.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
+import { WakeAsks } from '../../wake/asks.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, type FoundTeam, type Kit } from '../kit.ts';
+import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type FoundTeam, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRanking } from '../team-ranking.ts';
 import { teamRegister } from '../team-register.ts';
@@ -31,6 +33,7 @@ interface MeetFacts {
 }
 
 const NO_CARDS: OwnerCards = { due: [], later: [] };
+const SECOND_MS = 1000;
 
 /**
  * The session `ref` names (an id or a name) and its cards on the owner; refused when no card of it waits on the owner
@@ -66,6 +69,29 @@ async function isRunning(runtime: CliRuntime, kit: Kit, roster: Roster, id: stri
   return runningPlaces(measureSessions(records, rows)).some((place) => place.id === id);
 }
 
+/**
+ * Asks the running session met to bring its cards, and returns what that prints (T2207). The owner waits on it live,
+ * so the ask is due at once, not after the `wake.batchSeconds` a plain ask waits. While a meet ask from the owner
+ * still waits for its tab (busy in a turn, or the next wake check not yet run), nothing more is posted: a second press
+ * would only put the same line in its inbox again.
+ */
+async function wakeToMeet(runtime: CliRuntime, facts: MeetFacts): Promise<string> {
+  const { kit, config, id, name } = facts;
+  const owner = config.register.ownerSource;
+  const text = meetAsk(id, owner);
+  const waiting = (await new WakeAsks(runtime.files, kit.paths.wakeAsks).read(id)).find(({ ask }) => ask?.from === owner && ask.text === text)?.ask;
+  if (waiting !== undefined) {
+    const at = teamZone(config, runtime).clock(new Date(waiting.at));
+    return `ASKED ${name} (session ${id}) at ${at}: that ask still waits for its tab to be idle (a running turn ends first), so no second line was posted`;
+  }
+  const problem = await postUrgentLine(runtime, kit, config, { to: id, from: owner, text, atOnce: true });
+  if (problem !== undefined) {
+    throw new RefusedError(`${name} (session ${id}) was not woken: ${problem}`);
+  }
+  const within = Math.ceil(WAKE_TICK_MS / SECOND_MS);
+  return `WAKES ${name} (session ${id}) within about ${within} s once its tab is idle (a running turn ends first): ${facts.cards.due.length} card(s) waiting on ${owner}; an inbox line asks it to bring them now`;
+}
+
 /** `meet --cards [--session <id|name>]`: the caller's cards due on the owner, and how to bring them and record each answer. */
 async function meetCards(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [extra] = args.positionals;
@@ -80,27 +106,23 @@ async function meetCards(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCod
 
 /**
  * `meet <id|name> [--terminal <name>] [--project <dir>]`: the owner meets one session on its cards waiting on them
- * (T1295). A running session gets an inbox line that wakes its tab; any other opens fresh in a new tab, its context
- * only the meeting. Both ask it to run `meet --cards`. Refused when no card of it waits on the owner now.
+ * (T1295). A running session gets an inbox line that wakes its tab at once, unless such an ask still waits
+ * (wakeToMeet); any other opens fresh in a new tab, its context only the meeting. Both ask it to run `meet --cards`.
+ * Refused when no card of it waits on the owner now.
  */
 export async function meet(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   if (args.switches.has('cards')) {
     return meetCards(args, runtime);
   }
   const facts = await meetFactsOf(runtime, onePositional(args, 'id|name'));
-  const { found, kit, config, roster, id, name } = facts;
-  const owner = config.register.ownerSource;
+  const { found, kit, config, roster, id } = facts;
   if (await isRunning(runtime, kit, roster, id)) {
-    const problem = await postUrgentLine(runtime, kit, config, { to: id, from: owner, text: meetAsk(id, owner) });
-    if (problem !== undefined) {
-      throw new RefusedError(`${name} (session ${id}) was not woken: ${problem}`);
-    }
-    runtime.out.stdout(`WOKE ${name} (session ${id}): ${facts.cards.due.length} card(s) waiting on ${owner}; an inbox line asks it to bring them now`);
+    runtime.out.stdout(await wakeToMeet(runtime, facts));
     return EXIT.ok;
   }
   const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
   const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
   const team = found.team;
-  const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: false, fresh: true, prompt: meetPrompt(team, id, owner) });
+  const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: false, fresh: true, prompt: meetPrompt(team, id, config.register.ownerSource) });
   return printOpenResult(runtime, opened);
 }
