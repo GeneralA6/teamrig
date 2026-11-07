@@ -25,9 +25,10 @@ interface BraceGroup {
 }
 
 /**
- * The globs a glob with `{a,b}` alternatives stands for, as ripgrep reads them: `*.{ts,pem}` gives `*.ts` and
- * `*.pem`, and a group inside an alternative is spelled out too. A brace inside a `[...]` set, or one that never
- * closes, is a plain character. Undefined past `limit` globs, so the caller can count such a glob as naming anything.
+ * The plain globs a glob with `{a,b}` alternatives stands for, as ripgrep reads them: `*.{ts,pem}` gives `*.ts` and
+ * `*.pem`. A brace inside a `[...]` set, an escaped one or one that never closes is a plain character. A group inside
+ * an alternative is spelled out too: ripgrep 15 reads it so, and 14 refuses the glob, so the reading costs nothing
+ * there. Undefined past `limit` globs, so the caller can count such a glob as naming anything.
  */
 export function braceAlternatives(glob: string, limit: number): string[] | undefined {
   const spelled: string[] = [];
@@ -41,7 +42,7 @@ export function braceAlternatives(glob: string, limit: number): string[] | undef
         return undefined;
       }
       if (group === undefined) {
-        spelled.push(item);
+        spelled.push(plainGlob(item));
       } else {
         next.push(...group.choices.map((choice) => `${item.slice(0, group.open)}${choice}${item.slice(group.close + 1)}`));
       }
@@ -49,6 +50,22 @@ export function braceAlternatives(glob: string, limit: number): string[] | undef
     pending = next;
   }
   return spelled;
+}
+
+/**
+ * `glob` without what ripgrep reads away: the `\` of an escaped character, on Windows too, and a `}` no `{` opened, so
+ * `*.\pem` and `*.pem}` both pick `b.pem`. An escaped `*` comes out a wildcard, which reads wider: the safe side.
+ */
+function plainGlob(glob: string): string {
+  let plain = '';
+  for (let index = 0, end = 0; index < glob.length; index = end) {
+    end = tokenEnd(glob, index);
+    const token = glob.slice(index, end);
+    if (token !== '}') {
+      plain += token.startsWith('\\') ? token.slice(1) : token;
+    }
+  }
+  return plain;
 }
 
 /** The first `{...}` group of `glob` that closes, outside any `[...]` set. */
@@ -62,17 +79,11 @@ function firstGroup(glob: string): BraceGroup | undefined {
   return undefined;
 }
 
-/** The index of the first `{` at or after `from` outside a `[...]` set, or -1. */
+/** The index of the first `{` at or after `from` that is neither escaped nor in a `[...]` set, or -1. */
 function nextBrace(glob: string, from: number): number {
-  let index = from;
-  while (index < glob.length) {
-    const set = setEnd(glob, index);
-    if (set !== undefined) {
-      index = set;
-    } else if (glob[index] === '{') {
+  for (let index = from; index < glob.length; index = tokenEnd(glob, index)) {
+    if (glob[index] === '{') {
       return index;
-    } else {
-      index += 1;
     }
   }
   return -1;
@@ -83,13 +94,7 @@ function groupAt(glob: string, open: number): BraceGroup | undefined {
   const choices: string[] = [];
   let depth = 0;
   let start = open + 1;
-  let index = open + 1;
-  while (index < glob.length) {
-    const set = setEnd(glob, index);
-    if (set !== undefined) {
-      index = set;
-      continue;
-    }
+  for (let index = open + 1; index < glob.length; index = tokenEnd(glob, index)) {
     const char = glob[index];
     if (char === '}' && depth === 0) {
       choices.push(glob.slice(start, index));
@@ -103,9 +108,13 @@ function groupAt(glob: string, open: number): BraceGroup | undefined {
       choices.push(glob.slice(start, index));
       start = index + 1;
     }
-    index += 1;
   }
   return undefined;
+}
+
+/** The index after what starts at `index`: an escaped character, a `[...]` set, or one character. */
+function tokenEnd(glob: string, index: number): number {
+  return glob[index] === '\\' ? index + 2 : (setEnd(glob, index) ?? index + 1);
 }
 
 /** The index after a `[...]` set that starts at `index`, read as {@link globPart} reads one; undefined for no set. */

@@ -96,8 +96,18 @@ describe('secretFindingsOf', () => {
     assert.deepEqual(grep(' '), []);
   });
 
+  const grep = (glob: string): string[] => findings(call('Grep', { pattern: 'x', path: 'C:/w/t', glob, output_mode: 'content' }));
+
+  it('reads a backslash and a } no { opened out of a Grep glob, as ripgrep does', () => {
+    assert.deepEqual(grep('*.\\pem'), ['*.\\pem']);
+    assert.deepEqual(grep('.en\\v*'), ['.en\\v*']);
+    assert.deepEqual(grep('*.pem}'), ['*.pem}']);
+    assert.deepEqual(grep('a.ts,*.pem}'), ['*.pem}']);
+    assert.deepEqual(grep('{x\\},.env*}'), ['{x\\},.env*}']);
+    assert.deepEqual(grep('src\\.env'), []);
+  });
+
   it("reads each {a,b} alternative of a Grep glob, and counts one with too many as naming a secret", () => {
-    const grep = (glob: string): string[] => findings(call('Grep', { pattern: 'x', path: 'C:/w/t', glob, output_mode: 'content' }));
     assert.deepEqual(grep('*.{ts,pem}'), ['*.{ts,pem}']);
     assert.deepEqual(grep('*.{ts,{md,key}}'), ['*.{ts,{md,key}}']);
     assert.deepEqual(grep('{src,.env*}'), ['{src,.env*}']);
