@@ -10,12 +10,14 @@ import { callerOf } from "../inputs.js";
 import { sessionIdOf, teamZone } from "../kit.js";
 import { rollUp } from "../roll-up.js";
 import { EXIT } from "../runtime.js";
+import { useLines } from "../stats-use.js";
 import { ownRegister, warnDamage } from "./register.js";
 /**
  * `teamrig stats [--tree] [--range 7d|30d|90d|180d|1y|all] [--session <id|name>]` (T1771): the register's numbers over a range
  * of the team's calendar days, as the pane's Stats tab folds them (register/stats.ts): the Health tiles with their
  * levels, then each section's headline and the days the week sat at its usage limit (the `$` mark, from the meter log),
- * for the lead and the meeting agenda's top lines. As with `list`, `--session`
+ * for the lead and the meeting agenda's top lines, and last how much of the task work the plan held (cli/stats-use.ts,
+ * from the daily rollups). As with `list`, `--session`
  * reads one session's tasks in its team, and with `--tree` names the caller instead, who must be the team's lead: the
  * teams under it are rolled up, so `/teamrig`, which fills in the tab's session, can run both. Read-only: each
  * register's whole history is read, since a range reaches past what a compaction left in the working set.
@@ -26,8 +28,11 @@ export async function stats(args, runtime) {
     const tree = args.switches.has('tree');
     const rolled = tree ? await rollUp(runtime, callerOf(args.flags, runtime.env)) : await ownRegister(runtime);
     const scope = tree || !args.flags.has('session') ? undefined : { team: rolled.own.team, session: sessionIdOf(rolled.own.roster, callerOf(args.flags, runtime.env)) };
-    const folded = await foldStats(runtime, rolled, range, scope);
-    statsLines(folded, scope === undefined ? rolled.own.team : formatAddress({ team: scope.team, id: scope.session }), rolled.teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
+    const histories = await historiesOf(runtime, rolled);
+    const folded = await foldHistories(runtime, rolled, histories, range, scope);
+    const use = await useLines(runtime, { teams: histories, focus: rolled.own.config.focus, days: folded.stats.days.map((day) => day.day), ...(scope === undefined ? {} : { scope }) });
+    const name = scope === undefined ? rolled.own.team : formatAddress({ team: scope.team, id: scope.session });
+    [...statsLines(folded, name, rolled.teams.map((team) => team.team)), ...use].forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
 /**
@@ -35,7 +40,10 @@ export async function stats(args, runtime) {
  * the meter log, narrowed to one session's tasks when `scope` names one. Read-only, each register's whole history.
  */
 export async function foldStats(runtime, rolled, range, scope) {
-    const teams = await statsTeamsOf(runtime, rolled);
+    return foldHistories(runtime, rolled, await historiesOf(runtime, rolled), range, scope);
+}
+async function foldHistories(runtime, rolled, histories, range, scope) {
+    const teams = histories.map(statsTeamOf);
     const { config } = rolled.own;
     const now = runtime.clock.now();
     const limits = await limitsOf(runtime, rolled.own, now);
@@ -59,17 +67,17 @@ async function limitsOf(runtime, own, now) {
     const account = await accountWeekOn(runtime, own.config.budget, own.paths, now);
     return limitSpansOf(await new MeterLog(runtime.files, account.paths.meterLog).read(now));
 }
-/** Each team's whole event log, its damaged lines named once, with its lead. */
-async function statsTeamsOf(runtime, { teams }) {
+/** Each team's whole history, its damaged lines named once. */
+async function historiesOf(runtime, { teams }) {
     const read = [];
     for (const rolled of teams) {
-        read.push(await statsTeamOf(runtime, rolled));
+        const history = await rolled.history();
+        warnDamage(runtime, history, rolled.paths.events);
+        read.push({ rolled, history });
     }
     return read;
 }
-async function statsTeamOf(runtime, rolled) {
-    const history = await rolled.history();
-    warnDamage(runtime, history, rolled.paths.events);
+function statsTeamOf({ rolled, history }) {
     return { team: rolled.team, lead: rolled.config.roles.lead, events: history.read.events };
 }
 /**

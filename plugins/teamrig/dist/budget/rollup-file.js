@@ -1,5 +1,6 @@
 import { isRecord, numberField, stringField } from "../core/guards.js";
 import { parseObject, recordVersion, VERSION_FIELD } from "../core/jsonl.js";
+import { parseUtcDay } from "../core/time.js";
 /**
  * The team's usage rollup: what each session spent in a closed UTC day, by what the use was for, written once a day by
  * `teamrig budget rollup` for a reader that needs the split without reading transcripts, as `teamrig stats` and the
@@ -23,6 +24,11 @@ const ROLLUP_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** The file a team's rollup of `day` sits in, under the team's rollup folder. */
 export function rollupFileName(day) {
     return `${day}.json`;
+}
+/** The day a name in the rollup folder holds; undefined for any other file. */
+export function rollupDayOf(name) {
+    const day = name.slice(0, -rollupFileName('').length);
+    return name === rollupFileName(day) && parseUtcDay(day) !== undefined ? day : undefined;
 }
 /** The rollup as its file's text. */
 export function formatRollup(rollup) {

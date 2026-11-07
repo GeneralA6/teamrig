@@ -84,11 +84,11 @@ function kindOf(task, doneAt, input) {
 }
 /**
  * Whether `at` falls in the planning week tagged `week`: from the start of its day in the team's zone to the start of
- * the day seven days on, each found from its own date, so a week across a clock change still ends at midnight.
+ * the day `lengthDays` on, each found from its own date, so a week across a clock change still ends at midnight.
  */
-function inWeek(week, at, zone) {
+export function inWeek(week, at, zone, lengthDays = WEEK_DAYS) {
     const start = parseDayStart(week, zone);
-    const next = addUtcDays(week, WEEK_DAYS);
+    const next = addUtcDays(week, lengthDays);
     const end = next === undefined ? undefined : parseDayStart(next, zone);
     return start !== undefined && end !== undefined && at >= start.getTime() && at < end.getTime();
 }
