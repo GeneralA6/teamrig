@@ -1,18 +1,21 @@
 import type { Files } from '../core/files.ts';
+import type { SizeBase } from '../register/events.ts';
 import type { UsageState } from './store.ts';
 import { keepSummaryFile, summaryMinute } from './summary-file.ts';
-import { taskWOf } from './task-use.ts';
+import { spentSince, taskUseReader, taskWOf } from './task-use.ts';
 import { formatTasksWeek, TASKS_WEEK_FORMAT, type TasksWeekSummary } from './task-week-summary.ts';
 
 /** A task's percent holds four decimals, finer than a week summary's two: most tasks cost well under a tenth of a percent. */
 const SPENT_PCT_SCALE = 10_000;
 
-/** What the tasks' spend is read from: the team's rate, as the budget hooks read it, and the stores `taskWOf` sums. */
+/** What the tasks' spend is read from: the team's rate, as the budget hooks read it, the stores it sums and the bases it counts from. */
 export interface TasksWeekInput {
   /** The team's own W per percent of the week. */
   readonly wPerPct: number | undefined;
-  /** Each roster session's usage store and the use outside the team, as `readStoredUsage` (src/cli/stored-week.ts) reads them. */
-  readonly states: Iterable<UsageState>;
+  /** Each roster session's usage store and the use outside the team, by id, as `readStoredUsage` (src/cli/stored-week.ts) reads them. */
+  readonly bySession: ReadonlyMap<string, UsageState>;
+  /** Each sized task's size base by its id (`QueuedWork.sizeBases`, src/budget/work.ts). */
+  readonly bases: ReadonlyMap<string, SizeBase>;
   readonly now: number;
 }
 
@@ -26,14 +29,22 @@ function spentPctOf(w: number, wPerPct: number): number {
 
 /**
  * The tasks' spend (src/budget/task-week-summary.ts) at the team's own rate, by task id; undefined while the rate is
- * unknown. The ids are sorted so that a hook reading the stores in another order writes the same text.
+ * unknown. A sized task counts from its size base, by the `spentSince` the ranking reads it with (src/cli/task-spend.ts),
+ * so one with nothing past its base has no entry, as it reads 0 there. The one pass of `taskWOf` serves every other
+ * task, and the walk per task only the sized few, since a hook writes this every turn. The ids are sorted so that a hook
+ * reading the stores in another order writes the same text.
  */
 export function tasksWeekOf(input: TasksWeekInput): TasksWeekSummary | undefined {
-  const { wPerPct, now } = input;
+  const { wPerPct, bySession, bases, now } = input;
   if (wPerPct === undefined || wPerPct <= 0) {
     return undefined;
   }
-  const spent = [...taskWOf(input.states)]
+  const useOf = taskUseReader(bySession);
+  const spent = [...taskWOf(bySession.values())]
+    .map(([task, w]): [string, number] => {
+      const base = bases.get(task);
+      return [task, base === undefined ? w : spentSince(useOf(task), base)];
+    })
     .filter(([, w]) => w > 0)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([task, w]): [string, number] => [task, spentPctOf(w, wPerPct)]);
