@@ -45,6 +45,14 @@ describe('runCli: set and the WIP rule', () => {
     assert.deepEqual(start.stderr, []);
   });
 
+  it('keeps --one-commit on the start\'s line in the history, and on no other', async () => {
+    const kit = await ranked(new CliHarness());
+    await kit.run([...START, '--one-commit']);
+    await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
+    assert.match((await kit.run(['show', 'T2', '--session', 'alpha'])).stdout.join('\n'), /alpha status in-progress oneCommit=true$/m);
+    assert.doesNotMatch((await kit.run(['show', 'T1', '--session', 'alpha'])).stdout.join('\n'), /oneCommit/);
+  });
+
   it('refuses --one-commit with any status but in-progress', async () => {
     const kit = await ranked(new CliHarness());
     const dropped = await kit.run(['set', 'T2', '--status', 'dropped', '--note', 'not needed', '--one-commit', '--session', 'alpha']);

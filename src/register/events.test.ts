@@ -110,6 +110,16 @@ describe('parseEvent', () => {
     assert.match(reason(parse({ ...BASE, type: 'status', status: 'in-progress', met: 3 }, 2)), /met is not text/);
   });
 
+  it('reads a start\'s one-commit mark, keeps it off any other status, and refuses one that is no boolean (T2110)', () => {
+    const start = parse({ ...BASE, type: 'status', status: 'in-progress', oneCommit: true }, 2);
+    assert.equal(start.kind === 'event' && start.event.type === 'status' ? start.event.oneCommit : undefined, true);
+    const unmarked = parse({ ...BASE, type: 'status', status: 'in-progress', oneCommit: false }, 2);
+    assert.equal(unmarked.kind === 'event' && 'oneCommit' in unmarked.event, false);
+    const done = parse({ ...BASE, type: 'status', status: 'done', oneCommit: true }, 2);
+    assert.equal(done.kind === 'event' && 'oneCommit' in done.event, false);
+    assert.match(reason(parse({ ...BASE, type: 'status', status: 'in-progress', oneCommit: 'yes' }, 2)), /bad oneCommit "yes"/);
+  });
+
   it('reads the sighting a done line is watched for, and keeps it off any other status (T1306)', () => {
     const done = parse({ ...BASE, type: 'status', status: 'done', watch: 'the row shows' }, 2);
     assert.equal(done.kind === 'event' && done.event.type === 'status' ? done.event.watch : undefined, 'the row shows');

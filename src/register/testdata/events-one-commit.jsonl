@@ -1,0 +1,4 @@
+{"v":2,"type":"create","id":"T1","at":"2030-01-07T09:00:00.000Z","by":"lead","task":{"title":"Add a health check to the web service","owner":"alpha","source":"lead","ref":null,"priority":2,"due":null,"goals":[],"week":null}}
+{"v":2,"type":"status","id":"T1","at":"2030-01-07T10:00:00.000Z","by":"alpha","status":"in-progress","note":null,"evidence":null,"skill":null,"oneCommit":true}
+{"v":2,"type":"status","id":"T1","at":"2030-01-07T11:00:00.000Z","by":"alpha","status":"done","note":"shipped","evidence":"abc1234","skill":"none"}
+{"v":2,"type":"status","id":"T1","at":"2030-01-07T12:00:00.000Z","by":"alpha","status":"in-progress","note":"it broke live","evidence":null,"skill":null}

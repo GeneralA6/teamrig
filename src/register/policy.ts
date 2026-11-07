@@ -160,6 +160,8 @@ export interface StatusChange {
   readonly watch?: string;
   /** Only on a start the verifying tasks it needs hold: what shows their proof exists. */
   readonly met?: string;
+  /** Only on a start said to be a one-commit fix: the mark that lets a pass of the WIP rule be audited. */
+  readonly oneCommit?: boolean;
   /** Only with `verifying`, and only when it moves the task's due date: the date to verify by. */
   readonly due?: string;
   /** Only when the change names them: the tasks the work leaves, empty for none, with the tasks its review's missed parts name. */
@@ -483,6 +485,7 @@ export class RegisterPolicy {
       ...(proof.value === null ? {} : { proof: proof.value }),
       ...(watch.value === null ? {} : { watch: watch.value }),
       ...(met === null ? {} : { met }),
+      ...(input.oneCommit === true ? { oneCommit: true } : {}),
       ...(due.value === null ? {} : { due: due.value }),
       ...(leaves === null ? {} : { followups: leaves }),
       ...(review.value === null ? {} : { review: review.value }),
