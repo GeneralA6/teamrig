@@ -314,7 +314,12 @@ At the start of each work block, and whenever the human asks for status:
 teamrig start --session lead
 ```
 
-With sub-teams, run `teamrig check --tree --session lead` too. Then act on each flag (full table: [tasks.md](tasks.md#check-flags)):
+With sub-teams, run `teamrig check --tree --session lead` too. Then check the ship plan (the `team-setup` skill
+has the steps): each open shippable slice, a goal's fewest tasks that ship something working, has an owner, a ship
+date and a live proof; one past its date or waiting on you comes first; at most `focus.maxOpenSlices` are open
+across the tree, and other work waits, incidents and `focus.maintenanceClass` work aside. Until the register holds
+slices, they live in `ship-plan.md` in the lead's notes folder (`teamrig files --notes --session lead`). Then act on
+each flag (full table: [tasks.md](tasks.md#check-flags)):
 
 - `PRIORITY-SKIP`: one inbox line to the owner to park the lower task and start the waiting one, or fix the order
   with `teamrig update T<n> --session lead --class <name>`; a change of goals is the owner's.
@@ -420,7 +425,9 @@ teamrig meeting start --session lead
 
 It holds every message to the lead (a CRITICAL one still goes) and prints the agenda; no session is told. Until
 the meeting ends, the lead's own context refresh waits (no handover ask, no restart) unless its context reaches
-`refresh.compactCeilingTokens`; the turn that ends the meeting asks at once. Bring
+`refresh.compactCeilingTokens`; the turn that ends the meeting asks at once. Lead with the ship board: each open
+shippable slice and those planned 1 to 2 weeks ahead, one line each, shipped (its live proof seen), on date or
+slipping with why and its new date, from `ship-plan.md` in the lead's notes folder. Bring
 each decision as a card the human can decide from alone, asked in plain text unless the team asks with the question
 picker [decisions.askWith], record each answer in the same turn with
 `teamrig update <id> --decided --note "owner decided: <decision>" --session lead`, which takes the card off the agenda
