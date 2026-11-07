@@ -8,6 +8,7 @@ import { parseSessionsWeek, SESSIONS_WEEK_IN_STATE } from '../../budget/session-
 import { EMPTY_USAGE, UsageStore } from '../../budget/store.ts';
 import { parseTasksWeek, TASKS_WEEK_IN_STATE } from '../../budget/task-week-summary.ts';
 import { parseTeamWeek, TEAM_WEEK_IN_STATE } from '../../budget/team-week-summary.ts';
+import { formatUtcDay } from '../../core/time.ts';
 import { HOLDING_BUDGET, meterToday } from '../../testing/budget-hold.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../../testing/cli-harness.ts';
 
@@ -80,5 +81,25 @@ describe('the budget hooks', () => {
     const text = await kit.files.read(TASKS);
     // At 10M W per percent.
     assert.deepEqual(text === undefined ? undefined : parseTasksWeek(text), { at: kit.clock.now(), spentPct: { T7: 2.5, T8: 1 } });
+  });
+
+  it("keep a sized task's spend from its size base, as the list counts it (T2141)", async () => {
+    const kit = new CliHarness({ ...TEAM, budget: HOLDING_BUDGET });
+    const usage = join(TEAM_HOME, 'state', 'usage');
+    const bravo = new UsageStore(kit.files, usage);
+    const day = formatUtcDay(new Date(kit.clock.now()));
+    assert.ok(await bravo.save('bravo', { ...EMPTY_USAGE, byTask: { [day]: { T1: 30_000_000, T2: 20_000_000 } } }, (await bravo.load('bravo')).rev), 'bravo saved');
+    const added = ['Ship the release', 'Ship the notes'].map((title) => ['add', '--title', title, '--description', 'what and why', '--priority', 'p1', '--owner', 'bravo', '--session', 'lead']);
+    for (const add of added) {
+      assert.equal((await kit.run(add)).code, 0);
+    }
+    // The size takes today's 30M W as T1's base, so only what comes after it counts.
+    assert.equal((await kit.run(['update', 'T1', '--size', '2', '--session', 'lead'])).code, 0);
+    const after = await bravo.load('bravo');
+    assert.ok(await bravo.save('bravo', { ...after.state, byTask: { [day]: { T1: 40_000_000, T2: 20_000_000 } } }, after.rev), 'bravo saved again');
+    await meterToday(kit, [{ id: 'alpha', tab: ALPHA_TAB, w: 100_000_000 }]);
+    const text = await kit.files.read(TASKS);
+    // At 10M W per percent: T1 10M past its base, T2 unsized and whole.
+    assert.deepEqual(text === undefined ? undefined : parseTasksWeek(text)?.spentPct, { T1: 1, T2: 2 });
   });
 });

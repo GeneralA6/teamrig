@@ -122,7 +122,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   if (sessionsWeek !== undefined) {
     await keepSessionsWeek(files, kit.paths.sessionsWeek, sessionsWeek);
   }
-  const tasksWeek = tasksWeekOf({ wPerPct: week.wPerPct, states, now });
+  const tasksWeek = tasksWeekOf({ wPerPct: week.wPerPct, bySession: new Map([...byId, [OUTSIDE_ID, outside]]), bases: work.sizeBases, now });
   if (tasksWeek !== undefined) {
     await keepTasksWeek(files, kit.paths.tasksWeek, tasksWeek);
   }
