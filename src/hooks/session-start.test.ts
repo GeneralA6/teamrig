@@ -256,7 +256,13 @@ describe('sessionStartContext: long notes within the context cap (T1376)', () =>
 
   it('keeps the worst start a lead gets inside the cap: every note, a long live and verify note and a full rules file', () => {
     const own: TeamRules = { ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'x'.repeat(TEAM_RULES_MAX_CHARS) };
+    // The largest parent rules file a lead's worst start still shows in full, with a line on its own file after it:
+    // the lead's lines come before any rules file (fitContext), so each one a lead gets takes this room. On the
+    // budget, the owner decisions that hold a slice, the week split and the appeal line (T2215) cut it from 2,339
+    // characters to 1,520; past it the file comes as its pointer.
+    const parent: TeamRules = { ...ROOT_RULES, text: '- Root rule.\n'.repeat(117).trim() };
     const text = context({
+      load: loaded({ config: testConfig({ names: { lead: 'captain' }, budget: { enabled: true } }) }),
       session: 'captain',
       refreshNote: 'Read your handover.',
       liveTasksNote: note('LIVE', 20_000),
@@ -265,11 +271,11 @@ describe('sessionStartContext: long notes within the context cap (T1376)', () =>
       verifyNote: note('VERIFY', 20_000),
       worktreeNote: 'WORKTREE line.',
       tree: { root: 'root', parentLead: { team: 'root', id: 'lead', name: 'root-lead' }, children: ['ui'] },
-      teamRules: [ROOT_RULES, own],
+      teamRules: [parent, own],
     });
     assert.ok(text.length <= CONTEXT_MAX_CHARS, String(text.length));
     assert.ok(text.includes('\nLIVE pointer.\nTitle note.\nMODEL line.\nVERIFY pointer.\nWORKTREE line.'), text.slice(-400));
-    assert.ok(text.includes(`${ROOT_HEADING}${ROOT_RULES.text}`), 'the parent team rules in full');
+    assert.ok(text.includes(`${ROOT_HEADING}${parent.text}\n\nYour team`), 'the parent team rules in full, then a line on its own file');
   });
 });
 

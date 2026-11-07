@@ -304,7 +304,8 @@ export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: tru
  * ranked goal is worth 20 down to 4, so the top objective beats any Maintenance task short of a critical bug (10 + 4 +
  * 10), and an owner's p1 adds 12 as a capped override instead of ranking alone. At most 3 tasks in progress, an
  * Improvements start refused while a Roadmap task can move, and 60/25/15 of the week's spend planned by class. Each
- * session keeps one shippable slice open, a second only while the first waits (owner orders 11-07, T2201, T2215).
+ * session keeps one shippable slice open, a second only while the first waits (owner orders 11-07, T2201, T2215), and
+ * none needing a new owner decision opens while 5 wait in the tree, about what one daily meeting answers (T2215).
  */
 export const DEFAULT_FOCUS: FocusConfig = {
   classes: ['Roadmap', 'Maintenance', 'Improvements'],
@@ -313,6 +314,7 @@ export const DEFAULT_FOCUS: FocusConfig = {
   defaultClass: 'Improvements',
   maxActiveKeyResults: 5,
   slicesPerSession: 1,
+  maxOwnerDecisions: 5,
   score: {
     rankValues: [20, 16, 12, 8, 4],
     roadmapUnranked: 3,

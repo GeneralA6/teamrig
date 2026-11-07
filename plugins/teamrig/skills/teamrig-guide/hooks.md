@@ -48,8 +48,9 @@ The injected context holds:
    on it with `approve` after the `approvals` skill's checklist; fix a team rule proven wrong, while a loosening goes
    to the owner; clear each HIRE flag by its action; plan by shippable slices, each ranked goal's next one owned,
    dated and with its live proof, at most `focus.slicesPerSession` open per session (one more only while one waits
-   on another session or the owner) and other work waiting (incidents and `focus.maintenanceClass` work aside), an
-   open slice's waits answered first. No other session pays for them.
+   on another session or the owner), none needing a new owner decision while `focus.maxOwnerDecisions` wait in the
+   tree, and other work waiting (incidents and `focus.maintenanceClass` work aside), an open slice's waits answered
+   first. No other session pays for them.
 2. **Who you are**. A known session, found from its last `inbox read` or its tab title rather than
    `$TEAMRIG_SESSION`:
 

@@ -37,6 +37,8 @@ export const CONFIG_LIMITS = {
   persistentFailureHours: { min: 1, max: 720 },
   /** At least one slice open, so work can ship; past 5 a session spreads its work as thin as no cap would (T2215). */
   slicesPerSession: { min: 1, max: 5 },
+  /** At least one, or no slice needing the owner could open; past 20 the owner's queue outgrows a meeting (T2215). */
+  maxOwnerDecisions: { min: 1, max: 20 },
   decisionBatchTimes: { maxItems: 8 },
   decisionBatchAt: { min: 0, max: 50 },
   chainNudgeAt: { min: 0, max: 50 },

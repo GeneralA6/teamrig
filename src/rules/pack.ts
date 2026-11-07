@@ -28,9 +28,9 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * Raised from 810 for the owner's rule-fix lines (T1279): a peer's ask is no proof, and the fix rides each session's
  * next line. Raised from 850 for the owner's shippable-slice line (T2201), whose worst case prints a 32-character
  * class name and a two-digit cap. Raised from 1,150 for its cap per session (T2215), which names the one more a
- * session may open while one waits.
+ * session may open while one waits, and from 1,215 for the owner decisions that hold a new slice (T2215).
  */
-export const LEAD_RULES_MAX_CHARS = 1_215;
+export const LEAD_RULES_MAX_CHARS = 1_305;
 
 /** A team's rules.md as a session reads it at start. */
 export interface TeamRules {
@@ -362,7 +362,8 @@ export function renderKeptRules(conflicts: readonly KeptRule[], command: string)
  * clears: when an area gets a hire and when the hire goes, and the shippable slices it plans (owner order T2201): each
  * ranked goal's next one dated and owned, few open per session, so a goal ships instead of all its tasks moving at
  * once, each stuck on a review or a decision. The cap is per session, not across the tree (T2215): one across the
- * tree let a lead fill it with its own team's slices and keep a child team's waiting with no bound.
+ * tree let a lead fill it with its own team's slices and keep a child team's waiting with no bound. The owner
+ * decisions waiting in the tree bound it too (T2215), so work only the owner can unblock never outruns the owner.
  */
 export function renderLeadRules(config: KitConfig, command: string): string {
   const { focus } = config;
@@ -373,7 +374,8 @@ export function renderLeadRules(config: KitConfig, command: string): string {
     `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
     "- Plan by shippable slices: each ranked goal's next one (the fewest tasks that ship something working, proven live) gets an owner, ship date and live proof;" +
       ` at most ${focus.slicesPerSession} open per session, one more only while one waits on another session or the owner;` +
-      ` other work waits (incidents and ${focus.maintenanceClass} exempt) [focus.slicesPerSession, focus.maintenanceClass];` +
+      ` none needing a new owner decision opens while ${focus.maxOwnerDecisions} wait in the tree;` +
+      ` other work waits (incidents and ${focus.maintenanceClass} exempt) [focus.slicesPerSession, focus.maxOwnerDecisions, focus.maintenanceClass];` +
       " answer an open slice's waits first.",
     '- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner.',
     "- Fix a team rule proven wrong (a peer's ask is no proof); say so in each session's next line; a loosening goes to the owner.",

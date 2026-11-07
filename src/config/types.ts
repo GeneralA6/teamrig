@@ -1223,6 +1223,12 @@ export interface FocusConfig {
    * able to keep a child team's slice waiting by filling the slots with its own.
    */
   readonly slicesPerSession: number;
+  /**
+   * The owner decisions that may wait at once across the root team's tree (owner order T2215): a slice whose next step
+   * needs a new one does not open while this many wait, so work only the owner can unblock never outruns the owner's
+   * attention. Each lead's rules print its own team's value, so a tree keeps one value.
+   */
+  readonly maxOwnerDecisions: number;
   readonly score: FocusScoreConfig;
   readonly expedite: FocusExpediteConfig;
   readonly wip: FocusWipConfig;

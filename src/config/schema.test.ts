@@ -129,6 +129,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   stopgapFiles: 'register.check.stopgapFiles',
   persistentFailureHours: 'alerts.persistentFailureHours',
   slicesPerSession: 'focus.slicesPerSession',
+  maxOwnerDecisions: 'focus.maxOwnerDecisions',
   decisionBatchTimes: 'decisions.batchTimesUtc',
   decisionBatchAt: 'decisions.batchAt',
   chainNudgeAt: 'loops.chainNudgeAt',
