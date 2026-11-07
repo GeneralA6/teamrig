@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CliHarness } from '../testing/cli-harness.ts';
+import { APP, CliHarness } from '../testing/cli-harness.ts';
+import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { EXIT } from './runtime.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -84,6 +85,23 @@ describe('runCli: start prints the start of a work block in one call', () => {
     const handed = await kit.run(['update', 'T2', '--owner', 'lead', '--session', 'alpha']);
     assert.notEqual(handed.code, EXIT.ok);
     assert.match([...handed.stdout, ...handed.stderr].join('\n'), /REFUSED alpha hands T2 only to itself or a session it leads \(bravo\)/);
+  });
+
+  it("says how far the checkout it runs in is behind origin's main as last fetched, only when it is (T1006)", async () => {
+    const kit = await overdueTeam();
+    const git = new FakeMergeGit();
+    git.checkouts.set(APP, { top: APP, branch: 'feat', mainCheckout: MAIN_CHECKOUT, linked: true });
+    git.heads.set(APP, 'mine');
+    git.tracking.set('origin/main', 'newer');
+    git.landed = ['one', 'two'];
+    const behind = await kit.run(['start', '--session', 'alpha'], { mergeGit: git });
+    assert.equal(behind.code, EXIT.ok, behind.stdout.join('\n'));
+    assert.deepEqual(behind.stdout.slice(0, 2), ['START alpha, Thu 01-10 10:00 UTC', 'BEHIND feat is 2 commit(s) behind origin/main as last fetched: rebase before you edit']);
+    assert.deepEqual(git.log, [], 'it never fetches');
+
+    git.heads.set(APP, 'newer');
+    const current = await kit.run(['start', '--session', 'alpha'], { mergeGit: git });
+    assert.ok(!current.stdout.some((line) => line.startsWith('BEHIND')), current.stdout.join('\n'));
   });
 
   it('needs to know the caller', async () => {

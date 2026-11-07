@@ -8,6 +8,7 @@ import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
+import { behindLine, behindMain } from '../behind-main.ts';
 import { checkLines, ownCheck, type CheckReport } from '../reports.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { UnownedNotices } from '../unowned-notices.ts';
@@ -23,7 +24,8 @@ export const MAX_UNOWNED_NOTICES = 5;
 
 /**
  * `start [--session <id|name>] [--all]`: what a session reads at the start of a work block, in one call: the time on
- * the team's clock, today's and the missed scheduled meetings it is met in or joins (`MEETINGS`, every one for the
+ * the team's clock, how far its checkout is behind origin's default branch as last fetched (`BEHIND`, only when it
+ * lacks commits, T1006), today's and the missed scheduled meetings it is met in or joins (`MEETINGS`, every one for the
  * lead, only when there are some), its unread inbox lines (marked read, which also ties this tab to it, as `inbox read`), its task list (`list
  * --session`), the other sessions' tasks waiting on it (`WAITING ON YOU`, only when some do), the check flags it
  * acts on (the lead's: every flag, as `check`; any other session's: those of the tasks and skills it owns, a sub-lead's
@@ -44,6 +46,10 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const now = runtime.clock.now();
   const tree = new LeadTree(config);
   runtime.out.stdout(`START ${id}, ${zone.weekdayMinute(new Date(now))}`);
+  const behind = behindMain(runtime.mergeGit, runtime.cwd);
+  if (behind !== undefined) {
+    runtime.out.stdout(behindLine(behind));
+  }
   const meetings = startMeetingLine((await new MeetingSchedule(runtime.files, kit.paths.meetings).read()).meetings, zone, now, id, id === tree.lead);
   if (meetings !== undefined) {
     runtime.out.stdout(meetings);
