@@ -1,6 +1,7 @@
 import { MS_PER_HOUR } from "../core/time.js";
 import { ruleLabel, ruleNumberOf } from "../rules/keys.js";
 import { budgetMarkOf, burstText, MORE_BURST } from "./burst-lines.js";
+import { fiveHourLine } from "./five-hour-forecast.js";
 import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from "./format.js";
 import { liftedLine } from "./lift.js";
 import { TURN_TRIGGERS } from "./line.js";
@@ -257,12 +258,13 @@ function pausedLine(sessions) {
     const paused = sessions.filter((session) => session.paused && session.inBurst === undefined).map((session) => session.name);
     return paused.length > 0 ? `Paused today, funded by priority as the week's use is past its pace line (budget.pauseByPriority): ${paused.join(', ')}.` : undefined;
 }
-/** `teamrig budget`: the week, the team and each session today, the spend by class, lifts, who a short day pauses, use outside the team, and who is past budget. */
+/** `teamrig budget`: the week, the five-hour window on a plan with one, the team and each session today, the spend by class, lifts, who a short day pauses, use outside the team, and who is past budget. */
 export function todayLines(report) {
-    const { week, sessions, outside, all, zone } = report;
+    const { week, fiveHour, sessions, outside, all, zone } = report;
     const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
     const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
-    const lines = [weekLine(week, zone), ...todayTable(report, teamW, teamCalls), ...classLines(report), ...liftLines(report)];
+    const windowLines = fiveHour === undefined ? [] : [fiveHourLine(fiveHour, zone)];
+    const lines = [weekLine(week, zone), ...windowLines, ...todayTable(report, teamW, teamCalls), ...classLines(report), ...liftLines(report)];
     const inBurst = sessions.filter((session) => session.inBurst !== undefined);
     const first = inBurst[0]?.inBurst;
     if (first !== undefined) {

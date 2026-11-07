@@ -24,6 +24,7 @@ import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
 import { nextPeriod, sightOf } from "../../budget/period.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, taskLines, todayLines, weekLine, } from "../../budget/report.js";
 import { datedSnapshot, defaultSnapshotDir, effortOfStatus, formatSnapshot, parseSnapshot, pruneSnapshots, snapshotDirOf, snapshotOfStatus, statusLineText, } from "../../budget/snapshot.js";
+import { foldIntoFiveHourSummary, readFolderFiveHour } from "../../budget/five-hour-summary.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore } from "../../budget/store.js";
 import { attributedW, taskUseOf } from "../../budget/task-use.js";
 import { readTeamWeek } from "../../budget/team-week-file.js";
@@ -243,7 +244,13 @@ export async function budget(args, runtime) {
         const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
         // The team's sessions alone, so the rows add up to the team's row of the table above them.
         const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
-        lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
+        if (recountDay === undefined) {
+            const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
+            lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, outside, behind, all, zone });
+        }
+        else {
+            lines = recountLines(today, { week, sessions, outside, all });
+        }
     }
     for (const line of lines) {
         runtime.out.stdout(line);
@@ -581,13 +588,22 @@ function statusLineView(git, dir, show, reading) {
         ...(reading.pacePct === undefined ? {} : { pacePct: reading.pacePct }),
     };
 }
-/** Folds the saved snapshot into the folder's week summary (`foldIntoWeekSummary`); a failure is told on stderr, never breaking the status bar. */
+/**
+ * Folds the saved snapshot into the folder's summaries (`foldIntoWeekSummary`, `foldIntoFiveHourSummary`); a failure is
+ * told on stderr, never breaking the status bar or the other fold.
+ */
 async function foldQuietly(runtime, dir, snapshot) {
     try {
         await foldIntoWeekSummary(runtime.files, dir, snapshot, runtime.clock.now());
     }
     catch (error) {
         runtime.out.stderr(`teamrig statusline: the week summary was not updated: ${errorMessage(error)}`);
+    }
+    try {
+        await foldIntoFiveHourSummary(runtime.files, dir, snapshot);
+    }
+    catch (error) {
+        runtime.out.stderr(`teamrig statusline: the five-hour summary was not updated: ${errorMessage(error)}`);
     }
 }
 /** Prunes the snapshot folder's old snapshots and left temporaries (`pruneSnapshots`); a failure is told on stderr, never breaking the status bar. */
@@ -603,7 +619,8 @@ async function pruneQuietly(runtime, dir) {
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
  * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
  * session began to show it, and when it last showed another), folds it into the folder's week summary (the
- * newest reading, which readers open instead of every snapshot), removes the folder's snapshots written more
+ * newest reading, which readers open instead of every snapshot) and, on a plan with one, its five-hour window's
+ * summary, removes the folder's snapshots written more
  * than 8 days ago (at most one sweep an hour), and prints a short status: the model and its effort level, the
  * session's folder and branch, and the plan's use, the week's beside where the team's pace line stands, as the
  * team's `statusLine` config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what

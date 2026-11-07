@@ -62,6 +62,7 @@ export const CONFIG_LIMITS = {
     paceEndHoursBeforeReset: { min: 0, max: 48 },
     sessionShare: { min: 0, max: 100 },
     warnAtPct: { maxItems: 8, itemMin: 1, itemMax: 1_000 },
+    budgetFiveHourWarnPct: { min: 1, max: 100 },
     paceTolerancePct: { min: 0, max: 10 },
     quietPaceWeight: { min: 0, max: 1 },
     liftMaxStopPct: { min: 1, max: 100 },

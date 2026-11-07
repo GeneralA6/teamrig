@@ -152,6 +152,7 @@ export const DEFAULT_BUDGET = {
     sessions: {},
     pauseByPriority: false,
     warnAtPct: [80, 100],
+    fiveHourWarnPct: 80,
     paceTolerancePct: 0.5,
     overAction: 'warn',
     escalate: 'session-and-fleet',
