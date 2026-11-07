@@ -2,7 +2,7 @@ import { errorMessage } from "../../core/guards.js";
 import { resolveKitHome } from "../../core/home.js";
 import { KIT_VERSION } from "../../core/version.js";
 import { restoreLaunchers, restorePlan } from "../../restore/install-plan.js";
-import { lowerRecordSteps } from "../../restore/launcher-refresh.js";
+import { lowerRecordSteps, surveyRecordSteps } from "../../restore/launcher-refresh.js";
 import { RESTORE_SHORTCUT_NAME, shortcutLine, shortcutsToRemove } from "../../restore/shortcut.js";
 import { noPositionals } from "../args.js";
 import { underRecordLock } from "../launcher-record-lock.js";
@@ -12,9 +12,10 @@ export async function restoreInstall(args, runtime) {
     noPositionals(args);
     const machine = machineOf(runtime, 'set up');
     return underRecordLock(args, runtime, machine.kitHome, async () => {
-        const { steps, unchanged } = await restorePlan(machine, 'install');
-        const lower = steps.length === 0 ? [] : await lowerRecordSteps(machine.files, machine.kitHome, KIT_VERSION, runtime.clock.now());
-        return apply(args, runtime, [...lower, ...steps], unchanged);
+        const { steps, unchanged, after } = await restorePlan(machine, 'install');
+        const now = runtime.clock.now();
+        const lower = steps.length === 0 ? [] : await lowerRecordSteps(machine.files, machine.kitHome, KIT_VERSION, now);
+        return apply(args, runtime, [...lower, ...steps, ...(await surveyRecordSteps(machine.files, machine.kitHome, after, now))], unchanged);
     });
 }
 /** `restore uninstall [--yes]`. */
@@ -26,14 +27,21 @@ export async function restoreUninstall(args, runtime) {
         const before = await logon.read();
         const steps = before === undefined ? [] : [{ line: `REMOVE ${logon.where}: ${before}`, act: () => logon.remove() }];
         const unchanged = [`${logon.where}: the restore check does not run at logon`];
+        const kept = [];
         if (shortcuts !== undefined) {
-            for (const found of shortcutsToRemove(await shortcuts.scan(), run.path)) {
+            const scan = await shortcuts.scan();
+            const removed = shortcutsToRemove(scan, run.path);
+            for (const found of removed) {
                 steps.push({ line: `REMOVE ${found.path}: ${shortcutLine(found)}`, act: () => shortcuts.remove(found.path) });
+            }
+            for (const found of scan.found.filter((shortcut) => !removed.includes(shortcut))) {
+                kept.push({ kind: 'shortcut', where: found.path, runs: shortcutLine(found) });
             }
             unchanged.push(`no ${RESTORE_SHORTCUT_NAME} runs ${run.path}`);
         }
         steps.push(...(await removeIfThere(runtime, check.path)), ...(await removeIfThere(runtime, run.path)));
-        return apply(args, runtime, steps, unchanged);
+        const survey = await surveyRecordSteps(runtime.files, kitHome, { registered: [], found: kept }, runtime.clock.now());
+        return apply(args, runtime, [...steps, ...survey], unchanged);
     });
 }
 /** The step that removes the file at `path`, none when there is none. */
