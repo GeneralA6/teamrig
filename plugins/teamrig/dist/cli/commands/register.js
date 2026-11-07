@@ -59,6 +59,7 @@ import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
 import { markKeepWorkingAsk } from "./keep-working.js";
 import { markLastTaskAsk } from "./last-task-ask.js";
+import { readSpentClasses } from "../class-share.js";
 import { openTeam, postNamed, teamOf, tellAssigned, tellLine } from "./register-team.js";
 import { askTeam, treeCallerOf } from "./team-ask.js";
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
@@ -376,6 +377,15 @@ async function tellAskerOfEnd(runtime, team, by, verdict) {
     const secrets = new SecretScanner([...team.config.register.secretPatterns, ...home.config.register.secretPatterns]);
     await postNamed(runtime, home.kit.paths, secrets, { to, from: formatAddress({ team: here, id: by }), text: endedNotice(task, here) }, `${shown} was not told that ${ended}`, shown);
 }
+/** A start with the classes past their share of the week, which only the CLI can read: the policy holds no usage store. */
+async function withSpentClasses(runtime, team, input) {
+    const { config, paths, register } = team;
+    if (input.status !== 'in-progress' || config.focus.wip.mode === 'off') {
+        return input;
+    }
+    const { tasks } = (await register.snapshot()).state;
+    return { ...input, spentClasses: await readSpentClasses(runtime, paths, config, tasks.values(), runtime.clock.now()) };
+}
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
@@ -383,7 +393,7 @@ export async function set(args, runtime) {
     const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
     const { config, paths, register, roster } = team;
     const by = sessionIdOf(roster, caller);
-    const input = { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches) };
+    const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches) });
     if (typed.ask !== null) {
         return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
     }
@@ -463,8 +473,7 @@ async function startGatesOf(register, caller, id, input, now, zone, config) {
     }
     const holds = startHolds(task, input.status, tasks);
     const due = dueStartHolds(task, input.status, tasks, now, zone, config.register.maxVerifying);
-    const wipStart = { task, status: input.status, oneCommit: input.oneCommit === true };
-    const wip = wipHold(wipStart, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
+    const wip = wipHold({ ...input, task }, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
     return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due }, wip };
 }
 /**
