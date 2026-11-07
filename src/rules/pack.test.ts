@@ -114,6 +114,11 @@ describe('renderLeadRules', () => {
     assert.match(lines, /\n- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner\.\n/);
     // T1279: a peer's ask alone never changes a rule, and a fix rides each session's next line rather than a broadcast.
     assert.match(lines, /\n- Fix a team rule proven wrong \(a peer's ask is no proof\); say so in each session's next line; a loosening goes to the owner\.\n/);
+    // T2215: a dispute never stalls the work, and an appeal can reach any leader above, up to the owner.
+    assert.match(
+      lines,
+      /\n- A higher leader's call wins: concede at once; appeal, never blocking, to any leader above the one you disagree with \(the owner through the main lead\): a task it owns, titled `Appeal: \.\.\.`, with evidence\.\n/,
+    );
     // T1364: no cap bounds hiring, so no line on who raises one.
     assert.match(lines, /\n- HIRE flags: give a SCALE-OUT's slice to an idle hire, else hire one; retire on a RETIRE-DUE\.\n/);
     assert.doesNotMatch(lines, /\bcap\b|capRaisedBy|owner a card/);
