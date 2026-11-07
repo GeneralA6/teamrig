@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { CONFIG_LIMITS } from '../config/limits.ts';
 import type { ConfigLoad } from '../config/load.ts';
 import { CONTEXT_MAX_CHARS, renderCorePack, TEAM_RULES_MAX_CHARS, type TeamRules } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
@@ -262,7 +263,7 @@ describe('sessionStartContext: long notes within the context cap (T1376)', () =>
     // characters to 1,520; past it the file comes as its pointer.
     const parent: TeamRules = { ...ROOT_RULES, text: '- Root rule.\n'.repeat(117).trim() };
     const text = context({
-      load: loaded({ config: testConfig({ names: { lead: 'captain' }, budget: { enabled: true } }) }),
+      load: loaded({ config: testConfig({ names: { lead: 'captain' }, budget: { enabled: true, accountLead: 'a'.repeat(32), shareFloorPct: CONFIG_LIMITS.shareFloorPct.max } }) }),
       session: 'captain',
       refreshNote: 'Read your handover.',
       liveTasksNote: note('LIVE', 20_000),

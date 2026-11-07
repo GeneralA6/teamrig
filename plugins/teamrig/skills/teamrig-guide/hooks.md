@@ -50,7 +50,10 @@ The injected context holds:
    dated and with its live proof, at most `focus.slicesPerSession` open per session (one more only while one waits
    on another session or the owner), none needing a new owner decision while `focus.maxOwnerDecisions` wait in the
    tree, and other work waiting (incidents and `focus.maintenanceClass` work aside), an open slice's waits answered
-   first. No other session pays for them.
+   first; while the budget is enabled, the week split: each plan sized in % of the week before the reset, then the
+   main lead (`budget.accountLead`'s, else the root team's) splits the week among the account's root teams and each
+   lead its part among its own and child teams, by what each plan ships and how its last held, each team with
+   planned work at least `budget.shareFloorPct`% of a split. No other session pays for them.
 2. **Who you are**. A known session, found from its last `inbox read` or its tab title rather than
    `$TEAMRIG_SESSION`:
 

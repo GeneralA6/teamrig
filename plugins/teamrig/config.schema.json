@@ -873,11 +873,15 @@
           "default": false
         },
         "account": {
-          "description": "The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the one account the teams on its Claude config dir name (the dir its sessions last started in), else that dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, weeklyLimitW, subagentWeight, extraWPerUsd, reset).",
+          "description": "The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the one account the teams on its Claude config dir name (the dir its sessions last started in), else that dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, accountLead, weeklyLimitW, subagentWeight, extraWPerUsd, reset).",
           "type": "string",
           "minLength": 1,
           "maxLength": 100,
           "pattern": "^[^\\r\\n]+$"
+        },
+        "accountLead": {
+          "description": "The root team whose lead is the account's main lead: after each reset it splits the week among the account's root teams, each lead then splits its part among its own team and its child teams, and the main lead reports the split at the owner's first meeting after the reset. Unset: the team above's, in a team under another on its account; else the root team's own lead, which holds while the account has one root team. Set it in every root team's config once a second root team joins the account.",
+          "$ref": "#/$defs/sessionName"
         },
         "weeklyLimitW": {
           "description": "The weekly limit in weighted tokens. Unset: the team above's, in a team under another on its account; else derived from the status line's weekly %.",
@@ -920,6 +924,13 @@
           "minimum": 0,
           "maximum": 50,
           "default": 0.5
+        },
+        "shareFloorPct": {
+          "description": "The least share of each weekly split a team with planned work gets, in % of the part being split; when the floors do not fit, each team gets an equal part. 0: no floor. The team's own, never taken from the team above. The lead's rules print it while the budget is enabled.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "default": 10
         },
         "paceEndHoursBeforeReset": {
           "description": "The pace line reaches targetPct this many hours before the reset.",

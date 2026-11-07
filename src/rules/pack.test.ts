@@ -71,7 +71,15 @@ function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 
     commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
     delivery: { schedule: { queueCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } },
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
-    budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876, subagentWeight: 9.87654321 },
+    // The lead's week-split line prints the main lead's team id and the floor.
+    budget: {
+      enabled: true,
+      targetPct: 50.98765432109876,
+      reservePct: 48.98765432109876,
+      subagentWeight: 9.87654321,
+      accountLead: longest('a', 32),
+      shareFloorPct: CONFIG_LIMITS.shareFloorPct.max,
+    },
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
     // A class name is at most 32 characters (WORK_CLASS_NAME); the lead's slice line prints the Maintenance one.
     focus: {
@@ -128,6 +136,25 @@ describe('renderLeadRules', () => {
   it('caps slices per session, never across the tree, so no lead fills the slots with its own team (T2215)', () => {
     const lines = renderLeadRules(testConfig(), COMMAND);
     assert.doesNotMatch(lines, /open (in|across) the tree|maxOpenSlices/);
+  });
+
+  it("splits the week by plans after each reset, from the account's main lead down, with each team's floor (T2215)", () => {
+    const lines = renderLeadRules(testConfig({ budget: { enabled: true, accountLead: 'core', shareFloorPct: 15 } }), COMMAND);
+    assert.match(
+      lines,
+      /\n- Week split: before the reset, size your plan in % of the week; after it, the main lead \(team core's lead\) splits the week among the account's root teams, then each lead its part among its own and child teams, by what each plan ships and how its last held; a team with planned work gets at least 15% of each split \[budget\.accountLead, budget\.shareFloorPct\]\.\n- Answer approval waits/,
+    );
+  });
+
+  it("names the root team's lead while no main lead is set, and drops the floor at 0 (T2215)", () => {
+    const lines = renderLeadRules(testConfig({ budget: { enabled: true, shareFloorPct: 0 } }), COMMAND);
+    assert.match(lines, /the main lead \(the root team's lead\) splits the week/);
+    assert.match(lines, /how its last held \[budget\.accountLead, budget\.shareFloorPct\]\.\n/);
+    assert.doesNotMatch(lines, /at least \d+% of each split/);
+  });
+
+  it('prints no week split for a team off the budget, which has no week to split (T2215)', () => {
+    assert.doesNotMatch(renderLeadRules(testConfig({ budget: { enabled: false, accountLead: 'core' } }), COMMAND), /Week split/);
   });
 });
 

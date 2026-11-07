@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
-import { CONFIG_VERSION, type AccountBudget } from './types.ts';
+import { CONFIG_VERSION, type AccountBudget, type BudgetConfig } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
 
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -1478,12 +1478,14 @@ describe('parseConfig budget', () => {
       budget: {
         enabled: true,
         account: 'work',
+        accountLead: 'app',
         weeklyLimitW: 680_000_000,
         subagentWeight: 2.15,
         extraWPerUsd: 120_000,
         reset: { weekday: 'wed', timeUtc: '01:00' },
         targetPct: 99,
         reservePct: 1,
+        shareFloorPct: 20,
         paceEndHoursBeforeReset: 2,
         sessions: { alpha: { share: 2 }, bravo: { share: 0.5 } },
         pauseByPriority: true,
@@ -1502,12 +1504,14 @@ describe('parseConfig budget', () => {
     assert.deepEqual(config.budget, {
       enabled: true,
       account: 'work',
+      accountLead: 'app',
       weeklyLimitW: 680_000_000,
       subagentWeight: 2.15,
       extraWPerUsd: 120_000,
       reset: { weekday: 'wed', timeUtc: '01:00' },
       targetPct: 99,
       reservePct: 1,
+      shareFloorPct: 20,
       paceEndHoursBeforeReset: 2,
       sessions: { alpha: { share: 2 }, bravo: { share: 0.5 } },
       pauseByPriority: true,
@@ -1528,6 +1532,7 @@ describe('parseConfig budget', () => {
     const ABOVE: AccountBudget = {
       enabled: true,
       account: 'work',
+      accountLead: 'app',
       weeklyLimitW: 680_000_000,
       subagentWeight: 2.15,
       extraWPerUsd: 120_000,
@@ -1556,6 +1561,33 @@ describe('parseConfig budget', () => {
       const own = { ...ROSTER, budget: { account: 'home' } };
       assert.deepEqual(parseConfig(own, ABOVE).config.budget, parseConfig(own).config.budget);
     });
+
+    it("keeps its own share floor, never the team above's, and may name another main lead (T2215)", () => {
+      const above: BudgetConfig = { ...DEFAULT_BUDGET, ...ABOVE, shareFloorPct: 30 };
+      assert.equal(parseConfig({ ...ROSTER, budget: {} }, above).config.budget.shareFloorPct, DEFAULT_BUDGET.shareFloorPct);
+      assert.equal(parseConfig({ ...ROSTER, budget: { shareFloorPct: 0 } }, above).config.budget.shareFloorPct, 0);
+      assert.equal(parseConfig({ ...ROSTER, budget: { accountLead: 'web' } }, above).config.budget.accountLead, 'web');
+    });
+  });
+
+  it('reads no main lead and the default floor when the team sets neither (T2215)', () => {
+    const { budget } = parseConfig(ROSTER).config;
+    assert.equal(budget.accountLead, undefined);
+    assert.equal(budget.shareFloorPct, 10);
+  });
+
+  it('refuses a floor off its whole-number 0 to 50 range and a main lead that is no team id (T2215)', () => {
+    for (const [budget, path] of [
+      [{ shareFloorPct: -1 }, 'budget.shareFloorPct'],
+      [{ shareFloorPct: 2.5 }, 'budget.shareFloorPct'],
+      [{ accountLead: '' }, 'budget.accountLead'],
+      [{ accountLead: 7 }, 'budget.accountLead'],
+    ] as const) {
+      const { config, issues } = parseConfig({ ...ROSTER, budget });
+      assert.deepEqual(paths(issues), [path], JSON.stringify(budget));
+      assert.equal(config.budget.shareFloorPct, DEFAULT_BUDGET.shareFloorPct);
+      assert.equal(config.budget.accountLead, undefined);
+    }
   });
 
   it('reports a quiet pace weight out of 0..1 and keeps the quiet hours without it', () => {
@@ -1598,12 +1630,14 @@ describe('parseConfig budget', () => {
       ...ROSTER,
       budget: {
         account: 'work\nhome',
+        accountLead: 'App/Lead',
         weeklyLimitW: 12.5,
         subagentWeight: 11,
         extraWPerUsd: 999,
         reset: { weekday: 'someday', timeUtc: '1am' },
         targetPct: 0,
         reservePct: 60,
+        shareFloorPct: 51,
         paceEndHoursBeforeReset: 49,
         sessions: { alpha: { share: -1 }, carol: { share: 1 }, bravo: 'half' },
         pauseByPriority: 'yes',
@@ -1620,6 +1654,7 @@ describe('parseConfig budget', () => {
     });
     assert.deepEqual(paths(issues).sort(), [
       'budget.account',
+      'budget.accountLead',
       'budget.escalate',
       'budget.extraWPerUsd',
       'budget.fiveHourWarnPct',
@@ -1638,6 +1673,7 @@ describe('parseConfig budget', () => {
       'budget.sessions.alpha.share',
       'budget.sessions.bravo',
       'budget.sessions.carol',
+      'budget.shareFloorPct',
       'budget.statusSnapshotDir',
       'budget.subagentWeight',
       'budget.targetPct',
