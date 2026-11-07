@@ -69,6 +69,19 @@ describe('runCli: set and the WIP rule', () => {
     assert.deepEqual([start.code, start.stderr], [EXIT.ok, []]);
   });
 
+  it('reopens a finished task past a hold, in refuse and in warn mode, with no warning', async () => {
+    for (const mode of ['refuse', 'warn'] as const) {
+      const kit = new CliHarness({ ...TEAM, focus: { wip: { mode, maxInProgress: 3 } } });
+      await kit.run(['add', '--title', 'Tidy the tooling', '--description', 'what and why', '--priority', 'p2', '--class', 'Improvements', '--session', 'alpha']);
+      await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
+      const closed = await kit.run(['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--followups', 'none', '--session', 'alpha']);
+      assert.equal(closed.code, EXIT.ok, closed.stdout.join('\n'));
+      await kit.run(['add', '--title', 'Ship the chart', '--description', 'what and why', '--priority', 'p2', '--class', 'Roadmap', '--session', 'alpha']);
+      const reopened = await kit.run(['set', 'T1', '--status', 'in-progress', '--note', 'it broke live', '--session', 'alpha']);
+      assert.deepEqual([reopened.code, reopened.stderr], [EXIT.ok, []], reopened.stdout.join('\n'));
+    }
+  });
+
   it('counts Roadmap work planned after a task another team of the tree holds as unable to move', async () => {
     const kit = await treeHarness({ focus: { wip: { mode: 'warn', maxInProgress: 3 } } });
     await kit.run(['add', '--title', 'Build the feed', '--description', 'what and why', '--priority', 'p2', '--owner', 'front', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } });

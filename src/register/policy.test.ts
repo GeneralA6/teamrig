@@ -489,6 +489,16 @@ describe('RegisterPolicy.setStatus: the WIP rule holds a start (T2076)', () => {
     assert.equal(policy.setStatus(third, 'alpha', { status: 'in-progress', note: 'still on it' }, full).ok, true);
   });
 
+  it('lets its owner reopen a verifying or done task past both holds, and no one else', () => {
+    const reopened = (status: Task['status']): Task => testTask({ id: 'T5', workClass: 'Improvements', status });
+    const full = (task: Task) => ({ ...CTX, state: stateOf(roadmap, started('T2'), started('T3'), started('T4'), task) });
+    const verifying = reopened('verifying');
+    const done = reopened('done');
+    assert.equal(policy.setStatus(verifying, 'alpha', { status: 'in-progress', note: 'the proof failed' }, full(verifying)).ok, true);
+    assert.equal(policy.setStatus(done, 'alpha', { status: 'in-progress', note: 'it broke live' }, full(done)).ok, true);
+    assert.match(error(policy.setStatus(verifying, 'bravo', { status: 'in-progress', note: 'the proof failed' }, full(verifying))), /owner/);
+  });
+
   it('reads an after in another register, so Roadmap work behind an open task there holds nothing', () => {
     const behind = testTask({ id: 'T1', workClass: 'Roadmap', after: ['T9'] });
     const elsewhere = elsewhereOf(testTask({ id: 'T9', owner: 'bravo' }));
