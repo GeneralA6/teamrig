@@ -86,6 +86,11 @@ log, both in `src/core/jsonl.ts`); a store without that check needs one first. A
 current format with `fieldPaths` (`src/testing/field-paths.ts`), as `src/budget/store.test.ts` does for the
 usage files.
 
+The register's event log (`EVENT_VERSION`) is an exception: a field an older reader can ignore takes no new number.
+Compaction copies each kept line as written, so no rewrite drops the field, and the header of
+`src/register/events.ts` lists each field added this way. A line an older teamrig must not act on still raises the
+number, as the `moved` record did.
+
 The task pane (teamrig-pane) reads through a copy of the modules `src/read/index.ts` reaches, kept in its
 `hooks/core`. A raise of a format among them needs that copy re-synced (the pane's `dev-sync-core` skill): until
 then the pane counts each line of the new format as one from a newer teamrig and skips it. The pane's gate
