@@ -7,12 +7,12 @@ import { taskListText } from "./decide.js";
  * once the task stopped waiting or changed hands, or with nothing it can start.
  */
 export function keepWorkingOf(input) {
-    const { tasks, elsewhere, session, ask, now, zone, rest } = input;
+    const { tasks, elsewhere, session, ask, now, zone, rest, parking } = input;
     const waiting = tasks.get(ask.task);
     if (rest.quiet || rest.held || waiting?.owner !== session || waiting.status !== 'waiting') {
         return undefined;
     }
-    const startable = startableTasks(tasks, elsewhere, session, now, zone).filter((task) => task.id !== waiting.id);
+    const startable = startableTasks(tasks, elsewhere, session, now, zone, parking).filter((task) => task.id !== waiting.id);
     return startable.length === 0 ? undefined : { waiting, startable };
 }
 /** The Stop hook's block reason: work the tasks that do not come after the waiting one, most urgent first. */

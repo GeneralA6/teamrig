@@ -1,5 +1,6 @@
 import { errorMessage } from "../../core/guards.js";
 import { SessionAskStore } from "../../core/session-asks.js";
+import { parkRulesOf } from "../../register/park.js";
 import { WARM_WAKE_W, wakeRestOf } from "../../wake/decide.js";
 import { keepWorkingOf, keepWorkingReason } from "../../wake/keep-working.js";
 import { teamZone } from "../kit.js";
@@ -39,6 +40,6 @@ export async function keepWorkingReasonOf(runtime, scope) {
     const rest = wakeRestOf(await budgetFactsOf(runtime, scope, undefined), config.budget.quietHours, now, WARM_WAKE_W);
     const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
     const zone = teamZone(config, runtime);
-    const work = keepWorkingOf({ tasks: snapshot.state.tasks, elsewhere, session: id, ask, now, zone, rest });
+    const work = keepWorkingOf({ tasks: snapshot.state.tasks, elsewhere, session: id, ask, now, zone, rest, parking: parkRulesOf(config) });
     return work === undefined ? undefined : keepWorkingReason(id, work, zone);
 }

@@ -13,6 +13,7 @@ import { claudeCredentialsPath, LOGIN_LOCK, loginHoldsDayStart, loginMarkerPath,
 import { LoginStore } from "../../restore/login-store.js";
 import { apiRetryLine, claimApiRetry } from "../../restore/api-error.js";
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from "../../restore/registry.js";
+import { parkRulesOf } from "../../register/park.js";
 import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, } from "../../wake/day-start.js";
 import { decideWake, effectivePriority, HELD_PRIORITY, wakeCost, wakeRestOf } from "../../wake/decide.js";
@@ -174,7 +175,7 @@ async function momentsOf(runtime, scope, login, tasks, elsewhere, state, now) {
     await startDailyRollup(runtime, kit, id, dayStartUtc, now);
     const next = nextDayStartAt(dayStartUtc, now);
     const none = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next, watch: [] };
-    const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime));
+    const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime), parkRulesOf(config));
     const logged = activeBurst((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
     const inBurst = logged?.sessions.includes(id) === true ? logged : undefined;
     if (startable.length === 0 || dueMoments(now, dayStartUtc, inBurst, state.settled).length === 0) {
@@ -251,6 +252,7 @@ async function decide(runtime, scope, store, fresh, login) {
             now,
             zone: teamZone(config, runtime),
             maxPriority: config.wake.priority,
+            parking: parkRulesOf(config),
             batchMs,
             minGapMs: config.wake.minGapMinutes * MINUTE_MS,
             previous: await store.read(id),

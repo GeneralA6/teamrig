@@ -5,6 +5,7 @@ import { resumeVerdict } from "../hiring/rehire.js";
 import { workCutOffBy } from "../open/end-tab.js";
 import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "../refresh/running.js";
+import { parkRulesOf } from "../register/park.js";
 import { lastTurnAtOf, soonTimeWaitOf, tabActivityOf, TIME_WAIT_GUARD_MINUTES } from "../sessions/idle.js";
 import { measureSessions } from "../sessions/measure.js";
 import { resumeFolderOf } from "../sessions/resume-folder.js";
@@ -95,7 +96,7 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
         return keep(notRunning);
     }
     const { now, zone, tasks, elsewhere } = facts;
-    const startable = startableTasks(tasks, elsewhere, id, now, zone, options.maxPriority);
+    const startable = startableTasks(tasks, elsewhere, id, now, zone, parkRulesOf(config), options.maxPriority);
     if (startable.length > 0) {
         return keep(`has work it can start (${startable.map((task) => task.id).join(', ')})`);
     }

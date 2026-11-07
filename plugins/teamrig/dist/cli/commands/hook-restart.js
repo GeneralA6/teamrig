@@ -3,6 +3,7 @@ import { ENV } from "../../core/home.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { noticeOf } from "../../refresh/decide.js";
 import { claudeProcessOf, restartMayAct } from "../../refresh/restart.js";
+import { parkRulesOf } from "../../register/park.js";
 import { startableTasks } from "../../wake/day-start.js";
 import { teamZone } from "../kit.js";
 import { teamRegister } from "../team-register.js";
@@ -37,7 +38,7 @@ function restartTabOf(runtime, id, target) {
  */
 export async function workFollows(runtime, paths, config, id) {
     const { snapshot, elsewhere } = await teamRegister(runtime, paths, config).snapshotWithElsewhere();
-    return startableTasks(snapshot.state.tasks, elsewhere, id, runtime.clock.now(), teamZone(config, runtime)).length > 0;
+    return startableTasks(snapshot.state.tasks, elsewhere, id, runtime.clock.now(), teamZone(config, runtime), parkRulesOf(config)).length > 0;
 }
 /**
  * Arms the restart a notice announces: records the pending request for the Claude Code the hook runs

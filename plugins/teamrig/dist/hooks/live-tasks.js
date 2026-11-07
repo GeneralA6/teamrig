@@ -80,7 +80,7 @@ function waitingLines(owner, waiting, tree, command) {
  * sessions' tasks waiting on the owner, when some do.
  */
 export function liveTasksNote({ tasks, owner, tree, waiting, command }) {
-    const active = [...tasks].filter((task) => task.owner === owner && ACTIVE_STATUSES.includes(task.status)).sort(byLiveOrder(tree));
+    const active = [...tasks].filter((task) => task.owner === owner && ACTIVE_STATUSES.includes(task.status) && !tree.isParked(task)).sort(byLiveOrder(tree));
     const source = `LIVE TASKS of ${owner}, read from the register at this start`;
     const wins = 'where your handover or a compaction summary says otherwise, the register wins';
     const waitingRows = waitingLines(owner, waiting, tree, command);

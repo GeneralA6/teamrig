@@ -17,7 +17,7 @@ import { formatTaskLines, taskLinesOf } from "../../inbox/task-lines.js";
 import { WakeAsks } from "../../wake/asks.js";
 import { teamDayStartAt } from "../../wake/day-start.js";
 import { waitAnswerersOf } from "../../register/approval.js";
-import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags } from "../../register/check.js";
+import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags, untriagedFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
 import { heldFirst } from "../../register/leader-wait.js";
@@ -697,6 +697,14 @@ function selectsFinished(filter) {
 function weekMayBeRetired(week) {
     return (retired) => retired.lastWeek !== null && week <= retired.lastWeek;
 }
+/** The filter with `list`'s switches read for one team, as `--untriaged` asks for that team's own leaders. */
+function switchedFilter(args, filter, { config, above }) {
+    return {
+        ...filter,
+        ...(args.switches.has('parked') ? { parked: true } : {}),
+        ...(args.switches.has('untriaged') ? { untriagedFor: new LeadTree(config, above) } : {}),
+    };
+}
 /**
  * `list --tree`: the lead's team and every team under it, ids read `<team>/T12`. As in `check` and
  * `plan`, `--session` (else `$TEAMRIG_SESSION`) names the caller, never an owner to filter: each team
@@ -710,7 +718,7 @@ async function treeRows(args, runtime) {
     return teams.flatMap((rolled) => {
         const { team, roster, snapshot } = rolled;
         const tree = taskTreeOf(rolled, runtime);
-        return selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter), tree).map((task) => ({ task, team, tree }));
+        return selectTasks(snapshot.state.tasks.values(), switchedFilter(args, treeFilterOf(roster, filter), rolled), tree).map((task) => ({ task, team, tree }));
     });
 }
 async function ownRows(args, runtime) {
@@ -718,11 +726,18 @@ async function ownRows(args, runtime) {
     const filter = listFilterOf(args.flags, typedTimes(runtime, teamZone(up.own.config, runtime)));
     const { own } = await settle(runtime, up, selectsFinished(filter));
     const tree = taskTreeOf(own, runtime);
-    return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter), tree).map((task) => ({ task, team: undefined, tree }));
+    return selectTasks(own.snapshot.state.tasks.values(), switchedFilter(args, filterIds(own.roster, filter), own), tree).map((task) => ({ task, team: undefined, tree }));
 }
-/** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
+/**
+ * `list [--parked|--untriaged] [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of
+ * every task. The two switches never meet: a parked task holds a class and an untriaged one has none, so together they
+ * could only print nothing, which reads as an empty list.
+ */
 export async function list(args, runtime) {
     noPositionals(args);
+    if (args.switches.has('parked') && args.switches.has('untriaged')) {
+        throw new UsageError('--parked and --untriaged exclude each other: a parked task holds a class, an untriaged one has none');
+    }
     const rows = args.switches.has('tree') ? await treeRows(args, runtime) : await ownRows(args, runtime);
     listLines(rows, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
@@ -831,6 +846,7 @@ function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zon
         ...peerWaitFlags(tasks, leads, config.roles, config.register.ownerSource),
         // In plan order, so the leader reads the most urgent wait first.
         ...leaderWaitFlags(tree.inPlanOrder(tasks), leads, config.focus, now.getTime()),
+        ...untriagedFlags(tasks, leads),
         ...(progress === undefined ? [] : [progress]),
     ];
     return { team, flags: flags.sort(byFlagKind), tree };

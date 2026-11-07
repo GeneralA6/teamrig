@@ -4,7 +4,7 @@ import { ACTIVE_STATUSES } from "../../register/model.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { sizePctOf } from "../../register/score.js";
 import { countLines, formatSweepRows, parseSweepFile, planLine, planSweepRow, proposeRow, refusedPlan, tallyOf, tallyText, } from "../../register/sweep.js";
-import { needsOf } from "../../register/tree.js";
+import { neededIds } from "../../register/tree.js";
 import { noPositionals, onePositional } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { findTeam, openKit, sessionIdOf } from "../kit.js";
@@ -18,10 +18,8 @@ function activeTasks(team) {
     return [...team.snapshot.state.tasks.values()].filter((task) => ACTIVE_STATUSES.includes(task.status));
 }
 /** Every id an active task of `teams`, or one they know of elsewhere, needs; ids are one numbering across a tree. */
-function neededIds(teams) {
-    const elsewhere = teams.flatMap((team) => [...team.elsewhere.values()].map(({ task }) => task));
-    const tasks = [...teams.flatMap(activeTasks), ...elsewhere.filter((task) => ACTIVE_STATUSES.includes(task.status))];
-    return new Set(tasks.flatMap((task) => needsOf(task)));
+function neededAcross(teams) {
+    return new Set(teams.flatMap((team) => [...neededIds(team.snapshot.state.tasks.values(), team.elsewhere)]));
 }
 /** What the rows of `rolled` are proposed from. */
 async function inputOf(runtime, rolled, needed, now) {
@@ -55,7 +53,7 @@ export async function sweep(args, runtime) {
     noPositionals(args);
     const { teams } = await readRegisters(args, runtime);
     const now = runtime.clock.now();
-    const needed = neededIds(teams);
+    const needed = neededAcross(teams);
     const rows = [];
     for (const rolled of teams) {
         warnDamage(runtime, rolled.snapshot, rolled.paths.events);
