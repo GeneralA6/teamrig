@@ -37,6 +37,7 @@ describe('the budget hooks', () => {
       plannedPct: 84.5,
       accountUsedPct: 30,
       resetsAt: Date.parse('2030-01-14T01:00:00Z'),
+      start: Date.parse('2030-01-07T01:00:00Z'),
       at: kit.clock.now(),
       limits: [],
     });

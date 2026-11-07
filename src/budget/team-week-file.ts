@@ -4,7 +4,7 @@ import type { WeekWindow } from './pace.ts';
 import { teamShareOf, type TeamsOnAccount } from './parts.ts';
 import type { UsageState } from './store.ts';
 import { keepSummaryFile, summaryMinute, summaryPct } from './summary-file.ts';
-import { formatTeamWeek, TEAM_WEEK_FORMAT, type NamedTeamWeek } from './team-week-summary.ts';
+import { formatTeamWeek, parseTeamWeek, TEAM_WEEK_FORMAT, type NamedTeamWeek, type TeamWeekSummary } from './team-week-summary.ts';
 import { wSince } from './week.ts';
 
 /** What the team's week summary is read from: the week as the budget hooks read it, and the team's own stores. */
@@ -44,6 +44,7 @@ export function teamWeekSummaryOf(input: TeamWeekInput): NamedTeamWeek | undefin
     plannedPct: summaryPct(teamUsedPct + leftPct),
     accountUsedPct: summaryPct(usedPct),
     resetsAt: window.reset,
+    start: window.start,
     at: summaryMinute(now),
     limits: input.limits,
   };
@@ -52,4 +53,10 @@ export function teamWeekSummaryOf(input: TeamWeekInput): NamedTeamWeek | undefin
 /** Writes the team's week summary at `path` when that changes it, as every week summary is kept (`keepSummaryFile`); returns whether it wrote. */
 export async function keepTeamWeek(files: Pick<Files, 'read' | 'write'>, path: string, summary: NamedTeamWeek): Promise<boolean> {
   return keepSummaryFile(files, path, formatTeamWeek(summary), TEAM_WEEK_FORMAT);
+}
+
+/** The team's week summary at `path`; undefined with no file, or one damaged or in a format this teamrig cannot read. */
+export async function readTeamWeek(files: Pick<Files, 'read'>, path: string): Promise<TeamWeekSummary | undefined> {
+  const text = await files.read(path);
+  return text === undefined ? undefined : parseTeamWeek(text);
 }
