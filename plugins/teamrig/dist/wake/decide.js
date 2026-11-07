@@ -6,10 +6,11 @@ import { KIT_NAME } from "../core/home.js";
 import { parseDeadline } from "../core/time.js";
 import { isCold } from "../hooks/cold-send.js";
 import { answerTo } from "../register/approval.js";
+import { waitsLetGoOn } from "../register/can-move.js";
 import { taskNumber } from "../register/fold.js";
 import { wouldPark } from "../register/park.js";
 import { neededIds } from "../register/tree.js";
-import { isReady, unfinishedAfter, waitContext } from "../register/waits.js";
+import { unfinishedAfter, waitContext } from "../register/waits.js";
 /**
  * Waking a session idle at its prompt when work is handed to it, pure. A wake is a model turn, so only work the
  * session can go on with now ({@link canGoOn}) and has not seen wakes it: its own task at `wake.priority` or more
@@ -41,14 +42,6 @@ export const QUIET_PRIORITY = 1;
 /** True for a status whose task names reasons to wait for: it goes on once they all cleared (`check`'s READY). */
 function goesOnByWaits(status) {
     return status === 'waiting' || status === 'verifying';
-}
-/**
- * True when every reason the task waits for cleared, an approval its giver answered counting either way (T996): an
- * approval sends the owner to push or merge, a decline back to work on the note's point. A decided task (a leader
- * recorded the owner's answer to its card, T1366) goes on once its waits left cleared, none counting.
- */
-function waitsLetGoOn(task, context) {
-    return (task.waits.length > 0 || task.decided !== null) && task.waits.every((reason) => isReady(reason, context) || answerTo(task, reason) !== undefined);
 }
 /**
  * True when the task's owner can go on with it now: an open or in-progress task, or a waiting task (a verifying
