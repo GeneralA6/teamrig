@@ -9,6 +9,7 @@ import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { burstsOver } from '../../budget/burst.ts';
 import { formatW } from '../../budget/format.ts';
+import { snapshotDirOf } from '../../budget/snapshot.ts';
 import { timingText, waitTiming, type WaitTiming } from '../../decisions/lines.ts';
 import { allowFindings, contextSizeFindings, denyFindings } from '../../doctor/doctor.ts';
 import { hireFlags } from '../../hiring/due.ts';
@@ -49,6 +50,7 @@ import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
+import { fiveHourWarnings } from '../five-hour-check.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
 import { secretGuardOffWarnings } from '../secret-guard-off-check.ts';
 import { secretHookWarnings } from '../secret-hook-check.ts';
@@ -999,9 +1001,9 @@ function withOverLimit(sections: readonly CheckSection[], fit: WeekFit): CheckSe
  * `contextFiles` budgets: the text every call of a session on this machine re-reads (T393). Those findings, the
  * skill flags no session on the team owns, the own team's idle pass gone stale or failing (FLEET-STALE,
  * src/cli/idle-pass-check.ts), each of its repositories whose git hooks skip the secret scan (SECRET-HOOK,
- * src/cli/secret-hook-check.ts) and each secret guard key or settings file that turns a secret check off
- * (SECRET-GUARD-OFF, src/cli/secret-guard-off-check.ts) are the unowned warnings, which go to the lead
- * (src/cli/unowned.ts, T951).
+ * src/cli/secret-hook-check.ts), each secret guard key or settings file that turns a secret check off
+ * (SECRET-GUARD-OFF, src/cli/secret-guard-off-check.ts) and a five-hour window near full (FIVE-HOUR,
+ * src/cli/five-hour-check.ts) are the unowned warnings, which go to the lead (src/cli/unowned.ts, T951).
  */
 export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promise<CheckReport> {
   const now = new Date(runtime.clock.now());
@@ -1054,8 +1056,9 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const hooks = await secretHookWarnings(runtime.files, runtime.secretsGit, own.paths, own.config.delivery.repos);
   const settings = await teamSettingsScope(runtime, { paths: own.paths, config: own.config, project });
   const off = await secretGuardOffWarnings(runtime.files, own.config.secretGuard, settings);
+  const fiveHour = await fiveHourWarnings(runtime.files, snapshotDirOf(own.config.budget, own.paths), own.config.budget, zone, now.getTime());
   const lead = own.config.roles.lead;
-  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off], lead, decisions };
+  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour], lead, decisions };
 }
 
 /**
