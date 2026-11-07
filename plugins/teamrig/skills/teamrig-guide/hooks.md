@@ -46,7 +46,10 @@ The injected context holds:
    owner only verified results, decisions, owner-gate or business questions and incidents; enter each owner order
    it relays as a task in the same turn; plan from `plan` and `check`, never from memory; answer each approval wait
    on it with `approve` after the `approvals` skill's checklist; fix a team rule proven wrong, while a loosening goes
-   to the owner; clear each HIRE flag by its action. No other session pays for them.
+   to the owner; clear each HIRE flag by its action; plan by shippable slices, each ranked goal's next one owned,
+   dated and with its live proof, at most `focus.maxOpenSlices` open across the tree and other work waiting
+   (incidents and `focus.maintenanceClass` work aside), an open slice's waits answered first. No other session pays
+   for them.
 2. **Who you are**. A known session, found from its last `inbox read` or its tab title rather than
    `$TEAMRIG_SESSION`:
 

@@ -41,6 +41,12 @@ of the meeting and none is woken. Urgent work does not wake the lead either; it 
 meeting. The lead's context refresh waits for the meeting's end, unless its context reaches
 `refresh.compactCeilingTokens`.
 
+The lead opens with the ship board: each open shippable slice (a goal's fewest tasks that ship something working,
+proven live; at most `focus.maxOpenSlices` open across the tree) and the slices planned 1 to 2 weeks ahead, one
+line each, with its goal, what it ships, its owner and ship date, and whether it shipped, is on date, or is slipping,
+with why and its new date. A slipping slice's decisions come first among the cards. Until the register holds slices,
+the lead keeps them in `ship-plan.md` in its notes folder.
+
 Each card says what the decision is and why it matters to you, the owner gate or business reason that makes it
 yours, the options with their numbers, the lead's pick and why, and the exact action. The lead reads the cards in
 plain text and you answer in your own words; a team that sets `decisions.askWith: picker` asks with Claude Code's
