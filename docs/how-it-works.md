@@ -344,6 +344,9 @@ names, so the effective dues and needed-by names it shows are the ones teamrig p
 From each team's config and roster it builds the team tree (`teamNodeOf` per team, then `TeamTree`: a team's parent,
 children and root), and from the text of the hire log it reads who was hired and who retired (`readHiringLog`, then
 `activeHires`, `retiredSessions`, `rehiredFrom`), the same records teamrig's routing and hire commands use.
+From the text of the session log (`SESSION_LOG_IN_STATE` under the team's state folder) it reads each session's
+closes and reopens (`readSessionLog`, then `sessionLogBySession`, and `closedOf` for a session closed now), the
+records `teamrig close`, the idle pass and `teamrig open` write, so it counts them and shows the last one.
 It words a session as the tab titles do, `[acme] lead`, through `sessionDisplay` (and `bareName`, the name without
 its team's prefix), so the reader and the titles cannot drift. It reads the model and effort a session starts on with
 `launchOf` (its `launch` entry, the lead's defaults under the keys it leaves unset) and words them with
