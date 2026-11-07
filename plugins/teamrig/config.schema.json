@@ -1395,6 +1395,7 @@
         "maintenanceClass": { "description": "The class ranked by severity first (bug, critical): one of classes.", "type": "string", "default": "Maintenance" },
         "defaultClass": { "description": "The class a task with none counts as; it ranks last. One of classes.", "type": "string", "default": "Improvements" },
         "maxActiveKeyResults": { "description": "The key results (goals with a parent) the team may hold with a target of today or later; teamrig goal add refuses one more.", "type": "integer", "minimum": 1, "maximum": 100, "default": 5 },
+        "maxOpenSlices": { "description": "The shippable slices (a goal's fewest tasks that ship something working, proven live) the leads keep open across the tree at once; other work waits, incidents and Maintenance excepted. The lead's rules print it.", "type": "integer", "minimum": 1, "maximum": 20, "default": 3 },
         "score": {
           "description": "The parts of a task's WSJF score: cost of delay (value + urgency + unblocks + owner order) over size, in % of the week.",
           "type": "object",

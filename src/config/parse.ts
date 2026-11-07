@@ -1246,6 +1246,8 @@ function parseStatusLine(read: ConfigReader, raw: JsonRecord): StatusLineConfig 
 const FOCUS_MAX_CLASSES = 12;
 /** A team works a handful of key results at once (T2076); 100 is far past any team today. */
 const FOCUS_KEY_RESULTS = { min: 1, max: 100 } as const;
+/** At least one slice open, so work can ship; 20 is far past the few a cap is for (T2201). */
+const FOCUS_OPEN_SLICES = { min: 1, max: 20 } as const;
 /** One part of a cost of delay; 1000 is far past the defaults' 20, so a team can widen the scale. */
 const FOCUS_SCORE_VALUE = { min: 0, max: 1000 } as const;
 /** A goal rank or a priority past the list takes its last value, so 20 entries is plenty. */
@@ -1304,6 +1306,7 @@ function parseFocus(read: ConfigReader, raw: JsonRecord): FocusConfig {
   return {
     ...classes,
     maxActiveKeyResults: read.integer(raw, 'maxActiveKeyResults', path, defaults.maxActiveKeyResults, FOCUS_KEY_RESULTS),
+    maxOpenSlices: read.integer(raw, 'maxOpenSlices', path, defaults.maxOpenSlices, FOCUS_OPEN_SLICES),
     score: parseFocusScore(read, read.section(raw, 'score', path), `${path}.score`),
     expedite: {
       critical: read.boolean(expedite, 'critical', `${path}.expedite`, defaults.expedite.critical),
