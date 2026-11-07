@@ -14,6 +14,12 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/
  */
 export const SESSION_LOG_FORMAT = 1;
 
+/**
+ * Where the log sits under the team's state folder (`<kit home>/teams/<team>/state`, unless the team config's
+ * `paths.state` moves it), as `teamPaths` (src/core/home.ts) names it, for a reader that finds the file itself.
+ */
+export const SESSION_LOG_IN_STATE = ['session-log.jsonl'] as const;
+
 export interface CloseRecord {
   readonly kind: 'close';
   readonly session: string;
@@ -99,6 +105,20 @@ function recordOf(record: SessionLogRecord): JsonRecord {
 export function closedOf(records: readonly SessionLogRecord[], session: string): CloseRecord | undefined {
   const newest = records.findLast((record) => record.session === session);
   return newest?.kind === 'close' ? newest : undefined;
+}
+
+/** Each session's records, oldest first, by session id: what a reader shows of one session's closes and reopens. */
+export function sessionLogBySession(records: readonly SessionLogRecord[]): ReadonlyMap<string, readonly SessionLogRecord[]> {
+  const bySession = new Map<string, SessionLogRecord[]>();
+  for (const record of records) {
+    const own = bySession.get(record.session);
+    if (own === undefined) {
+      bySession.set(record.session, [record]);
+    } else {
+      own.push(record);
+    }
+  }
+  return bySession;
 }
 
 /** The log's text as its records, oldest first, with the damaged and newer lines it skipped counted. */

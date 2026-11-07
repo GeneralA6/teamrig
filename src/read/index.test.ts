@@ -44,7 +44,7 @@ describe('the read entry', () => {
   it('reaches no node: module and no package, so a reader without Node built-ins can run it', () => {
     const closure = importClosure(ENTRY, SRC, (file) => readFileSync(file, 'utf8'));
     assert.deepEqual(closure.outside, []);
-    for (const file of ['register/events.ts', 'register/fold.ts', 'register/layout.ts', 'register/marker.ts', 'register/stats.ts', 'register/stats-health.ts', 'inbox/unread.ts', 'config/parse.ts', 'config/tree.ts', 'hiring/record.ts', 'budget/team-week-summary.ts', 'budget/session-week-summary.ts']) {
+    for (const file of ['register/events.ts', 'register/fold.ts', 'register/layout.ts', 'register/marker.ts', 'register/stats.ts', 'register/stats-health.ts', 'inbox/unread.ts', 'config/parse.ts', 'config/tree.ts', 'hiring/record.ts', 'budget/team-week-summary.ts', 'budget/session-week-summary.ts', 'sessions/log.ts']) {
       assert.ok(closure.files.includes(file), `${file} is part of the read side`);
     }
     assert.ok(!closure.files.some((file) => file.endsWith('.test.ts')), 'no test file is reachable');
@@ -216,5 +216,19 @@ describe('the read entry', () => {
     const reply = { at: '2030-01-08T09:00:00.000Z', kind: 'reply', text: 'shipped', claude: 'claude-1', truncated: true, upTo: 'u-7' };
     assert.deepEqual(read.parseEntry({ v: read.TURN_LOG_VERSION, ...reply, later: 'a field it does not know' }), reply);
     assert.equal(read.parseEntry({ v: read.TURN_LOG_VERSION + 1, ...reply }), undefined);
+  });
+
+  it("reads each session's closes and reopens from the session log, and none from a newer teamrig (T1725)", () => {
+    const close: read.CloseRecord = { kind: 'close', session: 'alpha', by: 'idle-pass', at: '2030-01-08T09:00:00.000Z', claudeSession: 'claude-1', idleMinutes: 75, freedMb: 900 };
+    const reopen: read.ReopenRecord = { kind: 'reopen', session: 'alpha', at: '2030-01-08T10:00:00.000Z', resumed: 'claude-1' };
+    const bravo: read.CloseRecord = { kind: 'close', session: 'bravo', by: 'lead', at: '2030-01-08T09:30:00.000Z', claudeSession: 'claude-2', idleMinutes: 40, freedMb: 600 };
+    const line = (record: read.SessionLogRecord, version: number): string => JSON.stringify({ v: version, ...record });
+    const text = [line(close, read.SESSION_LOG_FORMAT), line(bravo, read.SESSION_LOG_FORMAT), line(reopen, read.SESSION_LOG_FORMAT), line(close, read.SESSION_LOG_FORMAT + 1)].join('\n');
+    const log = read.readSessionLog(text);
+    assert.equal(log.skipped, 1);
+    const bySession = read.sessionLogBySession(log.records);
+    assert.deepEqual([...bySession.entries()], [['alpha', [close, reopen]], ['bravo', [bravo]]]);
+    assert.deepEqual(['alpha', 'bravo'].map((session) => read.closedOf(log.records, session)), [undefined, bravo]);
+    assert.deepEqual(read.SESSION_LOG_IN_STATE, ['session-log.jsonl']);
   });
 });

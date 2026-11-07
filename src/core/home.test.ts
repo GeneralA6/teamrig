@@ -5,6 +5,7 @@ import { ROLLUP_IN_STATE } from '../budget/rollup-file.ts';
 import { SESSIONS_WEEK_IN_STATE } from '../budget/session-week-summary.ts';
 import { TASKS_WEEK_IN_STATE } from '../budget/task-week-summary.ts';
 import { TEAM_WEEK_IN_STATE } from '../budget/team-week-summary.ts';
+import { SESSION_LOG_IN_STATE } from '../sessions/log.ts';
 import { claudeConfigDir, claudeTempDir, resolveKitHome, taskFolder, teamHome, teamPaths } from './home.ts';
 
 const USER_HOME = join('/', 'u');
@@ -103,7 +104,7 @@ describe('teamPaths', () => {
     assert.equal(paths.wakeLog, join(TEAM_HOME, 'state', 'wakes.jsonl'));
     assert.equal(paths.launchSettings, join(TEAM_HOME, 'state', 'launch'));
     assert.equal(paths.sessions, join(TEAM_HOME, 'state', 'sessions'));
-    assert.equal(paths.sessionLog, join(TEAM_HOME, 'state', 'session-log.jsonl'));
+    assert.equal(paths.sessionLog, join(TEAM_HOME, 'state', ...SESSION_LOG_IN_STATE), 'where the read side says the session log is');
     assert.equal(paths.secretIncidents, join(TEAM_HOME, 'state', 'secret-incidents.jsonl'));
     assert.equal(paths.secretIncidentsLock, join(TEAM_HOME, 'state', 'secret-incidents.lock'));
   });
