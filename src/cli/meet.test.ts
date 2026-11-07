@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
 import type { CommitCharge } from '../delivery/memory.ts';
+import { inboxLineOf } from '../inbox/inbox.ts';
+import { lineHash } from '../inbox/line-hash.ts';
 import { decodePrompt, meetAsk, meetPrompt } from '../open/prompt.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
@@ -12,7 +14,7 @@ import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { ok } from '../testing/hired-team.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
-import { WakeAsks } from '../wake/asks.ts';
+import { askVerdictOf, asksNowOf, WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
 const HOUR_MS = 3_600_000;
@@ -45,6 +47,11 @@ function hostOf(rows: readonly { pid: number; parent: number; bytes: number }[])
   const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
   const transcripts = new MemoryTranscripts({ [TRANSCRIPT]: reply(40_000) }, Date.parse(CLOSED.at) - 2 * HOUR_MS);
   return { processes, options: { platform: 'win32', probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists(rows, CHARGE), processes, transcripts } };
+}
+
+/** Alpha's start record, naming the Claude Code process `hostOf` lists when it runs. */
+async function runningAlpha(kit: CliHarness): Promise<void> {
+  await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', { claudePid: CLAUDE_PID, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' });
 }
 
 /** The first prompt a tab's launch line carries. */
@@ -95,10 +102,10 @@ describe('teamrig meet <id|name>', () => {
 
   it('wakes a running session with an inbox line from the owner and opens no tab', async () => {
     const kit = await alphaWithACard();
-    await new SessionRecordStore(kit.files, { sessions: SESSIONS }).write('alpha', { claudePid: CLAUDE_PID, claudeSession: CLAUDE_SESSION, at: '2030-01-08T08:00:00.000Z' });
+    await runningAlpha(kit);
     const { options, processes } = hostOf([{ pid: CLAUDE_PID, parent: 8000, bytes: 1100 * MB }]);
     const result = ok(await kit.run(['meet', 'app-alpha'], options));
-    assert.deepEqual(result.stdout, ['WOKE app-alpha (session alpha): 1 card(s) waiting on owner; an inbox line asks it to bring them now']);
+    assert.deepEqual(result.stdout, [`WAKES app-alpha (session alpha) within about 15 s once its tab is idle (a running turn ends first): 1 card(s) waiting on owner; an inbox line asks it to bring them now`]);
     assert.deepEqual(processes.started, []);
     const asks = await new WakeAsks(kit.files, ASKS).read('alpha');
     assert.deepEqual(
@@ -107,6 +114,37 @@ describe('teamrig meet <id|name>', () => {
     );
     const inbox = ok(await kit.run(['inbox', 'read', '--session', 'alpha'])).stdout;
     assert.ok(inbox.some((line) => line.endsWith(`owner: ${meetAsk('alpha', 'owner')}`)), inbox.join('\n'));
+  });
+
+  it('asks at once, bound to its inbox line, not after wake.batchSeconds as a plain ask (T2207)', async () => {
+    const kit = await alphaWithACard();
+    await runningAlpha(kit);
+    const now = kit.clock.now();
+    ok(await kit.run(['meet', 'alpha'], hostOf([{ pid: CLAUDE_PID, parent: 8000, bytes: 1100 * MB }]).options));
+    const stored = await new WakeAsks(kit.files, ASKS).read('alpha');
+    const line = lineHash(inboxLineOf(new Date(now), 'owner', meetAsk('alpha', 'owner')));
+    assert.deepEqual(stored.map((each) => each.ask?.by), [{ at: now, line }]);
+    // The owner waits live: the first wake check after the post wakes the tab, though the team batches plain asks.
+    const found = await asksNowOf(stored, now, () => Promise.resolve(new Set([line])));
+    assert.equal(askVerdictOf(found, now, 120_000).kind, 'wake');
+  });
+
+  it('posts no second line while its meet ask waits, and asks again once that one is taken (T2207)', async () => {
+    const kit = await alphaWithACard();
+    await runningAlpha(kit);
+    const running = (): RunOptions => hostOf([{ pid: CLAUDE_PID, parent: 8000, bytes: 1100 * MB }]).options;
+    ok(await kit.run(['meet', 'alpha'], running()));
+    kit.clock.advance(20_000);
+    const again = ok(await kit.run(['meet', 'alpha'], running()));
+    assert.deepEqual(again.stdout, ['ASKED app-alpha (session alpha) at 10:00 UTC: that ask still waits for its tab to be idle (a running turn ends first), so no second line was posted']);
+    const asks = new WakeAsks(kit.files, ASKS);
+    assert.equal((await asks.read('alpha')).length, 1);
+    const meetLines = async (): Promise<number> => ok(await kit.run(['inbox', 'read', '--session', 'alpha'])).stdout.filter((each) => each.endsWith(meetAsk('alpha', 'owner'))).length;
+    assert.equal(await meetLines(), 1);
+    await asks.remove('alpha', await asks.read('alpha'));
+    assert.match(ok(await kit.run(['meet', 'alpha'], running())).stdout[0] ?? '', /^WAKES app-alpha /);
+    assert.equal((await asks.read('alpha')).length, 1);
+    assert.equal(await meetLines(), 1);
   });
 
   it("refuses a session with no card due, and one it cannot tell runs, opening nothing", async () => {
