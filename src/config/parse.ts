@@ -1307,6 +1307,7 @@ function parseFocus(read: ConfigReader, raw: JsonRecord): FocusConfig {
     ...classes,
     maxActiveKeyResults: read.integer(raw, 'maxActiveKeyResults', path, defaults.maxActiveKeyResults, FOCUS_KEY_RESULTS),
     slicesPerSession: read.integer(raw, 'slicesPerSession', path, defaults.slicesPerSession, CONFIG_LIMITS.slicesPerSession),
+    maxOwnerDecisions: read.integer(raw, 'maxOwnerDecisions', path, defaults.maxOwnerDecisions, CONFIG_LIMITS.maxOwnerDecisions),
     score: parseFocusScore(read, read.section(raw, 'score', path), `${path}.score`),
     expedite: {
       critical: read.boolean(expedite, 'critical', `${path}.expedite`, defaults.expedite.critical),

@@ -1357,12 +1357,14 @@ describe('parseConfig', () => {
         parkAfterDays: 7,
         improvementsDay: 'mon',
         slicesPerSession: 2,
+        maxOwnerDecisions: 8,
       },
     });
     assert.deepEqual(set.issues, []);
     const { focus } = set.config;
     assert.equal(focus.improvementsDay, 'mon');
     assert.equal(focus.slicesPerSession, 2);
+    assert.equal(focus.maxOwnerDecisions, 8);
     assert.deepEqual([focus.classes, focus.roadmapClass, focus.maintenanceClass, focus.defaultClass], [['Product', 'Upkeep', 'Tooling'], 'Product', 'Upkeep', 'Tooling']);
     assert.deepEqual(focus.allocation, { Product: 70, Upkeep: 20, Tooling: 10 });
     assert.deepEqual([focus.score.rankValues, focus.score.minSizePct, focus.score.maintenanceValue], [[30, 10], 0.1, DEFAULT_FOCUS.score.maintenanceValue]);
@@ -1378,6 +1380,9 @@ describe('parseConfig', () => {
       [{ slicesPerSession: 0 }, 'focus.slicesPerSession'],
       [{ slicesPerSession: 6 }, 'focus.slicesPerSession'],
       [{ slicesPerSession: 1.5 }, 'focus.slicesPerSession'],
+      [{ maxOwnerDecisions: 0 }, 'focus.maxOwnerDecisions'],
+      [{ maxOwnerDecisions: 21 }, 'focus.maxOwnerDecisions'],
+      [{ maxOwnerDecisions: 2.5 }, 'focus.maxOwnerDecisions'],
       [{ score: { rankValues: [20, -1] } }, 'focus.score.rankValues[1]'],
       [{ score: { ownerOrderValues: [] } }, 'focus.score.ownerOrderValues'],
       [{ score: { dueSoonDays: 61 } }, 'focus.score.dueSoonDays'],
