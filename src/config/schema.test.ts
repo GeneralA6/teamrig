@@ -128,6 +128,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   overSizeMultiple: 'register.check.overSizeMultiple',
   stopgapFiles: 'register.check.stopgapFiles',
   persistentFailureHours: 'alerts.persistentFailureHours',
+  maxOpenSlices: 'focus.maxOpenSlices',
   decisionBatchTimes: 'decisions.batchTimesUtc',
   decisionBatchAt: 'decisions.batchAt',
   chainNudgeAt: 'loops.chainNudgeAt',
