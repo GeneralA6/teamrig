@@ -1,4 +1,5 @@
 import { parseDeadline } from "../core/time.js";
+import { canMove } from "./can-move.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES } from "./model.js";
 import { wouldPark } from "./park.js";
@@ -60,8 +61,8 @@ export function loopFix(id, other, owner, byWait) {
 /**
  * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `pinned` (a task the
  * owner's leader pinned, above every other key); `band` (expedite, then Roadmap and Maintenance, then the rest;
- * score.ts); `ready` (a task that can move before one with a need not finished, whose value still reaches that need
- * through its score); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of
+ * score.ts); `ready` (a task that can move before one that cannot, whose value still reaches any need of it through
+ * that need's score); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of
  * its equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
  * tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size` (the smallest
  * first, unsized last); `age` (the lowest number first).
@@ -422,9 +423,9 @@ export class TaskTree {
         const task = this.tasks.get(id);
         return task !== undefined && isActive(task);
     }
-    /** True for an active task with a need not finished here or in another register; a wait on a person or a time is no need. */
+    /** True for an active task that cannot move, its needs read here or in another register. */
     isBlocked(task) {
-        return isActive(task) && needsOf(task).some((id) => !isFinished(id, this.context));
+        return isActive(task) && !canMove(task, this.context);
     }
 }
 function isActive(task) {

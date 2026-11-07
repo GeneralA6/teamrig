@@ -1,6 +1,6 @@
+import { canMove } from "./can-move.js";
 import { classOf } from "./focus.js";
 import { bandOf } from "./score.js";
-import { unfinishedAfter } from "./waits.js";
 /**
  * The WIP rule (T2076): a session finishes what the team ranked first before it opens more. A start of anything but
  * Roadmap or Maintenance work is held while its owner holds Roadmap work that can move, or until the week resets once
@@ -11,9 +11,9 @@ import { unfinishedAfter } from "./waits.js";
 const NAMED_TASKS = 3;
 /** The way past a hold for work too small to reorder a list over, core rule 5's exemption. */
 const ONE_COMMIT_WAY = 'or, for a one-commit fix, start it with --one-commit';
-/** Roadmap work that can move: open or in progress, with no wait, and every task it comes after finished. */
-function canMove(task, context) {
-    return (task.status === 'open' || task.status === 'in-progress') && task.waits.length === 0 && unfinishedAfter(task.after, context).length === 0;
+/** Roadmap work its owner can take up now: open or in progress, with nothing holding it back. */
+function movesNow(task, context) {
+    return (task.status === 'open' || task.status === 'in-progress') && canMove(task, context);
 }
 /** An owner's order and an expedite outrank any rule of thumb about what to do first. */
 function isExempt(task, workClass, focus, ownerSource) {
@@ -40,7 +40,7 @@ export function wipHold({ task, status, oneCommit, spentClasses }, tasks, contex
         if (spentClasses?.has(workClass) === true) {
             return `${task.id} is ${workClass} work and ${workClass} has spent its share of the week [focus.allocation]: it waits for the week's reset, ${ONE_COMMIT_WAY}`;
         }
-        const first = others.filter((held) => classOf(held, focus) === focus.roadmapClass && canMove(held, context));
+        const first = others.filter((held) => classOf(held, focus) === focus.roadmapClass && movesNow(held, context));
         if (first.length > 0) {
             return `${task.id} is ${workClass} work and ${task.owner} holds ${focus.roadmapClass} work that can move: ${namedIds(first)}; work that first [focus.wip], ${ONE_COMMIT_WAY}`;
         }
