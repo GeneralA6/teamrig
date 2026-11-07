@@ -2,7 +2,7 @@ import { transcriptTitleOf } from "../../budget/attribute.js";
 import { claudeProjectsDir, discoverTranscripts } from "../../budget/discover.js";
 import { CATCH_UP_CHUNK_BYTES } from "../../budget/measure.js";
 import { applyPlans, attributeInTree, foldTeam, outcomeCounts, planDays } from "../../budget/rollup-run.js";
-import { rollupFileName } from "../../budget/rollup-file.js";
+import { rollupDayOf } from "../../budget/rollup-file.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { addUtcDays, formatUtcDay, MS_PER_DAY, parseUtcDay } from "../../core/time.js";
 import { indexMarks } from "../../inbox/marks.js";
@@ -20,10 +20,7 @@ import { loadTree } from "../tree.js";
  */
 /** The newest day the team's rollup folder holds; undefined when it holds none. */
 async function newestRolledDay(runtime, kit) {
-    const days = (await runtime.files.list(kit.paths.rollup)).flatMap((name) => {
-        const day = name.slice(0, -rollupFileName('').length);
-        return name === rollupFileName(day) && parseUtcDay(day) !== undefined ? [day] : [];
-    });
+    const days = (await runtime.files.list(kit.paths.rollup)).flatMap((name) => rollupDayOf(name) ?? []);
     return days.sort().at(-1);
 }
 function dayFlag(args, name, today) {
