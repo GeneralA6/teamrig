@@ -56,7 +56,7 @@ export function isApprovalVerdict(value) {
     return APPROVAL_VERDICTS.some((verdict) => verdict === value);
 }
 /** The size base a line gives, or why it is not one. */
-function parseSizeBase(value) {
+export function parseSizeBase(value) {
     if (!isRecord(value)) {
         return 'sizeBase is not an object';
     }
