@@ -1,3 +1,4 @@
+import type { SizeBase } from '../register/events.ts';
 import type { UsageState } from './store.ts';
 import type { OpenTurn } from './tasks.ts';
 
@@ -60,30 +61,68 @@ export function taskDaysOf(state: UsageState): ReadonlyMap<string, ReadonlyMap<s
   return days;
 }
 
-/** W per UTC day on `task` in one session's usage, its open turns' share included. */
-function daysOf(state: UsageState, task: string): Map<string, number> {
-  const days = new Map<string, number>();
-  for (const [day, tasks] of taskDaysOf(state)) {
+/** W per UTC day on `task` out of one session's `taskDaysOf`. */
+function daysOf(days: ReturnType<typeof taskDaysOf>, task: string): [string, number][] {
+  return [...days].flatMap(([day, tasks]): [string, number][] => {
     const w = tasks.get(task);
-    if (w !== undefined) {
-      days.set(day, w);
+    return w === undefined ? [] : [[day, w]];
+  });
+}
+
+/**
+ * `taskUseOf` for a caller that asks about many tasks, as the ranking and the budget hooks do: each session's days are
+ * worked out once, not once per task.
+ */
+export function taskUseReader(bySession: ReadonlyMap<string, UsageState>): (task: string) => TaskUse {
+  const stores = [...bySession].map(([session, state]) => ({ session, days: taskDaysOf(state) }));
+  return (task) => {
+    const sessions: SessionTaskUse[] = [];
+    for (const { session, days } of stores) {
+      const own = daysOf(days, task);
+      if (own.length > 0) {
+        const byDay = Object.fromEntries(own.sort(([a], [b]) => a.localeCompare(b)));
+        sessions.push({ session, byDay, w: sum(own.map(([, w]) => w)) });
+      }
+    }
+    sessions.sort((a, b) => b.w - a.w);
+    return { task, sessions, w: sum(sessions.map((session) => session.w)) };
+  };
+}
+
+/** The W the meter keeps on `task`, per session, from each session's usage by its id. */
+export function taskUseOf(bySession: ReadonlyMap<string, UsageState>, task: string): TaskUse {
+  return taskUseReader(bySession)(task);
+}
+
+/** The W of a task's use per UTC day, its sessions' summed. */
+export function wByDay(use: TaskUse): Map<string, number> {
+  const days = new Map<string, number>();
+  for (const session of use.sessions) {
+    for (const [day, w] of Object.entries(session.byDay)) {
+      days.set(day, (days.get(day) ?? 0) + w);
     }
   }
   return days;
 }
 
-/** The W the meter keeps on `task`, per session, from each session's usage by its id. */
-export function taskUseOf(bySession: ReadonlyMap<string, UsageState>, task: string): TaskUse {
-  const sessions: SessionTaskUse[] = [];
-  for (const [session, state] of bySession) {
-    const days = daysOf(state, task);
-    if (days.size > 0) {
-      const byDay = Object.fromEntries([...days].sort(([a], [b]) => a.localeCompare(b)));
-      sessions.push({ session, byDay, w: sum(days.values()) });
+/**
+ * The W a task spent since its size was set (T649): with no base, all the meter keeps on it; else the days after the
+ * base's day in full, and on that day what it spent past the base's W. A day before it counts nothing, so a base whose
+ * day the meter no longer keeps counts only the days after it.
+ */
+export function spentSince(use: TaskUse, base: SizeBase | null): number {
+  if (base === null) {
+    return use.w;
+  }
+  let spent = 0;
+  for (const [day, w] of wByDay(use)) {
+    if (day > base.day) {
+      spent += w;
+    } else if (day === base.day) {
+      spent += Math.max(0, w - base.w);
     }
   }
-  sessions.sort((a, b) => b.w - a.w);
-  return { task, sessions, w: sum(sessions.map((session) => session.w)) };
+  return spent;
 }
 
 /**
