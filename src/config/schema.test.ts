@@ -155,6 +155,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   paceEndHoursBeforeReset: 'budget.paceEndHoursBeforeReset',
   sessionShare: 'budget.sessions.*.share',
   warnAtPct: 'budget.warnAtPct',
+  budgetFiveHourWarnPct: 'budget.fiveHourWarnPct',
   paceTolerancePct: 'budget.paceTolerancePct',
   quietPaceWeight: 'budget.quietHours.paceWeight',
   liftMaxStopPct: 'budget.lift.maxStopPct',

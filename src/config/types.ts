@@ -697,6 +697,11 @@ export interface BudgetConfig {
   readonly pauseByPriority: boolean;
   /** The live warning shows a line as a session passes each of these % of its daily budget. */
   readonly warnAtPct: readonly number[];
+  /**
+   * The five-hour check warns the lead at this % of the account's five-hour window. Its forecast catches a wave early;
+   * this mark is the backstop for a steady rise the forecast keeps under 100%.
+   */
+  readonly fiveHourWarnPct: number;
   /** The team is ahead of its pace line once its used % is more than this many points above it. */
   readonly paceTolerancePct: number;
   readonly overAction: OverAction;

@@ -1470,6 +1470,7 @@ describe('parseConfig budget', () => {
         sessions: { alpha: { share: 2 }, bravo: { share: 0.5 } },
         pauseByPriority: true,
         warnAtPct: [50, 100, 150],
+        fiveHourWarnPct: 70,
         paceTolerancePct: 1,
         overAction: 'ask-lead',
         escalate: 'session',
@@ -1493,6 +1494,7 @@ describe('parseConfig budget', () => {
       sessions: { alpha: { share: 2 }, bravo: { share: 0.5 } },
       pauseByPriority: true,
       warnAtPct: [50, 100, 150],
+      fiveHourWarnPct: 70,
       paceTolerancePct: 1,
       overAction: 'ask-lead',
       escalate: 'session',
@@ -1563,6 +1565,16 @@ describe('parseConfig budget', () => {
     assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, sessions: { alpha: { share: 2 } } });
   });
 
+  it('warns at 80% of the five-hour window unless told, and refuses a mark outside 1 to 100', () => {
+    assert.equal(parseConfig(ROSTER).config.budget.fiveHourWarnPct, 80);
+    for (const [bad, got] of [[0, '0'], [101, '101'], ['high', '"high"']] as const) {
+      const { config, issues } = parseConfig({ ...ROSTER, budget: { fiveHourWarnPct: bad } });
+      assert.deepEqual(paths(issues), ['budget.fiveHourWarnPct']);
+      assert.equal(issues[0]?.message, `expected a number from 1 to 100, got ${got}`);
+      assert.equal(config.budget.fiveHourWarnPct, 80);
+    }
+  });
+
   it('refuses out-of-range numbers, unknown words and malformed parts, keeping the defaults', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
@@ -1578,6 +1590,7 @@ describe('parseConfig budget', () => {
         sessions: { alpha: { share: -1 }, carol: { share: 1 }, bravo: 'half' },
         pauseByPriority: 'yes',
         warnAtPct: [80, 0, 'x'],
+        fiveHourWarnPct: 101,
         paceTolerancePct: 11,
         overAction: 'stop',
         escalate: 'always',
@@ -1591,6 +1604,7 @@ describe('parseConfig budget', () => {
       'budget.account',
       'budget.escalate',
       'budget.extraWPerUsd',
+      'budget.fiveHourWarnPct',
       'budget.lift.maxStopPct',
       'budget.lift.reserveStopPct',
       'budget.maxBytesPerHook',
