@@ -1423,7 +1423,7 @@
           }
         },
         "wip": {
-          "description": "The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, or until the week resets once Improvements has spent its allocation, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt.",
+          "description": "The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, or until the week resets once Improvements has spent its allocation, and a start past maxInProgress is held. --one-commit, a reopen of a verifying or done task, an expedited task and an owner-sourced task are exempt.",
           "type": "object",
           "properties": {
             "mode": { "description": "refuse holds the start; warn prints why and lets it through; off checks nothing.", "type": "string", "enum": ["refuse", "warn", "off"], "default": "refuse" },
