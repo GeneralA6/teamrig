@@ -35,8 +35,8 @@ export const CONFIG_LIMITS = {
   overSizeMultiple: { min: 0, max: 10 },
   stopgapFiles: { maxItems: 20, maxLength: 260 },
   persistentFailureHours: { min: 1, max: 720 },
-  /** At least one slice open, so work can ship; 20 is far past the few a cap is for (T2201). */
-  maxOpenSlices: { min: 1, max: 20 },
+  /** At least one slice open, so work can ship; past 5 a session spreads its work as thin as no cap would (T2215). */
+  slicesPerSession: { min: 1, max: 5 },
   decisionBatchTimes: { maxItems: 8 },
   decisionBatchAt: { min: 0, max: 50 },
   chainNudgeAt: { min: 0, max: 50 },

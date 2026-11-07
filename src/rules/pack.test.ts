@@ -78,7 +78,7 @@ function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 
       classes: ['Roadmap', longest('m', 32), 'Improvements'],
       maintenanceClass: longest('m', 32),
       allocation: { Roadmap: 60, [longest('m', 32)]: 25, Improvements: 15 },
-      maxOpenSlices: CONFIG_LIMITS.maxOpenSlices.max,
+      slicesPerSession: CONFIG_LIMITS.slicesPerSession.max,
     },
     tabStatus: { enabled: true },
     ruleConflicts: Array.from({ length: CONFIG_LIMITS.ruleConflicts.maxItems }, () => ({
@@ -112,16 +112,21 @@ describe('renderLeadRules', () => {
     assert.match(lines, /\n- Send another session's task work \(research, code, checks, an answer\) to it with a deadline; relay its answer\.$/);
   });
 
-  it("plans by shippable slices, the tree's cap and the exempt class read from the team's focus config (T2201)", () => {
+  it("plans by shippable slices, each session's cap and the exempt class read from the team's focus config (T2201, T2215)", () => {
     const lines = renderLeadRules(
-      testConfig({ focus: { classes: ['Product', 'Upkeep', 'Tooling'], roadmapClass: 'Product', maintenanceClass: 'Upkeep', defaultClass: 'Tooling', allocation: { Product: 70, Upkeep: 20, Tooling: 10 }, maxOpenSlices: 2 } }),
+      testConfig({ focus: { classes: ['Product', 'Upkeep', 'Tooling'], roadmapClass: 'Product', maintenanceClass: 'Upkeep', defaultClass: 'Tooling', allocation: { Product: 70, Upkeep: 20, Tooling: 10 }, slicesPerSession: 2 } }),
       COMMAND,
     );
     assert.match(
       lines,
-      /\n- Plan by shippable slices: each ranked goal's next one \(the fewest tasks that ship something working, proven live\) gets an owner, ship date and live proof; at most 2 open in the tree, other work waiting \(incidents and Upkeep exempt\) \[focus\.maxOpenSlices, focus\.maintenanceClass\]; answer an open slice's waits first\.\n/,
+      /\n- Plan by shippable slices: each ranked goal's next one \(the fewest tasks that ship something working, proven live\) gets an owner, ship date and live proof; at most 2 open per session, one more only while one waits on another session or the owner; other work waits \(incidents and Upkeep exempt\) \[focus\.slicesPerSession, focus\.maintenanceClass\]; answer an open slice's waits first\.\n/,
     );
-    assert.match(renderLeadRules(testConfig(), COMMAND), /at most 3 open in the tree, other work waiting \(incidents and Maintenance exempt\)/);
+    assert.match(renderLeadRules(testConfig(), COMMAND), /at most 1 open per session, one more only while one waits on another session or the owner; other work waits \(incidents and Maintenance exempt\)/);
+  });
+
+  it('caps slices per session, never across the tree, so no lead fills the slots with its own team (T2215)', () => {
+    const lines = renderLeadRules(testConfig(), COMMAND);
+    assert.doesNotMatch(lines, /in the tree|across the tree|maxOpenSlices/);
   });
 });
 
