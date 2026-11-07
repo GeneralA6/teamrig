@@ -213,9 +213,8 @@ Then check the ship plan: `ship-plan.md` in your notes folder (`teamrig files --
 register holds slices, one row per slice (goal, slice, tasks, owner, ship date, live proof, status). Each open slice
 has an owner, a ship date and a live proof. One past its date, or with a task waiting on you, comes first: answer
 that wait, then re-cut the slice smaller or re-date it with its reason. A slice ships when its live proof is seen,
-and its goal's next one opens then. With more than `[focus.maxOpenSlices]` open across the tree, park the newest
-until one ships; a child team's lead opens one only within that cap, asking its own leader when the tree is at it.
-Work outside an open slice waits, incidents and `[focus.maintenanceClass]` work aside: ask its session in one inbox
+and its goal's next one opens then. Each session keeps at most `[focus.slicesPerSession]` open, one more only while
+one waits on another session or the owner; past that, park its newest until one ships. Work outside an open slice waits, incidents and `[focus.maintenanceClass]` work aside: ask its session in one inbox
 line to park it.
 
 Act on each flag:

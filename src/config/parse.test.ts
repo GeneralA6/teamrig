@@ -1356,13 +1356,13 @@ describe('parseConfig', () => {
         expedite: { ownerP1: false },
         parkAfterDays: 7,
         improvementsDay: 'mon',
-        maxOpenSlices: 5,
+        slicesPerSession: 2,
       },
     });
     assert.deepEqual(set.issues, []);
     const { focus } = set.config;
     assert.equal(focus.improvementsDay, 'mon');
-    assert.equal(focus.maxOpenSlices, 5);
+    assert.equal(focus.slicesPerSession, 2);
     assert.deepEqual([focus.classes, focus.roadmapClass, focus.maintenanceClass, focus.defaultClass], [['Product', 'Upkeep', 'Tooling'], 'Product', 'Upkeep', 'Tooling']);
     assert.deepEqual(focus.allocation, { Product: 70, Upkeep: 20, Tooling: 10 });
     assert.deepEqual([focus.score.rankValues, focus.score.minSizePct, focus.score.maintenanceValue], [[30, 10], 0.1, DEFAULT_FOCUS.score.maintenanceValue]);
@@ -1375,9 +1375,9 @@ describe('parseConfig', () => {
       [{ classes: ['Roadmap', 'Roadmap'] }, 'focus.classes'],
       [{ classes: ['9lives'] }, 'focus.classes[0]'],
       [{ maxActiveKeyResults: 0 }, 'focus.maxActiveKeyResults'],
-      [{ maxOpenSlices: 0 }, 'focus.maxOpenSlices'],
-      [{ maxOpenSlices: 21 }, 'focus.maxOpenSlices'],
-      [{ maxOpenSlices: 2.5 }, 'focus.maxOpenSlices'],
+      [{ slicesPerSession: 0 }, 'focus.slicesPerSession'],
+      [{ slicesPerSession: 6 }, 'focus.slicesPerSession'],
+      [{ slicesPerSession: 1.5 }, 'focus.slicesPerSession'],
       [{ score: { rankValues: [20, -1] } }, 'focus.score.rankValues[1]'],
       [{ score: { ownerOrderValues: [] } }, 'focus.score.ownerOrderValues'],
       [{ score: { dueSoonDays: 61 } }, 'focus.score.dueSoonDays'],
@@ -1397,6 +1397,13 @@ describe('parseConfig', () => {
       assert.ok(paths(bad.issues).includes(path), `${JSON.stringify(focus)}: ${JSON.stringify(paths(bad.issues))}`);
     }
     assert.deepEqual(parseConfig({ ...ROSTER, focus: { score: { rankValues: [20, -1] } } }).config.focus.score.rankValues, DEFAULT_FOCUS.score.rankValues);
+  });
+
+  it('flags the cap across the tree it no longer reads, and keeps one slice per session (T2215)', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, focus: { maxOpenSlices: 3 } });
+    assert.deepEqual(paths(issues), ['focus.maxOpenSlices']);
+    assert.match(issues[0]?.message ?? '', /^is no longer read: .*focus\.slicesPerSession open; delete it$/);
+    assert.equal(config.focus.slicesPerSession, DEFAULT_FOCUS.slicesPerSession);
   });
 
   it('falls back to the default classes together when the classes, the roles and the allocation disagree', () => {

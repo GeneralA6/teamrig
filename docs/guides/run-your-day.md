@@ -42,7 +42,7 @@ meeting. The lead's context refresh waits for the meeting's end, unless its cont
 `refresh.compactCeilingTokens`.
 
 The lead opens with the ship board: each open shippable slice (a goal's fewest tasks that ship something working,
-proven live; at most `focus.maxOpenSlices` open across the tree) and the slices planned 1 to 2 weeks ahead, one
+proven live; at most `focus.slicesPerSession` open per session) and the slices planned 1 to 2 weeks ahead, one
 line each, with its goal, what it ships, its owner and ship date, and whether it shipped, is on date, or is slipping,
 with why and its new date. A slipping slice's decisions come first among the cards. Until the register holds slices,
 the lead keeps them in `ship-plan.md` in its notes folder.

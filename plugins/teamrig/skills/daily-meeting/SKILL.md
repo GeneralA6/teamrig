@@ -60,7 +60,7 @@ reaches `refresh.compactCeilingTokens` (185,000 by default), past which it goes 
 ## 2. Bring each decision as a card
 
 Lead with the ship board: each open shippable slice (a goal's fewest tasks that ship something working, proven
-live; at most `[focus.maxOpenSlices]` open across the tree) and the slices planned 1 to 2 weeks ahead, one line each:
+live; at most `[focus.slicesPerSession]` open per session) and the slices planned 1 to 2 weeks ahead, one line each:
 its goal, what it ships, its owner and ship date, and whether it shipped (its live proof seen), is on date, or is
 slipping, with why and its new date. Until the register holds slices, they live in `ship-plan.md` in your notes
 folder (`teamrig files --notes --session lead`), one row per slice: goal, slice, tasks, owner, ship date, live

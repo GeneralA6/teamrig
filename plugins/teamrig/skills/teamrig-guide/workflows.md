@@ -316,8 +316,9 @@ teamrig start --session lead
 
 With sub-teams, run `teamrig check --tree --session lead` too. Then check the ship plan (the `team-setup` skill
 has the steps): each open shippable slice, a goal's fewest tasks that ship something working, has an owner, a ship
-date and a live proof; one past its date or waiting on you comes first; at most `focus.maxOpenSlices` are open
-across the tree, and other work waits, incidents and `focus.maintenanceClass` work aside. Until the register holds
+date and a live proof; one past its date or waiting on you comes first; each session keeps at most
+`focus.slicesPerSession` open, one more only while one waits on another session or the owner, and other work waits,
+incidents and `focus.maintenanceClass` work aside. Until the register holds
 slices, they live in `ship-plan.md` in the lead's notes folder (`teamrig files --notes --session lead`). Then act on
 each flag (full table: [tasks.md](tasks.md#check-flags)):
 

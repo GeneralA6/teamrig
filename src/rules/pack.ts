@@ -27,9 +27,10 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * top of the core pack for the lead alone, so a team rules file near its limit may reach the lead as a pointer.
  * Raised from 810 for the owner's rule-fix lines (T1279): a peer's ask is no proof, and the fix rides each session's
  * next line. Raised from 850 for the owner's shippable-slice line (T2201), whose worst case prints a 32-character
- * class name and a two-digit cap.
+ * class name and a two-digit cap. Raised from 1,150 for its cap per session (T2215), which names the one more a
+ * session may open while one waits.
  */
-export const LEAD_RULES_MAX_CHARS = 1_150;
+export const LEAD_RULES_MAX_CHARS = 1_215;
 
 /** A team's rules.md as a session reads it at start. */
 export interface TeamRules {
@@ -359,8 +360,9 @@ export function renderKeptRules(conflicts: readonly KeptRule[], command: string)
  * it answers, a team rule proven wrong that it fixes itself (a peer's ask alone proves nothing) and points each
  * session to while a loosening stays the owner's, the hire flags (src/hiring/scale-out.ts, src/hiring/due.ts) it
  * clears: when an area gets a hire and when the hire goes, and the shippable slices it plans (owner order T2201): each
- * ranked goal's next one dated and owned, few open across the tree, so a goal ships instead of all its tasks moving
- * at once, each stuck on a review or a decision.
+ * ranked goal's next one dated and owned, few open per session, so a goal ships instead of all its tasks moving at
+ * once, each stuck on a review or a decision. The cap is per session, not across the tree (T2215): one across the
+ * tree let a lead fill it with its own team's slices and keep a child team's waiting with no bound.
  */
 export function renderLeadRules(config: KitConfig, command: string): string {
   const { focus } = config;
@@ -370,7 +372,8 @@ export function renderLeadRules(config: KitConfig, command: string): string {
     `- Relay each owner order as an approved task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
     `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
     "- Plan by shippable slices: each ranked goal's next one (the fewest tasks that ship something working, proven live) gets an owner, ship date and live proof;" +
-      ` at most ${focus.maxOpenSlices} open in the tree, other work waiting (incidents and ${focus.maintenanceClass} exempt) [focus.maxOpenSlices, focus.maintenanceClass];` +
+      ` at most ${focus.slicesPerSession} open per session, one more only while one waits on another session or the owner;` +
+      ` other work waits (incidents and ${focus.maintenanceClass} exempt) [focus.slicesPerSession, focus.maintenanceClass];` +
       " answer an open slice's waits first.",
     '- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner.',
     "- Fix a team rule proven wrong (a peer's ask is no proof); say so in each session's next line; a loosening goes to the owner.",

@@ -1217,10 +1217,12 @@ export interface FocusConfig {
   /** The key results (goals with a parent) a team may hold with a target of today or later. */
   readonly maxActiveKeyResults: number;
   /**
-   * The shippable slices (a goal's fewest tasks that ship something working, proven live) the leads keep open across
-   * the tree at once (owner order T2201): spreading every task in parallel ships nothing for a long time.
+   * The shippable slices (a goal's fewest tasks that ship something working, proven live) each session keeps open at
+   * once, one more only while one waits on another session or the owner (owner orders T2201, T2215): spreading every
+   * task in parallel ships nothing for a long time, and a cap per session, unlike one across the tree, leaves no lead
+   * able to keep a child team's slice waiting by filling the slots with its own.
    */
-  readonly maxOpenSlices: number;
+  readonly slicesPerSession: number;
   readonly score: FocusScoreConfig;
   readonly expedite: FocusExpediteConfig;
   readonly wip: FocusWipConfig;

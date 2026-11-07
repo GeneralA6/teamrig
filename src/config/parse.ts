@@ -1302,10 +1302,11 @@ function parseFocus(read: ConfigReader, raw: JsonRecord): FocusConfig {
   const mode = read.string(wip, 'mode', `${path}.wip`, defaults.wip.mode, oneOf(WIP_MODES));
   const expedite = read.section(raw, 'expedite', path);
   const improvementsDay = read.string(raw, 'improvementsDay', path, defaults.improvementsDay, oneOf(WEEKDAYS));
+  read.dropped(raw, 'maxOpenSlices', path, 'a cap across the tree let a lead fill it with its own team; each session keeps focus.slicesPerSession open');
   return {
     ...classes,
     maxActiveKeyResults: read.integer(raw, 'maxActiveKeyResults', path, defaults.maxActiveKeyResults, FOCUS_KEY_RESULTS),
-    maxOpenSlices: read.integer(raw, 'maxOpenSlices', path, defaults.maxOpenSlices, CONFIG_LIMITS.maxOpenSlices),
+    slicesPerSession: read.integer(raw, 'slicesPerSession', path, defaults.slicesPerSession, CONFIG_LIMITS.slicesPerSession),
     score: parseFocusScore(read, read.section(raw, 'score', path), `${path}.score`),
     expedite: {
       critical: read.boolean(expedite, 'critical', `${path}.expedite`, defaults.expedite.critical),
