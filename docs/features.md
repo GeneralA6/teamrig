@@ -109,7 +109,7 @@ teamrig runs with Claude Code in a terminal today; other AI tools and more task 
 
 ## How it works
 
-Every session runs the same small `teamrig` program, from four Claude Code hooks and from its Bash tool, and that
+Every session runs the same small `teamrig` program, from the plugin's Claude Code hooks and from its Bash tool, and that
 program reads and writes plain files in your team's folder. Nothing runs between sessions.
 
 ```mermaid
