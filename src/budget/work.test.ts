@@ -4,6 +4,7 @@ import { DEFAULT_REGISTER } from '../config/defaults.ts';
 import { recordField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, VERSION_FIELD } from '../core/jsonl.ts';
 import { TimeZone } from '../core/zone.ts';
+import type { SizeBase } from '../register/events.ts';
 import { layoutPaths } from '../register/layout.ts';
 import { OWN_NUMBERS } from '../register/numbering.ts';
 import { RegisterPolicy } from '../register/policy.ts';
@@ -79,18 +80,32 @@ describe('queuedWork', () => {
   it("lists each owner's open and in-progress p0 tasks beside the weights", () => {
     const work = queuedWork(
       [
-        { id: 'T1', owner: 'alpha', status: 'open', priority: 0 },
-        { id: 'T2', owner: 'alpha', status: 'in-progress', priority: 0 },
-        { id: 'T3', owner: 'alpha', status: 'open', priority: 1 },
-        { id: 'T4', owner: 'bravo', status: 'waiting', priority: 0 },
-        { id: 'T5', owner: 'bravo', status: 'done', priority: 0 },
-        { id: 'T6', owner: 'charlie', status: 'open', priority: 2 },
+        { id: 'T1', owner: 'alpha', status: 'open', priority: 0, sizeBase: null },
+        { id: 'T2', owner: 'alpha', status: 'in-progress', priority: 0, sizeBase: null },
+        { id: 'T3', owner: 'alpha', status: 'open', priority: 1, sizeBase: null },
+        { id: 'T4', owner: 'bravo', status: 'waiting', priority: 0, sizeBase: null },
+        { id: 'T5', owner: 'bravo', status: 'done', priority: 0, sizeBase: null },
+        { id: 'T6', owner: 'charlie', status: 'open', priority: 2, sizeBase: null },
       ],
       priorities,
     );
     assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
     // p0..p5 weigh 6..1; each session weighs its top task alone.
     assert.deepEqual(work.weights, byPriority({ alpha: { 0: 6 }, charlie: { 2: 4 } }));
+  });
+
+  it('keeps the size base of every sized task, a finished one too, and only of those', () => {
+    const open = { day: '2030-01-07', w: 5 };
+    const finished = { day: '2030-01-06', w: 0 };
+    const work = queuedWork(
+      [
+        { id: 'T1', owner: 'alpha', status: 'open', priority: 1, sizeBase: open },
+        { id: 'T2', owner: 'alpha', status: 'done', priority: 1, sizeBase: finished },
+        { id: 'T3', owner: 'alpha', status: 'open', priority: 1, sizeBase: null },
+      ],
+      priorities,
+    );
+    assert.deepEqual([...work.sizeBases], [['T1', open], ['T2', finished]]);
   });
 });
 
@@ -132,8 +147,10 @@ describe('cachedWork', () => {
 
   /** Adds an open task to the register over `files`, each under a title of its own (the register refuses a duplicate). */
   type AddTask = (owner: string, priority: number) => Promise<void>;
+  /** Sizes a task of the register over `files`, writing `base` as its update does. */
+  type SizeTask = (id: string, base: SizeBase) => Promise<void>;
 
-  function registerOn(files: MemoryFiles): AddTask {
+  function registerOn(files: MemoryFiles): { readonly add: AddTask; readonly size: SizeTask } {
     const register = new Register({
       log: new JsonlEventLog(files, PATH),
       mutex: new InlineMutex(),
@@ -147,19 +164,25 @@ describe('cachedWork', () => {
       autoArchive: false,
     });
     let added = 0;
-    return async (owner, priority) => {
-      added += 1;
-      const verdict = await register.add('lead', { title: `Ship part ${added}`, description: 'what and why', owner, source: 'lead', priority });
-      assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
+    return {
+      add: async (owner, priority) => {
+        added += 1;
+        const verdict = await register.add('lead', { title: `Ship part ${added}`, description: 'what and why', owner, source: 'lead', priority });
+        assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
+      },
+      size: async (id, base) => {
+        const verdict = await register.update('lead', id, { size: 1 }, undefined, base);
+        assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
+      },
     };
   }
 
   /** A register over `files` holding an open p1 task of alpha's and a p3 one of bravo's. */
-  async function team(files: MemoryFiles = new MemoryFiles()): Promise<{ readonly files: MemoryFiles; readonly add: AddTask }> {
-    const add = registerOn(files);
+  async function team(files: MemoryFiles = new MemoryFiles()): Promise<{ readonly files: MemoryFiles; readonly add: AddTask; readonly size: SizeTask }> {
+    const { add, size } = registerOn(files);
     await add('alpha', 1);
     await add('bravo', 3);
-    return { files, add };
+    return { files, add, size };
   }
 
   /** The same files with every read of the register failing: only a cache hit still answers. */
@@ -184,11 +207,21 @@ describe('cachedWork', () => {
     const { files } = await team();
     assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
     assert.deepEqual(cacheIn(files), {
-      [VERSION_FIELD]: 4,
+      [VERSION_FIELD]: 5,
       key: { tail: await files.stamp(tail), snapshot: null, priorities: [1, 2, 3, 4, 5] },
       work: { alpha: { 1: 5 }, bravo: { 3: 3 } },
       urgent: {},
+      sizeBases: {},
     });
+  });
+
+  it("keeps each sized task's base in the cache and answers it from there, so a hook replays no register for it", async () => {
+    const { files, size } = await team();
+    const base = { day: '2030-01-07', w: 1_500 };
+    await size('T1', base);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).sizeBases], [['T1', base]]);
+    assert.deepEqual(cacheIn(files)['sizeBases'], { T1: base });
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities)).sizeBases], [['T1', base]]);
   });
 
   it("keeps each session's p0 ids in the cache and answers them from it", async () => {
@@ -233,12 +266,15 @@ describe('cachedWork', () => {
   type Damage = (cache: JsonRecord, key: JsonRecord) => string;
   const DAMAGES: readonly (readonly [string, Damage])[] = [
     ['damaged', (cache) => JSON.stringify(cache).slice(0, -2)],
-    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 5, work: {} })],
+    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 6, work: {} })],
+    ['in the fourth format, with no size bases', (cache) => JSON.stringify({ [VERSION_FIELD]: 4, key: cache['key'], work: {}, urgent: {} })],
     ['in the third format, every queued task weighed', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 3, work: { alpha: { 1: 10 }, bravo: { 3: 3 } } })],
     ['in the second format, one weight per session', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 2, work: { alpha: 5, bravo: 3 } })],
     ['in the first format, with no p0 ids', (cache) => JSON.stringify({ [VERSION_FIELD]: 1, key: cache['key'], work: {} })],
     ['without its p0 ids', (cache) => JSON.stringify({ ...cache, urgent: 'none' })],
     ['with p0 ids that are not text', (cache) => JSON.stringify({ ...cache, urgent: { alpha: [5] } })],
+    ['without its size bases', (cache) => JSON.stringify({ ...cache, work: {}, sizeBases: 'none' })],
+    ['with a size base that is not one', (cache) => JSON.stringify({ ...cache, work: {}, sizeBases: { T1: { day: 'today', w: -1 } } })],
     ['without its key', (cache) => JSON.stringify({ ...cache, key: 'none' })],
     ['without its work', (cache) => JSON.stringify({ ...cache, work: 'none' })],
     ['with one weight for a session, not one per priority', (cache) => JSON.stringify({ ...cache, work: { alpha: 5 } })],

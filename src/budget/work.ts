@@ -3,6 +3,7 @@ import type { PriorityConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField } from '../core/guards.ts';
 import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
+import { parseSizeBase, type SizeBase } from '../register/events.ts';
 import type { Task } from '../register/fold.ts';
 import { layoutPaths } from '../register/layout.ts';
 import type { TaskStatus } from '../register/model.ts';
@@ -63,21 +64,34 @@ export interface QueuedWork {
   readonly weights: ReadonlyMap<string, WorkByPriority>;
   /** Each session's queued p0 task ids, in the register's order; a session with none is not in it. */
   readonly urgent: ReadonlyMap<string, readonly string[]>;
+  /**
+   * Each sized task's size base by its id, whatever its status, since a finished task's spend counts from its base too.
+   * It rides here, not being queued work, so that a budget hook, which runs every turn, gets it from the one replay per
+   * register change that `cachedWork` already pays for.
+   */
+  readonly sizeBases: ReadonlyMap<string, SizeBase>;
 }
 
-/** No queued work: every part falls back to its session's `share`, and no session has p0 work. */
-export const NO_WORK: QueuedWork = { weights: new Map(), urgent: new Map() };
+/** No queued work: every part falls back to its session's `share`, no session has p0 work, and no task has a size base. */
+export const NO_WORK: QueuedWork = { weights: new Map(), urgent: new Map(), sizeBases: new Map() };
 
-/** The sessions' queued work: `workWeights`, and each session's open and in-progress p0 tasks. */
-export function queuedWork(tasks: Iterable<Pick<Task, 'id' | 'owner' | 'status' | 'priority'>>, priorities: readonly PriorityConfig[]): QueuedWork {
-  const queued = [...tasks].filter((task) => QUEUED.has(task.status));
+/** The sessions' queued work: `workWeights`, each session's open and in-progress p0 tasks, and every task's size base. */
+export function queuedWork(tasks: Iterable<Pick<Task, 'id' | 'owner' | 'status' | 'priority' | 'sizeBase'>>, priorities: readonly PriorityConfig[]): QueuedWork {
+  const all = [...tasks];
+  const queued = all.filter((task) => QUEUED.has(task.status));
   const urgent = new Map<string, string[]>();
   for (const task of queued) {
     if (task.priority === NOW_PRIORITY.id) {
       urgent.set(task.owner, [...(urgent.get(task.owner) ?? []), task.id]);
     }
   }
-  return { weights: workWeights(queued, priorities), urgent };
+  const sizeBases = new Map<string, SizeBase>();
+  for (const { id, sizeBase } of all) {
+    if (sizeBase !== null) {
+      sizeBases.set(id, sizeBase);
+    }
+  }
+  return { weights: workWeights(queued, priorities), urgent, sizeBases };
 }
 
 /** The tasks of the register's working set at `eventsPath`; undefined when it cannot be read, so a damaged register never stops the budget. */
@@ -100,10 +114,10 @@ export async function readWork(files: Files, eventsPath: string, priorities: rea
 export const WORK_CACHE_FILE = 'work.cache.json';
 /**
  * The work cache's format (2: with each session's p0 ids; 3: each session's weights by priority id; 4: its top task's
- * weight only, T1588, so a format-3 cache of every task's weights is read again); a cache in any other reads as
- * missing and is written again.
+ * weight only, T1588, so a format-3 cache of every task's weights is read again; 5: with each task's size base, T2141);
+ * a cache in any other reads as missing and is written again.
  */
-const WORK_CACHE_FORMAT = 4;
+const WORK_CACHE_FORMAT = 5;
 
 /** What a reading of the work was read from: the stamps of the register files the working set folds, and the priority ids that weighed it. */
 interface WorkKey {
@@ -146,6 +160,19 @@ function storedUrgent(value: Record<string, unknown>): ReadonlyMap<string, reado
   return urgent;
 }
 
+/** The stored size bases by task id; undefined when any entry is not a size base. */
+function storedSizeBases(value: Record<string, unknown>): ReadonlyMap<string, SizeBase> | undefined {
+  const sizeBases = new Map<string, SizeBase>();
+  for (const [task, stored] of Object.entries(value)) {
+    const base = parseSizeBase(stored);
+    if (typeof base === 'string') {
+      return undefined;
+    }
+    sizeBases.set(task, base);
+  }
+  return sizeBases;
+}
+
 /** A session's stored weights by priority id; undefined when it is not a record of whole priority ids to finite weights. */
 function storedByPriority(value: unknown): WorkByPriority | undefined {
   if (!isRecord(value)) {
@@ -169,7 +196,9 @@ function parseWorkCache(text: string | undefined): CachedWork | undefined {
   const work = stored === undefined ? undefined : stored['work'];
   const urgentField = stored === undefined ? undefined : recordField(stored, 'urgent');
   const urgent = urgentField === undefined ? undefined : storedUrgent(urgentField);
-  if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined) {
+  const sizeBasesField = stored === undefined ? undefined : recordField(stored, 'sizeBases');
+  const sizeBases = sizeBasesField === undefined ? undefined : storedSizeBases(sizeBasesField);
+  if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined || sizeBases === undefined) {
     return undefined;
   }
   const tail = storedStamp(key['tail']);
@@ -186,12 +215,12 @@ function parseWorkCache(text: string | undefined): CachedWork | undefined {
     }
     weights.set(session, byPriority);
   }
-  return { key: { tail, snapshot, priorities }, work: { weights, urgent } };
+  return { key: { tail, snapshot, priorities }, work: { weights, urgent, sizeBases } };
 }
 
 function formatWorkCache(key: WorkKey, work: QueuedWork): string {
   const weights = Object.fromEntries([...work.weights].map(([session, byPriority]) => [session, Object.fromEntries(byPriority)]));
-  return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: weights, urgent: Object.fromEntries(work.urgent) });
+  return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: weights, urgent: Object.fromEntries(work.urgent), sizeBases: Object.fromEntries(work.sizeBases) });
 }
 
 /** The key of a reading taken now; undefined when a stamp cannot be taken. */

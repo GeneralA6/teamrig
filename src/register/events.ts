@@ -189,7 +189,7 @@ export interface SizeBase {
 }
 
 /** The size base a line gives, or why it is not one. */
-function parseSizeBase(value: unknown): SizeBase | string {
+export function parseSizeBase(value: unknown): SizeBase | string {
   if (!isRecord(value)) {
     return 'sizeBase is not an object';
   }
