@@ -57,8 +57,8 @@ export interface CheckReport {
   readonly hires: readonly HireFlag[];
   /**
    * The warnings no session owns (src/cli/unowned.ts): doctor's context-size, context-lists, allow-wide and deny-missing findings,
-   * the skill flags with no owner on the team, the idle pass's FLEET-STALE and a repository's SECRET-HOOK; they go to
-   * the lead, printed only when there are some.
+   * the skill flags with no owner on the team, the idle pass's FLEET-STALE, a repository's SECRET-HOOK, SECRET-GUARD-OFF
+   * and the five-hour window's FIVE-HOUR; they go to the lead, printed only when there are some.
    */
   readonly unowned: readonly UnownedWarning[];
   /** The own team's lead, whom the unowned warnings go to. */
