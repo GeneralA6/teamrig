@@ -35,6 +35,10 @@ export function sameWait(a, b) {
 export function sameWaits(a, b) {
     return a.length === b.length && a.every((reason) => b.some((other) => sameWait(reason, other)));
 }
+/** True when `waits` names a reason `held` lacks; a reason dropped names nothing new. */
+export function namesNewWait(held, waits) {
+    return waits.some((reason) => !held.some((had) => sameWait(had, reason)));
+}
 /**
  * A decision or an approval asked of a peer: anyone but its kind's `answerers` (the task owner's leaders, and for an
  * approval the security reviewer) and the owner. A peer's work is a task to wait on (`task:T<id>`, which clears by

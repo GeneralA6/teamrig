@@ -3,6 +3,7 @@ import { NOW_PRIORITY, topPriority } from "../config/priorities.js";
 import { approvalCleared, waitAnswerersOf } from "./approval.js";
 import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
+import { leaderHolds, waitedMinutes } from "./leader-wait.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { isUngated } from "./owner-waits.js";
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree } from "./tree.js";
@@ -17,6 +18,7 @@ export const FLAG_KINDS = [
     'LOOP',
     'VERIFY-BLOCKS',
     'READY',
+    'ROADMAP-WAITS-ON-LEAD',
     'NO-REASON',
     'PEER-WAIT',
     'NO-CARD',
@@ -153,6 +155,19 @@ export function peerWaitFlags(tasks, tree, roles, ownerSource) {
         return peer === undefined
             ? []
             : [{ kind: 'PEER-WAIT', task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
+    });
+}
+/**
+ * ROADMAP-WAITS-ON-LEAD: Roadmap work held on a leader's answer past `focus.leaderWaitMinutes` ({@link leaderHolds}), in
+ * the order of `tasks`: the work the team ranked highest stands still until the leader answers, so the leader answers it
+ * first. Apart from {@link checkTasks}, whose register config names neither the lead nor the focus.
+ */
+export function leaderWaitFlags(tasks, tree, focus, at) {
+    return [...tasks].flatMap((task) => {
+        const holds = leaderHolds(task, tree.approversOf(task.owner), focus, at);
+        return holds.length === 0
+            ? []
+            : [{ kind: 'ROADMAP-WAITS-ON-LEAD', task, detail: `${holds.map(waitSpelling).join(', ')} unanswered for ${waitedMinutes(task, at)} min, past the ${focus.leaderWaitMinutes} min limit: answer it first` }];
     });
 }
 function weekPlan(week, lengthDays, zone) {

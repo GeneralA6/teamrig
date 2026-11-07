@@ -1,5 +1,5 @@
 import { WAIT_STATUSES } from "./model.js";
-import { sameWait } from "./waits.js";
+import { namesNewWait } from "./waits.js";
 /** The numeric part of a task id (`T12` → 12). */
 export function taskNumber(id) {
     return Number(id.slice(1));
@@ -92,19 +92,22 @@ function created(id, fields, at, by) {
         updatedBy: by,
         assignedAt: at,
         statusAt: at,
+        waitsAt: at,
         priorityAt: at,
         ownerSeenAt: by === fields.owner ? at : null,
     };
 }
 function withStatus(task, event) {
+    const waits = WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [];
     return {
         ...task,
         status: event.status,
         statusAt: event.status === task.status ? task.statusAt : event.at,
+        waitsAt: namesNewWait(task.answer === null ? task.waits : [], waits) ? event.at : task.waitsAt,
         note: event.note,
         evidence: event.evidence ?? task.evidence,
         skill: event.skill,
-        waits: WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [],
+        waits,
         card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
         answer: null,
         decided: null,
@@ -121,7 +124,7 @@ function withStatus(task, event) {
 }
 /** True when setting `status` with `waits` re-parks the task's proof, as {@link Task.reparks} counts it. */
 export function isRepark(task, status, waits) {
-    return status === 'verifying' && task.status === 'verifying' && task.waits.length > 0 && waits.some((reason) => !task.waits.some((had) => sameWait(had, reason)));
+    return status === 'verifying' && task.status === 'verifying' && task.waits.length > 0 && namesNewWait(task.waits, waits);
 }
 function reparksAfter(task, event) {
     if (event.status !== 'verifying') {
@@ -154,6 +157,7 @@ function withChanges(task, { changes, note, at, by, verdict, waits, decided, siz
         answer,
         decided: decision,
         waits: kept,
+        waitsAt: namesNewWait(task.waits, kept) ? at : task.waitsAt,
         sizeBase: base,
         updatedAt: at,
         updatedBy: by,

@@ -4,6 +4,7 @@ import { errorMessage } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { blockStartLines, liveTasksNote } from "../../hooks/live-tasks.js";
 import { MeetingSchedule } from "../../meeting/schedule.js";
+import { heldFirst } from "../../register/leader-wait.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { TaskTree } from "../../register/tree.js";
 import { teamZone } from "../kit.js";
@@ -25,8 +26,11 @@ export async function liveTasksNoteOf(runtime, paths, config, id, zone, start) {
     try {
         const [{ state }, elsewhere] = await Promise.all([new JsonlEventLog(runtime.files, paths.events).read(), new KitTreeTasks(runtime, paths.team).read()]);
         const ranking = await teamRanking(runtime, paths, config, state.tasks.values());
-        const tree = new TaskTree(state.tasks, new Date(runtime.clock.now()), zone, undefined, elsewhere, ranking);
-        return [...blockStartLines(id, start, KIT_NAME), liveTasksNote({ tasks: state.tasks.values(), owner: id, tree, command: KIT_NAME })].join('\n');
+        const now = runtime.clock.now();
+        const tree = new TaskTree(state.tasks, new Date(now), zone, undefined, elsewhere, ranking);
+        // No parent lead here: a hold counts only when it names this session, and a wait on the team above never does.
+        const waiting = heldFirst(tree.waitingOn(id), id, new LeadTree(config), config.focus, now);
+        return [...blockStartLines(id, start, KIT_NAME), liveTasksNote({ tasks: state.tasks.values(), owner: id, tree, waiting, command: KIT_NAME })].join('\n');
     }
     catch (error) {
         return `LIVE TASKS: ${KIT_NAME} could not read the register (${errorMessage(error)}); run \`${KIT_NAME} list --session ${id}\` for your tasks.`;
