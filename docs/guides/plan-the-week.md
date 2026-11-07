@@ -69,6 +69,9 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
 
 - The line ends with where the week heads: the status line's rise over the last 24 hours, carried to the reset, gives
   when the week reaches 100% (`it reaches 100% Mon 10-19 14:20 IDT`), or near what it ends the week at.
+- On a plan with a five-hour window, a line under it shows that window and where its rise takes it, and `teamrig
+  check` warns the lead at `budget.fiveHourWarnPct` (80), or sooner if it would fill before it resets: at 100% every
+  session stalls until the reset.
 
 - The pace line climbs to `budget.targetPct` by `budget.paceEndHoursBeforeReset` (1) hours before the reset. Each
   day, what is left to it is spread over the active time to the pace end, and each session's daily budget is its
