@@ -5069,10 +5069,11 @@ A status line for Claude Code. It reads the status JSON Claude Code sends on std
 week and its reset as `<Claude session id>.json` in the team's `budget.statusSnapshotDir` (relative to the
 team's folder; unset: `<kit home>/usage/live`), and prints a short status: the model and its effort level, the
 session's folder and its branch (`at <commit>` on a detached HEAD), the plan's use of the week beside where the
-team's pace line stands now, and its use of the last five hours. The pace line runs over the seven days before the
-week's reset, by the team's `budget.targetPct`, `budget.paceEndHoursBeforeReset` and `budget.quietHours`; after a
-reset inside the week `teamrig budget` counts from that reset instead. Outside a team, or once the reading's week
-reset, no pace is shown. The team config's `statusLine` turns `folder`, `branch` and `pace` off one by one (each is
+team's pace line stands now, and its use of the last five hours. The pace line is the one `teamrig budget` reads, by
+the team's `budget.targetPct`, `budget.paceEndHoursBeforeReset` and `budget.quietHours`: it runs from where the
+team's hooks last said the week's use counts from (`usage/team.week.json`), after a reset inside the week from that
+reset, and over the seven days before the week's reset only until those hooks name a start for this week. Outside a
+team, or once the reading's week reset, no pace is shown. The team config's `statusLine` turns `folder`, `branch` and `pace` off one by one (each is
 on by default; with `branch` off, git is never asked). To go on in a session by hand,
 [teamrig restore](#teamrig-restore) brings it back by its recorded Claude session. It also removes the folder's snapshots written more than
 8 days ago, which hold no reading of the current week, and the temporary files over an hour old that a status line
