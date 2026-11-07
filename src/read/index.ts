@@ -216,6 +216,21 @@ export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_IN_STATE, type S
 // percent of the week, by task id, as its team's budget hooks last read it.
 export { parseTasksWeek, TASKS_WEEK_FORMAT, TASKS_WEEK_IN_STATE, type TasksWeekSummary } from '../budget/task-week-summary.ts';
 
+// The team's session log (`session-log.jsonl` in its state folder, `SESSION_LOG_IN_STATE`): each session `teamrig close`
+// or the idle pass ended, and each reopen by `teamrig open`, by session id, so a reader counts a session's closes and
+// reopens and shows its last one (T1725).
+export {
+  closedOf,
+  readSessionLog,
+  SESSION_LOG_FORMAT,
+  SESSION_LOG_IN_STATE,
+  sessionLogBySession,
+  type CloseRecord,
+  type ReopenRecord,
+  type SessionLogRead,
+  type SessionLogRecord,
+} from '../sessions/log.ts';
+
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION, type TurnLogEntry, type TurnLogKind } from '../turn-log/entry.ts';
