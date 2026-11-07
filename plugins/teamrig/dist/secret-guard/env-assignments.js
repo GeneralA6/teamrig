@@ -17,6 +17,10 @@ const NUMBER = /^\d+(?:\.\d+)?$/;
 const PATH = /^(?:[A-Za-z]:)?[\\/~.]/;
 /** One plain lower-case word: a mode or a kind (`AUTH_MODE=oauth`, `TOKEN_TYPE=bearer`). */
 const PLAIN_WORD = /^[a-z]+$/;
+/** Git's own variable for a setting's name; the setting's value sits in `GIT_CONFIG_VALUE_<n>`. */
+const GIT_CONFIG_KEY = /^GIT_CONFIG_KEY_\d+$/;
+/** A section and a dot, which git requires of every setting's name (`core.hooksPath`). */
+const GIT_SETTING = /^[A-Za-z][A-Za-z0-9-]*\./;
 /**
  * The output-only shape of T1369 R7: the value of a secret variable, the name judged by the team's `SecretNames`.
  * Output is not prose, so the unquoted form is in here; prompts and notes stay without it.
@@ -30,21 +34,22 @@ export class EnvAssignments {
     hitsIn(text) {
         const hits = [];
         for (const [, name = '', value = ''] of text.matchAll(ASSIGNMENT)) {
-            if (!this.names.secret(name) || !this.holdsSecret(value))
+            if (!this.names.secret(name) || !this.holdsSecret(name, value))
                 continue;
             hits.push({ id: 'env-assignment', description: 'value of a secret variable', value });
         }
         return hits;
     }
     /**
-     * True when an assigned `value` holds a secret. A URL is judged by the parts that carry one (T1549): its login and
-     * password, a query or fragment parameter with a secret name, a token-shaped path segment. A connection string
-     * without them, its credential a file on disk, is plain; one with them is a hit as a whole.
+     * True when `value`, assigned to `name`, holds a secret. A URL is judged by the parts that carry one (T1549): its login
+     * and password, a query or fragment parameter with a secret name, a token-shaped path segment. A connection string
+     * without them, its credential a file on disk, is plain; one with them is a hit as a whole. A git setting's name is
+     * plain, but only past the URL test: `url.<base>.insteadOf` holds a URL, whose login can be a token (T2001).
      */
-    holdsSecret(value) {
+    holdsSecret(name, value) {
         const url = URL_PARTS.exec(value);
         if (url === null)
-            return !isPlainValue(value);
+            return !isPlainValue(value) && !isGitSetting(name, value);
         const [, userinfo = '', path = '', query = '', fragment = ''] = url;
         const [login = '', ...password] = userinfo.split(':');
         const parts = [
@@ -62,6 +67,10 @@ function secretParamValues(params, secret) {
         const equals = param.indexOf('=');
         return equals > 0 && secret(param.slice(0, equals)) ? [param.slice(equals + 1)] : [];
     });
+}
+/** True when `value` is the name of a git setting, assigned to git's own variable for one. */
+function isGitSetting(name, value) {
+    return GIT_CONFIG_KEY.test(name) && GIT_SETTING.test(value);
 }
 /** True when an assigned `value` is not a secret: a placeholder, a name, a number, a path or a plain word. */
 function isPlainValue(value) {
