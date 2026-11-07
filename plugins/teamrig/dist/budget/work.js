@@ -1,6 +1,7 @@
 import { NOW_PRIORITY, priorityLevels } from "../config/priorities.js";
 import { isRecord, recordField } from "../core/guards.js";
 import { parseObject, recordVersion, VERSION_FIELD } from "../core/jsonl.js";
+import { parseSizeBase } from "../register/events.js";
 import { layoutPaths } from "../register/layout.js";
 import { JsonlEventLog } from "../register/store.js";
 /** The statuses whose tasks are a session's queued work: what it can work on now. */
@@ -40,18 +41,25 @@ export function workWeightOf(work) {
     }
     return sum;
 }
-/** No queued work: every part falls back to its session's `share`, and no session has p0 work. */
-export const NO_WORK = { weights: new Map(), urgent: new Map() };
-/** The sessions' queued work: `workWeights`, and each session's open and in-progress p0 tasks. */
+/** No queued work: every part falls back to its session's `share`, no session has p0 work, and no task has a size base. */
+export const NO_WORK = { weights: new Map(), urgent: new Map(), sizeBases: new Map() };
+/** The sessions' queued work: `workWeights`, each session's open and in-progress p0 tasks, and every task's size base. */
 export function queuedWork(tasks, priorities) {
-    const queued = [...tasks].filter((task) => QUEUED.has(task.status));
+    const all = [...tasks];
+    const queued = all.filter((task) => QUEUED.has(task.status));
     const urgent = new Map();
     for (const task of queued) {
         if (task.priority === NOW_PRIORITY.id) {
             urgent.set(task.owner, [...(urgent.get(task.owner) ?? []), task.id]);
         }
     }
-    return { weights: workWeights(queued, priorities), urgent };
+    const sizeBases = new Map();
+    for (const { id, sizeBase } of all) {
+        if (sizeBase !== null) {
+            sizeBases.set(id, sizeBase);
+        }
+    }
+    return { weights: workWeights(queued, priorities), urgent, sizeBases };
 }
 /** The tasks of the register's working set at `eventsPath`; undefined when it cannot be read, so a damaged register never stops the budget. */
 export async function readTasks(files, eventsPath) {
@@ -72,10 +80,10 @@ export async function readWork(files, eventsPath, priorities) {
 export const WORK_CACHE_FILE = 'work.cache.json';
 /**
  * The work cache's format (2: with each session's p0 ids; 3: each session's weights by priority id; 4: its top task's
- * weight only, T1588, so a format-3 cache of every task's weights is read again); a cache in any other reads as
- * missing and is written again.
+ * weight only, T1588, so a format-3 cache of every task's weights is read again; 5: with each task's size base, T2141);
+ * a cache in any other reads as missing and is written again.
  */
-const WORK_CACHE_FORMAT = 4;
+const WORK_CACHE_FORMAT = 5;
 function sameKey(a, b) {
     return a.tail === b.tail && a.snapshot === b.snapshot && a.priorities.length === b.priorities.length && a.priorities.every((id, index) => id === b.priorities[index]);
 }
@@ -100,6 +108,18 @@ function storedUrgent(value) {
     }
     return urgent;
 }
+/** The stored size bases by task id; undefined when any entry is not a size base. */
+function storedSizeBases(value) {
+    const sizeBases = new Map();
+    for (const [task, stored] of Object.entries(value)) {
+        const base = parseSizeBase(stored);
+        if (typeof base === 'string') {
+            return undefined;
+        }
+        sizeBases.set(task, base);
+    }
+    return sizeBases;
+}
 /** A session's stored weights by priority id; undefined when it is not a record of whole priority ids to finite weights. */
 function storedByPriority(value) {
     if (!isRecord(value)) {
@@ -122,7 +142,9 @@ function parseWorkCache(text) {
     const work = stored === undefined ? undefined : stored['work'];
     const urgentField = stored === undefined ? undefined : recordField(stored, 'urgent');
     const urgent = urgentField === undefined ? undefined : storedUrgent(urgentField);
-    if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined) {
+    const sizeBasesField = stored === undefined ? undefined : recordField(stored, 'sizeBases');
+    const sizeBases = sizeBasesField === undefined ? undefined : storedSizeBases(sizeBasesField);
+    if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined || sizeBases === undefined) {
         return undefined;
     }
     const tail = storedStamp(key['tail']);
@@ -139,11 +161,11 @@ function parseWorkCache(text) {
         }
         weights.set(session, byPriority);
     }
-    return { key: { tail, snapshot, priorities }, work: { weights, urgent } };
+    return { key: { tail, snapshot, priorities }, work: { weights, urgent, sizeBases } };
 }
 function formatWorkCache(key, work) {
     const weights = Object.fromEntries([...work.weights].map(([session, byPriority]) => [session, Object.fromEntries(byPriority)]));
-    return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: weights, urgent: Object.fromEntries(work.urgent) });
+    return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: weights, urgent: Object.fromEntries(work.urgent), sizeBases: Object.fromEntries(work.sizeBases) });
 }
 /** The key of a reading taken now; undefined when a stamp cannot be taken. */
 async function workKeyOf(files, eventsPath, priorities) {
