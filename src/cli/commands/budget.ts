@@ -54,7 +54,7 @@ import {
   type StatusLineView,
   type StatusSnapshot,
 } from '../../budget/snapshot.ts';
-import { foldIntoFiveHourSummary } from '../../budget/five-hour-summary.ts';
+import { foldIntoFiveHourSummary, readFolderFiveHour } from '../../budget/five-hour-summary.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { attributedW, taskUseOf } from '../../budget/task-use.ts';
 import { readTeamWeek } from '../../budget/team-week-file.ts';
@@ -316,7 +316,12 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
     // The team's sessions alone, so the rows add up to the team's row of the table above them.
     const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
-    lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
+    if (recountDay === undefined) {
+      const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
+      lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, outside, behind, all, zone });
+    } else {
+      lines = recountLines(today, { week, sessions, outside, all });
+    }
   }
   for (const line of lines) {
     runtime.out.stdout(line);
