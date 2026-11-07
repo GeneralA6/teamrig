@@ -30,7 +30,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
       schedule: {},
-      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 4096 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },
@@ -450,7 +450,7 @@ describe('parseConfig', () => {
   it('keeps the delivery folder, host lock and queued step limits', () => {
     const delivery = {
       dir: 'data/deploys',
-      queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512 },
+      queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512, heavyReserveMb: 1024 },
       wait: { pollSeconds: 5, maxMinutes: 0 },
       checkTimeoutSeconds: 45,
       freezes: { maxMinutes: 90 },
@@ -693,10 +693,11 @@ describe('parseConfig', () => {
   it('reports an empty delivery folder or lock path and limits out of range', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      delivery: { dir: ' ', queue: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577 }, wait: { pollSeconds: 0 } },
+      delivery: { dir: ' ', queue: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577, heavyReserveMb: -1 }, wait: { pollSeconds: 0 } },
     });
     assert.deepEqual(paths(issues).sort(), [
       'delivery.dir',
+      'delivery.queue.heavyReserveMb',
       'delivery.queue.lockPath',
       'delivery.queue.lockTtlMinutes',
       'delivery.queue.memoryFloorMb',
@@ -707,7 +708,7 @@ describe('parseConfig', () => {
     ]);
     assert.deepEqual(config.delivery, {
       schedule: {},
-      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 4096 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },

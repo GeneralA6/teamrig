@@ -354,6 +354,7 @@ The host lock and the limits of one queued step.
 | `memorySampleSeconds` | integer (0 to 600) | `15` | While a queued step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing. |
 | `memoryFloorMb` | integer (0 to 1048576) | `4096` | A small step (queue --small) shares the host only while it keeps this many MB free besides those held for the small steps. |
 | `smallReserveMb` | integer (0 to 1048576) | `2048` | The MB held for a small step with no ledger record of its peak yet. |
+| `heavyReserveMb` | integer (0 to 1048576) | `4096` | The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only while free memory covers both (at most half the host's RAM). A heavy step whose ledger peak and a quarter is more holds that instead. |
 
 ## `delivery.freezes`
 

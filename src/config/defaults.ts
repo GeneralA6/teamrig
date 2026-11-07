@@ -347,7 +347,7 @@ export const QUEUE_TTL_MARGIN_MINUTES = 10;
  * A host lock lasts 150 minutes and a queued step at most 45 of them, a small step at most 10; a step waits up to an hour
  * for the lock, and its memory is sampled every 15 seconds while it runs.
  */
-export const DEFAULT_QUEUE: QueueConfig = { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 };
+export const DEFAULT_QUEUE: QueueConfig = { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 4096 };
 
 /** A waiting delivery step looks again every 30 seconds; a deploy step waits up to an hour for freezes and the host lock. */
 export const DEFAULT_DELIVERY_WAIT: DeliveryWaitConfig = { pollSeconds: 30, maxMinutes: 60 };

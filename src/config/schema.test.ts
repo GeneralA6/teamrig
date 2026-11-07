@@ -179,6 +179,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   queueMemorySampleSeconds: 'delivery.queue.memorySampleSeconds',
   queueMemoryFloorMb: 'delivery.queue.memoryFloorMb',
   queueSmallReserveMb: 'delivery.queue.smallReserveMb',
+  queueHeavyReserveMb: 'delivery.queue.heavyReserveMb',
   headroomSessionMb: 'open.headroom.sessionMb',
   headroomCommitMaxPct: 'open.headroom.commitMaxPct',
   headroomCloseIdleMinutes: 'open.headroom.closeIdleMinutes',

@@ -752,6 +752,12 @@ export interface QueueConfig {
   readonly memoryFloorMb: number;
   /** The MB held for a small step with no ledger record of its peak yet. */
   readonly smallReserveMb: number;
+  /**
+   * The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only
+   * while free memory covers both (at most half the host's RAM). A heavy step whose ledger peak and a quarter is more
+   * holds that instead.
+   */
+  readonly heavyReserveMb: number;
 }
 
 /** How a delivery step waits. */
