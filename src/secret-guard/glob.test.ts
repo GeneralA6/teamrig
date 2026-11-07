@@ -103,9 +103,26 @@ describe('braceAlternatives', () => {
   });
 
   it('keeps a brace inside a [...] set, or one that never closes, as a plain character', () => {
-    assert.deepEqual(braceAlternatives('[{]a,b}', 8), ['[{]a,b}']);
+    assert.deepEqual(braceAlternatives('[{]a,b', 8), ['[{]a,b']);
     assert.deepEqual(braceAlternatives('a{b', 8), ['a{b']);
     assert.deepEqual(braceAlternatives('a{b{c,d}', 8), ['a{bc', 'a{bd']);
+  });
+
+  it('reads away a backslash and a } no { opened, as ripgrep does', () => {
+    assert.deepEqual(braceAlternatives('*.\\pem', 8), ['*.pem']);
+    assert.deepEqual(braceAlternatives('*.{ts,\\pem}', 8), ['*.ts', '*.pem']);
+    assert.deepEqual(braceAlternatives('*.pem}', 8), ['*.pem']);
+    assert.deepEqual(braceAlternatives('[{]a,b}', 8), ['[{]a,b']);
+    assert.deepEqual(braceAlternatives('*.{ts,pem}}', 8), ['*.ts', '*.pem']);
+    assert.deepEqual(braceAlternatives('*.[}]pem', 8), ['*.[}]pem']);
+    assert.deepEqual(braceAlternatives('*.pem\\', 8), ['*.pem']);
+  });
+
+  it('takes an escaped character as no part of a group or a set', () => {
+    assert.deepEqual(braceAlternatives('\\{a,b}', 8), ['{a,b']);
+    assert.deepEqual(braceAlternatives('{x\\},.env*}', 8), ['x}', '.env*']);
+    assert.deepEqual(braceAlternatives('{a\\,b,c}', 8), ['a,b', 'c']);
+    assert.deepEqual(braceAlternatives('\\[{a,b}]', 8), ['[a]', '[b]']);
   });
 
   it('gives up past the limit', () => {
