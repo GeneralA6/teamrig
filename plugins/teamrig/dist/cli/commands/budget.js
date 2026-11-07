@@ -26,6 +26,7 @@ import { burnLines, loopLines, missLines, missMatrixLines, recountLines, session
 import { datedSnapshot, defaultSnapshotDir, effortOfStatus, formatSnapshot, parseSnapshot, pruneSnapshots, snapshotDirOf, snapshotOfStatus, statusLineText, } from "../../budget/snapshot.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore } from "../../budget/store.js";
 import { attributedW, taskUseOf } from "../../budget/task-use.js";
+import { readTeamWeek } from "../../budget/team-week-file.js";
 import { teamWeekOf } from "../../budget/team-week.js";
 import { foldIntoWeekSummary } from "../../budget/week-summary.js";
 import { readWeek, wSince } from "../../budget/week.js";
@@ -525,7 +526,7 @@ export async function extra(args, runtime) {
 }
 /** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
 async function statusLineSetup(runtime, cwd) {
-    const fallback = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, budget: undefined };
+    const fallback = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, paceSource: undefined };
     const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
     if (found.kind !== 'team') {
         return fallback;
@@ -535,15 +536,35 @@ async function statusLineSetup(runtime, cwd) {
         return fallback;
     }
     const { budget, statusLine } = kit.load.config;
-    return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, budget };
+    return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, paceSource: { budget, teamWeekPath: kit.paths.teamWeek } };
 }
 /**
- * Where the team's pace line stands at `now` in the week the snapshot reads, when the team shows it: undefined outside
- * a team, with no week reading, or once that week reset.
+ * Where the team's hooks last said the week resetting at `resetsAt` counts from; undefined with no file, one of another
+ * week, or one that names no start. A failed read is told on stderr, never breaking the status bar: it is caught here
+ * so it cannot read as a snapshot that was not saved.
  */
-function pacePctOf(snapshot, shown, now) {
+async function keptWeekStart(runtime, path, resetsAt) {
+    try {
+        const kept = await readTeamWeek(runtime.files, path);
+        return kept?.resetsAt === resetsAt ? kept.start : undefined;
+    }
+    catch (error) {
+        runtime.out.stderr(`teamrig statusline: the team's week was not read: ${errorMessage(error)}`);
+        return undefined;
+    }
+}
+/**
+ * Where the team's pace line stands now in the week the snapshot reads, when the team shows it, from the start its
+ * hooks keep, as `teamrig budget` counts: undefined outside a team, with no week reading, or once that week reset. The
+ * team's week file is read here and not `accountWeekOn`, which opens every team's config, too much for each tick.
+ */
+async function pacePctOf(runtime, snapshot, shown) {
     const week = snapshot.rateLimits?.sevenDay ?? null;
-    return shown.show.pace && shown.budget !== undefined && week !== null ? paceLineOfWeek(week.resetsAt, shown.budget, now) : undefined;
+    if (!shown.show.pace || shown.paceSource === undefined || week === null) {
+        return undefined;
+    }
+    const { budget, teamWeekPath } = shown.paceSource;
+    return paceLineOfWeek(week.resetsAt, budget, runtime.clock.now(), await keptWeekStart(runtime, teamWeekPath, week.resetsAt));
 }
 /**
  * The session's reading and where the session in `dir` works, as far as `show` asks: git is asked only for a branch
@@ -603,7 +624,7 @@ export async function statusline(args, runtime) {
         runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
         return EXIT.ok;
     }
-    let shown = { show: DEFAULT_STATUS_LINE, budget: undefined };
+    let shown = { show: DEFAULT_STATUS_LINE, paceSource: undefined };
     try {
         const setup = await statusLineSetup(runtime, snapshot.cwd);
         shown = setup;
@@ -618,7 +639,7 @@ export async function statusline(args, runtime) {
         runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
     }
     const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
-    const reading = { effort: effortOfStatus(input), pacePct: pacePctOf(snapshot, shown, runtime.clock.now()) };
+    const reading = { effort: effortOfStatus(input), pacePct: await pacePctOf(runtime, snapshot, shown) };
     runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
     return EXIT.ok;
 }

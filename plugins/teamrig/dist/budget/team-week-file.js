@@ -1,6 +1,6 @@
 import { teamShareOf } from "./parts.js";
 import { keepSummaryFile, summaryMinute, summaryPct } from "./summary-file.js";
-import { formatTeamWeek, TEAM_WEEK_FORMAT } from "./team-week-summary.js";
+import { formatTeamWeek, parseTeamWeek, TEAM_WEEK_FORMAT } from "./team-week-summary.js";
 import { wSince } from "./week.js";
 /**
  * The team's week summary (src/budget/team-week-summary.ts): its sessions' W since the week began at its own rate,
@@ -20,6 +20,7 @@ export function teamWeekSummaryOf(input) {
         plannedPct: summaryPct(teamUsedPct + leftPct),
         accountUsedPct: summaryPct(usedPct),
         resetsAt: window.reset,
+        start: window.start,
         at: summaryMinute(now),
         limits: input.limits,
     };
@@ -27,4 +28,9 @@ export function teamWeekSummaryOf(input) {
 /** Writes the team's week summary at `path` when that changes it, as every week summary is kept (`keepSummaryFile`); returns whether it wrote. */
 export async function keepTeamWeek(files, path, summary) {
     return keepSummaryFile(files, path, formatTeamWeek(summary), TEAM_WEEK_FORMAT);
+}
+/** The team's week summary at `path`; undefined with no file, or one damaged or in a format this teamrig cannot read. */
+export async function readTeamWeek(files, path) {
+    const text = await files.read(path);
+    return text === undefined ? undefined : parseTeamWeek(text);
 }

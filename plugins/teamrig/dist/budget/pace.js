@@ -41,15 +41,16 @@ export function paceLinePct(window, targetPct, at, profile) {
     return active > 0 ? (targetPct * profile.activeMs(window.start, at)) / active : (targetPct * (at - window.start)) / span;
 }
 /**
- * Where the pace line of the week resetting at `reset` stands at `now`, the week taken as the seven days before the
- * reset and its active time from the budget's quiet hours: the status line's cheap reading, which needs no stored
- * period. `teamrig budget` counts from a reset inside the week instead, once it saw one. Undefined once the week reset.
+ * Where the pace line of the week resetting at `reset` stands at `now`, its active time from the budget's quiet hours:
+ * the status line's cheap reading, which opens no stored period. It runs from `start`, where `teamrig budget` counts
+ * the week from, a reset inside the week included; with no start known, over the seven days before the reset.
+ * Undefined once the week reset.
  */
-export function paceLineOfWeek(reset, budget, now) {
+export function paceLineOfWeek(reset, budget, now, start) {
     if (reset <= now) {
         return undefined;
     }
-    return paceLinePct(weekWindow(reset, budget.paceEndHoursBeforeReset), budget.targetPct, now, DailyProfile.ofQuietHours(budget.quietHours));
+    return paceLinePct(weekWindow(reset, budget.paceEndHoursBeforeReset, start), budget.targetPct, now, DailyProfile.ofQuietHours(budget.quietHours));
 }
 /**
  * A span's allowance for today, in percent of the week, never a fixed number: recomputed at every reading from what
