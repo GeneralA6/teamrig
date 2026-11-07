@@ -70,6 +70,23 @@ describe('EnvAssignments', () => {
     assert.deepEqual(plain.filter((text) => assignments.hitsIn(text).length > 0), []);
   });
 
+  it('passes the setting a git config key names, and still reads a URL or a token there (T2001)', () => {
+    const name = join('GIT_CONFIG_', 'KEY_12=');
+    const settings = ['core.hooksPath', 'http.extraHeader', 'branch.feature/x.remote', join('http.https', '://host.example/.extraHeader')];
+    assert.deepEqual(settings.filter((setting) => assignments.hitsIn(join(name, setting)).length > 0), []);
+    const insteadOf = join('url.https', '://', KEY, '@host.example/.insteadOf');
+    assert.deepEqual(values(assignments, join(name, insteadOf)), [insteadOf]);
+    assert.deepEqual(values(assignments, join(name, KEY)), [KEY]);
+    const dotted = join('9', KEY, '.x');
+    assert.deepEqual(values(assignments, join(name, dotted)), [dotted]);
+  });
+
+  it("keeps that reading to git's own variable (T2001)", () => {
+    const setting = 'core.hooksPath';
+    const names = [join('API_', 'KEY='), join('GIT_CONFIG_', 'KEY='), join('MY_GIT_CONFIG_', 'KEY_0='), join('GIT_CONFIG_', 'KEY_0_TOKEN=')];
+    assert.deepEqual(names.map((name) => values(assignments, join(name, setting))), names.map(() => [setting]));
+  });
+
   it('passes a variable whose name is not a secret one', () => {
     assert.deepEqual(values(assignments, join('HOME=/c/u\nBUILD_ID=', KEY)), []);
   });
