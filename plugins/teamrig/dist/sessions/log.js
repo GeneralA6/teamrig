@@ -12,6 +12,11 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/
  * session as never closed, so only its idle pass leaves it home.
  */
 export const SESSION_LOG_FORMAT = 1;
+/**
+ * Where the log sits under the team's state folder (`<kit home>/teams/<team>/state`, unless the team config's
+ * `paths.state` moves it), as `teamPaths` (src/core/home.ts) names it, for a reader that finds the file itself.
+ */
+export const SESSION_LOG_IN_STATE = ['session-log.jsonl'];
 function instantField(record, key) {
     const value = stringField(record, key);
     return value !== undefined && Number.isFinite(Date.parse(value)) ? value : undefined;
@@ -53,6 +58,32 @@ export function closedOf(records, session) {
     const newest = records.findLast((record) => record.session === session);
     return newest?.kind === 'close' ? newest : undefined;
 }
+/** Each session's records, oldest first, by session id: what a reader shows of one session's closes and reopens. */
+export function sessionLogBySession(records) {
+    const bySession = new Map();
+    for (const record of records) {
+        const own = bySession.get(record.session);
+        if (own === undefined) {
+            bySession.set(record.session, [record]);
+        }
+        else {
+            own.push(record);
+        }
+    }
+    return bySession;
+}
+/** The log's text as its records, oldest first, with the damaged and newer lines it skipped counted. */
+export function readSessionLog(text) {
+    const parse = parseJsonl(text);
+    const records = [];
+    for (const { record, version } of parse.records) {
+        const parsed = version === SESSION_LOG_FORMAT ? parseSessionLogRecord(record) : undefined;
+        if (parsed !== undefined) {
+            records.push(parsed);
+        }
+    }
+    return { records, skipped: parse.unreadable + parse.records.length - records.length };
+}
 /** The team's append-only log of session closes and reopens, oldest first. */
 export class SessionLog {
     files;
@@ -62,15 +93,7 @@ export class SessionLog {
         this.path = path;
     }
     async read() {
-        const parse = parseJsonl((await this.files.read(this.path)) ?? '');
-        const records = [];
-        for (const { record, version } of parse.records) {
-            const parsed = version === SESSION_LOG_FORMAT ? parseSessionLogRecord(record) : undefined;
-            if (parsed !== undefined) {
-                records.push(parsed);
-            }
-        }
-        return { records, skipped: parse.unreadable + parse.records.length - records.length };
+        return readSessionLog((await this.files.read(this.path)) ?? '');
     }
     /** One whole line in one append; refused beside records from a newer teamrig. */
     async append(record) {
