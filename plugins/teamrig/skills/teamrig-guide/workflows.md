@@ -12,7 +12,8 @@ At the start of each work block, after a `/clear`, and in any tab teamrig did no
 teamrig start --session api
 ```
 
-It prints the time, your unread inbox lines, your task list, the other sessions' tasks waiting on yours
+It prints the time, how far your checkout is behind main (`BEHIND`, when it is: rebase before you edit), your
+unread inbox lines, your task list, the other sessions' tasks waiting on yours
 (`WAITING ON YOU`, when some do), the `check` flags of your tasks and skills, and the week's use. After a context
 refresh or a compaction, the start note opens with `START <id>, <time>: this note is your work block's start` and
 holds what `start` prints first: run `start` at your next work block instead.

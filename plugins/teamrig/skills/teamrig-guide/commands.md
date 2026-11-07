@@ -2174,6 +2174,10 @@ sessions that need one of your unfinished tasks or wait on your decision or appr
 when some do. The lead gets every flag, as `teamrig check` prints them; any other session gets the
 flags of the tasks and skills it owns, and a sub-lead also those of its group's tasks. Run it at the start of every work block and after every `/clear`.
 
+When the checkout you run it in lacks commits of origin's default branch, a `BEHIND` line after the time says how
+many: rebase before you edit. It counts against that branch as last fetched and never fetches itself; every worktree
+of a repository shares the ref, so a fetch in any of them (a rebase's, a ship's, a merge's) moves it.
+
 Flags:
 
 - `--session <area>`: who you are.
