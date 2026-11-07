@@ -620,6 +620,7 @@ Goal-first ranking: the work classes a task is filed under (teamrig add and upda
 | `maintenanceClass` | string | `"Maintenance"` | The class ranked by severity first (bug, critical): one of classes. |
 | `defaultClass` | string | `"Improvements"` | The class a task with none counts as; it ranks last. One of classes. |
 | `maxActiveKeyResults` | integer (1 to 100) | `5` | The key results (goals with a parent) the team may hold with a target of today or later; teamrig goal add refuses one more. |
+| `maxOpenSlices` | integer (1 to 20) | `3` | The shippable slices (a goal's fewest tasks that ship something working, proven live) the leads keep open across the tree at once; other work waits, incidents and Maintenance excepted. The lead's rules print it. |
 | `score` | [object](#focusscore) |  | The parts of a task's WSJF score: cost of delay (value + urgency + unblocks + owner order) over size, in % of the week. |
 | `expedite` | [object](#focusexpedite) |  | Which tasks go ahead of every score, beside a p0, which always does. |
 | `wip` | [object](#focuswip) |  | The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, or until the week resets once Improvements has spent its allocation, and a start past maxInProgress is held. --one-commit, a reopen of a verifying or done task, an expedited task and an owner-sourced task are exempt. |

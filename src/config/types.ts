@@ -1210,6 +1210,11 @@ export interface FocusConfig {
   readonly defaultClass: string;
   /** The key results (goals with a parent) a team may hold with a target of today or later. */
   readonly maxActiveKeyResults: number;
+  /**
+   * The shippable slices (a goal's fewest tasks that ship something working, proven live) the leads keep open across
+   * the tree at once (owner order T2201): spreading every task in parallel ships nothing for a long time.
+   */
+  readonly maxOpenSlices: number;
   readonly score: FocusScoreConfig;
   readonly expedite: FocusExpediteConfig;
   readonly wip: FocusWipConfig;

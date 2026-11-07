@@ -303,7 +303,8 @@ export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: tru
  * Goal-first ranking (owner order 11-06, T2076): roadmap work first, maintenance by severity, team tooling last. A
  * ranked goal is worth 20 down to 4, so the top objective beats any Maintenance task short of a critical bug (10 + 4 +
  * 10), and an owner's p1 adds 12 as a capped override instead of ranking alone. At most 3 tasks in progress, an
- * Improvements start refused while a Roadmap task can move, and 60/25/15 of the week's spend planned by class.
+ * Improvements start refused while a Roadmap task can move, and 60/25/15 of the week's spend planned by class. The
+ * leads keep at most 3 shippable slices open across the tree (owner order 11-07, T2201).
  */
 export const DEFAULT_FOCUS: FocusConfig = {
   classes: ['Roadmap', 'Maintenance', 'Improvements'],
@@ -311,6 +312,7 @@ export const DEFAULT_FOCUS: FocusConfig = {
   maintenanceClass: 'Maintenance',
   defaultClass: 'Improvements',
   maxActiveKeyResults: 5,
+  maxOpenSlices: 3,
   score: {
     rankValues: [20, 16, 12, 8, 4],
     roadmapUnranked: 3,
