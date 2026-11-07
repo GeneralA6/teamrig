@@ -113,6 +113,9 @@ describe('secretFindingsOf', () => {
     assert.deepEqual(grep('{src,.env*}'), ['{src,.env*}']);
     assert.deepEqual(grep('*.{ts,md,json}'), []);
     assert.deepEqual(grep('{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}'), ['{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}']);
+    const alternatives = (count: number): string => `{${Array.from({ length: count }, (_, index) => `f${index}`).join(',')}}`;
+    assert.deepEqual(grep(alternatives(64)), []);
+    assert.deepEqual(grep(alternatives(65)), [alternatives(65)]);
   });
 
   it('reads no other tool', () => {
