@@ -33,6 +33,11 @@ describe('inlineFindings', () => {
     assert.deepEqual(printed("node -e \"fetch(u, {headers: {a: process.env.NPM_TOKEN}})\"; node app.js; ruby -rpp -e 'x = ENV[\"GH_TOKEN\"]'"), []);
   });
 
+  it('lets printing code pass whose text holds a reversed range, which once threw (T1960)', () => {
+    assert.deepEqual(printed(`node -e 'console.log("near[near.length-1]")'`), []);
+    assert.deepEqual(printed("node -e 'console.log(`last ${near[near.length-1]}`)'"), []);
+  });
+
   it('reads python, ruby, perl and php code, and the files it prints', () => {
     assert.deepEqual(printed(`python -c "import os; print(os.environ['AWS_SECRET_ACCESS_KEY'])"`), ['the value of $AWS_SECRET_ACCESS_KEY']);
     assert.deepEqual(printed(`python3 -c "print(open('.env').read())"`), ['the content of .env']);
