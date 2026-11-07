@@ -126,6 +126,13 @@ describe('paceLineOfWeek', () => {
     assert.equal(paceLineOfWeek(RESET, { ...DEFAULT_BUDGET, targetPct: 80, paceEndHoursBeforeReset: 0 }, evening), paceLinePct(weekWindow(RESET, 0), 80, evening, EVEN));
   });
 
+  it('counts from a start it is given, as `teamrig budget` does after a reset inside the week (T2082)', () => {
+    const start = at('2026-10-16T00:00:00Z');
+    const counted = paceLineOfWeek(RESET, DEFAULT_BUDGET, evening, start);
+    assert.equal(counted, paceLinePct(weekWindow(RESET, 1, start), 99.5, evening, EVEN));
+    assert.notEqual(counted, paceLineOfWeek(RESET, DEFAULT_BUDGET, evening));
+  });
+
   it("counts only the active time outside the budget's quiet hours", () => {
     const quietHours = { startUtc: '22:00', endUtc: '06:00', action: 'ask' } as const;
     assert.equal(round(paceLineOfWeek(RESET, { ...DEFAULT_BUDGET, quietHours }, evening) ?? 0), round((99.5 * 80) / 112));

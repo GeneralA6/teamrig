@@ -8,6 +8,7 @@ import { formatPeriod, parsePeriod } from '../budget/period.ts';
 import { OVER_BUDGET_ADVICE, W_EXPLAINED } from '../budget/report.ts';
 import { formatSnapshot, parseSnapshot, snapshotOfStatus, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
 import { EMPTY_USAGE, UsageStore } from '../budget/store.ts';
+import { formatTeamWeek, TEAM_WEEK_IN_STATE } from '../budget/team-week-summary.ts';
 import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
@@ -851,6 +852,9 @@ describe('teamrig statusline', () => {
    * from a week before the reset to an hour before it, of 99.5%: 19.7%.
    */
   const SHOWN = `Opus 5.5, ${basename(APP)} on dev, week 30% (pace 20%), 5h 6%`;
+  const TEAM_WEEK = join(TEAM_HOME, 'state', ...TEAM_WEEK_IN_STATE);
+  /** This week as the team's hooks keep it, but for the start a format 3 file names. */
+  const KEPT_WEEK = { account: 'work', usedPct: 15, plannedPct: 84.5, accountUsedPct: 30, resetsAt: RESET, at: Date.parse('2030-01-08T09:00:00Z'), limits: [] };
 
   /** A repository whose branch and HEAD answers are counted. */
   function countedRepo(branch: string | undefined, head: string | undefined) {
@@ -922,6 +926,53 @@ describe('teamrig statusline', () => {
     assert.match(lines[3] ?? '', /^ {2}the team +0[.0]*% /);
     const period = parsePeriod(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'period.json')) ?? '');
     assert.deepEqual([period?.kind, period?.start], ['reset', Date.parse('2030-01-08T10:00:00Z')]);
+  });
+
+  it('shows the pace `teamrig budget` reads after a reset inside the week, from the start the team keeps (T2082)', async () => {
+    const { kit, run } = await world();
+    ok(await run(['budget']));
+    kit.clock.advance(3_600_000);
+    const fallen = JSON.stringify({ session_id: ALPHA_TAB, cwd: APP, rate_limits: { seven_day: { used_percentage: 0.5, resets_at: RESET / 1000 } } });
+    ok(await run(['statusline'], { stdin: fallen }));
+    assert.match(ok(await run(['budget']))[0] ?? '', /the pace line is at 0\.74%/);
+    const start = Date.parse('2030-01-08T10:00:00Z');
+    assert.equal(parsePeriod(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'period.json')) ?? '')?.start, start);
+    await kit.files.write(TEAM_WEEK, formatTeamWeek({ ...KEPT_WEEK, start }));
+    assert.match(ok(await run(['statusline'], { stdin: fallen }))[0] ?? '', /\(pace 1%\)/);
+  });
+
+  it('counts the pace line from the start the team keeps: 10 of the 144 hours to the pace end (T2082)', async () => {
+    const kit = new CliHarness(LIMITED);
+    await kit.files.write(TEAM_WEEK, formatTeamWeek({ ...KEPT_WEEK, start: Date.parse('2030-01-08T00:00:00Z') }));
+    assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP) })), [SHOWN.replace('pace 20%', 'pace 7%')]);
+  });
+
+  it("keeps the seven days before the reset with no start for this week: another week's file, a format 2 one or a torn one (T2082)", async () => {
+    const start = Date.parse('2030-01-08T00:00:00Z');
+    const kept = [formatTeamWeek({ ...KEPT_WEEK, resetsAt: RESET + 7 * MS_PER_DAY, start }), JSON.stringify({ v: 2, ...KEPT_WEEK }), '{"v":3,"usedP'];
+    for (const text of kept) {
+      const kit = new CliHarness(LIMITED);
+      await kit.files.write(TEAM_WEEK, text);
+      const result = await kit.run(['statusline'], { stdin: status(APP) });
+      assert.deepEqual([result.stdout, result.stderr], [[SHOWN], []], text);
+    }
+  });
+
+  it("tells a failed read of the team's week on stderr and still shows the status, the pace over the seven days (T2082)", async () => {
+    const kit = new CliHarness(LIMITED);
+    const files = new FaultyFiles(kit.files).fail('read', TEAM_WEEK, systemError('EACCES'));
+    assert.deepEqual(await kit.run(['statusline'], { stdin: status(APP), files }), {
+      code: EXIT.ok,
+      stdout: [SHOWN],
+      stderr: ["teamrig statusline: the team's week was not read: EACCES: simulated"],
+    });
+  });
+
+  it("opens no team's week while the pace is off (T2082)", async () => {
+    const kit = new CliHarness({ ...LIMITED, statusLine: { pace: false } });
+    const files = new FaultyFiles(kit.files).fail('read', TEAM_WEEK, systemError('EACCES'));
+    const result = await kit.run(['statusline'], { stdin: status(APP), files });
+    assert.deepEqual([result.stdout, result.stderr], [[SHOWN.replace(' (pace 20%)', '')], []]);
   });
 
   it("saves to the team's budget.statusSnapshotDir, relative to the team's folder or absolute, and budget reads it there", async () => {
