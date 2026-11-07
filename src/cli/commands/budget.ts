@@ -56,6 +56,7 @@ import {
 } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { attributedW, taskUseOf } from '../../budget/task-use.ts';
+import { readTeamWeek } from '../../budget/team-week-file.ts';
 import { teamWeekOf, type TeamWeekPaths } from '../../budget/team-week.ts';
 import { foldIntoWeekSummary } from '../../budget/week-summary.ts';
 import { readWeek, wSince, type WeekReading } from '../../budget/week.ts';
@@ -633,16 +634,22 @@ export async function extra(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   return EXIT.ok;
 }
 
-/** Where the status line saves its snapshot, what it shows, and the budget its pace line follows. */
+/** What the team's pace line follows: its budget, and the file its hooks name the week's start in. */
+interface PaceSource {
+  readonly budget: BudgetConfig;
+  readonly teamWeekPath: string;
+}
+
+/** Where the status line saves its snapshot, what it shows, and what its pace line follows. */
 interface StatusLineSetup {
   readonly snapshotDir: string;
   readonly show: StatusLineConfig;
-  /** The team's budget; undefined outside a team, where no pace line is shown. */
-  readonly budget: BudgetConfig | undefined;
+  /** Undefined outside a team, where no pace line is shown. */
+  readonly paceSource: PaceSource | undefined;
 }
 
-/** What the status line shows, and the budget its pace line follows. */
-type StatusLineShown = Pick<StatusLineSetup, 'show' | 'budget'>;
+/** What the status line shows, and what its pace line follows. */
+type StatusLineShown = Pick<StatusLineSetup, 'show' | 'paceSource'>;
 
 /** What the status line reads beside the snapshot: the session's effort level and where the team's pace line stands. */
 interface StatusLineReading {
@@ -652,7 +659,7 @@ interface StatusLineReading {
 
 /** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
 async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<StatusLineSetup> {
-  const fallback: StatusLineSetup = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, budget: undefined };
+  const fallback: StatusLineSetup = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, paceSource: undefined };
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
   if (found.kind !== 'team') {
     return fallback;
@@ -662,16 +669,36 @@ async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<Status
     return fallback;
   }
   const { budget, statusLine } = kit.load.config;
-  return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, budget };
+  return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, paceSource: { budget, teamWeekPath: kit.paths.teamWeek } };
 }
 
 /**
- * Where the team's pace line stands at `now` in the week the snapshot reads, when the team shows it: undefined outside
- * a team, with no week reading, or once that week reset.
+ * Where the team's hooks last said the week resetting at `resetsAt` counts from; undefined with no file, one of another
+ * week, or one that names no start. A failed read is told on stderr, never breaking the status bar: it is caught here
+ * so it cannot read as a snapshot that was not saved.
  */
-function pacePctOf(snapshot: StatusSnapshot, shown: StatusLineShown, now: number): number | undefined {
+async function keptWeekStart(runtime: CliRuntime, path: string, resetsAt: number): Promise<number | undefined> {
+  try {
+    const kept = await readTeamWeek(runtime.files, path);
+    return kept?.resetsAt === resetsAt ? kept.start : undefined;
+  } catch (error) {
+    runtime.out.stderr(`teamrig statusline: the team's week was not read: ${errorMessage(error)}`);
+    return undefined;
+  }
+}
+
+/**
+ * Where the team's pace line stands now in the week the snapshot reads, when the team shows it, from the start its
+ * hooks keep, as `teamrig budget` counts: undefined outside a team, with no week reading, or once that week reset. The
+ * team's week file is read here and not `accountWeekOn`, which opens every team's config, too much for each tick.
+ */
+async function pacePctOf(runtime: CliRuntime, snapshot: StatusSnapshot, shown: StatusLineShown): Promise<number | undefined> {
   const week = snapshot.rateLimits?.sevenDay ?? null;
-  return shown.show.pace && shown.budget !== undefined && week !== null ? paceLineOfWeek(week.resetsAt, shown.budget, now) : undefined;
+  if (!shown.show.pace || shown.paceSource === undefined || week === null) {
+    return undefined;
+  }
+  const { budget, teamWeekPath } = shown.paceSource;
+  return paceLineOfWeek(week.resetsAt, budget, runtime.clock.now(), await keptWeekStart(runtime, teamWeekPath, week.resetsAt));
 }
 
 /**
@@ -733,7 +760,7 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
     return EXIT.ok;
   }
-  let shown: StatusLineShown = { show: DEFAULT_STATUS_LINE, budget: undefined };
+  let shown: StatusLineShown = { show: DEFAULT_STATUS_LINE, paceSource: undefined };
   try {
     const setup = await statusLineSetup(runtime, snapshot.cwd);
     shown = setup;
@@ -747,7 +774,7 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
   }
   const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
-  const reading: StatusLineReading = { effort: effortOfStatus(input), pacePct: pacePctOf(snapshot, shown, runtime.clock.now()) };
+  const reading: StatusLineReading = { effort: effortOfStatus(input), pacePct: await pacePctOf(runtime, snapshot, shown) };
   runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
   return EXIT.ok;
 }
