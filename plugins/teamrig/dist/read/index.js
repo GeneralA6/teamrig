@@ -74,6 +74,9 @@ export { activeHires, HIRE_FORMAT, readHiringLog, rehiredFrom, retiredSessions, 
 // last read it, and the stretches the account sat at its usage limit. One file per team; a reader adds a child team's
 // to its parent's.
 export { parseTeamWeek, TEAM_WEEK_FORMAT, TEAM_WEEK_IN_STATE } from "../budget/team-week-summary.js";
+// Each team's usage rollup (`usage/rollup/<day>.json` in its state folder, `ROLLUP_IN_STATE`): what each session spent
+// in a closed UTC day, by what the use was for and by task, numbers and ids only. One file per team and day.
+export { parseRollup, ROLLUP_FORMAT, ROLLUP_IN_STATE, rollupFileName, USE_CLASSES, } from "../budget/rollup-file.js";
 // Each session's week (`usage/sessions.week.json` in its team's state folder, `SESSIONS_WEEK_IN_STATE`): its use of the
 // account's week so far and its hours with work, by session id, as its team's budget hooks last read them.
 export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_IN_STATE } from "../budget/session-week-summary.js";

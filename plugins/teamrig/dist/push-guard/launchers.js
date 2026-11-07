@@ -97,6 +97,11 @@ export function programName(text) {
     const base = text.slice(Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\')) + 1).toLowerCase();
     return base.replace(/\.(?:exe|cmd|bat|com)$/, '');
 }
+/** Whether a word names a shell. */
+export function isShell(text) {
+    const name = programName(text);
+    return POSIX_SHELLS.has(name) || POWERSHELLS.has(name);
+}
 /** True for a bash `NAME=value` word. */
 export function isAssignment(text) {
     return /^[A-Za-z_][A-Za-z0-9_]*=/.test(text);

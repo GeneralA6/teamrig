@@ -1,6 +1,7 @@
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
 import { BLOCK_START_WORDS, isBlockStartLine } from "../core/work-block.js";
+import { isPushedPrompt, isStopFeedback } from "./turn-origin.js";
 import { usageOf } from "./weights.js";
 /**
  * What started a turn: the owner, a peer's message, a notification (a finished background task or a
@@ -93,6 +94,8 @@ export function callOf(entry) {
     }
     const id = stringField(message, 'id');
     const tools = blocksOf(message).flatMap((block) => toolUseOf(block) ?? []);
+    const model = stringField(message, 'model');
+    const effort = stringField(entry, 'effort');
     return {
         kind: 'call',
         key: id === undefined ? undefined : `${id}|${stringField(entry, 'requestId') ?? ''}`,
@@ -100,6 +103,8 @@ export function callOf(entry) {
         mainThread: entry['isSidechain'] === false,
         usage,
         tools,
+        ...(model === undefined ? {} : { model }),
+        ...(effort === undefined ? {} : { effort }),
     };
 }
 function promptText(message) {
@@ -152,7 +157,31 @@ function promptOf(entry, message, at) {
     const trigger = triggerOf(entry, message);
     const answers = trigger === 'notification' ? TOOL_USE_ID.exec(text)?.[1] : undefined;
     const tasks = tasksIn(text);
-    return { kind: 'prompt', at, trigger, commands: commandsIn(text), ...(answers === undefined ? {} : { answers }), ...(tasks.length === 0 ? {} : { tasks }) };
+    return {
+        kind: 'prompt',
+        at,
+        trigger,
+        commands: commandsIn(text),
+        ...(answers === undefined ? {} : { answers }),
+        ...(tasks.length === 0 ? {} : { tasks }),
+        ...(isPushedPrompt(text) ? { pushed: true } : {}),
+    };
+}
+const STOP_FEEDBACK_WORDS = '"isMeta":true';
+/**
+ * A Stop hook's push, which Claude Code writes as its own text. `parseTranscriptLine` skips such lines and must go on
+ * skipping them, or the meter's turn counts move: only the rollup, which needs to see the turn start, reads this.
+ */
+export function stopFeedbackPromptOf(raw) {
+    if (!raw.includes(STOP_FEEDBACK_WORDS)) {
+        return undefined;
+    }
+    const entry = parseObject(raw);
+    const message = entry?.['type'] === 'user' && entry['isMeta'] === true ? recordField(entry, 'message') : undefined;
+    if (entry === undefined || message === undefined || !isStopFeedback(promptText(message))) {
+        return undefined;
+    }
+    return promptOf(entry, message, timeOf(entry));
 }
 /** A compaction's boundary line; undefined for any other entry. */
 function compactOf(entry) {

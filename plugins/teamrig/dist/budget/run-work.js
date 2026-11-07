@@ -1,4 +1,4 @@
-import { programsOf } from "../package-guard/programs.js";
+import { runsOf } from "../package-guard/programs.js";
 import { EXEC_VALUED, NPM_VALUED } from "../package-guard/runners.js";
 import { programName } from "../push-guard/launchers.js";
 /** The shells whose calls start programs, by tool name. */
@@ -77,10 +77,14 @@ const DEVICE = /^\/dev\/|^nul$/i;
 /** Programs that search files; one that reads a pipe filters output instead. */
 const SEARCHES = new Set(['grep', 'rg', 'find', 'select-string']);
 const NO_VALUED = new Set();
+/** All a shell tool call runs, with what could not be read; undefined for any other tool or a call without a command. */
+export function shellLineRunsOf(tool) {
+    const dialect = SHELL_DIALECTS.get(tool.name);
+    return dialect === undefined || tool.command === undefined ? undefined : runsOf(tool.command, { ...NO_FOLDER, dialect });
+}
 /** The programs a shell tool call starts, in the order it starts them; none for any other tool or a call without a command. */
 export function shellRunsOf(tool) {
-    const dialect = SHELL_DIALECTS.get(tool.name);
-    return dialect === undefined || tool.command === undefined ? [] : programsOf(tool.command, { ...NO_FOLDER, dialect });
+    return shellLineRunsOf(tool)?.programs ?? [];
 }
 /** The first word that is not an option, skipping the value of each option in `valued`, with its index. */
 function firstOperand(args, valued) {
