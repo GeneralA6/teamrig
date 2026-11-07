@@ -29,9 +29,10 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * next line. Raised from 850 for the owner's shippable-slice line (T2201), whose worst case prints a 32-character
  * class name and a two-digit cap. Raised from 1,150 for its cap per session (T2215), which names the one more a
  * session may open while one waits, from 1,215 for the owner decisions that hold a new slice, and from 1,305 for the
- * week split a team on the budget prints (T2215), whose worst case names a 32-character main lead team and a 50% floor.
+ * week split a team on the budget prints (T2215), whose worst case names a 32-character main lead team and a 50% floor,
+ * and from 1,690 for the appeal line every lead prints (T2215).
  */
-export const LEAD_RULES_MAX_CHARS = 1_690;
+export const LEAD_RULES_MAX_CHARS = 1_900;
 
 /** A team's rules.md as a session reads it at start. */
 export interface TeamRules {
@@ -365,7 +366,9 @@ export function renderKeptRules(conflicts: readonly KeptRule[], command: string)
  * once, each stuck on a review or a decision. The cap is per session, not across the tree (T2215): one across the
  * tree let a lead fill it with its own team's slices and keep a child team's waiting with no bound. The owner
  * decisions waiting in the tree bound it too (T2215), so work only the owner can unblock never outruns the owner.
- * While the budget is on, the week split (owner order T2215): see weekSplitLine.
+ * While the budget is on, the week split (owner order T2215): see weekSplitLine. A higher leader's call wins at once
+ * (owner order T2215), so a dispute never stalls the work, while an appeal to any leader above, up to the owner, keeps
+ * a wrong call from standing because the leader who made it is the only one asked.
  */
 export function renderLeadRules(config: KitConfig, command: string): string {
   const { focus } = config;
@@ -382,6 +385,7 @@ export function renderLeadRules(config: KitConfig, command: string): string {
     ...(config.budget.enabled ? [weekSplitLine(config.budget)] : []),
     '- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner.',
     "- Fix a team rule proven wrong (a peer's ask is no proof); say so in each session's next line; a loosening goes to the owner.",
+    "- A higher leader's call wins: concede at once; appeal, never blocking, to any leader above the one you disagree with (the owner through the main lead): a task it owns, titled `Appeal: ...`, with evidence.",
     "- HIRE flags: give a SCALE-OUT's slice to an idle hire, else hire one; retire on a RETIRE-DUE.",
     "- Send another session's task work (research, code, checks, an answer) to it with a deadline; relay its answer.",
   ].join('\n');

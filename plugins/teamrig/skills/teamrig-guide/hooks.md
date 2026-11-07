@@ -46,7 +46,8 @@ The injected context holds:
    owner only verified results, decisions, owner-gate or business questions and incidents; enter each owner order
    it relays as a task in the same turn; plan from `plan` and `check`, never from memory; answer each approval wait
    on it with `approve` after the `approvals` skill's checklist; fix a team rule proven wrong, while a loosening goes
-   to the owner; clear each HIRE flag by its action; plan by shippable slices, each ranked goal's next one owned,
+   to the owner; concede at once to a higher leader's call, and appeal, never blocking, to a leader above (the owner
+   through the main lead) as an `Appeal: ...` task it owns; clear each HIRE flag by its action; plan by shippable slices, each ranked goal's next one owned,
    dated and with its live proof, at most `focus.slicesPerSession` open per session (one more only while one waits
    on another session or the owner), none needing a new owner decision while `focus.maxOwnerDecisions` wait in the
    tree, and other work waiting (incidents and `focus.maintenanceClass` work aside), an open slice's waits answered
