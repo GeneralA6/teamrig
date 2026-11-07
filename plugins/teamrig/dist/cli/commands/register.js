@@ -17,9 +17,10 @@ import { formatTaskLines, taskLinesOf } from "../../inbox/task-lines.js";
 import { WakeAsks } from "../../wake/asks.js";
 import { teamDayStartAt } from "../../wake/day-start.js";
 import { waitAnswerersOf } from "../../register/approval.js";
-import { byFlagKind, checkTasks, peerWaitFlags } from "../../register/check.js";
+import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
+import { heldFirst } from "../../register/leader-wait.js";
 import { bugHint } from "../../register/bug-hint.js";
 import { reviewGap, reviewGapText } from "../../register/review.js";
 import { renderPlan } from "../../register/plan.js";
@@ -778,13 +779,16 @@ function elsewhereLines({ team, task }, own, withTree, runtime) {
 }
 /**
  * `start`'s WAITING ON YOU block: the active tasks of other sessions that need the caller's unfinished tasks or wait
- * on its decision or approval, from the working set (a finished task waits on no one); `--all` lists every one.
+ * on its decision or approval, from the working set (a finished task waits on no one), the Roadmap work held on the
+ * caller past the limit first; `--all` lists every one.
  */
 export async function waitingReport(args, runtime) {
     const { own } = await settle(runtime, await ownRegister(runtime), () => false);
     const owner = sessionIdOf(own.roster, callerOf(args.flags, runtime.env));
     const tree = taskTreeOf(own, runtime);
-    return waitingOnLines(owner, tree.waitingOn(owner), tree, args.switches.has('all'));
+    // No parent lead here: a hold counts only when it names the caller, and a wait on the team above never does.
+    const waiting = heldFirst(tree.waitingOn(owner), owner, new LeadTree(own.config), own.config.focus, runtime.clock.now());
+    return waitingOnLines(owner, waiting, tree, args.switches.has('all'));
 }
 /**
  * `verify`: the caller's verifying tasks, oldest first, each with its proof and the date to verify by, then its done
@@ -821,7 +825,14 @@ function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zon
     const tree = new TaskTree(snapshot.state.tasks, now, zone, week, elsewhere, ranking);
     const dayStart = teamDayStartAt(config.wake.dayStartUtc, now.getTime());
     const progress = noProgressFlag({ tasks, tree, dayStart, days: config.register.check.goalProgressDays, leftPct });
-    const flags = [...checkTasks(tasks, now, zone, week, config.register, elsewhere, ranking), ...peerWaitFlags(tasks, new LeadTree(config, above), config.roles, config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
+    const leads = new LeadTree(config, above);
+    const flags = [
+        ...checkTasks(tasks, now, zone, week, config.register, elsewhere, ranking),
+        ...peerWaitFlags(tasks, leads, config.roles, config.register.ownerSource),
+        // In plan order, so the leader reads the most urgent wait first.
+        ...leaderWaitFlags(tree.inPlanOrder(tasks), leads, config.focus, now.getTime()),
+        ...(progress === undefined ? [] : [progress]),
+    ];
     return { team, flags: flags.sort(byFlagKind), tree };
 }
 /**
