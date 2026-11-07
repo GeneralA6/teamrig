@@ -13,7 +13,7 @@ import { formatTeamWeek, TEAM_WEEK_IN_STATE } from '../budget/team-week-summary.
 import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { MS_PER_DAY } from '../core/time.ts';
+import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import { APP, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
@@ -65,6 +65,11 @@ function status(cwd: string, usedPct = 30, extra: JsonRecord = {}): string {
   });
 }
 
+/** The status input of a plan with no five-hour window, so a spec about the rest of `teamrig budget` reads its lines without that one. */
+function weekOnlyStatus(cwd: string): string {
+  return JSON.stringify({ session_id: ALPHA_TAB, cwd, rate_limits: { five_hour: null, seven_day: { used_percentage: 30, resets_at: RESET / 1000 } } });
+}
+
 /** A status line snapshot a tab of another team saved in `dir`: the week `usedPct` used, read now. */
 async function saveReading(kit: CliHarness, dir: string, session: string, usedPct: number): Promise<void> {
   const input = JSON.stringify({ session_id: session, cwd: APP, rate_limits: { seven_day: { used_percentage: usedPct, resets_at: RESET / 1000 } } });
@@ -93,7 +98,7 @@ async function world(config: JsonRecord = LIMITED, withStatus = true): Promise<W
   );
   const run = (argv: readonly string[], extra: RunOptions = {}): Promise<CliResult> => kit.run(argv, { transcripts: source, ...extra });
   if (withStatus) {
-    const saved = await run(['statusline'], { stdin: status(APP) });
+    const saved = await run(['statusline'], { stdin: weekOnlyStatus(APP) });
     assert.equal(saved.code, EXIT.ok, saved.stderr.join('\n'));
   }
   return { kit, source, run };
@@ -134,6 +139,44 @@ describe('teamrig budget', () => {
       W_EXPLAINED,
     ]);
     assert.deepEqual(ok(await run(['budget', '--all'])).slice(6, 7), ['  No use today: app-lead.']);
+  });
+
+  describe('the five-hour window', () => {
+    const FIVE_HOUR_RESET = Date.parse('2030-01-08T13:00:00Z');
+    const used = (usedPct: number): string =>
+      JSON.stringify({
+        session_id: ALPHA_TAB,
+        cwd: APP,
+        rate_limits: { five_hour: { used_percentage: usedPct, resets_at: FIVE_HOUR_RESET / 1000 }, seven_day: { used_percentage: 30, resets_at: RESET / 1000 } },
+      });
+    const windowLine = (lines: readonly string[]): string | undefined => lines.find((line) => line.startsWith('Five-hour window'));
+
+    it('shows its use under the week, and where its rise takes it once its readings span the rate span', async () => {
+      const { kit, run } = await world(LIMITED, false);
+      ok(await run(['statusline'], { stdin: used(10) }));
+      assert.equal(ok(await run(['budget']))[1], 'Five-hour window: 10.0% used at 10:00 UTC. Resets 13:00 UTC.');
+      kit.clock.advance(30 * MS_PER_MINUTE);
+      ok(await run(['statusline'], { stdin: used(40) }));
+      assert.equal(ok(await run(['budget']))[1], 'Five-hour window: 40.0% used at 10:30 UTC. Resets 13:00 UTC. At its rise of 60.0 points an hour, it reaches 100% 11:30 UTC.');
+    });
+
+    it('shows nothing for a plan whose status input reads five_hour null', async () => {
+      const { run } = await world();
+      assert.equal(windowLine(ok(await run(['budget']))), undefined);
+    });
+
+    it('shows nothing once the window has reset', async () => {
+      const { kit, run } = await world(LIMITED, false);
+      ok(await run(['statusline'], { stdin: used(10) }));
+      kit.clock.advance(3 * 60 * MS_PER_MINUTE);
+      assert.equal(windowLine(ok(await run(['budget']))), undefined);
+    });
+
+    it('leaves a recount of a day without the line', async () => {
+      const { run } = await world(LIMITED, false);
+      ok(await run(['statusline'], { stdin: used(10) }));
+      assert.equal(windowLine(ok(await run(['budget', '--day', '2030-01-08']))), undefined);
+    });
   });
 
   it('counts a turn for the class of the task it names and the rest as no task, so the rows add up to the team', async () => {

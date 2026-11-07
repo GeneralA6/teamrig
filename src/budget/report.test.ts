@@ -112,7 +112,7 @@ function inBurst(id: string, w: number): SessionToday {
 const SESSIONS: readonly SessionToday[] = [session('lead', 7_500_000, 310), session('alpha', 30_000_000, 1_000), session('bravo', 0, 0, 2, LIFT)];
 const OUTSIDE: OutsideToday = { w: 1_200_000, calls: 40, sessions: 2, titles: ['release checks', 'Docs'] };
 const NOBODY_OUTSIDE: OutsideToday = { w: 0, calls: 0, sessions: 0, titles: [] };
-const REPORT: TodayReport = { week: WEEK, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], classes: undefined, outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
+const REPORT: TodayReport = { week: WEEK, fiveHour: undefined, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], classes: undefined, outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
 /** At WEEK's 7.5M W per percent: Roadmap 2% today and 10% of the week, Improvements past its 15%, a class the config dropped, and the rest. */
 const CLASSES: readonly ClassRow[] = [
   { name: 'Roadmap', todayW: 15_000_000, weekW: 75_000_000, allocationPct: 60 },
@@ -136,6 +136,17 @@ describe('todayLines', () => {
     assert.equal(
       todayLines({ ...REPORT, zone: JERUSALEM })[0],
       'Week: 57.0% used at 14:00 IDT (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 04:00 IDT.',
+    );
+  });
+
+  it('prints the five-hour window right under the week, and no line on a plan without one', () => {
+    const at = Date.parse('2026-10-15T10:00:00Z');
+    const fiveHour = { resetsAt: Date.parse('2026-10-15T13:00:00Z'), usedPct: 12, at, firstPct: 12, firstAt: at };
+    const shown = todayLines({ ...REPORT, fiveHour });
+    assert.equal(shown[1], 'Five-hour window: 12.0% used at 10:00 UTC. Resets 13:00 UTC.');
+    assert.deepEqual(
+      shown.filter((_, index) => index !== 1),
+      todayLines(REPORT),
     );
   });
 

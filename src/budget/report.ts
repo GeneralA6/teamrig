@@ -5,6 +5,8 @@ import type { InBurst } from './burst.ts';
 import { budgetMarkOf, burstText, MORE_BURST } from './burst-lines.ts';
 import type { ClassRow } from './class-spend.ts';
 import type { ExtraPool } from './extra.ts';
+import { fiveHourLine } from './five-hour-forecast.ts';
+import type { FiveHourFold } from './five-hour-summary.ts';
 import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
 import { liftedLine, type Lift, type LiftNames } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
@@ -74,6 +76,8 @@ export interface OutsideToday {
 
 export interface TodayReport {
   readonly week: WeekReading;
+  /** The five-hour window running now; undefined on a plan without one or once it has reset, which prints no line. */
+  readonly fiveHour: FiveHourFold | undefined;
   /** The team's part of the account's daily budget (src/budget/parts.ts `teamPartOf`): the whole day while no other team is on its account. */
   readonly teamPct: number | undefined;
   /** Every team session, in roster order. */
@@ -364,12 +368,13 @@ function pausedLine(sessions: readonly SessionToday[]): string | undefined {
   return paused.length > 0 ? `Paused today, funded by priority as the week's use is past its pace line (budget.pauseByPriority): ${paused.join(', ')}.` : undefined;
 }
 
-/** `teamrig budget`: the week, the team and each session today, the spend by class, lifts, who a short day pauses, use outside the team, and who is past budget. */
+/** `teamrig budget`: the week, the five-hour window on a plan with one, the team and each session today, the spend by class, lifts, who a short day pauses, use outside the team, and who is past budget. */
 export function todayLines(report: TodayReport): string[] {
-  const { week, sessions, outside, all, zone } = report;
+  const { week, fiveHour, sessions, outside, all, zone } = report;
   const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
   const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
-  const lines = [weekLine(week, zone), ...todayTable(report, teamW, teamCalls), ...classLines(report), ...liftLines(report)];
+  const windowLines = fiveHour === undefined ? [] : [fiveHourLine(fiveHour, zone)];
+  const lines = [weekLine(week, zone), ...windowLines, ...todayTable(report, teamW, teamCalls), ...classLines(report), ...liftLines(report)];
   const inBurst = sessions.filter((session) => session.inBurst !== undefined);
   const first = inBurst[0]?.inBurst;
   if (first !== undefined) {
