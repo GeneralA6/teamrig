@@ -3,8 +3,9 @@ import { bandOf } from "./score.js";
 import { unfinishedAfter } from "./waits.js";
 /**
  * The WIP rule (T2076): a session finishes what the team ranked first before it opens more. A start of anything but
- * Roadmap or Maintenance work is held while its owner holds Roadmap work that can move, and any start is held past
- * `focus.wip.maxInProgress`, as work spread over many tasks finishes none of them.
+ * Roadmap or Maintenance work is held while its owner holds Roadmap work that can move, or until the week resets once
+ * its class has spent its share of the week, and any start is held past `focus.wip.maxInProgress`, as work spread over
+ * many tasks finishes none of them.
  */
 /** How many tasks a hold names before it counts the rest. */
 const NAMED_TASKS = 3;
@@ -29,13 +30,16 @@ function namedIds(tasks) {
  * Setting a task in progress again moves nothing, so it is never held. Every other way into in-progress is held the
  * same, a reopen too: its owner's list says what comes first, and `--one-commit` is the way past for a small fix.
  */
-export function wipHold({ task, status, oneCommit }, tasks, context, focus, ownerSource) {
+export function wipHold({ task, status, oneCommit, spentClasses }, tasks, context, focus, ownerSource) {
     const workClass = classOf(task, focus);
-    if (focus.wip.mode === 'off' || status !== 'in-progress' || task.status === 'in-progress' || oneCommit || isExempt(task, workClass, focus, ownerSource)) {
+    if (focus.wip.mode === 'off' || status !== 'in-progress' || task.status === 'in-progress' || oneCommit === true || isExempt(task, workClass, focus, ownerSource)) {
         return undefined;
     }
     const others = [...tasks].filter((held) => held.owner === task.owner && held.id !== task.id);
     if (workClass !== focus.roadmapClass && workClass !== focus.maintenanceClass) {
+        if (spentClasses?.has(workClass) === true) {
+            return `${task.id} is ${workClass} work and ${workClass} has spent its share of the week [focus.allocation]: it waits for the week's reset, ${ONE_COMMIT_WAY}`;
+        }
         const first = others.filter((held) => classOf(held, focus) === focus.roadmapClass && canMove(held, context));
         if (first.length > 0) {
             return `${task.id} is ${workClass} work and ${task.owner} holds ${focus.roadmapClass} work that can move: ${namedIds(first)}; work that first [focus.wip], ${ONE_COMMIT_WAY}`;

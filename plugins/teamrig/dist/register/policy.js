@@ -199,8 +199,7 @@ export class RegisterPolicy {
         }
         // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
         const { focus } = this.config;
-        const wipStart = { task, status: input.status, oneCommit: input.oneCommit === true };
-        const wip = wipHold(wipStart, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+        const wip = wipHold({ ...input, task }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
         if (wip !== undefined && focus.wip.mode === 'refuse') {
             return refuse(wip);
         }
