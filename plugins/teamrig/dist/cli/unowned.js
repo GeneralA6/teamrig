@@ -9,7 +9,8 @@ import { formatIdlePassTrouble } from "./idle-pass-log.js";
  * permissions change is the owner's gate, which the lead takes to the owner; a skill flag goes to its skill's `Owner:`, which may be missing or name no
  * session on the team; the idle pass (T1100) closes and reopens the team's sessions, so a pass that stopped or fails
  * is the whole team's; a repository's git hooks (SECRET-HOOK, T1480) are its own, not one session's area; a secret
- * check turned off (SECRET-GUARD-OFF, T1369) is the owner's call, which the lead takes to the owner. Such a
+ * check turned off (SECRET-GUARD-OFF, T1369) is the owner's call, which the lead takes to the owner; a five-hour
+ * window near full (FIVE-HOUR, T1968) stalls every session on the account at once. Such a
  * warning goes to the team's lead, with the check it came from, so it never reaches no one: the lead fixes it, hands
  * it on or settles the check.
  */
