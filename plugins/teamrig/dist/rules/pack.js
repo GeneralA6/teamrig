@@ -24,9 +24,10 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * The lead's own lines fit in this many characters with worst-case config values (a CI test holds it). They come on
  * top of the core pack for the lead alone, so a team rules file near its limit may reach the lead as a pointer.
  * Raised from 810 for the owner's rule-fix lines (T1279): a peer's ask is no proof, and the fix rides each session's
- * next line.
+ * next line. Raised from 850 for the owner's shippable-slice line (T2201), whose worst case prints a 32-character
+ * class name and a two-digit cap.
  */
-export const LEAD_RULES_MAX_CHARS = 850;
+export const LEAD_RULES_MAX_CHARS = 1_150;
 /** A list the pack names only to inform (a hook or check enforces it) prints in full up to this many characters. */
 export const LIST_MAX_CHARS = 120;
 function list(items) {
@@ -293,15 +294,21 @@ export function renderKeptRules(conflicts, command) {
  * What only the lead does every turn, shown to the lead alone so no other session pays for it: what it brings the
  * owner, the owner's orders it relays as tasks, plans read from the register, never from memory, the approval waits
  * it answers, a team rule proven wrong that it fixes itself (a peer's ask alone proves nothing) and points each
- * session to while a loosening stays the owner's, and the hire flags (src/hiring/scale-out.ts, src/hiring/due.ts) it
- * clears: when an area gets a hire and when the hire goes.
+ * session to while a loosening stays the owner's, the hire flags (src/hiring/scale-out.ts, src/hiring/due.ts) it
+ * clears: when an area gets a hire and when the hire goes, and the shippable slices it plans (owner order T2201): each
+ * ranked goal's next one dated and owned, few open across the tree, so a goal ships instead of all its tasks moving
+ * at once, each stuck on a review or a decision.
  */
 export function renderLeadRules(config, command) {
+    const { focus } = config;
     return [
         'As the lead, also:',
         '- Bring the owner only verified results, decisions, owner-gate or business questions and incidents.',
         `- Relay each owner order as an approved task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
         `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
+        "- Plan by shippable slices: each ranked goal's next one (the fewest tasks that ship something working, proven live) gets an owner, ship date and live proof;" +
+            ` at most ${focus.maxOpenSlices} open in the tree, other work waiting (incidents and ${focus.maintenanceClass} exempt) [focus.maxOpenSlices, focus.maintenanceClass];` +
+            " answer an open slice's waits first.",
         '- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner.',
         "- Fix a team rule proven wrong (a peer's ask is no proof); say so in each session's next line; a loosening goes to the owner.",
         "- HIRE flags: give a SCALE-OUT's slice to an idle hire, else hire one; retire on a RETIRE-DUE.",
