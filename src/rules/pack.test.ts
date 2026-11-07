@@ -73,6 +73,13 @@ function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
     budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876, subagentWeight: 9.87654321 },
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
+    // A class name is at most 32 characters (WORK_CLASS_NAME); the lead's slice line prints the Maintenance one.
+    focus: {
+      classes: ['Roadmap', longest('m', 32), 'Improvements'],
+      maintenanceClass: longest('m', 32),
+      allocation: { Roadmap: 60, [longest('m', 32)]: 25, Improvements: 15 },
+      maxOpenSlices: CONFIG_LIMITS.maxOpenSlices.max,
+    },
     tabStatus: { enabled: true },
     ruleConflicts: Array.from({ length: CONFIG_LIMITS.ruleConflicts.maxItems }, () => ({
       file: longest('f', RULE_CONFLICT_LIMITS.fileMaxLength),
@@ -103,6 +110,18 @@ describe('renderLeadRules', () => {
     assert.doesNotMatch(lines, /\bcap\b|capRaisedBy|owner a card/);
     // T737: the lead sends another session's task work to that session instead of doing it.
     assert.match(lines, /\n- Send another session's task work \(research, code, checks, an answer\) to it with a deadline; relay its answer\.$/);
+  });
+
+  it("plans by shippable slices, the tree's cap and the exempt class read from the team's focus config (T2201)", () => {
+    const lines = renderLeadRules(
+      testConfig({ focus: { classes: ['Product', 'Upkeep', 'Tooling'], roadmapClass: 'Product', maintenanceClass: 'Upkeep', defaultClass: 'Tooling', allocation: { Product: 70, Upkeep: 20, Tooling: 10 }, maxOpenSlices: 2 } }),
+      COMMAND,
+    );
+    assert.match(
+      lines,
+      /\n- Plan by shippable slices: each ranked goal's next one \(the fewest tasks that ship something working, proven live\) gets an owner, ship date and live proof; at most 2 open in the tree, other work waiting \(incidents and Upkeep exempt\) \[focus\.maxOpenSlices, focus\.maintenanceClass\]; answer an open slice's waits first\.\n/,
+    );
+    assert.match(renderLeadRules(testConfig(), COMMAND), /at most 3 open in the tree, other work waiting \(incidents and Maintenance exempt\)/);
   });
 });
 
