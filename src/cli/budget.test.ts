@@ -5,6 +5,7 @@ import { MeterLog } from '../budget/calibration.ts';
 import { recordConfigDir } from '../budget/config-dir.ts';
 import { emptyPatterns } from '../budget/patterns.ts';
 import { formatPeriod, parsePeriod } from '../budget/period.ts';
+import { FIVE_HOUR_SUMMARY_FILE } from '../budget/five-hour-summary.ts';
 import { OVER_BUDGET_ADVICE, W_EXPLAINED } from '../budget/report.ts';
 import { formatSnapshot, parseSnapshot, snapshotOfStatus, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
 import { EMPTY_USAGE, UsageStore } from '../budget/store.ts';
@@ -874,6 +875,23 @@ describe('teamrig statusline', () => {
     assert.match(kit.files.get(join(LIVE, WEEK_SUMMARY_FILE)) ?? '', /^\{"v":2,"reading":\{"used_percentage":30,"resets_at":1894582800,"at":"2030-01-08T10:00:00\.000Z","after":/);
   });
 
+  it("folds the status input's five-hour reading into the folder's summary", async () => {
+    const kit = new CliHarness(LIMITED);
+    await kit.run(['statusline'], { stdin: status(APP) });
+    assert.equal(
+      kit.files.get(join(LIVE, FIVE_HOUR_SUMMARY_FILE)),
+      '{"v":1,"resets_at":1894496400,"used_percentage":6,"at":"2030-01-08T10:00:00.000Z","first_percentage":6,"first_at":"2030-01-08T10:00:00.000Z"}',
+    );
+  });
+
+  it('writes no five-hour summary for a plan whose status input reads five_hour null', async () => {
+    const kit = new CliHarness(LIMITED);
+    const input = JSON.stringify({ session_id: ALPHA_TAB, cwd: APP, rate_limits: { five_hour: null, seven_day: { used_percentage: 30, resets_at: RESET / 1000 } } });
+    assert.equal((await kit.run(['statusline'], { stdin: input })).code, EXIT.ok);
+    assert.notEqual(kit.files.get(join(LIVE, WEEK_SUMMARY_FILE)), undefined);
+    assert.equal(kit.files.get(join(LIVE, FIVE_HOUR_SUMMARY_FILE)), undefined);
+  });
+
   it("shows the session's effort level from the status input right after the model", async () => {
     const kit = new CliHarness(LIMITED);
     const input = status(APP, 30, { effort: { level: 'xhigh' } });
@@ -1082,5 +1100,24 @@ describe('teamrig statusline', () => {
     });
     assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT)), undefined);
     assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT_PRUNED_FILE)), undefined);
+  });
+
+  it('tells a failed five-hour summary write on stderr and still folds the week, shows the status and prunes', async () => {
+    const kit = new CliHarness(LIMITED);
+    const files = new FaultyFiles(kit.files).fail('write', join(LIVE, FIVE_HOUR_SUMMARY_FILE), systemError('EACCES'));
+    assert.deepEqual(await kit.run(['statusline'], { stdin: status(APP), files }), {
+      code: EXIT.ok,
+      stdout: [SHOWN],
+      stderr: ['teamrig statusline: the five-hour summary was not updated: EACCES: simulated'],
+    });
+    assert.notEqual(kit.files.get(join(LIVE, WEEK_SUMMARY_FILE)), undefined);
+    assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT_PRUNED_FILE)), undefined);
+  });
+
+  it('still folds the five-hour reading when the week summary write fails', async () => {
+    const kit = new CliHarness(LIMITED);
+    const files = new FaultyFiles(kit.files).fail('write', join(LIVE, WEEK_SUMMARY_FILE), systemError('EACCES'));
+    await kit.run(['statusline'], { stdin: status(APP), files });
+    assert.notEqual(kit.files.get(join(LIVE, FIVE_HOUR_SUMMARY_FILE)), undefined);
   });
 });
