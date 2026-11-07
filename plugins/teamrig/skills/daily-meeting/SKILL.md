@@ -127,7 +127,8 @@ It leaves `DECISIONS` and the decision batches for `LATER` until that time, then
 brings it back at once. A task of a team under yours takes it too: `update web/T2 --later ... --note ...`.
 
 When the human would rather hear a session's cards from the session that holds them, `teamrig meet <id|name>`
-wakes that session's tab with an inbox line from the human, or opens it fresh in a new tab; it then brings its own
+wakes that session's tab at once with an inbox line from the human (run again, it says when it asked and posts
+nothing more while that ask waits), or opens it fresh in a new tab; it then brings its own
 due cards, one at a time, and records each answer itself. It is refused when none of its cards waits on the human
 now, naming those put off and until when. Record nothing for those cards here: the session does.
 
