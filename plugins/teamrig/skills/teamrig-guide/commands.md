@@ -627,7 +627,9 @@ pushed, with the line to add to each (a new hook file starts `#!/bin/sh` and mus
 read, and SECRET-GUARD-OFF: a secret check turned off, which is the owner's call: `secretGuard.secretReads` or
 `secretGuard.writes` at `allow`, `secretGuard.redact` at `false`, or a Claude Code settings file the team's sessions
 run under (the user's, the project folder's, each `delivery.repos` repository's and its worktrees') that sets
-`disableAllHooks`, which stops every teamrig hook, the secret guard's included. Each row names the check it came from; the
+`disableAllHooks`, which stops every teamrig hook, the secret guard's included, and FIVE-HOUR: the account's five-hour
+window has reached 80% [budget.fiveHourWarnPct] or rises fast enough to fill before it resets, and at 100% every
+session stalls until that reset; it is raised once a window, and a plan with no such window never shows it. Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
 start; `state/unowned-notices.json` remembers which and when a start last saw each, so a warning is told again only
@@ -4565,6 +4567,10 @@ hours, read between the meter log's readings (below), carried to the reset, give
 (`At the last 24 hours' rise of 8.0 points, it reaches 100% Tue 10-20 23:00 IDT.`), or near what it ends the week at
 (`..., it ends the week near 89%.`). It says nothing at 100%, where the extra-usage pool's line takes over, nor while
 the meter log holds no reading of the period or the usage stores do not reach its start.
+On a plan with a five-hour window, a line under the week's gives that window's use and reset and, once its readings
+span 15 minutes, where its rise takes it
+(`Five-hour window: 40.0% used at 10:30 IDT. Resets 13:00 IDT. At its rise of 60.0 points an hour, it reaches 100% 11:30 IDT.`),
+or near what it ends (`..., it ends near 18%.`). A plan with no such window, or a window that has reset, prints no line.
 The period, the meter log (below) and the extra-usage log ([teamrig budget extra](#teamrig-budget-extra)) are the
 account's: a team under a parent on its Claude
 account reads and writes them in the folder of the highest team above it reached through teams all on that account,
@@ -5080,7 +5086,8 @@ on by default; with `branch` off, git is never asked). To go on in a session by 
 stopped before its rename left, sweeping the folder at most once an hour (its `.pruned` file says when it last did),
 so every reader's walk of the folder stays bounded. Each reading it saves also goes into the folder's `.week` file,
 the week's reading that counts, which `teamrig budget` and every hook read instead of each snapshot in the folder,
-so a burst of tabs opening at once stays quick. It always exits 0, so a bad input or
+so a burst of tabs opening at once stays quick. A reading that shows a five-hour window goes into the folder's
+`.five-hour` file the same way, for `teamrig budget` and `teamrig check`; a plan with no such window never gets one. It always exits 0, so a bad input or
 a full disk never breaks the status bar; what went wrong goes to stderr. With `--pass` it prints the status JSON
 again instead of its status, for the status line after it in a pipe. A plugin cannot set the status line:
 [teamrig statusline install](#teamrig-statusline-install) sets it up.
@@ -5118,8 +5125,10 @@ time another is known to follow, then takes the highest of the rest. Without the
 reading of the week, and the owner's reset in the middle of a week shows only when that week ends.
 
 A folder with no `.week` file is read in full, every snapshot each time. If you move a folder from `teamrig
-statusline` to your own status line, delete its `.week`: teamrig keeps reading the last week it holds, which your
-status line never updates.
+statusline` to your own status line, delete its `.week` and `.five-hour`: teamrig keeps reading the last week and
+window they hold, which your status line never updates. The five-hour window is read from `.five-hour` alone, never
+from the snapshots, so under your own status line `teamrig budget` prints no window line and `teamrig check` no
+FIVE-HOUR.
 
 ### teamrig statusline install
 

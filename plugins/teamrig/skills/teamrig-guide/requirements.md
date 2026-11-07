@@ -74,10 +74,11 @@ update needs no new setup, and makes it the status line in your user `settings.j
 or in `$CLAUDE_CONFIG_DIR`). A status line you already have keeps running: the launcher goes in front of it in a
 pipe and hands it the same input ([commands.md](commands.md#teamrig-statusline-install)). The launcher saves a
 small snapshot per Claude Code session in the team's `budget.statusSnapshotDir`, keeps the week's reading in that
-folder's `.week` file for the hooks to read, and prints the model and the plan's use. `teamrig statusline
+folder's `.week` file for the hooks to read and, on a plan with a five-hour window, that window's in `.five-hour`,
+and prints the model and the plan's use. `teamrig statusline
 uninstall` takes it back out. You can instead have your own status line write the same snapshot JSON
 ([commands.md](commands.md#teamrig-statusline)) and point `budget.statusSnapshotDir` at its folder; delete a
-`.week` left there by `teamrig statusline`, else teamrig keeps reading its old week. Without either, set `budget.weeklyLimitW` and `budget.reset` for daily budgets in percent, or
+`.week` and `.five-hour` left there by `teamrig statusline`, else teamrig keeps reading its old week. Without either, set `budget.weeklyLimitW` and `budget.reset` for daily budgets in percent, or
 `teamrig budget` shows W only.
 
 ## The task pane (optional)
