@@ -916,6 +916,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
       (value, itemPath) => read.numberItem(value, itemPath, { min: CONFIG_LIMITS.warnAtPct.itemMin, max: CONFIG_LIMITS.warnAtPct.itemMax }),
       CONFIG_LIMITS.warnAtPct.maxItems,
     ),
+    fiveHourWarnPct: read.number(raw, 'fiveHourWarnPct', path, defaults.fiveHourWarnPct, CONFIG_LIMITS.budgetFiveHourWarnPct),
     paceTolerancePct: read.number(raw, 'paceTolerancePct', path, defaults.paceTolerancePct, CONFIG_LIMITS.paceTolerancePct),
     overAction: isOverAction(overAction) ? overAction : defaults.overAction,
     escalate: isEscalation(escalate) ? escalate : defaults.escalate,
