@@ -1,4 +1,3 @@
-import type { Files } from '../core/files.ts';
 import { isNonNegativeInteger, stringField, type JsonRecord } from '../core/guards.ts';
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 
@@ -102,26 +101,40 @@ export function closedOf(records: readonly SessionLogRecord[], session: string):
   return newest?.kind === 'close' ? newest : undefined;
 }
 
+/** The log's text as its records, oldest first, with the damaged and newer lines it skipped counted. */
+export function readSessionLog(text: string): SessionLogRead {
+  const parse = parseJsonl(text);
+  const records: SessionLogRecord[] = [];
+  for (const { record, version } of parse.records) {
+    const parsed = version === SESSION_LOG_FORMAT ? parseSessionLogRecord(record) : undefined;
+    if (parsed !== undefined) {
+      records.push(parsed);
+    }
+  }
+  return { records, skipped: parse.unreadable + parse.records.length - records.length };
+}
+
+/**
+ * The file calls the log makes, which `Files` (src/core/files.ts) gives. The log names only these, so the read side
+ * (src/read/index.ts), which reaches no `node:` module, can export its records and `readSessionLog`.
+ */
+export interface SessionLogFiles {
+  read(path: string): Promise<string | undefined>;
+  append(path: string, text: string): Promise<void>;
+}
+
 /** The team's append-only log of session closes and reopens, oldest first. */
 export class SessionLog {
-  private readonly files: Files;
+  private readonly files: SessionLogFiles;
   readonly path: string;
 
-  constructor(files: Files, path: string) {
+  constructor(files: SessionLogFiles, path: string) {
     this.files = files;
     this.path = path;
   }
 
   async read(): Promise<SessionLogRead> {
-    const parse = parseJsonl((await this.files.read(this.path)) ?? '');
-    const records: SessionLogRecord[] = [];
-    for (const { record, version } of parse.records) {
-      const parsed = version === SESSION_LOG_FORMAT ? parseSessionLogRecord(record) : undefined;
-      if (parsed !== undefined) {
-        records.push(parsed);
-      }
-    }
-    return { records, skipped: parse.unreadable + parse.records.length - records.length };
+    return readSessionLog((await this.files.read(this.path)) ?? '');
   }
 
   /** One whole line in one append; refused beside records from a newer teamrig. */

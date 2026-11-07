@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { closedOf, homeCloseOf, SESSION_LOG_FORMAT, SessionLog, type CloseRecord, type ReopenRecord } from './log.ts';
+import { closedOf, homeCloseOf, readSessionLog, SESSION_LOG_FORMAT, SessionLog, type CloseRecord, type ReopenRecord } from './log.ts';
 
 const PATH = '/team/state/session-log.jsonl';
 const CLOSE: CloseRecord = { kind: 'close', session: 'alpha', by: 'lead', at: '2030-01-08T10:00:00.000Z', claudeSession: 'claude-1', idleMinutes: 75, freedMb: 1300 };
@@ -53,5 +53,17 @@ describe('the session log', () => {
     const log = new SessionLog(files, PATH);
     assert.deepEqual(await log.read(), { records: [RESUMED], skipped: 3 });
     await assert.rejects(log.append(CLOSE), NewerDataError);
+  });
+
+  it('reads the text the log wrote as the log reads its file, with no file at all (T1725)', async () => {
+    const files = new MemoryFiles();
+    const log = new SessionLog(files, PATH);
+    for (const record of [CLOSE, RESUMED]) {
+      await log.append(record);
+    }
+    const newer = JSON.stringify({ v: SESSION_LOG_FORMAT + 1, ...CLOSE });
+    const text = `${files.get(PATH) ?? ''}{torn\n${newer}\n`;
+    assert.deepEqual(readSessionLog(text), { records: [CLOSE, RESUMED], skipped: 2 });
+    assert.deepEqual(readSessionLog(''), { records: [], skipped: 0 });
   });
 });
