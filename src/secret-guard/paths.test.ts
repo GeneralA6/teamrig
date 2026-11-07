@@ -106,6 +106,23 @@ describe('SecretPaths.mayName', () => {
   it('keeps an example a wildcard names readable', () => {
     assert.equal(secrets.mayName(`${REPO}/.env.ex*`, false), false);
   });
+
+  it('sees a secret name behind a reversed range, as bash reaches it (T1960)', () => {
+    assert.equal(secrets.mayName(`${REPO}/.en[z-av]`, false), true);
+    assert.equal(secrets.mayName(`${REPO}/near[near.length-1]`, false), false);
+  });
+
+  it('reads a word with a set no character fits as the literal path bash leaves it (T1960)', () => {
+    assert.equal(secrets.mayName(`${REPO}/.env.[z-a]`, false), true);
+    assert.equal(secrets.mayName(`${REPO}/.env.[z-a]*`, false), true);
+    assert.equal(secrets.mayName(`${REPO}/[z-a]env`, false), false);
+  });
+
+  it("survives a team's own glob with a reversed range, which would else fail every call (T1960)", () => {
+    const team = new SecretPaths([...DEFAULT_SECRET_PATHS, 'vault[z-a].txt'], HOME, true);
+    assert.equal(team.listed(`${REPO}/vault[z-a].txt`), true);
+    assert.equal(team.listed(`${REPO}/vaultb.txt`), false);
+  });
 });
 
 describe('wordPath', () => {

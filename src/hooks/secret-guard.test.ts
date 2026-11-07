@@ -246,6 +246,12 @@ describe('secretGuardOutput on what a command line holds (T1369 acceptance)', ()
       assert.equal(decisionOf(tool, command), undefined, command);
     }
   });
+
+  it('lets a call pass whose code holds a reversed range, and refuses one that reaches a secret behind it (T1960)', () => {
+    assert.equal(decisionOf('Bash', "node -e 'console.log(`last ${near[near.length-1]}`)'"), undefined);
+    assert.equal(decisionOf('Bash', 'cat near[near.length-1]'), undefined);
+    assert.equal(decisionOf('Bash', 'cat .en[z-av]'), 'deny');
+  });
 });
 
 describe("secretGuardOutput on Claude Code's stores and the shells' histories (T1369 acceptance)", () => {
