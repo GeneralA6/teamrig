@@ -85,6 +85,10 @@ export { parseSessionsWeek, SESSIONS_WEEK_FORMAT, SESSIONS_WEEK_IN_STATE } from 
 // What each task has cost (`usage/tasks.week.json` in its team's state folder, `TASKS_WEEK_IN_STATE`): its spend in
 // percent of the week, by task id, as its team's budget hooks last read it.
 export { parseTasksWeek, TASKS_WEEK_FORMAT, TASKS_WEEK_IN_STATE } from "../budget/task-week-summary.js";
+// The team's session log (`session-log.jsonl` in its state folder, `SESSION_LOG_IN_STATE`): each session `teamrig close`
+// or the idle pass ended, and each reopen by `teamrig open`, by session id, so a reader counts a session's closes and
+// reopens and shows its last one (T1725).
+export { closedOf, readSessionLog, SESSION_LOG_FORMAT, SESSION_LOG_IN_STATE, sessionLogBySession, } from "../sessions/log.js";
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION } from "../turn-log/entry.js";
