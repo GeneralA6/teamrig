@@ -295,6 +295,7 @@ export class RegisterPolicy {
             ...(proof.value === null ? {} : { proof: proof.value }),
             ...(watch.value === null ? {} : { watch: watch.value }),
             ...(met === null ? {} : { met }),
+            ...(input.oneCommit === true ? { oneCommit: true } : {}),
             ...(due.value === null ? {} : { due: due.value }),
             ...(leaves === null ? {} : { followups: leaves }),
             ...(review.value === null ? {} : { review: review.value }),
