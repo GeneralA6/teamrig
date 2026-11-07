@@ -323,8 +323,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       with --resume, goes on in its last Claude Code session when that is small and recent enough;
       a session teamrig close ended goes on in its last one by those limits, else opens fresh
   meet <id|name> [--terminal <name>] [--project <dir>]   the owner meets one session on its cards
-      waiting on them: a running one gets an inbox line that wakes it, any other opens fresh in a new
-      tab; refused when none waits on the owner now (it names those put off with update --later)
+      waiting on them: a running one gets an inbox line that wakes it at once (none more while that
+      ask waits), any other opens fresh in a new tab; refused when none waits on the owner now (it
+      names those put off with update --later)
   meet --cards [--session <id|name>]   the session's cards due on the owner, as card facts, and how
       to bring them one at a time and record each answer
   owner note <[team/]T<id>> --text "<what the owner tells its session>"   the owner's Note from the pane:

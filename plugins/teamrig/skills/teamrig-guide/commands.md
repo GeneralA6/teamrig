@@ -2669,11 +2669,13 @@ new terminal and run this:` and the command, and exits 3. Show the user that com
 ### teamrig meet
 
 The owner meets one session on its own cards waiting on them (`teamrig meet <id|name>`), so the session that holds a
-decision brings it, not the lead's agenda. A running session gets an inbox line from the owner that wakes its tab;
-any other opens in a new tab as [teamrig open](#teamrig-open) does, but always fresh, never resumed, so its context
-holds only the meeting. Either way it is asked to run `teamrig meet --cards`. It refuses when no card of the session
-waits on the owner now, naming those the owner put off (`update --later`) and until when, and when the host's
-processes cannot be listed.
+decision brings it, not the lead's agenda. A running session gets an inbox line from the owner that wakes its tab
+at the next wake check once it is idle, not after the `wake.batchSeconds` other urgent lines wait, since the owner
+waits on it live. While that ask still waits (a turn still running), meeting the session again posts nothing and
+prints `ASKED` with the time it was asked. Any other session opens in a new tab as [teamrig open](#teamrig-open)
+does, but always fresh, never resumed, so its context holds only the meeting. Either way it is asked to run
+`teamrig meet --cards`. It refuses when no card of the session waits on the owner now, naming those the owner put
+off (`update --later`) and until when, and when the host's processes cannot be listed.
 
 `teamrig meet --cards` prints the caller's due cards as card facts, then how to bring them one at a time, ask with
 `decisions.askWith`, record each answer with `set --note "<owner> decided: ..."`, and put one off with `--later`.
@@ -2694,7 +2696,13 @@ teamrig meet web
 Output:
 
 ```text
-WOKE shop-web (session web): 2 card(s) waiting on owner; an inbox line asks it to bring them now
+WAKES shop-web (session web) within about 15 s once its tab is idle (a running turn ends first): 2 card(s) waiting on owner; an inbox line asks it to bring them now
+```
+
+Pressed again while that ask waits:
+
+```text
+ASKED shop-web (session web) at 19:39 IST: that ask still waits for its tab to be idle (a running turn ends first), so no second line was posted
 ```
 
 ### teamrig owner note
