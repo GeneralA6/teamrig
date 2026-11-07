@@ -263,7 +263,7 @@
     "dist/core/session-asks.js": "9791386035bf4d4d0a7dbb195701959dca68c2efbda1c54374d802b54bf242db",
     "dist/core/team.js": "e8930db0a595fc8a9ab01fc56e7843dcc49f766d4c9ac82b45e27a0ec9c4e5ba",
     "dist/core/time.js": "710d870deaacc4af734ba0c6bd9524d359ee254ce09f7db1354d942a06c3129c",
-    "dist/core/version.js": "55199f5d1e24b8507db3d0c8fd5795a24f79a4b8c979cf63d4c93d04b9918be9",
+    "dist/core/version.js": "12442965ff26829ded4b2516baf5aab16b60f5d188829f3323306d6032393883",
     "dist/core/webhook.js": "080e09a3491f3b74134ce10ec5f21ac2b049989d92e8f59264ac0d340ccc54ad",
     "dist/core/work-block.js": "423c998dbedaf76e94f04002e13454abf6980e032cf9a21cd12c6a6a7af4e6a7",
     "dist/core/zone.js": "083678f2f96d0004e522d04351f67f6c5420b2b6bff81f7930aadae8c841679e",
