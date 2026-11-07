@@ -436,9 +436,11 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
 - **a secret file's content**: a printer (`cat`, `head`, `grep`, `sed`, `jq`, `base64`, `Get-Content`,
   `Select-String`...) or `git show`, `diff` or `blame` naming one (the script or pattern a `sed`, `grep`, `awk` or
   `jq` takes first is not a file, so `grep -n .env README.md` passes), a `<` feeding one, inline code that prints one
-  (`python -c "print(open('.env').read())"`), the Read tool on one, or a Grep that shows content (`output_mode:
-  content`) of one by its path or glob (each glob of the input apart, as ripgrep gets them; a `!glob` skips files,
-  so it names none). The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
+  (`python -c "print(open('.env').read())"`; a wildcard in its strings counts only where the code can expand it, by
+  a glob call or by starting a program, so `'*'` as a fallback or `'.*'` in a regex passes), the Read tool on one, or
+  a Grep that shows content (`output_mode: content`) of one by its path or glob (each glob of the input apart, as
+  ripgrep gets them; a `!glob` skips files, so it names none).
+  The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
   `~/.aws/credentials`, `**/.kube/config`, `~/.docker/config.json`, `**/.git-credentials`, `~/.config/gh/hosts.yml`,
   `~/.claude/.credentials.json`, `~/.claude/history.jsonl` (the prompt history), `**/.claude/settings.local.json`
   (its allow rules can hold a credential), `~/.bash_history`, `~/.zsh_history`, `**/PSReadLine/*_history.txt`, the
