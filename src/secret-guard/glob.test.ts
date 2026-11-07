@@ -113,6 +113,10 @@ describe('braceAlternatives', () => {
     assert.equal(braceAlternatives('{a,b}{c,d}{e,f}', 4), undefined);
     assert.equal(braceAlternatives('{a,b,c,d,e}', 4), undefined);
   });
+
+  it('gives up on a group too wide to spread, without throwing', () => {
+    assert.equal(braceAlternatives(`{${Array.from({ length: 200_000 }, () => 'a').join(',')}}`, 64), undefined);
+  });
 });
 
 describe('hasWildcard', () => {
