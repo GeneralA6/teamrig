@@ -9,6 +9,7 @@ const SUMMARY: NamedTeamWeek = {
   plannedPct: 84.5,
   accountUsedPct: 30,
   resetsAt: Date.parse('2030-01-14T01:00:00Z'),
+  start: Date.parse('2030-01-07T01:00:00Z'),
   at: Date.parse('2030-01-08T10:00:00Z'),
   limits: [{ start: Date.parse('2030-01-06T08:00:00Z'), end: Date.parse('2030-01-07T01:00:00Z') }],
 };
@@ -24,13 +25,19 @@ describe('the team week summary', () => {
     const written: Readonly<Record<number, readonly string[]>> = {
       1: ['accountUsedPct', 'at', 'plannedPct', 'resetsAt', 'usedPct', 'v'],
       2: ['account', 'accountUsedPct', 'at', 'limits[].end', 'limits[].start', 'plannedPct', 'resetsAt', 'usedPct', 'v'],
+      3: ['account', 'accountUsedPct', 'at', 'limits[].end', 'limits[].start', 'plannedPct', 'resetsAt', 'start', 'usedPct', 'v'],
     };
     assert.deepEqual(fieldPaths(JSON.parse(formatTeamWeek(SUMMARY))), written[TEAM_WEEK_FORMAT]);
   });
 
-  it('reads a format 1 file, which an idle team keeps until its hooks write again, as naming no account and no stretch (T1777, T2050)', () => {
-    const { account: _named, limits: _spans, ...unnamed } = SUMMARY;
-    assert.deepEqual(parseTeamWeek(JSON.stringify({ v: 1, ...unnamed })), { ...SUMMARY, account: undefined, limits: [] });
+  it('reads a format 1 file, which an idle team keeps until its hooks write again, as naming no account, no stretch and no start (T1777, T2050, T2082)', () => {
+    const { account: _named, limits: _spans, start: _start, ...unnamed } = SUMMARY;
+    assert.deepEqual(parseTeamWeek(JSON.stringify({ v: 1, ...unnamed })), { ...SUMMARY, account: undefined, start: undefined, limits: [] });
+  });
+
+  it('reads a format 2 file, which an idle team keeps until its hooks write again, as naming no start (T2082)', () => {
+    const { start: _start, ...unstarted } = SUMMARY;
+    assert.deepEqual(parseTeamWeek(JSON.stringify({ v: 2, ...unstarted })), { ...SUMMARY, start: undefined });
   });
 
   it('reads back a week that never sat at its limit as no stretches (T2050)', () => {
@@ -66,7 +73,7 @@ describe('the team week summary', () => {
   });
 
   it('reads nothing when a field is missing or not a number', () => {
-    for (const field of ['usedPct', 'plannedPct', 'accountUsedPct', 'resetsAt', 'at']) {
+    for (const field of ['usedPct', 'plannedPct', 'accountUsedPct', 'resetsAt', 'start', 'at']) {
       const stored = { v: TEAM_WEEK_FORMAT, ...SUMMARY };
       assert.equal(parseTeamWeek(JSON.stringify({ ...stored, [field]: undefined })), undefined, `${field} missing`);
       assert.equal(parseTeamWeek(JSON.stringify({ ...stored, [field]: '15' })), undefined, `${field} a string`);
