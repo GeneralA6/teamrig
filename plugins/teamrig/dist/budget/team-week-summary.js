@@ -17,24 +17,29 @@ import { parseObject, recordVersion, VERSION_FIELD } from "../core/jsonl.js";
  *   `teamShareOf`) of what the account has left to `budget.targetPct`;
  * - `accountUsedPct`: the account's use of the week, in percent: every team's and the use outside them;
  * - `resetsAt`: the week's reset, epoch ms;
+ * - `start`: where the week's use counts from, epoch ms: the reset before it, or one inside the week (src/budget/pace.ts
+ *   `WeekWindow`), for a reader that draws the pace line `teamrig budget` reads but cannot open the account's period on
+ *   every tick, as the status line;
  * - `at`: when it was read, epoch ms, to the minute;
  * - `limits`: the stretches the account's week sat at its usage limit, oldest first, each `{ start, end }` in epoch ms
  *   (src/budget/extra.ts `limitSpansOf`), for a reader that marks those days but cannot load the meter log, as the
  *   pane's Stats tab. Every team on the account writes the same list, at most one stretch a period the log still keeps.
  *
- * Percents are rounded to two decimals. A hook of any of the team's sessions rewrites it when that changes it. Format 1
- * had every field but `account` and `limits`; it is still read, naming no account and no stretch, since a team whose
- * sessions are idle keeps its file until a hook of it runs again.
+ * Percents are rounded to two decimals. A hook of any of the team's sessions rewrites it when that changes it. Format 2
+ * had every field but `start`, and format 1 none of `start`, `account` and `limits`; both are still read, naming what
+ * they lack as nothing, since a team whose sessions are idle keeps its file until a hook of it runs again.
  */
 export const TEAM_WEEK_IN_STATE = ['usage', 'team.week.json'];
 /** The team week summary's format; a field added to it raises this. */
-export const TEAM_WEEK_FORMAT = 2;
+export const TEAM_WEEK_FORMAT = 3;
+/** The format before `start`, still read for a team whose hooks have not written since. */
+const UNSTARTED_FORMAT = 2;
 /** The format before `account` and `limits`, still read for a team whose hooks have not written since. */
 const UNNAMED_FORMAT = 1;
 /** The summary as its file's text. */
 export function formatTeamWeek(summary) {
-    const { account, usedPct, plannedPct, accountUsedPct, resetsAt, at, limits } = summary;
-    return JSON.stringify({ [VERSION_FIELD]: TEAM_WEEK_FORMAT, account, usedPct, plannedPct, accountUsedPct, resetsAt, at, limits });
+    const { account, usedPct, plannedPct, accountUsedPct, resetsAt, start, at, limits } = summary;
+    return JSON.stringify({ [VERSION_FIELD]: TEAM_WEEK_FORMAT, account, usedPct, plannedPct, accountUsedPct, resetsAt, start, at, limits });
 }
 /** One stored stretch; undefined when it is damaged: a stretch ends after it starts. */
 function parseLimitSpan(value) {
@@ -60,7 +65,7 @@ function parseLimits(value) {
 export function parseTeamWeek(text) {
     const parsed = parseObject(text);
     const version = parsed === undefined ? undefined : recordVersion(parsed);
-    if (parsed === undefined || (version !== TEAM_WEEK_FORMAT && version !== UNNAMED_FORMAT)) {
+    if (parsed === undefined || (version !== TEAM_WEEK_FORMAT && version !== UNSTARTED_FORMAT && version !== UNNAMED_FORMAT)) {
         return undefined;
     }
     const account = stringField(parsed, 'account');
@@ -73,8 +78,12 @@ export function parseTeamWeek(text) {
         return undefined;
     }
     if (version === UNNAMED_FORMAT) {
-        return { account: undefined, usedPct, plannedPct, accountUsedPct, resetsAt, at, limits: [] };
+        return { account: undefined, usedPct, plannedPct, accountUsedPct, resetsAt, start: undefined, at, limits: [] };
     }
     const limits = parseLimits(parsed['limits']);
-    return account === undefined || limits === undefined ? undefined : { account, usedPct, plannedPct, accountUsedPct, resetsAt, at, limits };
+    const start = numberField(parsed, 'start');
+    if (account === undefined || limits === undefined || (version === TEAM_WEEK_FORMAT && start === undefined)) {
+        return undefined;
+    }
+    return { account, usedPct, plannedPct, accountUsedPct, resetsAt, start, at, limits };
 }

@@ -73,8 +73,8 @@ export { TeamTree, teamNodeOf } from "../config/tree.js";
 export { activeHires, HIRE_FORMAT, readHiringLog, rehiredFrom, retiredSessions, } from "../hiring/record.js";
 // Each team's week (`usage/team.week.json` in its state folder, `TEAM_WEEK_IN_STATE`; the config's `paths.state` can
 // move that folder from `state/` under its home): its used and planned part of the account's week, as its budget hooks
-// last read it, and the stretches the account sat at its usage limit. One file per team; a reader adds a child team's
-// to its parent's.
+// last read it, where the week's use counts from, and the stretches the account sat at its usage limit. One file per
+// team; a reader adds a child team's to its parent's.
 export { parseTeamWeek, TEAM_WEEK_FORMAT, TEAM_WEEK_IN_STATE } from "../budget/team-week-summary.js";
 // Each team's usage rollup (`usage/rollup/<day>.json` in its state folder, `ROLLUP_IN_STATE`): what each session spent
 // in a closed UTC day, by what the use was for and by task, numbers and ids only. One file per team and day.
