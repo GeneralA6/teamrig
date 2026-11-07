@@ -1,6 +1,7 @@
 import { parseDeadline } from "../core/time.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES } from "./model.js";
+import { wouldPark } from "./park.js";
 import { scoreOf, valueOf } from "./score.js";
 import { isFinished, isReady, waitContext } from "./waits.js";
 import { currentWeek } from "./week.js";
@@ -24,6 +25,11 @@ export function needsOf(task) {
  */
 export function needsElsewhere(tasks) {
     return [...tasks.values()].some((task) => ACTIVE_STATUSES.includes(task.status) && needsOf(task).some((id) => !tasks.has(id)));
+}
+/** Every id an active task of `tasks`, or of the tree's other registers, needs; ids are one numbering across a tree. */
+export function neededIds(tasks, elsewhere) {
+    const others = [...elsewhere.values()].map(({ task }) => task);
+    return new Set([...tasks, ...others].filter(isActive).flatMap((task) => needsOf(task)));
 }
 /**
  * The shortest chain from `from` to `to`, each task needing the next, over every task the map holds whatever its
@@ -145,6 +151,8 @@ export class TaskTree {
     ranking;
     /** Each place's score, kept because a sort reads every task's many times. */
     ranked = new Map();
+    /** What the tree's active tasks need, built when a task first reaches the park rule's last test: few do. */
+    needed;
     /**
      * `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows.
      * `elsewhere` holds the tasks of the team tree's other registers, which a need the read lacks is read from.
@@ -169,6 +177,18 @@ export class TaskTree {
     /** The task of the read; undefined when the read lacks it. */
     task(id) {
         return this.tasks.get(id);
+    }
+    /** True when the park rule takes the task out of the lists ({@link wouldPark}); a tree with no ranking parks nothing. */
+    isParked(task) {
+        const { ranking } = this;
+        if (ranking === undefined) {
+            return false;
+        }
+        return wouldPark(task, { focus: ranking.focus, ownerSource: ranking.ownerSource, now: this.now, needed: (id) => this.isNeeded(id) });
+    }
+    isNeeded(id) {
+        this.needed ??= neededIds(this.tasks.values(), this.elsewhere);
+        return this.needed.has(id);
     }
     /** The task another register of the team tree holds under an id the read lacks; undefined when the read has it or none does. */
     elsewhereOf(id) {
@@ -282,11 +302,12 @@ export class TaskTree {
     }
     /**
      * What waits on `session`: every active task of another owner that directly needs an unfinished task of the
-     * session, or waits on its decision or approval, in plan order.
+     * session, or waits on its decision or approval, in plan order. A parked task is left out: `list` hides it, so a row
+     * here would name work its owner cannot see.
      */
     waitingOn(session) {
         const waiting = [...this.tasks.values()].flatMap((task) => {
-            if (!isActive(task) || task.owner === session) {
+            if (!isActive(task) || task.owner === session || this.isParked(task)) {
                 return [];
             }
             const needs = this.inPlanOrder(this.unfinishedNeeds(task).filter((need) => need.owner === session));

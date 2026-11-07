@@ -1,8 +1,7 @@
 import { burstText } from "../budget/burst-lines.js";
 import { KIT_NAME } from "../core/home.js";
 import { MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from "../core/time.js";
-import { waitContext } from "../register/waits.js";
-import { byUrgency, costText, idsText, isWakeWorthy, taskListText } from "./decide.js";
+import { byUrgency, costText, idsText, isWakeWorthy, taskListText, wakeContext } from "./decide.js";
 /** The latest day start at or before `now`, epoch ms; undefined for a malformed time. */
 export function dayStartAt(dayStartUtc, now) {
     const minute = utcMinuteOf(dayStartUtc);
@@ -35,10 +34,10 @@ export function dueMoments(now, dayStartUtc, burst, settled) {
 }
 /**
  * The session's work it can go on with now (`canGoOn`) at `maxPriority` or more urgent (any by default), most urgent
- * first; a wait or an `after` may name a task the team tree's other registers hold (`elsewhere`).
+ * first, a parked task left out; a wait or an `after` may name a task the team tree's other registers hold (`elsewhere`).
  */
-export function startableTasks(tasks, elsewhere, session, now, zone, maxPriority = Number.POSITIVE_INFINITY) {
-    const context = waitContext(tasks, new Date(now), zone, elsewhere);
+export function startableTasks(tasks, elsewhere, session, now, zone, parking, maxPriority = Number.POSITIVE_INFINITY) {
+    const context = wakeContext(tasks, elsewhere, now, zone, parking);
     return [...tasks.values()].filter((task) => isWakeWorthy(task, session, maxPriority, context)).sort(byUrgency);
 }
 function settle(settled, moments) {

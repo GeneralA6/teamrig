@@ -7,6 +7,8 @@ import { parseDeadline } from "../core/time.js";
 import { isCold } from "../hooks/cold-send.js";
 import { answerTo } from "../register/approval.js";
 import { taskNumber } from "../register/fold.js";
+import { wouldPark } from "../register/park.js";
+import { neededIds } from "../register/tree.js";
 import { isReady, unfinishedAfter, waitContext } from "../register/waits.js";
 /**
  * Waking a session idle at its prompt when work is handed to it, pure. A wake is a model turn, so only work the
@@ -15,7 +17,9 @@ import { isReady, unfinishedAfter, waitContext } from "../register/waits.js";
  * someone else or by the clock since the session last touched it (handed to it, raised,
  * reopened, freed by another's finish, its waits cleared, or an approval it waits on answered). Each task wakes a
  * session once, tasks handed together wake it once (`wake.batchSeconds`), and wakes of one session are
- * `wake.minGapMinutes` apart. The plugin's mod asks `hook wake-check` while no turn runs and submits the prompt.
+ * `wake.minGapMinutes` apart. The plugin's mod asks `hook wake-check` while no turn runs and submits the prompt. A
+ * parked task (src/register/park.ts) wakes nothing: `list` leaves it out, so a wake would send the session to work it
+ * cannot find, and a task no owner touched stays news for ever. An event on it ends the parking, and with it the silence.
  */
 /**
  * What a wake costs in weighted tokens (W): its first call re-reads the session's context, from Claude Code's
@@ -61,9 +65,22 @@ export function canGoOn(task, context) {
     }
     return task.startedAt !== null || unfinishedAfter(task.after, context).length === 0;
 }
-/** True when the task is the session's, it can go on with it now, and it is urgent enough to wake it. */
+/**
+ * The context of a wake's read at `now`. Which tasks are needed is built on the first task that reaches that test of
+ * the rule, as most never do. A wake's `elsewhere` comes from `snapshotWithElsewhere`, which gives none when the own
+ * tasks need no outside id, so a need from another register goes unseen: a wake may pass over a task `list` still shows.
+ */
+export function wakeContext(tasks, elsewhere, now, zone, parking) {
+    let needed;
+    const isNeeded = (id) => {
+        needed ??= neededIds(tasks.values(), elsewhere);
+        return needed.has(id);
+    };
+    return { ...waitContext(tasks, new Date(now), zone, elsewhere), isParked: (task) => wouldPark(task, { ...parking, now, needed: isNeeded }) };
+}
+/** True when the task is the session's, it can go on with it now, it is urgent enough to wake it, and it is not parked. */
 export function isWakeWorthy(task, session, maxPriority, context) {
-    return task.owner === session && task.priority <= maxPriority && canGoOn(task, context);
+    return task.owner === session && task.priority <= maxPriority && canGoOn(task, context) && !context.isParked(task);
 }
 function timeOf(at) {
     return at === null ? Number.NEGATIVE_INFINITY : Date.parse(at);
@@ -121,7 +138,7 @@ export function byUrgency(a, b) {
 }
 /** The session's tasks that could wake it at `now` ({@link isWakeWorthy}), in the register's order. */
 export function worthyTasksOf(input) {
-    const context = waitContext(input.tasks, new Date(input.now), input.zone, input.elsewhere);
+    const context = wakeContext(input.tasks, input.elsewhere, input.now, input.zone, input.parking);
     return [...input.tasks.values()].filter((task) => isWakeWorthy(task, input.session, input.maxPriority, context));
 }
 /**

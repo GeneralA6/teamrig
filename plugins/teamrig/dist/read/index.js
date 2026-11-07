@@ -16,6 +16,8 @@ export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, } from "../r
 // A task's WSJF rank (T2076): what builds a tree's ranking and what scores a row, so a reader ranks as the CLI does.
 export { ownSizing, treeRanking } from "../register/ranking.js";
 export { bandOf, scoreOf, sizePctOf, valueOf } from "../register/score.js";
+// The park and untriaged rules (T2076 part 2C), so a reader hides and flags the rows the CLI does.
+export { isUntriaged, wouldPark } from "../register/park.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
 // The week plan in force (the newest week tag started by now), which a reader's week steps follow, as `plan` does.
 export { currentWeek } from "../register/week.js";

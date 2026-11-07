@@ -1,4 +1,5 @@
 import { errorMessage } from "../core/guards.js";
+import { parkRulesOf } from "../register/park.js";
 import { openedWakeState } from "../wake/decide.js";
 import { WakeStore } from "../wake/store.js";
 import { fileLockOf } from "./file-locks.js";
@@ -18,7 +19,8 @@ export async function noteResumedTab(runtime, kit, config, id, tab) {
             const { snapshot, elsewhere } = await teamRegister(runtime, kit.paths, config).snapshotWithElsewhere();
             const previous = await store.read(id);
             const zone = teamZone(config, runtime);
-            await store.write(id, openedWakeState({ tasks: snapshot.state.tasks, elsewhere, session: id, tab, now: runtime.clock.now(), zone, maxPriority: config.wake.priority, previous }));
+            const parking = parkRulesOf(config);
+            await store.write(id, openedWakeState({ tasks: snapshot.state.tasks, elsewhere, session: id, tab, now: runtime.clock.now(), zone, maxPriority: config.wake.priority, parking, previous }));
         });
         return undefined;
     }

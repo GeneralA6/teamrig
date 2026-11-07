@@ -24,7 +24,7 @@ function bandHeading(band, focus) {
 export function renderPlan(tasks, week, now, zone, { team, fit = [], elsewhere = NO_TASKS_ELSEWHERE, ranking }) {
     const all = [...tasks];
     const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere, ranking);
-    const inWeek = tree.inPlanOrder(all.filter((task) => task.week === week));
+    const inWeek = tree.inPlanOrder(all.filter((task) => task.week === week && !tree.isParked(task)));
     const done = inWeek.filter((task) => task.status === 'done').length;
     const dropped = inWeek.filter((task) => task.status === 'dropped').length;
     const lines = [

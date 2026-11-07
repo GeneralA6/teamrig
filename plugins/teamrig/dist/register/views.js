@@ -2,6 +2,7 @@ import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
 import { itemTypeOf } from "./item-types.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
+import { isUntriaged } from "./park.js";
 import { reviewLines, reviewPartNames } from "./review.js";
 import { decidingKey, planOrder } from "./tree.js";
 import { waitsText, weekdayText } from "./waits.js";
@@ -39,7 +40,9 @@ export function selectTasks(tasks, filter, tree) {
             (dueBefore === undefined || (due !== undefined && due < dueBefore)) &&
             (filter.week === undefined || task.week === filter.week) &&
             (filter.goal === undefined || task.goals.includes(filter.goal)) &&
-            (filter.types === undefined || filter.types.includes(itemTypeOf(task))));
+            (filter.types === undefined || filter.types.includes(itemTypeOf(task))) &&
+            (filter.parked === true) === tree.isParked(task) &&
+            (filter.untriagedFor === undefined || isUntriaged(task, filter.untriagedFor)));
     })
         .sort((a, b) => tree.byPlanOrder(a, b));
 }

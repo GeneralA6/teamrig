@@ -6,6 +6,7 @@ import { taskNumber } from "./fold.js";
 import { leaderHolds, waitedMinutes } from "./leader-wait.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { isUngated } from "./owner-waits.js";
+import { isUntriaged } from "./park.js";
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree } from "./tree.js";
 import { WATCH_USAGE } from "./verify.js";
 import { formatTask } from "./views.js";
@@ -35,6 +36,7 @@ export const FLAG_KINDS = [
     'OWNER-UNPLANNED',
     'DUE-UNPLANNED',
     'OFF-GOAL',
+    'UNTRIAGED',
     'NO-PROGRESS',
     'STOPGAP-DONE',
     'STALE',
@@ -111,7 +113,7 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
     const at = now.getTime();
     const all = [...tasks];
     const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week, elsewhere, ranking);
-    const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
+    const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status) && !tree.isParked(candidate)));
     const plan = weekPlan(week, config.check.weekLengthDays, zone);
     const top = topPriority(config.priorities);
     const best = bestOpenTasks(active, tree);
@@ -169,6 +171,15 @@ export function leaderWaitFlags(tasks, tree, focus, at) {
             ? []
             : [{ kind: 'ROADMAP-WAITS-ON-LEAD', task, detail: `${holds.map(waitSpelling).join(', ')} unanswered for ${waitedMinutes(task, at)} min, past the ${focus.leaderWaitMinutes} min limit: answer it first` }];
     });
+}
+/**
+ * UNTRIAGED: an active task a leader has yet to class ({@link isUntriaged}), for that leader's daily batch. Apart from
+ * {@link checkTasks}, whose register config does not name the leaders.
+ */
+export function untriagedFlags(tasks, leaders) {
+    return [...tasks].flatMap((task) => ACTIVE_STATUSES.includes(task.status) && isUntriaged(task, leaders)
+        ? [{ kind: 'UNTRIAGED', task, detail: `no class, added by ${task.createdBy}: class it (update ${task.id} --class <name>)` }]
+        : []);
 }
 function weekPlan(week, lengthDays, zone) {
     const start = week === null ? undefined : parseDayStart(week, zone)?.getTime();

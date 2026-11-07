@@ -1,4 +1,5 @@
 import { KIT_NAME } from "../core/home.js";
+import { parkRulesOf } from "../register/park.js";
 import { noRoomText } from "../sessions/headroom.js";
 import { reopenVerdict } from "../sessions/idle.js";
 import { closedOf, SessionLog } from "../sessions/log.js";
@@ -85,7 +86,7 @@ export async function judgeSession(runtime, kit, config, roster, facts, id, fold
         return { kind: 'away', id };
     }
     const asks = facts.asks.get(id) ?? [];
-    const input = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, dayStartUtc: config.wake.dayStartUtc, now, zone };
+    const input = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStartUtc: config.wake.dayStartUtc, now, zone };
     const asAwake = reopenVerdict(input);
     if (asAwake.kind === 'asked') {
         return wishOf(folderOf, id, asAwake, undefined);
