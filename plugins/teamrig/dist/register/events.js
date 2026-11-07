@@ -17,7 +17,7 @@ import { parseWaits } from "./waits.js";
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
  * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
- * `sizeBase` (T649) and a task's `workClass` (T2076), which an older reader ignores:
+ * `sizeBase` (T649), a task's `workClass` (T2076) and a start's `oneCommit` mark (T2110), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -130,6 +130,10 @@ export function parseEvent(line) {
             const proof = status === 'verifying' ? textOrNull(record, 'proof') : null;
             const watch = status === 'done' ? textOrNull(record, 'watch') : null;
             const met = status === 'in-progress' ? textOrNull(record, 'met') : null;
+            const oneCommit = record['oneCommit'];
+            if (oneCommit !== undefined && typeof oneCommit !== 'boolean') {
+                return unreadable(`bad oneCommit ${JSON.stringify(oneCommit)}`);
+            }
             const followups = parseFollowups(record['followups']);
             if (typeof followups === 'string') {
                 return unreadable(followups);
@@ -150,6 +154,7 @@ export function parseEvent(line) {
                 ...(proof === null ? {} : { proof }),
                 ...(watch === null ? {} : { watch }),
                 ...(met === null ? {} : { met }),
+                ...(status === 'in-progress' && oneCommit === true ? { oneCommit } : {}),
                 ...(followups === undefined ? {} : { followups }),
                 ...(review === undefined ? {} : { review }),
             };
