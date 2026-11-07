@@ -22,6 +22,7 @@ import { WakePrompts } from "../../wake/prompts.js";
 import { logWake, WakeStore } from "../../wake/store.js";
 import { noPositionals } from "../args.js";
 import { openKit, rosterOf, teamZone } from "../kit.js";
+import { startDailyRollup } from "../rollup-start.js";
 import { EXIT } from "../runtime.js";
 import { readTodayWPerPct } from "../stored-week.js";
 import { teamRegister } from "../team-register.js";
@@ -169,6 +170,8 @@ async function momentsOf(runtime, scope, login, tasks, elsewhere, state, now) {
     if (dayStartUtc === undefined) {
         return { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next: undefined, watch: [] };
     }
+    // Ahead of the startable gate: a day with no work to wake for still closes a day of spend.
+    await startDailyRollup(runtime, kit, id, dayStartUtc, now);
     const next = nextDayStartAt(dayStartUtc, now);
     const none = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next, watch: [] };
     const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime));

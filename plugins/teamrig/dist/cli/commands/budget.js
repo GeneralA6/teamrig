@@ -7,6 +7,7 @@ import { resolveKitHome } from "../../core/home.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { resolveTeam } from "../../core/team.js";
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from "../../core/time.js";
+import { transcriptTitleOf } from "../../budget/attribute.js";
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { calibrationOf } from "../../budget/calibration.js";
@@ -31,7 +32,6 @@ import { readWeek, wSince } from "../../budget/week.js";
 import { NO_WORK, queuedWork, readTasks, readWork } from "../../budget/work.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
-import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { TASK_ID } from "../../register/model.js";
 import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount } from "../account-teams.js";
 import { UsageError, onePositional, requiredFlag } from "../args.js";
@@ -50,12 +50,6 @@ import { loadTree } from "../tree.js";
  */
 /** Days the loop table shows by default; `--all` shows every stored day. */
 export const LOOP_DAYS_SHOWN = 4;
-/** The title the user gave a Claude Code session, from its transcript's last `TRANSCRIPT_TAIL_BYTES`. */
-async function titleOf(transcripts, path) {
-    const size = (await transcripts.size(path)) ?? 0;
-    const length = Math.min(size, TRANSCRIPT_TAIL_BYTES);
-    return length === 0 ? undefined : customTitleOf((await transcripts.read(path, size - length, length)).toString('utf8'));
-}
 function dayStartOf(at) {
     return at - (at % MS_PER_DAY);
 }
@@ -68,7 +62,7 @@ async function readBudget(runtime, kit, config, roster, options) {
     const { marks } = await new JsonlMarkLog(new PlainLogFile(files, kit.paths.inboxMarks)).read();
     const measured = await measure({
         transcripts: runtime.transcripts,
-        titleOf: (path) => titleOf(runtime.transcripts, path),
+        titleOf: (path) => transcriptTitleOf(runtime.transcripts, path),
         team: recount ? new MemoryUsageStore() : new UsageStore(files, kit.paths.usage),
         outside: recount ? new MemoryUsageStore() : new UsageStore(files, join(kit.paths.usage, 'outside')),
         clock,

@@ -1,5 +1,12 @@
 import { sessionsTitled } from "../hooks/bind.js";
+import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from "../names/title.js";
 const NO_TRANSCRIPTS = { main: [], subagents: [] };
+/** The title the user gave a Claude Code session, from its transcript's last `TRANSCRIPT_TAIL_BYTES`. */
+export async function transcriptTitleOf(transcripts, path) {
+    const size = (await transcripts.size(path)) ?? 0;
+    const length = Math.min(size, TRANSCRIPT_TAIL_BYTES);
+    return length === 0 ? undefined : customTitleOf((await transcripts.read(path, size - length, length)).toString('utf8'));
+}
 /**
  * Which team session each Claude Code session's use counts for, by the same rules that bind a tab:
  * its inbox mark first, else its title when that is exactly one team session's id or current name.
