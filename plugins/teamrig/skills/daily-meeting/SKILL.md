@@ -59,7 +59,15 @@ reaches `refresh.compactCeilingTokens` (185,000 by default), past which it goes 
 
 ## 2. Bring each decision as a card
 
-Lead with what got done and what is late, in a few lines. Then one card per decision, each readable alone:
+Lead with the ship board: each open shippable slice (a goal's fewest tasks that ship something working, proven
+live; at most `[focus.maxOpenSlices]` open across the tree) and the slices planned 1 to 2 weeks ahead, one line each:
+its goal, what it ships, its owner and ship date, and whether it shipped (its live proof seen), is on date, or is
+slipping, with why and its new date. Until the register holds slices, they live in `ship-plan.md` in your notes
+folder (`teamrig files --notes --session lead`), one row per slice: goal, slice, tasks, owner, ship date, live
+proof, status; bring it up to date before the meeting, and in a tree add each child team lead's slices from its own
+file. A slipping slice's decisions come first among the cards.
+
+Then what got done and what is late, in a few lines, and one card per decision, each readable alone:
 
 - what it is and why it matters to the human, in one or two plain lines;
 - the owner gate or business reason that makes it theirs;
