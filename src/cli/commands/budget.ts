@@ -54,6 +54,7 @@ import {
   type StatusLineView,
   type StatusSnapshot,
 } from '../../budget/snapshot.ts';
+import { foldIntoFiveHourSummary } from '../../budget/five-hour-summary.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { attributedW, taskUseOf } from '../../budget/task-use.ts';
 import { readTeamWeek } from '../../budget/team-week-file.ts';
@@ -717,12 +718,20 @@ function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, sh
   };
 }
 
-/** Folds the saved snapshot into the folder's week summary (`foldIntoWeekSummary`); a failure is told on stderr, never breaking the status bar. */
+/**
+ * Folds the saved snapshot into the folder's summaries (`foldIntoWeekSummary`, `foldIntoFiveHourSummary`); a failure is
+ * told on stderr, never breaking the status bar or the other fold.
+ */
 async function foldQuietly(runtime: CliRuntime, dir: string, snapshot: StatusSnapshot): Promise<void> {
   try {
     await foldIntoWeekSummary(runtime.files, dir, snapshot, runtime.clock.now());
   } catch (error) {
     runtime.out.stderr(`teamrig statusline: the week summary was not updated: ${errorMessage(error)}`);
+  }
+  try {
+    await foldIntoFiveHourSummary(runtime.files, dir, snapshot);
+  } catch (error) {
+    runtime.out.stderr(`teamrig statusline: the five-hour summary was not updated: ${errorMessage(error)}`);
   }
 }
 
@@ -739,7 +748,8 @@ async function pruneQuietly(runtime: CliRuntime, dir: string): Promise<void> {
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
  * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
  * session began to show it, and when it last showed another), folds it into the folder's week summary (the
- * newest reading, which readers open instead of every snapshot), removes the folder's snapshots written more
+ * newest reading, which readers open instead of every snapshot) and, on a plan with one, its five-hour window's
+ * summary, removes the folder's snapshots written more
  * than 8 days ago (at most one sweep an hour), and prints a short status: the model and its effort level, the
  * session's folder and branch, and the plan's use, the week's beside where the team's pace line stands, as the
  * team's `statusLine` config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
