@@ -140,4 +140,18 @@ describe('golden register logs', () => {
     assert.equal(state.nextId, 'T3', 'the moved id stays taken');
     assert.equal(state.tasks.get('T1')?.status, 'in-progress');
   });
+
+  it('reads a start\'s oneCommit mark from a version 2 line, as an audit of what passed the WIP rule, and no later line carries it on', async () => {
+    const read = readEvents(await fixture('events-one-commit.jsonl'));
+    assert.deepEqual([read.unreadable, read.newer], [0, 0]);
+    assert.deepEqual(
+      read.events.flatMap((event) => (event.type === 'status' ? [[event.status, event.oneCommit]] : [])),
+      [
+        ['in-progress', true],
+        ['done', undefined],
+        ['in-progress', undefined],
+      ],
+    );
+    assert.equal(foldEvents(read.events, read.seenIds).tasks.get('T1')?.status, 'in-progress');
+  });
 });

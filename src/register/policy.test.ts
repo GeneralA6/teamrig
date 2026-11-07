@@ -474,6 +474,13 @@ describe('RegisterPolicy.setStatus: the WIP rule holds a start (T2076)', () => {
     assert.equal(error(policy.setStatus(tooling, 'alpha', { status: 'dropped', note: 'not needed', oneCommit: true }, context)), '--one-commit goes only with --status in-progress');
   });
 
+  it('marks the status change of a start said to be a one-commit fix, and of no other', () => {
+    const marked = policy.setStatus(tooling, 'alpha', { status: 'in-progress', oneCommit: true }, context);
+    assert.equal(marked.ok && marked.value.oneCommit, true);
+    const plain = policy.setStatus(roadmap, 'alpha', { status: 'in-progress' }, context);
+    assert.equal(plain.ok && 'oneCommit' in plain.value, false);
+  });
+
   it('holds the count of tasks in progress past the limit, for any class', () => {
     const fourth = testTask({ id: 'T4', workClass: 'Roadmap' });
     const full = { ...CTX, state: stateOf(started('T1'), started('T2'), started('T3'), fourth) };

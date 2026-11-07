@@ -381,6 +381,7 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
         event.proof === undefined ? undefined : `proof="${event.proof}"`,
         event.watch === undefined ? undefined : `watch="${event.watch}"`,
         event.met === undefined ? undefined : `met="${event.met}"`,
+        event.oneCommit === true ? 'oneCommit=true' : undefined,
         event.evidence === null ? undefined : `evidence=${event.evidence}`,
         event.skill === null ? undefined : `skill=${event.skill}`,
         event.followups === undefined ? undefined : `followups=${event.followups.length === 0 ? 'none' : event.followups.join(',')}`,
