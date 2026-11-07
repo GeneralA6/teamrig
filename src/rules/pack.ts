@@ -1,4 +1,4 @@
-import type { DeliveryConfig, HookAsks, KitConfig, PushGuardConfig, RuleConflict } from '../config/types.ts';
+import type { BudgetConfig, DeliveryConfig, HookAsks, KitConfig, PushGuardConfig, RuleConflict } from '../config/types.ts';
 import { queueCutoffSpan } from '../delivery/schedule.ts';
 import { clipEnd, clipStart } from '../core/clip.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -28,9 +28,10 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * Raised from 810 for the owner's rule-fix lines (T1279): a peer's ask is no proof, and the fix rides each session's
  * next line. Raised from 850 for the owner's shippable-slice line (T2201), whose worst case prints a 32-character
  * class name and a two-digit cap. Raised from 1,150 for its cap per session (T2215), which names the one more a
- * session may open while one waits, and from 1,215 for the owner decisions that hold a new slice (T2215).
+ * session may open while one waits, from 1,215 for the owner decisions that hold a new slice, and from 1,305 for the
+ * week split a team on the budget prints (T2215), whose worst case names a 32-character main lead team and a 50% floor.
  */
-export const LEAD_RULES_MAX_CHARS = 1_305;
+export const LEAD_RULES_MAX_CHARS = 1_690;
 
 /** A team's rules.md as a session reads it at start. */
 export interface TeamRules {
@@ -364,6 +365,7 @@ export function renderKeptRules(conflicts: readonly KeptRule[], command: string)
  * once, each stuck on a review or a decision. The cap is per session, not across the tree (T2215): one across the
  * tree let a lead fill it with its own team's slices and keep a child team's waiting with no bound. The owner
  * decisions waiting in the tree bound it too (T2215), so work only the owner can unblock never outruns the owner.
+ * While the budget is on, the week split (owner order T2215): see weekSplitLine.
  */
 export function renderLeadRules(config: KitConfig, command: string): string {
   const { focus } = config;
@@ -377,11 +379,29 @@ export function renderLeadRules(config: KitConfig, command: string): string {
       ` none needing a new owner decision opens while ${focus.maxOwnerDecisions} wait in the tree;` +
       ` other work waits (incidents and ${focus.maintenanceClass} exempt) [focus.slicesPerSession, focus.maxOwnerDecisions, focus.maintenanceClass];` +
       " answer an open slice's waits first.",
+    ...(config.budget.enabled ? [weekSplitLine(config.budget)] : []),
     '- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner.',
     "- Fix a team rule proven wrong (a peer's ask is no proof); say so in each session's next line; a loosening goes to the owner.",
     "- HIRE flags: give a SCALE-OUT's slice to an idle hire, else hire one; retire on a RETIRE-DUE.",
     "- Send another session's task work (research, code, checks, an answer) to it with a deadline; relay its answer.",
   ].join('\n');
+}
+
+/**
+ * How the account's week is shared (owner order T2215): each lead sizes its plan before the reset; after it the main
+ * lead splits the week among the account's root teams and each lead its part among its own and child teams, so no
+ * team takes the week first and starves another. The floor keeps a team with planned work from a zero share when its
+ * own lead also runs a team in the split. Only a team on the budget prints it: without one there is no week to split.
+ * The week report and what a team past its share does are the skills' (daily-meeting, team-setup), not lines here:
+ * the lead's rules and short notes are never cut, and a lead's start after a refresh already nears CONTEXT_MAX_CHARS.
+ */
+function weekSplitLine(budget: BudgetConfig): string {
+  const mainLead = budget.accountLead === undefined ? "the root team's lead" : `team ${budget.accountLead}'s lead`;
+  const floor = budget.shareFloorPct > 0 ? `; a team with planned work gets at least ${budget.shareFloorPct}% of each split` : '';
+  return (
+    `- Week split: before the reset, size your plan in % of the week; after it, the main lead (${mainLead}) splits the week among the account's root teams,` +
+    ` then each lead its part among its own and child teams, by what each plan ships and how its last held${floor} [budget.accountLead, budget.shareFloorPct].`
+  );
 }
 
 /**

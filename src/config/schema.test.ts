@@ -130,6 +130,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   persistentFailureHours: 'alerts.persistentFailureHours',
   slicesPerSession: 'focus.slicesPerSession',
   maxOwnerDecisions: 'focus.maxOwnerDecisions',
+  shareFloorPct: 'budget.shareFloorPct',
   decisionBatchTimes: 'decisions.batchTimesUtc',
   decisionBatchAt: 'decisions.batchAt',
   chainNudgeAt: 'loops.chainNudgeAt',

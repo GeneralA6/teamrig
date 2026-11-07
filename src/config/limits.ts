@@ -60,6 +60,8 @@ export const CONFIG_LIMITS = {
   githubEveryMinutes: { min: 0, max: 1440 },
   budgetTargetPct: { min: 1, max: 100 },
   budgetReservePct: { min: 0, max: 50 },
+  /** 0 turns the floor off; past 50 one team's floor would leave a second less than its own (T2215). */
+  shareFloorPct: { min: 0, max: 50 },
   weeklyLimitW: { min: 1_000_000, max: 1_000_000_000_000 },
   subagentWeight: { min: 0.1, max: 10 },
   extraWPerUsd: { min: 1_000, max: 1_000_000_000 },

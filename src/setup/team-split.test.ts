@@ -151,6 +151,7 @@ describe('planTeamSplit', () => {
     const budget: JsonRecord = {
       enabled: true,
       account: 'work',
+      accountLead: 'work-lead',
       weeklyLimitW: 9_000_000,
       subagentWeight: 2,
       extraWPerUsd: 40_000,

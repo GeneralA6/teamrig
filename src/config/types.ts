@@ -647,7 +647,7 @@ export interface BudgetLiftConfig {
  * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
  * a tree read one week alike without a copy that drifts.
  */
-export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'] as const satisfies readonly (keyof BudgetConfig)[];
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'] as const satisfies readonly (keyof BudgetConfig)[];
 
 /** The keys of ACCOUNT_BUDGET_KEYS as a team reads them, its own or the team above's. */
 export type AccountBudget = Pick<BudgetConfig, (typeof ACCOUNT_BUDGET_KEYS)[number]>;
@@ -666,6 +666,12 @@ export interface BudgetConfig {
    * account (budget/account.ts `accountsOf`).
    */
   readonly account?: string;
+  /**
+   * The root team whose lead is the account's main lead (owner order T2215): after each reset it splits the week among
+   * the account's root teams and reports the split at the owner's first meeting. Unset: the team above's
+   * (`AccountBudget`), else the root team's own lead, which holds while the account has one root team.
+   */
+  readonly accountLead?: string;
   /** The weekly limit in weighted tokens (W). Unset: the team above's (`AccountBudget`), else derived from the status line's weekly %. */
   readonly weeklyLimitW?: number;
   /**
@@ -685,6 +691,11 @@ export interface BudgetConfig {
   readonly targetPct: number;
   /** Kept back for incidents until shortly before the reset. */
   readonly reservePct: number;
+  /**
+   * The least share of each weekly split a team with planned work gets, in % of the part split (owner order T2215):
+   * the check on a lead that also runs a team in its own split. 0: no floor. The team's own, never the team above's.
+   */
+  readonly shareFloorPct: number;
   /** The pace line reaches `targetPct` this many hours before the reset. */
   readonly paceEndHoursBeforeReset: number;
   /** Each session's part, by id; a session not listed has a share of 1. */
