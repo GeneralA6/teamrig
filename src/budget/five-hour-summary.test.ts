@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Files } from '../core/files.ts';
 import { NewerDataError } from '../core/jsonl.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import {
   FIVE_HOUR_SUMMARY_FILE,
@@ -79,6 +80,13 @@ describe('the five-hour summary file', () => {
       `{"v":${FIVE_HOUR_SUMMARY_FORMAT},"resets_at":${RESETS_AT / 1000},"used_percentage":30,"at":"${SECOND}","first_percentage":19,"first_at":"${FIRST}"}`,
     );
     assert.deepEqual(parseFiveHourSummary(text), fold);
+  });
+
+  it('writes the pinned fields of its format: a field added to the file raises FIVE_HOUR_SUMMARY_FORMAT', () => {
+    const written: Readonly<Record<number, readonly string[]>> = {
+      1: ['at', 'first_at', 'first_percentage', 'resets_at', 'used_percentage', 'v'],
+    };
+    assert.deepEqual(fieldPaths(JSON.parse(formatFiveHourSummary(foldOf(30, SECOND, 19, FIRST)))), written[FIVE_HOUR_SUMMARY_FORMAT]);
   });
 
   it('reads as nothing when damaged, in another format, or short of a field', () => {
