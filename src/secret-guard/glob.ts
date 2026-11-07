@@ -36,13 +36,14 @@ export function braceAlternatives(glob: string, limit: number): string[] | undef
     const next: string[] = [];
     for (const item of pending) {
       const group = firstGroup(item);
+      // Counted before the spread: past about 120,000 arguments a spread throws instead of reaching the limit.
+      if (spelled.length + next.length + (group?.choices.length ?? 1) > limit) {
+        return undefined;
+      }
       if (group === undefined) {
         spelled.push(item);
       } else {
         next.push(...group.choices.map((choice) => `${item.slice(0, group.open)}${choice}${item.slice(group.close + 1)}`));
-      }
-      if (spelled.length + next.length > limit) {
-        return undefined;
       }
     }
     pending = next;
