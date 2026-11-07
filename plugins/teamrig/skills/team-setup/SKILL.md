@@ -207,7 +207,18 @@ At the start of each work block, and when the user asks for status, in one Bash 
 teamrig start --session lead
 ```
 
-With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
+With sub-teams, run `teamrig check --tree --session lead` too.
+
+Then check the ship plan: `ship-plan.md` in your notes folder (`teamrig files --notes --session lead`) until the
+register holds slices, one row per slice (goal, slice, tasks, owner, ship date, live proof, status). Each open slice
+has an owner, a ship date and a live proof. One past its date, or with a task waiting on you, comes first: answer
+that wait, then re-cut the slice smaller or re-date it with its reason. A slice ships when its live proof is seen,
+and its goal's next one opens then. With more than `[focus.maxOpenSlices]` open across the tree, park the newest
+until one ships; a child team's lead opens one only within that cap, asking its own leader when the tree is at it.
+Work outside an open slice waits, incidents and `[focus.maintenanceClass]` work aside: ask its session in one inbox
+line to park it.
+
+Act on each flag:
 
 - `PRIORITY-SKIP`: a session works below an open task of its own that outranks it. Send it one inbox line to park the
   lower task and start the waiting one (`teamrig inbox add --session lead --to <id> --text "..."`), or, when the order
