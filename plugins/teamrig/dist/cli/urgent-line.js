@@ -1,8 +1,18 @@
 import { errorMessage } from "../core/guards.js";
 import { SecretScanner } from "../core/secrets.js";
-import { postLine } from "../inbox/inbox.js";
+import { inboxLineOf, postLine } from "../inbox/inbox.js";
+import { lineHash } from "../inbox/line-hash.js";
 import { WakeAsks } from "../wake/asks.js";
 import { inboxDepsOf } from "./commands/inbox.js";
+/**
+ * The ask that makes the posted line wake its receiver. An `atOnce` one is a timed ask due at its post time, bound to
+ * the posted line by its hash, so the next wake check takes it while the line is unseen and drops it once the
+ * receiver saw it at a prompt; any other is plain.
+ */
+export function urgentAskOf(line, text, at) {
+    const ask = { from: line.from, text, at };
+    return line.atOnce === true ? { ...ask, by: { at, line: lineHash(inboxLineOf(new Date(at), line.from, text)) } } : ask;
+}
 /**
  * Posts the line to its receiver's inbox, which stays the record, then a wake ask (src/wake/asks.ts), so the
  * receiver's next wake check wakes its idle tab with the line quoted; why it was not posted, or undefined once it is
@@ -22,7 +32,7 @@ export async function postUrgentLine(runtime, kit, config, line) {
         return `not posted: ${errorMessage(error)}`;
     }
     try {
-        await new WakeAsks(runtime.files, kit.paths.wakeAsks).post(line.to, { from: line.from, text, at });
+        await new WakeAsks(runtime.files, kit.paths.wakeAsks).post(line.to, urgentAskOf(line, text, at));
     }
     catch (error) {
         return `posted to the inbox, but it does not wake ${line.to}: ${errorMessage(error)}`;
