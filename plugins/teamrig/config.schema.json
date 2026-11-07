@@ -758,6 +758,13 @@
               "minimum": 0,
               "maximum": 1048576,
               "default": 2048
+            },
+            "heavyReserveMb": {
+              "description": "The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only while free memory covers both (at most half the host's RAM). A heavy step whose ledger peak and a quarter is more holds that instead.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1048576,
+              "default": 4096
             }
           }
         },

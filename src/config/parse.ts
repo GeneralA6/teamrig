@@ -870,6 +870,7 @@ function parseQueue(read: ConfigReader, raw: JsonRecord): QueueConfig {
     memorySampleSeconds: read.integer(raw, 'memorySampleSeconds', path, DEFAULT_QUEUE.memorySampleSeconds, CONFIG_LIMITS.queueMemorySampleSeconds),
     memoryFloorMb: read.integer(raw, 'memoryFloorMb', path, DEFAULT_QUEUE.memoryFloorMb, CONFIG_LIMITS.queueMemoryFloorMb),
     smallReserveMb: read.integer(raw, 'smallReserveMb', path, DEFAULT_QUEUE.smallReserveMb, CONFIG_LIMITS.queueSmallReserveMb),
+    heavyReserveMb: read.integer(raw, 'heavyReserveMb', path, DEFAULT_QUEUE.heavyReserveMb, CONFIG_LIMITS.queueHeavyReserveMb),
   };
 }
 
