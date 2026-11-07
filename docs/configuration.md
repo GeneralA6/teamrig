@@ -622,7 +622,7 @@ Goal-first ranking: the work classes a task is filed under (teamrig add and upda
 | `maxActiveKeyResults` | integer (1 to 100) | `5` | The key results (goals with a parent) the team may hold with a target of today or later; teamrig goal add refuses one more. |
 | `score` | [object](#focusscore) |  | The parts of a task's WSJF score: cost of delay (value + urgency + unblocks + owner order) over size, in % of the week. |
 | `expedite` | [object](#focusexpedite) |  | Which tasks go ahead of every score, beside a p0, which always does. |
-| `wip` | [object](#focuswip) |  | The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, or until the week resets once Improvements has spent its allocation, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt. |
+| `wip` | [object](#focuswip) |  | The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, or until the week resets once Improvements has spent its allocation, and a start past maxInProgress is held. --one-commit, a reopen of a verifying or done task, an expedited task and an owner-sourced task are exempt. |
 | `allocation` | map from string (matching `^[A-Za-z][A-Za-z0-9 _-]{0,31}$`) to number (0 to 100) | `{"Roadmap":60,"Maintenance":25,"Improvements":15}` | The % of the whole week each class is planned to take, by class; every key one of classes, the shares summing to 100. A class outside roadmapClass and maintenanceClass that reaches its share has its starts held until the week resets, unless wip's mode is off; a class left out is never held, and one at 0 is held from the week's start. |
 | `leaderWaitMinutes` | integer (0 to 10080) | `60` | How long, in minutes, a Roadmap task may wait on a leader's decision or approval before it is flagged. |
 | `parkAfterDays` | integer (1 to 365) | `14` | The days without an event after which an Improvements task is parked out of list, plan, check and start; any update brings it back. |
@@ -660,7 +660,7 @@ Which tasks go ahead of every score, beside a p0, which always does.
 
 ## `focus.wip`
 
-The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, or until the week resets once Improvements has spent its allocation, and a start past maxInProgress is held. --one-commit, an expedited task and an owner-sourced task are exempt.
+The WIP rule: an Improvements start is held while its owner has a Roadmap task that can move, or until the week resets once Improvements has spent its allocation, and a start past maxInProgress is held. --one-commit, a reopen of a verifying or done task, an expedited task and an owner-sourced task are exempt.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |

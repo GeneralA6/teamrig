@@ -428,7 +428,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the WIP rule (focus.wip) holds a start of work outside the Roadmap and Maintenance classes while its
       owner holds Roadmap work that can move, or until the week resets once its class has spent its share
       (focus.allocation), and any start past focus.wip.maxInProgress tasks in progress;
-      --one-commit starts a one-commit fix all the same
+      a reopen of a verifying or done task is never held; --one-commit starts a one-commit fix all the same,
+      and show keeps the mark on its status line
       verifying and done need --followups: the tasks the work leaves (a finding, a next step), or none
       (register.requireFollowupsOn); show lists them
       waiting needs --waits: the lead's or the owner's decision or approval, a task to finish first

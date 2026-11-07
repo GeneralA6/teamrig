@@ -105,8 +105,9 @@ Flags:
   rule (`focus.wip.mode`: `refuse`, `warn` or `off`) holds a start of work outside `focus.roadmapClass` and
   `focus.maintenanceClass` while its owner holds `focus.roadmapClass` work that can move (open or in progress, no wait,
   every task it comes after finished), or until the week resets once its class has spent its `focus.allocation` share,
-  and any start past `focus.wip.maxInProgress` tasks in progress. A reopen is held like a first start. An expedite task
-  and a task the owner ordered are never held.
+  and any start past `focus.wip.maxInProgress` tasks in progress. A reopen of a verifying or done task is never held,
+  as its owner is finishing started work; a wait or a dropped task going back to `in-progress` is held like a first
+  start. An expedite task and a task the owner ordered are never held.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--watch "<what a sighting shows>"`: allowed only with `done`, and needs evidence (given or already on the task)
@@ -252,8 +253,9 @@ REFUSED T2 is Improvements work and Improvements has spent its share of the week
 REFUSED api already has 3 tasks in progress, at the limit of 3 [focus.wip.maxInProgress]: finish T1, T3, T4 or put one back (--status open) before T2, or, for a one-commit fix, start it with --one-commit
 ```
 
-`--one-commit` starts a one-commit fix all the same. With `focus.wip.mode` set to `warn`, the start goes through and
-a `WARN` line says the same; set to `off`, the share holds nothing either.
+`--one-commit` starts a one-commit fix all the same, and `show` prints `oneCommit=true` on that status line. A reopen of
+a verifying or done task is never held. With `focus.wip.mode` set to `warn`, the start goes through and a `WARN` line
+says the same; set to `off`, the share holds nothing either.
 
 A class has spent its share when the week's spend on it, as `teamrig budget` shows it, reaches its `focus.allocation`:
 a class the allocation leaves out is never held, and one allocated 0 is held from the week's start. The reading comes
