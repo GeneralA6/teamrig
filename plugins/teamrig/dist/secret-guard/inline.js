@@ -46,6 +46,20 @@ const READS = {
 };
 /** Code that builds a path from the home folder, so a bare `.npmrc` in it may name `~/.npmrc`. */
 const HOME_HINT = /homedir|expanduser|\bHOME\b|USERPROFILE|Path\.home|File\.expand_path|Dir\.home/;
+/**
+ * Code that can expand a wildcard held in a string, by a name-matching call or by starting a program. Anywhere else
+ * `'*'` is plain text: a read of `'.e*'` looks for a file of that very name, and a fallback or a regex in a string is
+ * no file at all. `spawn` counts with no shell too: Git's `cat` on Windows expands its own arguments.
+ */
+const EXPANDS = /glob|fnmatch|exec|spawn|system|popen|shell/i;
+/** The same, in the words only one family has. A backtick starts a shell in ruby, perl and php; in js it is a string. */
+const FAMILY_EXPANDS = {
+    js: /(?:mini|micro|pico)match|Deno\.(?:Command|run)|\$`/,
+    python: /subprocess|get(?:status)?output/,
+    ruby: /\bDir\[|`|%x|Open3|\bopen\b/,
+    perl: /`|\bqx\b|\bopen3?\b/,
+    php: /`|passthru|proc_open/,
+};
 /** A string literal in code. */
 const LITERAL = /(['"`])((?:\\.|(?!\1)[^\\\n])+)\1/g;
 /**
@@ -71,14 +85,15 @@ export function inlineFindings(run, rules) {
     }
     const place = { dialect: 'bash', dir: run.dir, home: rules.home };
     const homeJoined = HOME_HINT.test(inline.code);
-    const named = [...[...inline.code.matchAll(LITERAL)].map(([, , body]) => (body ?? '').replace(/\\(.)/g, '$1')), ...inline.argv];
-    for (const text of named) {
-        const paths = homeJoined ? [wordPath(text, place), `${rules.home}/${text}`] : [wordPath(text, place)];
-        if (paths.some((path) => rules.paths.mayName(path, true))) {
-            findings.push({ kind: 'file', path: text });
-        }
-    }
-    return findings;
+    const named = (texts, names) => texts
+        .filter((text) => (homeJoined ? [wordPath(text, place), `${rules.home}/${text}`] : [wordPath(text, place)]).some(names))
+        .map((text) => ({ kind: 'file', path: text }));
+    const expanded = (path) => rules.paths.mayName(path, true);
+    const spelled = (path) => rules.paths.listed(path);
+    const literals = [...inline.code.matchAll(LITERAL)].map(([, , body]) => (body ?? '').replace(/\\(.)/g, '$1'));
+    const expands = EXPANDS.test(inline.code) || FAMILY_EXPANDS[family].test(inline.code);
+    // A word after the code is the shell's, which expands it before the code runs, whatever the code does with it.
+    return [...findings, ...named(literals, expands ? expanded : spelled), ...named(inline.argv, expanded)];
 }
 /** True when the call runs inline code that prints: with a print option, or a print call in the code. */
 export function printsInline(run) {
