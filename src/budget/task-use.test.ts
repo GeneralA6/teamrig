@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_DAY } from '../core/time.ts';
 import { EMPTY_USAGE, newCursor, pruneUsage, type UsageState } from './store.ts';
-import { attributedW, taskDaysOf, taskUseOf, taskWOf } from './task-use.ts';
+import { attributedW, spentSince, taskDaysOf, taskUseOf, taskUseReader, taskWOf, type TaskUse } from './task-use.ts';
 import type { OpenTurn } from './tasks.ts';
 
 const DAY = '2030-01-08';
@@ -36,6 +36,47 @@ describe('taskUseOf', () => {
     const bySession = new Map<string, UsageState>([['alpha', usage({}, [{ tasks: ['T8'], held: { [DAY]: 3_000_000 } }])]]);
 
     assert.deepEqual(taskUseOf(bySession, 'T7'), { task: 'T7', sessions: [], w: 0 });
+  });
+});
+
+describe('taskUseReader', () => {
+  it('reads each task as taskUseOf does, a task with no use included', () => {
+    const bySession = new Map<string, UsageState>([
+      ['alpha', usage({ [DAY]: { T7: 1_000_000 } })],
+      ['beta', usage({ [NEXT_DAY]: { T7: 500_000 }, [DAY]: { T8: 9_000_000 } }, [{ tasks: ['T7', 'T8'], held: { [NEXT_DAY]: 4_000_000 } }])],
+    ]);
+    const useOf = taskUseReader(bySession);
+
+    for (const task of ['T7', 'T8', 'T9']) {
+      assert.deepEqual(useOf(task), taskUseOf(bySession, task));
+    }
+  });
+});
+
+describe('spentSince (T649)', () => {
+  /** T1's use: alpha and bravo's W per UTC day. */
+  const USE: TaskUse = {
+    task: 'T1',
+    sessions: [
+      { session: 'alpha', byDay: { '2030-01-06': 5, '2030-01-07': 10, '2030-01-08': 20 }, w: 35 },
+      { session: 'bravo', byDay: { '2030-01-07': 4 }, w: 4 },
+    ],
+    w: 39,
+  };
+
+  it('counts all the meter keeps with no base', () => {
+    assert.equal(spentSince(USE, null), 39);
+  });
+
+  it('counts the base day past its W, summed over sessions, and later days in full', () => {
+    assert.equal(spentSince(USE, { day: '2030-01-07', w: 12 }), 2 + 20);
+    assert.equal(spentSince(USE, { day: '2030-01-07', w: 30 }), 20, 'a base above the day counts none of it');
+  });
+
+  it('counts nothing before the base day, and only later days for a day the meter no longer keeps', () => {
+    assert.equal(spentSince(USE, { day: '2030-01-08', w: 0 }), 20);
+    assert.equal(spentSince(USE, { day: '2030-01-09', w: 0 }), 0);
+    assert.equal(spentSince(USE, { day: '2030-01-01', w: 99 }), 39);
   });
 });
 
