@@ -75,6 +75,13 @@ describe('wipHold: a class that has spent its share of the week', () => {
     assert.equal(spentHoldOf({ ...TOOLING, source: OWNER }), undefined);
   });
 
+  it('leaves a reopen of a verifying or done task alone and holds work that never finished', () => {
+    assert.equal(spentHoldOf({ ...TOOLING, status: 'verifying' }), undefined);
+    assert.equal(spentHoldOf({ ...TOOLING, status: 'done' }), undefined);
+    assert.match(spentHoldOf({ ...TOOLING, status: 'waiting' }) ?? '', /has spent its share/);
+    assert.match(spentHoldOf({ ...TOOLING, status: 'dropped' }) ?? '', /has spent its share/);
+  });
+
   it('holds nothing with the rule off', () => {
     assert.equal(spentHoldOf(TOOLING, { ...FOCUS, wip: { mode: 'off', maxInProgress: 3 } }), undefined);
   });
@@ -217,9 +224,18 @@ describe('wipHold: what it never judges', () => {
     assert.equal(holdOf({ ...TOOLING, status: 'in-progress' }, heldBoth), undefined);
   });
 
-  it('holds a reopen as it holds a first start', () => {
-    assert.match(holdOf({ ...TOOLING, status: 'verifying', startedAt: '2030-01-07T08:00:00.000Z' }, heldBoth) ?? '', /^T9 is Improvements work/);
-    assert.match(holdOf({ ...TOOLING, status: 'waiting', startedAt: '2030-01-07T08:00:00.000Z' }, heldBoth) ?? '', /^T9 is Improvements work/);
+  it('never holds a reopen of a verifying or done task, by the class rule or the cap', () => {
+    const startedAt = '2030-01-07T08:00:00.000Z';
+    assert.equal(holdOf({ ...TOOLING, status: 'verifying', startedAt }, heldBoth), undefined);
+    assert.equal(holdOf({ ...TOOLING, status: 'done', startedAt }, heldBoth), undefined);
+    assert.equal(holdOf({ ...ROADMAP, status: 'verifying', startedAt }, inProgress(3)), undefined);
+    assert.equal(holdOf({ ...ROADMAP, status: 'done', startedAt }, inProgress(3)), undefined);
+  });
+
+  it('holds work that never finished as it holds a first start, however far it got', () => {
+    const startedAt = '2030-01-07T08:00:00.000Z';
+    assert.match(holdOf({ ...TOOLING, status: 'waiting', startedAt }, heldBoth) ?? '', /^T9 is Improvements work/);
+    assert.match(holdOf({ ...TOOLING, status: 'dropped', startedAt }, heldBoth) ?? '', /^T9 is Improvements work/);
   });
 
   it('never counts the started task itself', () => {

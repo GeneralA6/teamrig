@@ -19,6 +19,13 @@ const NAMED_TASKS = 3;
 /** The way past a hold for work too small to reorder a list over, core rule 5's exemption. */
 const ONE_COMMIT_WAY = 'or, for a one-commit fix, start it with --one-commit';
 
+/**
+ * The statuses a move into in-progress opens no new work from: a task already there moves nothing, and a verifying or
+ * done one is a reopen, its owner fixing its own failed change as core rule 2 asks. A wait or a dropped task is not on
+ * the list: work that never finished goes back behind what the owner's list says comes first.
+ */
+const NOT_A_START: readonly TaskStatus[] = ['in-progress', 'verifying', 'done'];
+
 /** The part of the `focus` config the rule reads. */
 export type WipFocus = Pick<FocusConfig, 'roadmapClass' | 'maintenanceClass' | 'defaultClass' | 'expedite' | 'wip'>;
 
@@ -50,12 +57,12 @@ function namedIds(tasks: readonly Task[]): string {
 
 /**
  * Why a move into in-progress may not happen now, for the refusal or the warning; undefined when nothing holds it.
- * Setting a task in progress again moves nothing, so it is never held. Every other way into in-progress is held the
- * same, a reopen too: its owner's list says what comes first, and `--one-commit` is the way past for a small fix.
+ * The cap limits new starts, never the finishing of started work, so NOT_A_START passes every hold; only a task's
+ * owner sets its status, so a reopen here is always the session's own. `--one-commit` is the way past for a small fix.
  */
 export function wipHold({ task, status, oneCommit, spentClasses }: WipStart, tasks: Iterable<Task>, context: WaitContext, focus: WipFocus, ownerSource: string): string | undefined {
   const workClass = classOf(task, focus);
-  if (focus.wip.mode === 'off' || status !== 'in-progress' || task.status === 'in-progress' || oneCommit === true || isExempt(task, workClass, focus, ownerSource)) {
+  if (focus.wip.mode === 'off' || status !== 'in-progress' || NOT_A_START.includes(task.status) || oneCommit === true || isExempt(task, workClass, focus, ownerSource)) {
     return undefined;
   }
   const others = [...tasks].filter((held) => held.owner === task.owner && held.id !== task.id);
