@@ -103,6 +103,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
     projects: await configuredProjects(runtime.probe, config, roster.ids),
     shellHistory: await readShellHistory(runtime.files, runtime.probe, { env: runtime.env, userHome: runtime.userHome, platform: runtime.platform }),
+    budget: config.budget,
     now: new Date(runtime.clock.now()),
     zone: teamZone(config, runtime),
     command: KIT_NAME,

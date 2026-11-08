@@ -1,11 +1,12 @@
+import { quietSpanOf } from '../budget/warn.ts';
 import { isDefaultModel } from '../config/launch.ts';
 import type { Roster } from '../config/roster.ts';
 import { describeNameClash, describeTreeProblem, type NameClash, type TreeProblem } from '../config/tree.ts';
-import type { ContextFilesConfig, KitConfig, LaunchConfig } from '../config/types.ts';
+import type { BudgetConfig, ContextFilesConfig, KitConfig, LaunchConfig } from '../config/types.ts';
 import { ENV, type Env } from '../core/home.ts';
 import { isReservedName, RESERVED_RULE } from '../core/ids.ts';
 import type { PathKind } from '../core/path-probe.ts';
-import { MS_PER_DAY } from '../core/time.ts';
+import { MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { unreadSince } from '../inbox/inbox.ts';
 import type { Unread } from '../inbox/unread.ts';
@@ -50,6 +51,8 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `allow-wide`: local allow rules off `permissions.keepAllow` that approve a whole tool or program, so auto mode's
  *   classifier never sees those calls, or hold a credential saved with an approved command (`teamrig permissions trim`
  *   removes them, run by the owner);
+ * - `quiet-ask`: `budget.quietHours.action` is `ask`, so a helper launch in the quiet hours waits on a permission prompt
+ *   nobody at the host answers at night, and its tab stalls;
  * - `deny-missing`: secret deny lines (`SECRET_DENY_LINES`) in no settings file a session reads, so a hook's allow or
  *   auto mode can approve a read of a credential file or an environment dump; the user pastes the lines printed;
  * - `project-missing`: a `team.project` or `launch.<id>.project` that is no folder on this machine, so a tab `open`
@@ -76,6 +79,7 @@ export type FindingKind =
   | 'settings-json'
   | 'launch-effort'
   | 'allow-wide'
+  | 'quiet-ask'
   | 'deny-missing'
   | 'project-missing'
   | 'shell-history';
@@ -161,6 +165,8 @@ export interface DoctorInput {
   readonly projects: readonly ConfiguredProject[];
   /** The user's PowerShell history file and profiles (`readShellHistory`). */
   readonly shellHistory: ShellHistory;
+  /** The team's own budget switch and quiet hours: `quietHours` is no account key, so a child team is checked on its own. */
+  readonly budget: Pick<BudgetConfig, 'enabled' | 'quietHours'>;
   readonly now: Date;
   /** The team's clock, which the findings' times are shown on. */
   readonly zone: TimeZone;
@@ -492,11 +498,34 @@ function shellHistoryFindings({ shellHistory: { history, profiles, gated } }: Do
 }
 
 /**
+ * Quiet hours whose action is `ask`: in them a helper launch raises a permission prompt (`helperGate`), which nobody
+ * at the host answers at night, so the tab waits until someone does (T1983: 222 minutes on 11-04). `block` refuses
+ * the launch with its reason and the tab goes on. The budget off lets every launch go, and quiet hours of no length
+ * never start, so neither asks.
+ */
+function quietHoursFindings({ budget, now, zone }: DoctorInput): Finding[] {
+  const quiet = budget.quietHours;
+  const start = quiet === undefined ? undefined : utcMinuteOf(quiet.startUtc);
+  if (!budget.enabled || quiet === undefined || quiet.action !== 'ask' || start === undefined) {
+    return [];
+  }
+  const dayStart = now.getTime() - (now.getTime() % MS_PER_DAY);
+  const span = quietSpanOf(quiet, dayStart + start * MS_PER_MINUTE);
+  if (span === undefined) {
+    return [];
+  }
+  const detail =
+    `budget.quietHours.action is ask, so in the quiet hours (${zone.clockSpan(new Date(span.from), new Date(span.to))}) a helper launch waits on a permission prompt ` +
+    'nobody at the host answers, and its tab stalls until someone does: set budget.quietHours.action to block, which refuses the launch with its reason and lets the tab go on';
+  return [{ kind: 'quiet-ask', detail }];
+}
+
+/**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential, secret
- * deny lines no settings file holds, a configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
+ * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential,
+ * quiet hours that ask before a helper launch nobody answers at night, secret deny lines no settings file holds, a configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
@@ -512,6 +541,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...routingEnvFindings(input),
     ...launchFindings(input),
     ...allowFindings(input.wideAllow),
+    ...quietHoursFindings(input),
     ...denyFindings(input.settingsDeny),
     ...projectFindings(input),
     ...shellHistoryFindings(input),
