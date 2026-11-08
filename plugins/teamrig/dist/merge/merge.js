@@ -1,9 +1,11 @@
 import { basename, dirname } from 'node:path';
 import { coveringFreezes, freezeText, readFreezes } from "../delivery/freezes.js";
-import { takeWhenClear } from "../delivery/clearance.js";
+import { refusalOf, takeWhenClear } from "../delivery/clearance.js";
 import { underLock } from "../delivery/host-lock.js";
 import { appendDeploy, rangeText } from "../delivery/ledger.js";
-import { marksOfTaking, recordQueuedStep, runRecorded } from "../delivery/recorded-step.js";
+import { processRequest, withTaskPriority } from "../delivery/process-request.js";
+import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded } from "../delivery/recorded-step.js";
+import { sayingWaits, WaitLog } from "../delivery/wait-log.js";
 import { queueCutoffReason, resetBlackoutReason } from "../delivery/schedule.js";
 import { exitCodeOf } from "../delivery/steps.js";
 import { gitEnvironment } from "../core/git-run.js";
@@ -20,7 +22,7 @@ import { ORIGIN } from "./git.js";
 import { LOCKFILE } from "./manifest.js";
 import { readPendingMerge, removePendingMerge, writePendingMerge } from "./pending-merges.js";
 import { checkExitCode, runReviewCheck } from "./review-check.js";
-import { reviewGateVerdict } from "./review-gate-step.js";
+import { reviewGateVerdict, taskOfBranch } from "./review-gate-step.js";
 /**
  * `teamrig merge`: merges a finished branch into origin's default branch, one push on the host at a time. It refuses
  * a branch it must not merge (detached, the default branch, uncommitted changes, nothing new, a dependency change the
@@ -157,7 +159,7 @@ async function dependencyCheckRefusal(setup, ports, plan, taking, base) {
     }
     const changed = `deps changed (${touches.join(', ')})`;
     ports.say(`${changed}: dependency check ${argv.join(' ')}`);
-    const end = await recordQueuedStep(ports, setup.places.ledger, taking.markOf(`merge ${repo.name}: dependency check of ${branch}`), () => runDependencyCheck(ports, {
+    const end = await recordQueuedStep(ports, setup, taking.markOf(`merge ${repo.name}: dependency check of ${branch}`), () => runDependencyCheck(ports, {
         argv,
         cwd: top,
         baseline: ports.git.fileAt(top, base, LOCKFILE),
@@ -180,7 +182,7 @@ function reviewGatePorts(setup, ports, plan, taking) {
         clock: ports.clock,
         taskOf: (id) => ports.taskOf(id),
         say: (text) => ports.say(text),
-        runCheck: (argv, base) => recordQueuedStep(ports, setup.places.ledger, taking.markOf(`merge ${repo.name}: review check of ${branch}`), () => runReviewCheck(ports.hooks, {
+        runCheck: (argv, base) => recordQueuedStep(ports, setup, taking.markOf(`merge ${repo.name}: review check of ${branch}`), () => runReviewCheck(ports.hooks, {
             argv,
             cwd: top,
             base,
@@ -254,10 +256,10 @@ function readinessOf(setup, ports, repo) {
         }
         const read = await readFreezes(ports.files, setup.places.freezes);
         if (read.kind === 'unreadable') {
-            return { kind: 'wait', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
+            return { kind: 'wait', cause: 'freeze', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
         }
         const covering = coveringFreezes(read.freezes, targets, now);
-        return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
+        return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', cause: 'freeze', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
     };
 }
 /**
@@ -293,7 +295,7 @@ async function mergeByPush(setup, ports, plan, taking) {
         }
         const startedAt = new Date(ports.clock.now()).toISOString();
         ports.say(`pushing ${branch} (${short(head)}) to ${defaultBranch}; the pre-push hook runs now`);
-        const end = await runRecorded(ports, setup.places.ledger, {
+        const end = await runRecorded(ports, setup, {
             ...taking.markOf(`merge ${repo.name}: push ${branch} to ${defaultBranch}`),
             request: {
                 command: commandLine(['git', 'push', 'origin', `HEAD:refs/heads/${defaultBranch}`], ports.platform),
@@ -383,7 +385,7 @@ async function mergeByCommand(setup, ports, plan, taking, argv) {
     const command = argv.join(' ');
     ports.say(`merging ${branch} (${short(head)}) into ${defaultBranch} through the merge command ${command}`);
     let last;
-    const end = await recordQueuedStep(ports, setup.places.ledger, taking.markOf(`merge ${repo.name}: merge ${branch} into ${defaultBranch}`), () => ports.hooks.run({
+    const end = await recordQueuedStep(ports, setup, taking.markOf(`merge ${repo.name}: merge ${branch} into ${defaultBranch}`), () => ports.hooks.run({
         argv,
         cwd: top,
         env: { ...underLock(gitEnvironment(ports.env), taking.lock), [MERGE_ENV.branch]: branch, [MERGE_ENV.base]: defaultBranch, [MERGE_ENV.head]: head, [ENV.session]: taking.session },
@@ -507,21 +509,24 @@ export async function mergeBranch(setup, ports, request) {
         ports.say(`NOTE ${repo.name} is not in delivery.repos: no deploy targets, no dependency gate, no main checkout to follow`);
     }
     const { wait } = setup.delivery;
-    const queuedAt = ports.clock.now();
+    // Every step a merge runs (its checks, its push or merge command) is recorded as merge work for the branch's task, at
+    // the priority that task has as the merge queues.
+    const owner = { session: request.session, ...(await withTaskPriority(processRequest('merge', taskOfBranch(plan.branch)), (id) => ports.taskOf(id))) };
+    const waits = new WaitLog(ports.clock, ports.memory.freeMb());
     const clearance = await takeWhenClear(readinessOf(setup, ports, repo), ports, {
         session: request.session,
         purpose: `merge ${repo.name}`,
         maxWaitMs: wait.maxMinutes * MINUTE_MS,
         pollMs: wait.pollSeconds * 1_000,
         zone: setup.zone,
-        onWait: (reason) => ports.say(`waiting: ${reason}`),
+        onWait: sayingWaits(waits, ports.say),
     });
     if (clearance.kind !== 'taken') {
-        return { kind: 'refused', reason: clearance.reason };
+        return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { ...owner, what: `merge ${repo.name}: ${plan.branch}` })) };
     }
     let outcome;
     try {
-        outcome = await pushOrMerge(setup, ports, plan, { lock: clearance.lock, session: request.session, markOf: marksOfTaking(request.session, queuedAt) });
+        outcome = await pushOrMerge(setup, ports, plan, { lock: clearance.lock, session: request.session, markOf: marksOfTaking(owner, waits.end()) });
         if (outcome.kind === 'merged' && repo.config.merge !== undefined) {
             await removePendingMerge(ports.files, setup.places, repo.name, plan.branch);
         }

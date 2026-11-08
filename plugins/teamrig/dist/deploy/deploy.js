@@ -1,7 +1,8 @@
-import { takeWhenClear } from "../delivery/clearance.js";
+import { refusalOf, takeWhenClear } from "../delivery/clearance.js";
 import { underLock } from "../delivery/host-lock.js";
 import { appendDeploy } from "../delivery/ledger.js";
-import { recordQueuedStep } from "../delivery/recorded-step.js";
+import { recordQueuedStep, recordRefusal } from "../delivery/recorded-step.js";
+import { sayingWaits, WaitLog } from "../delivery/wait-log.js";
 import { askChecks, shownLine } from "./checks.js";
 import { hookEndText, hookExitCode, succeeded } from "./hooks.js";
 import { short } from "./pending.js";
@@ -82,24 +83,24 @@ export async function redeployTargets(setup, ports, request) {
         return answer.readiness;
     };
     const { wait } = setup.delivery;
-    const queuedAt = ports.clock.now();
+    const waits = new WaitLog(ports.clock, ports.memory.freeMb());
     const clearance = await takeWhenClear(readiness, ports, {
         session: request.session,
         purpose: `deploy ${targets} of ${repo.name}`,
         maxWaitMs: wait.maxMinutes * MINUTE_MS,
         pollMs: wait.pollSeconds * 1_000,
         zone: setup.zone,
-        onWait: (reason) => ports.say(`waiting: ${reason}`),
+        onWait: sayingWaits(waits, ports.say),
     });
     if (clearance.kind !== 'taken') {
-        return { kind: 'refused', reason: clearance.reason };
+        return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, kind: 'deploy', what: `deploy ${request.targets.join(',')} of ${repo.name}` })) };
     }
     try {
         const startedAt = new Date(ports.clock.now()).toISOString();
         const head = ports.git.sha(repo.main, 'HEAD') ?? early;
         ports.say(`clear; deploying ${targets} of ${repo.name}: ${request.argv.join(' ')}`);
         const what = `deploy ${request.targets.join(',')} of ${repo.name}`;
-        const run = await recordQueuedStep(ports, setup.places.ledger, { session: request.session, what, queuedAt }, () => runCommand(setup, ports, request, underLock(env, clearance.lock)), (ran) => hookExitCode(ran.end));
+        const run = await recordQueuedStep(ports, setup, { session: request.session, kind: 'deploy', what, ...waits.end() }, () => runCommand(setup, ports, request, underLock(env, clearance.lock)), (ran) => hookExitCode(ran.end));
         const why = shownLine(ports.scanner, request.why);
         const said = run.lastLine === undefined ? '' : `: ${run.lastLine}`;
         if (run.end.kind === 'notStarted') {
