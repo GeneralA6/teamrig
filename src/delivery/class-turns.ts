@@ -1,4 +1,5 @@
-import { instantField, isRecord, stringField } from '../core/guards.ts';
+import { instantField, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
 import type { ClassTurns } from './admission.ts';
 
 /**
@@ -7,6 +8,9 @@ import type { ClassTurns } from './admission.ts';
  * next admission already counts it, and its end corrects the charge to the minutes it ran. The state is the file
  * `<lock>.turns.json`, which only admission writes, under the admit file.
  */
+
+/** The turns file's format (CONTRIBUTING, Stored files): a field added at any depth raises it. */
+export const TURNS_FORMAT = 1;
 
 /** The minutes charged at admission to a step whose need learned no run time, until its end says what it ran. */
 export const DEFAULT_EXPECTED_MINUTES = 5;
@@ -70,21 +74,31 @@ function turnsOf(value: unknown): TurnsState | undefined {
   return classes.length === entries.length && open.length === opened.length ? { floor, classes: new Map(classes), open } : undefined;
 }
 
-/** The turns `text` keeps; a missing or damaged file is {@link EMPTY_TURNS}. */
-export function parseTurns(text: string | undefined): TurnsState {
-  if (text === undefined) {
-    return EMPTY_TURNS;
-  }
-  try {
-    return turnsOf(JSON.parse(text)) ?? EMPTY_TURNS;
-  } catch {
-    return EMPTY_TURNS;
-  }
+/** The turns file's record and its format; undefined for a missing or damaged file, or a format that is no number. */
+function recordOf(text: string | undefined): { readonly record: JsonRecord; readonly format: number } | undefined {
+  const record = text === undefined ? undefined : parseObject(text);
+  const format = record === undefined ? undefined : recordVersion(record);
+  return record === undefined || format === undefined ? undefined : { record, format };
 }
 
-/** The turns file's text for `state`. */
+/**
+ * Whether a newer teamrig wrote the turns `text`. This one then reads no turns from it and must not rewrite it, which
+ * would drop the fields it does not know: an older teamrig left running in some tab while the rest upgraded.
+ */
+export function isNewerTurns(text: string | undefined): boolean {
+  const read = recordOf(text);
+  return read !== undefined && read.format > TURNS_FORMAT;
+}
+
+/** The turns `text` keeps; a missing or damaged file, or one in a newer format, is {@link EMPTY_TURNS}. */
+export function parseTurns(text: string | undefined): TurnsState {
+  const read = recordOf(text);
+  return read === undefined || read.format > TURNS_FORMAT ? EMPTY_TURNS : (turnsOf(read.record) ?? EMPTY_TURNS);
+}
+
+/** The turns file's text for `state`, in {@link TURNS_FORMAT}. */
 export function turnsText(state: TurnsState): string {
-  return JSON.stringify({ floor: state.floor, classes: Object.fromEntries(state.classes), open: state.open });
+  return JSON.stringify({ [VERSION_FIELD]: TURNS_FORMAT, floor: state.floor, classes: Object.fromEntries(state.classes), open: state.open });
 }
 
 /** The text of an ended marker (`<lock>.ended/<id>.json`): a step's release writes it, so admission can correct its charge. */
