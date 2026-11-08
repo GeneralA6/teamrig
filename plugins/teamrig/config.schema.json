@@ -765,6 +765,25 @@
               "minimum": 0,
               "maximum": 1048576,
               "default": 2048
+            },
+            "admission": {
+              "description": "How the host lock's line is ordered: pipeline lets the most urgent step in first (a p0 step at once, then by class turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning steps of one session running; serial keeps the line in arrival order with no cap, as before.",
+              "enum": ["pipeline", "serial"],
+              "default": "pipeline"
+            },
+            "agingMinutes": {
+              "description": "In pipeline admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1440,
+              "default": 15
+            },
+            "perSessionRunning": {
+              "description": "In pipeline admission, a session with this many steps running (the host lock or a small step's share) waits for one to end, and later steps pass it; 0 caps nothing.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 64,
+              "default": 2
             }
           }
         },

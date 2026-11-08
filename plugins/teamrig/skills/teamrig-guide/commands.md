@@ -3892,8 +3892,13 @@ to link again by hand.
 
 Runs one queued step (a build, a test run, a database script) under the host lock, so the host's queued steps run one
 at a time instead of competing for its CPU and memory. It waits for the lock until its line has not moved
-for `delivery.queue.waitMinutes` (60 by default). Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue` and only the
-first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). It
+for `delivery.queue.waitMinutes` (60 by default). Waiters take it in their turn: each joins a line of tickets in `<lock>.queue` and only the
+first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). With
+`delivery.queue.admission` `pipeline` (the default) the line is in admission order: a p0 step first, then by priority,
+which rises a level for each `delivery.queue.agingMinutes` (15) waited but never to p0, then by arrival. A step whose
+session already runs `delivery.queue.perSessionRunning` (2) steps, under the lock or sharing the host, waits for one to
+end while later steps pass it (`2 steps of its session running, its cap 2: ...`, refused with `session cap still
+reached: ...`). With `serial` the line is in arrival order with no cap. It
 prints a line for each new holder or place in line (`...; 2 ahead in line`). Its ticket says what it waits on and
 since when (`waitingOn`: the holder and place in line, or the memory numbers), rewritten only when that changes, so
 `teamrig pipeline` shows every waiter's cause. A ticket whose process is gone or whose

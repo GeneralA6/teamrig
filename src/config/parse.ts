@@ -1,3 +1,4 @@
+import { ADMISSION_MODES, isAdmissionMode } from '../delivery/admission.ts';
 import { deployTargetsOf } from '../delivery/targets.ts';
 import { ADDRESS_PATTERN, splitAddress } from '../core/address.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
@@ -861,6 +862,7 @@ function parseQueue(read: ConfigReader, raw: JsonRecord): QueueConfig {
   if (smallMaxRunMinutes > longestRun) {
     read.report(`${path}.smallMaxRunMinutes`, `must be at most maxRunMinutes (${longestRun})`);
   }
+  const admission = read.string(raw, 'admission', path, DEFAULT_QUEUE.admission, oneOf(ADMISSION_MODES));
   return {
     ...(lockPath === undefined ? {} : { lockPath }),
     lockTtlMinutes,
@@ -871,6 +873,9 @@ function parseQueue(read: ConfigReader, raw: JsonRecord): QueueConfig {
     memoryFloorMb: read.integer(raw, 'memoryFloorMb', path, DEFAULT_QUEUE.memoryFloorMb, CONFIG_LIMITS.queueMemoryFloorMb),
     smallReserveMb: read.integer(raw, 'smallReserveMb', path, DEFAULT_QUEUE.smallReserveMb, CONFIG_LIMITS.queueSmallReserveMb),
     heavyReserveMb: read.integer(raw, 'heavyReserveMb', path, DEFAULT_QUEUE.heavyReserveMb, CONFIG_LIMITS.queueHeavyReserveMb),
+    admission: isAdmissionMode(admission) ? admission : DEFAULT_QUEUE.admission,
+    agingMinutes: read.integer(raw, 'agingMinutes', path, DEFAULT_QUEUE.agingMinutes, CONFIG_LIMITS.queueAgingMinutes),
+    perSessionRunning: read.integer(raw, 'perSessionRunning', path, DEFAULT_QUEUE.perSessionRunning, CONFIG_LIMITS.queuePerSessionRunning),
   };
 }
 
