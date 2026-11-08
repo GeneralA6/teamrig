@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { freemem } from 'node:os';
+import { freemem, totalmem } from 'node:os';
 import { treeOf, wholeNumberLines, type ProcessLink } from './processes.ts';
 
 const MB = 2 ** 20;
@@ -28,6 +28,8 @@ export interface CommitCharge {
 export interface MemoryProbe {
   /** The memory the host can hand out now without paging, in MB (free plus standby on Windows). */
   freeMb(): number;
+  /** The host's RAM, in MB. */
+  totalMb(): number;
   /** The host's processes now, the lister's own left out; undefined when they cannot be listed. */
   processes(): Promise<readonly ProcessRow[] | undefined>;
   /** The host's commit charge now; undefined where it cannot be read (neither Windows nor Linux, or a failed read). */
@@ -192,13 +194,14 @@ async function commitOf(platform: NodeJS.Platform): Promise<CommitCharge | undef
 }
 
 /**
- * The real probe: Node's free memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its
+ * The real probe: Node's free and total memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its
  * commit charge. The lister and every process it started are left out, so a watch does not count its own sampling.
  */
 export function nodeMemoryProbe(platform: NodeJS.Platform): MemoryProbe {
   const { file, args, bytesPerUnit } = listCommand(platform);
   return {
     freeMb: () => Math.round(freemem() / MB),
+    totalMb: () => Math.round(totalmem() / MB),
     processes: () =>
       new Promise((resolve) => {
         const lister = execFile(file, args, { windowsHide: true, maxBuffer: LIST_MAX_BUFFER }, (error, stdout) => {

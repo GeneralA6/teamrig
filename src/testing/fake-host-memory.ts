@@ -8,18 +8,35 @@ export interface FakeWatch {
 }
 
 /**
- * Host memory whose free memory, processes, commit charge and watch results the test sets: by default it lists no
- * process, has no commit charge and its watches measure nothing, as with sampling off. Each watch is recorded.
+ * Host memory whose free and total memory, processes, commit charge and watch results the test sets: by default it
+ * has `free` (8000) MB free of 32 GB of RAM, lists no process, has no commit charge and its watches measure nothing,
+ * as with sampling off. Each watch is recorded.
  */
 export class FakeHostMemory implements HostMemory {
-  free = 8000;
+  free: number;
+  total = 32768;
   peaks: MemoryPeaks = {};
   rows: readonly ProcessRow[] | undefined = [];
   charge: CommitCharge | undefined;
   readonly watches: FakeWatch[] = [];
+  private readonly nextFree: number[] = [];
+
+  constructor(free: number = 8000) {
+    this.free = free;
+  }
 
   freeMb(): number {
-    return this.free;
+    return this.nextFree.shift() ?? this.free;
+  }
+
+  /** The next reads of free memory give `mb` in turn, as memory a running step takes and gives back; later ones `free`. */
+  readsFree(...mb: readonly number[]): this {
+    this.nextFree.push(...mb);
+    return this;
+  }
+
+  totalMb(): number {
+    return this.total;
   }
 
   /** From now on, the host lists `rows` (undefined: it cannot list them) with commit charge `charge`. */
