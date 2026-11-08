@@ -1,4 +1,5 @@
 import { accountHolderOf, accountsOf, accountTeamsOf, accountWeekOf, type AccountScope, type KitHomeAccounts, type TeamAccountFacts } from '../budget/account.ts';
+import type { PeerTeam } from '../budget/attribute.ts';
 import { readConfigDir } from '../budget/config-dir.ts';
 import { LiftLog } from '../budget/lift.ts';
 import { budgetSplitOf, type BudgetSplit, type TeamsOnAccount } from '../budget/parts.ts';
@@ -7,7 +8,11 @@ import { snapshotDirOf, weekUseAt, type WeekUse } from '../budget/snapshot.ts';
 import type { TeamWeekPaths } from '../budget/team-week.ts';
 import type { WorkByPriority } from '../budget/work.ts';
 import type { BudgetConfig, KitConfig } from '../config/types.ts';
+import type { Files } from '../core/files.ts';
 import { claudeConfigDir, type TeamPaths } from '../core/home.ts';
+import { PlainLogFile } from '../core/log-file.ts';
+import { indexMarks } from '../inbox/marks.ts';
+import { JsonlMarkLog } from '../inbox/store.ts';
 import type { CliRuntime } from './runtime.ts';
 import { loadTree, type KitTree } from './tree.ts';
 
@@ -83,11 +88,12 @@ export async function weekUseOnAccount(
   return statusUseOf(runtime, teams, budget, paths, { ...accounts, now });
 }
 
-/** Another team keeping its week in the account's files: its id, its usage folder and its roster's session ids. */
+/** Another team keeping its week in the account's files: its id, its usage folder, its roster's session ids and its inbox marks file. */
 export interface AccountPeer {
   readonly team: string;
   readonly usage: string;
   readonly ids: readonly string[];
+  readonly inboxMarks: string;
 }
 
 /** The week on the asking team's account as its readers take it: the status line's use and the files it is read in. */
@@ -106,8 +112,10 @@ export interface AccountWeek {
   /** The team whose folder keeps those files (`accountHolderOf`): the asking team itself, or one above it. */
   readonly keeper: string;
   /**
-   * The other teams on the account keeping their week in those files (the keeper's, when it is not the asking team):
-   * a crossing is logged for each on its own W scale (budget/team-week.ts `teamWeekOf`, T1669).
+   * The other teams on the account keeping their week in those files (the keeper's, when it is not the asking team)
+   * with the budget on, as their config reads with what it inherits: a crossing is logged for each on its own W scale
+   * (budget/team-week.ts `teamWeekOf`, T1669), and the tabs they mark are left to their hooks. A team with the budget
+   * off is none: its hooks meter nothing, so its use stays outside.
    */
   readonly peers: readonly AccountPeer[];
 }
@@ -126,8 +134,20 @@ export async function accountWeekOn(
   const accountOfTeam = (team: string): string | undefined => accounts.accounts.get(team);
   const holder = accountHolderOf(tree, paths.team, account, accountOfTeam);
   const keepsHere = (team: string): boolean => team !== paths.team && accountOfTeam(team) === account && accountHolderOf(tree, team, account, accountOfTeam) === holder;
-  const peers = [...teams].filter(([team]) => keepsHere(team)).map(([team, loaded]) => ({ team, usage: loaded.kit.paths.usage, ids: loaded.roster.ids }));
+  const peers = [...teams]
+    .filter(([team, loaded]) => keepsHere(team) && loaded.config.budget.enabled)
+    .map(([team, loaded]) => ({ team, usage: loaded.kit.paths.usage, ids: loaded.roster.ids, inboxMarks: loaded.kit.paths.inboxMarks }));
   return { account, statusUse, paths: teams.get(holder)?.kit.paths ?? paths, keeper: holder, peers };
+}
+
+/** Each peer's session ids with the session of it each Claude Code session last read its inbox as, read-only. */
+export async function peerMarksOf(files: Files, peers: readonly AccountPeer[]): Promise<PeerTeam[]> {
+  return Promise.all(
+    peers.map(async (peer) => {
+      const { marks } = await new JsonlMarkLog(new PlainLogFile(files, peer.inboxMarks)).read();
+      return { ids: peer.ids, areaBySession: indexMarks(marks).areaBySession };
+    }),
+  );
 }
 
 async function statusUseOf(

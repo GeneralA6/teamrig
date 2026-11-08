@@ -60,6 +60,7 @@ describe('attribute', () => {
         ['b', 'gone'],
         ['f', 'alpha'],
       ]),
+      peers: [],
       titleOf,
     });
     assert.deepEqual([...result.byTeamSession.entries()], [
@@ -78,6 +79,7 @@ describe('attribute', () => {
       team: 'app',
       roster: ROSTER,
       areaBySession: new Map(),
+      peers: [],
       titleOf,
     });
     assert.equal(result.outsideSessions, 2);
@@ -91,9 +93,26 @@ describe('attribute', () => {
       team: 'app',
       roster: ROSTER,
       areaBySession: new Map(),
+      peers: [],
       titleOf: async (path) => titles[path],
     });
     assert.deepEqual([...result.byTeamSession.keys()], ['lead']);
     assert.deepEqual(result.outsideTitles, ['[web] lead']);
+  });
+
+  it("leaves a tab a peer team's mark binds to that team, before its title and outside, but after the team's own mark", async () => {
+    const result = await attribute({
+      sessions: [session('p', ['/b.jsonl']), session('q', ['/d.jsonl']), session('r', ['/g.jsonl']), session('s', ['/h.jsonl'])],
+      team: 'app',
+      roster: ROSTER,
+      areaBySession: new Map([['r', 'lead']]),
+      // s's mark names a session the peer no longer has, so it binds nothing there.
+      peers: [{ ids: ['ops'], areaBySession: new Map([['p', 'ops'], ['q', 'ops'], ['r', 'ops'], ['s', 'gone']]) }],
+      titleOf,
+    });
+    assert.deepEqual([...result.byTeamSession.entries()], [['lead', { main: ['/g.jsonl'], subagents: [] }]]);
+    assert.deepEqual(result.outside, { main: ['/h.jsonl'], subagents: [] });
+    assert.equal(result.outsideSessions, 1);
+    assert.deepEqual(result.outsideTitles, []);
   });
 });

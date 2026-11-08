@@ -64,6 +64,7 @@ function world(input: Partial<MeasureInput> = {}): World {
       team: 'app',
       roster: ROSTER,
       areaBySession: new Map([[MARKED_BRAVO, 'bravo']]),
+      peers: [],
       subagentWeight: 1,
       chunkBytes: 1_000_000,
       maxRuns: 4,
@@ -110,6 +111,18 @@ describe('measure', () => {
     assert.equal(measured.outside, stored);
     assert.equal((await outside.load(OUTSIDE_ID)).rev, 1);
     assert.equal(measured.outsideSessions, 0);
+  });
+
+  it("leaves a tab a peer team's mark binds to that team's own meter, out of the outside store", async () => {
+    const { deps, input, outside } = world({ peers: [{ ids: ['ops'], areaBySession: new Map([[STRANGER, 'ops']]) }] });
+    const measured = await measure(deps, input);
+    assert.deepEqual(
+      ROSTER.ids.map((id) => wOn(measured.bySession.get(id))),
+      [undefined, 125, 40],
+    );
+    assert.equal(wOn(measured.outside), undefined);
+    assert.deepEqual([measured.outsideSessions, measured.outsideTitles], [0, []]);
+    assert.equal(wOn((await outside.load(OUTSIDE_ID)).state), undefined);
   });
 
   it('names the sessions still behind after the most runs, and catches them up on the next measure', async () => {
