@@ -25,10 +25,24 @@ export const REGISTER_COMMANDS = [
 export function kitTag(team) {
     return `[teamrig ${team}] `;
 }
-/** The team's lines, in order: protected branches, the register, queue and test, worktree removal, rebasing, clean files. */
+/**
+ * The team's lines, in order. Each line carries its subject so the `automode install` help cannot drift from them:
+ * when the help named each line by hand, T974's sixth line shipped with a help that still listed five.
+ */
+const KIT_LINES = [
+    { subject: 'protected branches', fill: branchesLine },
+    { subject: 'the register commands', fill: registerLine },
+    { subject: 'queue and test', fill: wrappersLine },
+    { subject: 'who removes a worktree', fill: worktreeLine },
+    { subject: "rebasing one's own branch", fill: rebaseLine },
+    { subject: "editing a clean tracked file in one's own worktree", fill: cleanFilesLine },
+];
+/** What the `automode install` help names each line by, in the lines' order; a spec holds the help to every one. */
+export const KIT_LINE_SUBJECTS = KIT_LINES.map((line) => line.subject);
+/** The team's lines, each starting with the team's tag. */
 export function kitLines(facts) {
     const tag = kitTag(facts.team);
-    return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts), rebaseLine(facts), cleanFilesLine()].map((line) => `${tag}${line}`);
+    return KIT_LINES.map((line) => `${tag}${line.fill(facts)}`);
 }
 function branchesLine({ lead, pushGuard }) {
     return (`Protected branches: ${pushGuard.protectedBranches.join(', ')}. ${normalPush(pushGuard.pushToProtected, lead)} ` +
