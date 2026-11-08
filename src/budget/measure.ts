@@ -1,11 +1,11 @@
 import type { Roster } from '../config/roster.ts';
 import type { Clock } from '../core/lock.ts';
-import { attribute } from './attribute.ts';
+import { attribute, type PeerTeam } from './attribute.ts';
 import { discoverTranscripts, type TranscriptSet, type TranscriptSource } from './discover.ts';
 import { runMeter } from './meter.ts';
 import type { UsageState, UsageStorage } from './store.ts';
 
-/** The id use outside the team is kept under, in its own store. */
+/** The id use outside the team and its peer teams on the account is kept under, in its own store. */
 export const OUTSIDE_ID = 'all';
 /** The most transcript bytes one meter run reads while catching up. */
 export const CATCH_UP_CHUNK_BYTES = 64 * 1024 * 1024;
@@ -18,7 +18,7 @@ export interface MeasureDeps {
   titleOf(transcript: string): Promise<string | undefined>;
   /** Each team session's usage, by its id. */
   readonly team: UsageStorage;
-  /** The use of Claude Code sessions outside the team, under `OUTSIDE_ID`. */
+  /** The use of Claude Code sessions outside the team and its peer teams, under `OUTSIDE_ID`. */
   readonly outside: UsageStorage;
   readonly clock: Clock;
 }
@@ -32,6 +32,11 @@ export interface MeasureInput {
   readonly roster: Roster;
   /** The team session each Claude Code session last read its inbox as. */
   readonly areaBySession: ReadonlyMap<string, string>;
+  /**
+   * The other teams on the account whose hooks meter their own tabs (src/budget/attribute.ts `PeerTeam`): the tabs
+   * their marks bind are left to them. A recount into memory passes none, as it meters every transcript itself.
+   */
+  readonly peers: readonly PeerTeam[];
   /** What one W of a subagent's transcript costs, in W of a main session (`budget.subagentWeight`). */
   readonly subagentWeight: number;
   readonly chunkBytes: number;
@@ -70,11 +75,12 @@ async function meterSession(deps: MeasureDeps, store: UsageStorage, session: str
 
 /**
  * Counts every Claude Code session's use up to now into the stores: each team session's transcripts
- * under its id (by its inbox mark, else its title) and everyone else's under `OUTSIDE_ID`.
+ * under its id (by its inbox mark, else its title) and everyone else's under `OUTSIDE_ID`, but the tabs a peer
+ * team's mark binds, which its own hooks meter.
  */
 export async function measure(deps: MeasureDeps, input: MeasureInput): Promise<Measured> {
   const sessions = await discoverTranscripts(deps.transcripts, input.projectsDir, input.since);
-  const found = await attribute({ sessions, team: input.team, roster: input.roster, areaBySession: input.areaBySession, titleOf: (path) => deps.titleOf(path) });
+  const found = await attribute({ sessions, team: input.team, roster: input.roster, areaBySession: input.areaBySession, peers: input.peers, titleOf: (path) => deps.titleOf(path) });
   const bySession = new Map<string, UsageState>();
   const behind: string[] = [];
   for (const id of input.roster.ids) {

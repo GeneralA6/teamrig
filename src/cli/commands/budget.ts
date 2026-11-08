@@ -66,7 +66,7 @@ import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
 import { TASK_ID } from '../../register/model.ts';
-import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount } from '../account-teams.ts';
+import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -114,6 +114,8 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const now = options.recountDay === undefined ? runtime.clock.now() : options.recountDay + MS_PER_DAY - 1;
   const clock: Clock = { now: () => now };
   const { marks } = await new JsonlMarkLog(new PlainLogFile(files, kit.paths.inboxMarks)).read();
+  const account = recount ? undefined : await accountWeekOn(runtime, config.budget, kit.paths, now);
+  const peers = account === undefined ? [] : await peerMarksOf(files, account.peers);
   const measured = await measure(
     {
       transcripts: runtime.transcripts,
@@ -128,12 +130,12 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       team: kit.paths.team,
       roster,
       areaBySession: indexMarks(marks).areaBySession,
+      peers,
       subagentWeight: config.budget.subagentWeight,
       chunkBytes: CATCH_UP_CHUNK_BYTES,
       maxRuns: MAX_RUNS_PER_SESSION,
     },
   );
-  const account = recount ? undefined : await accountWeekOn(runtime, config.budget, kit.paths, now);
   const states = [...measured.bySession.values(), measured.outside];
   const input = { budget: config.budget, now, statusUse: account?.statusUse, states };
   // A recount reads no team state, the meter log included: its rate is the configured one.

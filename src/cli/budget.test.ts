@@ -780,6 +780,8 @@ describe("teamrig budget in a child team on its parent's account", () => {
   const HOUR = MS_PER_DAY / 24;
   const ORG_USAGE = join(teamHomeOf('org'), 'state', 'usage');
   const APP_USAGE = join(TEAM_HOME, 'state', 'usage');
+  /** org's config with the budget on, which app then inherits: org is a peer whose hooks meter its own tabs. */
+  const ORG_BUDGET_ON: JsonRecord = { budget: { enabled: true } };
 
   /**
    * The harness's team `app` under `org` (whose config adds `org`), its budget block `app`'s, and org's meter log
@@ -851,7 +853,7 @@ describe("teamrig budget in a child team on its parent's account", () => {
   });
 
   it("logs a percent the status line passed once for itself and once for its parent, each with its own stores' W (T1669)", async () => {
-    const child = await childWorld();
+    const child = await childWorld(ORG_BUDGET_ON);
     assert.deepEqual(await crossOnePercent(child, ORG_USAGE), [
       ['app', 66_000_000],
       ['org', 70_000_000],
@@ -861,6 +863,24 @@ describe("teamrig budget in a child team on its parent's account", () => {
   it('logs it for itself alone in its own files when its parent is on another account', async () => {
     const child = await childWorld({ budget: { account: 'work' } }, { account: 'home' });
     assert.deepEqual(await crossOnePercent(child, APP_USAGE), [['app', 66_000_000]]);
+  });
+
+  it('logs it for itself alone when its parent has the budget off, as its hooks meter nothing', async () => {
+    const child = await childWorld();
+    assert.deepEqual(await crossOnePercent(child, ORG_USAGE), [['app', 66_000_000]]);
+  });
+
+  it("leaves a tab its parent's inbox mark binds to the parent's own meter, and counts it outside while the parent's budget is off (T1778)", async () => {
+    const mark = { v: 1, area: 'lead', line: 0, at: '2030-01-08T08:00:00.000Z', claudeSession: STRANGER, lastLineHash: null };
+    const cases: ReadonlyArray<readonly [JsonRecord, boolean]> = [
+      [ORG_BUDGET_ON, false],
+      [{}, true],
+    ];
+    for (const [org, outside] of cases) {
+      const { kit, run } = await childWorld(org);
+      await kit.files.append(join(teamHomeOf('org'), 'state', 'inbox-marks.jsonl'), `${JSON.stringify(mark)}\n`);
+      assert.equal(ok(await run(['budget'])).includes(OUTSIDE_LINE), outside, `org's config ${JSON.stringify(org)}`);
+    }
   });
 });
 
