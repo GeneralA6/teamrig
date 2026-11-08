@@ -2,11 +2,11 @@ import type { QueueConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { Clock } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
-import { appendRecord, type QueuedStepRecord } from './ledger.ts';
+import { appendRecord, type QueuedStepRecord, type RefusalOutcome } from './ledger.ts';
 import type { HostMemory, MemoryPeaks } from './memory.ts';
 import type { DeliveryPlaces } from './places.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
-import type { Waited, WaitTotals } from './wait-log.ts';
+import type { Waited, WaitLog, WaitTotals } from './wait-log.ts';
 
 /** The exit code recorded for a step that could not start, as a missing folder makes it. */
 export const NOT_STARTED_EXIT = 1;
@@ -123,6 +123,50 @@ export async function recordQueuedStep<T>(ports: StepRecordPorts, setup: StepRec
     const endedAt = new Date(ports.clock.now()).toISOString();
     await appendRecord(ports.files, ledger, { ...start, endedAt, exitCode, ...peaks, ...kill });
   }
+}
+
+/** What a refusal's recorder holds: the ledger's files, the clock and the host's free memory. */
+export interface RefusalRecordPorts {
+  readonly files: Pick<Files, 'append'>;
+  readonly clock: Pick<Clock, 'now'>;
+  readonly memory: Pick<HostMemory, 'freeMb'>;
+  newId(): string;
+}
+
+/** A queued step that did not run, as its refusal record names it. */
+export interface RefusalMark {
+  readonly session: string;
+  readonly what: string;
+  readonly outcome: RefusalOutcome;
+  readonly reason: string;
+}
+
+/**
+ * Records a queued step that waited and then did not run: its wait by cause, the last reason it waited on, and the
+ * host's free memory when it began to wait and when it ended. A step refused before anything held it (the cutoff before
+ * it queued, a refusing check at the first ask) records nothing: it never waited.
+ */
+export async function recordRefusal(ports: RefusalRecordPorts, ledger: string, waits: WaitLog, mark: RefusalMark): Promise<void> {
+  const lastWait = waits.last();
+  if (lastWait === undefined) {
+    return;
+  }
+  const waited = waits.end();
+  await appendRecord(ports.files, ledger, {
+    type: 'refusal',
+    id: ports.newId(),
+    session: mark.session,
+    what: mark.what,
+    kit: KIT_VERSION,
+    queuedAt: new Date(waited.queuedAt).toISOString(),
+    endedAt: new Date(ports.clock.now()).toISOString(),
+    outcome: mark.outcome,
+    reason: mark.reason,
+    ...(Object.keys(waited.waits).length === 0 ? {} : { waits: waited.waits }),
+    lastWait,
+    ...(waited.queueFreeMb === undefined ? {} : { queueFreeMb: waited.queueFreeMb }),
+    endFreeMb: ports.memory.freeMb(),
+  });
 }
 
 /** Runs a queued step as `recordQueuedStep` records it; a step that could not start is recorded as exit 1 and its error rethrown. */

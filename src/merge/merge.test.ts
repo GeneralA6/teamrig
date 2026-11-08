@@ -956,6 +956,30 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
     assert.ok(world.lockFree());
   });
 
+  it('leaves a refusal record when another step holds the host lock past its wait (T2209)', async () => {
+    const world = new World({ repos: deploying, waitMinutes: 1 });
+    await world.files.write(PLACES.hostLock, heldBy());
+    const end = await world.run();
+    refused(end, /^host lock still held by po/);
+    const endedAt = world.clock.now();
+    assert.deepEqual(world.records(PLACES.ledger), [{
+      type: 'refusal',
+      id: 'step-1',
+      session: 'api',
+      what: 'merge app: feat',
+      kit: KIT_VERSION,
+      queuedAt: '2030-01-08T10:00:00.000Z',
+      endedAt: new Date(endedAt).toISOString(),
+      outcome: 'timedOut',
+      reason: end.kind === 'refused' ? end.reason : '',
+      waits: { lock: endedAt - Date.parse('2030-01-08T10:00:00Z') },
+      lastWait: { cause: 'lock', text: 'the host lock: po (heavy: build) since 2030-01-08 09:50 UTC' },
+      queueFreeMb: world.memory.free,
+      endFreeMb: world.memory.free,
+    }]);
+    assert.deepEqual(world.steps.ran, []);
+  });
+
   it('waits on unreadable freezes, since they may hold the deploy', async () => {
     const world = new World({ repos: deploying, waitMinutes: 1, freezes: '{' });
     refused(await world.run(), /deploy freezes in \/team\/deploys\/claims\.json are unreadable \(not JSON\)/);

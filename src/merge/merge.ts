@@ -1,11 +1,11 @@
 import { basename, dirname } from 'node:path';
 import type { DeliveryConfig, DeliveryRepoConfig } from '../config/types.ts';
 import { coveringFreezes, freezeText, readFreezes } from '../delivery/freezes.ts';
-import { takeWhenClear, type Readiness } from '../delivery/clearance.ts';
+import { refusalOf, takeWhenClear, type Readiness } from '../delivery/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
-import { marksOfTaking, recordQueuedStep, runRecorded, type StepMark, type StepRecordPorts } from '../delivery/recorded-step.ts';
+import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded, type StepMark, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../delivery/steps.ts';
@@ -700,6 +700,7 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
     onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
+    await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `merge ${repo.name}: ${plan.branch}` }));
     return { kind: 'refused', reason: clearance.reason };
   }
   let outcome: MergeOutcome;
