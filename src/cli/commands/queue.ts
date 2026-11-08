@@ -1,7 +1,7 @@
 import { QUEUE_TTL_MARGIN_MINUTES } from '../../config/defaults.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { QueueConfig } from '../../config/types.ts';
-import { holderText, underLock, waitText, type HostLock, type HostLockInfo, type ShareRequest, type Taking } from '../../delivery/host-lock.ts';
+import { busyText, holderText, underLock, waitText, type HostLock, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
@@ -74,18 +74,14 @@ async function reserveMbOf(runtime: CliRuntime, ledger: string, session: string,
   return latest.length === 0 ? config.smallReserveMb : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
 }
 
-/** Why a step was refused when its wait ran out: the lock's holder, or the small steps holding the memory it needs. */
-function busyText(taking: Extract<Taking, { kind: 'busy' }>, zone: TimeZone): string {
-  return `${taking.holder.kind === 'memory' ? 'host memory still held by' : 'host lock still held by'} ${holderText(taking.holder, zone)}`;
-}
-
-/** The line a small step prints when it shares the host. */
-function sharingText(share: ShareRequest, taking: Extract<Taking, { kind: 'taken' }>): string | undefined {
+/** The line a small step holding `reserveMb` prints when it shares the host. */
+function sharingText(reserveMb: number, taking: Extract<Taking, { kind: 'taken' }>): string | undefined {
   if (taking.sharing === undefined) {
     return undefined;
   }
   const others = taking.sharing.others.length;
-  return `sharing the host: ${share.reserveMb} MB held for it (${taking.sharing.freeMb} MB free, ${others} other small step${others === 1 ? '' : 's'})`;
+  const free = taking.sharing.freeMb === undefined ? '' : `${taking.sharing.freeMb} MB free, `;
+  return `sharing the host: ${reserveMb} MB held for it (${free}${others} other small step${others === 1 ? '' : 's'})`;
 }
 
 /** The last line: DONE, FAILED, TIMED OUT or STOPPED, with the exit code the ledger recorded. */
@@ -225,9 +221,11 @@ interface Step {
  * `delivery.queue.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
  * (`--max-minutes`), and its start and end go to the delivery ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
- * so a `queue` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
- * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held
- * for them (`reserveMbOf`); a step without it waits for them to end. A small step is killed after `smallMaxRunMinutes`
+ * so a `queue` among them (a git hook's checks) runs at once under this lock. Every step waits in its turn until the
+ * host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small steps sharing the host
+ * (`hostLockOf`'s memory gate): `heavyReserveMb` for a step that takes the lock. With `--small` (a spec run, a lint)
+ * the step shares the host with other small steps instead, holding `reserveMbOf`; a step without it waits for them to
+ * end. A small step is killed after `smallMaxRunMinutes`
  * instead, and its `--max-minutes` goes no higher. Once the shell that started it ends (Claude Code's
  * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
  * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
@@ -245,7 +243,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const small = args.switches.has('small');
   const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
   const places = deliveryPlaces(delivery, kit.paths);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
   const watching = await watchStarters(runtime, say);
@@ -261,9 +259,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     }
     refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
     const queuedAt = runtime.clock.now();
-    const share: ShareRequest | undefined = small
-      ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, delivery.queue), floorMb: delivery.queue.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
-      : undefined;
+    const need: StepNeed | undefined = small ? { shares: true, reserveMb: await reserveMbOf(runtime, places.ledger, session, what, delivery.queue) } : undefined;
     const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
     const taking = await unlessStopped(
       watching.stop,
@@ -273,7 +269,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
         delivery.queue.waitMinutes * MINUTE_MS,
         delivery.wait.pollSeconds * 1_000,
         (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`),
-        share,
+        need,
         watching.stop,
       ),
     );
@@ -281,7 +277,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       return stoppedWhileWaiting(runtime, say, watching);
     }
     if (taking.kind === 'busy') {
-      throw new RefusedError(busyText(taking, zone));
+      throw new RefusedError(busyText(taking.holder, zone));
     }
     if (taking.kind === 'withdrawn') {
       throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
@@ -289,7 +285,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     const waitedMs = runtime.clock.now() - queuedAt;
     try {
       refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
-      const sharing = share === undefined ? undefined : sharingText(share, taking);
+      const sharing = need === undefined ? undefined : sharingText(need.reserveMb, taking);
       if (sharing !== undefined) {
         say(sharing);
       }

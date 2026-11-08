@@ -52,20 +52,20 @@ describe('teamrig merge', () => {
     assert.deepEqual(result, {
       code: 0,
       stdout: [
-        '2030-01-08 10:00:00 UTC pushing feat (rebased) to main; the pre-push hook runs now',
-        '2030-01-08 10:02:00 UTC deleted feat on origin',
-        '2030-01-08 10:02:00 UTC deleted the local feat',
-        `2030-01-08 10:02:00 UTC next: teamrig worktree remove "${WORKTREE}"`,
+        '2030-01-08 10:00:02 UTC pushing feat (rebased) to main; the pre-push hook runs now',
+        '2030-01-08 10:02:02 UTC deleted feat on origin',
+        '2030-01-08 10:02:02 UTC deleted the local feat',
+        `2030-01-08 10:02:02 UTC next: teamrig worktree remove "${WORKTREE}"`,
         'DONE pushed rebased to main; cloud-api deploy on push',
       ],
       stderr: [],
     });
     assert.equal(steps.ran[0]?.cwd, WORKTREE);
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [
       start,
-      { ...start, endedAt: '2030-01-08T10:02:00.000Z', exitCode: 0 },
+      { ...start, endedAt: '2030-01-08T10:02:02.000Z', exitCode: 0 },
       {
         type: 'deploy',
         kind: 'deploy',
@@ -74,8 +74,8 @@ describe('teamrig merge', () => {
         range: 'rebased',
         what: 'merge feat',
         note: 'pushed to main; cloud-api deploy on push, not watched by teamrig',
-        startedAt: '2030-01-08T10:00:00.000Z',
-        rolledAt: '2030-01-08T10:02:00.000Z',
+        startedAt: '2030-01-08T10:00:02.000Z',
+        rolledAt: '2030-01-08T10:02:02.000Z',
       },
     ]);
   });
@@ -85,7 +85,7 @@ describe('teamrig merge', () => {
     const result = await kit.run([...MERGE_RUN, '--keep-remote', '--no-delete-local'], { ...IN_WORKTREE, mergeGit: git, steps });
     assert.equal(result.code, 0);
     assert.ok(!git.log.some((line) => line.startsWith('deleteRemoteBranch') || line.startsWith('detach')));
-    assert.equal(result.stdout.at(-2), `2030-01-08 10:02:00 UTC next: teamrig worktree remove "${WORKTREE}" --delete-branch`);
+    assert.equal(result.stdout.at(-2), `2030-01-08 10:02:02 UTC next: teamrig worktree remove "${WORKTREE}" --delete-branch`);
   });
 
   it('prints FAILED and exits 1 when the push does not merge the branch', async () => {
@@ -106,8 +106,8 @@ describe('teamrig merge', () => {
     });
     const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, starters });
     assert.deepEqual([result.code, result.stdout.at(-1)], [1, "FAILED the push was killed when its launching shell ended (exit 129); origin's main is at moved, not at rebased"]);
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
-    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129 }]);
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:02.000Z', exitCode: 129 }]);
     assert.deepEqual([steps.ran.length, kit.files.get(LOCK), starters.openWatches], [1, undefined, 0]);
   });
 
@@ -132,7 +132,7 @@ describe('teamrig merge', () => {
     const hooks = new FakeHooks(kit.clock).answer(MERGE, { end: 75, lines: ['https://forge/pr/7'] });
     const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, hooks });
     assert.equal(result.code, 75);
-    assert.equal(result.stdout.at(-2), `2030-01-08 10:00:00 UTC next: run teamrig merge again in ${WORKTREE} once feat is merged`);
+    assert.equal(result.stdout.at(-2), `2030-01-08 10:00:02 UTC next: run teamrig merge again in ${WORKTREE} once feat is merged`);
     assert.equal(result.stdout.at(-1), 'WAITING https://forge/pr/7');
     assert.deepEqual([steps.ran, kit.files.get(LOCK)], [[], undefined]);
     assert.ok(kit.files.get(join(TEAM_HOME, 'state', 'deploys', 'pending-merges', 'app%2Ffeat.json'))?.includes('"note": "https://forge/pr/7"'));
@@ -257,7 +257,7 @@ describe('teamrig merge under pushToProtected gated (T858)', () => {
     await kit.files.write(passRecordPath(WORKTREE, `${MAIN_CHECKOUT}/.git`, pass.tree), JSON.stringify(pass));
     const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, commitLog: { between: () => COMMITS } });
     assert.equal(result.code, 0, result.stdout.join('\n'));
-    assert.ok(result.stdout.includes('2030-01-08 10:00:00 UTC self-merge gates of t1-feat: every gate holds, so it merges with no approval'), result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('2030-01-08 10:00:02 UTC self-merge gates of t1-feat: every gate holds, so it merges with no approval'), result.stdout.join('\n'));
     const [row, ...more] = (kit.files.get(join(DEPLOYS, 'merges.jsonl')) ?? '').split('\n').filter((line) => line !== '');
     assert.deepEqual(more, []);
     assert.match(row ?? '', /"session":"alpha","repo":"app","branch":"t1-feat","task":"T1","base":"base","head":"rebased","tree":"tree-rebased","files":2,"lines":14,"checks":\["unit"\],"review":"untouched","route":"self"\}$/);

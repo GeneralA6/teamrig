@@ -48,10 +48,10 @@ describe('teamrig deploy', () => {
       code: 0,
       stdout: [
         '2030-01-08 10:00:00 UTC 2 commits pending in app (c1..c2)',
-        `2030-01-08 10:00:00 UTC clear; pulling 2 commits (c1..c2) into ${MAIN_CHECKOUT}`,
-        `2030-01-08 10:00:00 UTC pulled ${MAIN_CHECKOUT} to c2`,
-        '2030-01-08 10:00:00 UTC deploy: node tools/deploy.js',
-        '2030-01-08 10:00:00 UTC   deployed api on c2',
+        `2030-01-08 10:00:02 UTC clear; pulling 2 commits (c1..c2) into ${MAIN_CHECKOUT}`,
+        `2030-01-08 10:00:02 UTC pulled ${MAIN_CHECKOUT} to c2`,
+        '2030-01-08 10:00:02 UTC deploy: node tools/deploy.js',
+        '2030-01-08 10:00:02 UTC   deployed api on c2',
         'DONE c1..c2 deployed: deployed api on c2',
       ],
       stderr: [],
@@ -65,8 +65,8 @@ describe('teamrig deploy', () => {
       range: 'c1..c2',
       what: 'deploy api',
       note: '2 commits; deployed api on c2',
-      startedAt: '2030-01-08T10:00:00.000Z',
-      rolledAt: '2030-01-08T10:01:00.000Z',
+      startedAt: '2030-01-08T10:00:02.000Z',
+      rolledAt: '2030-01-08T10:01:02.000Z',
     });
     assert.equal(kit.files.get(LOCK), undefined, 'the host lock is released');
   });
@@ -124,7 +124,7 @@ describe('teamrig deploy', () => {
     const deploy = [...DEPLOY, '--targets', 'api', '--what', 'rotate the db credential', '--', ...restart];
     assert.deepEqual(await kit.run(deploy, { ...ELSEWHERE, mergeGit: git, hooks }), {
       code: 0,
-      stdout: ['2030-01-08 10:00:00 UTC clear; deploying api of app: node tools/restart.js api', '2030-01-08 10:00:00 UTC   restarted api', 'DONE deployed api of app: restarted api'],
+      stdout: ['2030-01-08 10:00:02 UTC clear; deploying api of app: node tools/restart.js api', '2030-01-08 10:00:02 UTC   restarted api', 'DONE deployed api of app: restarted api'],
       stderr: [],
     });
     assert.deepEqual([hooks.commands, hooks.ran[0]?.cwd, hooks.ran[0]?.env['TEAMRIG_VERB'], git.heads.get(MAIN_CHECKOUT)], [[restart.join(' ')], '/elsewhere', 'redeploy', 'base']);
@@ -136,8 +136,8 @@ describe('teamrig deploy', () => {
       range: 'at base',
       what: 'deploy api',
       note: 'rotate the db credential; restarted api',
-      startedAt: '2030-01-08T10:00:00.000Z',
-      rolledAt: '2030-01-08T10:00:30.000Z',
+      startedAt: '2030-01-08T10:00:02.000Z',
+      rolledAt: '2030-01-08T10:00:32.000Z',
       targets: ['api'],
     });
     assert.equal(kit.files.get(LOCK), undefined, 'the host lock is released');

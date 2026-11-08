@@ -21,12 +21,18 @@ import { quietRestore } from './fake-restore.ts';
 export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'starters' | 'newId'>;
 
 /**
+ * The MB free on a quiet host: over the default floor plus a heavy step's reserve, so no step waits on the memory
+ * gate; a spec that tests a memory wait sets less.
+ */
+export const ROOMY_FREE_MB = 16_000;
+
+/**
  * The outside world when a run does not care about it: the repo on `branch` with no push target or config, a team pointer outside git, no commits in
  * any range, no repository the secret scan can read, `stdin` (default empty) on stdin, and a Linux host with no programs or folders and an empty plugin store,
  * so nothing starts and no session process runs, a shell command prints nothing and exits 0, gh sees no repository and no token is saved; its requirements check finds
  * nothing missing, and there are no transcripts and no worktrees; merge finds only the fake repository at /w/feat
  * (testing/fake-merge-git.ts) and a pre-push check no repository, a queued step and each program a deploy runs exit 0 at once while the shell that started it
- * runs on, the package registry holds no package, a privileged command `teamrig exec` runs exits 0 in a clean checkout of the
+ * runs on, the host has room in memory for any queued step (`ROOMY_FREE_MB` free), the package registry holds no package, a privileged command `teamrig exec` runs exits 0 in a clean checkout of the
  * fixture request's repository (testing/fake-checkout.ts), and new ids count up: `id-1`, `id-2`.
  */
 export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideWorld {
@@ -57,7 +63,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     exec: { spawner: new FakeExecSpawner(), checkout: new FakeCheckout() },
     webhook: new FakeWebhook(),
     steps: new FakeSteps(),
-    memory: new FakeHostMemory(),
+    memory: new FakeHostMemory(ROOMY_FREE_MB),
     starters: new FakeStarterWatch(),
     newId: () => {
       ids += 1;

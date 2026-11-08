@@ -10,6 +10,7 @@ import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
+import { ROOMY_FREE_MB } from '../testing/quiet-world.ts';
 import { EXIT } from './runtime.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
@@ -51,19 +52,19 @@ describe('teamrig queue', () => {
       lockWhileRunning = JSON.parse(kit.files.get(LOCK) ?? '{}');
     });
     const result = await kit.run(BUILD, { steps });
-    assert.deepEqual(result, { code: 0, stdout: ['2030-01-08 10:00:00 UTC running: build api (killed after 45m)', 'DONE exit 0'], stderr: [] });
+    assert.deepEqual(result, { code: 0, stdout: ['2030-01-08 10:00:02 UTC running: build api (killed after 45m)', 'DONE exit 0'], stderr: [] });
     assert.deepEqual(lockWhileRunning, {
       token: 'id-1',
       pid: 4242,
       session: 'alpha',
       purpose: 'heavy: build api',
       kit: KIT_VERSION,
-      acquiredAt: '2030-01-08T10:00:00.000Z',
-      expiresAt: '2030-01-08T12:30:00.000Z',
+      acquiredAt: '2030-01-08T10:00:02.000Z',
+      expiresAt: '2030-01-08T12:30:02.000Z',
     });
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
-    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:00.000Z', exitCode: 0 }]);
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }]);
   });
 
   it('runs the command line in the shell, in the current folder with the environment as it is, limited to 45 minutes', async () => {
@@ -90,13 +91,13 @@ describe('teamrig queue', () => {
     assert.deepEqual(result, {
       code: 1,
       stdout: [
-        '2030-01-08 10:00:00 UTC running: build api (killed after 45m)',
-        '2030-01-08 10:45:00 UTC timed out after 45m: killed its process tree',
+        '2030-01-08 10:00:02 UTC running: build api (killed after 45m)',
+        '2030-01-08 10:45:02 UTC timed out after 45m: killed its process tree',
         'TIMED OUT killed, recorded as exit 124',
       ],
       stderr: [],
     });
-    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:45:00.000Z', exitCode: 124 });
+    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:02.000Z', endedAt: '2030-01-08T10:45:02.000Z', exitCode: 124 });
   });
 
   it('prints FAILED for a step a signal stopped, recorded as exit 1', async () => {
@@ -116,7 +117,7 @@ describe('teamrig queue', () => {
   it('kills the step after --max-minutes', async () => {
     const { kit, steps } = harness();
     const result = await kit.run(['queue', '--session', 'alpha', '--what', 'replay', '--max-minutes', '90', '--', 'npm', 'run', 'replay'], { steps });
-    assert.equal(result.stdout[0], '2030-01-08 10:00:00 UTC running: replay (killed after 1h30m)');
+    assert.equal(result.stdout[0], '2030-01-08 10:00:02 UTC running: replay (killed after 1h30m)');
     assert.equal(steps.ran[0]?.timeoutMs, 90 * MINUTE);
   });
 
@@ -147,7 +148,7 @@ describe('teamrig queue', () => {
     const { kit, steps } = harness();
     steps.ends(0, MINUTE);
     const result = await kit.run(BUILD, { steps, timeZone: 'Asia/Jerusalem' });
-    assert.deepEqual(result.stdout, ['2030-01-08 12:00:00 IST running: build api (killed after 45m)', 'DONE exit 0']);
+    assert.deepEqual(result.stdout, ['2030-01-08 12:00:02 IST running: build api (killed after 45m)', 'DONE exit 0']);
   });
 
   it('waits for a held lock, and refuses when the wait ran past the cutoff', async () => {
@@ -197,17 +198,17 @@ describe('teamrig queue', () => {
   it('records when the step began to wait and what its process tree and the host held while it ran', async () => {
     const { kit, steps } = harness();
     steps.ends(0, 5 * MINUTE);
-    const memory = new FakeHostMemory().measures({ peakTreeMb: 1900, lowFreeMb: 6400 });
+    const memory = new FakeHostMemory(ROOMY_FREE_MB).measures({ peakTreeMb: 1900, lowFreeMb: 6400 });
     await kit.files.write(LOCK, heldBy('2030-01-08T10:03:00.000Z'));
     assert.equal((await kit.run(BUILD, { steps, memory, sessionProcesses: otherRuns() })).code, 0);
     assert.deepEqual(memory.watches, [{ root: 4242, intervalMs: 15_000, stopped: true }], "its own process's tree, every 15 s");
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:03:00.000Z', endedAt: null, exitCode: null };
-    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:08:00.000Z', exitCode: 0, peakTreeMb: 1900, lowFreeMb: 6400 }]);
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:03:02.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:08:02.000Z', exitCode: 0, peakTreeMb: 1900, lowFreeMb: 6400 }]);
   });
 
   it('watches no memory when the config samples it every 0 seconds', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { memorySampleSeconds: 0 } } });
-    const memory = new FakeHostMemory().measures({ peakTreeMb: 1900, lowFreeMb: 6400 });
+    const memory = new FakeHostMemory(ROOMY_FREE_MB).measures({ peakTreeMb: 1900, lowFreeMb: 6400 });
     assert.equal((await kit.run(BUILD, { steps, memory })).code, 0);
     assert.deepEqual(memory.watches, []);
     assert.equal(ledgerOf(kit).some((record) => JSON.stringify(record).includes('peakTreeMb')), false);
@@ -242,15 +243,15 @@ describe('teamrig queue', () => {
     assert.deepEqual(result, {
       code: 1,
       stdout: [
-        '2030-01-08 10:00:00 UTC running: build api (killed after 45m)',
-        '2030-01-08 10:00:00 UTC its launching shell ended (bash.exe 4100): killed its process tree',
+        '2030-01-08 10:00:02 UTC running: build api (killed after 45m)',
+        '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100): killed its process tree',
         'STOPPED killed, recorded as exit 129',
       ],
       stderr: [],
     });
     assert.equal(steps.ran[0]?.stop?.aborted, true);
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
-    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129 }]);
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:02.000Z', exitCode: 129 }]);
     assert.deepEqual([kit.files.get(LOCK), starters.openWatches], [undefined, 0]);
   });
 
@@ -272,7 +273,7 @@ describe('teamrig queue', () => {
     const result = await kit.run(BUILD, { steps, starters: new FakeStarterWatch([]) });
     assert.deepEqual(result.stdout, [
       '2030-01-08 10:00:00 UTC could not list the processes that started this one: the step runs on if its shell ends',
-      '2030-01-08 10:00:00 UTC running: build api (killed after 45m)',
+      '2030-01-08 10:00:02 UTC running: build api (killed after 45m)',
       'DONE exit 0',
     ]);
   });
@@ -327,7 +328,7 @@ describe('teamrig queue', () => {
       const result = await kit.run(BUILD, { steps, env: { TEAMRIG_HOST_LOCK: 'other' } });
       assert.deepEqual(result.stdout.slice(0, 2), [
         '2030-01-08 10:00:00 UTC $TEAMRIG_HOST_LOCK names no live host lock: taking the lock as usual',
-        '2030-01-08 10:00:00 UTC running: build api (killed after 45m)',
+        '2030-01-08 10:00:02 UTC running: build api (killed after 45m)',
       ]);
       assert.deepEqual([result.code, steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], ledgerOf(kit).length], [0, 'id-1', 2]);
     });
@@ -407,20 +408,20 @@ describe('teamrig queue --small', () => {
       whileRunning = [kit.files.get(LOCK), JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? '{}')];
     });
     const result = await kit.run(SPECS, { steps });
-    const lines = ['2030-01-08 10:00:00 UTC sharing the host: 2048 MB held for it (8000 MB free, 0 other small steps)', '2030-01-08 10:00:00 UTC running: specs (killed after 10m)', 'DONE exit 0'];
+    const lines = [`2030-01-08 10:00:02 UTC sharing the host: 2048 MB held for it (${ROOMY_FREE_MB} MB free, 0 other small steps)`, '2030-01-08 10:00:02 UTC running: specs (killed after 10m)', 'DONE exit 0'];
     assert.deepEqual(result, { code: 0, stdout: lines, stderr: [] });
-    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
+    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048 };
     assert.deepEqual(whileRunning, [undefined, share]);
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', shared: true, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
-    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:00.000Z', exitCode: 0 }]);
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', shared: true, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }]);
   });
 
   it('kills it after delivery.queue.smallMaxRunMinutes, or a shorter --max-minutes', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { smallMaxRunMinutes: 12 } } });
-    assert.equal((await kit.run(SPECS, { steps })).stdout[1], '2030-01-08 10:00:00 UTC running: specs (killed after 12m)');
+    assert.equal((await kit.run(SPECS, { steps })).stdout[1], '2030-01-08 10:00:02 UTC running: specs (killed after 12m)');
     const shorter = ['queue', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '5', '--', 'npm', 'test'];
-    assert.equal((await kit.run(shorter, { steps })).stdout[1], '2030-01-08 10:00:00 UTC running: specs (killed after 5m)');
+    assert.equal((await kit.run(shorter, { steps })).stdout[1], '2030-01-08 10:00:04 UTC running: specs (killed after 5m)');
     assert.deepEqual(steps.ran.map((request) => request.timeoutMs), [12 * MINUTE, 5 * MINUTE]);
   });
 
@@ -439,7 +440,7 @@ describe('teamrig queue --small', () => {
     await kit.files.append(LEDGER, `${[...runs, ranBefore('bravo', 'specs', 9000), ranBefore('alpha', 'lint', 9000)].join('\n')}\n`);
     steps.ends(0, MINUTE);
     const { stdout } = await kit.run(SPECS, { steps });
-    assert.equal(stdout[0], '2030-01-08 10:00:00 UTC sharing the host: 2375 MB held for it (8000 MB free, 0 other small steps)');
+    assert.equal(stdout[0], `2030-01-08 10:00:02 UTC sharing the host: 2375 MB held for it (${ROOMY_FREE_MB} MB free, 0 other small steps)`);
   });
 
   it('joins a small step sharing the host while the memory allows it', async () => {
@@ -447,18 +448,32 @@ describe('teamrig queue --small', () => {
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     steps.ends(0, MINUTE);
     const { stdout } = await kit.run(SPECS, { steps, sessionProcesses: otherRuns() });
-    assert.equal(stdout[0], '2030-01-08 10:00:00 UTC sharing the host: 1000 MB held for it (8000 MB free, 1 other small step)');
+    assert.equal(stdout[0], `2030-01-08 10:00:02 UTC sharing the host: 1000 MB held for it (${ROOMY_FREE_MB} MB free, 1 other small step)`);
   });
 
   it('waits while the small steps sharing the host hold the memory it needs, then refuses', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
-    const memory = new FakeHostMemory();
-    memory.free = 6000;
-    const result = await kit.run(SPECS, { steps, memory, sessionProcesses: otherRuns() });
-    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; 6000 MB free, 2048 MB held for it, 6144 MB needed';
-    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${held}`, `REFUSED host memory still held by ${held}`], stderr: [] });
+    const result = await kit.run(SPECS, { steps, memory: new FakeHostMemory(6000), sessionProcesses: otherRuns() });
+    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; host memory: 6000 MB free, 2048 MB held for it, 6144 MB needed (4096 floor + 2048 for this step)';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${held}`, `REFUSED host memory still short: ${held}`], stderr: [] });
     assert.deepEqual([ledgerOf(kit), kit.files.get(`${SHARED}/id-1.json`)], [[], undefined]);
+  });
+
+  it('keeps a lone small step waiting while free memory is under the floor plus its own MB, then refuses (T2192)', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const result = await kit.run(SPECS, { steps, memory: new FakeHostMemory(6000) });
+    const short = 'host memory: 6000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
+    assert.deepEqual([steps.ran, ledgerOf(kit), await kit.files.list(SHARED)], [[], [], []]);
+  });
+
+  it('keeps a heavy step waiting while free memory is under the floor plus delivery.queue.heavyReserveMb, then refuses (T2192)', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(5000) });
+    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
+    assert.deepEqual([steps.ran, ledgerOf(kit), kit.files.get(LOCK)], [[], [], undefined]);
   });
 
   it('makes a step without it wait for the small steps sharing the host, then refuse, leaving no lock', async () => {
@@ -466,7 +481,7 @@ describe('teamrig queue --small', () => {
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC';
-    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${held}`, `REFUSED host lock still held by ${held}`], stderr: [] });
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:02 UTC waiting for the host lock: ${held}`, `REFUSED host lock still held by ${held}`], stderr: [] });
     assert.equal(kit.files.get(LOCK), undefined);
   });
 });
@@ -481,12 +496,12 @@ describe('teamrig queue --pre-push', () => {
     const { kit, steps } = harness();
     const trees = new FakeTrees(cleanTree());
     steps.ends(0, MINUTE);
-    assert.deepEqual(await kit.run(PRE_PUSH, { steps, trees }), { code: 0, stdout: ['2030-01-08 10:00:00 UTC running: pre-push checks (killed after 45m)', 'DONE exit 0'], stderr: [] });
+    assert.deepEqual(await kit.run(PRE_PUSH, { steps, trees }), { code: 0, stdout: ['2030-01-08 10:00:02 UTC running: pre-push checks (killed after 45m)', 'DONE exit 0'], stderr: [] });
     assert.equal((await kit.files.list(PASSES)).length, 1);
     await kit.files.write(LOCK, heldBy());
     assert.deepEqual(await kit.run(PRE_PUSH, { steps, trees, sessionProcesses: otherRuns() }), {
       code: 0,
-      stdout: ['2030-01-08 10:01:00 UTC pre-push checks passed on this tree (c0ffee1) at 2030-01-08 10:01 UTC: not run again', 'DONE exit 0'],
+      stdout: ['2030-01-08 10:01:02 UTC pre-push checks passed on this tree (c0ffee1) at 2030-01-08 10:01 UTC: not run again', 'DONE exit 0'],
       stderr: [],
     });
     assert.deepEqual([steps.ran.length, ledgerOf(kit).length, kit.files.get(LOCK)], [1, 2, heldBy()], 'nothing ran or was recorded, and the lock stayed with its holder');
@@ -517,7 +532,7 @@ describe('teamrig queue --pre-push', () => {
       code: 2,
       stdout: [
         '2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC',
-        '2030-01-08 10:03:00 UTC running: pre-push checks (killed after 45m)',
+        '2030-01-08 10:03:02 UTC running: pre-push checks (killed after 45m)',
         'DONE exit 0',
         `${DECLINED} push again: it reuses this pass`,
       ],
@@ -528,9 +543,10 @@ describe('teamrig queue --pre-push', () => {
     assert.deepEqual([again.code, again.stdout.at(-1), steps.ran.length], [0, 'DONE exit 0', 1]);
   });
 
-  it('lets the push go after a wait of a minute', async () => {
+  it("lets the push go after a wait of a minute, the memory gate's reads counted in it", async () => {
     const { kit, steps } = harness();
-    await kit.files.write(LOCK, heldBy('2030-01-08T10:01:00.000Z'));
+    // The lock frees at 10:00:58 and the gate's reads take 2 s more: the push's connection is open through both.
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:00:58.000Z'));
     const result = await kit.run(PRE_PUSH, { steps, trees: new FakeTrees(cleanTree()), sessionProcesses: otherRuns() });
     assert.deepEqual([result.code, result.stdout.at(-1)], [0, 'DONE exit 0']);
   });

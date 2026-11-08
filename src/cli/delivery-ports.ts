@@ -1,9 +1,10 @@
 import { resolveReset } from '../budget/pace.ts';
 import { weekUseAt } from '../budget/snapshot.ts';
 import { readFolderWeek } from '../budget/week-summary.ts';
-import type { BudgetConfig, QueueConfig } from '../config/types.ts';
+import type { BudgetConfig, HeadroomConfig, QueueConfig } from '../config/types.ts';
 import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import { HostLock } from '../delivery/host-lock.ts';
+import { MemoryGate } from '../delivery/memory-gate.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { CliRuntime } from './runtime.ts';
@@ -23,17 +24,28 @@ export function logLineOf(runtime: Pick<CliRuntime, 'out' | 'clock'>, zone: Time
 
 type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessionProcesses' | 'newId'>;
 
-/** The host lock at `path`, held by this process for `delivery.queue.lockTtlMinutes`; a holder whose process ended is stale. */
-export function hostLockOf(runtime: LockRuntime, path: string, queue: Pick<QueueConfig, 'lockTtlMinutes'>): HostLock {
-  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS);
+/**
+ * The host lock at `path`, held by this process for `delivery.queue.lockTtlMinutes`; a holder whose process ended is
+ * stale. Every step that takes it or shares the host passes its memory gate first: free memory over
+ * `delivery.queue.memoryFloorMb` plus the step's reserve (`heavyReserveMb` at least for a step that takes the lock),
+ * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted.
+ */
+export function hostLockOf(
+  runtime: LockRuntime & Pick<CliRuntime, 'memory'>,
+  path: string,
+  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb'>,
+  headroom: Pick<HeadroomConfig, 'commitMaxPct'>,
+): HostLock {
+  const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct });
+  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, memory);
 }
 
-/** The lock the deploy freezes' writers share at `path`, held for a minute, since a write takes moments. */
+/** The lock the deploy freezes' writers share at `path`, held for a minute, since a write takes moments; it guards no step, so no memory gate. */
 export function freezesLockOf(runtime: LockRuntime, path: string): HostLock {
-  return lockAt(runtime, path, FREEZES_LOCK_TTL_MS);
+  return lockAt(runtime, path, FREEZES_LOCK_TTL_MS, undefined);
 }
 
-function lockAt(runtime: LockRuntime, path: string, ttlMs: number): HostLock {
+function lockAt(runtime: LockRuntime, path: string, ttlMs: number, memory: MemoryGate | undefined): HostLock {
   return new HostLock(path, ttlMs, {
     files: runtime.files,
     clock: runtime.clock,
@@ -41,6 +53,7 @@ function lockAt(runtime: LockRuntime, path: string, ttlMs: number): HostLock {
     pid: runtime.pid,
     alive: (pid) => runtime.sessionProcesses.alive(pid),
     newId: () => runtime.newId(),
+    ...(memory === undefined ? {} : { memory }),
   });
 }
 

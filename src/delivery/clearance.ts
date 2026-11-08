@@ -1,6 +1,6 @@
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { holderText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
+import { busyText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
 
 /** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait (a deploy freeze). */
 export type Readiness = { readonly kind: 'go' } | { readonly kind: 'refuse'; readonly reason: string } | { readonly kind: 'wait'; readonly reason: string };
@@ -72,7 +72,7 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
       request.onWait(`the host lock: ${waitText(holder, ahead, request.zone)}`),
     );
     if (taking.kind === 'busy') {
-      return { kind: 'gaveUp', reason: `host lock still held by ${holderText(taking.holder, request.zone)}` };
+      return { kind: 'gaveUp', reason: busyText(taking.holder, request.zone) };
     }
     if (taking.kind === 'withdrawn') {
       return { kind: 'refused', reason: "withdrawn from the host lock's line (teamrig withdraw)" };
