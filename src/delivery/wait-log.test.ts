@@ -45,7 +45,7 @@ describe('WaitLog', () => {
 });
 
 describe('causeOfLockWait', () => {
-  it('names the cause of each wait on the host lock, a lock still being written counting as held', () => {
+  it('names the cause of each wait on the host lock, a lock still being written counting as held, a step being admitted as the line', () => {
     const waits: readonly (readonly [LockWait, WaitCause])[] = [
       [{ kind: 'held', info: INFO }, 'lock'],
       [{ kind: 'unknown' }, 'lock'],
@@ -53,6 +53,8 @@ describe('causeOfLockWait', () => {
       [{ kind: 'draining', shares: [{ ...INFO, reserveMb: 1024 }] }, 'draining'],
       [{ kind: 'memory', freeMb: 3000, heldMb: 0, needMb: 8000, floorMb: 2000, reserveMb: 6000, shares: [] }, 'memory'],
       [{ kind: 'commit', usedMb: 60_000, limitMb: 64_000, maxPct: 90, reserveMb: 6000, shares: [] }, 'commit'],
+      [{ kind: 'sessionCap', cap: 2, running: [INFO] }, 'session'],
+      [{ kind: 'admitting' }, 'line'],
     ];
     assert.deepEqual(
       waits.map(([wait]) => causeOfLockWait(wait)),

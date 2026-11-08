@@ -8,6 +8,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import type { Files } from '../core/files.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { JERUSALEM } from '../testing/zone.ts';
+import type { AdmissionRules } from './admission.ts';
 import {
   busyText,
   FIRST_IN_LINE_POLL_MS,
@@ -74,9 +75,10 @@ const noGap: Sleep = async () => undefined;
 
 /**
  * The host lock over files in memory at 10:00, with this process and `OTHER` running; `sleep` default the clock's.
- * With `memory`, every step passes a memory gate ({@link GATE}) over that host first.
+ * With `memory`, every step passes a memory gate ({@link GATE}) over that host first; with `admission`, the line is
+ * ordered by those rules.
  */
-function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep, memory?: FakeHostMemory): World {
+function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep, memory?: FakeHostMemory, admission?: AdmissionRules): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
   const running = new Set([ME, OTHER]);
@@ -93,6 +95,7 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
       return `t${ids}`;
     },
     ...(memory === undefined ? {} : { memory: new MemoryGate(memory, noGap, GATE) }),
+    ...(admission === undefined ? {} : { admission }),
   });
   return { files, clock, running, lock };
 }
@@ -115,8 +118,11 @@ async function lineOf(files: MemoryFiles): Promise<string[]> {
   return files.list(QUEUE);
 }
 
-/** The host lock over \`files\`, as process \`pid\` sees it, with this process and \`OTHER\` running; \`sleep\` default the clock's. */
-function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep = clock.sleep): HostLock {
+/**
+ * The host lock over \`files\`, as process \`pid\` sees it, with this process and \`OTHER\` running; \`sleep\` default the
+ * clock's; with \`admission\`, the line ordered by those rules.
+ */
+function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep = clock.sleep, admission?: AdmissionRules): HostLock {
   let ids = 0;
   return new HostLock(PATH, TTL_MS, {
     files,
@@ -129,6 +135,7 @@ function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep
       ids += 1;
       return `t${ids}`;
     },
+    ...(admission === undefined ? {} : { admission }),
   });
 }
 
@@ -1217,5 +1224,177 @@ describe("HostLock tickets and shares: what the step asks (T2210)", () => {
     const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
     assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 10_240, others: [older, later] }, 'the floor, both shares and its own MB fit');
     assert.equal(files.get(path), text, 'its share is left as it was');
+  });
+});
+
+/** Admission in `pipeline` mode, as the config defaults set it: 15 minutes a priority step, two steps a session. */
+const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, perSessionRunning: 2, defaultClass: 'Improvements' };
+
+const ADMIT = `${PATH}.admit`;
+
+/** Bravo's ticket from 09:59, a heavy step at `priority` in REQUEST's class. */
+function bravoAt(priority: number): [string, string] {
+  return ticket(waiterOf('2030-01-08T09:59:00.000Z', { request: { ...REQUEST, priority, needMb: 0, heavy: true } }));
+}
+
+/** Two small steps of `session` sharing the host since 09:50 and 09:55. */
+function sharesOf(session: string): HostShare[] {
+  return [shareOf({ id: 's1', session }), shareOf({ id: 's2', session, acquiredAt: '2030-01-08T09:55:00.000Z' })];
+}
+
+describe('HostLock admission (T2210)', () => {
+  it("takes a free lock before an earlier waiter of a later priority, leaving that ticket and no admit file", async () => {
+    const [early, text] = bravoAt(3);
+    const { files, lock } = world({ [early]: text }, undefined, undefined, PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
+    assert.equal(taking.kind, 'taken');
+    assert.deepEqual([files.get(early), files.get(ADMIT)], [text, undefined]);
+  });
+
+  it("passes an older kit's ticket, which names no request and so counts at p2, only at an earlier priority", async () => {
+    const older = waiterOf('2030-01-08T09:59:00.000Z', { id: 'older' });
+    const results: string[] = [];
+    for (const priority of [1, 3]) {
+      const { lock } = world(Object.fromEntries([ticket(older)]), undefined, undefined, PIPELINE);
+      const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: { ...REQUEST, priority } });
+      results.push(taking.kind === 'busy' && taking.holder.kind === 'queued' ? `queued behind ${taking.holder.first.id}` : taking.kind);
+    }
+    assert.deepEqual(results, ['taken', 'queued behind older']);
+  });
+
+  for (const [label, admission] of [
+    ['serial rules', { ...PIPELINE, mode: 'serial' }],
+    ['no rules', undefined],
+  ] as const) {
+    it(`keeps arrival order with ${label}: an earlier waiter of a later priority stays ahead`, async () => {
+      const [early] = bravoAt(3);
+      const { files, lock } = world(Object.fromEntries([bravoAt(3)]), undefined, undefined, admission);
+      const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
+      assert.equal(taking.kind === 'busy' && taking.holder.kind === 'queued' ? taking.holder.first.id : taking.kind, 'bravo');
+      assert.deepEqual([files.get(PATH), files.get(ADMIT), await lineOf(files)], [undefined, undefined, [early.slice(QUEUE.length + 1)]]);
+    });
+  }
+
+  it("passes an earlier waiter whose session runs its cap of steps, and shares the host beside them; serial rules keep it waiting", async () => {
+    const running = sharesOf('bravo');
+    const initial = Object.fromEntries([...running.map((share) => shareFile(share)), bravoAt(1)]);
+    const results: unknown[] = [];
+    for (const admission of [PIPELINE, { ...PIPELINE, mode: 'serial' } as const]) {
+      const { lock } = world(initial, undefined, new FakeHostMemory(10_240), admission);
+      const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: { ...REQUEST, priority: 3 } });
+      results.push(taking.kind === 'busy' ? taking.holder.kind : taking);
+    }
+    const share = shareOf({ id: 't1', pid: ME, session: 'alpha', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', request: { ...REQUEST, priority: 3, needMb: 2048, heavy: false } });
+    assert.deepEqual(results, [{ kind: 'taken', lock: share, sharing: { freeMb: 10_240, others: running } }, 'queued']);
+  });
+
+  it('waits while its own session runs its cap of steps, the lock its holder takes counted, naming them', async () => {
+    const shares = sharesOf('alpha');
+    const holder = infoOf({ session: 'alpha' });
+    const [first] = shares;
+    assert.ok(first !== undefined);
+    const results: unknown[] = [];
+    const told: string[] = [];
+    for (const initial of [Object.fromEntries(shares.map((share) => shareFile(share))), Object.fromEntries([[PATH, heldBy({ session: 'alpha' })], shareFile(first)])]) {
+      const { files, lock } = world(initial, undefined, new FakeHostMemory(16_000), PIPELINE);
+      const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, (wait, ahead) => told.push(waitText(wait, ahead, TimeZone.UTC)), { need: SMALL, request: REQUEST });
+      results.push(taking, (await files.list(SHARED)).length, await lineOf(files));
+    }
+    assert.deepEqual(results, [
+      { kind: 'busy', holder: { kind: 'sessionCap', cap: 2, running: shares } },
+      2,
+      [],
+      { kind: 'busy', holder: { kind: 'sessionCap', cap: 2, running: [holder, first] } },
+      1,
+      [],
+    ]);
+    assert.deepEqual(told, [
+      '2 steps of its session running, its cap 2: alpha (heavy: specs) since 2030-01-08 09:50 UTC, alpha (heavy: specs) since 2030-01-08 09:55 UTC',
+      '2 steps of its session running, its cap 2: alpha (heavy: build) since 2030-01-08 09:50 UTC, alpha (heavy: specs) since 2030-01-08 09:50 UTC',
+    ]);
+  });
+
+  it("says on its ticket that it waits on its session's cap", async () => {
+    const seen: (WaitingOn | undefined)[] = [];
+    const { lock } = world(
+      Object.fromEntries(sharesOf('alpha').map((share) => shareFile(share))),
+      (time, store) => async (ms) => {
+        seen.push(await waitingOnOf(store, time));
+        await time.sleep(ms);
+      },
+      new FakeHostMemory(16_000),
+      PIPELINE,
+    );
+    await lock.acquire('alpha', 'heavy: specs', 2_000, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    assert.deepEqual(seen, [
+      {
+        reason: 'session',
+        text: '2 steps of its session running, its cap 2: alpha (heavy: specs) since 2030-01-08 11:50 IST, alpha (heavy: specs) since 2030-01-08 11:55 IST',
+        since: '2030-01-08T10:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('sets no cap at perSessionRunning 0: a session sharing the host twice shares it a third time', async () => {
+    const shares = sharesOf('alpha');
+    const { lock } = world(Object.fromEntries(shares.map((share) => shareFile(share))), undefined, new FakeHostMemory(16_000), { ...PIPELINE, perSessionRunning: 0 });
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 16_000, others: shares });
+  });
+
+  it("waits while another live step's claim holds the admit file, taking nothing and leaving the claim", async () => {
+    const claim = JSON.stringify({ ticket: 'bravo', pid: OTHER, expiresAt: '2030-01-08T10:00:20.000Z' });
+    const { files, lock } = world({ [ADMIT]: claim }, undefined, undefined, PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
+    assert.deepEqual([taking, files.get(PATH), files.get(ADMIT)], [{ kind: 'busy', holder: { kind: 'admitting' } }, undefined, claim]);
+  });
+
+  it('takes its turn once a live claim on the admit file runs out, looking every 2 s meanwhile', async () => {
+    const claim = JSON.stringify({ ticket: 'bravo', pid: OTHER, expiresAt: '2030-01-08T10:00:30.000Z' });
+    const { clock, files, lock } = world({ [ADMIT]: claim }, undefined, undefined, PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined, { request: REQUEST });
+    assert.deepEqual([taking.kind, files.get(ADMIT)], ['taken', undefined]);
+    assert.deepEqual(clock.sleeps, Array.from({ length: 15 }, () => FIRST_IN_LINE_POLL_MS));
+  });
+
+  for (const [label, claim] of [
+    ['whose process is gone', JSON.stringify({ ticket: 'bravo', pid: 7, expiresAt: '2030-01-08T10:00:20.000Z' })],
+    ['that ran out', JSON.stringify({ ticket: 'bravo', pid: OTHER, expiresAt: '2030-01-08T10:00:00.000Z' })],
+    ['that cannot be read', '{"tick'],
+  ] as const) {
+    it(`removes a claim on the admit file ${label} and takes its turn at once`, async () => {
+      const { clock, files, lock } = world({ [ADMIT]: claim }, undefined, undefined, PIPELINE);
+      const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
+      assert.deepEqual([taking.kind, files.get(ADMIT), clock.sleeps], ['taken', undefined, []]);
+    });
+  }
+
+  it('claims the admit file for 30 s and looks at the line again under it: an urgent step that joined meanwhile goes first', async () => {
+    const urgent = waiterOf('2030-01-08T10:00:00.000Z', { id: 'urgent', request: { ...REQUEST, priority: 0, needMb: 0, heavy: true } });
+    const [path, text] = ticket(urgent);
+    const claims: unknown[] = [];
+    const files = new Interleaved({}, 'createExclusive', (at) => at.replaceAll('\\', '/') === ADMIT, async (store) => {
+      claims.push(JSON.parse(store.get(ADMIT) ?? 'null'));
+      await store.write(path, text);
+    });
+    const clock = new FakeClock('2030-01-08T10:00:00Z');
+    const taking = await lockOver(files, clock, ME, clock.sleep, PIPELINE).acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
+    assert.deepEqual(claims, [{ ticket: 't1', pid: ME, expiresAt: '2030-01-08T10:00:30.000Z' }]);
+    assert.deepEqual([taking, files.get(PATH), files.get(ADMIT), await lineOf(files)], [{ kind: 'busy', holder: { kind: 'queued', first: urgent } }, undefined, undefined, [path.slice(QUEUE.length + 1)]]);
+  });
+
+  it("names its session's steps running at its cap, and another step being admitted", () => {
+    const capped: LockWait = { kind: 'sessionCap', cap: 2, running: [infoOf({ session: 'alpha' }), shareOf({ id: 's1', session: 'alpha', acquiredAt: '2030-01-08T09:55:00.000Z' })] };
+    const steps = '2 steps of its session running, its cap 2: alpha (heavy: build) since 2030-01-08 09:50 UTC, alpha (heavy: specs) since 2030-01-08 09:55 UTC';
+    const one: LockWait = { kind: 'sessionCap', cap: 1, running: [infoOf({ session: 'alpha' })] };
+    const admitting: LockWait = { kind: 'admitting' };
+    assert.deepEqual(
+      [holderText(capped, TimeZone.UTC), busyText(capped, TimeZone.UTC), waitText(capped, 1, TimeZone.UTC), holderText(one, JERUSALEM)],
+      [steps, `session cap still reached: ${steps}`, `${steps}; 1 ahead in line`, '1 step of its session running, its cap 1: alpha (heavy: build) since 2030-01-08 11:50 IST'],
+    );
+    assert.deepEqual(
+      [holderText(admitting, TimeZone.UTC), busyText(admitting, TimeZone.UTC), waitText(admitting, 0, TimeZone.UTC)],
+      ['another step being admitted', 'host lock still held by another step being admitted', 'another step being admitted'],
+    );
   });
 });
