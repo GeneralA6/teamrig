@@ -299,9 +299,32 @@ function putBackText({ back, lost }: PutBack): string {
 }
 
 /**
+ * Whether a git removal that failed went past its point of no return: git deletes its record of the worktree even when
+ * it cannot delete the folder (Windows keeps a folder a program has as its working folder), so the folder stays on
+ * disk while git no longer lists it. False when the folder is gone, git still lists it, or git cannot tell.
+ */
+async function removedPartway(plan: RemovalPlan, ports: WorktreePorts): Promise<boolean> {
+  const canonicalTop = await ports.files.canonical(plan.top);
+  const worktrees = canonicalTop === undefined ? undefined : ports.git.worktrees(plan.mainDir);
+  return canonicalTop !== undefined && worktrees !== undefined && (await entryAt(ports.files, worktrees, canonicalTop)) === undefined;
+}
+
+/** Tells each link's target as untouched, or throws the first that changed. */
+async function proveTargets(plan: RemovalPlan, files: WorktreeFiles, tell: (line: string) => void): Promise<void> {
+  for (const link of plan.links) {
+    const after = await files.entryCount(link.target);
+    if (after !== link.targetEntries) {
+      throw new Error(`${link.target}, the target of ${link.name}, held ${entriesText(link.targetEntries)} before and ${entriesText(after)} after the removal`);
+    }
+    tell(`target ${link.target} untouched: ${entriesText(after)}, as before`);
+  }
+}
+
+/**
  * Carries out a plan, telling each step as it is done. A link that fails its unlink or is still there after it stops
- * it before git runs; that, or a git removal that fails, first puts back every link already unlinked. A target that
- * changed after the removal, or a branch delete that fails, is thrown with what was already done.
+ * it before git runs; that, or a git removal that fails, first puts back every link already unlinked, unless git
+ * stopped partway, past dropping its record of the worktree. A target that changed after the removal, or a branch
+ * delete that fails, is thrown with what was already done.
  */
 export async function carryOut(plan: RemovalPlan, ports: WorktreePorts, tell: (line: string) => void): Promise<void> {
   const { git, files } = ports;
@@ -322,18 +345,22 @@ export async function carryOut(plan: RemovalPlan, ports: WorktreePorts, tell: (l
     tell(`unlinked ${link.name} (the link only, to ${link.target})`);
   }
   const removed = git.removeWorktree(plan.mainDir, plan.top);
+  if (!removed.ok && (await removedPartway(plan, ports))) {
+    // The worktree is no more: links put back would leave a folder holding only them, which a rerun could not tell
+    // from any other folder (T1051). A changed target is thrown first, as the graver fault.
+    await proveTargets(plan, files, tell);
+    throw new Error(
+      `git worktree remove ${plan.top} stopped partway: ${removed.reason}. git no longer lists it, and ${plan.top} is left on disk: ` +
+        'a program with its working folder inside it (often a Claude Code tab started there) keeps Windows from deleting it. ' +
+        `Close that program or move it out, then run teamrig worktree remove ${plan.top} again to clear what is left`,
+    );
+  }
   if (!removed.ok) {
     const put = await putBack(files, unlinked, tell);
     throw new Error(`git worktree remove ${plan.top}: ${removed.reason}${putBackText(put)}`);
   }
   tell(`removed the worktree ${plan.top}`);
-  for (const link of plan.links) {
-    const after = await files.entryCount(link.target);
-    if (after !== link.targetEntries) {
-      throw new Error(`${link.target}, the target of ${link.name}, held ${entriesText(link.targetEntries)} before and ${entriesText(after)} after the removal`);
-    }
-    tell(`target ${link.target} untouched: ${entriesText(after)}, as before`);
-  }
+  await proveTargets(plan, files, tell);
   if (plan.branch !== undefined) {
     const deleted = git.deleteBranch(plan.mainDir, plan.branch.name);
     if (!deleted.ok) {

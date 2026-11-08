@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers, type FakeNode } from '../testing/fake-worktrees.ts';
 import { NODE_WORKTREE_FILES } from './files.ts';
-import { GIT_WORKTREES, type GitOutcome } from './git.ts';
+import { GIT_WORKTREES, type GitOutcome, type WorktreeEntry } from './git.ts';
 import { carryOut, describePlan, planRemoval, type PlannedLink, type RemovalDecision, type RemovalPlan, type RemovalRequest, type WorktreePorts } from './remove.ts';
 
 const MAIN = '/w/main';
@@ -308,6 +308,32 @@ class HalfwayGit extends FakeWorktreeGit {
   }
 }
 
+/**
+ * A git whose removal drops its record of the worktree and then fails to delete the folder, as Windows leaves one a
+ * program has as its working folder (T1051); `partly` runs first, to take away some of the tree.
+ */
+class PartwayGit extends FakeWorktreeGit {
+  private readonly listed: readonly WorktreeEntry[];
+  private readonly partly: () => void;
+  private dropped = false;
+
+  constructor(listed: readonly WorktreeEntry[], partly: () => void = () => undefined) {
+    super({ removal: { ok: false, reason: "error: failed to delete '/w/t4': Permission denied" } });
+    this.listed = listed;
+    this.partly = partly;
+  }
+
+  override worktrees(): readonly WorktreeEntry[] {
+    return this.dropped ? this.listed.filter((entry) => entry.path !== TOP) : this.listed;
+  }
+
+  override removeWorktree(mainDir: string, top: string): GitOutcome {
+    this.partly();
+    this.dropped = true;
+    return super.removeWorktree(mainDir, top);
+  }
+}
+
 /** A tree whose system refuses to make a link. */
 class LinklessFiles extends FakeWorktreeFiles {
   override async makeLink(): Promise<void> {
@@ -374,6 +400,42 @@ describe('carryOut puts back every link it unlinked when the removal stops', () 
     const expected = `git worktree remove /w/t4: error: failed to delete (still gone: node_modules, a link to ${resolve(MODULES)}: something else is at its path; web/node_modules, a link to ${resolve(WEB_MODULES)}: its folder is gone)`;
     assert.equal(await failure(carried(plan, { git, files })), expected);
     assert.deepEqual(files.linked, []);
+  });
+
+  describe('but not when git stopped partway, past dropping its record of the worktree (T1051)', () => {
+    const LISTED: readonly WorktreeEntry[] = [
+      { path: MAIN, branch: 'main', locked: undefined },
+      { path: TOP, branch: 't4', locked: undefined },
+    ];
+
+    it('puts no link back, proves each target untouched and says why the folder is left and to run it again', async () => {
+      const { files, plan } = twoLinks();
+      const lines: string[] = [];
+      const message = await failure(carryOut(plan, { git: new PartwayGit(LISTED), files }, (line) => lines.push(line)));
+      assert.equal(
+        message,
+        "git worktree remove /w/t4 stopped partway: error: failed to delete '/w/t4': Permission denied. git no longer lists it, and /w/t4 is left on disk: " +
+          'a program with its working folder inside it (often a Claude Code tab started there) keeps Windows from deleting it. ' +
+          'Close that program or move it out, then run teamrig worktree remove /w/t4 again to clear what is left',
+      );
+      assert.deepEqual(files.linked, [], 'a link put back would leave a folder holding only it');
+      assert.equal(await files.kindOf(LINK), 'missing');
+      assert.equal(await files.kindOf(TOP), 'folder');
+      assert.deepEqual(lines.slice(-2), [`target ${resolve(MODULES)} untouched: 2 entries, as before`, `target ${resolve(WEB_MODULES)} untouched: 1 entry, as before`]);
+    });
+
+    it('throws a target that changed first, as the graver fault', async () => {
+      const { files, plan } = twoLinks();
+      const git = new PartwayGit(LISTED, () => files.delete(`${MODULES}/keep.txt`));
+      assert.equal(await failure(carried(plan, { git, files })), `${resolve(MODULES)}, the target of node_modules, held 2 entries before and 1 entry after the removal`);
+      assert.deepEqual(files.linked, []);
+    });
+
+    it('puts the links back as before when the folder is gone too: there is nothing left to clear', async () => {
+      const { files, plan } = twoLinks();
+      const git = new PartwayGit(LISTED, () => files.delete(TOP));
+      assert.match(await failure(carried(plan, { git, files })), /^git worktree remove \/w\/t4: error: failed to delete .*\(still gone: node_modules, .*: its folder is gone; web\/node_modules, .*: its folder is gone\)$/);
+    });
   });
 
   it('names a link the system refuses to make', async () => {
