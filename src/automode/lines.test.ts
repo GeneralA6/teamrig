@@ -18,7 +18,7 @@ describe('kitTag', () => {
 });
 
 describe('kitLines', () => {
-  it('fills the branches, the register, the wrappers, worktree removal and rebasing from the team', () => {
+  it('fills the branches, the register, the wrappers, worktree removal, rebasing and clean files from the team', () => {
     assert.deepEqual(kitLines(FACTS), [
       '[teamrig alpha] Protected branches: main, release. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. ' +
         "Every session edits on its own branch in its own git worktree, never in a repo's main checkout.",
@@ -33,7 +33,20 @@ describe('kitLines', () => {
       '[teamrig alpha] Every session may rebase its own branch in its own git worktree onto the fresh default branch (`git fetch`, then `git rebase origin/<branch>` or ' +
         "`git pull --rebase`, and `git rebase --continue` or `--abort` to settle a stopped one): it rewrites only that session's own commits not yet merged. A branch it " +
         "pushed before goes back with `git push --force-with-lease` to that same branch. A protected branch (main, release) is never rebased, nor a repo's main checkout.",
+      "[teamrig alpha] In a session's own git worktree on its own branch, a file git tracks with no uncommitted change (clean in `git status`) comes back with `git restore`, " +
+        'so editing it with Edit or Write, deleting or moving it with `git rm` (without `-f`) or `git mv`, or running a script the session wrote or read in full whose ' +
+        'writes stay in that worktree, is ordinary code editing, not destruction. It does not cover `rm -rf` of a folder (it also deletes untracked and ignored files, ' +
+        'and can follow a junction into the main checkout), git commands that discard work or history (`reset --hard`, `checkout --` or `restore` over uncommitted ' +
+        'changes, `clean`, `stash drop` or `clear`, `branch -D`, `git worktree remove`, `gc --prune`, `reflog expire`), a file with uncommitted changes, an untracked ' +
+        "or ignored file, another session's worktree, a repo's main checkout, or agent config and gates even when tracked (`.claude/`, `CLAUDE.md`, `.husky/`, git hooks).",
     ]);
+  });
+
+  it('keeps the clean-files line from clearing what git cannot restore or what guards the session', () => {
+    const line = kitLines(FACTS)[5] ?? '';
+    for (const limit of ['no uncommitted change', 'a script the session wrote or read in full', '`rm -rf` of a folder', '`reset --hard`', '`.claude/`', '`CLAUDE.md`', 'git hooks']) {
+      assert.ok(line.includes(limit), `the clean-files line lacks ${limit}`);
+    }
   });
 
   it('says what a normal push to a protected branch does in each mode', () => {
