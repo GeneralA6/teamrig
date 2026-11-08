@@ -122,6 +122,11 @@ week's use: offer to run `teamrig statusline install`, which keeps a status line
 it with `--yes`; when Claude may not change its own settings, the user types `! teamrig statusline install --yes`.
 If the user skips this step, say they can ask you to turn it on later.
 
+When another root team (one under no other team) already runs on this Claude account, ask the user, in the same
+AskUserQuestion call, whose lead is the main lead that splits the account's week among its root teams (step 10),
+each root team a choice. Set `"accountLead": "<team>"` under `budget` in every root team's `config.json` on the
+account, then run `teamrig config validate` for each.
+
 ## 7. Settle the local rules that override teamrig
 
 The core rules win over a CLAUDE.md, a rules file, a skill, memory, a hook's text and the team's `rules.md`, except
@@ -214,8 +219,26 @@ register holds slices, one row per slice (goal, slice, tasks, owner, ship date, 
 has an owner, a ship date and a live proof. One past its date, or with a task waiting on you, comes first: answer
 that wait, then re-cut the slice smaller or re-date it with its reason. A slice ships when its live proof is seen,
 and its goal's next one opens then. Each session keeps at most `[focus.slicesPerSession]` open, one more only while
-one waits on another session or the owner; past that, park its newest until one ships. Work outside an open slice waits, incidents and `[focus.maintenanceClass]` work aside: ask its session in one inbox
-line to park it.
+one waits on another session or the owner; past that, park its newest until one ships. No slice needing a new
+owner decision opens while `[focus.maxOwnerDecisions]` wait in the tree. Work outside an open slice waits,
+incidents and `[focus.maintenanceClass]` work aside: ask its session in one inbox line to park it.
+
+While the budget is enabled, the week is split by plans, top down:
+
+- Before the weekly reset, write the week plan in the same file: each slice sized in % of the week, and last week's
+  plan against what was used and shipped.
+- After the reset, in its first work block, the main lead (the lead of the team `[budget.accountLead]` names, else
+  of the root team) splits the week among the account's root teams; then each lead splits its part among its own
+  team and the teams under it. Weigh each plan by what it ships for the goals and by how well its lead's last plan
+  held. Each team with planned work gets at least `[budget.shareFloorPct]`% of the part being split, an equal part
+  when the floors do not fit. Write the shares in the plan and send each lead whose part you set its share in one
+  inbox line; the split applies at once.
+- A team past its share opens nothing new; its open work goes on.
+- A higher leader's call wins: concede at once and work to it. To appeal, add a task owned by any leader above the
+  one you disagree with (`add --team <its team>` without `--owner` hands it to that team's lead), titled
+  `Appeal: ...`, with your case and evidence. It never blocks and puts no wait on anything. Answer an appeal to you
+  at your next split at the latest; one that wins changes the next split. An appeal to the owner goes to the main
+  lead, which carries it in the week report (`daily-meeting` skill); unanswered, the decision stands.
 
 Act on each flag:
 

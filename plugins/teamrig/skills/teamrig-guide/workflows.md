@@ -317,9 +317,16 @@ teamrig start --session lead
 With sub-teams, run `teamrig check --tree --session lead` too. Then check the ship plan (the `team-setup` skill
 has the steps): each open shippable slice, a goal's fewest tasks that ship something working, has an owner, a ship
 date and a live proof; one past its date or waiting on you comes first; each session keeps at most
-`focus.slicesPerSession` open, one more only while one waits on another session or the owner, and other work waits,
-incidents and `focus.maintenanceClass` work aside. Until the register holds
-slices, they live in `ship-plan.md` in the lead's notes folder (`teamrig files --notes --session lead`). Then act on
+`focus.slicesPerSession` open, one more only while one waits on another session or the owner; none needing a new
+owner decision opens while `focus.maxOwnerDecisions` wait in the tree; and other work waits, incidents and
+`focus.maintenanceClass` work aside. Until the register holds slices, they live in `ship-plan.md` in the lead's
+notes folder (`teamrig files --notes --session lead`). While the budget is enabled, the week is split by those
+plans: each lead sizes its slices in % of the week before the reset; after it, the main lead (the lead of the team
+`budget.accountLead` names, else of the root team) splits the week among the account's root teams, and each lead
+its part among its own team and the teams under it, by what each plan ships and how its last plan held, each team
+with planned work at least `budget.shareFloorPct`% of a split. A team past its share opens nothing new. A higher
+leader's call wins; an appeal, never blocking, is an `Appeal: ...` task owned by a leader above the one disagreed
+with, and the main lead carries the owner's in its week report at the first meeting after the reset. Then act on
 each flag (full table: [tasks.md](tasks.md#check-flags)):
 
 - `PRIORITY-SKIP`: one inbox line to the owner to park the lower task and start the waiting one, or fix the order

@@ -67,6 +67,16 @@ folder (`teamrig files --notes --session lead`), one row per slice: goal, slice,
 proof, status; bring it up to date before the meeting, and in a tree add each child team lead's slices from its own
 file. A slipping slice's decisions come first among the cards.
 
+At the first meeting after the weekly reset, with the budget enabled, the main lead (the lead of the team
+`[budget.accountLead]` names, else of the root team) brings the week report before the ship board, for information:
+nothing in it asks for an answer.
+
+- the week's split among the teams, and its reasoning (`team-setup` skill, checkpoint step);
+- each team's plan: what ships, and when;
+- the motivation: what the week achieves for the goals;
+- last week in two lines: shipped against the plan, the share of the week used, and the leads' own share of it;
+- the appeals that reached the owner, each with its case and the decision that stands.
+
 Then what got done and what is late, in a few lines, and one card per decision, each readable alone:
 
 - what it is and why it matters to the human, in one or two plain lines;

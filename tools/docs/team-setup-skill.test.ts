@@ -26,6 +26,13 @@ function positionOf(text: string): number {
   return at;
 }
 
+/** The text of the step whose heading starts with `title`, up to the next step's heading. */
+function stepTextOf(title: string): string {
+  const start = positionOf(`## ${stepOf(title)}. ${title}`);
+  const next = SKILL.indexOf('\n## ', start + 1);
+  return SKILL.slice(start, next < 0 ? SKILL.length : next);
+}
+
 describe('the team-setup skill', () => {
   it('backs the Claude setup up, then scans it, before the team is created', () => {
     const backup = positionOf('teamrig setup backup --project');
@@ -53,5 +60,17 @@ describe('the team-setup skill', () => {
     assert.ok(SKILL.includes(`go on to step ${create}.`));
     assert.ok(SKILL.includes(`step ${stepOf('Settle the local rules')} settles those rule lines`));
     assert.ok(SKILL.includes(`Step ${stepOf('Back up the Claude setup')}'s scan had a \`SETTINGS\` finding`));
+    assert.ok(SKILL.includes(`its root teams (step ${stepOf('Checkpoint')}),`));
+  });
+
+  it('has the checkpoint split the week by plans, from the main lead down, with the floor and appeals', () => {
+    const checkpoint = stepTextOf('Checkpoint');
+    for (const text of ['`[budget.accountLead]`', '`[budget.shareFloorPct]`%', 'A team past its share opens nothing new', '`Appeal: ...`', 'It never blocks']) {
+      assert.ok(checkpoint.includes(text), `the checkpoint does not name ${text}`);
+    }
+  });
+
+  it('asks for the main lead when a second root team joins the account', () => {
+    assert.match(stepTextOf('Turn on the daily budget'), /`"accountLead": "<team>"` under `budget` in every root team's `config\.json` on the\saccount/);
   });
 });
