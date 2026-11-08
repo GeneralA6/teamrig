@@ -7,7 +7,7 @@ import type { Env } from '../core/home.ts';
 import { askChecks, shownLine } from './checks.ts';
 import { hookEndText, hookExitCode, succeeded, type HookEnd } from './hooks.ts';
 import { short, type DeployRepo } from './pending.ts';
-import { chosenRepo, scheduleReadiness, shownBy, type DeployEnd, type DeployPorts, type DeployRequest, type DeploySetup } from './run.ts';
+import { chosenRepo, deployLine, scheduleReadiness, shownBy, type DeployEnd, type DeployPorts, type DeployRequest, type DeploySetup } from './run.ts';
 
 /**
  * `teamrig deploy --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
@@ -109,6 +109,7 @@ export async function redeployTargets(setup: DeploySetup, ports: DeployPorts, re
   const clearance = await takeWhenClear(readiness, ports, {
     session: request.session,
     purpose: `deploy ${targets} of ${repo.name}`,
+    line: deployLine(setup),
     maxWaitMs: wait.maxMinutes * MINUTE_MS,
     pollMs: wait.pollSeconds * 1_000,
     zone: setup.zone,

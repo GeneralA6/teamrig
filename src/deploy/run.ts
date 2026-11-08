@@ -5,6 +5,7 @@ import { refusalOf, takeWhenClear, type ClearancePhase, type Readiness } from '.
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
+import { lineRequest, processRequest, type LineRequest, type RequestFocus } from '../delivery/process-request.ts';
 import { NOT_STARTED_EXIT, recordQueuedStep, recordRefusal, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
@@ -52,6 +53,13 @@ export interface DeploySetup {
   readonly zone: TimeZone;
   /** A configured path as a place: a relative one is in the team's folder. */
   inTeam(path: string): string;
+  /** The team's focus, for the class and share its ticket in the host lock's line says it works for. */
+  readonly focus: RequestFocus;
+}
+
+/** What a deploy's ticket in the host lock's line says it asks: deploy work for no task, so at the team's default class. */
+export function deployLine(setup: Pick<DeploySetup, 'focus'>): LineRequest {
+  return lineRequest(processRequest('deploy', undefined), undefined, setup.focus);
 }
 
 export interface DeployPorts {
@@ -376,6 +384,7 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
   const clearance = await takeWhenClear(readinessOf(setup, ports, request, repo, view), ports, {
     session: request.session,
     purpose: `deploy ${repo.name}`,
+    line: deployLine(setup),
     maxWaitMs: wait.maxMinutes * MINUTE_MS,
     pollMs: wait.pollSeconds * 1_000,
     zone: setup.zone,

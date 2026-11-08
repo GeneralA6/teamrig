@@ -5,7 +5,7 @@ import { refusalOf, takeWhenClear, type Readiness } from '../delivery/clearance.
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
-import { processRequest, withTaskPriority, type RequestTask } from '../delivery/process-request.ts';
+import { lineRequestOf, processRequest, type LineTask, type RequestFocus } from '../delivery/process-request.ts';
 import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded, type StepMark, type StepOwner, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
@@ -82,10 +82,12 @@ export interface MergeSetup {
   readonly gated: GatedSetup | undefined;
   /** The team's task folders, one per task id, where the decision record gate looks for a task's design notes. */
   readonly tasksFolder: string;
+  /** The team's focus, for the class and share its ticket in the host lock's line says it works for. */
+  readonly focus: RequestFocus;
 }
 
-/** A register task as a merge reads it: what its gates weigh, and the priority its recorded steps carry. */
-export type MergedTask = GatedTask & RequestTask;
+/** A register task as a merge reads it: what its gates weigh, and the priority and class its recorded steps and ticket carry. */
+export type MergedTask = GatedTask & LineTask;
 
 export interface MergePorts {
   readonly git: MergeGit;
@@ -695,12 +697,14 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
   }
   const { wait } = setup.delivery;
   // Every step a merge runs (its checks, its push or merge command) is recorded as merge work for the branch's task, at
-  // the priority that task has as the merge queues.
-  const owner: StepOwner = { session: request.session, ...(await withTaskPriority(processRequest('merge', taskOfBranch(plan.branch)), (id) => ports.taskOf(id))) };
+  // the priority that task has as the merge queues; only its ticket in the host lock's line carries the task's class.
+  const line = await lineRequestOf(processRequest('merge', taskOfBranch(plan.branch)), (id) => ports.taskOf(id), setup.focus);
+  const owner: StepOwner = { session: request.session, ...processRequest(line.kind, line.task, line.priority) };
   const waits = new WaitLog(ports.clock, ports.memory.freeMb());
   const clearance = await takeWhenClear(readinessOf(setup, ports, repo), ports, {
     session: request.session,
     purpose: `merge ${repo.name}`,
+    line,
     maxWaitMs: wait.maxMinutes * MINUTE_MS,
     pollMs: wait.pollSeconds * 1_000,
     zone: setup.zone,

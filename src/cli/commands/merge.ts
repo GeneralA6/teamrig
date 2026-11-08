@@ -50,6 +50,7 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
           review: { reviewPaths: config.pushGuard.reviewPaths, tree, roles: config.roles },
           gated: config.pushGuard.pushToProtected === 'gated' ? { tree, roles: config.roles, commits: config.commits } : undefined,
           tasksFolder: kit.paths.tasks,
+          focus: config.focus,
         },
         {
           git: runtime.mergeGit,

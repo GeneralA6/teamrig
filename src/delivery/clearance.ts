@@ -1,6 +1,7 @@
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { busyText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
+import type { LineRequest } from './process-request.ts';
 import type { RefusalMark } from './recorded-step.ts';
 import { causeOfLockWait, type WaitCause, type WaitTold } from './wait-log.ts';
 
@@ -33,6 +34,8 @@ export interface ClearanceRequest {
   readonly session: string;
   /** What the lock names as its holder's purpose, such as `merge api`. */
   readonly purpose: string;
+  /** What its ticket in the host lock's line says it asks, for admission to order the line by (T2210). */
+  readonly line: LineRequest;
   /** The whole wait, for freezes and the lock together; the lock's goes on past it while its line moves. */
   readonly maxWaitMs: number;
   readonly pollMs: number;
@@ -83,8 +86,13 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
       }
       continue;
     }
-    const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) =>
-      request.onWait({ cause: causeOfLockWait(holder), text: `the host lock: ${waitText(holder, ahead, request.zone)}` }),
+    const taking = await lock.acquire(
+      request.session,
+      request.purpose,
+      Math.max(0, deadline - clock.now()),
+      request.pollMs,
+      (holder, ahead) => request.onWait({ cause: causeOfLockWait(holder), text: `the host lock: ${waitText(holder, ahead, request.zone)}` }),
+      { request: request.line },
     );
     if (taking.kind === 'busy') {
       return { kind: 'gaveUp', reason: busyText(taking.holder, request.zone) };

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import type { DeliveryConfig, DeliveryRepoConfig, DeployConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_FREEZES, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
+import { DEFAULT_FOCUS, DEFAULT_FREEZES, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
 import { HostLock } from '../delivery/host-lock.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
 import type { Env } from '../core/home.ts';
@@ -16,6 +16,7 @@ import { FakeHooks } from '../testing/fake-hooks.ts';
 import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, defaultGateOn, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { heldBy } from '../testing/held-lock.ts';
+import { lineRequests } from '../testing/line-tickets.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { deployRepo, type DeployEnd, type DeployRequest, type DeploySetup } from './run.ts';
 
@@ -57,6 +58,8 @@ class World {
   readonly hooks = new FakeHooks(this.clock);
   readonly lock: HostLock;
   readonly said: string[] = [];
+  /** The request of each ticket in the host lock's line, read each time the lock sleeps between polls. */
+  readonly asked: unknown[] = [];
   /** The host's memory, which each queued step's watch reads. */
   readonly memory = new FakeHostMemory();
   readonly setup: DeploySetup;
@@ -66,7 +69,10 @@ class World {
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, {
       files: this.files,
       clock: this.clock,
-      sleep: this.clock.sleep,
+      sleep: async (ms) => {
+        this.asked.push(...(await lineRequests(this.files, PLACES.hostLock)));
+        await this.clock.sleep(ms);
+      },
       pid: 7,
       alive: () => true,
       newId: () => 'lock-1',
@@ -82,7 +88,7 @@ class World {
       stablePeriods: DEFAULT_STABLE_PERIODS,
       repos: options.repos ?? { pipeline: PIPELINE },
     };
-    this.setup = { team: 'app', delivery, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
+    this.setup = { team: 'app', delivery, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`), focus: DEFAULT_FOCUS };
     this.pushed('c1', 'c2');
   }
 
@@ -261,6 +267,14 @@ describe('deployRepo', () => {
       endFreeMb: world.memory.free,
     }]);
     assert.equal(world.pulled(), false);
+  });
+
+  it("waits in the host lock's line with a ticket naming deploy work for no task, at the default class and its share, and its memory need (T2210)", async () => {
+    const world = new World({ memoryGated: true });
+    await world.files.write(PLACES.hostLock, heldBy());
+    assert.equal((await world.run()).kind, 'refused');
+    assert.ok(world.asked.length > 0);
+    assert.deepEqual(world.asked, world.asked.map(() => ({ kind: 'deploy', class: 'Improvements', classPct: 15, needMb: 2048, heavy: true })));
   });
 
   it('names the programs holding the most memory when it refuses after its wait on host memory, pulling nothing (T2209)', async () => {
