@@ -753,14 +753,14 @@
               "default": 4096
             },
             "smallReserveMb": {
-              "description": "The MB held for a small step with no ledger record of its peak yet.",
+              "description": "The MB held for a small step whose need is neither learned from its past runs in the ledger nor declared with --memory-mb.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1048576,
               "default": 2048
             },
             "heavyReserveMb": {
-              "description": "The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only while free memory covers both (at most half the host's RAM). A heavy step whose ledger peak and a quarter is more holds that instead.",
+              "description": "The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only while free memory covers both (at most half the host's RAM). A heavy step whose need, learned from its past runs in the ledger or declared with --memory-mb, is more holds that instead.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1048576,

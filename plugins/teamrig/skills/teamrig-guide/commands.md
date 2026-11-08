@@ -3891,9 +3891,17 @@ for it. It goes ahead while the host's free memory, less the MB held for the run
 that just ended or started gives back or takes its memory in a burst. On a host with less than twice that RAM, half
 the host's RAM is enough. Until then it waits first in line (`...; host memory: 7000 MB free, 4096 MB held for them,
 6144 MB needed (4096 floor + 2048 for this step)`), and when its wait runs out it is refused with `host memory still
-short: ...`. The MB held for a step is the most its process tree held in its latest 20 runs under the same session
-and `--what`, plus a quarter. A step without `--small` holds at least `delivery.queue.heavyReserveMb` (2048); a
-small step with no run measured yet holds `delivery.queue.smallReserveMb` (2048).
+short: ...`.
+
+The MB held for a step is its need, learned from its latest 20 ended runs under the same session and `--what` in the
+ledger: the most their process tree held, plus a quarter, or the median of what the host's free memory fell by while
+they ran (`startFreeMb` less `lowFreeMb`), whichever is more. With no such run, it learns from its session's runs of
+the same `--kind` and size (`--small` or not), never for kind `other`, which spans ships, checks and installs. A run
+that measured nothing teaches nothing. `--memory-mb <MB>` declares a need, held when it is at least the learned one. A
+step without `--small` holds at least `delivery.queue.heavyReserveMb` (2048); a small step with neither a learned nor
+a declared need holds `delivery.queue.smallReserveMb` (2048). The wait line says where a need came from:
+`(4096 floor + 7500 for this step, learned from 2 runs)`, `learned from 1 build run` when its kind's runs taught it,
+`declared with --memory-mb`.
 
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
 In its turn, while the lock is not held and host memory lets it in, it writes a share in `<lock>.shared` and runs.
@@ -3971,6 +3979,8 @@ Flags:
 - `--task <T id>`: the register task the step works for, recorded on its ledger records with that task's register
   priority; default the first task id `--what` names (`--what "T12 specs"`), else none. A value that is not a task id
   is refused (exit 64).
+- `--memory-mb <MB>`: the MB the step needs besides `memoryFloorMb`, held when it is at least the need learned from
+  its past runs (see above); a whole number from 1, else refused (exit 64).
 - `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).
 - `--pre-push`: a git pre-push hook's checks: reuse or record their pass on this clean tree, and decline a push
   whose checks waited over a minute for the lock (see above).

@@ -762,12 +762,12 @@ export interface QueueConfig {
   readonly memorySampleSeconds: number;
   /** A queued step, a merge or a deploy starts only while the host keeps this many MB free besides those held for it and for the small steps sharing the host. */
   readonly memoryFloorMb: number;
-  /** The MB held for a small step with no ledger record of its peak yet. */
+  /** The MB held for a small step whose need is neither learned from its past runs in the ledger nor declared with --memory-mb. */
   readonly smallReserveMb: number;
   /**
    * The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only
-   * while free memory covers both (at most half the host's RAM). A heavy step whose ledger peak and a quarter is more
-   * holds that instead.
+   * while free memory covers both (at most half the host's RAM). A heavy step whose need, learned from its past runs in
+   * the ledger or declared with --memory-mb, is more holds that instead.
    */
   readonly heavyReserveMb: number;
 }

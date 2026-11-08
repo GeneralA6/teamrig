@@ -28,6 +28,8 @@ export interface MemoryShort {
   readonly reserveMb: number;
   /** The host's RAM, set when the need is half of it. */
   readonly hostMb?: number;
+  /** Where `reserveMb` came from (`StepNeed.basis`), when the step's need says. */
+  readonly basis?: string;
 }
 
 /** A commit charge that would pass `maxPct` of its limit with the step's `reserveMb` counted. */
@@ -35,6 +37,8 @@ export interface CommitShort extends CommitCharge {
   readonly kind: 'commit';
   readonly maxPct: number;
   readonly reserveMb: number;
+  /** Where `reserveMb` came from (`StepNeed.basis`), when the step's need says. */
+  readonly basis?: string;
 }
 
 /** What one look found: room for the step, with the least free memory read; or why it must wait. */
@@ -89,12 +93,15 @@ export class MemoryGate {
  * Why a step waits on the host's memory, as a session reads it, `sharing` the number of small steps the held MB is
  * for: `host memory: 6000 MB free, 2048 MB held for it, 6144 MB needed (4096 floor + 2048 for this step)`, or
  * `host commit charge: 30000 of 32000 MB, 2048 MB more for this step would pass 92% (open.headroom.commitMaxPct)`.
+ * A step's MB is followed by its basis, when it has one: `(4096 floor + 7500 for this step, learned from 12 runs)`.
  */
 export function shortText(short: MemoryShort | CommitShort, sharing: number): string {
   if (short.kind === 'commit') {
-    return `host commit charge: ${short.usedMb} of ${short.limitMb} MB, ${short.reserveMb} MB more for this step would pass ${short.maxPct}% (open.headroom.commitMaxPct)`;
+    const basis = short.basis === undefined ? '' : ` (${short.basis})`;
+    return `host commit charge: ${short.usedMb} of ${short.limitMb} MB, ${short.reserveMb} MB more for this step${basis} would pass ${short.maxPct}% (open.headroom.commitMaxPct)`;
   }
   const held = sharing === 0 ? '' : `, ${short.heldMb} MB held for ${sharing === 1 ? 'it' : 'them'}`;
-  const need = short.hostMb === undefined ? `${short.floorMb} floor + ${short.reserveMb} for this step` : `half the host's ${short.hostMb} MB`;
+  const basis = short.basis === undefined ? '' : `, ${short.basis}`;
+  const need = short.hostMb === undefined ? `${short.floorMb} floor + ${short.reserveMb} for this step${basis}` : `half the host's ${short.hostMb} MB`;
   return `host memory: ${short.freeMb} MB free${held}, ${short.needMb} MB needed (${need})`;
 }

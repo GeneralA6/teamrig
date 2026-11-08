@@ -240,7 +240,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'worktree add': { effect: 'write', flags: ['repo'], load: async () => (await worktreeCommands()).add },
   'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
-  queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task'], switches: ['small', 'pre-push'], rest: true, load: async () => (await queueCommand()).queue },
+  queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb'], switches: ['small', 'pre-push'], rest: true, load: async () => (await queueCommand()).queue },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
   deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
@@ -690,7 +690,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       leads, the lead any, and any session one on a detached HEAD whose every commit is on the branch
       origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too, once every
       commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
-  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--small] [--pre-push] -- <command ...>   runs one queued step
+  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--memory-mb <MB>] [--small] [--pre-push] -- <command ...>   runs one queued step
       (a build, a test run, a database script) under the host lock, so the host runs one at a time, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
@@ -705,11 +705,14 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       deploy waits in its turn for host memory: the least of 3 free-memory reads 1 s apart over
       delivery.queue.memoryFloorMb plus the MB held for it and for the small steps running (at most half
       the host's RAM), and the commit charge under open.headroom.commitMaxPct with its MB counted. A step
-      holds its ledger peak and a quarter, at least delivery.queue.heavyReserveMb without --small, else
-      delivery.queue.smallReserveMb. --small (a spec run, a lint): shares the host with other small steps
-      and is killed after delivery.queue.smallMaxRunMinutes (--max-minutes up to it); a step without
-      --small waits for them to end, and a step waiting behind it is told which. --pre-push (a git
-      pre-push hook's checks): on a clean tree
+      holds the need its latest 20 runs under its session and --what show (their most held and a
+      quarter, or their median host drop, whichever is more; with no such run, its session's runs of
+      the same --kind and size, never other), or its --memory-mb when more; at least
+      delivery.queue.heavyReserveMb without --small, else with neither delivery.queue.smallReserveMb.
+      The wait line says where a learned or declared need came from. --small (a spec run, a lint):
+      shares the host with other small steps and is killed after delivery.queue.smallMaxRunMinutes
+      (--max-minutes up to it); a step without --small waits for them to end, and a step waiting
+      behind it is told which. --pre-push (a git pre-push hook's checks): on a clean tree
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass

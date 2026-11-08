@@ -111,4 +111,20 @@ describe('shortText', () => {
       'host commit charge: 30000 of 32000 MB, 2048 MB more for this step would pass 92% (open.headroom.commitMaxPct)',
     );
   });
+
+  it('names where the step\'s MB came from when its need says, except for a need capped at half the host (T2209)', () => {
+    const basis = 'learned from 2 runs';
+    assert.equal(
+      shortText({ kind: 'memory', freeMb: 10_000, heldMb: 0, needMb: 11_596, floorMb: 4096, reserveMb: 7500, basis }, 0),
+      'host memory: 10000 MB free, 11596 MB needed (4096 floor + 7500 for this step, learned from 2 runs)',
+    );
+    assert.equal(
+      shortText({ kind: 'commit', usedMb: 30000, limitMb: 32000, maxPct: 92, reserveMb: 2048, basis }, 0),
+      'host commit charge: 30000 of 32000 MB, 2048 MB more for this step (learned from 2 runs) would pass 92% (open.headroom.commitMaxPct)',
+    );
+    assert.equal(
+      shortText({ kind: 'memory', freeMb: 5000, heldMb: 0, needMb: 6000, floorMb: 4096, reserveMb: 7500, hostMb: 12000, basis }, 0),
+      "host memory: 5000 MB free, 6000 MB needed (half the host's 12000 MB)",
+    );
+  });
 });

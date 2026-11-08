@@ -77,6 +77,8 @@ export interface HostShare extends HostLockInfo {
 export interface StepNeed {
   readonly shares: boolean;
   readonly reserveMb: number;
+  /** Where `reserveMb` came from, which a wait on memory names (`learned from 12 runs`); unset for a default. */
+  readonly basis?: string;
 }
 
 /** How a share was let in: the host's free memory then (when the lock has a memory gate), and the small steps already sharing it. */
@@ -596,7 +598,7 @@ export class HostLock {
         return { kind: 'withdrawn' };
       }
       const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
-      const result = need?.shares === true ? await this.shareInTurn(ticket.waiter, ahead, removeUnknown, need.reserveMb) : await this.takeInTurn(ticket.waiter, ahead, removeUnknown, need?.reserveMb);
+      const result = need?.shares === true ? await this.shareInTurn(ticket.waiter, ahead, removeUnknown, need) : await this.takeInTurn(ticket.waiter, ahead, removeUnknown, need);
       if (result.kind === 'taken') {
         return result;
       }
@@ -703,11 +705,11 @@ export class HostLock {
   }
 
   /**
-   * One look in line for a small step holding `reserveMb`. A live lock is waited on, and so is an earlier waiter. Else
-   * the step shares the host, under its ticket's id, once the memory gate finds room for it beside the small steps
-   * already sharing it (at once with no gate); a stale lock is left for the next step that takes the lock.
+   * One look in line for a small step with `need`. A live lock is waited on, and so is an earlier waiter. Else the step
+   * shares the host, under its ticket's id, holding its `reserveMb`, once the memory gate finds room for it beside the
+   * small steps already sharing it (at once with no gate); a stale lock is left for the next step that takes the lock.
    */
-  private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, reserveMb: number): Promise<Look> {
+  private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed): Promise<Look> {
     const seen = await this.read();
     if (seen.kind === 'held' && !this.isStale(seen.info)) {
       return { kind: 'busy', holder: await this.heldBy(seen.info) };
@@ -723,26 +725,28 @@ export class HostLock {
       await this.removeIf((text) => text === seen.text);
     }
     const others = await this.liveShares();
-    const look = await this.lookAtMemory(reserveMb, others);
+    const look = await this.lookAtMemory(need, others);
     if (look !== undefined && look.kind !== 'room') {
       return { kind: 'busy', holder: { ...look, shares: others } };
     }
-    const share: HostShare = { ...this.newLock(waiter.session, waiter.purpose, waiter.id), reserveMb };
+    const share: HostShare = { ...this.newLock(waiter.session, waiter.purpose, waiter.id), reserveMb: need.reserveMb };
     await this.ports.files.write(join(this.shared, `${share.id}.json`), stored(share));
     return { kind: 'taken', lock: share, sharing: look === undefined ? { others } : { freeMb: look.freeMb, others } };
   }
 
   /**
-   * The memory gate's look for a step holding `reserveMb` (the gate's `heavyReserveMb` when undefined) beside the small
-   * steps `shares`, whose held MB counts as taken; undefined for a lock with no gate.
+   * The memory gate's look for a step holding its `need`'s MB (the gate's `heavyReserveMb` when it states none) beside
+   * the small steps `shares`, whose held MB counts as taken; a short look carries the need's `basis`, so its wait line
+   * says where the MB came from. Undefined for a lock with no gate.
    */
-  private async lookAtMemory(reserveMb: number | undefined, shares: readonly HostShare[]): Promise<MemoryLook | undefined> {
+  private async lookAtMemory(need: StepNeed | undefined, shares: readonly HostShare[]): Promise<MemoryLook | undefined> {
     const { memory } = this.ports;
     if (memory === undefined) {
       return undefined;
     }
     const heldMb = shares.reduce((total, share) => total + share.reserveMb, 0);
-    return memory.look(reserveMb ?? memory.config.heavyReserveMb, heldMb);
+    const look = await memory.look(need?.reserveMb ?? memory.config.heavyReserveMb, heldMb);
+    return look.kind === 'room' || need?.basis === undefined ? look : { ...look, basis: need.basis };
   }
 
   /** Every share file, with what it says: undefined when it cannot be read as a share. */
@@ -785,13 +789,13 @@ export class HostLock {
   }
 
   /**
-   * One look in line for a step holding `reserveMb` (the gate's heavy reserve when undefined). A live holder is named
+   * One look in line for a step with `need` (the gate's heavy reserve when undefined). A live holder is named
    * without a write, and a later waiter names the waiter first in line, which the lock goes to next. The first in line
    * takes the lock once the memory gate finds room for it, under its ticket's id so the step keeps one identity from
    * joining the line to releasing the lock; the small steps still sharing the host count as holding their MB, as the
    * step that took the lock waits for them to end.
    */
-  private async takeInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, reserveMb: number | undefined): Promise<Look> {
+  private async takeInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined): Promise<Look> {
     const seen = await this.read();
     if (seen.kind === 'held' && !this.isStale(seen.info)) {
       return { kind: 'busy', holder: await this.heldBy(seen.info) };
@@ -804,7 +808,7 @@ export class HostLock {
       return { kind: 'busy', holder: { kind: 'unknown' } };
     }
     const shares = await this.liveShares();
-    const look = await this.lookAtMemory(reserveMb, shares);
+    const look = await this.lookAtMemory(need, shares);
     if (look !== undefined && look.kind !== 'room') {
       return { kind: 'busy', holder: { ...look, shares } };
     }
