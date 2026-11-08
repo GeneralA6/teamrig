@@ -6,9 +6,11 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { refusalOf, takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
+import { lineRequests } from '../testing/line-tickets.ts';
 import { withdrawnLock } from '../testing/withdrawn-lock.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
 import { MemoryGate } from './memory-gate.ts';
+import type { LineRequest } from './process-request.ts';
 import type { WaitCause } from './wait-log.ts';
 
 const LOCK_PATH = '/kit/host.lock';
@@ -27,6 +29,9 @@ const OTHERS_LOCK = JSON.stringify({
   expiresAt: '2030-01-08T12:20:00.000Z',
 });
 
+/** What the step's ticket says it asks: merge work for a Roadmap task at priority 1. */
+const LINE: LineRequest = { kind: 'merge', task: 'T5', priority: 1, class: 'Roadmap', classPct: 60 };
+
 interface World {
   readonly files: MemoryFiles;
   readonly clock: FakeClock;
@@ -35,6 +40,8 @@ interface World {
   readonly waits: string[];
   readonly causes: WaitCause[];
   readonly request: ClearanceRequest;
+  /** The request of each ticket in the host lock's line, read each time the lock sleeps between polls. */
+  readonly asked: unknown[];
 }
 
 /**
@@ -44,10 +51,14 @@ interface World {
 function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number = 60 * 60_000, memory?: FakeHostMemory): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
+  const asked: unknown[] = [];
   const lock = new HostLock(LOCK_PATH, 150 * 60_000, {
     files,
     clock,
-    sleep: clock.sleep,
+    sleep: async (ms) => {
+      asked.push(...(await lineRequests(files, LOCK_PATH)));
+      await clock.sleep(ms);
+    },
     pid: ME,
     alive: (pid) => pid === ME || pid === OTHER,
     newId: () => 'mine',
@@ -59,7 +70,7 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     waits.push(told.text);
     causes.push(told.cause);
   };
-  return { files, clock, lock, waits, causes, request: { session: 'api', purpose: 'merge api', maxWaitMs, pollMs: POLL_MS, onWait, zone: TimeZone.UTC } };
+  return { files, clock, lock, waits, causes, asked, request: { session: 'api', purpose: 'merge api', line: LINE, maxWaitMs, pollMs: POLL_MS, onWait, zone: TimeZone.UTC } };
 }
 
 /** Answers the readiness checks in turn, the last one from then on. */
@@ -169,6 +180,18 @@ describe('takeWhenClear', () => {
     const clearance = await takeWhenClear(answers(GO, FROZEN), { lock, clock, sleep: clock.sleep }, request);
     assert.deepEqual(clearance, { kind: 'gaveUp', reason: FROZEN.reason });
     assert.equal(files.get(LOCK_PATH), undefined);
+  });
+
+  it("waits in the host lock's line with a ticket saying what the step asks: its line request, its memory need, whole host (T2210)", async () => {
+    const held = world({ [LOCK_PATH]: OTHERS_LOCK }, 60_000);
+    await takeWhenClear(answers(GO), { lock: held.lock, clock: held.clock, sleep: held.clock.sleep }, held.request);
+    const short = world({}, 60_000, new FakeHostMemory(5000));
+    await takeWhenClear(answers(GO), { lock: short.lock, clock: short.clock, sleep: short.clock.sleep }, short.request);
+    assert.ok(held.asked.length > 0 && short.asked.length > 0);
+    assert.deepEqual(
+      [held.asked, short.asked],
+      [held.asked.map(() => ({ ...LINE, needMb: 0, heavy: true })), short.asked.map(() => ({ ...LINE, needMb: 4096, heavy: true }))],
+    );
   });
 });
 

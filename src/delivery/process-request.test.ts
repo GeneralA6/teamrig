@@ -8,10 +8,8 @@ import {
   processRequest,
   STEP_KINDS,
   taskOfLabel,
-  withTaskPriority,
   type LineTask,
   type RequestFocus,
-  type RequestTask,
   type StepKind,
 } from './process-request.ts';
 
@@ -75,35 +73,6 @@ describe('processRequest', () => {
 
   it("keeps the task's priority beside its task, and drops a priority with no task to belong to (T2209)", () => {
     assert.deepEqual([processRequest('test', 'T5', 2), processRequest('test', undefined, 2)], [{ kind: 'test', task: 'T5', priority: 2 }, { kind: 'test' }]);
-  });
-});
-
-describe('withTaskPriority (T2209)', () => {
-  /** A register lookup over `tasks` that counts its reads. */
-  function registerOf(tasks: ReadonlyMap<string, RequestTask>): { readonly reads: string[]; readonly taskOf: (id: string) => Promise<RequestTask | undefined> } {
-    const reads: string[] = [];
-    return {
-      reads,
-      taskOf: async (id) => {
-        reads.push(id);
-        return tasks.get(id);
-      },
-    };
-  }
-
-  it("adds the register's priority of the task the request works for", async () => {
-    const register = registerOf(new Map([['T5', { priority: 1 }]]));
-    assert.deepEqual(await withTaskPriority(processRequest('merge', 'T5'), register.taskOf), { kind: 'merge', task: 'T5', priority: 1 });
-  });
-
-  it('leaves a request that names no task unchanged, without reading the register', async () => {
-    const register = registerOf(new Map([['T5', { priority: 1 }]]));
-    assert.deepEqual([await withTaskPriority(processRequest('build', undefined), register.taskOf), register.reads], [{ kind: 'build' }, []]);
-  });
-
-  it("adds no priority for a task the register lacks, another team's or a typo", async () => {
-    const register = registerOf(new Map());
-    assert.deepEqual([await withTaskPriority(processRequest('test', 'T9'), register.taskOf), register.reads], [{ kind: 'test', task: 'T9' }, ['T9']]);
   });
 });
 

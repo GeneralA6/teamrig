@@ -36,21 +36,6 @@ export function processRequest(kind: StepKind, task: string | undefined, priorit
   return priority === undefined ? { kind, task } : { kind, task, priority };
 }
 
-/** The register's task as a request reads it: its priority. */
-export type RequestTask = Pick<Task, 'priority'>;
-
-/**
- * `request` with the register priority of the task it names, read by `taskOf`; unchanged when it names none, without
- * asking the register, or when the register has no such task (another team's, or a typo).
- */
-export async function withTaskPriority(request: ProcessRequest, taskOf: (id: string) => Promise<RequestTask | undefined>): Promise<ProcessRequest> {
-  if (request.task === undefined) {
-    return request;
-  }
-  const task = await taskOf(request.task);
-  return processRequest(request.kind, request.task, task?.priority);
-}
-
 /** The register's task as the host lock's line reads it: its priority and its work class. */
 export type LineTask = Pick<Task, 'priority' | 'workClass'>;
 

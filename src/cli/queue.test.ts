@@ -2,7 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { isRecord } from '../core/guards.ts';
 import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
 import type { QueuedStepRecord, RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
 import { recordPass } from '../delivery/push-pass.ts';
@@ -13,6 +12,7 @@ import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
+import { lineRequests } from '../testing/line-tickets.ts';
 import { ROOMY_FREE_MB } from '../testing/quiet-world.ts';
 import { EXIT } from './runtime.ts';
 
@@ -461,13 +461,9 @@ describe('teamrig queue', () => {
     const added = await kit.run(['add', '--title', 'Ship the build', '--description', 'what and why', '--priority', 'p2', '--class', 'Maintenance', '--session', 'alpha']);
     assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
     await kit.files.write(LOCK, heldBy());
-    const queue = `${LOCK}.queue`;
     const requests: unknown[] = [];
     const sleep = async (ms: number): Promise<void> => {
-      for (const name of await kit.files.list(queue)) {
-        const ticket: unknown = JSON.parse(kit.files.get(join(queue, name)) ?? 'null');
-        requests.push(isRecord(ticket) ? ticket['request'] : undefined);
-      }
+      requests.push(...(await lineRequests(kit.files, LOCK)));
       await kit.clock.sleep(ms);
     };
     const result = await kit.run(['queue', '--session', 'alpha', '--what', 'T1 build', '--', 'npm', 'run', 'build'], { steps, sessionProcesses: otherRuns(), sleep });

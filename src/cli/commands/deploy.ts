@@ -54,7 +54,7 @@ export async function deploy(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const watching = await watchStarters(runtime, say);
   try {
     const { stop } = watching;
-    const setup = { team, delivery, places, zone, inTeam: (path: string) => teamPlace(kit.paths, path) };
+    const setup = { team, delivery, places, zone, inTeam: (path: string) => teamPlace(kit.paths, path), focus: config.focus };
     const ports = {
       git: runtime.mergeGit,
       hooks: stoppableHooks(runtime.hooks, stop),
