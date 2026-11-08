@@ -994,7 +994,7 @@
           "properties": {
             "startUtc": { "description": "Where the quiet hours start, HH:MM UTC.", "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
             "endUtc": { "description": "Where they end, HH:MM UTC; an end before the start runs them past midnight.", "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
-            "action": { "description": "What the live warning does in the quiet hours, with overAction's choices.", "enum": ["warn", "ask-lead", "ask", "block"] },
+            "action": { "description": "What the live warning does in the quiet hours, with overAction's choices. ask holds a helper launch on a permission prompt that nobody at the host answers at night, so its tab stalls until someone does (teamrig doctor flags it); block refuses the launch with its reason and the tab goes on.", "enum": ["warn", "ask-lead", "ask", "block"] },
             "paceWeight": {
               "description": "What a quiet minute counts on the pace line and in the daily budget, against 1 for any other minute. 0 when unset: the team sleeps, so the line stays flat through the night.",
               "type": "number",

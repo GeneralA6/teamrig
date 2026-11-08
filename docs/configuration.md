@@ -447,7 +447,7 @@ UTC hours in which the live warning applies action on its own, while the team sl
 | --- | --- | --- | --- |
 | `startUtc` (required) | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | Where the quiet hours start, HH:MM UTC. |
 | `endUtc` (required) | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | Where they end, HH:MM UTC; an end before the start runs them past midnight. |
-| `action` (required) | one of `"warn"`, `"ask-lead"`, `"ask"`, `"block"` |  | What the live warning does in the quiet hours, with overAction's choices. |
+| `action` (required) | one of `"warn"`, `"ask-lead"`, `"ask"`, `"block"` |  | What the live warning does in the quiet hours, with overAction's choices. ask holds a helper launch on a permission prompt that nobody at the host answers at night, so its tab stalls until someone does (teamrig doctor flags it); block refuses the launch with its reason and the tab goes on. |
 | `paceWeight` | number (0 to 1) |  | What a quiet minute counts on the pace line and in the daily budget, against 1 for any other minute. 0 when unset: the team sleeps, so the line stays flat through the night. |
 
 ## `budget.lift`
