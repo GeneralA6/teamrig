@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  holdersText,
+  nodeHostMemory,
   nodeMemoryProbe,
+  parseHolders,
   parseMeminfoCommit,
   parseProcessRows,
   parseWindowsCommit,
@@ -238,5 +241,61 @@ describe('nodeMemoryProbe', () => {
     }
     assert.ok(charge !== undefined, 'the host gives its commit charge');
     assert.ok(charge.usedMb > 0 && charge.limitMb > 0, `${charge.usedMb} of ${charge.limitMb} MB`);
+  });
+});
+
+describe('parseHolders (T2209)', () => {
+  it('sums a Windows list by program, `.exe` left out, most memory first', () => {
+    const text = [`${1000 * MB},msedge.exe`, `${500 * MB},msedge.exe`, `${2048 * MB},Vmmem`, `${100 * MB},claude.EXE`, ''].join('\r\n');
+    assert.deepEqual(parseHolders(text, 1), [
+      { name: 'Vmmem', mb: 2048, processes: 1 },
+      { name: 'msedge', mb: 1500, processes: 2 },
+      { name: 'claude', mb: 100, processes: 1 },
+    ]);
+  });
+
+  it('reads a `ps` list in KB, a full path by its last part and a slashed kernel name whole', () => {
+    const text = '  204800 node\n 102400 /usr/lib/firefox/firefox\n  51200 kworker/0:1\n 1024 Google Chrome Helper\n';
+    assert.deepEqual(parseHolders(text, 1024), [
+      { name: 'node', mb: 200, processes: 1 },
+      { name: 'firefox', mb: 100, processes: 1 },
+      { name: 'kworker/0:1', mb: 50, processes: 1 },
+      { name: 'Google Chrome Helper', mb: 1, processes: 1 },
+    ]);
+  });
+
+  it('leaves out a line with no number or no name, and orders equal holders by name', () => {
+    const text = [`${10 * MB},beta`, 'junk', `,nameless`, `${10 * MB}`, `${10 * MB},alpha`, `${99 * MB}`].join('\n');
+    assert.deepEqual(parseHolders(text, 1), [
+      { name: 'alpha', mb: 10, processes: 1 },
+      { name: 'beta', mb: 10, processes: 1 },
+    ]);
+  });
+});
+
+describe('holdersText (T2209)', () => {
+  it('names the top three: GB with one decimal from 1 GB, else MB, and the processes of a program with more than one', () => {
+    const holders = [
+      { name: 'vmmem', mb: 22_938, processes: 1 },
+      { name: 'msedge', mb: 21_402, processes: 35 },
+      { name: 'claude', mb: 1023, processes: 12 },
+      { name: 'node', mb: 400, processes: 3 },
+    ];
+    assert.equal(holdersText(holders), 'top memory holders: vmmem 22.4 GB, msedge 20.9 GB in 35 processes, claude 1023 MB in 12 processes');
+    assert.equal(holdersText(holders, 1), 'top memory holders: vmmem 22.4 GB');
+  });
+
+  it('names nothing for a host that lists no holder', () => {
+    assert.equal(holdersText([]), undefined);
+  });
+});
+
+describe('nodeHostMemory holders (T2209)', () => {
+  it('lists the programs of this host, node among them with memory held', async () => {
+    const holders = await nodeHostMemory(process.platform).holders();
+    assert.ok(holders !== undefined, 'the host lists its programs');
+    const node = holders.find((holder) => holder.name === 'node');
+    assert.ok(node !== undefined && node.mb > 0 && node.processes >= 1, `node holds ${node?.mb} MB`);
+    assert.deepEqual(holders.map((holder) => holder.mb), holders.map((holder) => holder.mb).sort((a, b) => b - a), 'most memory first');
   });
 });

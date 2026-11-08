@@ -382,8 +382,7 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
     onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
-    await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `deploy ${repo.name} ${early.pending.range}` }));
-    return { kind: 'refused', reason: clearance.reason };
+    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `deploy ${repo.name} ${early.pending.range}` })) };
   }
   try {
     const latest = view.read ?? (await readPending(ports.git, repo));

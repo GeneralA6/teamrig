@@ -51,10 +51,25 @@ export interface MemoryWatch {
   stop(): Promise<MemoryPeaks>;
 }
 
-/** The host's memory: its probe, and a watch of one process tree while a queued step runs. */
+/** One program's memory across its processes: its name as the host lists it (`.exe` left out), in MB. */
+export interface MemoryHolder {
+  readonly name: string;
+  readonly mb: number;
+  readonly processes: number;
+}
+
+/** How many of the programs holding the most memory a refusal names. */
+export const TOP_HOLDERS = 3;
+
+/** The host's memory: its probe, a watch of one process tree while a queued step runs, and who holds the most. */
 export interface HostMemory extends MemoryProbe {
   /** Samples the tree of `root` and the host's free memory now and every `intervalMs` until stopped. */
   watch(root: number, intervalMs: number): MemoryWatch;
+  /**
+   * The host's programs by the memory they hold, most first; undefined when they cannot be listed. A look of its own,
+   * apart from the process list a watch samples, since only a refusal after a wait on memory asks it.
+   */
+  holders(): Promise<readonly MemoryHolder[] | undefined>;
 }
 
 /** Calls `tick` every `ms` until the returned function is called. */
@@ -172,6 +187,70 @@ function listCommand(platform: NodeJS.Platform): { readonly file: string; readon
   return { file: 'ps', args: ['-A', '-o', 'pid=,ppid=,rss='], bytesPerUnit: 1024 };
 }
 
+/** A `<memory> <name>` or `<memory>,<name>` line of a named process list. */
+const HOLDER_LINE = /^\s*(\d+)(?:,|\s+)(.*\S)\s*$/;
+
+/**
+ * A process's program as a holder names it: the last part of a full path (`ps` on macOS prints one) and no `.exe`. A
+ * name with a slash that is no path, such as Linux's `kworker/0:1`, stays whole.
+ */
+function programOf(listed: string): string {
+  const program = listed.startsWith('/') ? listed.slice(listed.lastIndexOf('/') + 1) : listed;
+  return program.replace(/\.exe$/i, '');
+}
+
+/**
+ * The programs a named process list holds memory in, most first (then by name), each process's memory, in the
+ * lister's unit (`bytesPerUnit` bytes), summed by program; a line that is not a whole number and a name is left out.
+ */
+export function parseHolders(text: string, bytesPerUnit: number): MemoryHolder[] {
+  const held = new Map<string, { readonly bytes: number; readonly processes: number }>();
+  for (const line of text.split(/\r?\n/)) {
+    const match = HOLDER_LINE.exec(line);
+    const amount = Number(match?.[1]);
+    const listed = match?.[2];
+    if (listed === undefined || !Number.isSafeInteger(amount)) {
+      continue;
+    }
+    const name = programOf(listed);
+    const sum = held.get(name) ?? { bytes: 0, processes: 0 };
+    held.set(name, { bytes: sum.bytes + amount * bytesPerUnit, processes: sum.processes + 1 });
+  }
+  return [...held]
+    .map(([name, sum]) => ({ name, mb: Math.round(sum.bytes / MB), processes: sum.processes }))
+    .sort((a, b) => b.mb - a.mb || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+/** `mb` as a person reads it: GB with one decimal from 1 GB, else MB. */
+function sizeText(mb: number): string {
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
+}
+
+/** The first `count` of `holders` as a refusal names them, such as `top memory holders: vmmem 22.4 GB, msedge 20.9 GB in 35 processes`; undefined for none. */
+export function holdersText(holders: readonly MemoryHolder[], count: number = TOP_HOLDERS): string | undefined {
+  const named = holders.slice(0, count).map((holder) => `${holder.name} ${sizeText(holder.mb)}${holder.processes > 1 ? ` in ${holder.processes} processes` : ''}`);
+  return named.length === 0 ? undefined : `top memory holders: ${named.join(', ')}`;
+}
+
+/**
+ * Lists every process's working set (resident memory) and program name: Win32_Process in bytes, `ps` in KB. Apart
+ * from `listCommand`, whose whole-number lines every watch sample parses.
+ */
+function namedListCommand(platform: NodeJS.Platform): { readonly file: string; readonly args: readonly string[]; readonly bytesPerUnit: number } {
+  if (platform === 'win32') {
+    const script = "Get-CimInstance Win32_Process | ForEach-Object { '{0},{1}' -f $_.WorkingSetSize,$_.Name }";
+    return { file: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', script], bytesPerUnit: 1 };
+  }
+  return { file: 'ps', args: ['-A', '-o', 'rss=,comm='], bytesPerUnit: 1024 };
+}
+
+/** The host's programs by the memory they hold; undefined when the list fails. The lister itself is counted: a few dozen MB. */
+async function holdersOf(platform: NodeJS.Platform): Promise<readonly MemoryHolder[] | undefined> {
+  const { file, args, bytesPerUnit } = namedListCommand(platform);
+  const text = await outputOf(file, args);
+  return text === undefined ? undefined : parseHolders(text, bytesPerUnit);
+}
+
 /** What `file` printed, or undefined when it failed. */
 function outputOf(file: string, args: readonly string[]): Promise<string | undefined> {
   return new Promise((resolve) => {
@@ -221,8 +300,8 @@ export function nodeMemoryProbe(platform: NodeJS.Platform): MemoryProbe {
   };
 }
 
-/** The real host memory: the node probe, its watches timed by `nodeEvery`. */
+/** The real host memory: the node probe, its watches timed by `nodeEvery`, and the host's named process list. */
 export function nodeHostMemory(platform: NodeJS.Platform): HostMemory {
   const probe = nodeMemoryProbe(platform);
-  return { ...probe, watch: (root, intervalMs) => watchMemory(probe, root, intervalMs, nodeEvery) };
+  return { ...probe, watch: (root, intervalMs) => watchMemory(probe, root, intervalMs, nodeEvery), holders: () => holdersOf(platform) };
 }

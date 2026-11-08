@@ -59,10 +59,9 @@ function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined, z
   }
 }
 
-/** Refuses a step that waited and did not run, after its refusal record (`recordRefusal`). */
+/** Refuses a step that waited and did not run, after its refusal record (`recordRefusal`), with the reason it records. */
 async function refuseWaited(runtime: CliRuntime, ledger: string, waits: WaitLog, mark: RefusalMark): Promise<never> {
-  await recordRefusal(runtime, ledger, waits, mark);
-  throw new RefusedError(mark.reason);
+  throw new RefusedError(await recordRefusal(runtime, ledger, waits, mark));
 }
 
 /**

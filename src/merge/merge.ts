@@ -700,8 +700,7 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
     onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
-    await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `merge ${repo.name}: ${plan.branch}` }));
-    return { kind: 'refused', reason: clearance.reason };
+    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `merge ${repo.name}: ${plan.branch}` })) };
   }
   let outcome: MergeOutcome;
   try {
