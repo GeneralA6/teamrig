@@ -4,6 +4,7 @@ import { DEFAULT_CONTEXT_FILES, DEFAULT_LEAD_LAUNCH } from '../config/defaults.t
 import { launchOf } from '../config/launch.ts';
 import { Roster } from '../config/roster.ts';
 import { describeNameClash, type NameClash, type TreeProblem } from '../config/tree.ts';
+import type { OverAction, QuietHours } from '../config/types.ts';
 import { TimeZone } from '../core/zone.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import type { InboxMark } from '../inbox/marks.ts';
@@ -42,6 +43,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     launches: [],
     projects: [],
     shellHistory: { history: undefined, profiles: [], gated: false },
+    budget: { enabled: true },
     now: NOW,
     zone: TimeZone.UTC,
     command: 'teamrig',
@@ -402,5 +404,26 @@ describe('doctorFindings of the PowerShell history', () => {
   it('is quiet when a profile gates the history, or there is no history file', () => {
     assert.deepEqual(lines(input({ shellHistory: { history, profiles: ['/u/profile.ps1'], gated: true } })), []);
     assert.deepEqual(lines(input({ shellHistory: { history: undefined, profiles: [], gated: false } })), []);
+  });
+});
+
+describe('doctorFindings of the quiet hours', () => {
+  const quiet =(action: OverAction, endUtc = '04:00'): QuietHours => ({ startUtc: '20:00', endUtc, action });
+
+  it('flags quiet hours that ask before a helper launch, naming their window on the team clock and block as the fix', () => {
+    // 20:00-04:00 UTC is 22:00-06:00 on the January (IST, UTC+2) Jerusalem clock.
+    assert.deepEqual(lines(input({ budget: { enabled: true, quietHours: quiet('ask') }, zone: JERUSALEM })), [
+      'WARN quiet-ask budget.quietHours.action is ask, so in the quiet hours (22:00-06:00 IST) a helper launch waits on a permission prompt ' +
+        'nobody at the host answers, and its tab stalls until someone does: set budget.quietHours.action to block, which refuses the launch with its reason and lets the tab go on',
+    ]);
+  });
+
+  it('is quiet when quiet hours block, warn or ask the lead, are unset or of no length, or the budget is off', () => {
+    for (const action of ['block', 'warn', 'ask-lead'] as const) {
+      assert.deepEqual(lines(input({ budget: { enabled: true, quietHours: quiet(action) } })), [], action);
+    }
+    assert.deepEqual(lines(input({ budget: { enabled: true } })), []);
+    assert.deepEqual(lines(input({ budget: { enabled: true, quietHours: quiet('ask', '20:00') } })), []);
+    assert.deepEqual(lines(input({ budget: { enabled: false, quietHours: quiet('ask') } })), []);
   });
 });
