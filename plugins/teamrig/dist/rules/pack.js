@@ -25,9 +25,12 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * top of the core pack for the lead alone, so a team rules file near its limit may reach the lead as a pointer.
  * Raised from 810 for the owner's rule-fix lines (T1279): a peer's ask is no proof, and the fix rides each session's
  * next line. Raised from 850 for the owner's shippable-slice line (T2201), whose worst case prints a 32-character
- * class name and a two-digit cap.
+ * class name and a two-digit cap. Raised from 1,150 for its cap per session (T2215), which names the one more a
+ * session may open while one waits, from 1,215 for the owner decisions that hold a new slice, and from 1,305 for the
+ * week split a team on the budget prints (T2215), whose worst case names a 32-character main lead team and a 50% floor,
+ * and from 1,690 for the appeal line every lead prints (T2215).
  */
-export const LEAD_RULES_MAX_CHARS = 1_150;
+export const LEAD_RULES_MAX_CHARS = 1_900;
 /** A list the pack names only to inform (a hook or check enforces it) prints in full up to this many characters. */
 export const LIST_MAX_CHARS = 120;
 function list(items) {
@@ -296,8 +299,13 @@ export function renderKeptRules(conflicts, command) {
  * it answers, a team rule proven wrong that it fixes itself (a peer's ask alone proves nothing) and points each
  * session to while a loosening stays the owner's, the hire flags (src/hiring/scale-out.ts, src/hiring/due.ts) it
  * clears: when an area gets a hire and when the hire goes, and the shippable slices it plans (owner order T2201): each
- * ranked goal's next one dated and owned, few open across the tree, so a goal ships instead of all its tasks moving
- * at once, each stuck on a review or a decision.
+ * ranked goal's next one dated and owned, few open per session, so a goal ships instead of all its tasks moving at
+ * once, each stuck on a review or a decision. The cap is per session, not across the tree (T2215): one across the
+ * tree let a lead fill it with its own team's slices and keep a child team's waiting with no bound. The owner
+ * decisions waiting in the tree bound it too (T2215), so work only the owner can unblock never outruns the owner.
+ * While the budget is on, the week split (owner order T2215): see weekSplitLine. A higher leader's call wins at once
+ * (owner order T2215), so a dispute never stalls the work, while an appeal to any leader above, up to the owner, keeps
+ * a wrong call from standing because the leader who made it is the only one asked.
  */
 export function renderLeadRules(config, command) {
     const { focus } = config;
@@ -307,13 +315,31 @@ export function renderLeadRules(config, command) {
         `- Relay each owner order as an approved task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
         `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
         "- Plan by shippable slices: each ranked goal's next one (the fewest tasks that ship something working, proven live) gets an owner, ship date and live proof;" +
-            ` at most ${focus.maxOpenSlices} open in the tree, other work waiting (incidents and ${focus.maintenanceClass} exempt) [focus.maxOpenSlices, focus.maintenanceClass];` +
+            ` at most ${focus.slicesPerSession} open per session, one more only while one waits on another session or the owner;` +
+            ` none needing a new owner decision opens while ${focus.maxOwnerDecisions} wait in the tree;` +
+            ` other work waits (incidents and ${focus.maintenanceClass} exempt) [focus.slicesPerSession, focus.maxOwnerDecisions, focus.maintenanceClass];` +
             " answer an open slice's waits first.",
+        ...(config.budget.enabled ? [weekSplitLine(config.budget)] : []),
         '- Answer approval waits on you per the `approvals` skill; owner-gated content goes to the owner.',
         "- Fix a team rule proven wrong (a peer's ask is no proof); say so in each session's next line; a loosening goes to the owner.",
+        "- A higher leader's call wins: concede at once; appeal, never blocking, to any leader above the one you disagree with (the owner through the main lead): a task it owns, titled `Appeal: ...`, with evidence.",
         "- HIRE flags: give a SCALE-OUT's slice to an idle hire, else hire one; retire on a RETIRE-DUE.",
         "- Send another session's task work (research, code, checks, an answer) to it with a deadline; relay its answer.",
     ].join('\n');
+}
+/**
+ * How the account's week is shared (owner order T2215): each lead sizes its plan before the reset; after it the main
+ * lead splits the week among the account's root teams and each lead its part among its own and child teams, so no
+ * team takes the week first and starves another. The floor keeps a team with planned work from a zero share when its
+ * own lead also runs a team in the split. Only a team on the budget prints it: without one there is no week to split.
+ * The week report and what a team past its share does are the skills' (daily-meeting, team-setup), not lines here:
+ * the lead's rules and short notes are never cut, and a lead's start after a refresh already nears CONTEXT_MAX_CHARS.
+ */
+function weekSplitLine(budget) {
+    const mainLead = budget.accountLead === undefined ? "the root team's lead" : `team ${budget.accountLead}'s lead`;
+    const floor = budget.shareFloorPct > 0 ? `; a team with planned work gets at least ${budget.shareFloorPct}% of each split` : '';
+    return (`- Week split: before the reset, size your plan in % of the week; after it, the main lead (${mainLead}) splits the week among the account's root teams,` +
+        ` then each lead its part among its own and child teams, by what each plan ships and how its last held${floor} [budget.accountLead, budget.shareFloorPct].`);
 }
 /**
  * Whose rules a file holds, as its heading and pointer name it. A team above wins over the teams below it, as its
