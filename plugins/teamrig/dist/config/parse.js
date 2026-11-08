@@ -1,3 +1,4 @@
+import { ADMISSION_MODES, isAdmissionMode } from "../delivery/admission.js";
 import { deployTargetsOf } from "../delivery/targets.js";
 import { ADDRESS_PATTERN, splitAddress } from "../core/address.js";
 import { isRecord } from "../core/guards.js";
@@ -638,6 +639,7 @@ function parseQueue(read, raw) {
     if (smallMaxRunMinutes > longestRun) {
         read.report(`${path}.smallMaxRunMinutes`, `must be at most maxRunMinutes (${longestRun})`);
     }
+    const admission = read.string(raw, 'admission', path, DEFAULT_QUEUE.admission, oneOf(ADMISSION_MODES));
     return {
         ...(lockPath === undefined ? {} : { lockPath }),
         lockTtlMinutes,
@@ -648,6 +650,10 @@ function parseQueue(read, raw) {
         memoryFloorMb: read.integer(raw, 'memoryFloorMb', path, DEFAULT_QUEUE.memoryFloorMb, CONFIG_LIMITS.queueMemoryFloorMb),
         smallReserveMb: read.integer(raw, 'smallReserveMb', path, DEFAULT_QUEUE.smallReserveMb, CONFIG_LIMITS.queueSmallReserveMb),
         heavyReserveMb: read.integer(raw, 'heavyReserveMb', path, DEFAULT_QUEUE.heavyReserveMb, CONFIG_LIMITS.queueHeavyReserveMb),
+        admission: isAdmissionMode(admission) ? admission : DEFAULT_QUEUE.admission,
+        agingMinutes: read.integer(raw, 'agingMinutes', path, DEFAULT_QUEUE.agingMinutes, CONFIG_LIMITS.queueAgingMinutes),
+        perSessionRunning: read.integer(raw, 'perSessionRunning', path, DEFAULT_QUEUE.perSessionRunning, CONFIG_LIMITS.queuePerSessionRunning),
+        maxHeavyParallel: read.integer(raw, 'maxHeavyParallel', path, DEFAULT_QUEUE.maxHeavyParallel, CONFIG_LIMITS.queueMaxHeavyParallel),
     };
 }
 /** The budget block; a key of the account's week it leaves unset is `above`'s, the team above's (`AccountBudget`). */

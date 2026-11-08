@@ -6,7 +6,7 @@ import { sayingWaits, WaitLog } from "../delivery/wait-log.js";
 import { askChecks, shownLine } from "./checks.js";
 import { hookEndText, hookExitCode, succeeded } from "./hooks.js";
 import { short } from "./pending.js";
-import { chosenRepo, scheduleReadiness, shownBy } from "./run.js";
+import { chosenRepo, deployLine, scheduleReadiness, shownBy } from "./run.js";
 /**
  * `teamrig deploy --targets <a,b> --what "<why>" -- <command>`: a deploy that pulls nothing, such as the restart that
  * makes some of a repository's targets read a rotated secret on the same image. It goes by the rules of that
@@ -87,6 +87,7 @@ export async function redeployTargets(setup, ports, request) {
     const clearance = await takeWhenClear(readiness, ports, {
         session: request.session,
         purpose: `deploy ${targets} of ${repo.name}`,
+        line: deployLine(setup),
         maxWaitMs: wait.maxMinutes * MINUTE_MS,
         pollMs: wait.pollSeconds * 1_000,
         zone: setup.zone,

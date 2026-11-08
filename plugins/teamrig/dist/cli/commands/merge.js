@@ -45,6 +45,7 @@ export async function merge(args, runtime) {
             review: { reviewPaths: config.pushGuard.reviewPaths, tree, roles: config.roles },
             gated: config.pushGuard.pushToProtected === 'gated' ? { tree, roles: config.roles, commits: config.commits } : undefined,
             tasksFolder: kit.paths.tasks,
+            focus: config.focus,
         }, {
             git: runtime.mergeGit,
             steps: stoppableSteps(runtime.steps, stop),
@@ -60,7 +61,7 @@ export async function merge(args, runtime) {
             taskOf: async (id) => (await new JsonlEventLog(runtime.files, kit.paths.events).read()).state.tasks.get(id),
             clock: runtime.clock,
             sleep: stoppableSleep(runtime.sleep, stop),
-            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, zone), stop),
+            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone), stop),
             env: runtime.env,
             platform: runtime.platform,
             nextReset: nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths)),

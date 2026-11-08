@@ -45,7 +45,7 @@ export async function deploy(args, runtime) {
     const watching = await watchStarters(runtime, say);
     try {
         const { stop } = watching;
-        const setup = { team, delivery, places, zone, inTeam: (path) => teamPlace(kit.paths, path) };
+        const setup = { team, delivery, places, zone, inTeam: (path) => teamPlace(kit.paths, path), focus: config.focus };
         const ports = {
             git: runtime.mergeGit,
             hooks: stoppableHooks(runtime.hooks, stop),
@@ -54,7 +54,7 @@ export async function deploy(args, runtime) {
             pid: runtime.pid,
             clock: runtime.clock,
             sleep: stoppableSleep(runtime.sleep, stop),
-            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, zone), stop),
+            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone), stop),
             env: runtime.env,
             platform: runtime.platform,
             scanner: new SecretScanner(config.register.secretPatterns),

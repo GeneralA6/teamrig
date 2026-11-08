@@ -6,13 +6,21 @@ export const PEAK_MARGIN = 1.25;
 function isMeasuredRun(record) {
     return record.type === 'heavy' && record.endedAt !== null && (record.peakTreeMb !== undefined || (record.startFreeMb !== undefined && record.lowFreeMb !== undefined));
 }
-/** The middle value of `values`, which are not empty, rounded up: the mean of the two middle ones for an even count. */
-function medianOf(values) {
+/** The middle value of `values`, which are not empty: the mean of the two middle ones for an even count. */
+function middleOf(values) {
     const sorted = [...values].sort((a, b) => a - b);
     const middle = Math.floor(sorted.length / 2);
     const upper = sorted[middle] ?? 0;
     const lower = sorted.length % 2 === 0 ? (sorted[middle - 1] ?? upper) : upper;
-    return Math.ceil((lower + upper) / 2);
+    return (lower + upper) / 2;
+}
+/** The middle value of `values`, which are not empty, rounded up to a whole MB. */
+function medianOf(values) {
+    return Math.ceil(middleOf(values));
+}
+/** The minutes `run` took, start to end; a clock set back while it ran counts as none. */
+function minutesOf(run) {
+    return Math.max(0, Date.parse(run.endedAt) - Date.parse(run.startedAt)) / 60_000;
 }
 /**
  * The MB `runs` show the step needs: the most its tree held, with PEAK_MARGIN, or the median of what the host lost
@@ -25,11 +33,11 @@ function measuredMbOf(runs) {
     const peakMb = peaks.length === 0 ? 0 : Math.ceil(Math.max(...peaks) * PEAK_MARGIN);
     return Math.max(peakMb, drops.length === 0 ? 0 : medianOf(drops));
 }
-/** The need the latest NEED_RUNS of `runs` show, when they show one over 0 MB. */
+/** The need the latest NEED_RUNS of `runs` show, when they show one over 0 MB, with the median minutes those runs took. */
 function learnedOf(runs, from) {
     const latest = runs.slice(-NEED_RUNS);
     const reserveMb = latest.length === 0 ? 0 : measuredMbOf(latest);
-    return reserveMb > 0 ? { reserveMb, runs: latest.length, from } : undefined;
+    return reserveMb > 0 ? { reserveMb, medianMinutes: middleOf(latest.map(minutesOf)), runs: latest.length, from } : undefined;
 }
 /**
  * The need a step's past runs show, from `records` in ledger order: its session's measured runs under the same label;
@@ -53,7 +61,8 @@ function learnedText(learned, kind) {
  * What a queued step asks of the host: a small one shares it, a heavy one takes the lock, each holding the more of its
  * learned need (`learnedNeedOf`) and its declared `--memory-mb` (declared on a tie), else the config's
  * `smallReserveMb`; a heavy step holds at least `heavyReserveMb`. The need's `basis` says where a learned or declared
- * MB came from; a default has none.
+ * MB came from; a default has none. A learned need also gives the minutes the step is expected to run, whichever MB
+ * wins.
  */
 export function stepNeedOf(records, ask, defaults) {
     const learned = learnedNeedOf(records, ask);
@@ -61,8 +70,9 @@ export function stepNeedOf(records, ask, defaults) {
         ...(ask.declaredMb === undefined ? [] : [{ reserveMb: ask.declaredMb, basis: 'declared with --memory-mb' }]),
         ...(learned === undefined ? [] : [{ reserveMb: learned.reserveMb, basis: learnedText(learned, ask.kind) }]),
     ].reduce((most, need) => (most === undefined || need.reserveMb > most.reserveMb ? need : most), undefined);
+    const expected = learned === undefined ? {} : { expectedMinutes: learned.medianMinutes };
     if (ask.small) {
-        return known === undefined ? { shares: true, reserveMb: defaults.smallReserveMb } : { shares: true, ...known };
+        return known === undefined ? { shares: true, reserveMb: defaults.smallReserveMb, ...expected } : { shares: true, ...known, ...expected };
     }
-    return known === undefined || known.reserveMb < defaults.heavyReserveMb ? { shares: false, reserveMb: defaults.heavyReserveMb } : { shares: false, ...known };
+    return known === undefined || known.reserveMb < defaults.heavyReserveMb ? { shares: false, reserveMb: defaults.heavyReserveMb, ...expected } : { shares: false, ...known, ...expected };
 }

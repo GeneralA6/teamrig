@@ -40,7 +40,7 @@ export async function takeWhenClear(readiness, ports, request) {
             }
             continue;
         }
-        const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) => request.onWait({ cause: causeOfLockWait(holder), text: `the host lock: ${waitText(holder, ahead, request.zone)}` }));
+        const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) => request.onWait({ cause: causeOfLockWait(holder), text: `the host lock: ${waitText(holder, ahead, request.zone)}` }), { request: request.line, exclusive: true });
         if (taking.kind === 'busy') {
             return { kind: 'gaveUp', reason: busyText(taking.holder, request.zone) };
         }
