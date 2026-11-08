@@ -30,7 +30,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
       schedule: {},
-      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 4096 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },
@@ -708,7 +708,7 @@ describe('parseConfig', () => {
     ]);
     assert.deepEqual(config.delivery, {
       schedule: {},
-      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 4096 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },
