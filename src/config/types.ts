@@ -774,13 +774,20 @@ export interface QueueConfig {
   /**
    * How the host lock's line is ordered: `pipeline` lets the most urgent step in first (a p0 step at once, then by class
    * turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning steps of one session
-   * running; `serial` keeps the line in arrival order with no cap, as before.
+   * running and maxHeavyParallel heavy steps sharing the host at once; `serial` keeps the line in arrival order with no
+   * cap and one heavy step at a time, as before.
    */
   readonly admission: AdmissionMode;
   /** In `pipeline` admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. */
   readonly agingMinutes: number;
-  /** In `pipeline` admission, a session with this many steps running (the host lock or a small step's share) waits for one to end, and later steps pass it; 0 caps nothing. */
+  /** In `pipeline` admission, a session with this many steps running (the host lock or a share of the host) waits for one to end, and later steps pass it; 0 caps nothing. */
   readonly perSessionRunning: number;
+  /**
+   * In `pipeline` admission, at most this many heavy queued steps share the host at once, each let in only while the
+   * memory gate has room for it beside the steps already sharing it; a merge and a deploy still take the whole host,
+   * waiting for every share to end.
+   */
+  readonly maxHeavyParallel: number;
 }
 
 /** How a delivery step waits. */

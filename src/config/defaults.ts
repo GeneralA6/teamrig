@@ -364,6 +364,7 @@ export const DEFAULT_QUEUE: QueueConfig = {
   admission: 'pipeline',
   agingMinutes: 15,
   perSessionRunning: 2,
+  maxHeavyParallel: 2,
 };
 
 /** A waiting delivery step looks again every 30 seconds; a deploy step waits up to an hour for freezes and the host lock. */

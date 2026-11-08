@@ -36,13 +36,19 @@ type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessi
 export function hostLockOf(
   runtime: LockRuntime & Pick<CliRuntime, 'memory'>,
   path: string,
-  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb' | 'admission' | 'agingMinutes' | 'perSessionRunning'>,
+  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb' | 'admission' | 'agingMinutes' | 'perSessionRunning' | 'maxHeavyParallel'>,
   headroom: Pick<HeadroomConfig, 'commitMaxPct'>,
   focus: Pick<FocusConfig, 'defaultClass'>,
   zone: TimeZone,
 ): HostLock {
   const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct });
-  const admission: AdmissionRules = { mode: queue.admission, agingMinutes: queue.agingMinutes, perSessionRunning: queue.perSessionRunning, defaultClass: focus.defaultClass };
+  const admission: AdmissionRules = {
+    mode: queue.admission,
+    agingMinutes: queue.agingMinutes,
+    perSessionRunning: queue.perSessionRunning,
+    maxHeavyParallel: queue.maxHeavyParallel,
+    defaultClass: focus.defaultClass,
+  };
   return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, admission });
 }
 

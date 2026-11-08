@@ -5,7 +5,7 @@ import { admissionOrder, agedPriority, isAdmissionMode, placeInLine, UNNAMED_PRI
 const MINUTE = 60_000;
 const NOW = Date.parse('2026-11-08T12:00:00.000Z');
 
-const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, perSessionRunning: 2, defaultClass: 'Improvements' };
+const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, defaultClass: 'Improvements' };
 const SERIAL: AdmissionRules = { ...PIPELINE, mode: 'serial' };
 
 const NO_TURNS: ReadonlyMap<string, number> = new Map();

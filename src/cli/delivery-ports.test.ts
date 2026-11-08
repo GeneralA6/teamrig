@@ -11,7 +11,7 @@ import { freezesLockOf, hostLockOf } from './delivery-ports.ts';
 import type { CliRuntime } from './runtime.ts';
 
 const PATH = '/kit/host.lock';
-const QUEUE = { lockTtlMinutes: 150, memoryFloorMb: 4096, heavyReserveMb: 4096, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 1 } as const;
+const QUEUE = { lockTtlMinutes: 150, memoryFloorMb: 4096, heavyReserveMb: 4096, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 1, maxHeavyParallel: 2 } as const;
 const HEADROOM = { commitMaxPct: 92 };
 const FOCUS = { defaultClass: 'Improvements' };
 const PID = 4242;

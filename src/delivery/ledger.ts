@@ -35,11 +35,11 @@ export interface QueuedStepRecord {
   readonly kit?: string;
   /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
   readonly queuedAt?: string;
-  /** The ms of that wait by cause (lock, line, draining, memory, commit, freeze, check), each one that took time. */
+  /** The ms of that wait by cause (`WAIT_CAUSES`), each one that took time. */
   readonly waits?: WaitTotals;
   /** The host's free memory when the step began to wait, in MB. */
   readonly queueFreeMb?: number;
-  /** Set when the step was a small one sharing the host (`queue --small`), not holding the host lock. */
+  /** Set when the step was a small one sharing the host (`queue --small`); a heavy step, holding the host lock or a heavy share, leaves it out. */
   readonly shared?: true;
   /** An ISO time: when it took the host lock and started. */
   readonly startedAt: string;
