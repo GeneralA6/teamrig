@@ -858,9 +858,22 @@ export class HostLock {
     return share === undefined || this.isStale(share) ? undefined : share;
   }
 
-  /** The live waiters in line, oldest first; takes and removes nothing. */
+  /**
+   * The live waiters in the order they are let in: arrival order (no admission rules, or `serial`), else admission order
+   * (`pipeline`) by the class turns as they stand; takes, removes and writes nothing. A waiter whose session runs its
+   * cap of steps keeps its place here, though later ones pass it while it waits ({@link placeInLine}).
+   */
   async line(): Promise<LockWaiter[]> {
-    return (await this.tickets()).map(({ waiter }) => waiter);
+    const line = await this.tickets();
+    const { admission } = this.ports;
+    if (admission === undefined || admission.mode === 'serial') {
+      return line.map(({ waiter }) => waiter);
+    }
+    const state = await this.state();
+    const running = [...(state.kind === 'held' ? [state.info.id] : []), ...(await this.shares()).map(({ id }) => id)];
+    const turns = await this.turnsLook(new Set(running));
+    const waiting = new Set(line.map(({ waiter }) => classOf(waiter, admission)));
+    return admissionOrder(line, this.ports.clock.now(), admission, turnsFor(turns.state, waiting)).map(({ waiter }) => waiter);
   }
 
   /**
@@ -885,7 +898,7 @@ export class HostLock {
     return done;
   }
 
-  /** The small steps sharing the host, oldest first, a stale share left out; takes and removes nothing. */
+  /** The steps sharing the host (small, or heavy in `pipeline` mode), oldest first, a stale share left out; takes and removes nothing. */
   async shares(): Promise<HostShare[]> {
     return (await this.shareFiles()).flatMap(({ share }) => (share === undefined || this.isStale(share) ? [] : [share])).sort(byAcquiredAt);
   }

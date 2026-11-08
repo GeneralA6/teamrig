@@ -141,4 +141,20 @@ describe('teamrig pipeline', () => {
       "HOST 16000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); 6144 MB held for 1 heavy step and 1 small step; the running steps' trees unknown (the host lists no processes)",
     );
   });
+
+  it('names a heavy step sharing the host as one, and shows the line in the order steps are let in, not arrival (T2210)', async () => {
+    const kit = new CliHarness(TEAM);
+    await shared(kit, { ...SHARE, purpose: 'heavy: build', reserveMb: 4096, heavy: true });
+    const urgent: LockWaiter = { ...OLDER, request: { kind: 'test', task: 'T7', priority: 1, class: 'Maintenance', classPct: 25, needMb: 0, heavy: true, exclusive: false } };
+    await queued(kit, TESTS, urgent);
+    const memory = new FakeHostMemory(16000).lists(undefined);
+    const result = await kit.run(['pipeline'], { memory, sessionProcesses: running(SHARER, WAITER, OLDER_WAITER), timeZone: 'Asia/Jerusalem' });
+    assert.deepEqual(result.stdout.slice(1, 6), [
+      'RUNNING 1',
+      '  alpha (heavy: build) shares the host as a heavy step, 4096 MB held for it, for 3m',
+      'WAITING 2',
+      '  1. alpha (heavy: specs) for 1m: its ticket names no cause (before its first look, or an older teamrig)',
+      '  2. bravo (heavy: test) for 5m, on lock since 2030-01-08 11:55 IST: lead (heavy: build) since 2030-01-08 11:48 IST',
+    ], "alpha's p1 step goes before bravo's, which names no request and so counts at p2");
+  });
 });

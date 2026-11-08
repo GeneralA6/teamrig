@@ -1,5 +1,5 @@
 import type { TimeZone } from '../../core/zone.ts';
-import { holderText, sharesCount, type HostShare, type LockState, type LockWaiter } from '../../delivery/host-lock.ts';
+import { holderText, isHeavyShare, sharesCount, type HostShare, type LockState, type LockWaiter } from '../../delivery/host-lock.ts';
 import { parseLedger, type LedgerRecord, type RefusalRecord } from '../../delivery/ledger.ts';
 import { holdersText, treeMb, type HostMemory, type ProcessRow } from '../../delivery/memory.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
@@ -63,7 +63,8 @@ function runningLines(state: LockState, shares: readonly HostShare[], rows: read
       break;
   }
   for (const share of shares) {
-    lines.push(`  ${share.session} (${share.purpose}) shares the host, ${share.reserveMb} MB held for it, for ${spanText(share.acquiredAt, nowMs)}${useText(share.pid, rows)}`);
+    const kind = isHeavyShare(share) ? ' as a heavy step' : '';
+    lines.push(`  ${share.session} (${share.purpose}) shares the host${kind}, ${share.reserveMb} MB held for it, for ${spanText(share.acquiredAt, nowMs)}${useText(share.pid, rows)}`);
   }
   const count = runningPids(state, shares).length;
   return [`RUNNING ${count === 0 ? 'none' : count}`, ...lines];
@@ -92,8 +93,9 @@ function refusalLine(record: RefusalRecord, zone: TimeZone): string {
  * `teamrig pipeline`: the host's steps now, in one read, taking and removing nothing. HOST: free memory, RAM and the
  * floor, the commit charge, the MB held for the steps sharing the host (by kind: heavy, small), what the running steps'
  * process trees use, and the programs holding the most memory. RUNNING: the lock's holder and each step sharing the
- * host, with its run time, the MB held for it and what its tree uses. WAITING: the line in order, each with how long it has waited and
- * what its ticket says it waits on, with that wait's numbers. REFUSED: the queued steps of the last day that waited and
+ * host (a heavy one named so), with its run time, the MB held for it and what its tree uses. WAITING: the line in the
+ * order steps are let in (`HostLock.line`), each with how long it has waited and what its ticket says it waits on, with
+ * that wait's numbers. REFUSED: the queued steps of the last day that waited and
  * did not run, from the ledger. Exit 0.
  */
 export async function pipeline(_args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
