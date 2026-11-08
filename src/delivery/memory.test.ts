@@ -39,6 +39,10 @@ class FakeProbe implements MemoryProbe {
     return this.free;
   }
 
+  totalMb(): number {
+    return 32768;
+  }
+
   async commit(): Promise<CommitCharge | undefined> {
     return undefined;
   }
@@ -219,6 +223,11 @@ describe('nodeMemoryProbe', () => {
       [],
       'this process has no child left in its list: the lister is left out',
     );
+  });
+
+  it("reads the host's RAM, never less than its free memory", () => {
+    const probe = nodeMemoryProbe(process.platform);
+    assert.ok(probe.totalMb() >= probe.freeMb() && probe.totalMb() > 0, `${probe.freeMb()} of ${probe.totalMb()} MB free`);
   });
 
   it('reads the commit charge on Windows and Linux, and nothing elsewhere', async () => {
