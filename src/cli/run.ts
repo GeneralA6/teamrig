@@ -78,6 +78,7 @@ const setupScanCommand = () => import('./commands/setup-scan.ts');
 const testCommand = () => import('./commands/test.ts');
 const queueCommand = () => import('./commands/queue.ts');
 const withdrawCommand = () => import('./commands/withdraw.ts');
+const pipelineCommand = () => import('./commands/pipeline.ts');
 const mergeCommand = () => import('./commands/merge.ts');
 const deployCommand = () => import('./commands/deploy.ts');
 const freezeCommands = () => import('./commands/freeze.ts');
@@ -242,6 +243,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb'], switches: ['small', 'pre-push'], rest: true, load: async () => (await queueCommand()).queue },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
+  pipeline: { effect: 'read', flags: [], load: async () => (await pipelineCommand()).pipeline },
   merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
   deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
   freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await freezeCommands()).freeze },
@@ -723,6 +725,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
       $TEAMRIG_SESSION, else the session this Claude Code tab is bound to; REFUSED for another
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
+  pipeline                     the host's queued steps now, taking nothing: HOST (free memory, RAM,
+      the floor, the commit charge, the MB held for small steps, what the running steps' process trees
+      use, the top memory holders), RUNNING (the lock's holder and each small step: run time, MB held,
+      tree use), WAITING (the line in order: how long each waited and what its ticket says it waits on,
+      with that wait's numbers), REFUSED (queued steps of the last 24h that waited and did not run)
   merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
       here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new, a dependency change delivery.repos.<name>.dependencyGate holds and
