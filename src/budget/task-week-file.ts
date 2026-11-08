@@ -1,5 +1,7 @@
+import type { FocusConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { SizeBase } from '../register/events.ts';
+import { likeMedians, type LikeTask } from '../register/ranking.ts';
 import type { UsageState } from './store.ts';
 import { keepSummaryFile, summaryMinute } from './summary-file.ts';
 import { spentSince, taskUseReader, taskWOf } from './task-use.ts';
@@ -16,15 +18,19 @@ export interface TasksWeekInput {
   readonly bySession: ReadonlyMap<string, UsageState>;
   /** Each sized task's size base by its id (`QueuedWork.sizeBases`, src/budget/work.ts). */
   readonly bases: ReadonlyMap<string, SizeBase>;
+  /** The tasks that measure their like tasks (`QueuedWork.likeTasks`). */
+  readonly likeTasks: readonly LikeTask[];
+  /** The team's focus config, whose default class a task with none is alike under, as `teamrig list` reads it. */
+  readonly focus: Pick<FocusConfig, 'defaultClass'>;
   readonly now: number;
 }
 
 /**
  * Rounded up: a task that spent anything must never read 0, since a score takes no spend to mean none measured and falls
- * back to like tasks' median (src/register/score.ts `sizePctOf`).
+ * back to like tasks' median (src/register/score.ts `sizePctOf`), and a median of 0 would fall to the floor.
  */
-function spentPctOf(w: number, wPerPct: number): number {
-  return Math.ceil((w / wPerPct) * SPENT_PCT_SCALE) / SPENT_PCT_SCALE;
+function ceilPct(pct: number): number {
+  return Math.ceil(pct * SPENT_PCT_SCALE) / SPENT_PCT_SCALE;
 }
 
 /**
@@ -32,23 +38,26 @@ function spentPctOf(w: number, wPerPct: number): number {
  * unknown. A sized task counts from its size base, by the `spentSince` the ranking reads it with (src/cli/task-spend.ts),
  * so one with nothing past its base has no entry, as it reads 0 there. The one pass of `taskWOf` serves every other
  * task, and the walk per task only the sized few, since a hook writes this every turn. The ids are sorted so that a hook
- * reading the stores in another order writes the same text.
+ * reading the stores in another order writes the same text. The like medians take each task's whole cost from that same
+ * pass, a size base aside, as `teamrig list` takes them (src/cli/team-ranking.ts `likeSizing`).
  */
 export function tasksWeekOf(input: TasksWeekInput): TasksWeekSummary | undefined {
-  const { wPerPct, bySession, bases, now } = input;
+  const { wPerPct, bySession, bases, likeTasks, focus, now } = input;
   if (wPerPct === undefined || wPerPct <= 0) {
     return undefined;
   }
   const useOf = taskUseReader(bySession);
-  const spent = [...taskWOf(bySession.values())]
+  const wholeW = taskWOf(bySession.values());
+  const spent = [...wholeW]
     .map(([task, w]): [string, number] => {
       const base = bases.get(task);
       return [task, base === undefined ? w : spentSince(useOf(task), base)];
     })
     .filter(([, w]) => w > 0)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([task, w]): [string, number] => [task, spentPctOf(w, wPerPct)]);
-  return { at: summaryMinute(now), spentPct: Object.fromEntries(spent) };
+    .map(([task, w]): [string, number] => [task, ceilPct(w / wPerPct)]);
+  const medians = likeMedians(likeTasks, focus, (id) => (wholeW.get(id) ?? 0) / wPerPct, now).map((median) => ({ ...median, pct: ceilPct(median.pct) }));
+  return { at: summaryMinute(now), spentPct: Object.fromEntries(spent), likeMedians: medians };
 }
 
 /** Writes the tasks' spend at `path` when that changes it, as every week summary is kept (`keepSummaryFile`); returns whether it wrote. */
