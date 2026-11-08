@@ -1442,6 +1442,18 @@ describe('HostLock class turns (T2210)', () => {
     assert.deepEqual(results, ['queued behind bravo', 'taken'], "with no turns, priority decides; with turns, it is Roadmap's turn");
   });
 
+  it('reads the line in admission order by the turns as they stand in pipeline mode, in arrival order in serial, writing nothing', async () => {
+    const later = waiterOf('2030-01-08T09:59:30.000Z', { id: 'later', session: 'alpha', request: { ...roadmap, priority: 3, needMb: 0, heavy: true, exclusive: false } });
+    const turns = turnsFile({ Maintenance: 100, Roadmap: 10 });
+    const orders: string[][] = [];
+    for (const admission of [PIPELINE, { ...PIPELINE, mode: 'serial' } as const]) {
+      const { files, lock } = world(Object.fromEntries([bravoAt(1), ticket(later), turns]), undefined, undefined, admission);
+      orders.push((await lock.line()).map(({ id }) => id));
+      assert.deepEqual([files.get(turns[0]), files.get(ADMIT)], [turns[1], undefined]);
+    }
+    assert.deepEqual(orders, [['later', 'bravo'], ['bravo', 'later']], "pipeline: Roadmap's turn first; serial: bravo arrived first");
+  });
+
   for (const [label, need, minutes, turn] of [
     ['the minutes its need expects', { shares: false, reserveMb: 0, expectedMinutes: 12 }, 12, 48],
     ['5 minutes when its need learned none', undefined, 5, 20],
