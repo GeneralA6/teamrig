@@ -4,10 +4,11 @@ import type { LockWait } from './host-lock.ts';
 /**
  * Why a queued step waited, as its start record sums it: the host lock held by another step (`lock`), an earlier waiter
  * the free lock goes to first (`line`), the small steps sharing the host ending before a heavy step runs (`draining`),
- * the host's free memory or commit charge too short (`memory`, `commit`), a deploy freeze (`freeze`) or a deploy check
- * holding the step (`check`).
+ * the host's free memory or commit charge too short (`memory`, `commit`), a deploy freeze (`freeze`), a deploy check
+ * holding the step (`check`), or its own session running its cap of steps (`session`, T2210). A new cause goes at the
+ * end: a reader of the ledger skips a cause it does not know.
  */
-export const WAIT_CAUSES = ['lock', 'line', 'draining', 'memory', 'commit', 'freeze', 'check'] as const;
+export const WAIT_CAUSES = ['lock', 'line', 'draining', 'memory', 'commit', 'freeze', 'check', 'session'] as const;
 
 export type WaitCause = (typeof WAIT_CAUSES)[number];
 
@@ -20,14 +21,20 @@ export interface WaitTold {
   readonly text: string;
 }
 
-/** The cause of a wait on the host lock; a lock file still being written (`unknown`) counts as held. */
+/**
+ * The cause of a wait on the host lock; a lock file still being written (`unknown`) counts as held, and another step
+ * being admitted (`admitting`) as a wait in line.
+ */
 export function causeOfLockWait(wait: LockWait): WaitCause {
   switch (wait.kind) {
     case 'held':
     case 'unknown':
       return 'lock';
     case 'queued':
+    case 'admitting':
       return 'line';
+    case 'sessionCap':
+      return 'session';
     case 'draining':
     case 'memory':
     case 'commit':
