@@ -1,4 +1,10 @@
 import { busyText, waitText } from "./host-lock.js";
+import { causeOfLockWait } from "./wait-log.js";
+/** The refusal record of a step whose wait for clearance ended without the lock (`recordRefusal`). */
+export function refusalOf(clearance, step) {
+    const outcome = clearance.kind === 'gaveUp' ? 'timedOut' : clearance.kind;
+    return { ...step, outcome, reason: clearance.reason };
+}
 /**
  * Takes the host lock once nothing holds the step back. A refusal ends the wait at once; a reason to wait and a busy
  * lock are waited out, for at most `maxWaitMs` in all, the lock longer while its line moves (see `HostLock.acquire`).
@@ -11,10 +17,10 @@ export async function takeWhenClear(readiness, ports, request) {
     const deadline = clock.now() + request.maxWaitMs;
     let told;
     /** Logs a new reason and sleeps one poll; false when the wait has run out. */
-    const hold = async (reason) => {
-        if (reason !== told) {
-            request.onWait(reason);
-            told = reason;
+    const hold = async (wait) => {
+        if (wait.reason !== told) {
+            request.onWait({ cause: wait.cause, text: wait.reason });
+            told = wait.reason;
         }
         const left = deadline - clock.now();
         if (left <= 0) {
@@ -29,17 +35,17 @@ export async function takeWhenClear(readiness, ports, request) {
             return { kind: 'refused', reason: before.reason };
         }
         if (before.kind === 'wait') {
-            if (!(await hold(before.reason))) {
+            if (!(await hold(before))) {
                 return { kind: 'gaveUp', reason: before.reason };
             }
             continue;
         }
-        const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) => request.onWait(`the host lock: ${waitText(holder, ahead, request.zone)}`));
+        const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) => request.onWait({ cause: causeOfLockWait(holder), text: `the host lock: ${waitText(holder, ahead, request.zone)}` }));
         if (taking.kind === 'busy') {
             return { kind: 'gaveUp', reason: busyText(taking.holder, request.zone) };
         }
         if (taking.kind === 'withdrawn') {
-            return { kind: 'refused', reason: "withdrawn from the host lock's line (teamrig withdraw)" };
+            return { kind: 'withdrawn', reason: "withdrawn from the host lock's line (teamrig withdraw)" };
         }
         const under = await readiness('locked');
         if (under.kind === 'go') {
@@ -50,7 +56,7 @@ export async function takeWhenClear(readiness, ports, request) {
         if (under.kind === 'refuse') {
             return { kind: 'refused', reason: under.reason };
         }
-        if (!(await hold(under.reason))) {
+        if (!(await hold(under))) {
             return { kind: 'gaveUp', reason: under.reason };
         }
     }

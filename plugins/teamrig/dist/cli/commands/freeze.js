@@ -16,12 +16,13 @@ async function freezeContextOf(args, runtime) {
     const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
     const { delivery } = config;
     const places = deliveryPlaces(delivery, kit.paths);
+    const zone = teamZone(config, runtime);
     return {
         session,
         delivery,
         places,
         secretPatterns: config.register.secretPatterns,
-        ports: { files: runtime.files, clock: runtime.clock, zone: teamZone(config, runtime), lock: freezesLockOf(runtime, places.freezesLock) },
+        ports: { files: runtime.files, clock: runtime.clock, zone, lock: freezesLockOf(runtime, places.freezesLock, zone) },
     };
 }
 /** The freeze a write returned; a refusal is REFUSED, and a write another writer held up past the wait is FAILED. */

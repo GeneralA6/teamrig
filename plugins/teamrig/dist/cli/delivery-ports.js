@@ -16,17 +16,18 @@ export function logLineOf(runtime, zone) {
  * The host lock at `path`, held by this process for `delivery.queue.lockTtlMinutes`; a holder whose process ended is
  * stale. Every step that takes it or shares the host passes its memory gate first: free memory over
  * `delivery.queue.memoryFloorMb` plus the step's reserve (`heavyReserveMb` at least for a step that takes the lock),
- * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted.
+ * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted. A waiter's ticket says what it
+ * waits on with the times on `zone`'s clock.
  */
-export function hostLockOf(runtime, path, queue, headroom) {
+export function hostLockOf(runtime, path, queue, headroom, zone) {
     const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct });
-    return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, memory);
+    return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, memory);
 }
 /** The lock the deploy freezes' writers share at `path`, held for a minute, since a write takes moments; it guards no step, so no memory gate. */
-export function freezesLockOf(runtime, path) {
-    return lockAt(runtime, path, FREEZES_LOCK_TTL_MS, undefined);
+export function freezesLockOf(runtime, path, zone) {
+    return lockAt(runtime, path, FREEZES_LOCK_TTL_MS, zone, undefined);
 }
-function lockAt(runtime, path, ttlMs, memory) {
+function lockAt(runtime, path, ttlMs, zone, memory) {
     return new HostLock(path, ttlMs, {
         files: runtime.files,
         clock: runtime.clock,
@@ -34,6 +35,7 @@ function lockAt(runtime, path, ttlMs, memory) {
         pid: runtime.pid,
         alive: (pid) => runtime.sessionProcesses.alive(pid),
         newId: () => runtime.newId(),
+        zone,
         ...(memory === undefined ? {} : { memory }),
     });
 }
