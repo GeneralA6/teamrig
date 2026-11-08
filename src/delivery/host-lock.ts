@@ -1,11 +1,12 @@
 import { join } from 'node:path';
-import { isRecord } from '../core/guards.ts';
+import { isNonNegativeInteger, isRecord } from '../core/guards.ts';
 import type { Files } from '../core/files.ts';
 import { ENV, type Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
+import { isLineRequest, type LineRequest } from './process-request.ts';
 import { causeOfLockWait, WAIT_CAUSES, type WaitCause } from './wait-log.ts';
 
 /**
@@ -54,8 +55,19 @@ export interface LockWaiter {
    * ticket and runs anyway.
    */
   readonly stopsOnWithdraw?: boolean;
+  /** What its step asks; left out by an older kit, and for a step that names no request. */
+  readonly request?: TicketRequest;
   /** What it waited on at its last look; left out before its first look, and by an older kit. */
   readonly waitingOn?: WaitingOn;
+}
+
+/**
+ * What a ticket or a share says its step asks, for admission to order the line by (T2210): its line request, the MB
+ * held for it while it runs (`needMb`), and whether it takes the whole host (`heavy`) or shares it as a small step.
+ */
+export interface TicketRequest extends LineRequest {
+  readonly needMb: number;
+  readonly heavy: boolean;
 }
 
 /**
@@ -87,8 +99,10 @@ interface OwnTicket {
  * `<lock>.shared/<id>.json`, with the memory held for it while it runs.
  */
 export interface HostShare extends HostLockInfo {
-  /** The MB held for it: another small step is let in only while the host has this free besides. */
+  /** The MB held for it: another small step is let in only while the host has this free besides. Kept beside `request.needMb`, as an older kit reads this one. */
   readonly reserveMb: number;
+  /** What its step asked, copied from its ticket; left out by an older kit, and for a step that named no request. */
+  readonly request?: TicketRequest;
 }
 
 /**
@@ -102,9 +116,13 @@ export interface StepNeed {
   readonly basis?: string;
 }
 
-/** What a step in line asks of the host: how it holds it (`need`); none takes the lock with the gate's `heavyReserveMb` held for it. */
+/**
+ * What a step in line asks of the host: how it holds it (`need`; none takes the lock with the gate's `heavyReserveMb`
+ * held for it), and what it works for (`request`), which its ticket and share carry.
+ */
 export interface StepAsk {
   readonly need?: StepNeed;
+  readonly request?: LineRequest;
 }
 
 /** How a share was let in: the host's free memory then (when the lock has a memory gate), and the small steps already sharing it. */
@@ -269,8 +287,13 @@ function isLockWaiter(value: unknown): value is LockWaiter {
     isTime(value['arrivedAt']) &&
     isTime(value['expiresAt']) &&
     (value['stopsOnWithdraw'] === undefined || typeof value['stopsOnWithdraw'] === 'boolean') &&
+    (value['request'] === undefined || isTicketRequest(value['request'])) &&
     (value['waitingOn'] === undefined || isWaitingOn(value['waitingOn']))
   );
+}
+
+function isTicketRequest(value: unknown): value is TicketRequest {
+  return isLineRequest(value) && isRecord(value) && isNonNegativeInteger(value['needMb']) && typeof value['heavy'] === 'boolean';
 }
 
 function isWaitCause(value: unknown): value is WaitCause {
@@ -282,17 +305,27 @@ function isWaitingOn(value: unknown): value is WaitingOn {
 }
 
 /**
- * `value` without a `waitingOn` this teamrig cannot read (a cause a later kit added): a ticket read as damaged is
- * removed from the line, and its step would lose its place for a field only a reader of the line shows.
+ * `value` without its field `key` when `is` cannot read it (a cause or a kind a later kit added): a ticket or a share
+ * read as damaged is removed, and its step would lose its place, or its held MB, for a field it does not hold the host by.
  */
-function withoutUnreadableWaitingOn(value: unknown): unknown {
-  return isRecord(value) && value['waitingOn'] !== undefined && !isWaitingOn(value['waitingOn'])
-    ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'waitingOn'))
-    : value;
+function withoutUnreadable(value: unknown, key: string, is: (field: unknown) => boolean): unknown {
+  return isRecord(value) && value[key] !== undefined && !is(value[key]) ? Object.fromEntries(Object.entries(value).filter(([name]) => name !== key)) : value;
+}
+
+/** A ticket's or a share's fields that {@link withoutUnreadable} drops: what a reader of the line or admission reads, never what holds the host. */
+function tidyTicket(value: unknown): unknown {
+  return withoutUnreadable(withoutUnreadable(value, 'waitingOn', isWaitingOn), 'request', isTicketRequest);
 }
 
 function isHostShare(value: unknown): value is HostShare {
-  return isHostLockInfo(value) && isRecord(value) && typeof value['reserveMb'] === 'number' && Number.isSafeInteger(value['reserveMb']) && value['reserveMb'] >= 0;
+  return (
+    isHostLockInfo(value) &&
+    isRecord(value) &&
+    typeof value['reserveMb'] === 'number' &&
+    Number.isSafeInteger(value['reserveMb']) &&
+    value['reserveMb'] >= 0 &&
+    (value['request'] === undefined || isTicketRequest(value['request']))
+  );
 }
 
 /** The record `text` holds when `is` takes it, once read and passed through `tidy` (by default, as it is). */
@@ -310,7 +343,11 @@ function parseLock(text: string): HostLockInfo | undefined {
 }
 
 function parseWaiter(text: string): LockWaiter | undefined {
-  return parseAs(text, isLockWaiter, withoutUnreadableWaitingOn);
+  return parseAs(text, isLockWaiter, tidyTicket);
+}
+
+function parseShare(text: string): HostShare | undefined {
+  return parseAs(text, isHostShare, tidyTicket);
 }
 
 /**
@@ -580,7 +617,7 @@ export class HostLock {
   async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, ask: StepAsk = {}, stop?: AbortSignal): Promise<Taking> {
     const { need } = ask;
     const patience = new Patience(this.ports.clock.now(), maxWaitMs);
-    const ticket = await this.joinLine(session, purpose, patience.deadline);
+    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask));
     const reports = new WaitReports(onWait, this.ports.zone);
     try {
       const waited = await this.waitInLine(ticket, patience, pollMs, reports, need, stop);
@@ -808,7 +845,7 @@ export class HostLock {
     if (look !== undefined && look.kind !== 'room') {
       return { kind: 'busy', holder: { ...look, shares: others } };
     }
-    const share: HostShare = { ...this.newLock(waiter.session, waiter.purpose, waiter.id), reserveMb: need.reserveMb };
+    const share: HostShare = { ...this.newLock(waiter.session, waiter.purpose, waiter.id), reserveMb: need.reserveMb, ...(waiter.request === undefined ? {} : { request: waiter.request }) };
     await this.ports.files.write(join(this.shared, `${share.id}.json`), stored(share));
     return { kind: 'taken', lock: share, sharing: look === undefined ? { others } : { freeMb: look.freeMb, others } };
   }
@@ -836,7 +873,7 @@ export class HostLock {
       const path = join(this.shared, name);
       const text = await files.read(path);
       if (text !== undefined) {
-        found.push({ path, share: parseAs(text, isHostShare) });
+        found.push({ path, share: parseShare(text) });
       }
     }
     return found;
@@ -863,7 +900,7 @@ export class HostLock {
     }
     const path = join(this.shared, name);
     const text = await this.ports.files.read(path);
-    const share = text === undefined ? undefined : parseAs(text, isHostShare);
+    const share = text === undefined ? undefined : parseShare(text);
     return share?.id === id ? { path, share } : undefined;
   }
 
@@ -894,8 +931,21 @@ export class HostLock {
     return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.id);
   }
 
-  /** Writes this step's ticket at the end of the line, its wait running out at `deadline`. */
-  private async joinLine(session: string, purpose: string, deadline: number): Promise<OwnTicket> {
+  /**
+   * What the ticket of a step that asks `ask` says it asks: its request, with the MB its need holds (the gate's
+   * `heavyReserveMb` for no need, 0 for a lock with no gate) and whether it takes the whole host. Undefined without a
+   * request.
+   */
+  private ticketRequestOf(ask: StepAsk): TicketRequest | undefined {
+    const { need, request } = ask;
+    if (request === undefined) {
+      return undefined;
+    }
+    return { ...request, needMb: need?.reserveMb ?? this.ports.memory?.config.heavyReserveMb ?? 0, heavy: need?.shares !== true };
+  }
+
+  /** Writes this step's ticket at the end of the line, its wait running out at `deadline`, saying what it asks when it names a `request`. */
+  private async joinLine(session: string, purpose: string, deadline: number, request: TicketRequest | undefined): Promise<OwnTicket> {
     const now = this.ports.clock.now();
     const waiter: LockWaiter = {
       id: this.ports.newId(),
@@ -906,6 +956,7 @@ export class HostLock {
       arrivedAt: new Date(now).toISOString(),
       expiresAt: ticketExpiry(deadline),
       stopsOnWithdraw: true,
+      ...(request === undefined ? {} : { request }),
     };
     const name = `${String(now).padStart(ARRIVAL_DIGITS, '0')}-${waiter.id}.json`;
     await this.ports.files.write(join(this.queue, name), stored(waiter));

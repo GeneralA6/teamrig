@@ -5,7 +5,7 @@ import { busyText, holderText, underLock, waitText, type HostLock, type HostLock
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
-import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, taskOfLabel, withTaskPriority, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
+import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
 import { recordRefusal, runRecorded, type RefusalMark, type StepOwner } from '../../delivery/recorded-step.ts';
 import { stepNeedOf, type NeedAsk } from '../../delivery/step-need.ts';
 import { causeOfLockWait, WaitLog } from '../../delivery/wait-log.ts';
@@ -301,7 +301,9 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
     // The register is read only for a step that queues: a nested step or one refused at once records nothing.
     const register = new JsonlEventLog(runtime.files, kit.paths.events);
-    const owner: StepOwner = { session, ...(await withTaskPriority(request, async (id) => (await register.read()).state.tasks.get(id))) };
+    const line = await lineRequestOf(request, async (id) => (await register.read()).state.tasks.get(id), config.focus);
+    // Only the ticket carries the class for now: the ledger's start and refusal records keep the fields their readers take.
+    const owner: StepOwner = { session, ...processRequest(line.kind, line.task, line.priority) };
     const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());
     const need = await needOf(runtime, places.ledger, { session, what, kind: request.kind, small, ...(declaredMb === undefined ? {} : { declaredMb }) }, delivery.queue);
     const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
@@ -317,7 +319,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
           waits.tell({ cause: causeOfLockWait(holder), text });
           say(text);
         },
-        { need },
+        { need, request: line },
         watching.stop,
       ),
     );

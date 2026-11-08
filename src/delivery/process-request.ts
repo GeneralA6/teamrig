@@ -1,3 +1,6 @@
+import type { FocusConfig } from '../config/types.ts';
+import { isNonNegativeInteger, isRecord } from '../core/guards.ts';
+import { classOf } from '../register/focus.ts';
 import type { Task } from '../register/fold.ts';
 import { TASK_ID } from '../register/model.ts';
 
@@ -46,6 +49,56 @@ export async function withTaskPriority(request: ProcessRequest, taskOf: (id: str
   }
   const task = await taskOf(request.task);
   return processRequest(request.kind, request.task, task?.priority);
+}
+
+/** The register's task as the host lock's line reads it: its priority and its work class. */
+export type LineTask = Pick<Task, 'priority' | 'workClass'>;
+
+/** What the line reads of the team's focus: the class a task with none counts as, and each class's planned share of the week. */
+export type RequestFocus = Pick<FocusConfig, 'defaultClass' | 'allocation'>;
+
+/**
+ * What a step in the host lock's line asks, as its ticket says, so admission can order the line by it (T2210): its
+ * request, the work class its task counts as, and that class's planned percent of the week.
+ */
+export interface LineRequest extends ProcessRequest {
+  /** Its task's class (`classOf`), else the team's `focus.defaultClass`: a step with no task, or one the register lacks, counts as team tooling. */
+  readonly class: string;
+  /** `focus.allocation` for its class when it queued; 0 for a class the allocation gives no share. */
+  readonly classPct: number;
+}
+
+/** `request` in the line: the class of its register `task` (the default class without one) and that class's share. */
+export function lineRequest(request: ProcessRequest, task: LineTask | undefined, focus: RequestFocus): LineRequest {
+  const workClass = task === undefined ? focus.defaultClass : classOf(task, focus);
+  return { ...request, class: workClass, classPct: focus.allocation[workClass] ?? 0 };
+}
+
+/**
+ * `request` in the line, its priority and class read from the register task it names by `taskOf`, with one read: a
+ * request that names none asks the register nothing, and one whose task the register lacks (another team's, or a
+ * typo) keeps no priority and counts as the default class.
+ */
+export async function lineRequestOf(request: ProcessRequest, taskOf: (id: string) => Promise<LineTask | undefined>, focus: RequestFocus): Promise<LineRequest> {
+  const task = request.task === undefined ? undefined : await taskOf(request.task);
+  return lineRequest(processRequest(request.kind, request.task, task?.priority), task, focus);
+}
+
+/** A line request as a ticket or share stores it; a field another kit adds is ignored. */
+export function isLineRequest(value: unknown): value is LineRequest {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const { kind, task, priority, class: workClass, classPct } = value;
+  return (
+    isStepKind(kind) &&
+    (task === undefined || typeof task === 'string') &&
+    (priority === undefined || isNonNegativeInteger(priority)) &&
+    typeof workClass === 'string' &&
+    typeof classPct === 'number' &&
+    Number.isFinite(classPct) &&
+    classPct >= 0
+  );
 }
 
 /** A command word's program: its last path part in lower case, without a launcher's or a script's extension. */

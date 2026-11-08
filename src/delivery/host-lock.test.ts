@@ -21,10 +21,12 @@ import {
   type LockWaiter,
   type StepNeed,
   type Taking,
+  type TicketRequest,
   type WaitingOn,
   type Withdrawal,
 } from './host-lock.ts';
 import { MemoryGate, type MemoryGateConfig } from './memory-gate.ts';
+import type { LineRequest } from './process-request.ts';
 
 const PATH = '/kit/host.lock';
 const QUEUE = `${PATH}.queue`;
@@ -1144,5 +1146,76 @@ describe('HostLock waitingOn: what a waiter says it waits on (T2209)', () => {
     const taking = await lock.acquire('alpha', 'heavy: build', 60 * 60_000, 30_000, () => undefined);
     const draining: WaitingOn = { reason: 'draining', text: '1 small step: po (heavy: specs) since 2030-01-08 11:50 IST', since: '2030-01-08T10:00:00.000Z' };
     assert.deepEqual([taking.kind, seen], ['taken', [draining, draining]]);
+  });
+});
+
+/** What alpha's step asks: tests for T7, a p1 Maintenance task, Maintenance planned at a quarter of the week. */
+const REQUEST: LineRequest = { kind: 'test', task: 'T7', priority: 1, class: 'Maintenance', classPct: 25 };
+
+/** What this step's ticket (`t1`) says it asks, as a reader of the line finds it at `clock`'s time. */
+async function requestOf(store: Files, clock: FakeClock): Promise<TicketRequest | undefined> {
+  return (await lockOver(store, clock, 77).line()).find((waiter) => waiter.id === 't1')?.request;
+}
+
+describe("HostLock tickets and shares: what the step asks (T2210)", () => {
+  for (const [label, need, memory, held] of [
+    ['a small step: the MB its need holds, sharing the host', SMALL, undefined, { needMb: 2048, heavy: false }],
+    ["a step with no need: the memory gate's heavy reserve, the whole host", undefined, new FakeHostMemory(16_000), { needMb: 4096, heavy: true }],
+    ['a step with no need on a lock with no memory gate: no MB, the whole host', undefined, undefined, { needMb: 0, heavy: true }],
+  ] as const) {
+    it(`says on its ticket while it waits what it asks, for ${label}`, async () => {
+      const seen: (TicketRequest | undefined)[] = [];
+      const { lock } = world(
+        { [PATH]: heldBy() },
+        (time, store) => async (ms) => {
+          seen.push(await requestOf(store, time));
+          await time.sleep(ms);
+        },
+        memory,
+      );
+      const taking = await lock.acquire('alpha', 'heavy: test', 2_000, 30_000, () => undefined, { ...(need === undefined ? {} : { need }), request: REQUEST });
+      assert.deepEqual([taking.kind, seen], ['busy', [{ ...REQUEST, ...held }]]);
+    });
+  }
+
+  it('writes no request on the ticket of a step that names none', async () => {
+    const seen: (TicketRequest | undefined)[] = [];
+    const { lock } = world({ [PATH]: heldBy() }, (time, store) => async (ms) => {
+      seen.push(await requestOf(store, time));
+      await time.sleep(ms);
+    });
+    await lock.acquire('alpha', 'heavy: test', 2_000, 30_000, () => undefined, { need: SMALL });
+    assert.deepEqual(seen, [undefined]);
+  });
+
+  it("copies its ticket's request onto the share it takes, beside the reserveMb an older kit reads", async () => {
+    const { files, lock } = world({}, undefined, new FakeHostMemory(6144));
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    const share = shareOf({ id: 't1', pid: ME, session: 'alpha', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', request: { ...REQUEST, needMb: 2048, heavy: false } });
+    assert.deepEqual([taking.kind === 'taken' ? taking.lock : undefined, files.get(`${SHARED}/t1.json`), await lock.shares()], [share, storedText(share), [share]]);
+  });
+
+  it("keeps in line an older kit's ticket, which names no request, and one whose request this teamrig cannot read, leaving that field out", async () => {
+    const older = waiterOf('2030-01-08T09:58:00.000Z', { id: 'older' });
+    const later = waiterOf('2030-01-08T09:59:00.000Z');
+    const [path] = ticket(later);
+    const text = JSON.stringify({ ...onDisk(later), request: { ...REQUEST, kind: 'vm', needMb: 4096, heavy: true } });
+    const { files, lock } = world(Object.fromEntries([ticket(older), [path, text]]));
+    const told: number[] = [];
+    const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, (_holder, ahead) => told.push(ahead), { request: REQUEST });
+    assert.deepEqual([taking.kind, told], ['busy', [2]], 'a step behind them still counts both ahead');
+    assert.deepEqual(await lock.line(), [older, later]);
+    assert.equal(files.get(path), text, 'its ticket is left as it was');
+  });
+
+  it("counts the MB of an older kit's share, which names no request, and of one whose request this teamrig cannot read, leaving that field out", async () => {
+    const older = shareOf();
+    const later = shareOf({ id: 'later', acquiredAt: '2030-01-08T09:55:00.000Z' });
+    const [path] = shareFile(later);
+    const text = JSON.stringify({ ...onDisk(later), request: { ...REQUEST, classPct: 'x', needMb: 2048, heavy: false } });
+    const { files, lock } = world(Object.fromEntries([shareFile(older), [path, text]]), undefined, new FakeHostMemory(10_240));
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 10_240, others: [older, later] }, 'the floor, both shares and its own MB fit');
+    assert.equal(files.get(path), text, 'its share is left as it was');
   });
 });
