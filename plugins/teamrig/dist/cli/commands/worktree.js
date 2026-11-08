@@ -8,7 +8,7 @@ import { resolveTeam } from "../../core/team.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { createWorktree } from "../../worktree/add.js";
 import { removalRefusal } from "../../worktree/owner.js";
-import { carryOut, describePlan, planRemoval } from "../../worktree/remove.js";
+import { carryOut, clearLeftover, describeLeftover, describePlan, planRemoval } from "../../worktree/remove.js";
 import { onePositional, UsageError } from "../args.js";
 import { openKit, requireConfig, rosterOf, teamFolders } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -38,7 +38,7 @@ export async function add(args, runtime) {
 }
 async function addPlace(repo, runtime) {
     const team = await teamAt(runtime);
-    const repos = team === undefined ? [] : Object.entries(team.config.delivery.repos).map(([name, config]) => ({ name, config, mainDir: teamPlace(team.kit.paths, config.mainCheckout) }));
+    const repos = reposOf(team);
     if (repo !== undefined) {
         if (team === undefined) {
             throw new RefusedError(`--repo names a repository in a team's delivery.repos, and ${runtime.cwd} is in no team: run it in the repository instead`);
@@ -76,11 +76,25 @@ export async function remove(args, runtime) {
     if (base !== undefined && !deleteBranch) {
         throw new UsageError('--base names the branch to check against for --delete-branch: give both, or neither');
     }
-    const decision = await planRemoval({ path, cwd: runtime.cwd, deleteBranch, base }, runtime.worktrees);
+    const team = await teamAt(runtime);
+    const decision = await planRemoval({ path, cwd: runtime.cwd, deleteBranch, base, worktreeFolders: worktreeFolders(runtime, team) }, runtime.worktrees);
     if (decision.kind === 'refused') {
         throw new RefusedError(decision.reason);
     }
-    const refusal = await callerRefusal(args, runtime, decision.plan);
+    if (decision.kind === 'leftover') {
+        // No session check: a leftover has no branch to own and holds only links and empty folders, nothing to lose (T1051).
+        if (args.switches.has('dry-run')) {
+            for (const line of describeLeftover(decision.plan)) {
+                runtime.out.stdout(line);
+            }
+            runtime.out.stdout('dry run: nothing changed');
+            return EXIT.ok;
+        }
+        await clearLeftover(decision.plan, runtime.worktrees.files, (line) => runtime.out.stdout(line));
+        runtime.out.stdout(`OK cleared the leftover ${decision.plan.top}`);
+        return EXIT.ok;
+    }
+    const refusal = await callerRefusal(args, runtime, team, decision.plan);
     if (refusal !== undefined) {
         throw new RefusedError(refusal);
     }
@@ -101,8 +115,7 @@ export async function remove(args, runtime) {
  * nor for the person at a terminal outside Claude Code who names no session; a Claude Code tab bound to no session must
  * name one.
  */
-async function callerRefusal(args, runtime, { onBranch, mergedInto }) {
-    const team = await teamAt(runtime);
+async function callerRefusal(args, runtime, team, { onBranch, mergedInto }) {
     if (team === undefined) {
         return undefined;
     }
@@ -114,6 +127,20 @@ async function callerRefusal(args, runtime, { onBranch, mergedInto }) {
     }
     const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
     return removalRefusal({ caller, branch: onBranch, mergedInto, ownerOf: (task) => state.tasks.get(task)?.owner, tree: new LeadTree(config) });
+}
+/** The folders worktrees are made in: each of the team's delivery.repos, and the one of the repository the command runs in. */
+function worktreeFolders(runtime, team) {
+    const repos = reposOf(team);
+    const places = repos.map((entry) => placeOf(entry.mainDir, entry.config));
+    const [main] = runtime.worktrees.git.worktrees(runtime.cwd) ?? [];
+    if (main !== undefined) {
+        places.push(placeOf(main.path, repos.find((entry) => samePath(entry.mainDir, main.path, runtime.platform))?.config));
+    }
+    return places.map(({ folder, mainDir }) => ({ folder, mainDir }));
+}
+/** The team's delivery.repos entries, each with its main checkout resolved; none outside a team. */
+function reposOf(team) {
+    return team === undefined ? [] : Object.entries(team.config.delivery.repos).map(([name, config]) => ({ name, config, mainDir: teamPlace(team.kit.paths, config.mainCheckout) }));
 }
 /** The team the folder the command runs in belongs to, with its kit and config; undefined outside a team. */
 async function teamAt(runtime) {

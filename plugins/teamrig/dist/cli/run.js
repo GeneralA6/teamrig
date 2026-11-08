@@ -661,7 +661,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       setup fails, the worktree kept
   worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run] [--session <id|name>]   removes a linked git worktree:
       unlinks each link in it (such as a node_modules junction) and sees it gone, so git cannot follow
-      one and empty its target, then runs git worktree remove; REFUSED before any change for the main
+      one and empty its target, then runs git worktree remove; a folder git no longer lists, directly in
+      a worktree folder and holding only folders and links (a removal git stopped partway), any session
+      clears the same way, its folders removed once empty; REFUSED before any change for the main
       checkout, a dirty tree or a real node_modules folder, and in a team for another session's worktree:
       a session removes its own (its t<id>- branch names a task it owns) and those of the sessions it
       leads, the lead any, and any session one on a detached HEAD whose every commit is on the branch
