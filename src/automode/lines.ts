@@ -48,12 +48,32 @@ export function kitTag(team: string): string {
   return `[teamrig ${team}] `;
 }
 
-/** The team's lines, in order: protected branches, the register, queue and test, worktree removal, rebasing, clean files. */
+/** One of the team's lines: what the `automode install` help calls it, and how it is filled from the team. */
+interface KitLine {
+  readonly subject: string;
+  readonly fill: (facts: AutoModeFacts) => string;
+}
+
+/**
+ * The team's lines, in order. Each line carries its subject so the `automode install` help cannot drift from them:
+ * when the help named each line by hand, T974's sixth line shipped with a help that still listed five.
+ */
+const KIT_LINES: readonly KitLine[] = [
+  { subject: 'protected branches', fill: branchesLine },
+  { subject: 'the register commands', fill: registerLine },
+  { subject: 'queue and test', fill: wrappersLine },
+  { subject: 'who removes a worktree', fill: worktreeLine },
+  { subject: "rebasing one's own branch", fill: rebaseLine },
+  { subject: "editing a clean tracked file in one's own worktree", fill: cleanFilesLine },
+];
+
+/** What the `automode install` help names each line by, in the lines' order; a spec holds the help to every one. */
+export const KIT_LINE_SUBJECTS: readonly string[] = KIT_LINES.map((line) => line.subject);
+
+/** The team's lines, each starting with the team's tag. */
 export function kitLines(facts: AutoModeFacts): string[] {
   const tag = kitTag(facts.team);
-  return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts), rebaseLine(facts), cleanFilesLine()].map(
-    (line) => `${tag}${line}`,
-  );
+  return KIT_LINES.map((line) => `${tag}${line.fill(facts)}`);
 }
 
 function branchesLine({ lead, pushGuard }: AutoModeFacts): string {
