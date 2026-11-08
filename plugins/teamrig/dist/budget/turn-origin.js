@@ -21,9 +21,18 @@ const PUSH_WORDS = [
 ];
 /** Words that mark a push only after the task notifications are ruled out, which can quote them. */
 const LATE_PUSH_WORDS = [STARTED_FRESH, 'handover', 'Stop hook', 'plugin sent a message'];
-/** Whether a prompt's text is a push. A slash command or any other task notification is not, whatever it quotes. */
+/**
+ * A block the user pasted, as Claude Code wraps it: `<pasted_content id="8494">` ... `</pasted_content id="8494">`,
+ * the same id on both tags. No push comes pasted, and a paste can quote any push's words: an owner's cost table naming
+ * a handover read as a push (T2223).
+ */
+const PASTED_BLOCK = /<pasted_content(?: id="([^"]*)")?>[\s\S]*?<\/pasted_content(?: id="\1")?>/g;
+/**
+ * Whether a prompt's text is a push. A slash command or any other task notification is not, whatever it quotes,
+ * and nothing the user pasted counts: only the prompt's own words are read.
+ */
 export function isPushedPrompt(text) {
-    const head = text.trimStart().slice(0, ORIGIN_CHARS);
+    const head = text.replace(PASTED_BLOCK, '').trimStart().slice(0, ORIGIN_CHARS);
     if (head.startsWith(STOP_FEEDBACK)) {
         return true;
     }
