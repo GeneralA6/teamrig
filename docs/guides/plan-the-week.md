@@ -54,6 +54,14 @@ teamrig plan                                       # the week in force, grouped 
   day, and a task tagged mid-week counts from that day on. The numbers come from the daily usage rollup:
   `teamrig budget rollup --apply` writes each closed UTC day, and with `wake.dayStartUtc` set the day start runs it
   once a day, so today is not counted yet and `USE 6 of 7 days rolled up` says how many days the lines hold.
+- How the week splits, while the budget is enabled: before the weekly reset each lead sizes its plan's slices in %
+  of the week; after it, the main lead (the lead of the team `budget.accountLead` names, else of the root team)
+  splits the week among the root teams on the Claude account, and each lead its part among its own team and the
+  teams under it, by what each plan ships and how its last plan held. Each team with planned work gets at least
+  `budget.shareFloorPct` (10)% of a split, and a team past its share opens nothing new. A higher leader's call wins:
+  a lead that disagrees concedes at once and may appeal, never blocking, with an `Appeal: ...` task owned by a
+  leader above. The leads keep the split in their plans by hand, and the main lead reports it to you at the first
+  daily meeting after the reset, asking nothing.
 
 More in [week plans](../../plugins/teamrig/skills/teamrig-guide/tasks.md#week-plans).
 

@@ -47,6 +47,12 @@ line each, with its goal, what it ships, its owner and ship date, and whether it
 with why and its new date. A slipping slice's decisions come first among the cards. Until the register holds slices,
 the lead keeps them in `ship-plan.md` in its notes folder.
 
+At the first meeting after the weekly reset, with the budget enabled, the main lead (the lead of the team
+`budget.accountLead` names, else of the root team) brings the week report before the ship board: the week's split
+among the teams and its reasoning, each team's plan (what ships, and when), what the week achieves for the goals,
+last week in two lines, and the appeals that reached you. It is for your information: nothing in it asks for an
+answer, and an appeal you leave unanswered keeps the decision it appeals.
+
 Each card says what the decision is and why it matters to you, the owner gate or business reason that makes it
 yours, the options with their numbers, the lead's pick and why, and the exact action. The lead reads the cards in
 plain text and you answer in your own words; a team that sets `decisions.askWith: picker` asks with Claude Code's

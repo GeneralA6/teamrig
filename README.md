@@ -218,7 +218,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | [Keep it safe](docs/guides/keep-it-safe.md) | The guards: safe pushes, skipped hooks, unvetted packages, secrets, privileged commands on review |
 | [Run your day](docs/guides/run-your-day.md) | The daily meeting, a question that never stops a session, notes between sessions, waking on urgent work |
 | [Recover from a crash or a full context](docs/guides/recover.md) | Sessions reopened after a crash or a reboot, a fresh context at a task boundary, the turn log |
-| [Plan the week](docs/guides/plan-the-week.md) | The week plan and task sizes against the weekly limit, the daily budget and its pace line, bursts |
+| [Plan the week](docs/guides/plan-the-week.md) | The week plan and task sizes against the weekly limit, the week's split among the teams, the daily budget and its pace line, bursts |
 | [Grow the team](docs/guides/grow-the-team.md) | Setting up a team with a tab per session, session names, hires and their retire, child teams under the lead |
 | [Ship from many sessions](docs/guides/ship-from-many-sessions.md) | The host lock for builds and test runs, merging a branch, deploying it, clean measurements beside deploys |
 | [Make it improve itself](docs/guides/improve-itself.md) | Lessons kept as skills and team rules, the skills scorecard, settling local rules that say otherwise, a lean setup |
