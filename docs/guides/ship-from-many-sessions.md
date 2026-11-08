@@ -59,10 +59,11 @@ has a run.
 
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
 of taking the lock. A small step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step
-waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) shares the host too, at
-most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in memory no longer wait for each other.
-A merge, a deploy and a step queued with `--exclusive` take the lock instead and wait for every step sharing the host
-to end, so they still run alone; with `admission: serial` every heavy step does.
+waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) takes the lock and waits
+for every step sharing the host to end, so it runs alone, as a merge and a deploy do. With `admission: pipeline` a
+heavy step shares the host too, at most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in
+memory no longer wait for each other, while a merge, a deploy and a step queued with `--exclusive` still take the
+lock. `serial` stays the default while a team's own deploy tool may take the lock file without reading the shares.
 
 A repository's git hooks can wrap their checks in `teamrig queue`, so a plain `git commit` takes the host lock for
 its hook. A step started under the lock (a hook run by a merge's push, say) runs at once, as part of its

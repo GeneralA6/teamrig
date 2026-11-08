@@ -3894,7 +3894,7 @@ Runs one queued step (a build, a test run, a database script) under the host loc
 at a time instead of competing for its CPU and memory. It waits for the lock until its line has not moved
 for `delivery.queue.waitMinutes` (60 by default). Waiters take it in their turn: each joins a line of tickets in `<lock>.queue` and only the
 first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). With
-`delivery.queue.admission` `pipeline` (the default) the line is in admission order: a p0 step first, then by class
+`delivery.queue.admission` `pipeline` the line is in admission order: a p0 step first, then by class
 turn, then by priority, which rises a level for each `delivery.queue.agingMinutes` (15) waited but never to p0, then by
 arrival. Class turns share the host among the work classes by `focus.allocation`: each class (its task's, else
 `focus.defaultClass`) keeps a virtual time in `<lock>.turns.json`, charged at a step's admission the minutes it is
@@ -3905,7 +3905,8 @@ waiting or running is lifted to the least virtual time of the classes in play, s
 turns file reads as none and is written whole again. A step whose
 session already runs `delivery.queue.perSessionRunning` (2) steps, under the lock or sharing the host, waits for one to
 end while later steps pass it (`2 steps of its session running, its cap 2: ...`, refused with `session cap still
-reached: ...`). With `serial` the line is in arrival order with no cap. It
+reached: ...`). With `serial` (the default, as a team's own deploy tool may take the lock file without reading the
+shares) the line is in arrival order with no cap. It
 prints a line for each new holder or place in line (`...; 2 ahead in line`). Its ticket says what it waits on and
 since when (`waitingOn`: the holder and place in line, or the memory numbers), rewritten only when that changes, so
 `teamrig pipeline` shows every waiter's cause. A ticket whose process is gone or whose
@@ -3936,10 +3937,10 @@ a declared need holds `delivery.queue.smallReserveMb` (2048). The wait line says
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
 In its turn, while the lock is not held and host memory lets it in, it writes a share in `<lock>.shared` and runs.
 
-A step without `--small` is a heavy step. With `delivery.queue.admission` `pipeline` (the default) it shares the
+A step without `--small` is a heavy step. With `delivery.queue.admission` `pipeline` it shares the
 host too, as a heavy share in `<lock>.shared` marked `heavy`, while fewer than `delivery.queue.maxHeavyParallel` (2)
 heavy steps run and host memory lets it in with every running step's MB counted; past that cap it waits
-(`2 heavy steps running, the cap 2: ...`, refused with `heavy cap still reached: ...`), and the lock file stays free. With `serial`, or with `--exclusive`, it
+(`2 heavy steps running, the cap 2: ...`, refused with `heavy cap still reached: ...`), and the lock file stays free. With `serial` (the default), or with `--exclusive`, it
 takes the lock instead and holds it while it waits for every step sharing the host to end, so a step that must run
 alone still does, and no new share is let in meanwhile; a merge and a deploy always take the whole host this way. It
 gives up, releasing the lock, when no share ended for `waitMinutes`, and its lock is renewed if it had to wait. A share
