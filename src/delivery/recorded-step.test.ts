@@ -89,6 +89,16 @@ describe('runRecorded', () => {
     assert.deepEqual(records(files)[1], { ...START, endedAt: '2030-01-08T10:00:30.000Z', exitCode: 1 });
   });
 
+  it("gives a heavy record its endedAt under the start's id when its step ends, killed or not, as the delivery owner's ledger readers need (T2209)", async () => {
+    for (const end of [0, { kind: 'stopped' }, { kind: 'timedOut' }] as const) {
+      const { files, steps, ports } = world();
+      steps.ends(end, 30_000);
+      await runRecorded(ports, UNSAMPLED, STEP);
+      const ended = records(files).map((record) => (typeof record === 'object' && record !== null && 'type' in record && 'id' in record && 'endedAt' in record ? [record.type, record.id, record.endedAt] : undefined));
+      assert.deepEqual(ended, [['heavy', 'step-1', null], ['heavy', 'step-1', '2030-01-08T10:00:30.000Z']], JSON.stringify(end));
+    }
+  });
+
   it('with sampling off, watches nothing and records no memory, even for a killed step', async () => {
     const { files, steps, memory, ports } = world(new FakeHostMemory(900).lists([], { usedMb: 61_000, limitMb: 64_000 }).measures({ lowFreeMb: 1200 }));
     steps.ends({ kind: 'stopped' }, 30_000);
@@ -185,6 +195,18 @@ describe('recordRefusal', () => {
         endFreeMb: 2500,
       },
     ]);
+  });
+
+  it('writes a line that never holds the pair "type":"heavy", whatever its texts hold, as the delivery owner\'s ledger readers pick records by type (T2209)', async () => {
+    const heavy = '"type":"heavy"';
+    const { files, clock, ports } = world();
+    const waits = new WaitLog(clock, 3100);
+    waits.tell({ cause: 'lock', text: `the host lock: ${heavy}` });
+    clock.advance(60_000);
+    await recordRefusal(ports, LEDGER, waits, { session: 'po', kind: 'build', what: `build ${heavy}`, outcome: 'timedOut', reason: `still short ${heavy}` });
+    assert.equal((files.get(LEDGER) ?? heavy).includes(heavy), false);
+    const read = records(files).map((record) => (typeof record === 'object' && record !== null && 'type' in record && 'what' in record && 'reason' in record ? [record.type, record.what, record.reason] : undefined));
+    assert.deepEqual(read, [['refusal', `build ${heavy}`, `still short ${heavy}`]]);
   });
 
   it('records nothing for a step refused before it waited on anything, and keeps its reason (T2209)', async () => {

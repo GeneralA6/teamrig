@@ -228,6 +228,18 @@ describe('HostLock.tryTake', () => {
     ]);
   });
 
+  it("reads a lock file with only the six fields the delivery owner's coordinator writes as its holder, and writes all six itself (T2209)", async () => {
+    const coordinator = { token: 'coord-1', pid: OTHER, session: 'po', purpose: 'deploy api', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+    const busy = await world({ [PATH]: JSON.stringify(coordinator) }).lock.tryTake('alpha', 'heavy: test');
+    const holder = busy.kind === 'busy' && busy.holder.kind === 'held' ? busy.holder.info : undefined;
+    assert.deepEqual(holder === undefined ? undefined : [holder.id, holder.pid, holder.session, holder.purpose, holder.acquiredAt, holder.expiresAt], ['coord-1', OTHER, 'po', 'deploy api', '2030-01-08T09:50:00.000Z', '2030-01-08T12:20:00.000Z']);
+    const { files, lock } = world();
+    await lock.tryTake('alpha', 'heavy: build api');
+    const written = fileOf(files);
+    const kept = Object.keys(coordinator).filter((key) => typeof written === 'object' && written !== null && key in written);
+    assert.deepEqual(kept, ['token', 'pid', 'session', 'purpose', 'acquiredAt', 'expiresAt']);
+  });
+
   it('takes over a lock that has expired', async () => {
     const { files, lock } = world({ [PATH]: heldBy({ expiresAt: '2030-01-08T10:00:00.000Z' }) });
     const taking = await lock.tryTake('alpha', 'heavy: test');
