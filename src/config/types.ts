@@ -1,5 +1,6 @@
 import type { TaskStatus } from '../register/model.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
+import type { AdmissionMode } from '../delivery/admission.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
 export const CONFIG_VERSION = 8;
@@ -770,6 +771,16 @@ export interface QueueConfig {
    * the ledger or declared with --memory-mb, is more holds that instead.
    */
   readonly heavyReserveMb: number;
+  /**
+   * How the host lock's line is ordered: `pipeline` lets the most urgent step in first (a p0 step at once, then by class
+   * turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning steps of one session
+   * running; `serial` keeps the line in arrival order with no cap, as before.
+   */
+  readonly admission: AdmissionMode;
+  /** In `pipeline` admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. */
+  readonly agingMinutes: number;
+  /** In `pipeline` admission, a session with this many steps running (the host lock or a small step's share) waits for one to end, and later steps pass it; 0 caps nothing. */
+  readonly perSessionRunning: number;
 }
 
 /** How a delivery step waits. */
