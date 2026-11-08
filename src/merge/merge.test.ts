@@ -1006,7 +1006,7 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
     world.memory.free = 5000;
     world.memory.holds(BUSY_HOLDERS);
     const end = await world.run();
-    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
+    const short = 'host memory: 5000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
     const reason = `host memory still short: ${short}; ${BUSY_HOLDERS_TEXT}`;
     assert.deepEqual(end, { kind: 'refused', reason });
     const endedAt = world.clock.now();
