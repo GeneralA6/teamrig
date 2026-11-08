@@ -69,7 +69,7 @@ export async function deployStatus(_args, runtime) {
     const zone = teamZone(config, runtime);
     const places = deliveryPlaces(delivery, kit.paths);
     const say = (line) => runtime.out.stdout(line);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom);
     say(`host lock: ${lockText(await lock.state(), zone)}`);
     const shares = await lock.shares();
     if (shares.length > 0) {

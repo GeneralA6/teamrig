@@ -58,7 +58,7 @@ export async function merge(args, runtime) {
             taskOf: async (id) => (await new JsonlEventLog(runtime.files, kit.paths.events).read()).state.tasks.get(id),
             clock: runtime.clock,
             sleep: stoppableSleep(runtime.sleep, stop),
-            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue), stop),
+            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom), stop),
             env: runtime.env,
             platform: runtime.platform,
             nextReset: nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths)),

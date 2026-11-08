@@ -52,7 +52,7 @@ export async function deploy(args, runtime) {
             files: runtime.files,
             clock: runtime.clock,
             sleep: stoppableSleep(runtime.sleep, stop),
-            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue), stop),
+            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom), stop),
             env: runtime.env,
             platform: runtime.platform,
             scanner: new SecretScanner(config.register.secretPatterns),

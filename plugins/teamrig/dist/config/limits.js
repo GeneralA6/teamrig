@@ -88,6 +88,7 @@ export const CONFIG_LIMITS = {
     queueMemorySampleSeconds: { min: 0, max: 600 },
     queueMemoryFloorMb: { min: 0, max: 1_048_576 },
     queueSmallReserveMb: { min: 0, max: 1_048_576 },
+    queueHeavyReserveMb: { min: 0, max: 1_048_576 },
     headroomSessionMb: { min: 100, max: 65_536 },
     headroomCommitMaxPct: { min: 50, max: 100 },
     headroomCloseIdleMinutes: { min: 15, max: 10_080 },
