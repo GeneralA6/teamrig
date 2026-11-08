@@ -148,7 +148,7 @@ export interface TeamPaths {
   readonly unownedNotices: string;
   /** Held while a start tells the lead of those warnings, so two starts never tell one twice. */
   readonly unownedNoticesLock: string;
-  /** Each session's metered use, `<id>.json` each, and `outside/` for use outside the team. */
+  /** Each session's metered use, `<id>.json` each, and the use outside the team in its own folder (budget/measure.ts `outsideUsageDir`). */
   readonly usage: string;
   /** The Claude config dir the team's sessions last started in, recorded at each start (budget/config-dir.ts). */
   readonly configDirRecord: string;

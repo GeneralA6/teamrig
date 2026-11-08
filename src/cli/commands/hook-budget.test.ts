@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MeterLog } from '../../budget/calibration.ts';
-import { OUTSIDE_ID } from '../../budget/measure.ts';
+import { OUTSIDE_ID, outsideUsageDir } from '../../budget/measure.ts';
 import { emptyPatterns } from '../../budget/patterns.ts';
 import { parseSessionsWeek, SESSIONS_WEEK_IN_STATE } from '../../budget/session-week-summary.ts';
 import { EMPTY_USAGE, UsageStore } from '../../budget/store.ts';
@@ -21,7 +21,7 @@ const TASKS = join(TEAM_HOME, 'state', ...TASKS_WEEK_IN_STATE);
 describe('the budget hooks', () => {
   it("keep the team's week summary on its account: its own sessions' W at its rate, never the use outside it, and its part of what is left", async () => {
     const kit = new CliHarness({ ...TEAM, budget: { ...HOLDING_BUDGET, account: 'work' } });
-    const outside = new UsageStore(kit.files, join(TEAM_HOME, 'state', 'usage', 'outside'));
+    const outside = new UsageStore(kit.files, outsideUsageDir(join(TEAM_HOME, 'state', 'usage')));
     const outsideDay = { '2030-01-08': { w: 40_000_000, calls: 1, patterns: emptyPatterns() } };
     assert.ok(await outside.save(OUTSIDE_ID, { ...EMPTY_USAGE, byDay: outsideDay }, (await outside.load(OUTSIDE_ID)).rev), 'outside use saved');
     assert.equal(await kit.files.read(SUMMARY), undefined);
@@ -75,13 +75,22 @@ describe('the budget hooks', () => {
     const usage = join(TEAM_HOME, 'state', 'usage');
     const bravo = new UsageStore(kit.files, usage);
     assert.ok(await bravo.save('bravo', { ...EMPTY_USAGE, byTask: { '2030-01-08': { T7: 20_000_000 } } }, (await bravo.load('bravo')).rev), 'bravo saved');
-    const outside = new UsageStore(kit.files, join(usage, 'outside'));
+    const outside = new UsageStore(kit.files, outsideUsageDir(usage));
     assert.ok(await outside.save(OUTSIDE_ID, { ...EMPTY_USAGE, byTask: { '2030-01-08': { T7: 5_000_000, T8: 10_000_000 } } }, (await outside.load(OUTSIDE_ID)).rev), 'outside use saved');
     assert.equal(await kit.files.read(TASKS), undefined);
     await meterToday(kit, [{ id: 'alpha', tab: ALPHA_TAB, w: 100_000_000 }]);
     const text = await kit.files.read(TASKS);
     // At 10M W per percent; no task is done in the like window, so no median.
     assert.deepEqual(text === undefined ? undefined : parseTasksWeek(text), { at: kit.clock.now(), spentPct: { T7: 2.5, T8: 1 }, likeMedians: [] });
+  });
+
+  it('leave the store of the use outside from before T1778 unread, as it held the tabs peer teams meter themselves', async () => {
+    const kit = new CliHarness({ ...TEAM, budget: HOLDING_BUDGET });
+    const old = new UsageStore(kit.files, join(TEAM_HOME, 'state', 'usage', 'outside'));
+    assert.ok(await old.save(OUTSIDE_ID, { ...EMPTY_USAGE, byTask: { '2030-01-08': { T9: 30_000_000 } } }, (await old.load(OUTSIDE_ID)).rev), 'old outside use saved');
+    await meterToday(kit, [{ id: 'alpha', tab: ALPHA_TAB, w: 100_000_000 }]);
+    const text = await kit.files.read(TASKS);
+    assert.deepEqual(text === undefined ? undefined : parseTasksWeek(text)?.spentPct, {});
   });
 
   it("keep a sized task's spend from its size base, as the list counts it (T2141)", async () => {
