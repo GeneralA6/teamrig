@@ -1,5 +1,5 @@
 import { QUEUE_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
-import { holderText, underLock, waitText } from "../../delivery/host-lock.js";
+import { busyText, holderText, underLock, waitText } from "../../delivery/host-lock.js";
 import { parseLedger } from "../../delivery/ledger.js";
 import { deliveryPlaces } from "../../delivery/places.js";
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass } from "../../delivery/push-pass.js";
@@ -17,9 +17,9 @@ import { EXIT, RefusedError } from "../runtime.js";
 import { stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
 import { envSession, markedSessionOf } from "./hook-input.js";
 const MINUTE_MS = 60_000;
-/** A small step's reserve is read from at most this many of its latest ended runs. */
+/** A step's measured reserve is read from at most this many of its latest ended runs. */
 const RESERVE_RUNS = 20;
-/** A small step's reserve is the most its latest runs held, with this margin. */
+/** A step's measured reserve is the most its latest runs held, with this margin. */
 const RESERVE_MARGIN = 1.25;
 /**
  * `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock, and for
@@ -54,26 +54,32 @@ function watchOf(runtime, config) {
     return config.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: config.memorySampleSeconds * 1_000 };
 }
 /**
- * The MB held for a small step: the most its process tree held in its latest `RESERVE_RUNS` ended runs, under the same
- * session and label in the ledger, with a quarter more; the config's `smallReserveMb` when none was measured.
+ * The most a step's process tree held in its latest `RESERVE_RUNS` ended runs, under the same session and label in the
+ * ledger, with a quarter more; undefined when none was measured.
  */
-async function reserveMbOf(runtime, ledger, session, what, config) {
+async function measuredReserveMbOf(runtime, ledger, session, what) {
     const records = parseLedger((await runtime.files.read(ledger)) ?? '');
     const peaks = records.flatMap((record) => (record.type === 'heavy' && record.session === session && record.what === what && record.peakTreeMb !== undefined ? [record.peakTreeMb] : []));
     const latest = peaks.slice(-RESERVE_RUNS);
-    return latest.length === 0 ? config.smallReserveMb : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
+    return latest.length === 0 ? undefined : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
 }
-/** Why a step was refused when its wait ran out: the lock's holder, or the small steps holding the memory it needs. */
-function busyText(taking, zone) {
-    return `${taking.holder.kind === 'memory' ? 'host memory still held by' : 'host lock still held by'} ${holderText(taking.holder, zone)}`;
+/**
+ * What the step asks of the host: a small step shares it, holding its measured reserve or the config's
+ * `smallReserveMb`; a heavy one takes the lock, holding its measured reserve or `heavyReserveMb`, whichever is more, so
+ * a step known to peak higher waits for that much room.
+ */
+async function needOf(runtime, ledger, session, what, small, config) {
+    const measuredMb = await measuredReserveMbOf(runtime, ledger, session, what);
+    return small ? { shares: true, reserveMb: measuredMb ?? config.smallReserveMb } : { shares: false, reserveMb: Math.max(measuredMb ?? 0, config.heavyReserveMb) };
 }
-/** The line a small step prints when it shares the host. */
-function sharingText(share, taking) {
+/** The line a small step holding `reserveMb` prints when it shares the host. */
+function sharingText(reserveMb, taking) {
     if (taking.sharing === undefined) {
         return undefined;
     }
     const others = taking.sharing.others.length;
-    return `sharing the host: ${share.reserveMb} MB held for it (${taking.sharing.freeMb} MB free, ${others} other small step${others === 1 ? '' : 's'})`;
+    const free = taking.sharing.freeMb === undefined ? '' : `${taking.sharing.freeMb} MB free, `;
+    return `sharing the host: ${reserveMb} MB held for it (${free}${others} other small step${others === 1 ? '' : 's'})`;
 }
 /** The last line: DONE, FAILED, TIMED OUT or STOPPED, with the exit code the ledger recorded. */
 function report(runtime, say, end, maxRunMinutes, watching) {
@@ -190,9 +196,11 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * `delivery.queue.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
  * (`--max-minutes`), and its start and end go to the delivery ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
- * so a `queue` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
- * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held
- * for them (`reserveMbOf`); a step without it waits for them to end. A small step is killed after `smallMaxRunMinutes`
+ * so a `queue` among them (a git hook's checks) runs at once under this lock. Every step waits in its turn until the
+ * host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small steps sharing the host
+ * (`hostLockOf`'s memory gate): for a step that takes the lock, `heavyReserveMb` or its measured peak (`needOf`). With
+ * `--small` (a spec run, a lint) the step shares the host with other small steps instead, holding its measured peak or
+ * `smallReserveMb`; a step without it waits for them to end. A small step is killed after `smallMaxRunMinutes`
  * instead, and its `--max-minutes` goes no higher. Once the shell that started it ends (Claude Code's
  * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
  * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
@@ -210,7 +218,7 @@ export async function queue(args, runtime) {
     const small = args.switches.has('small');
     const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
     const places = deliveryPlaces(delivery, kit.paths);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom);
     const parent = await parentLockOf(runtime, lock, say);
     const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
     const watching = await watchStarters(runtime, say);
@@ -226,16 +234,14 @@ export async function queue(args, runtime) {
         }
         refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
         const queuedAt = runtime.clock.now();
-        const share = small
-            ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, delivery.queue), floorMb: delivery.queue.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
-            : undefined;
+        const need = await needOf(runtime, places.ledger, session, what, small, delivery.queue);
         const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
-        const taking = await unlessStopped(watching.stop, lock.acquire(session, `heavy: ${what}`, delivery.queue.waitMinutes * MINUTE_MS, delivery.wait.pollSeconds * 1_000, (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`), share, watching.stop));
+        const taking = await unlessStopped(watching.stop, lock.acquire(session, `heavy: ${what}`, delivery.queue.waitMinutes * MINUTE_MS, delivery.wait.pollSeconds * 1_000, (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`), need, watching.stop));
         if (taking === undefined) {
             return stoppedWhileWaiting(runtime, say, watching);
         }
         if (taking.kind === 'busy') {
-            throw new RefusedError(busyText(taking, zone));
+            throw new RefusedError(busyText(taking.holder, zone));
         }
         if (taking.kind === 'withdrawn') {
             throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
@@ -243,7 +249,7 @@ export async function queue(args, runtime) {
         const waitedMs = runtime.clock.now() - queuedAt;
         try {
             refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
-            const sharing = share === undefined ? undefined : sharingText(share, taking);
+            const sharing = sharingText(need.reserveMb, taking);
             if (sharing !== undefined) {
                 say(sharing);
             }

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { freemem } from 'node:os';
+import { freemem, totalmem } from 'node:os';
 import { treeOf, wholeNumberLines } from "./processes.js";
 const MB = 2 ** 20;
 /** Bytes a process list may print: a host with thousands of processes stays far under it. */
@@ -131,13 +131,14 @@ async function commitOf(platform) {
     }
 }
 /**
- * The real probe: Node's free memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its
+ * The real probe: Node's free and total memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its
  * commit charge. The lister and every process it started are left out, so a watch does not count its own sampling.
  */
 export function nodeMemoryProbe(platform) {
     const { file, args, bytesPerUnit } = listCommand(platform);
     return {
         freeMb: () => Math.round(freemem() / MB),
+        totalMb: () => Math.round(totalmem() / MB),
         processes: () => new Promise((resolve) => {
             const lister = execFile(file, args, { windowsHide: true, maxBuffer: LIST_MAX_BUFFER }, (error, stdout) => {
                 if (error !== null) {

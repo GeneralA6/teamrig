@@ -1,4 +1,4 @@
-import { holderText, waitText } from "./host-lock.js";
+import { busyText, waitText } from "./host-lock.js";
 /**
  * Takes the host lock once nothing holds the step back. A refusal ends the wait at once; a reason to wait and a busy
  * lock are waited out, for at most `maxWaitMs` in all, the lock longer while its line moves (see `HostLock.acquire`).
@@ -36,7 +36,7 @@ export async function takeWhenClear(readiness, ports, request) {
         }
         const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) => request.onWait(`the host lock: ${waitText(holder, ahead, request.zone)}`));
         if (taking.kind === 'busy') {
-            return { kind: 'gaveUp', reason: `host lock still held by ${holderText(taking.holder, request.zone)}` };
+            return { kind: 'gaveUp', reason: busyText(taking.holder, request.zone) };
         }
         if (taking.kind === 'withdrawn') {
             return { kind: 'refused', reason: "withdrawn from the host lock's line (teamrig withdraw)" };

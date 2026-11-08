@@ -647,6 +647,7 @@ function parseQueue(read, raw) {
         memorySampleSeconds: read.integer(raw, 'memorySampleSeconds', path, DEFAULT_QUEUE.memorySampleSeconds, CONFIG_LIMITS.queueMemorySampleSeconds),
         memoryFloorMb: read.integer(raw, 'memoryFloorMb', path, DEFAULT_QUEUE.memoryFloorMb, CONFIG_LIMITS.queueMemoryFloorMb),
         smallReserveMb: read.integer(raw, 'smallReserveMb', path, DEFAULT_QUEUE.smallReserveMb, CONFIG_LIMITS.queueSmallReserveMb),
+        heavyReserveMb: read.integer(raw, 'heavyReserveMb', path, DEFAULT_QUEUE.heavyReserveMb, CONFIG_LIMITS.queueHeavyReserveMb),
     };
 }
 /** The budget block; a key of the account's week it leaves unset is `above`'s, the team above's (`AccountBudget`). */

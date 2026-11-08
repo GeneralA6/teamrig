@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { isRecord } from "../core/guards.js";
 import { ENV } from "../core/home.js";
 import { KIT_VERSION } from "../core/version.js";
+import { shortText } from "./memory-gate.js";
 /** Tries per taking: a stale lock removed may be retaken by another step first. */
 const ATTEMPTS = 3;
 /**
@@ -126,7 +127,8 @@ export function holderText(holder, zone) {
         case 'draining':
             return sharesText(holder.shares, zone);
         case 'memory':
-            return `${sharesText(holder.shares, zone)}; ${holder.freeMb} MB free, ${holder.heldMb} MB held for ${holder.shares.length === 1 ? 'it' : 'them'}, ${holder.needMb} MB needed`;
+        case 'commit':
+            return `${holder.shares.length === 0 ? '' : `${sharesText(holder.shares, zone)}; `}${shortText(holder, holder.shares.length)}`;
     }
 }
 /**
@@ -148,6 +150,10 @@ export function sharesText(shares, zone) {
 export function waitText(holder, ahead, zone) {
     return ahead === 0 ? holderText(holder, zone) : `${holderText(holder, zone)}; ${ahead} ahead in line`;
 }
+/** Why a step was refused when its wait ran out: `host memory still short: …` or `host lock still held by …`. */
+export function busyText(holder, zone) {
+    return holder.kind === 'memory' || holder.kind === 'commit' ? `host memory still short: ${holderText(holder, zone)}` : `host lock still held by ${holderText(holder, zone)}`;
+}
 /** The ids of `shares`, joined. */
 function idsOf(shares) {
     return shares.map((share) => share.id).join(',');
@@ -163,6 +169,7 @@ function waitKey(holder, ahead) {
             return `unknown ${ahead}`;
         case 'draining':
         case 'memory':
+        case 'commit':
             return `${holder.kind} ${idsOf(holder.shares)} ${ahead}`;
     }
 }
@@ -195,6 +202,7 @@ function standingBehind(ahead, holder) {
             break;
         case 'draining':
         case 'memory':
+        case 'commit':
             for (const share of holder.shares) {
                 ids.add(share.id);
             }
@@ -245,10 +253,12 @@ class Patience {
  * succeeds, and a withdrawn step never runs.
  * Small steps (`teamrig queue --small`: a spec run, a lint) share the host instead: in its turn, while the lock is not
  * held, a small step writes its share, `<lock>.shared/<id>.json`, before it leaves the line, so the next in line
- * sees it. It is let in at once when no other small step runs, else only while the host's free memory less the MB
- * held for those leaves `floorMb` plus its own. A step that takes the lock waits, holding it, for the shares to end,
- * so none is let in meanwhile. A share whose process is gone, that expired or that cannot be read is removed by the
- * next step that looks. A step that does not know shares (an older kit) takes a free lock while they run.
+ * sees it. A step that takes the lock waits, holding it, for the shares to end, so none is let in meanwhile. A share
+ * whose process is gone, that expired or that cannot be read is removed by the next step that looks. A step that does
+ * not know shares (an older kit) takes a free lock while they run.
+ * With a memory gate in its ports, the first in line takes the lock or a share only once the gate finds the host's
+ * memory has room for it, the MB held for the small steps sharing the host counted as taken; until then it waits in
+ * its place, so a later step never passes a step waiting on memory, and a lone step is gated as much as one beside others.
  */
 export class HostLock {
     static UNREADABLE_GRACE_MS = 10_000;
@@ -312,17 +322,18 @@ export class HostLock {
      * Takes the lock in its turn: joins the line, then looks again every `pollMs` (the first in line every
      * `FIRST_IN_LINE_POLL_MS` at most) until its line has not moved for `maxWaitMs`, and leaves the line when done.
      * `onWait` hears each new holder or place in line once, with the number of waiters ahead. A lock taken then waits,
-     * held, for the small steps sharing the host to end. With `share`, a small step shares the host in its turn instead
-     * (see the class). Busy when the wait ran out; withdrawn when its ticket was withdrawn before it took its turn. Once
-     * `stop` aborts, the wait rejects with its reason before its next look, as `fetch` does, leaving the line and
-     * releasing a lock it held while the small steps ended, so a step no one waits for any more never takes the lock.
+     * held, for the small steps sharing the host to end. With a `need` that shares, a small step shares the host in its
+     * turn instead (see the class); its reserve is the MB the memory gate needs for it. Busy when the wait ran out;
+     * withdrawn when its ticket was withdrawn before it took its turn. Once `stop` aborts, the wait rejects with its
+     * reason before its next look, as `fetch` does, leaving the line and releasing a lock it held while the small steps
+     * ended, so a step no one waits for any more never takes the lock.
      */
-    async acquire(session, purpose, maxWaitMs, pollMs, onWait, share, stop) {
+    async acquire(session, purpose, maxWaitMs, pollMs, onWait, need, stop) {
         const patience = new Patience(this.ports.clock.now(), maxWaitMs);
         const ticket = await this.joinLine(session, purpose, patience.deadline);
         const tell = tellingChanges(onWait);
         try {
-            const waited = await this.waitInLine(ticket, patience, pollMs, tell, share, stop);
+            const waited = await this.waitInLine(ticket, patience, pollMs, tell, need, stop);
             const result = waited.kind === 'taken' && waited.sharing === undefined ? await this.drain(waited.lock, ticket, patience, tell, stop) : waited;
             return result.kind === 'taken' ? await this.commit(result, ticket) : result;
         }
@@ -394,8 +405,8 @@ export class HostLock {
                 return this.isStale(seen.info) ? { kind: 'stale', info: seen.info } : seen;
         }
     }
-    /** Looks in line until this step takes the lock, or a share with `share`, in its turn, or its wait runs out; rejects once `stop` aborts. */
-    async waitInLine(ticket, patience, pollMs, tell, share, stop) {
+    /** Looks in line until this step takes the lock, or a share when `need` shares, in its turn, or its wait runs out; rejects once `stop` aborts. */
+    async waitInLine(ticket, patience, pollMs, tell, need, stop) {
         const { clock, sleep } = this.ports;
         let unknownSince;
         for (;;) {
@@ -405,7 +416,7 @@ export class HostLock {
                 return { kind: 'withdrawn' };
             }
             const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
-            const result = share === undefined ? await this.takeInTurn(ticket.waiter, ahead, removeUnknown) : await this.shareInTurn(ticket.waiter, ahead, removeUnknown, share);
+            const result = need?.shares === true ? await this.shareInTurn(ticket.waiter, ahead, removeUnknown, need.reserveMb) : await this.takeInTurn(ticket.waiter, ahead, removeUnknown, need?.reserveMb);
             if (result.kind === 'taken') {
                 return result;
             }
@@ -505,11 +516,11 @@ export class HostLock {
         return renewed;
     }
     /**
-     * One look in line for a small step. A live lock is waited on, and so is an earlier waiter. Else the step shares the
-     * host, under its ticket's id, at once when no other small step runs, else while the host's free memory less the
-     * MB held for those leaves `floorMb` plus its own; a stale lock is left for the next step that takes the lock.
+     * One look in line for a small step holding `reserveMb`. A live lock is waited on, and so is an earlier waiter. Else
+     * the step shares the host, under its ticket's id, once the memory gate finds room for it beside the small steps
+     * already sharing it (at once with no gate); a stale lock is left for the next step that takes the lock.
      */
-    async shareInTurn(waiter, ahead, removeUnknown, request) {
+    async shareInTurn(waiter, ahead, removeUnknown, reserveMb) {
         const seen = await this.read();
         if (seen.kind === 'held' && !this.isStale(seen.info)) {
             return { kind: 'busy', holder: await this.heldBy(seen.info) };
@@ -525,15 +536,25 @@ export class HostLock {
             await this.removeIf((text) => text === seen.text);
         }
         const others = await this.liveShares();
-        const freeMb = request.freeMb();
-        const heldMb = others.reduce((total, other) => total + other.reserveMb, 0);
-        const needMb = request.floorMb + request.reserveMb;
-        if (others.length > 0 && freeMb - heldMb < needMb) {
-            return { kind: 'busy', holder: { kind: 'memory', freeMb, heldMb, needMb, shares: others } };
+        const look = await this.lookAtMemory(reserveMb, others);
+        if (look !== undefined && look.kind !== 'room') {
+            return { kind: 'busy', holder: { ...look, shares: others } };
         }
-        const share = { ...this.newLock(waiter.session, waiter.purpose, waiter.id), reserveMb: request.reserveMb };
+        const share = { ...this.newLock(waiter.session, waiter.purpose, waiter.id), reserveMb };
         await this.ports.files.write(join(this.shared, `${share.id}.json`), stored(share));
-        return { kind: 'taken', lock: share, sharing: { freeMb, others } };
+        return { kind: 'taken', lock: share, sharing: look === undefined ? { others } : { freeMb: look.freeMb, others } };
+    }
+    /**
+     * The memory gate's look for a step holding `reserveMb` (the gate's `heavyReserveMb` when undefined) beside the small
+     * steps `shares`, whose held MB counts as taken; undefined for a lock with no gate.
+     */
+    async lookAtMemory(reserveMb, shares) {
+        const { memory } = this.ports;
+        if (memory === undefined) {
+            return undefined;
+        }
+        const heldMb = shares.reduce((total, share) => total + share.reserveMb, 0);
+        return memory.look(reserveMb ?? memory.config.heavyReserveMb, heldMb);
     }
     /** Every share file, with what it says: undefined when it cannot be read as a share. */
     async shareFiles() {
@@ -573,20 +594,30 @@ export class HostLock {
         return share?.id === id ? { path, share } : undefined;
     }
     /**
-     * One look in line. A live holder is named without a write. Else the first in line tries to take the lock, under
-     * its ticket's id so the step keeps one identity from joining the line to releasing the lock, and a later
-     * waiter names the waiter first in line, which the lock goes to next.
+     * One look in line for a step holding `reserveMb` (the gate's heavy reserve when undefined). A live holder is named
+     * without a write, and a later waiter names the waiter first in line, which the lock goes to next. The first in line
+     * takes the lock once the memory gate finds room for it, under its ticket's id so the step keeps one identity from
+     * joining the line to releasing the lock; the small steps still sharing the host count as holding their MB, as the
+     * step that took the lock waits for them to end.
      */
-    async takeInTurn(waiter, ahead, removeUnknown) {
+    async takeInTurn(waiter, ahead, removeUnknown, reserveMb) {
         const seen = await this.read();
         if (seen.kind === 'held' && !this.isStale(seen.info)) {
             return { kind: 'busy', holder: await this.heldBy(seen.info) };
         }
         const [first] = ahead;
-        if (first === undefined) {
-            return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.id);
+        if (first !== undefined) {
+            return { kind: 'busy', holder: seen.kind === 'unknown' ? { kind: 'unknown' } : { kind: 'queued', first } };
         }
-        return { kind: 'busy', holder: seen.kind === 'unknown' ? { kind: 'unknown' } : { kind: 'queued', first } };
+        if (seen.kind === 'unknown' && !removeUnknown) {
+            return { kind: 'busy', holder: { kind: 'unknown' } };
+        }
+        const shares = await this.liveShares();
+        const look = await this.lookAtMemory(reserveMb, shares);
+        if (look !== undefined && look.kind !== 'room') {
+            return { kind: 'busy', holder: { ...look, shares } };
+        }
+        return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.id);
     }
     /** Writes this step's ticket at the end of the line, its wait running out at `deadline`. */
     async joinLine(session, purpose, deadline) {
