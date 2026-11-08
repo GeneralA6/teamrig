@@ -5,7 +5,7 @@ import { MS_PER_DAY } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { likeSizing, ownSizing, treeRanking, type Sizing, type SpendKey } from './ranking.ts';
+import { likeMedians, likeSizing, likeTasksOf, ownSizing, storedSizing, treeRanking, type Sizing, type SpendKey } from './ranking.ts';
 import { TaskTree } from './tree.ts';
 
 const NOW = Date.parse('2030-01-20T10:00:00.000Z');
@@ -138,5 +138,70 @@ describe('likeSizing (T2076)', () => {
     sizing(LIKE);
     sizing(LIKE);
     assert.equal(reads.filter((id) => id === 'T1').length, 1);
+  });
+});
+
+describe('likeTasksOf (T2194)', () => {
+  it('keeps the tasks done inside the window, with only what the medians read', () => {
+    const tasks = [done('T1', 1, { owner: 'alpha', size: 2 }), done('T2', 14.01), done('T3', 1, { status: 'dropped' }), done('T4', 1, { status: 'open' })];
+    assert.deepEqual(likeTasksOf(tasks, NOW), [{ id: 'T1', status: 'done', statusAt: new Date(NOW - MS_PER_DAY).toISOString(), workClass: 'Roadmap', type: 'task' }]);
+  });
+
+  it('sizes as the whole register does, read later', () => {
+    const tasks = [done('T1', 1), done('T2', 13), done('T3', 20)];
+    const spends: Readonly<Record<string, number>> = { T1: 0.2, T2: 0.4, T3: 0.9 };
+    const later = NOW + 2 * MS_PER_DAY;
+    const kept = likeTasksOf(tasks, NOW);
+    assert.deepEqual(likeMedians(kept, DEFAULT_FOCUS, (id) => spends[id] ?? 0, later), likeMedians(tasks, DEFAULT_FOCUS, (id) => spends[id] ?? 0, later));
+  });
+});
+
+describe('likeMedians (T2194)', () => {
+  const spends: Readonly<Record<string, number>> = { T1: 0.1, T2: 0.3, T3: 0.5, T4: 0.7, T5: 0.2 };
+  const spentOf = (id: string): number => spends[id] ?? 0;
+
+  it('lists each kind with its median, by class and then type, an unset type first', () => {
+    const tasks = [done('T1', 1, { type: 'bug' }), done('T2', 1), done('T3', 1, { type: null }), done('T4', 1, { workClass: 'Maintenance' }), done('T5', 1, { type: 'bug' })];
+    assert.deepEqual(likeMedians(tasks, DEFAULT_FOCUS, spentOf, NOW), [
+      { workClass: 'Maintenance', type: 'task', pct: 0.7 },
+      { workClass: 'Roadmap', type: null, pct: 0.5 },
+      { workClass: 'Roadmap', type: 'bug', pct: 0.15000000000000002 },
+      { workClass: 'Roadmap', type: 'task', pct: 0.3 },
+    ]);
+  });
+
+  it('names an unclassed kind by the default class, and lists no kind with no spend', () => {
+    const tasks = [done('T1', 1, { workClass: null }), done('T9', 1, { workClass: 'Maintenance' })];
+    assert.deepEqual(likeMedians(tasks, DEFAULT_FOCUS, spentOf, NOW), [{ workClass: DEFAULT_FOCUS.defaultClass, type: 'task', pct: 0.1 }]);
+  });
+});
+
+describe('storedSizing (T2194)', () => {
+  const tasks = [done('T1', 1), done('T2', 2), done('T3', 3, { type: 'bug' }), done('T4', 1, { workClass: null, type: null })];
+  const spends: Readonly<Record<string, number>> = { T1: 0.1, T2: 0.3, T3: 0.25, T4: 0.6, T8: 0.05 };
+  const spentOf = (id: string): number => spends[id] ?? 0;
+  const stored = { spentPct: spends, likeMedians: likeMedians(tasks, DEFAULT_FOCUS, spentOf, NOW) };
+  const rows = [
+    LIKE,
+    testTask({ id: 'T8', workClass: 'Roadmap', type: 'bug', size: 1 }),
+    testTask({ id: 'T7', workClass: null, type: null }),
+    testTask({ id: 'T6', workClass: 'Maintenance', type: 'task' }),
+    { id: 'T5', status: 'open' as const, owner: 'alpha', priority: 2, due: null, after: [], waits: [] },
+  ];
+
+  it('sizes each row as likeSizing does on the same spend', () => {
+    const live = likeSizing(tasks, DEFAULT_FOCUS, ({ id }) => spentOf(id), NOW);
+    const read = storedSizing(stored, DEFAULT_FOCUS);
+    assert.deepEqual(rows.map(read), rows.map(live));
+  });
+
+  it("reads a task's spend from its entry, and one with none as 0", () => {
+    const read = storedSizing(stored, DEFAULT_FOCUS);
+    assert.equal(read(testTask({ id: 'T8', sizeBase: { day: '2030-01-19', w: 5 } })).spentPct, 0.05);
+    assert.equal(read(testTask({ id: 'T99' })).spentPct, 0);
+  });
+
+  it('takes no entry for an inherited key', () => {
+    assert.equal(storedSizing(stored, DEFAULT_FOCUS)(testTask({ id: 'constructor' })).spentPct, 0);
   });
 });
