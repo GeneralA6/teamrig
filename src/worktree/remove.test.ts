@@ -4,9 +4,22 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlink
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers, type FakeNode } from '../testing/fake-worktrees.ts';
-import { NODE_WORKTREE_FILES } from './files.ts';
+import { NODE_WORKTREE_FILES, type WorktreeFiles } from './files.ts';
 import { GIT_WORKTREES, type GitOutcome, type WorktreeEntry } from './git.ts';
-import { carryOut, describePlan, planRemoval, type PlannedLink, type RemovalDecision, type RemovalPlan, type RemovalRequest, type WorktreePorts } from './remove.ts';
+import {
+  carryOut,
+  clearLeftover,
+  describeLeftover,
+  describePlan,
+  planRemoval,
+  type LeftoverPlan,
+  type PlannedLink,
+  type RemovalDecision,
+  type RemovalPlan,
+  type RemovalRequest,
+  type WorktreeFolder,
+  type WorktreePorts,
+} from './remove.ts';
 
 const MAIN = '/w/main';
 const TOP = '/w/t4';
@@ -51,12 +64,19 @@ function world(answers: FakeGitAnswers = {}, nodes: Readonly<Record<string, Fake
 }
 
 function request(more: Partial<RemovalRequest> = {}): RemovalRequest {
-  return { path: TOP, cwd: '/w', deleteBranch: false, base: undefined, ...more };
+  return { path: TOP, cwd: '/w', deleteBranch: false, base: undefined, worktreeFolders: [], ...more };
 }
 
 function planOf(decision: RemovalDecision): RemovalPlan {
-  if (decision.kind === 'refused') {
-    assert.fail(`refused: ${decision.reason}`);
+  if (decision.kind !== 'ready') {
+    assert.fail(decision.kind === 'refused' ? `refused: ${decision.reason}` : `a leftover: ${decision.plan.top}`);
+  }
+  return decision.plan;
+}
+
+function leftoverOf(decision: RemovalDecision): LeftoverPlan {
+  if (decision.kind !== 'leftover') {
+    assert.fail(decision.kind === 'refused' ? `refused: ${decision.reason}` : `a worktree: ${decision.plan.top}`);
   }
   return decision.plan;
 }
@@ -446,6 +466,167 @@ describe('carryOut puts back every link it unlinked when the removal stops', () 
   });
 });
 
+/** The folder `teamrig worktree add` makes worktrees in beside the main checkout, and a leftover in it. */
+const FOLDER = '/w/wt';
+const HUSK = '/w/wt/t5';
+const HUSK_LINK = '/w/wt/t5/node_modules';
+const IN_FOLDER: readonly WorktreeFolder[] = [{ folder: FOLDER, mainDir: MAIN }];
+const PACKAGES = join(HUSK, 'packages');
+const WEB = join(HUSK, 'packages', 'web');
+
+/**
+ * The leftover of a removal git stopped partway (T1051): a folder outside any repository that git no longer lists,
+ * holding the node_modules link put back into it and an empty packages/web; git lists only the main checkout.
+ */
+function leftoverWorld(answers: FakeGitAnswers = {}, nodes: Readonly<Record<string, FakeNode>> = {}): World {
+  const files = new FakeWorktreeFiles({
+    [`${MODULES}/pkg`]: { kind: 'folder' },
+    [`${MODULES}/keep.txt`]: { kind: 'file' },
+    [HUSK_LINK]: { kind: 'link', target: MODULES },
+    [WEB]: { kind: 'folder' },
+    ...nodes,
+  });
+  const git = new FakeWorktreeGit({ worktrees: [{ path: MAIN, branch: 'main', locked: undefined }], tracked: [], ...answers });
+  return { files, git, ports: { git, files } };
+}
+
+function leftoverRequest(more: Partial<RemovalRequest> = {}): RemovalRequest {
+  return request({ path: HUSK, worktreeFolders: IN_FOLDER, ...more });
+}
+
+async function cleared(plan: LeftoverPlan, files: WorktreeFiles): Promise<string[]> {
+  const lines: string[] = [];
+  await clearLeftover(plan, files, (line) => lines.push(line));
+  return lines;
+}
+
+describe('the leftover of a removal git stopped partway (T1051)', () => {
+  it('unlinks its links, shows their targets untouched and removes its folders once empty, deepest first', async () => {
+    const { files, git, ports } = leftoverWorld();
+    const plan = leftoverOf(await planRemoval(leftoverRequest(), ports));
+    assert.deepEqual(describeLeftover(plan), [
+      `would unlink node_modules (the link only; its target ${resolve(MODULES)} holds 2 entries)`,
+      `would remove ${HUSK} and the 2 empty folders under it`,
+    ]);
+    assert.deepEqual(files.unlinked, [], 'planning changes nothing');
+    assert.deepEqual(await cleared(plan, files), [
+      `unlinked node_modules (the link only, to ${resolve(MODULES)})`,
+      `target ${resolve(MODULES)} untouched: 2 entries, as before`,
+      `removed ${HUSK}`,
+    ]);
+    assert.deepEqual(files.removedFolders, [resolve(WEB), resolve(PACKAGES), resolve(HUSK)]);
+    assert.deepEqual(files.linked, [], 'no link is put back');
+    assert.deepEqual(git.steps, [], 'git has nothing left to remove');
+    assert.equal(await files.kindOf(HUSK), 'missing');
+    assert.deepEqual((await files.entries(MODULES)).map((entry) => entry.name).sort(), ['keep.txt', 'pkg']);
+  });
+
+  it('counts the folders under it, and names a lone folder an empty one', async () => {
+    const one = new FakeWorktreeFiles({ [`${HUSK}/src`]: { kind: 'folder' } });
+    const git = new FakeWorktreeGit({ worktrees: [{ path: MAIN, branch: 'main', locked: undefined }] });
+    assert.deepEqual(describeLeftover(leftoverOf(await planRemoval(leftoverRequest(), { git, files: one }))), [`would remove ${HUSK} and the 1 empty folder under it`]);
+    const lone = new FakeWorktreeFiles({ [HUSK]: { kind: 'folder' } });
+    const plan = leftoverOf(await planRemoval(leftoverRequest(), { git, files: lone }));
+    assert.deepEqual(describeLeftover(plan), [`would remove the empty folder ${HUSK}`]);
+    assert.deepEqual(await cleared(plan, lone), [`removed ${HUSK}`]);
+  });
+
+  it('clears one in the main checkout, where git places it, unless git tracks a file under it', async () => {
+    const nested = '/w/main/.claude/worktrees/t5';
+    const inMain: readonly WorktreeFolder[] = [{ folder: '/w/main/.claude/worktrees', mainDir: MAIN }];
+    const nodes: Record<string, FakeNode> = { [`${nested}/node_modules`]: { kind: 'link', target: MODULES } };
+    const { files, ports } = leftoverWorld({ top: MAIN }, nodes);
+    const plan = leftoverOf(await planRemoval(request({ path: nested, worktreeFolders: inMain }), ports));
+    assert.deepEqual(plan.links.map((link) => link.name), ['node_modules']);
+    await cleared(plan, files);
+    assert.equal(await files.kindOf(nested), 'missing');
+    const tracked = leftoverWorld({ top: MAIN, tracked: ['.claude/worktrees/t5/notes.md'] }, nodes);
+    assert.equal(await refusal(planRemoval(request({ path: nested, worktreeFolders: inMain }), tracked.ports)), `${nested} is inside the worktree ${MAIN}: give its top folder`);
+  });
+
+  describe('keeps the refusal of a folder that is no leftover', () => {
+    const NOT_IN_GIT = `${HUSK} is not in a git worktree`;
+
+    it('one git still lists, or when git cannot list its worktrees', async () => {
+      const listed = leftoverWorld({ worktrees: [{ path: MAIN, branch: 'main', locked: undefined }, { path: HUSK, branch: 't5', locked: undefined }] });
+      assert.equal(await refusal(planRemoval(leftoverRequest(), listed.ports)), NOT_IN_GIT);
+      assert.equal(await refusal(planRemoval(leftoverRequest(), leftoverWorld({ worktrees: undefined }).ports)), NOT_IN_GIT);
+    });
+
+    it('one holding a file, deep or a .git file at its top', async () => {
+      assert.equal(await refusal(planRemoval(leftoverRequest(), leftoverWorld({}, { [`${WEB}/index.ts`]: { kind: 'file' } }).ports)), NOT_IN_GIT);
+      assert.equal(await refusal(planRemoval(leftoverRequest(), leftoverWorld({}, { [`${HUSK}/.git`]: { kind: 'file' } }).ports)), NOT_IN_GIT);
+    });
+
+    it('one not directly in a folder worktrees are made in', async () => {
+      const { ports } = leftoverWorld();
+      assert.equal(await refusal(planRemoval(leftoverRequest({ worktreeFolders: [] }), ports)), NOT_IN_GIT);
+      assert.equal(await refusal(planRemoval(leftoverRequest({ path: PACKAGES }), ports)), `${PACKAGES} is not in a git worktree`);
+    });
+
+    it('one inside a linked worktree, which is that worktree\'s own', async () => {
+      const inLinked = `${TOP}/.claude/worktrees/t5`;
+      const { ports } = leftoverWorld({ top: TOP, worktrees: [{ path: MAIN, branch: 'main', locked: undefined }, { path: TOP, branch: 't4', locked: undefined }] }, { [inLinked]: { kind: 'folder' } });
+      const folders: readonly WorktreeFolder[] = [{ folder: `${TOP}/.claude/worktrees`, mainDir: MAIN }];
+      assert.equal(await refusal(planRemoval(request({ path: inLinked, worktreeFolders: folders }), ports)), `${inLinked} is inside the worktree ${TOP}: give its top folder`);
+    });
+  });
+
+  it('refuses a run from inside it, and --delete-branch, before any change', async () => {
+    const { files, ports } = leftoverWorld();
+    assert.equal(await refusal(planRemoval(leftoverRequest({ cwd: PACKAGES }), ports)), `this runs inside ${HUSK}, which a running program keeps from being deleted: run it from another folder`);
+    assert.equal(
+      await refusal(planRemoval(leftoverRequest({ deleteBranch: true }), ports)),
+      `git no longer knows which branch ${HUSK} had: clear it without --delete-branch, then delete the branch with git branch -d <name>`,
+    );
+    assert.deepEqual(files.unlinked, []);
+  });
+
+  describe('stops, naming why, and puts no link back', () => {
+    it('when a program holds a folder, and a rerun clears what is left', async () => {
+      const { files, ports } = leftoverWorld();
+      files.busy.add(resolve(HUSK));
+      const plan = leftoverOf(await planRemoval(leftoverRequest(), ports));
+      assert.equal(
+        await failure(cleared(plan, files)),
+        `cannot remove ${HUSK}: EBUSY: resource busy or locked, rmdir '${HUSK}'; most often a program with its working folder inside it ` +
+          '(often a Claude Code tab started there) keeps Windows from deleting it: close that program or move it out, then run this again',
+      );
+      assert.deepEqual(files.removedFolders, [resolve(WEB), resolve(PACKAGES)]);
+      assert.deepEqual(files.linked, []);
+      files.busy.clear();
+      const rerun = leftoverOf(await planRemoval(leftoverRequest(), ports));
+      assert.deepEqual(describeLeftover(rerun), [`would remove the empty folder ${HUSK}`]);
+      assert.deepEqual(await cleared(rerun, files), [`removed ${HUSK}`]);
+    });
+
+    it('when something was put in a folder after the check, keeping it', async () => {
+      const { files, ports } = leftoverWorld();
+      const plan = leftoverOf(await planRemoval(leftoverRequest(), ports));
+      files.put(`${WEB}/late.txt`, { kind: 'file' });
+      assert.equal(await failure(cleared(plan, files)), `something was put in ${WEB} after the check, so it is kept: run this again to check it anew`);
+      assert.deepEqual(files.removedFolders, []);
+      assert.equal(await files.kindOf(`${WEB}/late.txt`), 'other');
+    });
+
+    it('when a link is still there after its unlink, before any folder goes', async () => {
+      const { files, ports } = leftoverWorld();
+      files.stuck.add(resolve(HUSK_LINK));
+      const plan = leftoverOf(await planRemoval(leftoverRequest(), ports));
+      assert.equal(await failure(cleared(plan, files)), `node_modules is still in ${HUSK} after its unlink`);
+      assert.deepEqual(files.removedFolders, []);
+    });
+
+    it('when a link target changed, before any folder goes', async () => {
+      const { files, ports } = leftoverWorld();
+      const plan = leftoverOf(await planRemoval(leftoverRequest(), ports));
+      files.delete(`${MODULES}/keep.txt`);
+      assert.equal(await failure(cleared(plan, files)), `${resolve(MODULES)}, the target of node_modules, held 2 entries before and 1 entry after the removal`);
+      assert.deepEqual(files.removedFolders, []);
+    });
+  });
+});
+
 /** A repo on `main` whose gitignored node_modules holds two packages, and a linked worktree on `feat` that links to it. */
 function realWorld(prefix: string): { repo: TempRepo; worktree: string; modules: string } {
   const repo = new TempRepo(prefix).init();
@@ -474,7 +655,7 @@ describe('removing a real worktree with a real node_modules link', () => {
       repo.git('-C', worktree, 'add', '-A');
       repo.git('-C', worktree, 'commit', '-q', '-m', 'b');
       repo.git('merge', '-q', '--ff-only', 'feat');
-      const plan = planOf(await planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: true, base: 'main' }, REAL));
+      const plan = planOf(await planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: true, base: 'main', worktreeFolders: [] }, REAL));
       assert.deepEqual(plan.links.map((link) => [link.name, realpathSync.native(link.target), link.targetEntries]), [['node_modules', modules, 2]]);
       const lines = await carried(plan, REAL);
       assert.equal(lines.length, 4);
@@ -491,7 +672,7 @@ describe('removing a real worktree with a real node_modules link', () => {
   it('puts the link back when git refuses the removal, so the worktree reaches its modules again', async () => {
     const { repo, worktree, modules } = realWorld('wt-real-relink');
     try {
-      const plan = planOf(await planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: false, base: undefined }, REAL));
+      const plan = planOf(await planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: false, base: undefined, worktreeFolders: [] }, REAL));
       writeFileSync(join(worktree, 'late.txt'), 'written after the checks\n');
       await assert.rejects(carried(plan, REAL), /contains modified or untracked files.*\(its links are back: node_modules\)$/s);
       assert.equal(await NODE_WORKTREE_FILES.kindOf(join(worktree, 'node_modules')), 'link');
@@ -505,20 +686,41 @@ describe('removing a real worktree with a real node_modules link', () => {
   it('refuses the main checkout, a real node_modules folder and an unmerged branch, and changes nothing', async () => {
     const { repo, worktree, modules } = realWorld('wt-real-refuse');
     try {
-      assert.match(await refusal(planRemoval({ path: repo.dir, cwd: repo.outside, deleteBranch: false, base: undefined }, REAL)), /is the main checkout/);
+      assert.match(await refusal(planRemoval({ path: repo.dir, cwd: repo.outside, deleteBranch: false, base: undefined, worktreeFolders: [] }, REAL)), /is the main checkout/);
       writeFileSync(join(worktree, 'src', 'b.ts'), 'export const b = 2;\n');
       repo.git('-C', worktree, 'add', '-A');
       repo.git('-C', worktree, 'commit', '-q', '-m', 'b');
-      assert.match(await refusal(planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: true, base: 'main' }, REAL)), /feat has 1 commit\(s\) whose change is not on main/);
+      assert.match(await refusal(planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: true, base: 'main', worktreeFolders: [] }, REAL)), /feat has 1 commit\(s\) whose change is not on main/);
       writeFileSync(join(worktree, 'scratch.txt'), 'draft\n');
-      assert.match(await refusal(planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: false, base: undefined }, REAL)), /has uncommitted changes or untracked files \(scratch\.txt\)/);
+      assert.match(await refusal(planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: false, base: undefined, worktreeFolders: [] }, REAL)), /has uncommitted changes or untracked files \(scratch\.txt\)/);
       assert.equal(await NODE_WORKTREE_FILES.kindOf(join(worktree, 'node_modules')), 'link', 'the link stays until every check passes');
 
       await NODE_WORKTREE_FILES.unlinkLink(join(worktree, 'node_modules'));
       mkdirSync(join(worktree, 'node_modules', 'own'), { recursive: true });
-      assert.match(await refusal(planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: false, base: undefined }, REAL)), /node_modules in .* is a real folder, not a link/);
+      assert.match(await refusal(planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: false, base: undefined, worktreeFolders: [] }, REAL)), /node_modules in .* is a real folder, not a link/);
       assert.ok(existsSync(join(worktree, 'node_modules', 'own')));
       assert.deepEqual(readdirSync(modules).sort(), ['keep.txt', 'pkg']);
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it('clears the leftover of a removal git stopped partway, and keeps every file its link pointed to (T1051)', async () => {
+    const { repo, worktree, modules } = realWorld('wt-real-leftover');
+    try {
+      // As a stopped removal leaves it: git's record gone, the folder back with its link and an empty folder.
+      await NODE_WORKTREE_FILES.unlinkLink(join(worktree, 'node_modules'));
+      repo.git('worktree', 'remove', worktree);
+      mkdirSync(join(worktree, 'src', 'empty'), { recursive: true });
+      symlinkSync(modules, join(worktree, 'node_modules'), 'junction');
+      const asked = { path: worktree, cwd: repo.dir, deleteBranch: false, base: undefined };
+      assert.match(await refusal(planRemoval({ ...asked, worktreeFolders: [] }, REAL)), /is not in a git worktree/);
+      const plan = leftoverOf(await planRemoval({ ...asked, worktreeFolders: [{ folder: repo.outside, mainDir: repo.dir }] }, REAL));
+      assert.deepEqual(plan.links.map((link) => [link.name, realpathSync.native(link.target), link.targetEntries]), [['node_modules', modules, 2]]);
+      assert.equal((await cleared(plan, NODE_WORKTREE_FILES)).at(-1), `removed ${worktree}`);
+      assert.equal(existsSync(worktree), false);
+      assert.deepEqual(readdirSync(modules).sort(), ['keep.txt', 'pkg']);
+      assert.equal(readFileSync(join(modules, 'pkg', 'index.js'), 'utf8'), 'module.exports = 1;\n');
     } finally {
       repo.remove();
     }

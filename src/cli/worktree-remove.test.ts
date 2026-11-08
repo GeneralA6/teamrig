@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { CLAUDE_SESSION, CliHarness } from '../testing/cli-harness.ts';
+import { CLAUDE_SESSION, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers } from '../testing/fake-worktrees.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import { EXIT } from './runtime.ts';
@@ -163,5 +163,59 @@ describe('runCli: worktree remove in a team removes only what the caller may (T1
     assert.deepEqual(git.steps, []);
     const person = await kit.run(['worktree', 'remove', '/w/t4'], { worktrees: ports });
     assert.equal(person.code, EXIT.ok, person.stdout.join('\n'));
+  });
+});
+
+describe('runCli: worktree remove clears the leftover of a removal git stopped partway (T1051)', () => {
+  /** A folder git no longer lists at `husk`, holding only its node_modules link; git lists only the main checkout at /w/main. */
+  function leftover(husk: string, top: string | undefined): { files: FakeWorktreeFiles; git: FakeWorktreeGit; ports: WorktreePorts } {
+    const files = new FakeWorktreeFiles({
+      [`${MODULES}/pkg`]: { kind: 'folder' },
+      [`${MODULES}/keep.txt`]: { kind: 'file' },
+      [`${husk}/node_modules`]: { kind: 'link', target: MODULES },
+    });
+    const git = new FakeWorktreeGit({ top, worktrees: [{ path: '/w/main', branch: 'main', locked: undefined }], tracked: [] });
+    return { files, git, ports: { git, files } };
+  }
+
+  it('in the folder worktree add uses in the repository it runs in, with no team set up', async () => {
+    const husk = '/w/main/.claude/worktrees/t4';
+    const { files, git, ports } = leftover(husk, '/w/main');
+    const kit = new CliHarness(null, null);
+    const dry = await kit.run(['worktree', 'remove', husk, '--dry-run'], { worktrees: ports });
+    assert.equal(dry.code, EXIT.ok, dry.stdout.join('\n'));
+    assert.deepEqual(dry.stdout, [
+      `would unlink node_modules (the link only; its target ${resolve(MODULES)} holds 2 entries)`,
+      `would remove the empty folder ${resolve(husk)}`,
+      'dry run: nothing changed',
+    ]);
+    assert.deepEqual(files.unlinked, []);
+    const result = await kit.run(['worktree', 'remove', husk], { worktrees: ports });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual(result.stdout, [
+      `unlinked node_modules (the link only, to ${resolve(MODULES)})`,
+      `target ${resolve(MODULES)} untouched: 2 entries, as before`,
+      `removed ${resolve(husk)}`,
+      `OK cleared the leftover ${resolve(husk)}`,
+    ]);
+    assert.deepEqual(git.steps, []);
+    assert.equal(await files.kindOf(husk), 'missing');
+  });
+
+  it("in a team's delivery.repos worktree folder, for any session: a leftover has no branch to own", async () => {
+    const kit = new CliHarness({ ...TEAM, delivery: { repos: { app: { mainCheckout: '/w/main', worktreeFolder: '../wt' } } } });
+    const { files, ports } = leftover('/w/wt/t4', undefined);
+    const result = await kit.run(['worktree', 'remove', '/w/wt/t4'], { worktrees: ports, env: { TEAMRIG_SESSION: 'bravo', CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.equal(result.stdout.at(-1), `OK cleared the leftover ${resolve('/w/wt/t4')}`);
+    assert.equal(await files.kindOf('/w/wt/t4'), 'missing');
+  });
+
+  it('refuses one in no folder worktrees are made in, as before', async () => {
+    const { files, ports } = leftover('/w/elsewhere/t4', undefined);
+    const result = await new CliHarness(null, null).run(['worktree', 'remove', '/w/elsewhere/t4'], { worktrees: ports });
+    assert.equal(result.code, EXIT.refused);
+    assert.deepEqual(result.stdout, [`REFUSED ${resolve('/w/elsewhere/t4')} is not in a git worktree`]);
+    assert.deepEqual(files.unlinked, []);
   });
 });
