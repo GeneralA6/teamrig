@@ -4080,10 +4080,13 @@ Shows the host's queued steps (`queue`, `merge`, `deploy`) in one read, taking n
 session that waits on the host lock sees why without reading the lock, the tickets and the ledger by hand:
 
 - `HOST`: free memory of the RAM, the floor kept free (`delivery.queue.memoryFloorMb`), the commit charge, the MB
-  held for small steps sharing the host, what the running steps' process trees use, and the top memory holders.
-- `RUNNING`: the lock's holder (how long it has held the lock and what its process tree uses) and each small step
-  sharing the host (the MB held for it). A lock whose process has ended is called stale; the next step removes it.
-- `WAITING`: the line in order, each step with how long it has waited and what its ticket says it waits on: the
+  held for the steps sharing the host (heavy and small), what the running steps' process trees use, and the top
+  memory holders.
+- `RUNNING`: the lock's holder (how long it has held the lock and what its process tree uses) and each step sharing
+  the host (the MB held for it; a heavy one says `shares the host as a heavy step`). A lock whose process has ended is
+  called stale; the next step removes it.
+- `WAITING`: the line in the order steps are let in (`delivery.queue.admission`: by class turn and priority in
+  `pipeline`, by arrival in `serial`), each step with how long it has waited and what its ticket says it waits on: the
   holder of the lock and its place in line, or the memory numbers (free, held, its need, the floor and reserve).
 - `REFUSED in the last 24h`: queued steps that waited and did not run, from the ledger's refusal records.
 
