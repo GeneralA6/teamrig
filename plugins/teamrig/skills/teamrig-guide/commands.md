@@ -4030,6 +4030,44 @@ Output:
 WITHDRAWN heavy: build api, waiting since 2030-01-08 11:58 IST: it stops at its next look
 ```
 
+### teamrig pipeline
+
+Shows the host's queued steps (`queue`, `merge`, `deploy`) in one read, taking nothing and changing nothing, so a
+session that waits on the host lock sees why without reading the lock, the tickets and the ledger by hand:
+
+- `HOST`: free memory of the RAM, the floor kept free (`delivery.queue.memoryFloorMb`), the commit charge, the MB
+  held for small steps sharing the host, what the running steps' process trees use, and the top memory holders.
+- `RUNNING`: the lock's holder (how long it has held the lock and what its process tree uses) and each small step
+  sharing the host (the MB held for it). A lock whose process has ended is called stale; the next step removes it.
+- `WAITING`: the line in order, each step with how long it has waited and what its ticket says it waits on: the
+  holder of the lock and its place in line, or the memory numbers (free, held, its need, the floor and reserve).
+- `REFUSED in the last 24h`: queued steps that waited and did not run, from the ledger's refusal records.
+
+It runs from any folder. Exit 0.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig pipeline
+```
+
+Output:
+
+```text
+HOST 7000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); commit charge 30000 of 48000 MB; 2048 MB held for 1 small step; the running steps' trees use 3500 MB
+  top memory holders: vmmem 22.4 GB, msedge 20.9 GB in 35 processes, claude 900 MB in 12 processes
+RUNNING 2
+  lead (heavy: build) holds the lock, for 12m, its tree uses 3000 MB
+  alpha (heavy: lint) shares the host, 2048 MB held for it, for 3m, its tree uses 500 MB
+WAITING 2
+  1. bravo (heavy: test) for 5m, on lock since 2030-01-08 11:55 IST: lead (heavy: build) since 2030-01-08 11:48 IST
+  2. alpha (heavy: specs) for 1m: its ticket names no cause (before its first look, or an older teamrig)
+REFUSED in the last 24h: 1
+  2030-01-08 11:30 IST bravo (test api) timedOut after 30m: host lock still held by lead (heavy: build) since 2030-01-08 10:48 IST
+```
+
 ### teamrig merge
 
 Merges the branch checked out in the current folder, a worktree or a plain checkout, into origin's default branch (the
