@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
 import { MeterLog } from '../budget/calibration.ts';
 import { recordConfigDir } from '../budget/config-dir.ts';
+import { OUTSIDE_ID } from '../budget/measure.ts';
 import { emptyPatterns } from '../budget/patterns.ts';
 import { formatPeriod, parsePeriod } from '../budget/period.ts';
 import { FIVE_HOUR_SUMMARY_FILE } from '../budget/five-hour-summary.ts';
@@ -139,6 +140,14 @@ describe('teamrig budget', () => {
       W_EXPLAINED,
     ]);
     assert.deepEqual(ok(await run(['budget', '--all'])).slice(6, 7), ['  No use today: app-lead.']);
+  });
+
+  it('counts none of the store of the use outside from before T1778, as it held the tabs peer teams meter themselves', async () => {
+    const { kit, run } = await world();
+    const old = new UsageStore(kit.files, join(TEAM_HOME, 'state', 'usage', 'outside'));
+    const day = { '2030-01-08': { w: 40_000_000, calls: 4, patterns: emptyPatterns() } };
+    assert.ok(await old.save(OUTSIDE_ID, { ...EMPTY_USAGE, byDay: day, byHour: { '2030-01-08T08': 40_000_000 } }, (await old.load(OUTSIDE_ID)).rev), 'old outside use saved');
+    assert.ok(ok(await run(['budget'])).includes(OUTSIDE_LINE));
   });
 
   describe('the five-hour window', () => {

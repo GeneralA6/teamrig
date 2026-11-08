@@ -10,7 +10,7 @@ import { BurstLog } from '../../budget/burst-log.ts';
 import { activeCut, CutLog } from '../../budget/cut.ts';
 import type { TranscriptFolders } from '../../budget/discover.ts';
 import { activeLift, LiftLog } from '../../budget/lift.ts';
-import { OUTSIDE_ID } from '../../budget/measure.ts';
+import { OUTSIDE_ID, outsideUsageDir } from '../../budget/measure.ts';
 import { runMeter } from '../../budget/meter.ts';
 import { budgetSplitOf, dailyBudgetOf } from '../../budget/parts.ts';
 import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
@@ -98,7 +98,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   for (const each of roster.ids) {
     byId.set(each, (await team.load(each)).state);
   }
-  const outside = (await new UsageStore(files, join(kit.paths.usage, 'outside')).load(OUTSIDE_ID)).state;
+  const outside = (await new UsageStore(files, outsideUsageDir(kit.paths.usage)).load(OUTSIDE_ID)).state;
   const account = await accountWeekOn(runtime, budget, kit.paths, now);
   const states = [...byId.values(), outside];
   const week = await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), { budget, now, statusUse: account.statusUse, states });

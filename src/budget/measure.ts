@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { Roster } from '../config/roster.ts';
 import type { Clock } from '../core/lock.ts';
 import { attribute, type PeerTeam } from './attribute.ts';
@@ -7,6 +8,17 @@ import type { UsageState, UsageStorage } from './store.ts';
 
 /** The id use outside the team and its peer teams on the account is kept under, in its own store. */
 export const OUTSIDE_ID = 'all';
+
+/**
+ * The folder in a team's usage folder its store of the use outside (`OUTSIDE_ID`) is kept in. Until T1778 the
+ * store in `outside/` also metered the tabs a peer team marks, which that team now meters itself; its hours cannot be
+ * split by tab, so a peer's W in them would count twice beside the peer's own stores. The use outside starts afresh
+ * here instead, and the old store is no longer read.
+ */
+export function outsideUsageDir(usage: string): string {
+  return join(usage, 'outside-no-team');
+}
+
 /** The most transcript bytes one meter run reads while catching up. */
 export const CATCH_UP_CHUNK_BYTES = 64 * 1024 * 1024;
 /** The most meter runs per session in one measure, so a read never runs unbounded. */

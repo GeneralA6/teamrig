@@ -21,7 +21,7 @@ import { claudeProjectsDir } from '../../budget/discover.ts';
 import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
-import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
+import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, outsideUsageDir, type Measured } from '../../budget/measure.ts';
 import { paceLineOfWeek } from '../../budget/pace.ts';
 import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, teamPartOf, type BudgetSplit, type TeamsOnAccount } from '../../budget/parts.ts';
 import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
@@ -121,7 +121,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       transcripts: runtime.transcripts,
       titleOf: (path) => transcriptTitleOf(runtime.transcripts, path),
       team: recount ? new MemoryUsageStore() : new UsageStore(files, kit.paths.usage),
-      outside: recount ? new MemoryUsageStore() : new UsageStore(files, join(kit.paths.usage, 'outside')),
+      outside: recount ? new MemoryUsageStore() : new UsageStore(files, outsideUsageDir(kit.paths.usage)),
       clock,
     },
     {

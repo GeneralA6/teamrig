@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { OUTSIDE_ID } from '../budget/measure.ts';
+import { OUTSIDE_ID, outsideUsageDir } from '../budget/measure.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { storeTaskSpend } from '../testing/budget-hold.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -46,7 +46,7 @@ describe('readSpentClasses', () => {
 
   it('counts no use outside the team, as the rows of teamrig budget do not', async () => {
     const kit = new CliHarness(LIMITED);
-    await storeTaskSpend(kit, OUTSIDE_ID, 'T2', 150_000_000, join(USAGE, 'outside'));
+    await storeTaskSpend(kit, OUTSIDE_ID, 'T2', 150_000_000, outsideUsageDir(USAGE));
     assert.deepEqual((await read(kit)).spent, []);
   });
 

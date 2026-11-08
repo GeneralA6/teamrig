@@ -1,5 +1,4 @@
-import { join } from 'node:path';
-import { OUTSIDE_ID } from '../budget/measure.ts';
+import { OUTSIDE_ID, outsideUsageDir } from '../budget/measure.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
 import { calibrationOf, MeterLog, readingsOfTeam } from '../budget/calibration.ts';
 import { teamWeekOf, type MeterScale } from '../budget/team-week.ts';
@@ -19,7 +18,7 @@ export async function readStoredUsage(runtime: CliRuntime, paths: Pick<TeamPaths
   for (const id of sessions) {
     states.set(id, (await team.load(id)).state);
   }
-  states.set(OUTSIDE_ID, (await new UsageStore(runtime.files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
+  states.set(OUTSIDE_ID, (await new UsageStore(runtime.files, outsideUsageDir(paths.usage)).load(OUTSIDE_ID)).state);
   return states;
 }
 
