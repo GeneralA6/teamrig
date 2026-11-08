@@ -3878,7 +3878,9 @@ Runs one queued step (a build, a test run, a database script) under the host loc
 at a time instead of competing for its CPU and memory. It waits for the lock until its line has not moved
 for `delivery.queue.waitMinutes` (60 by default). Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue` and only the
 first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). It
-prints a line for each new holder or place in line (`...; 2 ahead in line`). A ticket whose process is gone or whose
+prints a line for each new holder or place in line (`...; 2 ahead in line`). Its ticket says what it waits on and
+since when (`waitingOn`: the holder and place in line, or the memory numbers), rewritten only when that changes, so
+`teamrig pipeline` shows every waiter's cause. A ticket whose process is gone or whose
 wait ran out is removed by the next waiter. The line moved when a step it stood behind (a waiter ahead, the lock's
 holder, a small step sharing the host) ended or left, so a step far back in a line that keeps moving is not refused;
 each time, its ticket's expiry moves on with its wait. A step that does not join the line (an older kit, a team's own
@@ -3923,9 +3925,16 @@ being killed. The step's start and end go to the delivery ledger,
 `ledger.jsonl` in `delivery.dir` (default `deploys` in the team's state folder), with the teamrig version that ran
 it (`kit`), the kind of work it is (`kind`), the task it works for (`task`, when it names one) and that task's
 register priority as it queued (`priority`, 1 for `p1`; left out when the register lacks the task), when it began to
-wait (`queuedAt`) and, sampled every `delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the most memory its
-process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`), and `shared: true` for
-a small step. Exit 0 when the command passed, 1 when it failed or was killed. REFUSED (exit 2) from
+wait (`queuedAt`), the host's free memory then (`queueFreeMb`), the ms its wait took by cause (`waits`: `lock`,
+`line`, `draining`, `memory`, `commit`, `freeze`, `check`, each one that took time) and, sampled every
+`delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the host's free memory as it started (`startFreeMb`),
+the most memory its process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`),
+and `shared: true` for a small step. A step killed at its limit or as its shell ended also records the host's free
+memory (`endFreeMb`) and commit charge (`commitMb` of `commitLimitMb`) at the kill. A step that waited and did not
+run leaves a `refusal` record instead: when it began to wait and ended, how (`outcome`: `timedOut`, `withdrawn`,
+`stopped` or `refused`), the line it printed (`reason`, which after a wait on host memory names the top three
+programs holding memory), its waits by cause, the last thing it waited on (`lastWait`), and the host's free memory at
+both ends (`queueFreeMb`, `endFreeMb`). Exit 0 when the command passed, 1 when it failed or was killed. REFUSED (exit 2) from
 `delivery.schedule.queueCutoffUtc` to midnight UTC, also when the wait for the lock ran past it, and when the lock
 (or, for a small step, the memory it needs) is still held after the wait.
 
@@ -4134,7 +4143,7 @@ looking every `delivery.wait.pollSeconds` (30), for the freezes and the host loc
 rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change, the review gate and, under
 `pushGuard.pushToProtected: gated`, the self-merge gates (see Gate holds below), and pushes there (or runs the
 `merge` command), the push a queued step in the ledger that runs the pre-push
-hook. It merged when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
+hook (kind `merge`, with the task the branch name holds and its register priority). It merged when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
 moved meanwhile, it rebases and pushes again, 3 times in all. After a merge it deletes the branch on origin and
 here, moves the local default branch to origin's and prints the `teamrig worktree remove` that ends a worktree.
 Like `teamrig queue`, it watches the processes that started it. Once its launching shell ends it stops waiting
@@ -4332,8 +4341,8 @@ or no `deploy.dependencyInstall` set, or a range deploy cannot read. Also from
 and when a check refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
 `delivery.wait.maxMinutes` for the freezes, the checks and the host lock (longer while its line moves), reads origin again under the lock and asks
 the checks again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
-and the command, each killed after `delivery.queue.maxRunMinutes`, all one queued step in the ledger. Their lines
-show as they come.
+and the command, each killed after `delivery.queue.maxRunMinutes`, all one queued step in the ledger (kind
+`deploy`). Their lines show as they come.
 
 A range that changes `package-lock.json`, or a `package.json` field an install reads (as `dependencyGate` judges it),
 runs `dependencyInstall` in the main checkout right after the pull; with `dependencyGate`, `dependencyCheck` runs first, its `TEAMRIG_BASELINE_LOCK` a file
