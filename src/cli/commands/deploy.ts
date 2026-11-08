@@ -63,7 +63,7 @@ export async function deploy(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
       pid: runtime.pid,
       clock: runtime.clock,
       sleep: stoppableSleep(runtime.sleep, stop),
-      lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom), stop),
+      lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, zone), stop),
       env: runtime.env,
       platform: runtime.platform,
       scanner: new SecretScanner(config.register.secretPatterns),

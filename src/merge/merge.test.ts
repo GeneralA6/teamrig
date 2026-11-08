@@ -98,6 +98,7 @@ class World {
       pid: 7,
       alive: () => true,
       newId: () => 'lock-1',
+      zone: TimeZone.UTC,
       ...(options.memoryGated === true ? { memory: defaultGateOn(this.memory, this.clock.sleep) } : {}),
     });
     this.reset = options.reset;

@@ -27,12 +27,13 @@ async function freezeContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<F
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
   const { delivery } = config;
   const places = deliveryPlaces(delivery, kit.paths);
+  const zone = teamZone(config, runtime);
   return {
     session,
     delivery,
     places,
     secretPatterns: config.register.secretPatterns,
-    ports: { files: runtime.files, clock: runtime.clock, zone: teamZone(config, runtime), lock: freezesLockOf(runtime, places.freezesLock) },
+    ports: { files: runtime.files, clock: runtime.clock, zone, lock: freezesLockOf(runtime, places.freezesLock, zone) },
   };
 }
 

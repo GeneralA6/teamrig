@@ -6,6 +6,7 @@ import type { Clock, Sleep } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
+import { causeOfLockWait, WAIT_CAUSES, type WaitCause } from './wait-log.ts';
 
 /**
  * The host lock's file. Its fields are the ones a team's own deploy tool writes too, so both take the same
@@ -53,12 +54,32 @@ export interface LockWaiter {
    * ticket and runs anyway.
    */
   readonly stopsOnWithdraw?: boolean;
+  /** What it waited on at its last look; left out before its first look, and by an older kit. */
+  readonly waitingOn?: WaitingOn;
 }
 
-/** A step's own place in line: its ticket's file name and what the ticket says. */
+/**
+ * What a waiter waits on, as its ticket says for a reader of the line (`teamrig pipeline`): its cause, its report as
+ * the waiting step hears it (`waitText`), and since when (an ISO time) it has waited on that cause without a break.
+ * The waiter writes it again only when its report changes (a new holder, a new place in line), so the numbers of a
+ * wait on memory are the ones it first saw.
+ */
+export interface WaitingOn {
+  readonly reason: WaitCause;
+  readonly text: string;
+  readonly since: string;
+}
+
+/** A ticket in the line: its file name and what it says. */
 interface Ticket {
   readonly name: string;
   readonly waiter: LockWaiter;
+}
+
+/** This step's own ticket, `waiter` what its last write says. */
+interface OwnTicket {
+  readonly name: string;
+  waiter: LockWaiter;
 }
 
 /**
@@ -131,6 +152,8 @@ export interface HostLockPorts {
   alive(pid: number): boolean;
   /** A new unique id. */
   newId(): string;
+  /** The team's clock, which a waiter's ticket says its report on (`waitingOn`). */
+  readonly zone: TimeZone;
   /**
    * The gate every step passes on the host's memory before it takes the lock or a share; none for a lock that guards no
    * step, as the deploy freezes' writers share.
@@ -240,17 +263,37 @@ function isLockWaiter(value: unknown): value is LockWaiter {
     isKit(value['kit']) &&
     isTime(value['arrivedAt']) &&
     isTime(value['expiresAt']) &&
-    (value['stopsOnWithdraw'] === undefined || typeof value['stopsOnWithdraw'] === 'boolean')
+    (value['stopsOnWithdraw'] === undefined || typeof value['stopsOnWithdraw'] === 'boolean') &&
+    (value['waitingOn'] === undefined || isWaitingOn(value['waitingOn']))
   );
+}
+
+function isWaitCause(value: unknown): value is WaitCause {
+  return WAIT_CAUSES.some((cause) => cause === value);
+}
+
+function isWaitingOn(value: unknown): value is WaitingOn {
+  return isRecord(value) && isWaitCause(value['reason']) && typeof value['text'] === 'string' && isTime(value['since']);
+}
+
+/**
+ * `value` without a `waitingOn` this teamrig cannot read (a cause a later kit added): a ticket read as damaged is
+ * removed from the line, and its step would lose its place for a field only a reader of the line shows.
+ */
+function withoutUnreadableWaitingOn(value: unknown): unknown {
+  return isRecord(value) && value['waitingOn'] !== undefined && !isWaitingOn(value['waitingOn'])
+    ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'waitingOn'))
+    : value;
 }
 
 function isHostShare(value: unknown): value is HostShare {
   return isHostLockInfo(value) && isRecord(value) && typeof value['reserveMb'] === 'number' && Number.isSafeInteger(value['reserveMb']) && value['reserveMb'] >= 0;
 }
 
-function parseAs<T>(text: string, is: (value: unknown) => value is T): T | undefined {
+/** The record `text` holds when `is` takes it, once read and passed through `tidy` (by default, as it is). */
+function parseAs<T>(text: string, is: (value: unknown) => value is T, tidy: (value: unknown) => unknown = (value) => value): T | undefined {
   try {
-    const value = withId(withoutForeignKit(JSON.parse(text)));
+    const value = tidy(withId(withoutForeignKit(JSON.parse(text))));
     return is(value) ? value : undefined;
   } catch {
     return undefined;
@@ -259,6 +302,10 @@ function parseAs<T>(text: string, is: (value: unknown) => value is T): T | undef
 
 function parseLock(text: string): HostLockInfo | undefined {
   return parseAs(text, isHostLockInfo);
+}
+
+function parseWaiter(text: string): LockWaiter | undefined {
+  return parseAs(text, isLockWaiter, withoutUnreadableWaitingOn);
 }
 
 /**
@@ -340,16 +387,34 @@ function waitKey(holder: LockWait, ahead: number): string {
   }
 }
 
-/** `onWait`, told only of a new holder or a new place in line. */
-function tellingChanges(onWait: Tell): Tell {
-  let told: string | undefined;
-  return (holder, ahead) => {
+/**
+ * One waiter's reports: `onWait` hears only a new holder or a new place in line, and each new report is what its
+ * ticket says it waits on next (`WaitingOn`), its `since` kept while the cause stays the same.
+ */
+class WaitReports {
+  private readonly onWait: Tell;
+  private readonly zone: TimeZone;
+  private told: string | undefined;
+  private waitingOn: WaitingOn | undefined;
+
+  constructor(onWait: Tell, zone: TimeZone) {
+    this.onWait = onWait;
+    this.zone = zone;
+  }
+
+  /** Takes in the report of one look at `now`: what the ticket waits on next when it is new (and `onWait` heard it), else undefined. */
+  report(holder: LockWait, ahead: number, now: number): WaitingOn | undefined {
     const key = waitKey(holder, ahead);
-    if (key !== told) {
-      onWait(holder, ahead);
-      told = key;
+    if (key === this.told) {
+      return undefined;
     }
-  };
+    this.told = key;
+    this.onWait(holder, ahead);
+    const reason = causeOfLockWait(holder);
+    const since = this.waitingOn?.reason === reason ? this.waitingOn.since : new Date(now).toISOString();
+    this.waitingOn = { reason, text: waitText(holder, ahead, this.zone), since };
+    return this.waitingOn;
+  }
 }
 
 /**
@@ -499,7 +564,8 @@ export class HostLock {
   /**
    * Takes the lock in its turn: joins the line, then looks again every `pollMs` (the first in line every
    * `FIRST_IN_LINE_POLL_MS` at most) until its line has not moved for `maxWaitMs`, and leaves the line when done.
-   * `onWait` hears each new holder or place in line once, with the number of waiters ahead. A lock taken then waits,
+   * `onWait` hears each new holder or place in line once, with the number of waiters ahead, and the step's ticket says
+   * it as its `waitingOn` from then on. A lock taken then waits,
    * held, for the small steps sharing the host to end. With a `need` that shares, a small step shares the host in its
    * turn instead (see the class); its reserve is the MB the memory gate needs for it. Busy when the wait ran out;
    * withdrawn when its ticket was withdrawn before it took its turn. Once `stop` aborts, the wait rejects with its
@@ -509,10 +575,10 @@ export class HostLock {
   async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, need?: StepNeed, stop?: AbortSignal): Promise<Taking> {
     const patience = new Patience(this.ports.clock.now(), maxWaitMs);
     const ticket = await this.joinLine(session, purpose, patience.deadline);
-    const tell = tellingChanges(onWait);
+    const reports = new WaitReports(onWait, this.ports.zone);
     try {
-      const waited = await this.waitInLine(ticket, patience, pollMs, tell, need, stop);
-      const result = waited.kind === 'taken' && waited.sharing === undefined ? await this.drain(waited.lock, ticket, patience, tell, stop) : waited;
+      const waited = await this.waitInLine(ticket, patience, pollMs, reports, need, stop);
+      const result = waited.kind === 'taken' && waited.sharing === undefined ? await this.drain(waited.lock, ticket, patience, reports, stop) : waited;
       return result.kind === 'taken' ? await this.commit(result, ticket) : result;
     } finally {
       await this.ports.files.remove(join(this.queue, ticket.name));
@@ -588,7 +654,7 @@ export class HostLock {
   }
 
   /** Looks in line until this step takes the lock, or a share when `need` shares, in its turn, or its wait runs out; rejects once `stop` aborts. */
-  private async waitInLine(ticket: Ticket, patience: Patience, pollMs: number, tell: Tell, need: StepNeed | undefined, stop: AbortSignal | undefined): Promise<Taking> {
+  private async waitInLine(ticket: OwnTicket, patience: Patience, pollMs: number, reports: WaitReports, need: StepNeed | undefined, stop: AbortSignal | undefined): Promise<Taking> {
     const { clock, sleep } = this.ports;
     let unknownSince: number | undefined;
     for (;;) {
@@ -604,8 +670,8 @@ export class HostLock {
       }
       const { holder } = result;
       unknownSince = holder.kind === 'unknown' ? (unknownSince ?? clock.now()) : undefined;
-      tell(holder, ahead.length);
-      if (!(await this.waitOn(ticket, patience, standingBehind(ahead, holder)))) {
+      const waitingOn = reports.report(holder, ahead.length, clock.now());
+      if (!(await this.waitOn(ticket, patience, standingBehind(ahead, holder), waitingOn))) {
         return { kind: 'withdrawn' };
       }
       const left = patience.deadline - clock.now();
@@ -623,7 +689,7 @@ export class HostLock {
    * withdrawn meanwhile. A lock that waited is renewed, so its step gets its whole time. Once `stop` aborts it releases
    * the lock and rejects with the stop's reason.
    */
-  private async drain(lock: HostLockInfo, ticket: Ticket, patience: Patience, tell: Tell, stop: AbortSignal | undefined): Promise<Taking> {
+  private async drain(lock: HostLockInfo, ticket: OwnTicket, patience: Patience, reports: WaitReports, stop: AbortSignal | undefined): Promise<Taking> {
     const { clock, sleep } = this.ports;
     const expiry = Date.parse(lock.expiresAt);
     let waited = false;
@@ -637,8 +703,8 @@ export class HostLock {
         return { kind: 'taken', lock: waited ? await this.renew(lock) : lock };
       }
       const holder: LockWait = { kind: 'draining', shares };
-      tell(holder, 0);
-      if (!(await this.waitOn(ticket, patience, standingBehind([], holder)))) {
+      const waitingOn = reports.report(holder, 0, clock.now());
+      if (!(await this.waitOn(ticket, patience, standingBehind([], holder), waitingOn))) {
         await this.release(lock);
         return { kind: 'withdrawn' };
       }
@@ -660,7 +726,7 @@ export class HostLock {
    * A step that took its turn removes its own ticket to run: when a withdraw removed it first, the lock or share just
    * taken is released and the step is withdrawn.
    */
-  private async commit(taken: Extract<Taking, { kind: 'taken' }>, ticket: Ticket): Promise<Taking> {
+  private async commit(taken: Extract<Taking, { kind: 'taken' }>, ticket: OwnTicket): Promise<Taking> {
     if (await this.ports.files.remove(join(this.queue, ticket.name))) {
       return taken;
     }
@@ -669,24 +735,31 @@ export class HostLock {
   }
 
   /**
-   * Takes in a look that found this step behind the steps `behind`: when the line moved, its wait runs out later and
-   * its ticket says so, so no waiter removes it as stale meanwhile. False when its ticket was withdrawn.
+   * Takes in a look that found this step behind the steps `behind`, with what it waits on when that is new: when the
+   * line moved, its wait runs out later and its ticket says so, so no waiter removes it as stale meanwhile; a new
+   * `waitingOn` goes in the same write. False when its ticket was withdrawn.
    */
-  private async waitOn(ticket: Ticket, patience: Patience, behind: ReadonlySet<string>): Promise<boolean> {
-    return !patience.look(behind, this.ports.clock.now()) || (await this.extend(ticket, patience.deadline));
+  private async waitOn(ticket: OwnTicket, patience: Patience, behind: ReadonlySet<string>, waitingOn: WaitingOn | undefined): Promise<boolean> {
+    const moved = patience.look(behind, this.ports.clock.now());
+    if (!moved && waitingOn === undefined) {
+      return true;
+    }
+    const expiresAt = ticketExpiry(patience.deadline);
+    return this.rewrite(ticket, waitingOn === undefined ? { ...ticket.waiter, expiresAt } : { ...ticket.waiter, expiresAt, waitingOn });
   }
 
   /**
-   * Moves this step's ticket's expiry to `deadline` plus the grace, keeping its place. The ticket is removed and written
-   * again: the removal fails when a withdraw removed it first, so a withdrawn ticket never comes back (false then).
-   * Meanwhile, for a moment, the line misses it.
+   * Writes this step's ticket again as `waiter`, keeping its place: its wait's new end, or what it now waits on. The
+   * ticket is removed and written again: the removal fails when a withdraw removed it first, so a withdrawn ticket never
+   * comes back (false then). Meanwhile, for a moment, the line misses it, so a ticket is written again only on a change.
    */
-  private async extend(ticket: Ticket, deadline: number): Promise<boolean> {
+  private async rewrite(ticket: OwnTicket, waiter: LockWaiter): Promise<boolean> {
     const path = join(this.queue, ticket.name);
     if (!(await this.ports.files.remove(path))) {
       return false;
     }
-    await this.ports.files.write(path, stored({ ...ticket.waiter, expiresAt: ticketExpiry(deadline) }));
+    await this.ports.files.write(path, stored(waiter));
+    ticket.waiter = waiter;
     return true;
   }
 
@@ -816,7 +889,7 @@ export class HostLock {
   }
 
   /** Writes this step's ticket at the end of the line, its wait running out at `deadline`. */
-  private async joinLine(session: string, purpose: string, deadline: number): Promise<Ticket> {
+  private async joinLine(session: string, purpose: string, deadline: number): Promise<OwnTicket> {
     const now = this.ports.clock.now();
     const waiter: LockWaiter = {
       id: this.ports.newId(),
@@ -852,7 +925,7 @@ export class HostLock {
       if (text === undefined) {
         continue;
       }
-      const waiter = parseAs(text, isLockWaiter);
+      const waiter = parseWaiter(text);
       if (waiter === undefined || this.isStale(waiter)) {
         await files.remove(path);
       } else {
@@ -868,7 +941,7 @@ export class HostLock {
     const found: Ticket[] = [];
     for (const name of (await files.list(this.queue)).filter((entry) => TICKET_NAME.test(entry)).sort()) {
       const text = await files.read(join(this.queue, name));
-      const waiter = text === undefined ? undefined : parseAs(text, isLockWaiter);
+      const waiter = text === undefined ? undefined : parseWaiter(text);
       if (waiter !== undefined && !this.isStale(waiter)) {
         found.push({ name, waiter });
       }

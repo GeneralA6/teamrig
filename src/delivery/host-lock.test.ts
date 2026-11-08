@@ -21,6 +21,7 @@ import {
   type LockWaiter,
   type StepNeed,
   type Taking,
+  type WaitingOn,
   type Withdrawal,
 } from './host-lock.ts';
 import { MemoryGate, type MemoryGateConfig } from './memory-gate.ts';
@@ -83,6 +84,7 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
     clock,
     sleep: sleep === undefined ? clock.sleep : sleep(clock, files),
     pid: ME,
+    zone: JERUSALEM,
     alive: (pid) => running.has(pid),
     newId: () => {
       ids += 1;
@@ -92,6 +94,9 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
   });
   return { files, clock, running, lock };
 }
+
+/** What a step that joined the line at 10:00 behind the lock {@link infoOf} holds says it waits on, on the team's clock. */
+const HELD_BY_PO: WaitingOn = { reason: 'lock', text: 'po (heavy: build) since 2030-01-08 11:50 IST', since: '2030-01-08T10:00:00.000Z' };
 
 /** A waiter in the line: bravo, run by `OTHER`, its wait lasting to 11:00. */
 function waiterOf(arrivedAt: string, overrides: Partial<LockWaiter> = {}): LockWaiter {
@@ -116,6 +121,7 @@ function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep
     clock,
     sleep,
     pid,
+    zone: JERUSALEM,
     alive: (running) => running === ME || running === OTHER,
     newId: () => {
       ids += 1;
@@ -357,7 +363,7 @@ describe('HostLock.acquire', () => {
 });
 
 describe('HostLock.acquire in arrival order', () => {
-  it('writes its ticket while it waits: named by its arrival, with its process, its deadline and grace, and that it stops on withdraw', async () => {
+  it('writes its ticket while it waits: named by its arrival, with its process, its deadline and grace, that it stops on withdraw, and what it waits on', async () => {
     const seen: string[] = [];
     const { files, lock } = world({ [PATH]: heldBy() }, (time, store) => async (ms) => {
       for (const name of await store.list(QUEUE)) {
@@ -373,6 +379,7 @@ describe('HostLock.acquire in arrival order', () => {
       purpose: 'heavy: test',
       expiresAt: new Date(Date.parse('2030-01-08T10:00:02.000Z') + TICKET_GRACE_MS).toISOString(),
       stopsOnWithdraw: true,
+      waitingOn: HELD_BY_PO,
     });
     const [path, text] = ticket(mine);
     assert.deepEqual(seen, [`${path.slice(QUEUE.length + 1)} ${text}`]);
@@ -951,5 +958,179 @@ describe('HostLock ids, stored as token until every reader takes id (T1544)', ()
     const { lock } = world({ [PATH]: JSON.stringify({ ...onDisk(infoOf({ id: 'older-name' })), id: 'other' }) });
     const state = await lock.state();
     assert.deepEqual(state.kind === 'held' ? state.info : undefined, infoOf());
+  });
+});
+
+/** Files in memory that count the writes to each path. */
+class Counting extends MemoryFiles {
+  readonly writes = new Map<string, number>();
+
+  override async write(path: string, text: string): Promise<void> {
+    this.writes.set(path, (this.writes.get(path) ?? 0) + 1);
+    await super.write(path, text);
+  }
+
+  /** The writes to the tickets in the line, one count per ticket; a path may be joined with either slash, as on Windows. */
+  ticketWrites(): number[] {
+    return [...this.writes.entries()].filter(([path]) => path.replaceAll('\\', '/').startsWith(`${QUEUE}/`)).map(([, count]) => count);
+  }
+}
+
+/** This step's ticket (`t1`) as a reader of the line finds it at `clock`'s time: when its wait runs out, and what it waits on. */
+async function mineOf(store: Files, clock: FakeClock): Promise<Pick<LockWaiter, 'expiresAt' | 'waitingOn'> | undefined> {
+  const mine = (await lockOver(store, clock, 77).line()).find((waiter) => waiter.id === 't1');
+  return mine === undefined ? undefined : { expiresAt: mine.expiresAt, ...(mine.waitingOn === undefined ? {} : { waitingOn: mine.waitingOn }) };
+}
+
+/** What this step's ticket says it waits on, as a reader of the line finds it at `clock`'s time. */
+async function waitingOnOf(store: Files, clock: FakeClock): Promise<WaitingOn | undefined> {
+  return (await mineOf(store, clock))?.waitingOn;
+}
+
+/** `seen` without an entry equal to the one before it. */
+function changesOf<T>(seen: readonly T[]): T[] {
+  return seen.filter((entry, at) => at === 0 || JSON.stringify(entry) !== JSON.stringify(seen[at - 1]));
+}
+
+describe('HostLock waitingOn: what a waiter says it waits on (T2209)', () => {
+  it('says on its ticket from its first look the report the step hears, on the team clock, since that look', async () => {
+    const seen: (WaitingOn | undefined)[] = [];
+    const { lock } = world({ [PATH]: heldBy() }, (time, store) => async (ms) => {
+      seen.push(await waitingOnOf(store, time));
+      await time.sleep(ms);
+    });
+    const told: string[] = [];
+    await lock.acquire('alpha', 'heavy: test', 4_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, JERUSALEM)));
+    assert.deepEqual(seen, [HELD_BY_PO, HELD_BY_PO]);
+    assert.deepEqual(told, [HELD_BY_PO.text]);
+  });
+
+  it('keeps its since through a new holder of the same cause, and moves it when the cause changes', async () => {
+    const memory = new FakeHostMemory(5000);
+    const seen: (WaitingOn | undefined)[] = [];
+    let sleeps = 0;
+    const { lock } = world(
+      { [PATH]: heldBy() },
+      (time, store) => async (ms) => {
+        seen.push(await waitingOnOf(store, time));
+        await time.sleep(ms);
+        sleeps += 1;
+        if (sleeps === 1) {
+          await store.write(PATH, heldBy({ id: 'third', session: 'bravo' }));
+        } else if (sleeps === 2) {
+          await store.remove(PATH);
+        } else {
+          memory.free = 16_000;
+        }
+      },
+      memory,
+    );
+    const taking = await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
+    assert.equal(taking.kind, 'taken');
+    assert.deepEqual(seen, [
+      HELD_BY_PO,
+      { ...HELD_BY_PO, text: 'bravo (heavy: build) since 2030-01-08 11:50 IST' },
+      { reason: 'memory', text: 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)', since: '2030-01-08T10:00:04.000Z' },
+    ]);
+  });
+
+  it('writes its ticket again only when its report changes, as the line misses it for a moment at each write', async () => {
+    const clock = new FakeClock('2030-01-08T10:00:00Z');
+    const files = new Counting({ [PATH]: heldBy() });
+    const texts = new Set<string>();
+    const sleep: Sleep = async (ms) => {
+      for (const name of await files.list(QUEUE)) {
+        texts.add(files.get(`${QUEUE}/${name}`) ?? '');
+      }
+      await clock.sleep(ms);
+    };
+    const taking = await lockOver(files, clock, ME, sleep).acquire('alpha', 'heavy: test', 10_000, 30_000, () => undefined);
+    assert.deepEqual([taking.kind, clock.sleeps.length, texts.size], ['busy', 5, 1], 'one text through its five looks');
+    assert.deepEqual(files.ticketWrites(), [2], 'written as it joined the line, then once with its first report');
+  });
+
+  it('writes its ticket once when its line moves and its report changes at the same look', async () => {
+    const [early, text] = ticket(waiterOf('2030-01-08T09:58:00.000Z', { id: 'early' }));
+    const clock = new FakeClock('2030-01-08T10:00:00Z');
+    const files = new Counting({ [PATH]: heldBy(), [early]: text });
+    const seen: unknown[] = [];
+    let sleeps = 0;
+    const sleep: Sleep = async (ms) => {
+      seen.push(await mineOf(files, clock));
+      await clock.sleep(ms);
+      sleeps += 1;
+      if (sleeps === 1) {
+        await files.remove(early);
+      }
+    };
+    const taking = await lockOver(files, clock, ME, sleep).acquire('alpha', 'heavy: test', 30_000, 30_000, () => undefined);
+    assert.equal(taking.kind, 'busy');
+    assert.deepEqual(changesOf(seen), [
+      { expiresAt: '2030-01-08T10:00:40.000Z', waitingOn: { ...HELD_BY_PO, text: `${HELD_BY_PO.text}; 1 ahead in line` } },
+      { expiresAt: '2030-01-08T10:01:10.000Z', waitingOn: HELD_BY_PO },
+    ]);
+    assert.deepEqual(files.ticketWrites(), [3],'joining, its first report, then the move with its new report in one write');
+  });
+
+  it('keeps what it waits on when its line moves with no new report, its wait running out later', async () => {
+    const [first, firstText] = ticket(waiterOf('2030-01-08T09:58:00.000Z', { id: 'e1' }));
+    const [earlier, earlierText] = ticket(waiterOf('2030-01-08T09:57:00.000Z', { id: 'e0' }));
+    const seen: unknown[] = [];
+    let sleeps = 0;
+    const { lock } = world({ [PATH]: heldBy(), [first]: firstText }, (time, store) => async (ms) => {
+      seen.push(await mineOf(store, time));
+      await time.sleep(ms);
+      sleeps += 1;
+      if (sleeps === 1) {
+        await store.remove(first);
+        await store.write(earlier, earlierText);
+      }
+    });
+    await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
+    const waitingOn: WaitingOn = { ...HELD_BY_PO, text: `${HELD_BY_PO.text}; 1 ahead in line` };
+    assert.deepEqual(changesOf(seen), [
+      { expiresAt: '2030-01-08T10:01:10.000Z', waitingOn },
+      { expiresAt: '2030-01-08T10:01:40.000Z', waitingOn },
+    ]);
+  });
+
+  it("keeps in line a ticket whose waitingOn this teamrig cannot read, as a later kit's cause, leaving that field out", async () => {
+    const known = waiterOf('2030-01-08T09:58:00.000Z', { id: 'known', waitingOn: HELD_BY_PO });
+    const later = waiterOf('2030-01-08T09:59:00.000Z');
+    const [path] = ticket(later);
+    const text = JSON.stringify({ ...onDisk(later), waitingOn: { reason: 'cpu', text: 'host CPU busy', since: '2030-01-08T09:59:00.000Z' } });
+    const { files, lock } = world(Object.fromEntries([ticket(known), [path, text]]));
+    const told: number[] = [];
+    const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, (_holder, ahead) => told.push(ahead));
+    assert.deepEqual([taking.kind, told], ['busy', [2]], 'a step behind it still counts it ahead');
+    assert.deepEqual(await lock.line(), [known, later]);
+    assert.equal(files.get(path), text, 'its ticket is left as it was');
+  });
+
+  it('never writes back a ticket withdrawn before its first report, and stops at once', async () => {
+    const clock = new FakeClock('2030-01-08T10:00:00Z');
+    let done: Withdrawal[] = [];
+    const files = new Interleaved({ [PATH]: heldBy() }, 'read', (path) => path === PATH, async (store) => {
+      done = await lockOver(store, clock, 77).withdraw('alpha', () => true);
+    });
+    const taking = await lockOver(files, clock).acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
+    assert.deepEqual([taking, done.map((withdrawal) => withdrawal.kind), clock.sleeps, await lineOf(files)], [{ kind: 'withdrawn' }, ['withdrawn'], [], []]);
+  });
+
+  it('says it waits on the small steps ending while it holds the lock for them', async () => {
+    const [path, text] = shareFile(shareOf());
+    const seen: (WaitingOn | undefined)[] = [];
+    let sleeps = 0;
+    const { lock } = world({ [path]: text }, (time, store) => async (ms) => {
+      seen.push(await waitingOnOf(store, time));
+      await time.sleep(ms);
+      sleeps += 1;
+      if (sleeps === 2) {
+        await store.remove(path);
+      }
+    });
+    const taking = await lock.acquire('alpha', 'heavy: build', 60 * 60_000, 30_000, () => undefined);
+    const draining: WaitingOn = { reason: 'draining', text: '1 small step: po (heavy: specs) since 2030-01-08 11:50 IST', since: '2030-01-08T10:00:00.000Z' };
+    assert.deepEqual([taking.kind, seen], ['taken', [draining, draining]]);
   });
 });

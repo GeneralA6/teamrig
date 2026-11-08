@@ -29,7 +29,7 @@ interface World {
 function world(initial: Readonly<Record<string, string>> = {}): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
-  const lock = new HostLock(LOCK, FREEZES_LOCK_TTL_MS, { files, clock, sleep: clock.sleep, pid: 7, alive: (pid) => pid === 7 || pid === 9, newId: () => 'claims-1' });
+  const lock = new HostLock(LOCK, FREEZES_LOCK_TTL_MS, { files, clock, sleep: clock.sleep, pid: 7, alive: (pid) => pid === 7 || pid === 9, newId: () => 'claims-1', zone: TimeZone.UTC });
   return { files, clock, ports: { files, clock, zone: TimeZone.UTC, lock } };
 }
 
