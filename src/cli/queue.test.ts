@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
+import { isRecord } from '../core/guards.ts';
 import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
 import type { QueuedStepRecord, RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
 import { recordPass } from '../delivery/push-pass.ts';
@@ -454,6 +456,26 @@ describe('teamrig queue', () => {
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:01:02.000Z', exitCode: 0 }]);
   });
 
+  it("puts what the step asks on its ticket in the host lock's line: its kind, the task its label names with that task's priority and class, and the memory it needs (T2210)", async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const added = await kit.run(['add', '--title', 'Ship the build', '--description', 'what and why', '--priority', 'p2', '--class', 'Maintenance', '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    await kit.files.write(LOCK, heldBy());
+    const queue = `${LOCK}.queue`;
+    const requests: unknown[] = [];
+    const sleep = async (ms: number): Promise<void> => {
+      for (const name of await kit.files.list(queue)) {
+        const ticket: unknown = JSON.parse(kit.files.get(join(queue, name)) ?? 'null');
+        requests.push(isRecord(ticket) ? ticket['request'] : undefined);
+      }
+      await kit.clock.sleep(ms);
+    };
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'T1 build', '--', 'npm', 'run', 'build'], { steps, sessionProcesses: otherRuns(), sleep });
+    assert.equal(result.code, 2, 'po holds the lock past the wait');
+    const request = { kind: 'build', task: 'T1', priority: 2, class: 'Maintenance', classPct: 25, needMb: 2048, heavy: true };
+    assert.deepEqual([requests.length > 0, requests.filter((seen) => !isDeepStrictEqual(seen, request))], [true, []]);
+  });
+
   for (const [flag, value, message] of [
     ['--kind', 'tests', /--kind is one of build, test, lint, push, merge, deploy, other/],
     ['--task', 'merge', /--task is a register task id, such as T12/],
@@ -473,7 +495,7 @@ describe('teamrig queue', () => {
 });
 
 describe('teamrig queue --small', () => {
-  it('shares the host instead of taking the lock, holds its share while it runs and records it as shared', async () => {
+  it('shares the host instead of taking the lock, holds its share, which says what the step asks, while it runs and records it as shared (T2210)', async () => {
     const { kit, steps } = harness();
     let whileRunning: unknown[] = [];
     steps.ends(0, 5 * MINUTE).whileRunning(async () => {
@@ -482,8 +504,9 @@ describe('teamrig queue --small', () => {
     const result = await kit.run(SPECS, { steps });
     const lines = [`2030-01-08 10:00:02 UTC sharing the host: 2048 MB held for it (${ROOMY_FREE_MB} MB free, 0 other small steps)`, '2030-01-08 10:00:02 UTC running: specs (killed after 10m)', 'DONE exit 0'];
     assert.deepEqual(result, { code: 0, stdout: lines, stderr: [] });
-    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048 };
-    assert.deepEqual(whileRunning, [undefined, share]);
+    const request = { kind: 'test', class: 'Improvements', classPct: 15, needMb: 2048, heavy: false };
+    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048, request };
+    assert.deepEqual(whileRunning, [undefined, share], 'a step whose label names no task asks at the default class, with no priority');
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
     const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kind: 'test', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, shared: true, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }]);
