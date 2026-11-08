@@ -5,7 +5,7 @@ import { busyText, holderText, underLock, waitText, type HostLock, type HostLock
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
-import { runRecorded, type StepWatch } from '../../delivery/recorded-step.ts';
+import { runRecorded } from '../../delivery/recorded-step.ts';
 import { queueCutoffReason, minutesText } from '../../delivery/schedule.ts';
 import { endedText, type StarterWatching } from '../../delivery/starter-watch.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../delivery/steps.ts';
@@ -56,11 +56,6 @@ function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined, z
   if (reason !== undefined) {
     throw new RefusedError(reason);
   }
-}
-
-/** How the step's memory is watched: its own process's tree, as often as the config says; undefined when it says 0. */
-function watchOf(runtime: CliRuntime, config: QueueConfig): StepWatch | undefined {
-  return config.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: config.memorySampleSeconds * 1_000 };
 }
 
 /**
@@ -302,7 +297,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
       const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
       const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
-      const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, delivery.queue));
+      const end = await runRecorded(runtime, { places, delivery }, mark);
       const code = report(runtime, say, end, maxRunMinutes, watching);
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);
     } finally {

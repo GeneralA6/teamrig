@@ -36,7 +36,20 @@ export interface QueuedStepRecord {
   readonly peakTreeMb?: number;
   /** On the end record: the least free memory the host had while the step ran, in MB. */
   readonly lowFreeMb?: number;
+  /** On the end record: the host's free memory when the step started, in MB; less `lowFreeMb`, what the host lost while it ran. */
+  readonly startFreeMb?: number;
+  /** On the end record of a killed step (exit 124 or 129): the host's free memory when it was killed, in MB. */
+  readonly endFreeMb?: number;
+  /** On the end record of a killed step, where the host reads it: its commit charge then, in MB. */
+  readonly commitMb?: number;
+  /** With `commitMb`: the most the host can commit (RAM plus page files), in MB. */
+  readonly commitLimitMb?: number;
 }
+
+/** The memory fields a queued step's end record may carry, each a whole number of MB. */
+const STEP_MEMORY_FIELDS = ['peakTreeMb', 'lowFreeMb', 'startFreeMb', 'endFreeMb', 'commitMb', 'commitLimitMb'] as const;
+
+type StepMemoryField = (typeof STEP_MEMORY_FIELDS)[number];
 
 /**
  * A deploy in the ledger, in the format a team's own deploy tool writes too. `range` is the commits it landed,
@@ -138,15 +151,20 @@ function mbField(record: JsonRecord, key: string): number | undefined {
 }
 
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kit' | 'queuedAt' | 'shared' | 'peakTreeMb' | 'lowFreeMb'> {
+function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kit' | 'queuedAt' | 'shared' | StepMemoryField> {
   const [kit, queuedAt] = [stringField(record, 'kit'), timeField(record, 'queuedAt')];
-  const [peakTreeMb, lowFreeMb] = [mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
+  const memory: Partial<Record<StepMemoryField, number>> = {};
+  for (const field of STEP_MEMORY_FIELDS) {
+    const mb = mbField(record, field);
+    if (mb !== undefined) {
+      memory[field] = mb;
+    }
+  }
   return {
     ...(kit === undefined ? {} : { kit }),
     ...(queuedAt === undefined ? {} : { queuedAt }),
     ...(record['shared'] === true ? { shared: true } : {}),
-    ...(peakTreeMb === undefined ? {} : { peakTreeMb }),
-    ...(lowFreeMb === undefined ? {} : { lowFreeMb }),
+    ...memory,
   };
 }
 

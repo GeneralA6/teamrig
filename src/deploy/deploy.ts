@@ -121,7 +121,7 @@ export async function redeployTargets(setup: DeploySetup, ports: DeployPorts, re
     const head = ports.git.sha(repo.main, 'HEAD') ?? early;
     ports.say(`clear; deploying ${targets} of ${repo.name}: ${request.argv.join(' ')}`);
     const what = `deploy ${request.targets.join(',')} of ${repo.name}`;
-    const run = await recordQueuedStep(ports, setup.places.ledger, { session: request.session, what, queuedAt }, () => runCommand(setup, ports, request, underLock(env, clearance.lock)), (ran) => hookExitCode(ran.end));
+    const run = await recordQueuedStep(ports, setup, { session: request.session, what, queuedAt }, () => runCommand(setup, ports, request, underLock(env, clearance.lock)), (ran) => hookExitCode(ran.end));
     const why = shownLine(ports.scanner, request.why);
     const said = run.lastLine === undefined ? '' : `: ${run.lastLine}`;
     if (run.end.kind === 'notStarted') {

@@ -5,7 +5,7 @@ import { takeWhenClear, type Readiness } from '../delivery/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
-import { marksOfTaking, recordQueuedStep, runRecorded, type StepMark } from '../delivery/recorded-step.ts';
+import { marksOfTaking, recordQueuedStep, runRecorded, type StepMark, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../delivery/steps.ts';
 import type { Files } from '../core/files.ts';
@@ -90,6 +90,10 @@ export interface MergePorts {
   /** Redacts the checks' lines before they show. */
   readonly scanner: Pick<SecretScanner, 'redact'>;
   readonly files: Files;
+  /** The host's memory, watched while each of its queued steps runs (`recordQueuedStep`). */
+  readonly memory: StepRecordPorts['memory'];
+  /** This process's id: the root of each queued step's process tree. */
+  readonly pid: number;
   /** The review gate's holds (`DeliveryPlaces.reviewHolds`). */
   readonly reviewHolds: Pick<ReviewHolds, 'read' | 'write' | 'remove'>;
   /** The self-merge gates' holds (`DeliveryPlaces.gateHolds`). */
@@ -300,7 +304,7 @@ async function dependencyCheckRefusal(setup: MergeSetup, ports: MergePorts, plan
   ports.say(`${changed}: dependency check ${argv.join(' ')}`);
   const end = await recordQueuedStep(
     ports,
-    setup.places.ledger,
+    setup,
     taking.markOf(`merge ${repo.name}: dependency check of ${branch}`),
     () =>
       runDependencyCheck(ports, {
@@ -332,7 +336,7 @@ function reviewGatePorts(setup: MergeSetup, ports: MergePorts, plan: Plan, takin
     runCheck: (argv, base) =>
       recordQueuedStep(
         ports,
-        setup.places.ledger,
+        setup,
         taking.markOf(`merge ${repo.name}: review check of ${branch}`),
         () =>
           runReviewCheck(ports.hooks, {
@@ -460,7 +464,7 @@ async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, tak
     }
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`pushing ${branch} (${short(head)}) to ${defaultBranch}; the pre-push hook runs now`);
-    const end = await runRecorded(ports, setup.places.ledger, {
+    const end = await runRecorded(ports, setup, {
       ...taking.markOf(`merge ${repo.name}: push ${branch} to ${defaultBranch}`),
       request: {
         command: commandLine(['git', 'push', 'origin', `HEAD:refs/heads/${defaultBranch}`], ports.platform),
@@ -554,7 +558,7 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
   let last: string | undefined;
   const end = await recordQueuedStep(
     ports,
-    setup.places.ledger,
+    setup,
     taking.markOf(`merge ${repo.name}: merge ${branch} into ${defaultBranch}`),
     () =>
       ports.hooks.run({

@@ -59,6 +59,8 @@ export async function deploy(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
       git: runtime.mergeGit,
       hooks: stoppableHooks(runtime.hooks, stop),
       files: runtime.files,
+      memory: runtime.memory,
+      pid: runtime.pid,
       clock: runtime.clock,
       sleep: stoppableSleep(runtime.sleep, stop),
       lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom), stop),
