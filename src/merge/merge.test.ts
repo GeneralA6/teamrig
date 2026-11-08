@@ -22,8 +22,8 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { BASELINE_LOCK_ENV } from './dependencies.ts';
 import { GateHolds } from './gate-holds.ts';
-import type { GatedSetup, GatedTask } from './gated-step.ts';
-import { mergeBranch, PUSH_ATTEMPTS, repoOf, type MergeEnd, type MergeRequest, type MergeSetup } from './merge.ts';
+import type { GatedSetup } from './gated-step.ts';
+import { mergeBranch, PUSH_ATTEMPTS, repoOf, type MergedTask, type MergeEnd, type MergeRequest, type MergeSetup } from './merge.ts';
 import { MergeLog } from './merge-log.ts';
 import { parsePendingMerge, type PendingMerge } from './pending-merges.ts';
 import { REVIEW_BASE_ENV } from './review-check.ts';
@@ -75,7 +75,7 @@ class World {
   /** The host's memory, which each queued step's watch reads. */
   readonly memory = new FakeHostMemory();
   /** The register's tasks, as the review gate and the self-merge gates read them. */
-  readonly tasks = new Map<string, GatedTask>();
+  readonly tasks = new Map<string, MergedTask>();
   readonly reviewHolds: ReviewHolds;
   readonly gateHolds: GateHolds;
   readonly merges: MergeLog;
@@ -459,6 +459,15 @@ describe('merge pushes a branch to the default branch', () => {
     assert.ok(world.lockFree());
     assert.ok(world.said.includes('NOTE app is not in delivery.repos: no deploy targets, no dependency gate, no main checkout to follow'));
     assert.equal(world.said.at(-1), `next: teamrig worktree remove "${WORKTREE}"`);
+  });
+
+  it("records the task its branch names, at that task's register priority, on the push's start and end records (T2209)", async () => {
+    const world = new World();
+    world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
+    world.tasks.set('T9', { owner: 'alpha', priority: 1, status: 'in-progress', answer: null });
+    assert.equal((await world.run()).kind, 'done');
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push t9-feat to main', kind: 'merge', task: 'T9', priority: 1, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0 }]);
   });
 
   it('records a push a host deploys by itself as that deploy, in both ledgers', async () => {
@@ -1105,7 +1114,7 @@ describe('mergeBranch with the review gate', () => {
   function gatedWorld(config: Partial<DeliveryRepoConfig> = {}): World {
     const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, review: REVIEW });
     world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
-    world.tasks.set('T9', { owner: 'alpha', status: 'in-progress', answer: null });
+    world.tasks.set('T9', { owner: 'alpha', priority: 1, status: 'in-progress', answer: null });
     return world;
   }
 
@@ -1120,7 +1129,7 @@ describe('mergeBranch with the review gate', () => {
     assert.deepEqual(world.steps.ran, []);
     assert.ok(world.lockFree());
     world.clock.advance(60_000);
-    world.tasks.set('T9', { owner: 'alpha', status: 'waiting', answer: { verdict: 'approved', by: 'bravo', at: new Date(world.clock.now()).toISOString(), note: null } });
+    world.tasks.set('T9', { owner: 'alpha', priority: 1, status: 'waiting', answer: { verdict: 'approved', by: 'bravo', at: new Date(world.clock.now()).toISOString(), note: null } });
     world.clock.advance(60_000);
     assert.equal((await world.run(ALPHA)).kind, 'done');
     assert.equal(world.steps.ran.length, 1);
@@ -1172,7 +1181,7 @@ describe('mergeBranch under pushToProtected: gated', () => {
   function gatedWorld(config: Partial<DeliveryRepoConfig> = {}, review: ReviewGateSetup = NO_REVIEW): World {
     const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, review, gated: GATED });
     world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
-    world.tasks.set('T9', { owner: 'alpha', status: 'in-progress', answer: null });
+    world.tasks.set('T9', { owner: 'alpha', priority: 1, status: 'in-progress', answer: null });
     return world;
   }
 
@@ -1221,7 +1230,7 @@ describe('mergeBranch under pushToProtected: gated', () => {
     const world = gatedWorld();
     refused(await world.run(ALPHA), /^gate hold /);
     world.clock.advance(60_000);
-    world.tasks.set('T9', { owner: 'alpha', status: 'waiting', answer: { verdict: 'approved', by: 'lead', at: new Date(world.clock.now()).toISOString(), note: null } });
+    world.tasks.set('T9', { owner: 'alpha', priority: 1, status: 'waiting', answer: { verdict: 'approved', by: 'lead', at: new Date(world.clock.now()).toISOString(), note: null } });
     world.clock.advance(60_000);
     assert.equal((await world.run(ALPHA)).kind, 'done');
     assert.equal(world.steps.ran.length, 1);

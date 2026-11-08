@@ -1,3 +1,4 @@
+import type { Task } from '../register/fold.ts';
 import { TASK_ID } from '../register/model.ts';
 
 /**
@@ -17,11 +18,34 @@ export interface ProcessRequest {
   readonly kind: StepKind;
   /** The register task it works for: `queue --task`, else the first task id in its label (`taskOfLabel`). */
   readonly task?: string;
+  /**
+   * Its task's register priority when it queued (`p1` is 1, the most urgent): recorded only, as ordering the line by it
+   * is admission's work (T2210).
+   */
+  readonly priority?: number;
 }
 
-/** A request of `kind` for `task`, the task left out when there is none. */
-export function processRequest(kind: StepKind, task: string | undefined): ProcessRequest {
-  return task === undefined ? { kind } : { kind, task };
+/** A request of `kind` for `task` at the task's `priority`, each left out when unset; a priority is kept only with its task. */
+export function processRequest(kind: StepKind, task: string | undefined, priority?: number): ProcessRequest {
+  if (task === undefined) {
+    return { kind };
+  }
+  return priority === undefined ? { kind, task } : { kind, task, priority };
+}
+
+/** The register's task as a request reads it: its priority. */
+export type RequestTask = Pick<Task, 'priority'>;
+
+/**
+ * `request` with the register priority of the task it names, read by `taskOf`; unchanged when it names none, without
+ * asking the register, or when the register has no such task (another team's, or a typo).
+ */
+export async function withTaskPriority(request: ProcessRequest, taskOf: (id: string) => Promise<RequestTask | undefined>): Promise<ProcessRequest> {
+  if (request.task === undefined) {
+    return request;
+  }
+  const task = await taskOf(request.task);
+  return processRequest(request.kind, request.task, task?.priority);
 }
 
 /** A command word's program: its last path part in lower case, without a launcher's or a script's extension. */

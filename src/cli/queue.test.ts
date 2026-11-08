@@ -441,6 +441,16 @@ describe('teamrig queue', () => {
     });
   }
 
+  it("records the register priority of the task its label names on its start and end records (T2209)", async () => {
+    const { kit, steps } = harness();
+    const added = await kit.run(['add', '--title', 'Ship the build', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    steps.ends(0, MINUTE);
+    assert.equal((await kit.run(['queue', '--session', 'alpha', '--what', 'T1 build', '--', 'npm', 'run', 'build'], { steps })).code, 0);
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'T1 build', kind: 'build', task: 'T1', priority: 2, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:01:02.000Z', exitCode: 0 }]);
+  });
+
   for (const [flag, value, message] of [
     ['--kind', 'tests', /--kind is one of build, test, lint, push, merge, deploy, other/],
     ['--task', 'merge', /--task is a register task id, such as T12/],

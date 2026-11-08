@@ -40,8 +40,8 @@ export interface StepRecordSetup {
 }
 
 /**
- * Who asks for a queued step and what for: its session and its request (kind and task), carried by its start, end and
- * refusal records. The kind is required, so no caller records a step without naming it.
+ * Who asks for a queued step and what for: its session and its request (kind, task, priority), carried by its start,
+ * end and refusal records. The kind is required, so no caller records a step without naming it.
  */
 export interface StepOwner extends ProcessRequest {
   readonly session: string;
@@ -73,9 +73,9 @@ export function marksOfTaking(owner: StepOwner, waited: Waited): (what: string) 
   };
 }
 
-/** An owner's request as its records store it: `kind`, and `task` when it names one. */
-function requestFieldsOf(owner: StepOwner): Pick<QueuedStepRecord, 'kind' | 'task'> {
-  return processRequest(owner.kind, owner.task);
+/** An owner's request as its records store it: `kind`, and `task` and its `priority` when it names them. */
+function requestFieldsOf(owner: StepOwner): Pick<QueuedStepRecord, 'kind' | 'task' | 'priority'> {
+  return processRequest(owner.kind, owner.task, owner.priority);
 }
 
 /** A mark's wait as the start record stores it: `queuedAt` as an ISO time, `waits` only when any cause took time. */

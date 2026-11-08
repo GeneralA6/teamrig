@@ -117,10 +117,10 @@ describe('recordQueuedStep', () => {
     assert.deepEqual(records(files)[1], { ...START, what: 'deploy app', kind: 'deploy', endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129, peakTreeMb: 3100, endFreeMb: 1500 });
   });
 
-  it('records the kind and the task the step works for on its start and end records (T2209)', async () => {
+  it("records the kind, the task the step works for and the task's priority on its start and end records (T2209)", async () => {
     const { files, ports } = world();
-    await recordQueuedStep(ports, UNSAMPLED, { session: 'po', kind: 'test', task: 'T12', what: 'T12 specs' }, async () => 0, () => 0);
-    const start = { ...START, what: 'T12 specs', kind: 'test', task: 'T12' };
+    await recordQueuedStep(ports, UNSAMPLED, { session: 'po', kind: 'test', task: 'T12', priority: 2, what: 'T12 specs' }, async () => 0, () => 0);
+    const start = { ...START, what: 'T12 specs', kind: 'test', task: 'T12', priority: 2 };
     assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 0 }]);
   });
 });
@@ -164,7 +164,7 @@ describe('recordRefusal', () => {
     clock.advance(30_000);
     waits.tell({ cause: 'memory', text: 'host memory: 2500 MB free' });
     clock.advance(90_000);
-    await recordRefusal(ports, LEDGER, waits, { session: 'po', kind: 'build', task: 'T12', what: 'build', outcome: 'timedOut', reason: 'host memory still short' });
+    await recordRefusal(ports, LEDGER, waits, { session: 'po', kind: 'build', task: 'T12', priority: 1, what: 'build', outcome: 'timedOut', reason: 'host memory still short' });
     assert.deepEqual(records(files), [
       {
         type: 'refusal',
@@ -173,6 +173,7 @@ describe('recordRefusal', () => {
         what: 'build',
         kind: 'build',
         task: 'T12',
+        priority: 1,
         kit: KIT_VERSION,
         queuedAt: '2030-01-08T10:00:00.000Z',
         endedAt: '2030-01-08T10:02:00.000Z',

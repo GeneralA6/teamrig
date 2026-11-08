@@ -29,6 +29,8 @@ export interface QueuedStepRecord {
   readonly kind?: StepKind;
   /** The register task the step works for (`ProcessRequest.task`), when it names one. */
   readonly task?: string;
+  /** That task's register priority when the step queued (`ProcessRequest.priority`), when the register has the task. */
+  readonly priority?: number;
   /** The teamrig version that ran the step; an older teamrig or a team's own deploy tool leaves it out. */
   readonly kit?: string;
   /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
@@ -122,6 +124,8 @@ export interface RefusalRecord {
   readonly kind?: StepKind;
   /** The register task the step worked for (`ProcessRequest.task`), when it named one. */
   readonly task?: string;
+  /** That task's register priority when the step queued (`ProcessRequest.priority`). */
+  readonly priority?: number;
   readonly kit?: string;
   /** An ISO time: when the step began to wait. */
   readonly queuedAt: string;
@@ -217,17 +221,22 @@ function waitsField(record: JsonRecord): WaitTotals | undefined {
   return Object.keys(waits).length === 0 ? undefined : waits;
 }
 
-/** A step's request as its record names it: a known kind and a register task id, each left out when it is missing or bad. */
-function requestFieldsOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 'task'> {
-  const [kind, task] = [record['kind'], stringField(record, 'task')];
+/**
+ * A step's request as its record names it: a known kind, a register task id and that task's priority (a whole number),
+ * each left out when it is missing or bad, and the priority also without its task.
+ */
+function requestFieldsOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 'task' | 'priority'> {
+  const [kind, text, priority] = [record['kind'], stringField(record, 'task'), wholeField(record, 'priority')];
+  const task = text !== undefined && TASK_ID.test(text) ? text : undefined;
   return {
     ...(isStepKind(kind) ? { kind } : {}),
-    ...(task !== undefined && TASK_ID.test(task) ? { task } : {}),
+    ...(task === undefined ? {} : { task }),
+    ...(task === undefined || priority === undefined ? {} : { priority }),
   };
 }
 
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 'task' | 'kit' | 'queuedAt' | 'waits' | 'shared' | StepMemoryField> {
+function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 'task' | 'priority' | 'kit' | 'queuedAt' | 'waits' | 'shared' | StepMemoryField> {
   const [kit, queuedAt, waits] = [stringField(record, 'kit'), timeField(record, 'queuedAt'), waitsField(record)];
   const memory: Partial<Record<StepMemoryField, number>> = {};
   for (const field of STEP_MEMORY_FIELDS) {
