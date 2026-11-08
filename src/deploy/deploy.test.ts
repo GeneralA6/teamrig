@@ -13,6 +13,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
+import { heldBy } from '../testing/held-lock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { redeployTargets, type RedeployRequest } from './deploy.ts';
 import type { DeployEnd } from './run.ts';
@@ -191,6 +192,32 @@ describe('redeployTargets', () => {
     assert.equal(end.kind, 'refused');
     assert.match(end.kind === 'refused' ? end.reason : '', /^deploy blackout before the weekly token reset: no deploy from .* \(reset from the usage snapshot\)$/);
     assert.deepEqual([late.hooks.ran.length, blackout.hooks.ran.length, late.records().length, blackout.records().length], [0, 0, 0, 0]);
+  });
+
+  it('leaves a refusal record when another step holds the host lock past its wait (T2209)', async () => {
+    const world = new World();
+    await world.files.write(PLACES.hostLock, heldBy());
+    const end = await world.run();
+    assert.equal(end.kind, 'refused');
+    const reason = end.kind === 'refused' ? end.reason : '';
+    assert.match(reason, /^host lock still held by po/);
+    const endedAt = world.clock.now();
+    assert.deepEqual(world.records(), [{
+      type: 'refusal',
+      id: 'step-1',
+      session: 'sec',
+      what: 'deploy api,live of pipeline',
+      kit: KIT_VERSION,
+      queuedAt: '2030-01-08T10:00:00.000Z',
+      endedAt: new Date(endedAt).toISOString(),
+      outcome: 'timedOut',
+      reason,
+      waits: { lock: endedAt - Date.parse('2030-01-08T10:00:00Z') },
+      lastWait: { cause: 'lock', text: 'the host lock: po (heavy: build) since 2030-01-08 09:50 UTC' },
+      queueFreeMb: world.memory.free,
+      endFreeMb: world.memory.free,
+    }]);
+    assert.equal(world.hooks.commands.includes(RESTART.join(' ')), false, 'the command never ran');
   });
 
   it('waits while a check holds it and is refused when a check refuses, running nothing', async () => {

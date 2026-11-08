@@ -1,11 +1,11 @@
 import { dirname } from 'node:path';
 import type { DeliveryConfig } from '../config/types.ts';
 import { coveringFreezes, freezeText, readFreezes } from '../delivery/freezes.ts';
-import { takeWhenClear, type ClearancePhase, type Readiness } from '../delivery/clearance.ts';
+import { refusalOf, takeWhenClear, type ClearancePhase, type Readiness } from '../delivery/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
-import { NOT_STARTED_EXIT, recordQueuedStep, type StepRecordPorts } from '../delivery/recorded-step.ts';
+import { NOT_STARTED_EXIT, recordQueuedStep, recordRefusal, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import type { Files } from '../core/files.ts';
@@ -382,6 +382,7 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
     onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
+    await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `deploy ${repo.name} ${early.pending.range}` }));
     return { kind: 'refused', reason: clearance.reason };
   }
   try {

@@ -5,7 +5,8 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { marksOfTaking, NOT_STARTED_EXIT, recordQueuedStep, runRecorded, type RecordedStep, type StepRecordSetup } from './recorded-step.ts';
+import { marksOfTaking, NOT_STARTED_EXIT, recordQueuedStep, recordRefusal, runRecorded, type RecordedStep, type StepRecordSetup } from './recorded-step.ts';
+import { WaitLog } from './wait-log.ts';
 
 const LEDGER = '/kit/deploys/ledger.jsonl';
 const SAMPLED: StepRecordSetup = { places: { ledger: LEDGER }, delivery: { queue: { memorySampleSeconds: 15 } } };
@@ -144,5 +145,40 @@ describe('marksOfTaking', () => {
       { session: 'api', what: 'push' },
       { session: 'api', what: 'push again' },
     ]);
+  });
+});
+
+describe('recordRefusal', () => {
+  it('records a step that waited and did not run: its wait by cause, the last reason and the free memory at both ends (T2209)', async () => {
+    const { files, clock, ports } = world(new FakeHostMemory(2500));
+    const waits = new WaitLog(clock, 3100);
+    waits.tell({ cause: 'lock', text: 'the host lock: beta' });
+    clock.advance(30_000);
+    waits.tell({ cause: 'memory', text: 'host memory: 2500 MB free' });
+    clock.advance(90_000);
+    await recordRefusal(ports, LEDGER, waits, { session: 'po', what: 'build', outcome: 'timedOut', reason: 'host memory still short' });
+    assert.deepEqual(records(files), [
+      {
+        type: 'refusal',
+        id: 'step-1',
+        session: 'po',
+        what: 'build',
+        kit: KIT_VERSION,
+        queuedAt: '2030-01-08T10:00:00.000Z',
+        endedAt: '2030-01-08T10:02:00.000Z',
+        outcome: 'timedOut',
+        reason: 'host memory still short',
+        waits: { lock: 30_000, memory: 90_000 },
+        lastWait: { cause: 'memory', text: 'host memory: 2500 MB free' },
+        queueFreeMb: 3100,
+        endFreeMb: 2500,
+      },
+    ]);
+  });
+
+  it('records nothing for a step refused before it waited on anything (T2209)', async () => {
+    const { files, clock, ports } = world();
+    await recordRefusal(ports, LEDGER, new WaitLog(clock, 9000), { session: 'po', what: 'build', outcome: 'refused', reason: 'queue cutoff' });
+    assert.equal(files.get(LEDGER), undefined);
   });
 });

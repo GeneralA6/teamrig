@@ -15,6 +15,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
+import { heldBy } from '../testing/held-lock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { deployRepo, type DeployEnd, type DeployRequest, type DeploySetup } from './run.ts';
 
@@ -222,6 +223,32 @@ describe('deployRepo', () => {
     world.hooks.answer(FLOW.command, { lines: ['frozen for the release'], end: 2 });
     refused(await world.run(), 'check flow refuses the deploy: frozen for the release');
     assert.deepEqual([world.records().length, world.pulled(), world.lockFree()], [0, false, true]);
+  });
+
+  it('leaves a refusal record, pulling nothing, when another step holds the host lock past its wait (T2209)', async () => {
+    const world = new World();
+    await world.files.write(PLACES.hostLock, heldBy());
+    const end = await world.run();
+    assert.equal(end.kind, 'refused');
+    const reason = end.kind === 'refused' ? end.reason : '';
+    assert.match(reason, /^host lock still held by po/);
+    const endedAt = world.clock.now();
+    assert.deepEqual(world.records(), [{
+      type: 'refusal',
+      id: 'step-1',
+      session: 'po',
+      what: 'deploy pipeline c1..c2',
+      kit: KIT_VERSION,
+      queuedAt: '2030-01-08T10:00:00.000Z',
+      endedAt: new Date(endedAt).toISOString(),
+      outcome: 'timedOut',
+      reason,
+      waits: { lock: endedAt - Date.parse('2030-01-08T10:00:00Z') },
+      lastWait: { cause: 'lock', text: 'the host lock: po (heavy: build) since 2030-01-08 09:50 UTC' },
+      queueFreeMb: world.memory.free,
+      endFreeMb: world.memory.free,
+    }]);
+    assert.equal(world.pulled(), false);
   });
 
   it('waits out a deploy freeze on its targets, and is refused at the queue cutoff', async () => {

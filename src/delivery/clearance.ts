@@ -1,6 +1,7 @@
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { busyText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
+import type { RefusalMark } from './recorded-step.ts';
 import { causeOfLockWait, type WaitCause, type WaitTold } from './wait-log.ts';
 
 /** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait: a deploy freeze, or a check holding it. */
@@ -12,11 +13,21 @@ export type Readiness =
 /** When readiness is asked: before the host lock is taken, or under it, the answer the step goes on. */
 export type ClearancePhase = 'before' | 'locked';
 
-/** How the wait for clearance ended: the host lock taken with nothing holding the step, refused, or out of time. */
+/** How the wait for clearance ended: the host lock taken with nothing holding the step, refused, withdrawn from the lock's line, or out of time. */
 export type Clearance =
   | { readonly kind: 'taken'; readonly lock: HostLockInfo }
   | { readonly kind: 'refused'; readonly reason: string }
+  | { readonly kind: 'withdrawn'; readonly reason: string }
   | { readonly kind: 'gaveUp'; readonly reason: string };
+
+/** A wait for clearance that ended without the host lock. */
+export type NotCleared = Exclude<Clearance, { readonly kind: 'taken' }>;
+
+/** The refusal record of a step whose wait for clearance ended without the lock (`recordRefusal`). */
+export function refusalOf(clearance: NotCleared, step: { readonly session: string; readonly what: string }): RefusalMark {
+  const outcome = clearance.kind === 'gaveUp' ? 'timedOut' : clearance.kind;
+  return { session: step.session, what: step.what, outcome, reason: clearance.reason };
+}
 
 export interface ClearanceRequest {
   readonly session: string;
@@ -79,7 +90,7 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
       return { kind: 'gaveUp', reason: busyText(taking.holder, request.zone) };
     }
     if (taking.kind === 'withdrawn') {
-      return { kind: 'refused', reason: "withdrawn from the host lock's line (teamrig withdraw)" };
+      return { kind: 'withdrawn', reason: "withdrawn from the host lock's line (teamrig withdraw)" };
     }
     const under = await readiness('locked');
     if (under.kind === 'go') {

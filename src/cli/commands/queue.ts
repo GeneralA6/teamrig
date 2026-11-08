@@ -5,7 +5,7 @@ import { busyText, holderText, underLock, waitText, type HostLock, type HostLock
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
-import { runRecorded } from '../../delivery/recorded-step.ts';
+import { recordRefusal, runRecorded, type RefusalMark } from '../../delivery/recorded-step.ts';
 import { causeOfLockWait, WaitLog } from '../../delivery/wait-log.ts';
 import { queueCutoffReason, minutesText } from '../../delivery/schedule.ts';
 import { endedText, type StarterWatching } from '../../delivery/starter-watch.ts';
@@ -57,6 +57,12 @@ function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined, z
   if (reason !== undefined) {
     throw new RefusedError(reason);
   }
+}
+
+/** Refuses a step that waited and did not run, after its refusal record (`recordRefusal`). */
+async function refuseWaited(runtime: CliRuntime, ledger: string, waits: WaitLog, mark: RefusalMark): Promise<never> {
+  await recordRefusal(runtime, ledger, waits, mark);
+  throw new RefusedError(mark.reason);
 }
 
 /**
@@ -284,18 +290,22 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       ),
     );
     if (taking === undefined) {
+      await recordRefusal(runtime, places.ledger, waits, { session, what, outcome: 'stopped', reason: `its launching shell ended (${endedText(watching)}) while it waited` });
       return stoppedWhileWaiting(runtime, say, watching);
     }
     if (taking.kind === 'busy') {
-      throw new RefusedError(busyText(taking.holder, zone));
+      return await refuseWaited(runtime, places.ledger, waits, { session, what, outcome: 'timedOut', reason: busyText(taking.holder, zone) });
     }
     if (taking.kind === 'withdrawn') {
-      throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
+      return await refuseWaited(runtime, places.ledger, waits, { session, what, outcome: 'withdrawn', reason: `withdrawn from the host lock's line (teamrig withdraw): ${what} did not run` });
     }
     const waited = waits.end();
     const waitedMs = runtime.clock.now() - waited.queuedAt;
     try {
-      refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
+      const cutoff = queueCutoffReason(runtime.clock.now(), delivery.schedule.queueCutoffUtc, zone);
+      if (cutoff !== undefined) {
+        return await refuseWaited(runtime, places.ledger, waits, { session, what, outcome: 'refused', reason: cutoff });
+      }
       const sharing = sharingText(need.reserveMb, taking);
       if (sharing !== undefined) {
         say(sharing);

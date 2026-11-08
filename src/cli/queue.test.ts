@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
+import type { RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
 import { recordPass } from '../delivery/push-pass.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -31,6 +32,23 @@ function harness(config: Readonly<Record<string, unknown>> = TEAM): { kit: CliHa
 }
 
 const BUILD = ['queue', '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'];
+
+/** The refusal record of alpha's step `what`, which began to wait at 10:00 with `freeMb` free and ended without running, the free memory unchanged. */
+function refused(what: string, freeMb: number, end: Pick<RefusalRecord, 'endedAt' | 'outcome' | 'reason' | 'waits' | 'lastWait'>): RefusalRecord {
+  return { type: 'refusal', id: 'id-2', session: 'alpha', what, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', ...end, queueFreeMb: freeMb, endFreeMb: freeMb };
+}
+
+/** The refusal record of alpha's `build api`, which waited on po's lock (`heldBy`) until `endedAt` and did not run. */
+function buildRefused(endedAt: string, lockMs: number, outcome: RefusalOutcome, reason: string): RefusalRecord {
+  const lastWait = { cause: 'lock', text: 'waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC' } as const;
+  return refused('build api', ROOMY_FREE_MB, { endedAt, outcome, reason, waits: { lock: lockMs }, lastWait });
+}
+
+/** The refusal record of alpha's step `what`, refused at 10:01 after a minute's wait on host memory stuck at `freeMb`: `waiting` starts its wait line. */
+function memoryRefused(what: string, freeMb: number, waiting: string, short: string): RefusalRecord {
+  const lastWait = { cause: 'memory', text: `${waiting}: ${short}` } as const;
+  return refused(what, freeMb, { endedAt: '2030-01-08T10:01:00.000Z', outcome: 'timedOut', reason: `host memory still short: ${short}`, waits: { memory: MINUTE }, lastWait });
+}
 
 const SPECS = ['queue', '--session', 'alpha', '--what', 'specs', '--small', '--', 'npm', 'test'];
 
@@ -151,7 +169,7 @@ describe('teamrig queue', () => {
     assert.deepEqual(result.stdout, ['2030-01-08 12:00:02 IST running: build api (killed after 45m)', 'DONE exit 0']);
   });
 
-  it('waits for a held lock, and refuses when the wait ran past the cutoff', async () => {
+  it('waits for a held lock, and refuses when the wait ran past the cutoff, recording its refusal', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '10:30' } } });
     await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
@@ -160,10 +178,11 @@ describe('teamrig queue', () => {
       stdout: ['2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED queue cutoff 10:30-00:00 UTC (now 10:40 UTC)'],
       stderr: [],
     });
-    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
+    const refusal = buildRefused('2030-01-08T10:40:02.000Z', 40 * MINUTE + FIRST_IN_LINE_POLL_MS, 'refused', 'queue cutoff 10:30-00:00 UTC (now 10:40 UTC)');
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), ledgerOf(kit)], [[], undefined, [refusal]]);
   });
 
-  it('refuses when the lock is still held after the wait, leaving it to its holder', async () => {
+  it('refuses when the lock is still held after the wait, leaving it to its holder and recording its refusal', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.write(LOCK, heldBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
@@ -174,9 +193,10 @@ describe('teamrig queue', () => {
     });
     assert.deepEqual(kit.clock.sleeps, Array.from({ length: MINUTE / FIRST_IN_LINE_POLL_MS }, () => FIRST_IN_LINE_POLL_MS), 'the first in line looks every 2 s');
     assert.equal(kit.files.get(LOCK), heldBy());
+    assert.deepEqual(ledgerOf(kit), [buildRefused('2030-01-08T10:01:00.000Z', MINUTE, 'timedOut', 'host lock still held by po (heavy: build) since 2030-01-08 09:50 UTC')]);
   });
 
-  it('refuses, running and recording nothing, when its ticket is withdrawn while it waits, leaving the lock to its holder', async () => {
+  it('refuses, running nothing and recording its refusal, when its ticket is withdrawn while it waits, leaving the lock to its holder', async () => {
     const { kit, steps } = harness();
     await kit.files.write(LOCK, heldBy());
     const queue = `${LOCK}.queue`;
@@ -192,7 +212,8 @@ describe('teamrig queue', () => {
       stdout: ['2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', "REFUSED withdrawn from the host lock's line (teamrig withdraw): build api did not run"],
       stderr: [],
     });
-    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), await kit.files.list(queue)], [[], heldBy(), undefined, []]);
+    const refusal = buildRefused('2030-01-08T10:00:02.000Z', 2_000, 'withdrawn', "withdrawn from the host lock's line (teamrig withdraw): build api did not run");
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), ledgerOf(kit), await kit.files.list(queue)], [[], heldBy(), [refusal], []]);
   });
 
   it('records when the step began to wait, how long the lock held it, and what its process tree and the host held while it ran', async () => {
@@ -214,7 +235,7 @@ describe('teamrig queue', () => {
     assert.equal(ledgerOf(kit).some((record) => JSON.stringify(record).includes('peakTreeMb')), false);
   });
 
-  it('stops waiting for the lock once the shell that started it ended, leaving the lock to its holder', async () => {
+  it('stops waiting for the lock once the shell that started it ended, leaving the lock to its holder and recording its refusal', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { wait: { pollSeconds: 30 } } });
     await kit.files.write(LOCK, heldBy());
     const starters = new FakeStarterWatch();
@@ -232,7 +253,8 @@ describe('teamrig queue', () => {
       ],
       stderr: [],
     });
-    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), starters.openWatches], [[], heldBy(), undefined, 0]);
+    const refusal = buildRefused('2030-01-08T10:00:02.000Z', 2_000, 'stopped', 'its launching shell ended (bash.exe 4100) while it waited');
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), ledgerOf(kit), starters.openWatches], [[], heldBy(), [refusal], 0]);
   });
 
   it('kills a running step once the shell that started it ended, records exit 129 and frees the lock', async () => {
@@ -451,13 +473,13 @@ describe('teamrig queue --small', () => {
     assert.equal(stdout[0], `2030-01-08 10:00:02 UTC sharing the host: 1000 MB held for it (${ROOMY_FREE_MB} MB free, 1 other small step)`);
   });
 
-  it('waits while the small steps sharing the host hold the memory it needs, then refuses', async () => {
+  it('waits while the small steps sharing the host hold the memory it needs, then refuses, recording its refusal', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     const result = await kit.run(SPECS, { steps, memory: new FakeHostMemory(6000), sessionProcesses: otherRuns() });
     const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; host memory: 6000 MB free, 2048 MB held for it, 6144 MB needed (4096 floor + 2048 for this step)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${held}`, `REFUSED host memory still short: ${held}`], stderr: [] });
-    assert.deepEqual([ledgerOf(kit), kit.files.get(`${SHARED}/id-1.json`)], [[], undefined]);
+    assert.deepEqual([ledgerOf(kit), kit.files.get(`${SHARED}/id-1.json`)], [[memoryRefused('specs', 6000, 'waiting to share the host', held)], undefined]);
   });
 
   it('keeps a lone small step waiting while free memory is under the floor plus its own MB, then refuses (T2192)', async () => {
@@ -465,7 +487,7 @@ describe('teamrig queue --small', () => {
     const result = await kit.run(SPECS, { steps, memory: new FakeHostMemory(6000) });
     const short = 'host memory: 6000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
-    assert.deepEqual([steps.ran, ledgerOf(kit), await kit.files.list(SHARED)], [[], [], []]);
+    assert.deepEqual([steps.ran, ledgerOf(kit), await kit.files.list(SHARED)], [[], [memoryRefused('specs', 6000, 'waiting to share the host', short)], []]);
   });
 
   it('keeps a heavy step waiting while free memory is under the floor plus delivery.queue.heavyReserveMb, then refuses (T2192)', async () => {
@@ -473,7 +495,7 @@ describe('teamrig queue --small', () => {
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(5000) });
     const short = 'host memory: 5000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
-    assert.deepEqual([steps.ran, ledgerOf(kit), kit.files.get(LOCK)], [[], [], undefined]);
+    assert.deepEqual([steps.ran, ledgerOf(kit), kit.files.get(LOCK)], [[], [memoryRefused('build api', 5000, 'waiting for the host lock', short)], undefined]);
   });
 
   it('records on its start record how long a heavy step waited for host memory, and the free memory when it queued (T2209)', async () => {

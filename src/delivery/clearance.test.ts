@@ -5,7 +5,7 @@ import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
+import { refusalOf, takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
 import { withdrawnLock } from '../testing/withdrawn-lock.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
 import { MemoryGate } from './memory-gate.ts';
@@ -124,11 +124,11 @@ describe('takeWhenClear', () => {
     assert.deepEqual([clearance, waits, causes, files.get(LOCK_PATH)], [{ kind: 'gaveUp', reason: `host memory still short: ${short}` }, [`the host lock: ${short}`], ['memory'], undefined]);
   });
 
-  it("refuses, holding no lock, when its place in the host lock's line was withdrawn", async () => {
+  it("ends as withdrawn, holding no lock, when its place in the host lock's line was withdrawn", async () => {
     const { clock, request } = world();
     const released: HostLockInfo[] = [];
     const clearance = await takeWhenClear(answers(GO), { lock: withdrawnLock(released), clock, sleep: clock.sleep }, request);
-    assert.deepEqual([clearance, released], [{ kind: 'refused', reason: "withdrawn from the host lock's line (teamrig withdraw)" }, []]);
+    assert.deepEqual([clearance, released], [{ kind: 'withdrawn', reason: "withdrawn from the host lock's line (teamrig withdraw)" }, []]);
   });
 
   it('names the phase of each ask: before the lock, then under it', async () => {
@@ -168,5 +168,17 @@ describe('takeWhenClear', () => {
     const clearance = await takeWhenClear(answers(GO, FROZEN), { lock, clock, sleep: clock.sleep }, request);
     assert.deepEqual(clearance, { kind: 'gaveUp', reason: FROZEN.reason });
     assert.equal(files.get(LOCK_PATH), undefined);
+  });
+});
+
+describe('refusalOf', () => {
+  it('records a wait that ran out as timedOut, and a withdrawal or a refusal as itself, each with its reason (T2209)', () => {
+    const step = { session: 'po', what: 'merge api: fix-login' };
+    const marks = [refusalOf({ kind: 'gaveUp', reason: 'host lock still held' }, step), refusalOf({ kind: 'withdrawn', reason: 'withdrawn' }, step), refusalOf({ kind: 'refused', reason: 'blackout' }, step)];
+    assert.deepEqual(marks, [
+      { ...step, outcome: 'timedOut', reason: 'host lock still held' },
+      { ...step, outcome: 'withdrawn', reason: 'withdrawn' },
+      { ...step, outcome: 'refused', reason: 'blackout' },
+    ]);
   });
 });

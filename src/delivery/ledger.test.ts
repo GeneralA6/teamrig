@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { appendDeploy, appendRecord, ledgerLine, LEDGER_MD_HEADER, parseLedger, parseLedgerMd, type DeployRecord, type JobRecord, rangeText } from './ledger.ts';
+import { appendDeploy, appendRecord, ledgerLine, LEDGER_MD_HEADER, parseLedger, parseLedgerMd, type DeployRecord, type JobRecord, rangeText, type RefusalRecord } from './ledger.ts';
 
 const PLACES = { ledger: '/team/data/deploys/ledger.jsonl', ledgerMd: '/team/data/deploys/ledger.md' };
 
@@ -109,6 +109,41 @@ describe('parseLedger', () => {
     const some = deploy({ targets: ['api', 'live'] });
     const damaged = { ...deploy(), targets: 'api' };
     assert.deepEqual(parseLedger([JSON.stringify(some), JSON.stringify(damaged)].join('\n')), [some, deploy()]);
+  });
+});
+
+describe('parseLedger: refusals', () => {
+  const refusal: RefusalRecord = {
+    type: 'refusal',
+    id: 'r1',
+    session: 'dev',
+    what: 'tests',
+    queuedAt: '2030-01-08T09:00:00.000Z',
+    endedAt: '2030-01-08T09:30:00.000Z',
+    outcome: 'timedOut',
+    reason: 'host lock still held by beta',
+    lastWait: { cause: 'lock', text: 'the host lock: beta' },
+  };
+
+  it('reads what appendRecord writes, and keeps its good optional fields, leaving out only a bad one (T2209)', async () => {
+    const files = new MemoryFiles();
+    const measured: RefusalRecord = { ...refusal, kit: '0.309.0', waits: { lock: 1_200_000, memory: 600_000 }, queueFreeMb: 3100, endFreeMb: 2500 };
+    await appendRecord(files, PLACES.ledger, measured);
+    await files.append(PLACES.ledger, `${JSON.stringify({ ...refusal, kit: 309, waits: { lock: -1 }, queueFreeMb: 'low', endFreeMb: 1.5 })}\n`);
+    assert.deepEqual(parseLedger((await files.read(PLACES.ledger)) ?? ''), [measured, refusal]);
+  });
+
+  it('leaves out a refusal with an unknown outcome, a bad last wait or a missing field (T2209)', () => {
+    const bad = [
+      { ...refusal, outcome: 'cutoff' },
+      { ...refusal, lastWait: { cause: 'idle', text: 'idle' } },
+      { ...refusal, lastWait: { cause: 'lock' } },
+      { ...refusal, lastWait: 'lock' },
+      { ...refusal, reason: 5 },
+      { ...refusal, endedAt: 'later' },
+      { ...refusal, what: undefined },
+    ];
+    assert.deepEqual(parseLedger([...bad, refusal].map((record) => JSON.stringify(record)).join('\n')), [refusal]);
   });
 });
 

@@ -2,7 +2,7 @@ import type { Files } from '../core/files.ts';
 import { isRecord, isStringArray, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
 import { formatUtcMinute } from '../core/time.ts';
-import { WAIT_CAUSES, type WaitCause, type WaitTotals } from './wait-log.ts';
+import { WAIT_CAUSES, type WaitCause, type WaitTold, type WaitTotals } from './wait-log.ts';
 
 /** The ledger's file name in the delivery folder: one JSON record a line, appended. */
 export const LEDGER_FILE = 'ledger.jsonl';
@@ -94,7 +94,43 @@ export interface JobRecord {
   readonly endedAt: string | null;
 }
 
-export type LedgerRecord = QueuedStepRecord | DeployRecord | JobRecord;
+/**
+ * How a queued step that waited ended without running: its wait ran out (`timedOut`), its ticket was withdrawn
+ * (`teamrig withdraw`), the shell that started it ended (`stopped`), or it was refused at its turn (`refused`: the queue
+ * cutoff, a blackout or a deploy check).
+ */
+export const REFUSAL_OUTCOMES = ['timedOut', 'withdrawn', 'stopped', 'refused'] as const;
+
+export type RefusalOutcome = (typeof REFUSAL_OUTCOMES)[number];
+
+/**
+ * A queued step that waited and then did not run, written once when its wait ends, so a refused step leaves a trace
+ * beside the steps that ran: when it began to wait and ended, why it waited, and the host's free memory at both ends.
+ */
+export interface RefusalRecord {
+  readonly type: 'refusal';
+  readonly id: string;
+  readonly session: string;
+  readonly what: string;
+  readonly kit?: string;
+  /** An ISO time: when the step began to wait. */
+  readonly queuedAt: string;
+  /** An ISO time: when its wait ended without it running. */
+  readonly endedAt: string;
+  readonly outcome: RefusalOutcome;
+  /** The refusal as the step printed it. */
+  readonly reason: string;
+  /** The ms of its wait by cause, each one that took time. */
+  readonly waits?: WaitTotals;
+  /** The last reason it waited on. */
+  readonly lastWait: WaitTold;
+  /** The host's free memory when it began to wait, in MB. */
+  readonly queueFreeMb?: number;
+  /** The host's free memory when its wait ended, in MB. */
+  readonly endFreeMb?: number;
+}
+
+export type LedgerRecord = QueuedStepRecord | DeployRecord | JobRecord | RefusalRecord;
 
 /** A deploy as its ledger.md line names it; a session may write one by hand. */
 export interface LedgerMdDeploy {
@@ -229,13 +265,55 @@ function jobOf(record: JsonRecord): JobRecord | undefined {
   return { type: 'load', id, session, what, targets: jobTargets, startedAt, endedAt };
 }
 
-const READERS: Readonly<Record<LedgerRecord['type'], (record: JsonRecord) => LedgerRecord | undefined>> = { heavy: queuedStepOf, deploy: deployOf, load: jobOf };
-
-function isLedgerType(type: unknown): type is LedgerRecord['type'] {
-  return type === 'heavy' || type === 'deploy' || type === 'load';
+function isWaitCause(value: unknown): value is WaitCause {
+  return WAIT_CAUSES.some((cause) => cause === value);
 }
 
-/** The ledger's queued step, deploy and job records, in file order; a damaged line, a record of another type or one with a bad field is left out. */
+function isRefusalOutcome(value: unknown): value is RefusalOutcome {
+  return REFUSAL_OUTCOMES.some((outcome) => outcome === value);
+}
+
+/** A wait's reason as a refusal names it: a known cause and its line; undefined when it is anything else. */
+function toldField(record: JsonRecord, key: string): WaitTold | undefined {
+  const value = record[key];
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const [cause, text] = [value['cause'], stringField(value, 'text')];
+  return isWaitCause(cause) && text !== undefined ? { cause, text } : undefined;
+}
+
+function refusalOf(record: JsonRecord): RefusalRecord | undefined {
+  const [id, session, what, reason] = [stringField(record, 'id'), stringField(record, 'session'), stringField(record, 'what'), stringField(record, 'reason')];
+  const [queuedAt, endedAt, outcome, lastWait] = [timeField(record, 'queuedAt'), timeField(record, 'endedAt'), record['outcome'], toldField(record, 'lastWait')];
+  if (id === undefined || session === undefined || what === undefined || reason === undefined || queuedAt === undefined || endedAt === undefined || !isRefusalOutcome(outcome) || lastWait === undefined) {
+    return undefined;
+  }
+  const [kit, waits, queueFreeMb, endFreeMb] = [stringField(record, 'kit'), waitsField(record), wholeField(record, 'queueFreeMb'), wholeField(record, 'endFreeMb')];
+  return {
+    type: 'refusal',
+    id,
+    session,
+    what,
+    ...(kit === undefined ? {} : { kit }),
+    queuedAt,
+    endedAt,
+    outcome,
+    reason,
+    ...(waits === undefined ? {} : { waits }),
+    lastWait,
+    ...(queueFreeMb === undefined ? {} : { queueFreeMb }),
+    ...(endFreeMb === undefined ? {} : { endFreeMb }),
+  };
+}
+
+const READERS: Readonly<Record<LedgerRecord['type'], (record: JsonRecord) => LedgerRecord | undefined>> = { heavy: queuedStepOf, deploy: deployOf, load: jobOf, refusal: refusalOf };
+
+function isLedgerType(type: unknown): type is LedgerRecord['type'] {
+  return type === 'heavy' || type === 'deploy' || type === 'load' || type === 'refusal';
+}
+
+/** The ledger's queued step, deploy, job and refusal records, in file order; a damaged line, a record of another type or one with a bad field is left out. */
 export function parseLedger(text: string): LedgerRecord[] {
   return parseJsonl(text).records.flatMap(({ record }) => {
     const type = record['type'];

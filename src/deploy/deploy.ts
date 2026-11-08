@@ -1,7 +1,7 @@
-import { takeWhenClear, type ClearancePhase, type Readiness } from '../delivery/clearance.ts';
+import { refusalOf, takeWhenClear, type ClearancePhase, type Readiness } from '../delivery/clearance.ts';
 import { underLock } from '../delivery/host-lock.ts';
 import { appendDeploy } from '../delivery/ledger.ts';
-import { recordQueuedStep } from '../delivery/recorded-step.ts';
+import { recordQueuedStep, recordRefusal } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import type { Env } from '../core/home.ts';
 import { askChecks, shownLine } from './checks.ts';
@@ -115,6 +115,7 @@ export async function redeployTargets(setup: DeploySetup, ports: DeployPorts, re
     onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
+    await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `deploy ${request.targets.join(',')} of ${repo.name}` }));
     return { kind: 'refused', reason: clearance.reason };
   }
   try {
