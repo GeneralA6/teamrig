@@ -13,8 +13,9 @@ export { assemble, historyPlan, layoutPaths, MissingSegmentError, readHistory, r
 export { LAYOUT_VERSION } from "../register/marker.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
 export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, } from "../register/tree.js";
-// A task's WSJF rank (T2076): what builds a tree's ranking and what scores a row, so a reader ranks as the CLI does.
-export { ownSizing, treeRanking } from "../register/ranking.js";
+// A task's WSJF rank (T2076): what builds a tree's ranking and what scores a row, so a reader ranks as the CLI does;
+// `storedSizing` sizes the rows from the tasks' week file (T2194), as the CLI sizes them from the meter.
+export { ownSizing, storedSizing, treeRanking, } from "../register/ranking.js";
 export { bandOf, scoreOf, sizePctOf, valueOf } from "../register/score.js";
 // The park and untriaged rules (T2076 part 2C), so a reader hides and flags the rows the CLI does.
 export { isUntriaged, wouldPark } from "../register/park.js";

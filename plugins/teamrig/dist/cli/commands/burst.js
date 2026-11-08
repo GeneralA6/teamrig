@@ -62,7 +62,7 @@ function weekStatusLine(week, zone) {
  * in force at the week's use and each session's queued work as the hooks read it (`cachedWork`).
  */
 async function teamsOf(runtime, kit, config, roster, now, usedPct) {
-    const { weights: work } = await cachedWork(runtime.files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
+    const { weights: work } = await cachedWork(runtime.files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities, now);
     return teamsOnAccountOf(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage, ids: roster.ids, liftsPath: kit.paths.lifts, work }, now, usedPct);
 }
 /** The week's surplus with the team's part of its spare (`surplusOf`); undefined while the week is unknown or has no rate yet. */
