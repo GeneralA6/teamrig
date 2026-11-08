@@ -141,13 +141,15 @@ export const DEFAULT_COMMITS = {
 /**
  * Neutral on purpose: off, no allowance cap, every session an equal share, and past the line only
  * the warning lines, so a team that turns it on is measured and shown before anything acts.
- * The optional keys (weekly limit, extra usage's W per dollar, reset, quiet hours, snapshot folder) stay unset.
+ * The optional keys (main lead, weekly limit, extra usage's W per dollar, reset, quiet hours, snapshot folder) stay
+ * unset. Each team with planned work gets at least 10% of a weekly split, enough for one slice (owner order T2215).
  */
 export const DEFAULT_BUDGET = {
     enabled: false,
     subagentWeight: 1,
     targetPct: 99.5,
     reservePct: 0.5,
+    shareFloorPct: 10,
     paceEndHoursBeforeReset: 1,
     sessions: {},
     pauseByPriority: false,
@@ -231,8 +233,9 @@ export const DEFAULT_STATUS_LINE = { folder: true, branch: true, pace: true };
  * Goal-first ranking (owner order 11-06, T2076): roadmap work first, maintenance by severity, team tooling last. A
  * ranked goal is worth 20 down to 4, so the top objective beats any Maintenance task short of a critical bug (10 + 4 +
  * 10), and an owner's p1 adds 12 as a capped override instead of ranking alone. At most 3 tasks in progress, an
- * Improvements start refused while a Roadmap task can move, and 60/25/15 of the week's spend planned by class. The
- * leads keep at most 3 shippable slices open across the tree (owner order 11-07, T2201).
+ * Improvements start refused while a Roadmap task can move, and 60/25/15 of the week's spend planned by class. Each
+ * session keeps one shippable slice open, a second only while the first waits (owner orders 11-07, T2201, T2215), and
+ * none needing a new owner decision opens while 5 wait in the tree, about what one daily meeting answers (T2215).
  */
 export const DEFAULT_FOCUS = {
     classes: ['Roadmap', 'Maintenance', 'Improvements'],
@@ -240,7 +243,8 @@ export const DEFAULT_FOCUS = {
     maintenanceClass: 'Maintenance',
     defaultClass: 'Improvements',
     maxActiveKeyResults: 5,
-    maxOpenSlices: 3,
+    slicesPerSession: 1,
+    maxOwnerDecisions: 5,
     score: {
         rankValues: [20, 16, 12, 8, 4],
         roadmapUnranked: 3,

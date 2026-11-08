@@ -663,6 +663,7 @@ function parseBudget(read, raw, sessions, above) {
     // The team above's keys describe its account's week: a team that names another account takes none of them.
     const inherited = stated === undefined || stated === above?.account ? above : undefined;
     const account = stated ?? inherited?.account;
+    const accountLead = read.optionalString(raw, 'accountLead', path, isSessionName) ?? inherited?.accountLead;
     const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW) ?? inherited?.weeklyLimitW;
     const extraWPerUsd = read.optionalInteger(raw, 'extraWPerUsd', path, CONFIG_LIMITS.extraWPerUsd) ?? inherited?.extraWPerUsd;
     const reset = parseBudgetReset(read, raw) ?? inherited?.reset;
@@ -676,12 +677,14 @@ function parseBudget(read, raw, sessions, above) {
     return {
         enabled: read.boolean(raw, 'enabled', path, inherited?.enabled ?? defaults.enabled),
         ...(account === undefined ? {} : { account }),
+        ...(accountLead === undefined ? {} : { accountLead }),
         ...(weeklyLimitW === undefined ? {} : { weeklyLimitW }),
         subagentWeight: read.number(raw, 'subagentWeight', path, inherited?.subagentWeight ?? defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
         ...(extraWPerUsd === undefined ? {} : { extraWPerUsd }),
         ...(reset === undefined ? {} : { reset }),
         targetPct,
         reservePct,
+        shareFloorPct: read.integer(raw, 'shareFloorPct', path, defaults.shareFloorPct, CONFIG_LIMITS.shareFloorPct),
         paceEndHoursBeforeReset: read.number(raw, 'paceEndHoursBeforeReset', path, defaults.paceEndHoursBeforeReset, CONFIG_LIMITS.paceEndHoursBeforeReset),
         sessions: parseSessionBudgets(read, read.section(raw, 'sessions', path), sessions),
         pauseByPriority: read.boolean(raw, 'pauseByPriority', path, defaults.pauseByPriority),
@@ -1009,10 +1012,12 @@ function parseFocus(read, raw) {
     const mode = read.string(wip, 'mode', `${path}.wip`, defaults.wip.mode, oneOf(WIP_MODES));
     const expedite = read.section(raw, 'expedite', path);
     const improvementsDay = read.string(raw, 'improvementsDay', path, defaults.improvementsDay, oneOf(WEEKDAYS));
+    read.dropped(raw, 'maxOpenSlices', path, 'a cap across the tree let a lead fill it with its own team; each session keeps focus.slicesPerSession open');
     return {
         ...classes,
         maxActiveKeyResults: read.integer(raw, 'maxActiveKeyResults', path, defaults.maxActiveKeyResults, FOCUS_KEY_RESULTS),
-        maxOpenSlices: read.integer(raw, 'maxOpenSlices', path, defaults.maxOpenSlices, CONFIG_LIMITS.maxOpenSlices),
+        slicesPerSession: read.integer(raw, 'slicesPerSession', path, defaults.slicesPerSession, CONFIG_LIMITS.slicesPerSession),
+        maxOwnerDecisions: read.integer(raw, 'maxOwnerDecisions', path, defaults.maxOwnerDecisions, CONFIG_LIMITS.maxOwnerDecisions),
         score: parseFocusScore(read, read.section(raw, 'score', path), `${path}.score`),
         expedite: {
             critical: read.boolean(expedite, 'critical', `${path}.expedite`, defaults.expedite.critical),

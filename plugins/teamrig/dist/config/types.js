@@ -86,7 +86,7 @@ export function isEscalation(value) {
  * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
  * a tree read one week alike without a copy that drifts.
  */
-export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'];
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'];
 export const ASK_WITH = ['text', 'picker'];
 export function isAskWith(value) {
     return ASK_WITH.some((way) => way === value);
