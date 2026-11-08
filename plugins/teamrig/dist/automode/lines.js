@@ -25,10 +25,10 @@ export const REGISTER_COMMANDS = [
 export function kitTag(team) {
     return `[teamrig ${team}] `;
 }
-/** The team's lines, in order: protected branches, the register, queue and test, worktree removal, rebasing. */
+/** The team's lines, in order: protected branches, the register, queue and test, worktree removal, rebasing, clean files. */
 export function kitLines(facts) {
     const tag = kitTag(facts.team);
-    return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts), rebaseLine(facts)].map((line) => `${tag}${line}`);
+    return [branchesLine(facts), registerLine(facts), wrappersLine(), worktreeLine(facts), rebaseLine(facts), cleanFilesLine()].map((line) => `${tag}${line}`);
 }
 function branchesLine({ lead, pushGuard }) {
     return (`Protected branches: ${pushGuard.protectedBranches.join(', ')}. ${normalPush(pushGuard.pushToProtected, lead)} ` +
@@ -74,4 +74,22 @@ function rebaseLine({ pushGuard }) {
         "one): it rewrites only that session's own commits not yet merged. A branch it pushed before goes back with " +
         `\`git push --force-with-lease\` to that same branch. A protected branch (${pushGuard.protectedBranches.join(', ')}) ` +
         "is never rebased, nor a repo's main checkout.");
+}
+/**
+ * Editing a clean tracked file in a session's own worktree is ordinary code editing: git restores it. Without this line
+ * a classifier told not to delete or overwrite files a session did not create refused such edits (no session creates a
+ * tracked file) and left a worktree half-edited. Security's verdict on that false flag set the limits named here: only
+ * clean files, only means git can undo, only scripts the session has seen, never agent config or gates (a deleted hook
+ * amounts to skipping it), and never a folder delete, which can follow a node_modules junction into the main checkout.
+ */
+function cleanFilesLine() {
+    return ("In a session's own git worktree on its own branch, a file git tracks with no uncommitted change (clean in " +
+        '`git status`) comes back with `git restore`, so editing it with Edit or Write, deleting or moving it with `git rm` ' +
+        '(without `-f`) or `git mv`, or running a script the session wrote or read in full whose writes stay in that ' +
+        'worktree, is ordinary code editing, not destruction. It does not cover `rm -rf` of a folder (it also deletes ' +
+        'untracked and ignored files, and can follow a junction into the main checkout), git commands that discard work ' +
+        'or history (`reset --hard`, `checkout --` or `restore` over uncommitted changes, `clean`, `stash drop` or ' +
+        '`clear`, `branch -D`, `git worktree remove`, `gc --prune`, `reflog expire`), a file with uncommitted changes, ' +
+        "an untracked or ignored file, another session's worktree, a repo's main checkout, or agent config and gates " +
+        'even when tracked (`.claude/`, `CLAUDE.md`, `.husky/`, git hooks).');
 }
