@@ -45,11 +45,15 @@ A step runs at below-normal CPU priority (nice 10 on POSIX), and every process i
 and a deploy's commands and checks: your terminal and apps win the CPU while it runs, and it takes what they leave,
 so a build on a busy host no longer freezes your screen.
 
+Every step, merge and deploy waits in its turn for host memory: it starts only while the host's free memory, less
+what the running small steps hold, leaves `delivery.queue.memoryFloorMb` (4096) plus its own, and the commit charge
+stays under `open.headroom.commitMaxPct` (92) with its own counted, so a build no longer starts on a host about to
+run out of memory. A step's own is the most its process tree held in its latest 20 runs under the same session and
+`--what`, plus a quarter: at least `heavyReserveMb` (4096) for a step that takes the lock, else `smallReserveMb`
+(2048) before it has a run.
+
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
-of taking the lock: at once when no other small step runs, else while the host's free memory, less what the running
-ones hold, leaves
-`delivery.queue.memoryFloorMb` (4096) plus its own. A step's own is the most its process tree held in its latest
-20 runs under the same session and `--what`, plus a quarter, or `smallReserveMb` (2048) before it has a run. A small
+of taking the lock. A small
 step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step waiting for the lock. A step
 that takes the lock waits for the small steps to end, so builds, merges, deploys and full suites still run alone.
 

@@ -3876,13 +3876,19 @@ holder, a small step sharing the host) ended or left, so a step far back in a li
 each time, its ticket's expiry moves on with its wait. A step that does not join the line (an older kit, a team's own
 deploy tool) may still take a free lock first.
 
+Every step, merge and deploy first waits in its turn for host memory, so a step never starts on a host too short
+for it. It goes ahead while the host's free memory, less the MB held for the running small steps, leaves
+`delivery.queue.memoryFloorMb` (4096) plus its own, and the commit charge with its own counted stays under
+`open.headroom.commitMaxPct` (92). Free memory is read 3 times 1 s apart and the least read counts, since a step
+that just ended or started gives back or takes its memory in a burst. On a host with less than twice that RAM, half
+the host's RAM is enough. Until then it waits first in line (`...; host memory: 7000 MB free, 4096 MB held for them,
+8192 MB needed (4096 floor + 4096 for this step)`), and when its wait runs out it is refused with `host memory still
+short: ...`. The MB held for a step is the most its process tree held in its latest 20 runs under the same session
+and `--what`, plus a quarter. A step without `--small` holds at least `delivery.queue.heavyReserveMb` (4096); a
+small step with no run measured yet holds `delivery.queue.smallReserveMb` (2048).
+
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
-In its turn, while the lock is not held, it writes a share in `<lock>.shared` and runs. It is let in at once when
-no other small step runs. Otherwise it is let in only while the host's free memory, less the MB held for the
-running small steps, leaves `delivery.queue.memoryFloorMb` (4096) plus its own. Until then it waits first in
-line (`...; 7000 MB free, 4096 MB held for them, 6144 MB needed`). The MB held for a step is the most its process
-tree held in its latest 20 runs under the same session and `--what`, plus a quarter. With no run measured yet, it
-is `delivery.queue.smallReserveMb` (2048).
+In its turn, while the lock is not held and host memory lets it in, it writes a share in `<lock>.shared` and runs.
 
 A step without `--small` that takes the lock holds it while it waits for the small steps to end. So builds,
 merges, deploys and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing

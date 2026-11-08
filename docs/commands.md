@@ -407,9 +407,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a queued step started under a live lock (a git hook's checks
       under queue, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
-      parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
-      lint): shares the host with other small steps while it keeps delivery.queue.memoryFloorMb free
-      besides the MB held for them (its ledger peak and a quarter, else delivery.queue.smallReserveMb)
+      parent step's session, else the session this Claude Code tab is bound to. Every step, merge and
+      deploy waits in its turn for host memory: the least of 3 free-memory reads 1 s apart over
+      delivery.queue.memoryFloorMb plus the MB held for it and for the small steps running (at most half
+      the host's RAM), and the commit charge under open.headroom.commitMaxPct with its MB counted. A step
+      holds its ledger peak and a quarter, at least delivery.queue.heavyReserveMb without --small, else
+      delivery.queue.smallReserveMb. --small (a spec run, a lint): shares the host with other small steps
       and is killed after delivery.queue.smallMaxRunMinutes (--max-minutes up to it); a step without
       --small waits for them to end, and a step waiting behind it is told which. --pre-push (a git
       pre-push hook's checks): on a clean tree
