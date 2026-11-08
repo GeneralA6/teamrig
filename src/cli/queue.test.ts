@@ -97,7 +97,7 @@ describe('teamrig queue', () => {
       ],
       stderr: [],
     });
-    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:02.000Z', endedAt: '2030-01-08T10:45:02.000Z', exitCode: 124 });
+    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:02.000Z', endedAt: '2030-01-08T10:45:02.000Z', exitCode: 124, endFreeMb: ROOMY_FREE_MB });
   });
 
   it('prints FAILED for a step a signal stopped, recorded as exit 1', async () => {
@@ -251,7 +251,7 @@ describe('teamrig queue', () => {
     });
     assert.equal(steps.ran[0]?.stop?.aborted, true);
     const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
-    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:02.000Z', exitCode: 129 }]);
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:02.000Z', exitCode: 129, endFreeMb: ROOMY_FREE_MB }]);
     assert.deepEqual([kit.files.get(LOCK), starters.openWatches], [undefined, 0]);
   });
 

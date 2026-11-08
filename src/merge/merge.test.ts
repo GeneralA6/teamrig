@@ -14,6 +14,7 @@ import { passRecordPath, type PassRecord } from '../push-guard/pass-record.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -68,6 +69,8 @@ class World {
   readonly hooks: FakeHooks;
   readonly lock: HostLock;
   readonly said: string[] = [];
+  /** The host's memory, which each queued step's watch reads. */
+  readonly memory = new FakeHostMemory();
   /** The register's tasks, as the review gate and the self-merge gates read them. */
   readonly tasks = new Map<string, GatedTask>();
   readonly reviewHolds: ReviewHolds;
@@ -128,6 +131,8 @@ class World {
       hooks: this.hooks,
       scanner: { redact: (text) => text.replaceAll('s3cret', '[redacted]') },
       files: this.files,
+      memory: this.memory,
+      pid: 4242,
       reviewHolds: this.reviewHolds,
       gateHolds: this.gateHolds,
       merges: this.merges,
@@ -875,6 +880,19 @@ describe('merge under the lock, when the push does not go through', () => {
     const orphaned = new World();
     orphaned.steps.ends({ kind: 'stopped' }).whileRunning(async () => undefined);
     failed(await orphaned.run(), /^the push was killed when its launching shell ended \(exit 129\);/);
+  });
+
+  it('records the memory of a push killed as its launching shell ended, from a watch of its tree', async () => {
+    const world = new World();
+    world.memory.measures({ peakTreeMb: 2400, lowFreeMb: 900, startFreeMb: 7000 });
+    world.steps.ends({ kind: 'stopped' }).whileRunning(async () => undefined);
+    failed(await world.run(), /^the push was killed when its launching shell ended \(exit 129\);/);
+    assert.deepEqual(world.memory.watches, [{ root: 4242, intervalMs: DEFAULT_QUEUE.memorySampleSeconds * 1_000, stopped: true }]);
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(world.records(PLACES.ledger), [
+      start,
+      { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129, peakTreeMb: 2400, lowFreeMb: 900, startFreeMb: 7000, endFreeMb: world.memory.free },
+    ]);
   });
 
   it('fails on a rebase conflict without pushing, and frees the lock', async () => {

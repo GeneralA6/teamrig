@@ -11,6 +11,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { redeployTargets, type RedeployRequest } from './deploy.ts';
@@ -50,6 +51,8 @@ class World {
   readonly hooks = new FakeHooks(this.clock);
   readonly lock: HostLock;
   readonly said: string[] = [];
+  /** The host's memory, which each queued step's watch reads. */
+  readonly memory = new FakeHostMemory();
   private readonly delivery: DeliveryConfig;
   private readonly reset: ResetTime | undefined;
 
@@ -74,6 +77,8 @@ class World {
       git: this.git,
       hooks: this.hooks,
       files: this.files,
+      memory: this.memory,
+      pid: 4242,
       clock: this.clock,
       sleep: this.clock.sleep,
       lock: this.lock,
@@ -139,6 +144,16 @@ describe('redeployTargets', () => {
     assert.ok(world.said.includes('  restarting api, live'), 'the command’s lines are shown as they come');
     assert.equal(world.git.heads.get(MAIN_CHECKOUT), 'base');
     assert.ok(world.lockFree());
+  });
+
+  it('watches the queued step it runs, and records the memory its tree held on the end record', async () => {
+    const world = new World();
+    world.memory.measures({ peakTreeMb: 1800, lowFreeMb: 5200, startFreeMb: 7600 });
+    world.hooks.answer(RESTART, { lines: ['restarted 2 deployments'], takesMs: 90_000 });
+    await world.run();
+    assert.deepEqual(world.memory.watches, [{ root: 4242, intervalMs: DEFAULT_QUEUE.memorySampleSeconds * 1_000, stopped: true }]);
+    const start = { type: 'heavy', id: 'step-1', session: 'sec', what: 'deploy api,live of pipeline', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(world.records().slice(0, 2), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0, peakTreeMb: 1800, lowFreeMb: 5200, startFreeMb: 7600 }]);
   });
 
   it('refuses targets its repository does not deploy, or none, before any check or lock', async () => {

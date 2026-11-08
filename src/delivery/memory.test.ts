@@ -179,7 +179,7 @@ describe('watchMemory', () => {
     timer.tick?.();
     await new Promise((resolve) => setImmediate(resolve));
     probe.free = 7000;
-    assert.deepEqual(await watch.stop(), { peakTreeMb: 2600, lowFreeMb: 6500 });
+    assert.deepEqual(await watch.stop(), { peakTreeMb: 2600, lowFreeMb: 6500, startFreeMb: 8000 });
     assert.equal(timer.cancelled, true);
   });
 
@@ -194,14 +194,14 @@ describe('watchMemory', () => {
     assert.equal(probe.listed, 1, 'no second list while the first runs');
     const stopped = watch.stop();
     probe.finish();
-    assert.deepEqual(await stopped, { peakTreeMb: 1000, lowFreeMb: 8000 });
+    assert.deepEqual(await stopped, { peakTreeMb: 1000, lowFreeMb: 8000, startFreeMb: 8000 });
   });
 
   it('measures free memory alone when no process list could be read', async () => {
     const probe = new FakeProbe();
     const watch = watchMemory(probe, 10, 15_000, new FakeTimer().every);
     probe.free = 3000;
-    assert.deepEqual(await watch.stop(), { lowFreeMb: 3000 });
+    assert.deepEqual(await watch.stop(), { lowFreeMb: 3000, startFreeMb: 8000 }, 'the first read is the start, before the host lost memory');
   });
 });
 

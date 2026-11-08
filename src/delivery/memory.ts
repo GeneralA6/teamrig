@@ -42,6 +42,8 @@ export interface MemoryPeaks {
   readonly peakTreeMb?: number;
   /** The least free memory the host had while it was watched, in MB. */
   readonly lowFreeMb?: number;
+  /** The host's free memory when the watch began, in MB: less `lowFreeMb`, what the host lost while the step ran. */
+  readonly startFreeMb?: number;
 }
 
 /** A running watch; `stop` waits for a sample in flight and returns the peaks. */
@@ -88,7 +90,8 @@ export function treeCommittedMb(root: number, rows: readonly ProcessRow[]): numb
  */
 export function watchMemory(probe: MemoryProbe, root: number, intervalMs: number, every: Every): MemoryWatch {
   let peakTreeMb: number | undefined;
-  let lowFreeMb = probe.freeMb();
+  const startFreeMb = probe.freeMb();
+  let lowFreeMb = startFreeMb;
   let inFlight: Promise<void> | undefined;
   const sample = async (): Promise<void> => {
     lowFreeMb = Math.min(lowFreeMb, probe.freeMb());
@@ -111,7 +114,7 @@ export function watchMemory(probe: MemoryProbe, root: number, intervalMs: number
       cancel();
       await inFlight;
       lowFreeMb = Math.min(lowFreeMb, probe.freeMb());
-      return peakTreeMb === undefined ? { lowFreeMb } : { peakTreeMb, lowFreeMb };
+      return peakTreeMb === undefined ? { lowFreeMb, startFreeMb } : { peakTreeMb, lowFreeMb, startFreeMb };
     },
   };
 }

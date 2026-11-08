@@ -5,7 +5,7 @@ import { takeWhenClear, type ClearancePhase, type Readiness } from '../delivery/
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
-import { NOT_STARTED_EXIT, recordQueuedStep } from '../delivery/recorded-step.ts';
+import { NOT_STARTED_EXIT, recordQueuedStep, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import type { Files } from '../core/files.ts';
 import type { GitOutcome } from '../core/git-run.ts';
@@ -57,6 +57,10 @@ export interface DeployPorts {
   readonly git: DeployGit;
   readonly hooks: HookRunner;
   readonly files: Files;
+  /** The host's memory, watched while the deploy's queued step runs (`recordQueuedStep`). */
+  readonly memory: StepRecordPorts['memory'];
+  /** This process's id: the root of the deploy's process tree. */
+  readonly pid: number;
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly lock: Pick<HostLock, 'acquire' | 'release'>;
@@ -391,7 +395,7 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
     const { tag } = view;
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
-    const run = await recordQueuedStep(ports, setup.places.ledger, { session: request.session, what: `deploy ${repo.name} ${pending.range}`, queuedAt }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
+    const run = await recordQueuedStep(ports, setup, { session: request.session, what: `deploy ${repo.name} ${pending.range}`, queuedAt }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
     return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
   } finally {
     await ports.lock.release(clearance.lock);

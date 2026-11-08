@@ -57,6 +57,8 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
           hooks: stoppableHooks(runtime.hooks, stop),
           scanner: new SecretScanner(config.register.secretPatterns),
           files: runtime.files,
+          memory: runtime.memory,
+          pid: runtime.pid,
           reviewHolds: new ReviewHolds(runtime.files, places.reviewHolds),
           gateHolds: new GateHolds(runtime.files, places.gateHolds),
           merges: new MergeLog(runtime.files, places.merges),

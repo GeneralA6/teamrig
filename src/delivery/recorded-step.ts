@@ -1,21 +1,37 @@
+import type { QueueConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { Clock } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { appendRecord, type QueuedStepRecord } from './ledger.ts';
-import type { HostMemory } from './memory.ts';
-import { exitCodeOf, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
+import type { HostMemory, MemoryPeaks } from './memory.ts';
+import type { DeliveryPlaces } from './places.ts';
+import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
 
 /** The exit code recorded for a step that could not start, as a missing folder makes it. */
 export const NOT_STARTED_EXIT = 1;
 
+/**
+ * What every recorder of a queued step holds: the files, the clock and the host's memory, so no caller can record a
+ * step without watching it (a merge or a deploy once did, and its exit-129 ends carried no memory).
+ */
 export interface StepRecordPorts {
   readonly files: Files;
   readonly clock: Clock;
+  /** A watch of the step's process tree while it runs, and the host's free memory and commit charge when it is killed. */
+  readonly memory: Pick<HostMemory, 'watch' | 'freeMb' | 'commit'>;
+  /** This process's id: the root of the tree every step it runs starts in. */
+  readonly pid: number;
   newId(): string;
 }
 
 export interface RecordedStepPorts extends StepRecordPorts {
   readonly steps: StepRunner;
+}
+
+/** Where a queued step is recorded, and how often its memory is sampled: the delivery setup the step runs under. */
+export interface StepRecordSetup {
+  readonly places: Pick<DeliveryPlaces, 'ledger'>;
+  readonly delivery: { readonly queue: Pick<QueueConfig, 'memorySampleSeconds'> };
 }
 
 /** A queued step as the ledger names it. */
@@ -26,13 +42,6 @@ export interface StepMark {
   readonly queuedAt?: number;
   /** Set for a small step sharing the host; recorded as `shared`. */
   readonly shared?: true;
-}
-
-/** How a step's memory is watched while it runs: the host's memory, the root of its process tree, and how often. */
-export interface StepWatch {
-  readonly memory: Pick<HostMemory, 'watch'>;
-  readonly root: number;
-  readonly intervalMs: number;
 }
 
 /**
@@ -53,13 +62,28 @@ export interface RecordedStep extends StepMark {
   readonly request: StepRequest;
 }
 
+/** The end of a step the kit killed, at its time limit or as its launching shell ended, or that a shell reports so. */
+function killed(exitCode: number): boolean {
+  return exitCode === TIMED_OUT_EXIT || exitCode === STOPPED_EXIT;
+}
+
+/** The host's memory at a kill: its free memory and, where the host reads it, its commit charge. */
+async function atKill(memory: StepRecordPorts['memory']): Promise<Pick<QueuedStepRecord, 'endFreeMb' | 'commitMb' | 'commitLimitMb'>> {
+  const endFreeMb = memory.freeMb();
+  const charge = await memory.commit();
+  return charge === undefined ? { endFreeMb } : { endFreeMb, commitMb: charge.usedMb, commitLimitMb: charge.limitMb };
+}
+
 /**
  * Runs `work` as one queued step, its start and its end each a ledger record naming this teamrig's version, the end
  * with the exit code `exitOf` reads from its result; work that throws is recorded as exit 1 and its error rethrown.
- * With `watch`, the end record carries the most the step's process tree held and the least free memory the host had
- * while it ran.
+ * Unless `memorySampleSeconds` is 0, the tree of `pid` is watched while it runs: the end record carries the most it
+ * held, the host's free memory at the start and at its least, and for a killed step (exit 124 or 129) the free memory
+ * and commit charge at the kill.
  */
-export async function recordQueuedStep<T>(ports: StepRecordPorts, ledger: string, mark: StepMark, work: () => Promise<T>, exitOf: (result: T) => number, watch?: StepWatch): Promise<T> {
+export async function recordQueuedStep<T>(ports: StepRecordPorts, setup: StepRecordSetup, mark: StepMark, work: () => Promise<T>, exitOf: (result: T) => number): Promise<T> {
+  const ledger = setup.places.ledger;
+  const sampleMs = setup.delivery.queue.memorySampleSeconds * 1_000;
   const start: QueuedStepRecord = {
     type: 'heavy',
     id: ports.newId(),
@@ -73,23 +97,21 @@ export async function recordQueuedStep<T>(ports: StepRecordPorts, ledger: string
     exitCode: null,
   };
   await appendRecord(ports.files, ledger, start);
-  const watching = watch?.memory.watch(watch.root, watch.intervalMs);
+  const watching = sampleMs === 0 ? undefined : ports.memory.watch(ports.pid, sampleMs);
   let exitCode = NOT_STARTED_EXIT;
   try {
     const result = await work();
     exitCode = exitOf(result);
     return result;
   } finally {
-    const peaks = (await watching?.stop()) ?? {};
+    const peaks: MemoryPeaks = (await watching?.stop()) ?? {};
+    const kill = watching !== undefined && killed(exitCode) ? await atKill(ports.memory) : {};
     const endedAt = new Date(ports.clock.now()).toISOString();
-    await appendRecord(ports.files, ledger, { ...start, endedAt, exitCode, ...peaks });
+    await appendRecord(ports.files, ledger, { ...start, endedAt, exitCode, ...peaks, ...kill });
   }
 }
 
-/**
- * Runs a queued step, its start and its end each a ledger record, its memory watched with `watch`; a step that could
- * not start is recorded as exit 1 and its error rethrown.
- */
-export async function runRecorded(ports: RecordedStepPorts, ledger: string, step: RecordedStep, watch?: StepWatch): Promise<StepEnd> {
-  return recordQueuedStep(ports, ledger, step, () => ports.steps.run(step.request), exitCodeOf, watch);
+/** Runs a queued step as `recordQueuedStep` records it; a step that could not start is recorded as exit 1 and its error rethrown. */
+export async function runRecorded(ports: RecordedStepPorts, setup: StepRecordSetup, step: RecordedStep): Promise<StepEnd> {
+  return recordQueuedStep(ports, setup, step, () => ports.steps.run(step.request), exitCodeOf);
 }

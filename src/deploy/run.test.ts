@@ -13,6 +13,7 @@ import { BASELINE_LOCK_ENV } from '../merge/dependencies.ts';
 import { LOCKFILE } from '../merge/manifest.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { deployRepo, type DeployEnd, type DeployRequest, type DeploySetup } from './run.ts';
@@ -53,6 +54,8 @@ class World {
   readonly hooks = new FakeHooks(this.clock);
   readonly lock: HostLock;
   readonly said: string[] = [];
+  /** The host's memory, which each queued step's watch reads. */
+  readonly memory = new FakeHostMemory();
   readonly setup: DeploySetup;
 
   constructor(options: Options = {}) {
@@ -84,6 +87,8 @@ class World {
       git: this.git,
       hooks: this.hooks,
       files: this.files,
+      memory: this.memory,
+      pid: 4242,
       clock: this.clock,
       sleep: this.clock.sleep,
       lock: this.lock,
@@ -169,6 +174,16 @@ describe('deployRepo', () => {
     ]);
     assert.ok(world.said.includes('  building'), 'the command’s lines are shown as they come');
     assert.ok(world.lockFree());
+  });
+
+  it('watches the queued step it runs, and records the memory its tree held on the end record', async () => {
+    const world = new World();
+    world.memory.measures({ peakTreeMb: 2400, lowFreeMb: 5100, startFreeMb: 7700 });
+    world.hooks.answer(FLOW.command, { lines: ['no flow open', 'tag=sha-0f8e'] }).answer(COMMAND, { lines: ['deployed api, workers on sha-0f8e'], takesMs: 120_000 });
+    await world.run();
+    assert.deepEqual(world.memory.watches, [{ root: 4242, intervalMs: DEFAULT_QUEUE.memorySampleSeconds * 1_000, stopped: true }]);
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'deploy pipeline c1..c2', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(world.records().slice(0, 2), [start, { ...start, endedAt: '2030-01-08T10:02:00.000Z', exitCode: 0, peakTreeMb: 2400, lowFreeMb: 5100, startFreeMb: 7700 }]);
   });
 
   it('is done with nothing run when the main checkout is at origin', async () => {

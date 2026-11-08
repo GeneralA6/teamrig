@@ -756,7 +756,8 @@ export interface QueueConfig {
   readonly waitMinutes: number;
   /**
    * While a queued step runs, its process tree's memory and the host's free memory are sampled this often, for its
-   * ledger record's `peakTreeMb` and `lowFreeMb`; 0 samples nothing.
+   * ledger record's `peakTreeMb`, `startFreeMb` and `lowFreeMb`, and for a killed step the host's free memory
+   * (`endFreeMb`) and commit charge (`commitMb`, `commitLimitMb`) at the kill; 0 samples nothing and records none.
    */
   readonly memorySampleSeconds: number;
   /** A queued step, a merge or a deploy starts only while the host keeps this many MB free besides those held for it and for the small steps sharing the host. */

@@ -82,8 +82,8 @@ describe('parseLedger', () => {
   });
 
   it("reads a queued step's kit, wait, sharing and memory, and leaves out only a bad optional field", () => {
-    const measured = { ...queuedStep, kit: '0.113.0', queuedAt: '2030-01-08T09:01:00.000Z', shared: true, peakTreeMb: 1800, lowFreeMb: 6200 };
-    const damaged = { ...queuedStep, kit: 113, queuedAt: 'soon', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5 };
+    const measured = { ...queuedStep, kit: '0.113.0', queuedAt: '2030-01-08T09:01:00.000Z', shared: true, peakTreeMb: 1800, lowFreeMb: 6200, startFreeMb: 7400, endFreeMb: 900, commitMb: 61000, commitLimitMb: 64000 };
+    const damaged = { ...queuedStep, kit: 113, queuedAt: 'soon', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5, startFreeMb: '7400', endFreeMb: null, commitMb: -5, commitLimitMb: 2.5 };
     assert.deepEqual(parseLedger([JSON.stringify(measured), JSON.stringify(damaged)].join('\n')), [measured, queuedStep]);
   });
 
