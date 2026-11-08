@@ -6,6 +6,7 @@ import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
 import { runRecorded } from '../../delivery/recorded-step.ts';
+import { causeOfLockWait, WaitLog } from '../../delivery/wait-log.ts';
 import { queueCutoffReason, minutesText } from '../../delivery/schedule.ts';
 import { endedText, type StarterWatching } from '../../delivery/starter-watch.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../delivery/steps.ts';
@@ -263,7 +264,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
     }
     refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
-    const queuedAt = runtime.clock.now();
+    const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());
     const need = await needOf(runtime, places.ledger, session, what, small, delivery.queue);
     const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
     const taking = await unlessStopped(
@@ -273,7 +274,11 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
         `heavy: ${what}`,
         delivery.queue.waitMinutes * MINUTE_MS,
         delivery.wait.pollSeconds * 1_000,
-        (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`),
+        (holder, ahead) => {
+          const text = `${waiting}: ${waitText(holder, ahead, zone)}`;
+          waits.tell({ cause: causeOfLockWait(holder), text });
+          say(text);
+        },
         need,
         watching.stop,
       ),
@@ -287,7 +292,8 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     if (taking.kind === 'withdrawn') {
       throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
     }
-    const waitedMs = runtime.clock.now() - queuedAt;
+    const waited = waits.end();
+    const waitedMs = runtime.clock.now() - waited.queuedAt;
     try {
       refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
       const sharing = sharingText(need.reserveMb, taking);
@@ -296,7 +302,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       }
       say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
       const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
-      const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
+      const mark = { session, what, ...waited, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
       const end = await runRecorded(runtime, { places, delivery }, mark);
       const code = report(runtime, say, end, maxRunMinutes, watching);
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);

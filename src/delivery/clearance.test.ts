@@ -9,6 +9,7 @@ import { takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readine
 import { withdrawnLock } from '../testing/withdrawn-lock.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
 import { MemoryGate } from './memory-gate.ts';
+import type { WaitCause } from './wait-log.ts';
 
 const LOCK_PATH = '/kit/host.lock';
 const ME = 4242;
@@ -30,7 +31,9 @@ interface World {
   readonly files: MemoryFiles;
   readonly clock: FakeClock;
   readonly lock: HostLock;
+  /** The text of each reason to wait told, and its cause beside it in `causes`. */
   readonly waits: string[];
+  readonly causes: WaitCause[];
   readonly request: ClearanceRequest;
 }
 
@@ -50,8 +53,12 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     newId: () => 'mine',
     ...(memory === undefined ? {} : { memory: new MemoryGate(memory, async () => undefined, { floorMb: 4096, heavyReserveMb: 4096, commitMaxPct: 92 }) }),
   });
-  const waits: string[] = [];
-  return { files, clock, lock, waits, request: { session: 'api', purpose: 'merge api', maxWaitMs, pollMs: POLL_MS, onWait: (reason) => waits.push(reason), zone: TimeZone.UTC } };
+  const [waits, causes]: [string[], WaitCause[]] = [[], []];
+  const onWait: ClearanceRequest['onWait'] = (told) => {
+    waits.push(told.text);
+    causes.push(told.cause);
+  };
+  return { files, clock, lock, waits, causes, request: { session: 'api', purpose: 'merge api', maxWaitMs, pollMs: POLL_MS, onWait, zone: TimeZone.UTC } };
 }
 
 /** Answers the readiness checks in turn, the last one from then on. */
@@ -66,7 +73,7 @@ function answers(...replies: readonly Readiness[]): () => Promise<Readiness> {
 }
 
 const GO: Readiness = { kind: 'go' };
-const FROZEN: Readiness = { kind: 'wait', reason: 'deploy freeze by po on cloud-api until 2030-01-08 10:02 UTC (p95)' };
+const FROZEN: Readiness = { kind: 'wait', cause: 'freeze', reason: 'deploy freeze by po on cloud-api until 2030-01-08 10:02 UTC (p95)' };
 
 describe('takeWhenClear', () => {
   it('takes the lock at once when nothing holds the step', async () => {
@@ -85,11 +92,11 @@ describe('takeWhenClear', () => {
     assert.deepEqual(clock.sleeps, []);
   });
 
-  it('waits out a freeze, logging its reason once, then takes the lock', async () => {
-    const { clock, lock, waits, request } = world();
+  it('waits out a freeze, logging its reason once as a freeze, then takes the lock', async () => {
+    const { clock, lock, waits, causes, request } = world();
     const clearance = await takeWhenClear(answers(FROZEN, FROZEN, FROZEN, GO), { lock, clock, sleep: clock.sleep }, request);
     assert.equal(clearance.kind, 'taken');
-    assert.deepEqual(waits, [FROZEN.reason]);
+    assert.deepEqual([waits, causes], [[FROZEN.reason], ['freeze']]);
     assert.deepEqual(clock.sleeps, [POLL_MS, POLL_MS, POLL_MS]);
   });
 
@@ -101,20 +108,20 @@ describe('takeWhenClear', () => {
     assert.equal(files.get(LOCK_PATH), undefined);
   });
 
-  it('gives up when another step holds the lock past the wait', async () => {
-    const { clock, lock, waits, request } = world({ [LOCK_PATH]: OTHERS_LOCK }, 60_000);
+  it('gives up when another step holds the lock past the wait, its wait told as one on the lock', async () => {
+    const { clock, lock, waits, causes, request } = world({ [LOCK_PATH]: OTHERS_LOCK }, 60_000);
     const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
     assert.equal(clearance.kind, 'gaveUp');
     assert.match(clearance.kind === 'gaveUp' ? clearance.reason : '', /^host lock still held by po/);
-    assert.equal(waits.length, 1);
+    assert.deepEqual(causes, ['lock']);
     assert.match(waits[0] ?? '', /^the host lock: po/);
   });
 
   it('gives up naming the host memory when it stays short past the wait, holding no lock (T2192)', async () => {
-    const { files, clock, lock, waits, request } = world({}, 60_000, new FakeHostMemory(5000));
+    const { files, clock, lock, waits, causes, request } = world({}, 60_000, new FakeHostMemory(5000));
     const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
     const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
-    assert.deepEqual([clearance, waits, files.get(LOCK_PATH)], [{ kind: 'gaveUp', reason: `host memory still short: ${short}` }, [`the host lock: ${short}`], undefined]);
+    assert.deepEqual([clearance, waits, causes, files.get(LOCK_PATH)], [{ kind: 'gaveUp', reason: `host memory still short: ${short}` }, [`the host lock: ${short}`], ['memory'], undefined]);
   });
 
   it("refuses, holding no lock, when its place in the host lock's line was withdrawn", async () => {

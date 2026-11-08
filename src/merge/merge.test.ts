@@ -17,6 +17,7 @@ import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
+import { heldBy } from '../testing/held-lock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { BASELINE_LOCK_ENV } from './dependencies.ts';
@@ -442,7 +443,7 @@ describe('merge pushes a branch to the default branch', () => {
       `deleteBranch ${WORKTREE} feat`,
       `updateLocalBranch ${WORKTREE} origin main`,
     ]);
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0 }]);
     assert.equal(world.files.get(PLACES.ledgerMd), undefined);
     assert.ok(world.lockFree());
@@ -548,7 +549,7 @@ describe('merge goes through the repository’s merge command, where one is set'
     ]);
     assert.ok(world.said.includes('merging feat (rebased) into main through the merge command node merge.ts'));
     assert.ok(world.said.includes('  pull request https://forge/pr/7 merged'));
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [
       start,
       { ...start, endedAt: '2030-01-08T10:01:00.000Z', exitCode: 0 },
@@ -610,7 +611,7 @@ describe('merge goes through the repository’s merge command, where one is set'
     assert.deepEqual(pendingOf(world), WAITED);
     assert.ok(world.lockFree());
     assert.ok(!tidied(world));
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 75 }]);
     assert.ok(world.said.includes('  checks running with [redacted]'));
     assert.equal(world.said.at(-1), `next: run teamrig merge again in ${WORKTREE} once feat is merged`);
@@ -888,7 +889,7 @@ describe('merge under the lock, when the push does not go through', () => {
     world.steps.ends({ kind: 'stopped' }).whileRunning(async () => undefined);
     failed(await world.run(), /^the push was killed when its launching shell ended \(exit 129\);/);
     assert.deepEqual(world.memory.watches, [{ root: 4242, intervalMs: DEFAULT_QUEUE.memorySampleSeconds * 1_000, stopped: true }]);
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [
       start,
       { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129, peakTreeMb: 2400, lowFreeMb: 900, startFreeMb: 7000, endFreeMb: world.memory.free },
@@ -923,7 +924,21 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
     assert.equal(world.steps.ran.length, 1);
     assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
     const [start] = world.records(PLACES.ledger);
-    assert.match(JSON.stringify(start), /"queuedAt":"2030-01-08T10:00:00\.000Z","startedAt":"2030-01-08T10:0[5-9]:/, 'its record shows the wait from its first look');
+    const shown = /"queuedAt":"2030-01-08T10:00:00\.000Z","waits":\{"freeze":(\d+)\},"queueFreeMb":8000,"startedAt":"(2030-01-08T10:0[5-9]:[^"]+)"/.exec(JSON.stringify(start));
+    assert.ok(shown, 'its record shows the wait from its first look, under the freeze');
+    assert.equal(Number(shown[1]), Date.parse(shown[2] ?? '') - Date.parse('2030-01-08T10:00:00Z'), 'all of the wait is the freeze');
+  });
+
+  it('sums its wait by cause on the start record: the freeze, then the host lock another step held (T2209)', async () => {
+    const world = new World({ repos: deploying, freezes: freeze('2030-01-08T10:05:00Z') });
+    await world.files.write(PLACES.hostLock, heldBy('2030-01-08T10:08:00.000Z'));
+    assert.equal((await world.run()).kind, 'done');
+    const [start] = world.records(PLACES.ledger);
+    const shown = /"queuedAt":"2030-01-08T10:00:00\.000Z","waits":\{"lock":(\d+),"freeze":(\d+)\},"queueFreeMb":8000,"startedAt":"([^"]+)"/.exec(JSON.stringify(start));
+    assert.ok(shown, 'its start record keeps both causes and the free memory when it queued');
+    const [onLock, onFreeze, startedAt] = [Number(shown[1]), Number(shown[2]), Date.parse(shown[3] ?? '')];
+    assert.ok(onFreeze >= 5 * 60_000 && onLock > 0 && startedAt >= Date.parse('2030-01-08T10:08:00Z'), JSON.stringify(start));
+    assert.equal(onLock + onFreeze, startedAt - Date.parse('2030-01-08T10:00:00Z'), 'the causes sum to the whole wait');
   });
 
   it('ignores a freeze on other targets, and freezes at all for a repository that deploys nothing', async () => {

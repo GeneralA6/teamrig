@@ -6,6 +6,7 @@ import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lo
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
 import { marksOfTaking, recordQueuedStep, runRecorded, type StepMark, type StepRecordPorts } from '../delivery/recorded-step.ts';
+import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../delivery/steps.ts';
 import type { Files } from '../core/files.ts';
@@ -424,10 +425,10 @@ function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () 
     }
     const read = await readFreezes(ports.files, setup.places.freezes);
     if (read.kind === 'unreadable') {
-      return { kind: 'wait', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
+      return { kind: 'wait', cause: 'freeze', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
     }
     const covering = coveringFreezes(read.freezes, targets, now);
-    return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
+    return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', cause: 'freeze', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
   };
 }
 
@@ -689,21 +690,21 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
     ports.say(`NOTE ${repo.name} is not in delivery.repos: no deploy targets, no dependency gate, no main checkout to follow`);
   }
   const { wait } = setup.delivery;
-  const queuedAt = ports.clock.now();
+  const waits = new WaitLog(ports.clock, ports.memory.freeMb());
   const clearance = await takeWhenClear(readinessOf(setup, ports, repo), ports, {
     session: request.session,
     purpose: `merge ${repo.name}`,
     maxWaitMs: wait.maxMinutes * MINUTE_MS,
     pollMs: wait.pollSeconds * 1_000,
     zone: setup.zone,
-    onWait: (reason) => ports.say(`waiting: ${reason}`),
+    onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
     return { kind: 'refused', reason: clearance.reason };
   }
   let outcome: MergeOutcome;
   try {
-    outcome = await pushOrMerge(setup, ports, plan, { lock: clearance.lock, session: request.session, markOf: marksOfTaking(request.session, queuedAt) });
+    outcome = await pushOrMerge(setup, ports, plan, { lock: clearance.lock, session: request.session, markOf: marksOfTaking(request.session, waits.end()) });
     if (outcome.kind === 'merged' && repo.config.merge !== undefined) {
       await removePendingMerge(ports.files, setup.places, repo.name, plan.branch);
     }

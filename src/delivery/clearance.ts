@@ -1,9 +1,13 @@
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { busyText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
+import { causeOfLockWait, type WaitCause, type WaitTold } from './wait-log.ts';
 
-/** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait (a deploy freeze). */
-export type Readiness = { readonly kind: 'go' } | { readonly kind: 'refuse'; readonly reason: string } | { readonly kind: 'wait'; readonly reason: string };
+/** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait: a deploy freeze, or a check holding it. */
+export type Readiness =
+  | { readonly kind: 'go' }
+  | { readonly kind: 'refuse'; readonly reason: string }
+  | { readonly kind: 'wait'; readonly cause: Extract<WaitCause, 'freeze' | 'check'>; readonly reason: string };
 
 /** When readiness is asked: before the host lock is taken, or under it, the answer the step goes on. */
 export type ClearancePhase = 'before' | 'locked';
@@ -21,8 +25,8 @@ export interface ClearanceRequest {
   /** The whole wait, for freezes and the lock together; the lock's goes on past it while its line moves. */
   readonly maxWaitMs: number;
   readonly pollMs: number;
-  /** Hears each new reason to wait once, so a long wait logs a line a change. */
-  readonly onWait: (reason: string) => void;
+  /** Hears each new reason to wait once, with its cause, so a long wait logs a line a change and sums its time by cause. */
+  readonly onWait: (told: WaitTold) => void;
   /** The team's clock, for the lock holder's time in a wait line. */
   readonly zone: TimeZone;
 }
@@ -45,10 +49,10 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
   const deadline = clock.now() + request.maxWaitMs;
   let told: string | undefined;
   /** Logs a new reason and sleeps one poll; false when the wait has run out. */
-  const hold = async (reason: string): Promise<boolean> => {
-    if (reason !== told) {
-      request.onWait(reason);
-      told = reason;
+  const hold = async (wait: Extract<Readiness, { readonly kind: 'wait' }>): Promise<boolean> => {
+    if (wait.reason !== told) {
+      request.onWait({ cause: wait.cause, text: wait.reason });
+      told = wait.reason;
     }
     const left = deadline - clock.now();
     if (left <= 0) {
@@ -63,13 +67,13 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
       return { kind: 'refused', reason: before.reason };
     }
     if (before.kind === 'wait') {
-      if (!(await hold(before.reason))) {
+      if (!(await hold(before))) {
         return { kind: 'gaveUp', reason: before.reason };
       }
       continue;
     }
     const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) =>
-      request.onWait(`the host lock: ${waitText(holder, ahead, request.zone)}`),
+      request.onWait({ cause: causeOfLockWait(holder), text: `the host lock: ${waitText(holder, ahead, request.zone)}` }),
     );
     if (taking.kind === 'busy') {
       return { kind: 'gaveUp', reason: busyText(taking.holder, request.zone) };
@@ -86,7 +90,7 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
     if (under.kind === 'refuse') {
       return { kind: 'refused', reason: under.reason };
     }
-    if (!(await hold(under.reason))) {
+    if (!(await hold(under))) {
       return { kind: 'gaveUp', reason: under.reason };
     }
   }
