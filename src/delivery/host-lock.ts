@@ -127,6 +127,8 @@ export interface StepNeed {
   readonly reserveMb: number;
   /** Where `reserveMb` came from, which a wait on memory names (`learned from 12 runs`); unset for a default. */
   readonly basis?: string;
+  /** The minutes the step is expected to run: the median of the past runs its need was learned from; unset when none was. */
+  readonly expectedMinutes?: number;
 }
 
 /**

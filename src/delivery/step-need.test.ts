@@ -25,12 +25,23 @@ function dropped(what: string, peakTreeMb: number, startFreeMb: number, lowFreeM
 describe('learnedNeedOf', () => {
   it(`learns from the latest ${NEED_RUNS} runs of the same session and label: their most held, with a quarter more`, () => {
     const records = [ran('T7 build', { peakTreeMb: 9000 }), ...Array.from({ length: 19 }, () => ran('T7 build', { peakTreeMb: 1000 })), ran('T7 build', { peakTreeMb: 1900 })];
-    assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 2375, runs: 20, from: 'label' });
+    assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 2375, medianMinutes: 5, runs: 20, from: 'label' });
+  });
+
+  it('learns the median minutes the same runs took, start to end, unrounded, a clock set back counting none', () => {
+    const took = (what: string, endedAt: string): QueuedStepRecord => ran(what, { peakTreeMb: 1000, endedAt });
+    const odd = [took('T7 build', '2030-01-07T10:02:00.000Z'), took('T7 build', '2030-01-07T10:30:00.000Z'), took('T7 build', '2030-01-07T10:04:00.000Z')];
+    assert.equal(learnedNeedOf(odd, ASK)?.medianMinutes, 4);
+    const even = [took('T7 build', '2030-01-07T10:03:00.000Z'), took('T7 build', '2030-01-07T10:06:30.000Z')];
+    assert.equal(learnedNeedOf(even, ASK)?.medianMinutes, 4.75, 'the mean of 3 and 6.5 minutes');
+    assert.equal(learnedNeedOf([took('T7 build', '2030-01-07T09:00:00.000Z')], ASK)?.medianMinutes, 0);
+    const older = [took('T7 build', '2030-01-07T11:00:00.000Z'), ...Array.from({ length: NEED_RUNS }, () => took('T7 build', '2030-01-07T10:01:00.000Z'))];
+    assert.equal(learnedNeedOf(older, ASK)?.medianMinutes, 1, `a run before the latest ${NEED_RUNS} counts for nothing`);
   });
 
   it('takes the median of what the host lost while its runs ran when that passes their peak', () => {
     const records = [dropped('T7 build', 1000, 12_000, 9000), dropped('T7 build', 1000, 12_000, 2000), dropped('T7 build', 1000, 12_000, 8800)];
-    assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 3200, runs: 3, from: 'label' }, 'drops 3000, 10000 and 3200: one spike does not pin it');
+    assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 3200, medianMinutes: 5, runs: 3, from: 'label' }, 'drops 3000, 10000 and 3200: one spike does not pin it');
   });
 
   it('rounds up the mean of the two middle drops of an even count, and counts a rise in free memory as no drop', () => {
@@ -50,19 +61,19 @@ describe('learnedNeedOf', () => {
 
   it('falls back to its session\'s runs of the same kind and size when no run has its label', () => {
     const records = [ran('T8 build', { peakTreeMb: 6000 }), ran('T9 build', { peakTreeMb: 2000 }), ran('lint', { kind: 'lint', peakTreeMb: 9000 }), ran('T9 build', { shared: true, peakTreeMb: 9000 }), ran('build', { peakTreeMb: 9000, session: 'bravo' })];
-    assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 7500, runs: 2, from: 'kind' });
-    assert.deepEqual(learnedNeedOf(records, { ...ASK, small: true }), { reserveMb: 11_250, runs: 1, from: 'kind' }, 'a small step learns from small runs');
+    assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 7500, medianMinutes: 5, runs: 2, from: 'kind' });
+    assert.deepEqual(learnedNeedOf(records, { ...ASK, small: true }), { reserveMb: 11_250, medianMinutes: 5, runs: 1, from: 'kind' },'a small step learns from small runs');
   });
 
   it('prefers its own label\'s runs to its kind\'s, even when they need less', () => {
     const records = [ran('T8 build', { peakTreeMb: 9000 }), ran('T7 build', { peakTreeMb: 2000 })];
-    assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 2500, runs: 1, from: 'label' });
+    assert.deepEqual(learnedNeedOf(records, ASK), { reserveMb: 2500, medianMinutes: 5, runs: 1, from: 'label' });
   });
 
   it('never falls back by kind for kind other, which spans ships, checks and installs', () => {
     const records = [ran('T8 ship', { kind: 'other', peakTreeMb: 9000 })];
     assert.equal(learnedNeedOf(records, { ...ASK, what: 'T7 ship', kind: 'other' }), undefined);
-    assert.deepEqual(learnedNeedOf(records, { ...ASK, what: 'T8 ship', kind: 'other' }), { reserveMb: 11_250, runs: 1, from: 'label' });
+    assert.deepEqual(learnedNeedOf(records, { ...ASK, what: 'T8 ship', kind: 'other' }), { reserveMb: 11_250, medianMinutes: 5, runs: 1, from: 'label' });
   });
 });
 
@@ -72,27 +83,27 @@ describe('stepNeedOf', () => {
   });
 
   it('holds a heavy step its learned need when more than heavyReserveMb, saying it was learned', () => {
-    assert.deepEqual(stepNeedOf([ran('T7 build', { peakTreeMb: 2000 }), ran('T7 build', { peakTreeMb: 6000 })], ASK, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'learned from 2 runs' });
-    assert.deepEqual(stepNeedOf([ran('T7 build', { peakTreeMb: 2000 })], ASK, DEFAULTS), { shares: false, reserveMb: 4096 }, 'heavyReserveMb holds when more');
+    assert.deepEqual(stepNeedOf([ran('T7 build', { peakTreeMb: 2000 }), ran('T7 build', { peakTreeMb: 6000 })], ASK, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'learned from 2 runs', expectedMinutes: 5 });
+    assert.deepEqual(stepNeedOf([ran('T7 build', { peakTreeMb: 2000 })], ASK, DEFAULTS), { shares: false, reserveMb: 4096, expectedMinutes: 5 }, 'heavyReserveMb holds when more');
   });
 
   it('names the kind a need was learned from when no run had its label', () => {
-    assert.deepEqual(stepNeedOf([ran('T8 build', { peakTreeMb: 6000 })], ASK, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'learned from 1 build run' });
-    assert.deepEqual(stepNeedOf([ran('T8 build', { peakTreeMb: 6000 }), ran('T9 build', { peakTreeMb: 100 })], ASK, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'learned from 2 build runs' });
+    assert.deepEqual(stepNeedOf([ran('T8 build', { peakTreeMb: 6000 })], ASK, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'learned from 1 build run', expectedMinutes: 5 });
+    assert.deepEqual(stepNeedOf([ran('T8 build', { peakTreeMb: 6000 }), ran('T9 build', { peakTreeMb: 100 })], ASK, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'learned from 2 build runs', expectedMinutes: 5 });
   });
 
   it('holds the declared --memory-mb when it is at least the learned need, else the learned need', () => {
     const records = [ran('T7 build', { peakTreeMb: 6000 })];
-    assert.deepEqual(stepNeedOf(records, { ...ASK, declaredMb: 9000 }, DEFAULTS), { shares: false, reserveMb: 9000, basis: 'declared with --memory-mb' });
-    assert.deepEqual(stepNeedOf(records, { ...ASK, declaredMb: 7500 }, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'declared with --memory-mb' }, 'a tie goes to the declared need');
-    assert.deepEqual(stepNeedOf(records, { ...ASK, declaredMb: 5000 }, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'learned from 1 run' });
+    assert.deepEqual(stepNeedOf(records, { ...ASK, declaredMb: 9000 }, DEFAULTS), { shares: false, reserveMb: 9000, basis: 'declared with --memory-mb', expectedMinutes: 5 });
+    assert.deepEqual(stepNeedOf(records, { ...ASK, declaredMb: 7500 }, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'declared with --memory-mb', expectedMinutes: 5 }, 'a tie goes to the declared need');
+    assert.deepEqual(stepNeedOf(records, { ...ASK, declaredMb: 5000 }, DEFAULTS), { shares: false, reserveMb: 7500, basis: 'learned from 1 run', expectedMinutes: 5 });
     assert.deepEqual(stepNeedOf([], { ...ASK, declaredMb: 3000 }, DEFAULTS), { shares: false, reserveMb: 4096 }, 'a heavy step holds heavyReserveMb at least');
   });
 
   it('holds a small step its learned or declared need, even under smallReserveMb, else smallReserveMb', () => {
     const small: NeedAsk = { ...ASK, what: 'lint', kind: 'lint', small: true };
     assert.deepEqual(stepNeedOf([], small, DEFAULTS), { shares: true, reserveMb: 2048 });
-    assert.deepEqual(stepNeedOf([ran('lint', { kind: 'lint', shared: true, peakTreeMb: 300 })], small, DEFAULTS), { shares: true, reserveMb: 375, basis: 'learned from 1 run' });
+    assert.deepEqual(stepNeedOf([ran('lint', { kind: 'lint', shared: true, peakTreeMb: 300 })], small, DEFAULTS), { shares: true, reserveMb: 375, basis: 'learned from 1 run', expectedMinutes: 5 });
     assert.deepEqual(stepNeedOf([], { ...small, declaredMb: 500 }, DEFAULTS), { shares: true, reserveMb: 500, basis: 'declared with --memory-mb' });
   });
 });

@@ -20,9 +20,13 @@ export interface NeedAsk {
   readonly declaredMb?: number;
 }
 
-/** A need learned from past runs: its MB, the runs it was read from, and whether they matched by label or by kind only. */
+/**
+ * A need learned from past runs: its MB, the median minutes they ran (start to end, not rounded), the runs it was read
+ * from, and whether they matched by label or by kind only.
+ */
 export interface LearnedNeed {
   readonly reserveMb: number;
+  readonly medianMinutes: number;
   readonly runs: number;
   readonly from: 'label' | 'kind';
 }
@@ -30,18 +34,31 @@ export interface LearnedNeed {
 /** The config's MB held for a step whose need is neither learned nor declared, and the least a heavy step holds. */
 export type NeedDefaults = Pick<QueueConfig, 'smallReserveMb' | 'heavyReserveMb'>;
 
+/** A queued step's run that has ended. */
+type EndedRun = QueuedStepRecord & { readonly endedAt: string };
+
 /** An ended run of a queued step that measured its tree's peak or what the host lost while it ran. */
-function isMeasuredRun(record: LedgerRecord): record is QueuedStepRecord {
+function isMeasuredRun(record: LedgerRecord): record is EndedRun {
   return record.type === 'heavy' && record.endedAt !== null && (record.peakTreeMb !== undefined || (record.startFreeMb !== undefined && record.lowFreeMb !== undefined));
 }
 
-/** The middle value of `values`, which are not empty, rounded up: the mean of the two middle ones for an even count. */
-function medianOf(values: readonly number[]): number {
+/** The middle value of `values`, which are not empty: the mean of the two middle ones for an even count. */
+function middleOf(values: readonly number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   const upper = sorted[middle] ?? 0;
   const lower = sorted.length % 2 === 0 ? (sorted[middle - 1] ?? upper) : upper;
-  return Math.ceil((lower + upper) / 2);
+  return (lower + upper) / 2;
+}
+
+/** The middle value of `values`, which are not empty, rounded up to a whole MB. */
+function medianOf(values: readonly number[]): number {
+  return Math.ceil(middleOf(values));
+}
+
+/** The minutes `run` took, start to end; a clock set back while it ran counts as none. */
+function minutesOf(run: EndedRun): number {
+  return Math.max(0, Date.parse(run.endedAt) - Date.parse(run.startedAt)) / 60_000;
 }
 
 /**
@@ -49,18 +66,18 @@ function medianOf(values: readonly number[]): number {
  * while it ran (start less least free memory), whichever is more. The host's loss catches memory the step makes others
  * take (a VM, a database's cache); its median keeps one run beside another app's spike from pinning the need high.
  */
-function measuredMbOf(runs: readonly QueuedStepRecord[]): number {
+function measuredMbOf(runs: readonly EndedRun[]): number {
   const peaks = runs.flatMap((run) => (run.peakTreeMb === undefined ? [] : [run.peakTreeMb]));
   const drops = runs.flatMap((run) => (run.startFreeMb === undefined || run.lowFreeMb === undefined ? [] : [Math.max(0, run.startFreeMb - run.lowFreeMb)]));
   const peakMb = peaks.length === 0 ? 0 : Math.ceil(Math.max(...peaks) * PEAK_MARGIN);
   return Math.max(peakMb, drops.length === 0 ? 0 : medianOf(drops));
 }
 
-/** The need the latest NEED_RUNS of `runs` show, when they show one over 0 MB. */
-function learnedOf(runs: readonly QueuedStepRecord[], from: LearnedNeed['from']): LearnedNeed | undefined {
+/** The need the latest NEED_RUNS of `runs` show, when they show one over 0 MB, with the median minutes those runs took. */
+function learnedOf(runs: readonly EndedRun[], from: LearnedNeed['from']): LearnedNeed | undefined {
   const latest = runs.slice(-NEED_RUNS);
   const reserveMb = latest.length === 0 ? 0 : measuredMbOf(latest);
-  return reserveMb > 0 ? { reserveMb, runs: latest.length, from } : undefined;
+  return reserveMb > 0 ? { reserveMb, medianMinutes: middleOf(latest.map(minutesOf)), runs: latest.length, from } : undefined;
 }
 
 /**
@@ -93,7 +110,8 @@ function learnedText(learned: LearnedNeed, kind: StepKind): string {
  * What a queued step asks of the host: a small one shares it, a heavy one takes the lock, each holding the more of its
  * learned need (`learnedNeedOf`) and its declared `--memory-mb` (declared on a tie), else the config's
  * `smallReserveMb`; a heavy step holds at least `heavyReserveMb`. The need's `basis` says where a learned or declared
- * MB came from; a default has none.
+ * MB came from; a default has none. A learned need also gives the minutes the step is expected to run, whichever MB
+ * wins.
  */
 export function stepNeedOf(records: readonly LedgerRecord[], ask: NeedAsk, defaults: NeedDefaults): StepNeed {
   const learned = learnedNeedOf(records, ask);
@@ -101,8 +119,9 @@ export function stepNeedOf(records: readonly LedgerRecord[], ask: NeedAsk, defau
     ...(ask.declaredMb === undefined ? [] : [{ reserveMb: ask.declaredMb, basis: 'declared with --memory-mb' }]),
     ...(learned === undefined ? [] : [{ reserveMb: learned.reserveMb, basis: learnedText(learned, ask.kind) }]),
   ].reduce<{ readonly reserveMb: number; readonly basis: string } | undefined>((most, need) => (most === undefined || need.reserveMb > most.reserveMb ? need : most), undefined);
+  const expected = learned === undefined ? {} : { expectedMinutes: learned.medianMinutes };
   if (ask.small) {
-    return known === undefined ? { shares: true, reserveMb: defaults.smallReserveMb } : { shares: true, ...known };
+    return known === undefined ? { shares: true, reserveMb: defaults.smallReserveMb, ...expected } : { shares: true, ...known, ...expected };
   }
-  return known === undefined || known.reserveMb < defaults.heavyReserveMb ? { shares: false, reserveMb: defaults.heavyReserveMb } : { shares: false, ...known };
+  return known === undefined || known.reserveMb < defaults.heavyReserveMb ? { shares: false, reserveMb: defaults.heavyReserveMb, ...expected } : { shares: false, ...known, ...expected };
 }
