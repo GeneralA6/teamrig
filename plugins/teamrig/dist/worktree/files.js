@@ -1,4 +1,4 @@
-import { lstat, readdir, readlink, symlink, unlink } from 'node:fs/promises';
+import { lstat, readdir, readlink, rmdir, symlink, unlink } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { errorCode } from "../core/guards.js";
@@ -62,6 +62,10 @@ export const NODE_WORKTREE_FILES = {
     async makeLink(path, target) {
         // A junction on Windows, which needs no privilege; elsewhere Node ignores the type and makes a symlink.
         await symlink(target, path, 'junction');
+    },
+    async removeEmptyFolder(path) {
+        // rmdir with no recursive option: it fails on a folder that holds anything, so nothing in it can be lost.
+        await rmdir(path);
     },
     async canonical(path) {
         try {
