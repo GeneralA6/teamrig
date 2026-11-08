@@ -3894,8 +3894,15 @@ Runs one queued step (a build, a test run, a database script) under the host loc
 at a time instead of competing for its CPU and memory. It waits for the lock until its line has not moved
 for `delivery.queue.waitMinutes` (60 by default). Waiters take it in their turn: each joins a line of tickets in `<lock>.queue` and only the
 first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). With
-`delivery.queue.admission` `pipeline` (the default) the line is in admission order: a p0 step first, then by priority,
-which rises a level for each `delivery.queue.agingMinutes` (15) waited but never to p0, then by arrival. A step whose
+`delivery.queue.admission` `pipeline` (the default) the line is in admission order: a p0 step first, then by class
+turn, then by priority, which rises a level for each `delivery.queue.agingMinutes` (15) waited but never to p0, then by
+arrival. Class turns share the host among the work classes by `focus.allocation`: each class (its task's, else
+`focus.defaultClass`) keeps a virtual time in `<lock>.turns.json`, charged at a step's admission the minutes it is
+expected to run (the median of the runs its need is learned from, else 5) times 100 over its percent (a 0% class counts
+as 1%), and corrected to the minutes it ran once it ends: the step marks its end in `<lock>.ended` before it lets go,
+and the next admission settles the mark. The waiting class with the least virtual time goes next. A class with no step
+waiting or running is lifted to the least virtual time of the classes in play, so idle time banks no turns; a damaged
+turns file reads as none and is written whole again. A step whose
 session already runs `delivery.queue.perSessionRunning` (2) steps, under the lock or sharing the host, waits for one to
 end while later steps pass it (`2 steps of its session running, its cap 2: ...`, refused with `session cap still
 reached: ...`). With `serial` the line is in arrival order with no cap. It
