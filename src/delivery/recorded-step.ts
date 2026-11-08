@@ -5,6 +5,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import { appendRecord, type QueuedStepRecord, type RefusalOutcome } from './ledger.ts';
 import { holdersText, type HostMemory, type MemoryPeaks } from './memory.ts';
 import type { DeliveryPlaces } from './places.ts';
+import { processRequest, type ProcessRequest } from './process-request.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
 import type { WaitCause, Waited, WaitLog, WaitTotals } from './wait-log.ts';
 
@@ -38,9 +39,16 @@ export interface StepRecordSetup {
   readonly delivery: { readonly queue: Pick<QueueConfig, 'memorySampleSeconds'> };
 }
 
-/** A queued step as the ledger names it. */
-export interface StepMark {
+/**
+ * Who asks for a queued step and what for: its session and its request (kind and task), carried by its start, end and
+ * refusal records. The kind is required, so no caller records a step without naming it.
+ */
+export interface StepOwner extends ProcessRequest {
   readonly session: string;
+}
+
+/** A queued step as the ledger names it. */
+export interface StepMark extends StepOwner {
   readonly what: string;
   /** When the step began to wait for the host lock, in ms; recorded as `queuedAt`. */
   readonly queuedAt?: number;
@@ -56,13 +64,18 @@ export interface StepMark {
  * Marks for the queued steps one taking of the host lock runs, in order: only the first carries the taking's wait (when
  * it began, the ms by cause and the host's free memory then), since a later step's wait would count the steps before it.
  */
-export function marksOfTaking(session: string, waited: Waited): (what: string) => StepMark {
+export function marksOfTaking(owner: StepOwner, waited: Waited): (what: string) => StepMark {
   let first: Waited | undefined = waited;
   return (what) => {
-    const mark: StepMark = first === undefined ? { session, what } : { session, what, ...first };
+    const mark: StepMark = first === undefined ? { ...owner, what } : { ...owner, what, ...first };
     first = undefined;
     return mark;
   };
+}
+
+/** An owner's request as its records store it: `kind`, and `task` when it names one. */
+function requestFieldsOf(owner: StepOwner): Pick<QueuedStepRecord, 'kind' | 'task'> {
+  return processRequest(owner.kind, owner.task);
 }
 
 /** A mark's wait as the start record stores it: `queuedAt` as an ISO time, `waits` only when any cause took time. */
@@ -106,6 +119,7 @@ export async function recordQueuedStep<T>(ports: StepRecordPorts, setup: StepRec
     id: ports.newId(),
     session: mark.session,
     what: mark.what,
+    ...requestFieldsOf(mark),
     kit: KIT_VERSION,
     ...waitFieldsOf(mark),
     ...(mark.shared === true ? { shared: true } : {}),
@@ -147,8 +161,7 @@ async function withHolders(reason: string, memory: RefusalRecordPorts['memory'])
 }
 
 /** A queued step that did not run, as its refusal record names it. */
-export interface RefusalMark {
-  readonly session: string;
+export interface RefusalMark extends StepOwner {
   readonly what: string;
   readonly outcome: RefusalOutcome;
   readonly reason: string;
@@ -173,6 +186,7 @@ export async function recordRefusal(ports: RefusalRecordPorts, ledger: string, w
     id: ports.newId(),
     session: mark.session,
     what: mark.what,
+    ...requestFieldsOf(mark),
     kit: KIT_VERSION,
     queuedAt: new Date(waited.queuedAt).toISOString(),
     endedAt: new Date(ports.clock.now()).toISOString(),

@@ -5,7 +5,8 @@ import { refusalOf, takeWhenClear, type Readiness } from '../delivery/clearance.
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
-import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded, type StepMark, type StepRecordPorts } from '../delivery/recorded-step.ts';
+import { processRequest } from '../delivery/process-request.ts';
+import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded, type StepMark, type StepOwner, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../delivery/steps.ts';
@@ -30,7 +31,7 @@ import { LOCKFILE } from './manifest.ts';
 import type { MergeLog, MergeRecord } from './merge-log.ts';
 import { readPendingMerge, removePendingMerge, writePendingMerge, type PendingMerge } from './pending-merges.ts';
 import { checkExitCode, runReviewCheck } from './review-check.ts';
-import { reviewGateVerdict, type GatedChange, type ReviewClearance, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
+import { reviewGateVerdict, taskOfBranch, type GatedChange, type ReviewClearance, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
 import type { ReviewHolds } from './review-holds.ts';
 
 /**
@@ -699,12 +700,14 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
     zone: setup.zone,
     onWait: sayingWaits(waits, ports.say),
   });
+  // Every step a merge runs (its checks, its push or merge command) is recorded as merge work for the branch's task.
+  const owner: StepOwner = { session: request.session, ...processRequest('merge', taskOfBranch(plan.branch)) };
   if (clearance.kind !== 'taken') {
-    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `merge ${repo.name}: ${plan.branch}` })) };
+    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { ...owner, what: `merge ${repo.name}: ${plan.branch}` })) };
   }
   let outcome: MergeOutcome;
   try {
-    outcome = await pushOrMerge(setup, ports, plan, { lock: clearance.lock, session: request.session, markOf: marksOfTaking(request.session, waits.end()) });
+    outcome = await pushOrMerge(setup, ports, plan, { lock: clearance.lock, session: request.session, markOf: marksOfTaking(owner, waits.end()) });
     if (outcome.kind === 'merged' && repo.config.merge !== undefined) {
       await removePendingMerge(ports.files, setup.places, repo.name, plan.branch);
     }

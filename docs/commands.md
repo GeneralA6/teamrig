@@ -399,12 +399,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       leads, the lead any, and any session one on a detached HEAD whose every commit is on the branch
       origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too, once every
       commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
-  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one queued step
+  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--small] [--pre-push] -- <command ...>   runs one queued step
       (a build, a test run, a database script) under the host lock, so the host runs one at a time, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
       delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
-      ledger; once the shell that started it ends, it stops waiting for the lock or kills the step (exit
+      ledger, with its --kind (build, test, lint, push, merge, deploy or other; default read from the
+      command) and --task (default the first task id in --what); once the shell that started it ends, it stops waiting for the lock or kills the step (exit
       129); REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
       moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a queued step started under a live lock (a git hook's checks

@@ -5,13 +5,15 @@ import { busyText, holderText, underLock, waitText, type HostLock, type HostLock
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
-import { recordRefusal, runRecorded, type RefusalMark } from '../../delivery/recorded-step.ts';
+import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
+import { recordRefusal, runRecorded, type RefusalMark, type StepOwner } from '../../delivery/recorded-step.ts';
 import { causeOfLockWait, WaitLog } from '../../delivery/wait-log.ts';
 import { queueCutoffReason, minutesText } from '../../delivery/schedule.ts';
 import { endedText, type StarterWatching } from '../../delivery/starter-watch.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../delivery/steps.ts';
 import { ENV } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
+import { TASK_ID } from '../../register/model.ts';
 import { commandLine } from '../../test-run/shell.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, type Say } from '../delivery-ports.ts';
@@ -50,6 +52,35 @@ function maxRunMinutesOf(args: ParsedArgs, config: QueueConfig, small: boolean):
     throw new UsageError(`--max-minutes is a whole number from 1 to ${longest} (delivery.queue.lockTtlMinutes less ${QUEUE_TTL_MARGIN_MINUTES})`);
   }
   return minutes;
+}
+
+/** `--kind`: one of STEP_KINDS; unset, the kind the command's words show (`kindOfCommand`). */
+function kindOf(args: ParsedArgs, words: readonly string[]): StepKind {
+  const text = args.flags.get('kind');
+  if (text === undefined) {
+    return kindOfCommand(words);
+  }
+  if (!isStepKind(text)) {
+    throw new UsageError(`--kind is one of ${STEP_KINDS.join(', ')}`);
+  }
+  return text;
+}
+
+/** `--task`: a register task id; unset, the first one the label names (`taskOfLabel`), if any. */
+function taskOf(args: ParsedArgs, what: string): string | undefined {
+  const text = args.flags.get('task');
+  if (text === undefined) {
+    return taskOfLabel(what);
+  }
+  if (!TASK_ID.test(text)) {
+    throw new UsageError(`--task is a register task id, such as T12`);
+  }
+  return text;
+}
+
+/** What the step asks for besides its label, recorded on its start and refusal records. */
+function requestOf(args: ParsedArgs, words: readonly string[], what: string): ProcessRequest {
+  return processRequest(kindOf(args, words), taskOf(args, what));
 }
 
 function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined, zone: TimeZone): void {
@@ -246,6 +277,7 @@ interface Step {
 export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const words = commandWordsOf(args);
   const what = requiredFlag(args.flags, 'what');
+  const request = requestOf(args, words, what);
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const { delivery } = config;
@@ -257,6 +289,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
+  const owner: StepOwner = { session, ...request };
   const watching = await watchStarters(runtime, say);
   try {
     const step: Step = { what, words, maxRunMinutes, watching };
@@ -289,29 +322,29 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       ),
     );
     if (taking === undefined) {
-      await recordRefusal(runtime, places.ledger, waits, { session, what, outcome: 'stopped', reason: `its launching shell ended (${endedText(watching)}) while it waited` });
+      await recordRefusal(runtime, places.ledger, waits, { ...owner, what, outcome: 'stopped', reason: `its launching shell ended (${endedText(watching)}) while it waited` });
       return stoppedWhileWaiting(runtime, say, watching);
     }
     if (taking.kind === 'busy') {
-      return await refuseWaited(runtime, places.ledger, waits, { session, what, outcome: 'timedOut', reason: busyText(taking.holder, zone) });
+      return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'timedOut', reason: busyText(taking.holder, zone) });
     }
     if (taking.kind === 'withdrawn') {
-      return await refuseWaited(runtime, places.ledger, waits, { session, what, outcome: 'withdrawn', reason: `withdrawn from the host lock's line (teamrig withdraw): ${what} did not run` });
+      return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'withdrawn', reason: `withdrawn from the host lock's line (teamrig withdraw): ${what} did not run` });
     }
     const waited = waits.end();
     const waitedMs = runtime.clock.now() - waited.queuedAt;
     try {
       const cutoff = queueCutoffReason(runtime.clock.now(), delivery.schedule.queueCutoffUtc, zone);
       if (cutoff !== undefined) {
-        return await refuseWaited(runtime, places.ledger, waits, { session, what, outcome: 'refused', reason: cutoff });
+        return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'refused', reason: cutoff });
       }
       const sharing = sharingText(need.reserveMb, taking);
       if (sharing !== undefined) {
         say(sharing);
       }
       say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
-      const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
-      const mark = { session, what, ...waited, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
+      const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
+      const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined ? {} : { shared: true as const }), request: run };
       const end = await runRecorded(runtime, { places, delivery }, mark);
       const code = report(runtime, say, end, maxRunMinutes, watching);
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);

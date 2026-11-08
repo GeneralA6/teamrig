@@ -11,8 +11,8 @@ import { WaitLog, type WaitCause } from './wait-log.ts';
 const LEDGER = '/kit/deploys/ledger.jsonl';
 const SAMPLED: StepRecordSetup = { places: { ledger: LEDGER }, delivery: { queue: { memorySampleSeconds: 15 } } };
 const UNSAMPLED: StepRecordSetup = { places: { ledger: LEDGER }, delivery: { queue: { memorySampleSeconds: 0 } } };
-const STEP: RecordedStep = { session: 'po', what: 'build', request: { command: 'npm run build', cwd: '/app', env: {}, timeoutMs: 60_000 } };
-const START = { type: 'heavy', id: 'step-1', session: 'po', what: 'build', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+const STEP: RecordedStep = { session: 'po', kind: 'build', what: 'build', request: { command: 'npm run build', cwd: '/app', env: {}, timeoutMs: 60_000 } };
+const START = { type: 'heavy', id: 'step-1', session: 'po', what: 'build', kind: 'build', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
 
 interface World {
   readonly files: MemoryFiles;
@@ -105,16 +105,23 @@ describe('recordQueuedStep', () => {
       clock.advance(30_000);
       return { failedAt: 'pull' };
     };
-    assert.deepEqual(await recordQueuedStep(ports, SAMPLED, { session: 'po', what: 'deploy app' }, work, () => 4), { failedAt: 'pull' });
-    const start = { ...START, what: 'deploy app' };
+    assert.deepEqual(await recordQueuedStep(ports, SAMPLED, { session: 'po', kind: 'deploy', what: 'deploy app' }, work, () => 4), { failedAt: 'pull' });
+    const start = { ...START, what: 'deploy app', kind: 'deploy' };
     assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:00:30.000Z', exitCode: 4 }]);
   });
 
   it('watches work of any kind, and records the memory at a kill its exit code reports', async () => {
     const { files, memory, ports } = world(new FakeHostMemory(1500).measures({ peakTreeMb: 3100 }));
-    await recordQueuedStep(ports, SAMPLED, { session: 'po', what: 'deploy app' }, async () => 'killed', () => 129);
+    await recordQueuedStep(ports, SAMPLED, { session: 'po', kind: 'deploy', what: 'deploy app' }, async () => 'killed', () => 129);
     assert.deepEqual(memory.watches, [{ root: 4242, intervalMs: 15_000, stopped: true }]);
-    assert.deepEqual(records(files)[1], { ...START, what: 'deploy app', endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129, peakTreeMb: 3100, endFreeMb: 1500 });
+    assert.deepEqual(records(files)[1], { ...START, what: 'deploy app', kind: 'deploy', endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129, peakTreeMb: 3100, endFreeMb: 1500 });
+  });
+
+  it('records the kind and the task the step works for on its start and end records (T2209)', async () => {
+    const { files, ports } = world();
+    await recordQueuedStep(ports, UNSAMPLED, { session: 'po', kind: 'test', task: 'T12', what: 'T12 specs' }, async () => 0, () => 0);
+    const start = { ...START, what: 'T12 specs', kind: 'test', task: 'T12' };
+    assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 0 }]);
   });
 });
 
@@ -139,11 +146,12 @@ describe('recordQueuedStep: the wait', () => {
 describe('marksOfTaking', () => {
   it('puts the wait on the first step a taking of the lock runs, never on the steps after it', () => {
     const waited = { queuedAt: Date.parse('2030-01-08T09:58:00Z'), waits: { freeze: 60_000, lock: 30_000 }, queueFreeMb: 5200 };
-    const markOf = marksOfTaking('api', waited);
+    const owner = { session: 'api', kind: 'merge', task: 'T7' } as const;
+    const markOf = marksOfTaking(owner, waited);
     assert.deepEqual([markOf('check'), markOf('push'), markOf('push again')], [
-      { session: 'api', what: 'check', ...waited },
-      { session: 'api', what: 'push' },
-      { session: 'api', what: 'push again' },
+      { ...owner, what: 'check', ...waited },
+      { ...owner, what: 'push' },
+      { ...owner, what: 'push again' },
     ]);
   });
 });
@@ -156,13 +164,15 @@ describe('recordRefusal', () => {
     clock.advance(30_000);
     waits.tell({ cause: 'memory', text: 'host memory: 2500 MB free' });
     clock.advance(90_000);
-    await recordRefusal(ports, LEDGER, waits, { session: 'po', what: 'build', outcome: 'timedOut', reason: 'host memory still short' });
+    await recordRefusal(ports, LEDGER, waits, { session: 'po', kind: 'build', task: 'T12', what: 'build', outcome: 'timedOut', reason: 'host memory still short' });
     assert.deepEqual(records(files), [
       {
         type: 'refusal',
         id: 'step-1',
         session: 'po',
         what: 'build',
+        kind: 'build',
+        task: 'T12',
         kit: KIT_VERSION,
         queuedAt: '2030-01-08T10:00:00.000Z',
         endedAt: '2030-01-08T10:02:00.000Z',
@@ -178,7 +188,7 @@ describe('recordRefusal', () => {
 
   it('records nothing for a step refused before it waited on anything, and keeps its reason (T2209)', async () => {
     const { files, clock, memory, ports } = world(new FakeHostMemory().holds(BUSY_HOLDERS));
-    assert.equal(await recordRefusal(ports, LEDGER, new WaitLog(clock, 9000), { session: 'po', what: 'build', outcome: 'refused', reason: 'queue cutoff' }), 'queue cutoff');
+    assert.equal(await recordRefusal(ports, LEDGER, new WaitLog(clock, 9000), { session: 'po', kind: 'build', what: 'build', outcome: 'refused', reason: 'queue cutoff' }), 'queue cutoff');
     assert.deepEqual([files.get(LEDGER), memory.holderLooks], [undefined, 0]);
   });
 });
@@ -190,7 +200,7 @@ describe('recordRefusal: the top memory holders (T2209)', () => {
     const waits = new WaitLog(clock, 3100);
     waits.tell({ cause, text: `waiting on ${cause}` });
     clock.advance(60_000);
-    const given = await recordRefusal(ports, LEDGER, waits, { session: 'po', what: 'build', outcome: 'timedOut', reason: 'still short' });
+    const given = await recordRefusal(ports, LEDGER, waits, { session: 'po', kind: 'build', what: 'build', outcome: 'timedOut', reason: 'still short' });
     const [record] = records(files);
     return { given, recorded: typeof record === 'object' && record !== null && 'reason' in record ? record.reason : undefined };
   }

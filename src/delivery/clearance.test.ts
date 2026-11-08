@@ -173,7 +173,7 @@ describe('takeWhenClear', () => {
 
 describe('refusalOf', () => {
   it('records a wait that ran out as timedOut, and a withdrawal or a refusal as itself, each with its reason (T2209)', () => {
-    const step = { session: 'po', what: 'merge api: fix-login' };
+    const step = { session: 'po', kind: 'merge', task: 'T12', what: 'merge api: t12-fix-login' } as const;
     const marks = [refusalOf({ kind: 'gaveUp', reason: 'host lock still held' }, step), refusalOf({ kind: 'withdrawn', reason: 'withdrawn' }, step), refusalOf({ kind: 'refused', reason: 'blackout' }, step)];
     assert.deepEqual(marks, [
       { ...step, outcome: 'timedOut', reason: 'host lock still held' },

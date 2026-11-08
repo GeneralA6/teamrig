@@ -453,7 +453,7 @@ describe('merge pushes a branch to the default branch', () => {
       `deleteBranch ${WORKTREE} feat`,
       `updateLocalBranch ${WORKTREE} origin main`,
     ]);
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kind: 'merge', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0 }]);
     assert.equal(world.files.get(PLACES.ledgerMd), undefined);
     assert.ok(world.lockFree());
@@ -559,7 +559,7 @@ describe('merge goes through the repository’s merge command, where one is set'
     ]);
     assert.ok(world.said.includes('merging feat (rebased) into main through the merge command node merge.ts'));
     assert.ok(world.said.includes('  pull request https://forge/pr/7 merged'));
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kind: 'merge', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [
       start,
       { ...start, endedAt: '2030-01-08T10:01:00.000Z', exitCode: 0 },
@@ -621,7 +621,7 @@ describe('merge goes through the repository’s merge command, where one is set'
     assert.deepEqual(pendingOf(world), WAITED);
     assert.ok(world.lockFree());
     assert.ok(!tidied(world));
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: merge feat into main', kind: 'merge', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 75 }]);
     assert.ok(world.said.includes('  checks running with [redacted]'));
     assert.equal(world.said.at(-1), `next: run teamrig merge again in ${WORKTREE} once feat is merged`);
@@ -899,7 +899,7 @@ describe('merge under the lock, when the push does not go through', () => {
     world.steps.ends({ kind: 'stopped' }).whileRunning(async () => undefined);
     failed(await world.run(), /^the push was killed when its launching shell ended \(exit 129\);/);
     assert.deepEqual(world.memory.watches, [{ root: 4242, intervalMs: DEFAULT_QUEUE.memorySampleSeconds * 1_000, stopped: true }]);
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'merge app: push feat to main', kind: 'merge', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [
       start,
       { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129, peakTreeMb: 2400, lowFreeMb: 900, startFreeMb: 7000, endFreeMb: world.memory.free },
@@ -977,6 +977,7 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
       id: 'step-1',
       session: 'api',
       what: 'merge app: feat',
+      kind: 'merge',
       kit: KIT_VERSION,
       queuedAt: '2030-01-08T10:00:00.000Z',
       endedAt: new Date(endedAt).toISOString(),
@@ -1004,6 +1005,7 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
       id: 'step-1',
       session: 'api',
       what: 'merge app: feat',
+      kind: 'merge',
       kit: KIT_VERSION,
       queuedAt: '2030-01-08T10:00:00.000Z',
       endedAt: new Date(endedAt).toISOString(),

@@ -2,6 +2,8 @@ import type { Files } from '../core/files.ts';
 import { isRecord, isStringArray, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
 import { formatUtcMinute } from '../core/time.ts';
+import { TASK_ID } from '../register/model.ts';
+import { isStepKind, type StepKind } from './process-request.ts';
 import { WAIT_CAUSES, type WaitCause, type WaitTold, type WaitTotals } from './wait-log.ts';
 
 /** The ledger's file name in the delivery folder: one JSON record a line, appended. */
@@ -23,6 +25,10 @@ export interface QueuedStepRecord {
   readonly id: string;
   readonly session: string;
   readonly what: string;
+  /** What kind of work the step is (`ProcessRequest.kind`); an older teamrig or a team's own deploy tool leaves it out. */
+  readonly kind?: StepKind;
+  /** The register task the step works for (`ProcessRequest.task`), when it names one. */
+  readonly task?: string;
   /** The teamrig version that ran the step; an older teamrig or a team's own deploy tool leaves it out. */
   readonly kit?: string;
   /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
@@ -112,6 +118,10 @@ export interface RefusalRecord {
   readonly id: string;
   readonly session: string;
   readonly what: string;
+  /** What kind of work the step was (`ProcessRequest.kind`). */
+  readonly kind?: StepKind;
+  /** The register task the step worked for (`ProcessRequest.task`), when it named one. */
+  readonly task?: string;
   readonly kit?: string;
   /** An ISO time: when the step began to wait. */
   readonly queuedAt: string;
@@ -207,8 +217,17 @@ function waitsField(record: JsonRecord): WaitTotals | undefined {
   return Object.keys(waits).length === 0 ? undefined : waits;
 }
 
+/** A step's request as its record names it: a known kind and a register task id, each left out when it is missing or bad. */
+function requestFieldsOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 'task'> {
+  const [kind, task] = [record['kind'], stringField(record, 'task')];
+  return {
+    ...(isStepKind(kind) ? { kind } : {}),
+    ...(task !== undefined && TASK_ID.test(task) ? { task } : {}),
+  };
+}
+
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kit' | 'queuedAt' | 'waits' | 'shared' | StepMemoryField> {
+function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kind' | 'task' | 'kit' | 'queuedAt' | 'waits' | 'shared' | StepMemoryField> {
   const [kit, queuedAt, waits] = [stringField(record, 'kit'), timeField(record, 'queuedAt'), waitsField(record)];
   const memory: Partial<Record<StepMemoryField, number>> = {};
   for (const field of STEP_MEMORY_FIELDS) {
@@ -218,6 +237,7 @@ function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kit' | 
     }
   }
   return {
+    ...requestFieldsOf(record),
     ...(kit === undefined ? {} : { kit }),
     ...(queuedAt === undefined ? {} : { queuedAt }),
     ...(waits === undefined ? {} : { waits }),
@@ -295,6 +315,7 @@ function refusalOf(record: JsonRecord): RefusalRecord | undefined {
     id,
     session,
     what,
+    ...requestFieldsOf(record),
     ...(kit === undefined ? {} : { kit }),
     queuedAt,
     endedAt,
