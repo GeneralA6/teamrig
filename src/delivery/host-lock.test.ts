@@ -6,8 +6,24 @@ import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import type { Files } from '../core/files.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { FIRST_IN_LINE_POLL_MS, HostLock, holderText, TICKET_GRACE_MS, waitText, type HostLockInfo, type HostShare, type LockWait, type LockWaiter, type ShareRequest, type Withdrawal } from './host-lock.ts';
+import {
+  busyText,
+  FIRST_IN_LINE_POLL_MS,
+  HostLock,
+  holderText,
+  TICKET_GRACE_MS,
+  waitText,
+  type HostLockInfo,
+  type HostShare,
+  type LockWait,
+  type LockWaiter,
+  type StepNeed,
+  type Taking,
+  type Withdrawal,
+} from './host-lock.ts';
+import { MemoryGate, type MemoryGateConfig } from './memory-gate.ts';
 
 const PATH = '/kit/host.lock';
 const QUEUE = `${PATH}.queue`;
@@ -44,8 +60,20 @@ interface World {
   readonly lock: HostLock;
 }
 
-/** The host lock over files in memory at 10:00, with this process and `OTHER` running; `sleep` default the clock's. */
-function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep): World {
+/** The memory gate's limits in these specs: the config defaults. */
+const GATE: MemoryGateConfig = { floorMb: 4096, heavyReserveMb: 4096, commitMaxPct: 92 };
+
+/** A small step holding 2048 MB, so the gate needs 6144 MB free for it beside the MB held for the other small steps. */
+const SMALL: StepNeed = { shares: true, reserveMb: 2048 };
+
+/** The gate's gaps between its reads take no time here (memory-gate.test.ts times them), so a spec's sleeps stay the lock's own. */
+const noGap: Sleep = async () => undefined;
+
+/**
+ * The host lock over files in memory at 10:00, with this process and `OTHER` running; `sleep` default the clock's.
+ * With `memory`, every step passes a memory gate ({@link GATE}) over that host first.
+ */
+function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep, memory?: FakeHostMemory): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
   const running = new Set([ME, OTHER]);
@@ -60,6 +88,7 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
       ids += 1;
       return `t${ids}`;
     },
+    ...(memory === undefined ? {} : { memory: new MemoryGate(memory, noGap, GATE) }),
   });
   return { files, clock, running, lock };
 }
@@ -523,7 +552,7 @@ describe('HostLock.withdraw', () => {
 
   for (const [label, share, operation, at] of [
     ['the lock', undefined, 'createExclusive', (path: string) => path.endsWith('host.lock')],
-    ['a share', small(64_000), 'write', (path: string) => path.endsWith('t1.json') && !path.includes('queue')],
+    ['a share', SMALL, 'write', (path: string) => path.endsWith('t1.json') && !path.includes('queue')],
   ] as const) {
     it(`releases ${label} it took when its ticket was withdrawn as it took its turn`, async () => {
       const clock = new FakeClock('2030-01-08T10:00:00Z');
@@ -628,73 +657,79 @@ function shareFile(share: HostShare, stores: (share: HostShare) => string = stor
   return [`${SHARED}/${share.id}.json`, stores(share)];
 }
 
-/** A small step asking for 2048 MB with 4096 kept free, on a host with `freeMb` free. */
-function small(freeMb: number): ShareRequest {
-  return { reserveMb: 2048, floorMb: 4096, freeMb: () => freeMb };
-}
-
 describe('HostLock shares', () => {
-  it('lets a small step share a free host at once, alone whatever the free memory, leaving the lock and the line', async () => {
-    const { files, lock } = world();
-    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, small(1000));
+  it('lets a lone small step share a free host once free memory leaves the floor and its own MB, leaving the lock and the line', async () => {
+    const { files, lock } = world({}, undefined, new FakeHostMemory(6144));
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, SMALL);
     const share = { id: 't1', pid: ME, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
-    assert.deepEqual(taking, { kind: 'taken', lock: share, sharing: { freeMb: 1000, others: [] } });
+    assert.deepEqual(taking, { kind: 'taken', lock: share, sharing: { freeMb: 6144, others: [] } });
     assert.deepEqual([files.get(PATH), files.get(`${SHARED}/t1.json`), await lineOf(files)], [undefined, storedText(share), []]);
+  });
+
+  it('keeps a lone small step waiting while free memory is under the floor plus its own MB (T2192)', async () => {
+    const { files, lock } = world({}, undefined, new FakeHostMemory(6143));
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL);
+    assert.deepEqual(taking, { kind: 'busy', holder: { kind: 'memory', freeMb: 6143, heldMb: 0, needMb: 6144, floorMb: 4096, reserveMb: 2048, shares: [] } });
+    assert.deepEqual([await files.list(SHARED), await lineOf(files)], [[], []]);
   });
 
   it('lets another small step in while the free memory less the MB held for the others leaves the floor and its own', async () => {
     const [path, text] = shareFile(shareOf());
-    const { lock } = world({ [path]: text });
-    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(8192));
+    const { lock } = world({ [path]: text }, undefined, new FakeHostMemory(8192));
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL);
     assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 8192, others: [shareOf()] });
   });
 
   it('keeps a small step waiting while memory is short, telling of it once, and lets it in when the share ends', async () => {
     const [path, text] = shareFile(shareOf());
     let sleeps = 0;
-    const { clock, lock } = world({ [path]: text }, (time, store) => async (ms) => {
-      await time.sleep(ms);
-      sleeps += 1;
-      if (sleeps === 2) {
-        await store.remove(path);
-      }
-    });
+    const { clock, lock } = world(
+      { [path]: text },
+      (time, store) => async (ms) => {
+        await time.sleep(ms);
+        sleeps += 1;
+        if (sleeps === 2) {
+          await store.remove(path);
+        }
+      },
+      new FakeHostMemory(8191),
+    );
     const told: string[] = [];
-    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)), small(8191));
-    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; 8191 MB free, 2048 MB held for it, 6144 MB needed']);
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)), SMALL);
+    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; host memory: 8191 MB free, 2048 MB held for it, 6144 MB needed (4096 floor + 2048 for this step)']);
     assert.deepEqual(clock.sleeps, [FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS]);
     assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 8191, others: [] });
   });
 
   it('gives up when memory stays short through its wait, writing no share', async () => {
     const [path, text] = shareFile(shareOf());
-    const { files, lock } = world({ [path]: text });
-    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(100));
+    const { files, lock } = world({ [path]: text }, undefined, new FakeHostMemory(100));
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL);
     assert.equal(taking.kind === 'busy' ? taking.holder.kind : '', 'memory');
     assert.deepEqual([await files.list(SHARED), await lineOf(files)], [['other.json'], []]);
   });
 
   it('never shares a host whose lock is held, nor ahead of an earlier waiter', async () => {
     const held = world({ [PATH]: heldBy() });
-    const busy = await held.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(64_000));
+    const busy = await held.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL);
     const [early, text] = ticket(waiterOf('2030-01-08T09:59:00.000Z'));
     const queued = world({ [early]: text });
-    const behind = await queued.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(64_000));
+    const behind = await queued.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL);
     assert.deepEqual([busy.kind === 'busy' ? busy.holder.kind : '', behind.kind === 'busy' ? behind.holder.kind : ''], ['held', 'queued']);
     assert.deepEqual([await held.files.list(SHARED), await queued.files.list(SHARED)], [[], []]);
   });
 
   it('shares a host whose lock is stale, leaving that lock for the next step that takes the lock', async () => {
-    const { files, lock } = world({ [PATH]: heldBy({ pid: 7 }) });
-    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(1000));
-    assert.equal(taking.kind === 'taken' ? taking.sharing?.freeMb : undefined, 1000);
+    const { files, lock } = world({ [PATH]: heldBy({ pid: 7 }) }, undefined, new FakeHostMemory(16_000));
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL);
+    assert.equal(taking.kind === 'taken' ? taking.sharing?.freeMb : undefined, 16_000);
     assert.equal(files.get(PATH), heldBy({ pid: 7 }));
   });
 
   it('removes a file it cannot read once it has seen it so for 10 seconds, then shares the host', async () => {
-    const { clock, files, lock } = world({ [PATH]: '{"tok' });
-    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, small(1000));
-    assert.equal(taking.kind === 'taken' ? taking.sharing?.freeMb : undefined, 1000);
+    const { clock, files, lock } = world({ [PATH]: '{"tok' }, undefined, new FakeHostMemory(16_000));
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, SMALL);
+    assert.equal(taking.kind === 'taken' ? taking.sharing?.freeMb : undefined, 16_000);
     assert.deepEqual([clock.sleeps.length, files.get(PATH)], [HostLock.UNREADABLE_GRACE_MS / FIRST_IN_LINE_POLL_MS, undefined]);
   });
 
@@ -770,9 +805,19 @@ describe('HostLock shares', () => {
     const shares = [shareOf(), shareOf({ id: 'b', session: 'web', purpose: 'heavy: lint', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:55:00.000Z' })];
     const steps = '2 small steps: po (heavy: specs) since 2030-01-08 09:50 UTC, web (heavy: lint) since 2030-01-08 09:55 UTC';
     assert.equal(holderText({ kind: 'draining', shares }, TimeZone.UTC), steps);
-    assert.equal(holderText({ kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, shares }, TimeZone.UTC), `${steps}; 7000 MB free, 4096 MB held for them, 6144 MB needed`);
+    const memory: LockWait = { kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, floorMb: 4096, reserveMb: 2048, shares };
+    const memoryText = `${steps}; host memory: 7000 MB free, 4096 MB held for them, 6144 MB needed (4096 floor + 2048 for this step)`;
+    assert.equal(holderText(memory, TimeZone.UTC), memoryText);
+    const commit: LockWait = { kind: 'commit', usedMb: 30_000, limitMb: 32_000, maxPct: 92, reserveMb: 4096, shares: [] };
+    const commitText = 'host commit charge: 30000 of 32000 MB, 4096 MB more for this step would pass 92% (open.headroom.commitMaxPct)';
+    assert.equal(holderText(commit, TimeZone.UTC), commitText);
     const holder = shareOf({ id: 'h', purpose: 'heavy: build', kit: '0.1.0' });
-    assert.equal(holderText({ kind: 'held', info: holder, waitsFor: shares }, TimeZone.UTC), `po (heavy: build) since 2030-01-08 09:50 UTC, on teamrig 0.1.0, waiting for ${steps}`);
+    const heldText = `po (heavy: build) since 2030-01-08 09:50 UTC, on teamrig 0.1.0, waiting for ${steps}`;
+    assert.equal(holderText({ kind: 'held', info: holder, waitsFor: shares }, TimeZone.UTC), heldText);
+    assert.deepEqual(
+      [busyText(memory, TimeZone.UTC), busyText(commit, TimeZone.UTC), busyText({ kind: 'held', info: holder, waitsFor: shares }, TimeZone.UTC)],
+      [`host memory still short: ${memoryText}`, `host memory still short: ${commitText}`, `host lock still held by ${heldText}`],
+    );
   });
 
   it('names the small steps a holder still waits for, to a step and to a small step waiting behind it', async () => {
@@ -781,7 +826,7 @@ describe('HostLock shares', () => {
     const initial = Object.fromEntries([[PATH, storedText(info)], shareFile(web), shareFile(shareOf({ id: 'gone', pid: 7 }))]);
     const told: string[] = [];
     const step = await world(initial).lock.acquire('alpha', 'heavy: build', 0, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
-    const smallStep = await world(initial).lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(64_000));
+    const smallStep = await world(initial).lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL);
     const busy = { kind: 'busy', holder: { kind: 'held', info, waitsFor: [web] } };
     assert.deepEqual([step, smallStep], [busy, busy], 'a stale share is no step it waits for');
     assert.deepEqual(told, ['po (heavy: build) since 2030-01-08 09:50 UTC, waiting for 1 small step: web (heavy: specs) since 2030-01-08 09:55 UTC']);
@@ -799,6 +844,62 @@ describe('HostLock shares', () => {
         ['kind', 'info'],
       ],
     );
+  });
+});
+
+describe('HostLock memory gate (T2192)', () => {
+  it('keeps a step first in line while free memory is short, telling of it once, and lets no later step pass it', async () => {
+    const later: Taking[] = [];
+    const { clock, files, lock } = world(
+      {},
+      (time, store) => async (ms) => {
+        await time.sleep(ms);
+        if (later.length === 0) {
+          later.push(await lockOver(store, time, OTHER).acquire('bravo', 'heavy: specs', 0, 30_000, () => undefined, SMALL));
+        }
+      },
+      new FakeHostMemory(9000).readsFree(5000),
+    );
+    const told: string[] = [];
+    const taking = await lock.acquire('alpha', 'heavy: build', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)));
+    assert.deepEqual(told, ['host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)']);
+    const laterKinds = later.map((step) => (step.kind === 'busy' ? step.holder.kind : step.kind));
+    assert.deepEqual([clock.sleeps, taking.kind, laterKinds], [[FIRST_IN_LINE_POLL_MS], 'taken', ['queued']]);
+    assert.deepEqual(await files.list(SHARED), [], 'the later small step wrote no share');
+  });
+
+  it('holds the MB a step asks for, more than the heavy reserve, and takes no lock while it is short', async () => {
+    const { files, lock } = world({}, undefined, new FakeHostMemory(10_000));
+    const need: StepNeed = { shares: false, reserveMb: 6000 };
+    const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, need);
+    assert.deepEqual(taking, { kind: 'busy', holder: { kind: 'memory', freeMb: 10_000, heldMb: 0, needMb: 10_096, floorMb: 4096, reserveMb: 6000, shares: [] } });
+    assert.equal(files.get(PATH), undefined);
+  });
+
+  it('counts the MB held for the small steps sharing the host as taken when a step would take the lock', async () => {
+    const [path, text] = shareFile(shareOf());
+    const { files, lock } = world({ [path]: text }, undefined, new FakeHostMemory(10_000));
+    const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
+    assert.deepEqual(taking, { kind: 'busy', holder: { kind: 'memory', freeMb: 10_000, heldMb: 2048, needMb: 8192, floorMb: 4096, reserveMb: 4096, shares: [shareOf()] } });
+    assert.deepEqual([files.get(PATH), files.get(path)], [undefined, text]);
+  });
+
+  it('waits while the commit charge with the step counted would pass its limit, though free memory has room', async () => {
+    const { files, lock } = world({}, undefined, new FakeHostMemory(16_000).lists([], { usedMb: 28_000, limitMb: 32_000 }));
+    const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
+    assert.deepEqual(taking, { kind: 'busy', holder: { kind: 'commit', usedMb: 28_000, limitMb: 32_000, maxPct: 92, reserveMb: 4096, shares: [] } });
+    assert.equal(files.get(PATH), undefined);
+  });
+
+  it('names a live holder or an unreadable lock before the memory, however short', async () => {
+    const kinds: string[] = [];
+    for (const initial of [{ [PATH]: heldBy() }, { [PATH]: '{"tok' }]) {
+      for (const need of [undefined, SMALL]) {
+        const taking = await world(initial, undefined, new FakeHostMemory(100)).lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, need);
+        kinds.push(taking.kind === 'busy' ? taking.holder.kind : taking.kind);
+      }
+    }
+    assert.deepEqual(kinds, ['held', 'held', 'unknown', 'unknown']);
   });
 });
 
@@ -834,7 +935,7 @@ describe('HostLock ids, stored as token until every reader takes id (T1544)', ()
     });
     assert.equal((await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined)).kind, 'taken');
     const sharing = world();
-    assert.equal((await sharing.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(1000))).kind, 'taken');
+    assert.equal((await sharing.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL)).kind, 'taken');
     const texts = [tickets[0], files.get(PATH), sharing.files.get(`${SHARED}/t1.json`)];
     assert.deepEqual(
       texts.map((text) => Object.keys(JSON.parse(text ?? '{}'))).map((keys) => [keys[0], keys.includes('id')]),

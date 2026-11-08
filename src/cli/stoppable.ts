@@ -49,7 +49,7 @@ function eitherStop(stop: AbortSignal, own: AbortSignal | undefined): AbortSigna
 /** `lock`, whose wait rejects with the stop's reason once `stop` aborts, releasing what it took (`HostLock.acquire`). */
 export function stoppableLock(lock: LockPort, stop: AbortSignal): LockPort {
   return {
-    acquire: (session, purpose, maxWaitMs, pollMs, onWait, share, own) => lock.acquire(session, purpose, maxWaitMs, pollMs, onWait, share, eitherStop(stop, own)),
+    acquire: (session, purpose, maxWaitMs, pollMs, onWait, need, own) => lock.acquire(session, purpose, maxWaitMs, pollMs, onWait, need, eitherStop(stop, own)),
     release: (held) => lock.release(held),
   };
 }

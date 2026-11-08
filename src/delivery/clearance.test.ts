@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
 import { withdrawnLock } from '../testing/withdrawn-lock.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
+import { MemoryGate } from './memory-gate.ts';
 
 const LOCK_PATH = '/kit/host.lock';
 const ME = 4242;
@@ -32,7 +34,11 @@ interface World {
   readonly request: ClearanceRequest;
 }
 
-function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number = 60 * 60_000): World {
+/**
+ * A deploy step's lock over files in memory at 10:00, waiting at most `maxWaitMs`; with `memory`, the step passes a
+ * memory gate over that host first (the config defaults; its read gaps take no time).
+ */
+function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number = 60 * 60_000, memory?: FakeHostMemory): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
   const lock = new HostLock(LOCK_PATH, 150 * 60_000, {
@@ -42,6 +48,7 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     pid: ME,
     alive: (pid) => pid === ME || pid === OTHER,
     newId: () => 'mine',
+    ...(memory === undefined ? {} : { memory: new MemoryGate(memory, async () => undefined, { floorMb: 4096, heavyReserveMb: 4096, commitMaxPct: 92 }) }),
   });
   const waits: string[] = [];
   return { files, clock, lock, waits, request: { session: 'api', purpose: 'merge api', maxWaitMs, pollMs: POLL_MS, onWait: (reason) => waits.push(reason), zone: TimeZone.UTC } };
@@ -101,6 +108,13 @@ describe('takeWhenClear', () => {
     assert.match(clearance.kind === 'gaveUp' ? clearance.reason : '', /^host lock still held by po/);
     assert.equal(waits.length, 1);
     assert.match(waits[0] ?? '', /^the host lock: po/);
+  });
+
+  it('gives up naming the host memory when it stays short past the wait, holding no lock (T2192)', async () => {
+    const { files, clock, lock, waits, request } = world({}, 60_000, new FakeHostMemory(5000));
+    const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
+    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
+    assert.deepEqual([clearance, waits, files.get(LOCK_PATH)], [{ kind: 'gaveUp', reason: `host memory still short: ${short}` }, [`the host lock: ${short}`], undefined]);
   });
 
   it("refuses, holding no lock, when its place in the host lock's line was withdrawn", async () => {
