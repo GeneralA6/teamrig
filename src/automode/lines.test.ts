@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { COMMAND_EFFECTS } from '../cli/run.ts';
-import { kitLines, kitTag, REGISTER_COMMANDS, type AutoModeFacts } from './lines.ts';
+import { COMMAND_EFFECTS, COMMAND_HELP } from '../cli/run.ts';
+import { KIT_LINE_SUBJECTS, kitLines, kitTag, REGISTER_COMMANDS, type AutoModeFacts } from './lines.ts';
 
 const FACTS: AutoModeFacts = {
   team: 'alpha',
@@ -55,6 +55,19 @@ describe('kitLines', () => {
     assert.match(first('allow'), /A normal push to one goes through with a note\./);
     assert.match(first('lead'), /goes through only for the lead \(session boss\) or for a session whose waiting task the lead approved with `teamrig approve`; any other session is refused\./);
     assert.match(first('gated'), /goes through only for the lead \(session boss\) .*; any other session merges with `teamrig merge`, which merges a change that holds the self-merge gates with no approval/);
+  });
+});
+
+describe('KIT_LINE_SUBJECTS', () => {
+  it('names one subject for each line', () => {
+    assert.equal(KIT_LINE_SUBJECTS.length, kitLines(FACTS).length);
+  });
+
+  it('are all named by the automode install help, so a new line cannot ship with a help that skips it', () => {
+    const help = COMMAND_HELP.linesOf('automode install').join(' ').replace(/\s+/g, ' ');
+    for (const subject of KIT_LINE_SUBJECTS) {
+      assert.ok(help.includes(subject), `the automode install help does not name ${subject}`);
+    }
   });
 });
 
