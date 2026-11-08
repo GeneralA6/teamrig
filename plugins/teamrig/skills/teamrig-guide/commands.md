@@ -3882,9 +3882,9 @@ for it. It goes ahead while the host's free memory, less the MB held for the run
 `open.headroom.commitMaxPct` (92). Free memory is read 3 times 1 s apart and the least read counts, since a step
 that just ended or started gives back or takes its memory in a burst. On a host with less than twice that RAM, half
 the host's RAM is enough. Until then it waits first in line (`...; host memory: 7000 MB free, 4096 MB held for them,
-8192 MB needed (4096 floor + 4096 for this step)`), and when its wait runs out it is refused with `host memory still
+6144 MB needed (4096 floor + 2048 for this step)`), and when its wait runs out it is refused with `host memory still
 short: ...`. The MB held for a step is the most its process tree held in its latest 20 runs under the same session
-and `--what`, plus a quarter. A step without `--small` holds at least `delivery.queue.heavyReserveMb` (4096); a
+and `--what`, plus a quarter. A step without `--small` holds at least `delivery.queue.heavyReserveMb` (2048); a
 small step with no run measured yet holds `delivery.queue.smallReserveMb` (2048).
 
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
