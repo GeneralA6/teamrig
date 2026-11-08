@@ -551,7 +551,7 @@ describe('teamrig queue --small', () => {
   it('names the programs holding the most memory when it refuses after its wait on host memory, printed and recorded (T2209)', async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(5000).holds(BUSY_HOLDERS) });
-    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
+    const short = 'host memory: 5000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
     const reason = `host memory still short: ${short}; ${BUSY_HOLDERS_TEXT}`;
     assert.deepEqual(result.stdout, [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED ${reason}`]);
     assert.deepEqual(ledgerOf(kit), [{ ...memoryRefused(BUILD_STEP, 5000, 'waiting for the host lock', short), reason }]);
