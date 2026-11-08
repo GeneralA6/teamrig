@@ -6,7 +6,7 @@ import type { RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
 import { recordPass } from '../delivery/push-pass.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
@@ -496,6 +496,15 @@ describe('teamrig queue --small', () => {
     const short = 'host memory: 5000 MB free, 6144 MB needed (4096 floor + 2048 for this step)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
     assert.deepEqual([steps.ran, ledgerOf(kit), kit.files.get(LOCK)], [[], [memoryRefused('build api', 5000, 'waiting for the host lock', short)], undefined]);
+  });
+
+  it('names the programs holding the most memory when it refuses after its wait on host memory, printed and recorded (T2209)', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(5000).holds(BUSY_HOLDERS) });
+    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
+    const reason = `host memory still short: ${short}; ${BUSY_HOLDERS_TEXT}`;
+    assert.deepEqual(result.stdout, [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED ${reason}`]);
+    assert.deepEqual(ledgerOf(kit), [{ ...memoryRefused('build api', 5000, 'waiting for the host lock', short), reason }]);
   });
 
   it('records on its start record how long a heavy step waited for host memory, and the free memory when it queued (T2209)', async () => {

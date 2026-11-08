@@ -3,10 +3,10 @@ import type { Files } from '../core/files.ts';
 import type { Clock } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { appendRecord, type QueuedStepRecord, type RefusalOutcome } from './ledger.ts';
-import type { HostMemory, MemoryPeaks } from './memory.ts';
+import { holdersText, type HostMemory, type MemoryPeaks } from './memory.ts';
 import type { DeliveryPlaces } from './places.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
-import type { Waited, WaitLog, WaitTotals } from './wait-log.ts';
+import type { WaitCause, Waited, WaitLog, WaitTotals } from './wait-log.ts';
 
 /** The exit code recorded for a step that could not start, as a missing folder makes it. */
 export const NOT_STARTED_EXIT = 1;
@@ -18,8 +18,11 @@ export const NOT_STARTED_EXIT = 1;
 export interface StepRecordPorts {
   readonly files: Files;
   readonly clock: Clock;
-  /** A watch of the step's process tree while it runs, and the host's free memory and commit charge when it is killed. */
-  readonly memory: Pick<HostMemory, 'watch' | 'freeMb' | 'commit'>;
+  /**
+   * A watch of the step's process tree while it runs, the host's free memory and commit charge when it is killed, and
+   * the programs holding the most memory when it is refused after a wait on memory (`recordRefusal`).
+   */
+  readonly memory: Pick<HostMemory, 'watch' | 'freeMb' | 'commit' | 'holders'>;
   /** This process's id: the root of the tree every step it runs starts in. */
   readonly pid: number;
   newId(): string;
@@ -125,12 +128,22 @@ export async function recordQueuedStep<T>(ports: StepRecordPorts, setup: StepRec
   }
 }
 
-/** What a refusal's recorder holds: the ledger's files, the clock and the host's free memory. */
+/** What a refusal's recorder holds: the ledger's files, the clock, and the host's free memory and memory holders. */
 export interface RefusalRecordPorts {
   readonly files: Pick<Files, 'append'>;
   readonly clock: Pick<Clock, 'now'>;
-  readonly memory: Pick<HostMemory, 'freeMb'>;
+  readonly memory: Pick<HostMemory, 'freeMb' | 'holders'>;
   newId(): string;
+}
+
+/** The waits on host memory: a refusal after one names the programs holding the most, since most of it is held outside the queue. */
+const MEMORY_CAUSES: ReadonlySet<WaitCause> = new Set(['memory', 'commit']);
+
+/** `reason` with the host's top memory holders after it; unchanged when they cannot be listed. */
+async function withHolders(reason: string, memory: RefusalRecordPorts['memory']): Promise<string> {
+  const holders = await memory.holders();
+  const named = holders === undefined ? undefined : holdersText(holders);
+  return named === undefined ? reason : `${reason}; ${named}`;
 }
 
 /** A queued step that did not run, as its refusal record names it. */
@@ -143,15 +156,18 @@ export interface RefusalMark {
 
 /**
  * Records a queued step that waited and then did not run: its wait by cause, the last reason it waited on, and the
- * host's free memory when it began to wait and when it ended. A step refused before anything held it (the cutoff before
- * it queued, a refusing check at the first ask) records nothing: it never waited.
+ * host's free memory when it began to wait and when it ended. Returns the reason to print, as recorded: when the last
+ * wait was on host memory, the mark's reason with the top memory holders after it. A step refused before anything held
+ * it (the cutoff before it queued, a refusing check at the first ask) records nothing, it never waited, and keeps the
+ * mark's reason.
  */
-export async function recordRefusal(ports: RefusalRecordPorts, ledger: string, waits: WaitLog, mark: RefusalMark): Promise<void> {
+export async function recordRefusal(ports: RefusalRecordPorts, ledger: string, waits: WaitLog, mark: RefusalMark): Promise<string> {
   const lastWait = waits.last();
   if (lastWait === undefined) {
-    return;
+    return mark.reason;
   }
   const waited = waits.end();
+  const reason = MEMORY_CAUSES.has(lastWait.cause) ? await withHolders(mark.reason, ports.memory) : mark.reason;
   await appendRecord(ports.files, ledger, {
     type: 'refusal',
     id: ports.newId(),
@@ -161,12 +177,13 @@ export async function recordRefusal(ports: RefusalRecordPorts, ledger: string, w
     queuedAt: new Date(waited.queuedAt).toISOString(),
     endedAt: new Date(ports.clock.now()).toISOString(),
     outcome: mark.outcome,
-    reason: mark.reason,
+    reason,
     ...(Object.keys(waited.waits).length === 0 ? {} : { waits: waited.waits }),
     lastWait,
     ...(waited.queueFreeMb === undefined ? {} : { queueFreeMb: waited.queueFreeMb }),
     endFreeMb: ports.memory.freeMb(),
   });
+  return reason;
 }
 
 /** Runs a queued step as `recordQueuedStep` records it; a step that could not start is recorded as exit 1 and its error rethrown. */

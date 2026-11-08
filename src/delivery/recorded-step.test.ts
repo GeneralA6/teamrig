@@ -2,11 +2,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { KIT_VERSION } from '../core/version.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
-import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { marksOfTaking, NOT_STARTED_EXIT, recordQueuedStep, recordRefusal, runRecorded, type RecordedStep, type StepRecordSetup } from './recorded-step.ts';
-import { WaitLog } from './wait-log.ts';
+import { WaitLog, type WaitCause } from './wait-log.ts';
 
 const LEDGER = '/kit/deploys/ledger.jsonl';
 const SAMPLED: StepRecordSetup = { places: { ledger: LEDGER }, delivery: { queue: { memorySampleSeconds: 15 } } };
@@ -176,9 +176,41 @@ describe('recordRefusal', () => {
     ]);
   });
 
-  it('records nothing for a step refused before it waited on anything (T2209)', async () => {
-    const { files, clock, ports } = world();
-    await recordRefusal(ports, LEDGER, new WaitLog(clock, 9000), { session: 'po', what: 'build', outcome: 'refused', reason: 'queue cutoff' });
-    assert.equal(files.get(LEDGER), undefined);
+  it('records nothing for a step refused before it waited on anything, and keeps its reason (T2209)', async () => {
+    const { files, clock, memory, ports } = world(new FakeHostMemory().holds(BUSY_HOLDERS));
+    assert.equal(await recordRefusal(ports, LEDGER, new WaitLog(clock, 9000), { session: 'po', what: 'build', outcome: 'refused', reason: 'queue cutoff' }), 'queue cutoff');
+    assert.deepEqual([files.get(LEDGER), memory.holderLooks], [undefined, 0]);
+  });
+});
+
+describe('recordRefusal: the top memory holders (T2209)', () => {
+  /** Refuses po's build after a minute's wait on `cause`, returning the reason it gives and the reason it records. */
+  async function refusedAfter(cause: WaitCause, memory: FakeHostMemory): Promise<{ readonly given: string; readonly recorded: unknown }> {
+    const { files, clock, ports } = world(memory);
+    const waits = new WaitLog(clock, 3100);
+    waits.tell({ cause, text: `waiting on ${cause}` });
+    clock.advance(60_000);
+    const given = await recordRefusal(ports, LEDGER, waits, { session: 'po', what: 'build', outcome: 'timedOut', reason: 'still short' });
+    const [record] = records(files);
+    return { given, recorded: typeof record === 'object' && record !== null && 'reason' in record ? record.reason : undefined };
+  }
+
+  it('names them after the reason it records and returns, when the last wait was on host memory or its commit charge', async () => {
+    for (const cause of ['memory', 'commit'] as const) {
+      const memory = new FakeHostMemory().holds(BUSY_HOLDERS);
+      const reason = `still short; ${BUSY_HOLDERS_TEXT}`;
+      assert.deepEqual([await refusedAfter(cause, memory), memory.holderLooks], [{ given: reason, recorded: reason }, 1], cause);
+    }
+  });
+
+  it('never looks at them when the last wait was on anything else', async () => {
+    const memory = new FakeHostMemory().holds(BUSY_HOLDERS);
+    assert.deepEqual([await refusedAfter('lock', memory), memory.holderLooks], [{ given: 'still short', recorded: 'still short' }, 0]);
+  });
+
+  it('keeps the reason when the host lists no holder, or cannot list them', async () => {
+    for (const holders of [[], undefined]) {
+      assert.deepEqual(await refusedAfter('memory', new FakeHostMemory().holds(holders)), { given: 'still short', recorded: 'still short' });
+    }
   });
 });

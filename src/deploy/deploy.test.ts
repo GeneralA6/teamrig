@@ -11,7 +11,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, defaultGateOn, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { heldBy } from '../testing/held-lock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -43,6 +43,8 @@ interface Options {
   readonly schedule?: ScheduleConfig;
   readonly freezes?: string;
   readonly reset?: ResetTime;
+  /** The host lock waits for host memory, as the CLI's does. */
+  readonly memoryGated?: true;
 }
 
 class World {
@@ -59,7 +61,15 @@ class World {
 
   constructor(options: Options = {}) {
     this.files = new MemoryFiles(options.freezes === undefined ? {} : { [PLACES.freezes]: options.freezes });
-    this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
+    this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, {
+      files: this.files,
+      clock: this.clock,
+      sleep: this.clock.sleep,
+      pid: 7,
+      alive: () => true,
+      newId: () => 'lock-1',
+      ...(options.memoryGated === true ? { memory: defaultGateOn(this.memory, this.clock.sleep) } : {}),
+    });
     this.reset = options.reset;
     this.delivery = {
       schedule: options.schedule ?? {},
@@ -216,6 +226,33 @@ describe('redeployTargets', () => {
       lastWait: { cause: 'lock', text: 'the host lock: po (heavy: build) since 2030-01-08 09:50 UTC' },
       queueFreeMb: world.memory.free,
       endFreeMb: world.memory.free,
+    }]);
+    assert.equal(world.hooks.commands.includes(RESTART.join(' ')), false, 'the command never ran');
+  });
+
+  it('names the programs holding the most memory when it refuses after its wait on host memory (T2209)', async () => {
+    const world = new World({ memoryGated: true });
+    world.memory.free = 5000;
+    world.memory.holds(BUSY_HOLDERS);
+    const end = await world.run();
+    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
+    const reason = `host memory still short: ${short}; ${BUSY_HOLDERS_TEXT}`;
+    assert.deepEqual(end, { kind: 'refused', reason });
+    const endedAt = world.clock.now();
+    assert.deepEqual(world.records(), [{
+      type: 'refusal',
+      id: 'step-1',
+      session: 'sec',
+      what: 'deploy api,live of pipeline',
+      kit: KIT_VERSION,
+      queuedAt: '2030-01-08T10:00:00.000Z',
+      endedAt: new Date(endedAt).toISOString(),
+      outcome: 'timedOut',
+      reason,
+      waits: { memory: endedAt - Date.parse('2030-01-08T10:00:00Z') },
+      lastWait: { cause: 'memory', text: `the host lock: ${short}` },
+      queueFreeMb: 5000,
+      endFreeMb: 5000,
     }]);
     assert.equal(world.hooks.commands.includes(RESTART.join(' ')), false, 'the command never ran');
   });

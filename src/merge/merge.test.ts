@@ -14,7 +14,7 @@ import { passRecordPath, type PassRecord } from '../push-guard/pass-record.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, defaultGateOn, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { heldBy } from '../testing/held-lock.ts';
@@ -60,6 +60,8 @@ interface Options {
   readonly freezes?: string;
   readonly review?: ReviewGateSetup;
   readonly gated?: GatedSetup;
+  /** The host lock waits for host memory, as the CLI's does. */
+  readonly memoryGated?: true;
 }
 
 class World {
@@ -89,7 +91,15 @@ class World {
     this.clock = new FakeClock(options.start ?? '2030-01-08T10:00:00Z');
     this.steps = new FakeSteps(this.clock).ends(0, 90_000);
     this.hooks = new FakeHooks(this.clock);
-    this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
+    this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, {
+      files: this.files,
+      clock: this.clock,
+      sleep: this.clock.sleep,
+      pid: 7,
+      alive: () => true,
+      newId: () => 'lock-1',
+      ...(options.memoryGated === true ? { memory: defaultGateOn(this.memory, this.clock.sleep) } : {}),
+    });
     this.reset = options.reset;
     this.reviewHolds = new ReviewHolds(this.files, PLACES.reviewHolds);
     this.gateHolds = new GateHolds(this.files, PLACES.gateHolds);
@@ -976,6 +986,33 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
       lastWait: { cause: 'lock', text: 'the host lock: po (heavy: build) since 2030-01-08 09:50 UTC' },
       queueFreeMb: world.memory.free,
       endFreeMb: world.memory.free,
+    }]);
+    assert.deepEqual(world.steps.ran, []);
+  });
+
+  it('names the programs holding the most memory when it refuses after its wait on host memory (T2209)', async () => {
+    const world = new World({ repos: deploying, waitMinutes: 1, memoryGated: true });
+    world.memory.free = 5000;
+    world.memory.holds(BUSY_HOLDERS);
+    const end = await world.run();
+    const short = 'host memory: 5000 MB free, 8192 MB needed (4096 floor + 4096 for this step)';
+    const reason = `host memory still short: ${short}; ${BUSY_HOLDERS_TEXT}`;
+    assert.deepEqual(end, { kind: 'refused', reason });
+    const endedAt = world.clock.now();
+    assert.deepEqual(world.records(PLACES.ledger), [{
+      type: 'refusal',
+      id: 'step-1',
+      session: 'api',
+      what: 'merge app: feat',
+      kit: KIT_VERSION,
+      queuedAt: '2030-01-08T10:00:00.000Z',
+      endedAt: new Date(endedAt).toISOString(),
+      outcome: 'timedOut',
+      reason,
+      waits: { memory: endedAt - Date.parse('2030-01-08T10:00:00Z') },
+      lastWait: { cause: 'memory', text: `the host lock: ${short}` },
+      queueFreeMb: 5000,
+      endFreeMb: 5000,
     }]);
     assert.deepEqual(world.steps.ran, []);
   });

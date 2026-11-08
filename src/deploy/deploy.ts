@@ -115,8 +115,7 @@ export async function redeployTargets(setup: DeploySetup, ports: DeployPorts, re
     onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
-    await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `deploy ${request.targets.join(',')} of ${repo.name}` }));
-    return { kind: 'refused', reason: clearance.reason };
+    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `deploy ${request.targets.join(',')} of ${repo.name}` })) };
   }
   try {
     const startedAt = new Date(ports.clock.now()).toISOString();
