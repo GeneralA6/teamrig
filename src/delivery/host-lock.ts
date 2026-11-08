@@ -102,6 +102,11 @@ export interface StepNeed {
   readonly basis?: string;
 }
 
+/** What a step in line asks of the host: how it holds it (`need`); none takes the lock with the gate's `heavyReserveMb` held for it. */
+export interface StepAsk {
+  readonly need?: StepNeed;
+}
+
 /** How a share was let in: the host's free memory then (when the lock has a memory gate), and the small steps already sharing it. */
 export interface Sharing {
   readonly freeMb?: number;
@@ -566,13 +571,14 @@ export class HostLock {
    * `FIRST_IN_LINE_POLL_MS` at most) until its line has not moved for `maxWaitMs`, and leaves the line when done.
    * `onWait` hears each new holder or place in line once, with the number of waiters ahead, and the step's ticket says
    * it as its `waitingOn` from then on. A lock taken then waits,
-   * held, for the small steps sharing the host to end. With a `need` that shares, a small step shares the host in its
-   * turn instead (see the class); its reserve is the MB the memory gate needs for it. Busy when the wait ran out;
+   * held, for the small steps sharing the host to end. With an `ask` whose need shares, a small step shares the host in
+   * its turn instead (see the class); its reserve is the MB the memory gate needs for it. Busy when the wait ran out;
    * withdrawn when its ticket was withdrawn before it took its turn. Once `stop` aborts, the wait rejects with its
    * reason before its next look, as `fetch` does, leaving the line and releasing a lock it held while the small steps
    * ended, so a step no one waits for any more never takes the lock.
    */
-  async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, need?: StepNeed, stop?: AbortSignal): Promise<Taking> {
+  async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, ask: StepAsk = {}, stop?: AbortSignal): Promise<Taking> {
+    const { need } = ask;
     const patience = new Patience(this.ports.clock.now(), maxWaitMs);
     const ticket = await this.joinLine(session, purpose, patience.deadline);
     const reports = new WaitReports(onWait, this.ports.zone);

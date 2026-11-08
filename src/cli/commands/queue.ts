@@ -317,7 +317,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
           waits.tell({ cause: causeOfLockWait(holder), text });
           say(text);
         },
-        need,
+        { need },
         watching.stop,
       ),
     );
