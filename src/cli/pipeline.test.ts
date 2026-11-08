@@ -12,6 +12,8 @@ import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 const LOCK = join(KIT, 'host.lock');
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const MB = 2 ** 20;
+/** A team that lets its line in by `delivery.queue.admission` pipeline, not the default serial arrival order. */
+const PIPELINE = { ...TEAM, delivery: { queue: { admission: 'pipeline' } } };
 const HOLDER = 9001;
 const SHARER = 9002;
 const WAITER = 9003;
@@ -143,7 +145,7 @@ describe('teamrig pipeline', () => {
   });
 
   it('names a heavy step sharing the host as one, and shows the line in the order steps are let in, not arrival (T2210)', async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(PIPELINE);
     await shared(kit, { ...SHARE, purpose: 'heavy: build', reserveMb: 4096, heavy: true });
     const urgent: LockWaiter = { ...OLDER, request: { kind: 'test', task: 'T7', priority: 1, class: 'Maintenance', classPct: 25, needMb: 0, heavy: true, exclusive: false } };
     await queued(kit, TESTS, urgent);

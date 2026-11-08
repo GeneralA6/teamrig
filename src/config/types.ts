@@ -775,7 +775,8 @@ export interface QueueConfig {
    * How the host lock's line is ordered: `pipeline` lets the most urgent step in first (a p0 step at once, then by class
    * turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning steps of one session
    * running and maxHeavyParallel heavy steps sharing the host at once; `serial` keeps the line in arrival order with no
-   * cap and one heavy step at a time, as before.
+   * cap and one heavy step at a time, as before, and is the default while a team's own deploy tool may take the lock
+   * file without reading the shares.
    */
   readonly admission: AdmissionMode;
   /** In `pipeline` admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. */
