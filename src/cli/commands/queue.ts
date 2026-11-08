@@ -7,6 +7,7 @@ import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
 import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, taskOfLabel, withTaskPriority, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
 import { recordRefusal, runRecorded, type RefusalMark, type StepOwner } from '../../delivery/recorded-step.ts';
+import { stepNeedOf, type NeedAsk } from '../../delivery/step-need.ts';
 import { causeOfLockWait, WaitLog } from '../../delivery/wait-log.ts';
 import { queueCutoffReason, minutesText } from '../../delivery/schedule.ts';
 import { endedText, type StarterWatching } from '../../delivery/starter-watch.ts';
@@ -25,12 +26,6 @@ import { stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.
 import { envSession, markedSessionOf } from './hook-input.ts';
 
 const MINUTE_MS = 60_000;
-
-/** A step's measured reserve is read from at most this many of its latest ended runs. */
-const RESERVE_RUNS = 20;
-
-/** A step's measured reserve is the most its latest runs held, with this margin. */
-const RESERVE_MARGIN = 1.25;
 
 /**
  * `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock, and for
@@ -79,6 +74,19 @@ function taskOf(args: ParsedArgs, what: string): string | undefined {
   return text;
 }
 
+/** `--memory-mb`: the MB the step declares it needs, a whole number from 1; unset, none (`stepNeedOf` learns it). */
+function declaredMbOf(args: ParsedArgs): number | undefined {
+  const text = args.flags.get('memory-mb');
+  if (text === undefined) {
+    return undefined;
+  }
+  const mb = /^\d+$/.test(text) ? Number(text) : Number.NaN;
+  if (!(Number.isSafeInteger(mb) && mb >= 1)) {
+    throw new UsageError('--memory-mb is a whole number of MB from 1');
+  }
+  return mb;
+}
+
 /** What the step asks for besides its label, recorded on its start and refusal records. */
 function requestOf(args: ParsedArgs, words: readonly string[], what: string): ProcessRequest {
   return processRequest(kindOf(args, words), taskOf(args, what));
@@ -97,24 +105,11 @@ async function refuseWaited(runtime: CliRuntime, ledger: string, waits: WaitLog,
 }
 
 /**
- * The most a step's process tree held in its latest `RESERVE_RUNS` ended runs, under the same session and label in the
- * ledger, with a quarter more; undefined when none was measured.
+ * What the step asks of the host (`stepNeedOf`): its need learned from its own past runs in the ledger, or its
+ * `--memory-mb`, else the config's default, so a step known to need more waits for that much room.
  */
-async function measuredReserveMbOf(runtime: CliRuntime, ledger: string, session: string, what: string): Promise<number | undefined> {
-  const records = parseLedger((await runtime.files.read(ledger)) ?? '');
-  const peaks = records.flatMap((record) => (record.type === 'heavy' && record.session === session && record.what === what && record.peakTreeMb !== undefined ? [record.peakTreeMb] : []));
-  const latest = peaks.slice(-RESERVE_RUNS);
-  return latest.length === 0 ? undefined : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
-}
-
-/**
- * What the step asks of the host: a small step shares it, holding its measured reserve or the config's
- * `smallReserveMb`; a heavy one takes the lock, holding its measured reserve or `heavyReserveMb`, whichever is more, so
- * a step known to peak higher waits for that much room.
- */
-async function needOf(runtime: CliRuntime, ledger: string, session: string, what: string, small: boolean, config: QueueConfig): Promise<StepNeed> {
-  const measuredMb = await measuredReserveMbOf(runtime, ledger, session, what);
-  return small ? { shares: true, reserveMb: measuredMb ?? config.smallReserveMb } : { shares: false, reserveMb: Math.max(measuredMb ?? 0, config.heavyReserveMb) };
+async function needOf(runtime: CliRuntime, ledger: string, ask: NeedAsk, config: QueueConfig): Promise<StepNeed> {
+  return stepNeedOf(parseLedger((await runtime.files.read(ledger)) ?? ''), ask, config);
 }
 
 /** The line a small step holding `reserveMb` prints when it shares the host. */
@@ -263,13 +258,14 @@ interface Step {
  * to midnight UTC, also when the wait for the lock ran past it, and once its line for the lock has not moved for
  * `delivery.queue.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
  * (`--max-minutes`), and its start and end go to the delivery ledger, with when it began to wait and, sampled
- * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
- * so a `queue` among them (a git hook's checks) runs at once under this lock. Every step waits in its turn until the
- * host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small steps sharing the host
- * (`hostLockOf`'s memory gate): for a step that takes the lock, `heavyReserveMb` or its measured peak (`needOf`). With
- * `--small` (a spec run, a lint) the step shares the host with other small steps instead, holding its measured peak or
- * `smallReserveMb`; a step without it waits for them to end. A small step is killed after `smallMaxRunMinutes`
- * instead, and its `--max-minutes` goes no higher. Once the shell that started it ends (Claude Code's
+ * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes
+ * get `$TEAMRIG_HOST_LOCK`, so a `queue` among them (a git hook's checks) runs at once under this lock. Every step
+ * waits in its turn until the host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small
+ * steps sharing the host (`hostLockOf`'s memory gate): its need learned from its past runs or declared with
+ * `--memory-mb` (`needOf`), at least `heavyReserveMb` for a step that takes the lock. With `--small` (a spec run, a
+ * lint) the step shares the host with other small steps instead, holding its need or `smallReserveMb`; a step without
+ * it waits for them to end. A small step is killed after `smallMaxRunMinutes` instead, and its `--max-minutes` goes no
+ * higher. Once the shell that started it ends (Claude Code's
  * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
  * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
  * one when they pass, and declines a push whose checks waited past PRE_PUSH_MAX_WAIT_MS for the lock (push-pass.ts).
@@ -279,6 +275,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const words = commandWordsOf(args);
   const what = requiredFlag(args.flags, 'what');
   const request = requestOf(args, words, what);
+  const declaredMb = declaredMbOf(args);
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const { delivery } = config;
@@ -306,7 +303,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     const register = new JsonlEventLog(runtime.files, kit.paths.events);
     const owner: StepOwner = { session, ...(await withTaskPriority(request, async (id) => (await register.read()).state.tasks.get(id))) };
     const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());
-    const need = await needOf(runtime, places.ledger, session, what, small, delivery.queue);
+    const need = await needOf(runtime, places.ledger, { session, what, kind: request.kind, small, ...(declaredMb === undefined ? {} : { declaredMb }) }, delivery.queue);
     const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
     const taking = await unlessStopped(
       watching.stop,

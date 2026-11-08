@@ -353,8 +353,8 @@ The host lock and the limits of one queued step.
 | `waitMinutes` | integer (0 to 1440) | `60` | A queued step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. |
 | `memorySampleSeconds` | integer (0 to 600) | `15` | While a queued step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing. |
 | `memoryFloorMb` | integer (0 to 1048576) | `4096` | A queued step, a merge or a deploy starts only while the host keeps this many MB free besides those held for it and for the small steps sharing the host. |
-| `smallReserveMb` | integer (0 to 1048576) | `2048` | The MB held for a small step with no ledger record of its peak yet. |
-| `heavyReserveMb` | integer (0 to 1048576) | `2048` | The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only while free memory covers both (at most half the host's RAM). A heavy step whose ledger peak and a quarter is more holds that instead. |
+| `smallReserveMb` | integer (0 to 1048576) | `2048` | The MB held for a small step whose need is neither learned from its past runs in the ledger nor declared with --memory-mb. |
+| `heavyReserveMb` | integer (0 to 1048576) | `2048` | The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only while free memory covers both (at most half the host's RAM). A heavy step whose need, learned from its past runs in the ledger or declared with --memory-mb, is more holds that instead. |
 
 ## `delivery.freezes`
 

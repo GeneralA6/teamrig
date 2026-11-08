@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
-import type { RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
+import type { QueuedStepRecord, RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
 import { recordPass } from '../delivery/push-pass.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -63,9 +63,12 @@ function sharedBy(): string {
   return JSON.stringify({ token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 });
 }
 
-/** An ended run of `what` by `session` the day before, whose process tree held `peakTreeMb` at most. */
-function ranBefore(session: string, what: string, peakTreeMb: number): string {
-  return JSON.stringify({ type: 'heavy', id: `${session}-${peakTreeMb}`, session, what, startedAt: '2030-01-07T10:00:00.000Z', endedAt: '2030-01-07T10:05:00.000Z', exitCode: 0, peakTreeMb });
+/** What else an earlier run recorded: its kind of work, and the host's free memory when it started and at its lowest. */
+type RanAlso = Partial<Pick<QueuedStepRecord, 'kind' | 'startFreeMb' | 'lowFreeMb'>>;
+
+/** An ended run of `what` by `session` the day before, whose process tree held `peakTreeMb` at most, with `also`. */
+function ranBefore(session: string, what: string, peakTreeMb: number, also: RanAlso = {}): string {
+  return JSON.stringify({ type: 'heavy', id: `${session}-${peakTreeMb}`, session, what, ...also, startedAt: '2030-01-07T10:00:00.000Z', endedAt: '2030-01-07T10:05:00.000Z', exitCode: 0, peakTreeMb });
 }
 
 describe('teamrig queue', () => {
@@ -455,6 +458,9 @@ describe('teamrig queue', () => {
     ['--kind', 'tests', /--kind is one of build, test, lint, push, merge, deploy, other/],
     ['--task', 'merge', /--task is a register task id, such as T12/],
     ['--task', 'T0', /--task is a register task id, such as T12/],
+    ['--memory-mb', '0', /--memory-mb is a whole number of MB from 1/],
+    ['--memory-mb', 'x', /--memory-mb is a whole number of MB from 1/],
+    ['--memory-mb', '1.5', /--memory-mb is a whole number of MB from 1/],
   ] as const) {
     it(`refuses ${flag} ${value} as a usage error, before it waits or records anything (T2209)`, async () => {
       const { kit, steps } = harness();
@@ -565,8 +571,33 @@ describe('teamrig queue --small', () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(LEDGER, `${[ranBefore('alpha', 'build api', 2000), ranBefore('alpha', 'build api', 6000), ranBefore('bravo', 'build api', 9000)].join('\n')}\n`);
     const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(10_000) });
-    const short = 'host memory: 10000 MB free, 11596 MB needed (4096 floor + 7500 for this step)';
+    const short = 'host memory: 10000 MB free, 11596 MB needed (4096 floor + 7500 for this step, learned from 2 runs)';
     assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
+  });
+
+  it('holds for a heavy step the median of what the host lost during its runs when that passes their peak (T2209)', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    await kit.files.append(LEDGER, `${[ranBefore('alpha', 'build api', 1000, { startFreeMb: 12_000, lowFreeMb: 4000 }), ranBefore('alpha', 'build api', 1200, { startFreeMb: 12_000, lowFreeMb: 6000 })].join('\n')}\n`);
+    const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(10_000) });
+    const short = 'host memory: 10000 MB free, 11096 MB needed (4096 floor + 7000 for this step, learned from 2 runs)';
+    assert.deepEqual(result.stdout, [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`]);
+  });
+
+  it('falls back to its session\'s runs of the same kind when none has its label, and names the kind (T2209)', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    await kit.files.append(LEDGER, `${ranBefore('alpha', 'T8 build', 6000, { kind: 'build' })}\n`);
+    const result = await kit.run(BUILD, { steps, memory: new FakeHostMemory(10_000) });
+    const short = 'host memory: 10000 MB free, 11596 MB needed (4096 floor + 7500 for this step, learned from 1 build run)';
+    assert.deepEqual(result.stdout, [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`]);
+  });
+
+  it('holds for a step the MB it declares with --memory-mb when more than it learned (T2209)', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    const declared = ['queue', '--session', 'alpha', '--what', 'build api', '--memory-mb', '9000', '--', 'npm', 'run', 'build'];
+    const result = await kit.run(declared, { steps, memory: new FakeHostMemory(10_000) });
+    const short = 'host memory: 10000 MB free, 13096 MB needed (4096 floor + 9000 for this step, declared with --memory-mb)';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${short}`, `REFUSED host memory still short: ${short}`], stderr: [] });
+    assert.deepEqual(steps.ran, []);
   });
 
   it('holds delivery.queue.heavyReserveMb for a heavy step whose latest runs\' peak with a quarter more is less (T2192)', async () => {
