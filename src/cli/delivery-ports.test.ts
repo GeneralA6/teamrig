@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import type { HostLockInfo, Taking } from '../delivery/host-lock.ts';
+import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -46,7 +47,7 @@ function heldMinutes(lock: HostLockInfo): number {
 
 describe('hostLockOf (T2192)', () => {
   it('gates a step on free memory over delivery.queue.memoryFloorMb plus heavyReserveMb', async () => {
-    const lock = hostLockOf(runtimeOf(new FakeHostMemory(100)), PATH, QUEUE, HEADROOM);
+    const lock = hostLockOf(runtimeOf(new FakeHostMemory(100)), PATH, QUEUE, HEADROOM, TimeZone.UTC);
 
     const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
 
@@ -55,7 +56,7 @@ describe('hostLockOf (T2192)', () => {
 
   it('gates a step on the commit charge under open.headroom.commitMaxPct, the reserve counted', async () => {
     const memory = new FakeHostMemory(16_000).lists([], { usedMb: 28_000, limitMb: 32_000 });
-    const lock = hostLockOf(runtimeOf(memory), PATH, QUEUE, HEADROOM);
+    const lock = hostLockOf(runtimeOf(memory), PATH, QUEUE, HEADROOM, TimeZone.UTC);
 
     const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
 
@@ -63,7 +64,7 @@ describe('hostLockOf (T2192)', () => {
   });
 
   it('holds a lock taken on a roomy host for delivery.queue.lockTtlMinutes', async () => {
-    const lock = hostLockOf(runtimeOf(new FakeHostMemory(16_000)), PATH, QUEUE, HEADROOM);
+    const lock = hostLockOf(runtimeOf(new FakeHostMemory(16_000)), PATH, QUEUE, HEADROOM, TimeZone.UTC);
 
     const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
 
@@ -73,7 +74,7 @@ describe('hostLockOf (T2192)', () => {
 
 describe('freezesLockOf (T2192)', () => {
   it('takes its lock for a minute however short host memory is, as it guards no step', async () => {
-    const lock = freezesLockOf(runtimeOf(new FakeHostMemory(100)), PATH);
+    const lock = freezesLockOf(runtimeOf(new FakeHostMemory(100)), PATH, TimeZone.UTC);
 
     const taking = await lock.acquire('alpha', 'freeze: write', 0, 30_000, () => undefined);
 

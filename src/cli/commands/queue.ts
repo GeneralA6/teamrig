@@ -284,7 +284,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const small = args.switches.has('small');
   const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
   const places = deliveryPlaces(delivery, kit.paths);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, zone);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
   const watching = await watchStarters(runtime, say);

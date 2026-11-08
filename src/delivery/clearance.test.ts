@@ -51,6 +51,7 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     pid: ME,
     alive: (pid) => pid === ME || pid === OTHER,
     newId: () => 'mine',
+    zone: TimeZone.UTC,
     ...(memory === undefined ? {} : { memory: new MemoryGate(memory, async () => undefined, { floorMb: 4096, heavyReserveMb: 4096, commitMaxPct: 92 }) }),
   });
   const [waits, causes]: [string[], WaitCause[]] = [[], []];

@@ -77,7 +77,7 @@ export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Prom
   const zone = teamZone(config, runtime);
   const places = deliveryPlaces(delivery, kit.paths);
   const say = (line: string): void => runtime.out.stdout(line);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, zone);
   say(`host lock: ${lockText(await lock.state(), zone)}`);
   const shares = await lock.shares();
   if (shares.length > 0) {

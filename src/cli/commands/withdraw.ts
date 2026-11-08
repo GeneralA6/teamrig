@@ -74,7 +74,7 @@ export async function withdraw(args: ParsedArgs, runtime: CliRuntime): Promise<E
   const config = requireConfig(kit, runtime, 'read');
   const session = await ownSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config));
   const zone = teamZone(config, runtime);
-  const lock = hostLockOf(runtime, deliveryPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue, config.open.headroom);
+  const lock = hostLockOf(runtime, deliveryPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue, config.open.headroom, zone);
   if (chosen === undefined) {
     const waiting = (await lock.line()).filter((waiter) => waiter.session === session);
     if (waiting.length === 0) {
