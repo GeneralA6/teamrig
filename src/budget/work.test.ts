@@ -16,9 +16,18 @@ import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
-import { cachedWork, queuedWork, readTasks, readWork, WORK_CACHE_FILE, workWeightOf, workWeights, type WorkByPriority } from './work.ts';
+import { cachedWork, queuedWork, readTasks, readWork, WORK_CACHE_FILE, workWeightOf, workWeights, type WorkByPriority, type WorkTask } from './work.ts';
 
 const { priorities } = DEFAULT_REGISTER;
+/** An hour after the register's clock below: a task it finishes is done inside the like window. */
+const NOW = Date.parse('2030-01-07T10:00:00.000Z');
+/** Far before NOW's like window, so a task finished then measures no like task. */
+const LONG_AGO = '2029-11-01T09:00:00.000Z';
+
+/** A task as `queuedWork` reads it: unsized, of no class or type, its status set long ago unless `fields` say otherwise. */
+function workTask(fields: Pick<WorkTask, 'id' | 'owner' | 'status' | 'priority'> & Partial<WorkTask>): WorkTask {
+  return { statusAt: LONG_AGO, sizeBase: null, workClass: null, type: null, ...fields };
+}
 
 /** Each session's weights by priority id, as `workWeights` maps them. */
 function byPriority(weights: Readonly<Record<string, Readonly<Record<number, number>>>>): ReadonlyMap<string, WorkByPriority> {
@@ -80,14 +89,15 @@ describe('queuedWork', () => {
   it("lists each owner's open and in-progress p0 tasks beside the weights", () => {
     const work = queuedWork(
       [
-        { id: 'T1', owner: 'alpha', status: 'open', priority: 0, sizeBase: null },
-        { id: 'T2', owner: 'alpha', status: 'in-progress', priority: 0, sizeBase: null },
-        { id: 'T3', owner: 'alpha', status: 'open', priority: 1, sizeBase: null },
-        { id: 'T4', owner: 'bravo', status: 'waiting', priority: 0, sizeBase: null },
-        { id: 'T5', owner: 'bravo', status: 'done', priority: 0, sizeBase: null },
-        { id: 'T6', owner: 'charlie', status: 'open', priority: 2, sizeBase: null },
+        workTask({ id: 'T1', owner: 'alpha', status: 'open', priority: 0 }),
+        workTask({ id: 'T2', owner: 'alpha', status: 'in-progress', priority: 0 }),
+        workTask({ id: 'T3', owner: 'alpha', status: 'open', priority: 1 }),
+        workTask({ id: 'T4', owner: 'bravo', status: 'waiting', priority: 0 }),
+        workTask({ id: 'T5', owner: 'bravo', status: 'done', priority: 0 }),
+        workTask({ id: 'T6', owner: 'charlie', status: 'open', priority: 2 }),
       ],
       priorities,
+      NOW,
     );
     assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
     // p0..p5 weigh 6..1; each session weighs its top task alone.
@@ -99,13 +109,34 @@ describe('queuedWork', () => {
     const finished = { day: '2030-01-06', w: 0 };
     const work = queuedWork(
       [
-        { id: 'T1', owner: 'alpha', status: 'open', priority: 1, sizeBase: open },
-        { id: 'T2', owner: 'alpha', status: 'done', priority: 1, sizeBase: finished },
-        { id: 'T3', owner: 'alpha', status: 'open', priority: 1, sizeBase: null },
+        workTask({ id: 'T1', owner: 'alpha', status: 'open', priority: 1, sizeBase: open }),
+        workTask({ id: 'T2', owner: 'alpha', status: 'done', priority: 1, sizeBase: finished }),
+        workTask({ id: 'T3', owner: 'alpha', status: 'open', priority: 1 }),
       ],
       priorities,
+      NOW,
     );
     assert.deepEqual([...work.sizeBases], [['T1', open], ['T2', finished]]);
+  });
+
+  it('keeps the tasks done inside the like window, with only what the medians read of them', () => {
+    const lately = '2030-01-06T09:00:00.000Z';
+    const work = queuedWork(
+      [
+        workTask({ id: 'T1', owner: 'alpha', status: 'done', priority: 1, statusAt: lately, workClass: 'Roadmap', type: 'bug', sizeBase: { day: '2030-01-06', w: 5 } }),
+        workTask({ id: 'T2', owner: 'alpha', status: 'done', priority: 1 }),
+        workTask({ id: 'T3', owner: 'alpha', status: 'dropped', priority: 1, statusAt: lately }),
+        workTask({ id: 'T4', owner: 'bravo', status: 'open', priority: 2, statusAt: lately }),
+        workTask({ id: 'T5', owner: 'bravo', status: 'done', priority: 2, statusAt: lately }),
+      ],
+      priorities,
+      NOW,
+    );
+    // T2 was done before the window, T3 dropped and T4 is not finished: none sizes finished work.
+    assert.deepEqual(work.likeTasks, [
+      { id: 'T1', status: 'done', statusAt: lately, workClass: 'Roadmap', type: 'bug' },
+      { id: 'T5', status: 'done', statusAt: lately, workClass: null, type: null },
+    ]);
   });
 });
 
@@ -123,12 +154,12 @@ describe('readWork', () => {
   const PATH = '/kit/teams/app/state/events.jsonl';
 
   it('is empty for a missing register', async () => {
-    assert.deepEqual([...(await readWork(new MemoryFiles(), PATH, priorities)).weights], []);
+    assert.deepEqual([...(await readWork(new MemoryFiles(), PATH, priorities, NOW)).weights], []);
   });
 
   it('is empty when the register cannot be read, so the split falls back to shares', async () => {
     const files = new FaultyFiles(new MemoryFiles({ [PATH]: '' })).fail('read', PATH, systemError('EIO'));
-    assert.deepEqual([...(await readWork(files, PATH, priorities)).weights], []);
+    assert.deepEqual([...(await readWork(files, PATH, priorities, NOW)).weights], []);
   });
 });
 
@@ -149,8 +180,17 @@ describe('cachedWork', () => {
   type AddTask = (owner: string, priority: number) => Promise<void>;
   /** Sizes a task of the register over `files`, writing `base` as its update does. */
   type SizeTask = (id: string, base: SizeBase) => Promise<void>;
+  /** Sets a task of the register over `files` done, by its owner, at the register's clock. */
+  type FinishTask = (owner: string, id: string) => Promise<void>;
 
-  function registerOn(files: MemoryFiles): { readonly add: AddTask; readonly size: SizeTask } {
+  interface Team {
+    readonly files: MemoryFiles;
+    readonly add: AddTask;
+    readonly size: SizeTask;
+    readonly finish: FinishTask;
+  }
+
+  function registerOn(files: MemoryFiles): Omit<Team, 'files'> {
     const register = new Register({
       log: new JsonlEventLog(files, PATH),
       mutex: new InlineMutex(),
@@ -174,15 +214,19 @@ describe('cachedWork', () => {
         const verdict = await register.update('lead', id, { size: 1 }, undefined, base);
         assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
       },
+      finish: async (owner, id) => {
+        const verdict = await register.setStatus(owner, id, { status: 'done', note: 'shipped', evidence: 'abc1234', skill: 'none', followups: [] });
+        assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
+      },
     };
   }
 
   /** A register over `files` holding an open p1 task of alpha's and a p3 one of bravo's. */
-  async function team(files: MemoryFiles = new MemoryFiles()): Promise<{ readonly files: MemoryFiles; readonly add: AddTask; readonly size: SizeTask }> {
-    const { add, size } = registerOn(files);
-    await add('alpha', 1);
-    await add('bravo', 3);
-    return { files, add, size };
+  async function team(files: MemoryFiles = new MemoryFiles()): Promise<Team> {
+    const register = registerOn(files);
+    await register.add('alpha', 1);
+    await register.add('bravo', 3);
+    return { files, ...register };
   }
 
   /** The same files with every read of the register failing: only a cache hit still answers. */
@@ -205,51 +249,61 @@ describe('cachedWork', () => {
 
   it('replays the register on a miss and keeps the reading with what it was read from', async () => {
     const { files } = await team();
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).weights], BOTH);
     assert.deepEqual(cacheIn(files), {
-      [VERSION_FIELD]: 5,
+      [VERSION_FIELD]: 6,
       key: { tail: await files.stamp(tail), snapshot: null, priorities: [1, 2, 3, 4, 5] },
       work: { alpha: { 1: 5 }, bravo: { 3: 3 } },
       urgent: {},
       sizeBases: {},
+      likeTasks: [],
     });
+  });
+
+  it('keeps the tasks done inside the like window in the cache and answers them from there, so a hook replays no register for the medians', async () => {
+    const { files, finish } = await team();
+    await finish('alpha', 'T1');
+    const done = { id: 'T1', status: 'done', statusAt: '2030-01-07T09:00:00.000Z', workClass: null, type: null };
+    assert.deepEqual((await cachedWork(files, PATH, CACHE, priorities, NOW)).likeTasks, [done]);
+    assert.deepEqual(cacheIn(files)['likeTasks'], [done]);
+    assert.deepEqual((await cachedWork(unreadable(files), PATH, CACHE, priorities, NOW)).likeTasks, [done]);
   });
 
   it("keeps each sized task's base in the cache and answers it from there, so a hook replays no register for it", async () => {
     const { files, size } = await team();
     const base = { day: '2030-01-07', w: 1_500 };
     await size('T1', base);
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).sizeBases], [['T1', base]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).sizeBases], [['T1', base]]);
     assert.deepEqual(cacheIn(files)['sizeBases'], { T1: base });
-    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities)).sizeBases], [['T1', base]]);
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities, NOW)).sizeBases], [['T1', base]]);
   });
 
   it("keeps each session's p0 ids in the cache and answers them from it", async () => {
     const { files, add } = await team();
     await add('charlie', 0);
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).urgent], [['charlie', ['T3']]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).urgent], [['charlie', ['T3']]]);
     assert.deepEqual(cacheIn(files)['urgent'], { charlie: ['T3'] });
-    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities)).urgent], [['charlie', ['T3']]]);
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities, NOW)).urgent], [['charlie', ['T3']]]);
   });
 
   it('answers from the cache while the register and the priorities are unchanged, without reading the register', async () => {
     const { files } = await team();
-    await cachedWork(files, PATH, CACHE, priorities);
-    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities)).weights], BOTH);
+    await cachedWork(files, PATH, CACHE, priorities, NOW);
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities, NOW)).weights], BOTH);
   });
 
   it('reads the register again after a write to it', async () => {
     const { files, add } = await team();
-    await cachedWork(files, PATH, CACHE, priorities);
+    await cachedWork(files, PATH, CACHE, priorities, NOW);
     await add('charlie', 2);
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], [...BOTH, CHARLIE]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).weights], [...BOTH, CHARLIE]);
   });
 
   it('reads the register again after a rotation, which rewrites its tail and its snapshot', async () => {
     const { files } = await team();
-    await cachedWork(files, PATH, CACHE, priorities);
+    await cachedWork(files, PATH, CACHE, priorities, NOW);
     await rotateRegister(files, PATH, { now: new Date('2030-01-08T09:00:00.000Z') });
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).weights], BOTH);
     const key = keyIn(files);
     assert.deepEqual([key['tail'], key['snapshot']], [await files.stamp(tail), await files.stamp(snapshot)]);
     assert.notEqual(key['snapshot'], null);
@@ -257,16 +311,17 @@ describe('cachedWork', () => {
 
   it('weighs the work again when the priorities change', async () => {
     const { files } = await team();
-    await cachedWork(files, PATH, CACHE, priorities);
+    await cachedWork(files, PATH, CACHE, priorities, NOW);
     const three = [{ id: 1, name: 'high' }, { id: 2, name: 'medium' }, { id: 3, name: 'low' }];
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, three)).weights], [['alpha', new Map([[1, 3]])], ['bravo', new Map([[3, 1]])]]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, three, NOW)).weights], [['alpha', new Map([[1, 3]])], ['bravo', new Map([[3, 1]])]]);
   });
 
   /** The cache a call just wrote, its key matching the register, made over by `damage`. */
   type Damage = (cache: JsonRecord, key: JsonRecord) => string;
   const DAMAGES: readonly (readonly [string, Damage])[] = [
     ['damaged', (cache) => JSON.stringify(cache).slice(0, -2)],
-    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 6, work: {} })],
+    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 7, work: {} })],
+    ['in the fifth format, with no like tasks', (cache) => JSON.stringify({ [VERSION_FIELD]: 5, key: cache['key'], work: {}, urgent: {}, sizeBases: {} })],
     ['in the fourth format, with no size bases', (cache) => JSON.stringify({ [VERSION_FIELD]: 4, key: cache['key'], work: {}, urgent: {} })],
     ['in the third format, every queued task weighed', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 3, work: { alpha: { 1: 10 }, bravo: { 3: 3 } } })],
     ['in the second format, one weight per session', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 2, work: { alpha: 5, bravo: 3 } })],
@@ -275,6 +330,9 @@ describe('cachedWork', () => {
     ['with p0 ids that are not text', (cache) => JSON.stringify({ ...cache, urgent: { alpha: [5] } })],
     ['without its size bases', (cache) => JSON.stringify({ ...cache, work: {}, sizeBases: 'none' })],
     ['with a size base that is not one', (cache) => JSON.stringify({ ...cache, work: {}, sizeBases: { T1: { day: 'today', w: -1 } } })],
+    ['without its like tasks', (cache) => JSON.stringify({ ...cache, work: {}, likeTasks: 'none' })],
+    ['with a like task that is not one', (cache) => JSON.stringify({ ...cache, work: {}, likeTasks: [{ id: 5 }] })],
+    ['with a like task of a type that is not one', (cache) => JSON.stringify({ ...cache, work: {}, likeTasks: [{ id: 'T1', status: 'done', statusAt: '2030-01-07T09:00:00.000Z', workClass: null, type: 7 }] })],
     ['without its key', (cache) => JSON.stringify({ ...cache, key: 'none' })],
     ['without its work', (cache) => JSON.stringify({ ...cache, work: 'none' })],
     ['with one weight for a session, not one per priority', (cache) => JSON.stringify({ ...cache, work: { alpha: 5 } })],
@@ -288,9 +346,9 @@ describe('cachedWork', () => {
   for (const [what, damage] of DAMAGES) {
     it(`reads the register again and rewrites a cache ${what}`, async () => {
       const { files } = await team();
-      await cachedWork(files, PATH, CACHE, priorities);
+      await cachedWork(files, PATH, CACHE, priorities, NOW);
       await files.write(CACHE, damage(cacheIn(files), keyIn(files)));
-      assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
+      assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).weights], BOTH);
       assert.deepEqual(cacheIn(files)['work'], { alpha: { 1: 5 }, bravo: { 3: 3 } });
     });
   }
@@ -317,29 +375,29 @@ describe('cachedWork', () => {
     const files = new WriteAfterRead();
     const { add } = await team(files);
     files.afterNextTailRead(() => add('charlie', 2));
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], BOTH);
-    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities)).weights], [...BOTH, CHARLIE]);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).weights], BOTH);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).weights], [...BOTH, CHARLIE]);
   });
 
   it('is empty and caches nothing when the register cannot be read', async () => {
     const { files } = await team();
-    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities)).weights], []);
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities, NOW)).weights], []);
     assert.equal(files.get(CACHE), undefined);
   });
 
   it('reads the register uncached when a stamp cannot be taken', async () => {
     const { files } = await team();
     const faulty = new FaultyFiles(files).fail('stamp', snapshot, systemError('EIO'));
-    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities)).weights], BOTH);
+    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities, NOW)).weights], BOTH);
     assert.equal(files.get(CACHE), undefined);
   });
 
   it('takes a cache that cannot be read for a missing one, and still answers when the cache cannot be written', async () => {
     const { files } = await team();
-    await cachedWork(files, PATH, CACHE, priorities);
+    await cachedWork(files, PATH, CACHE, priorities, NOW);
     await files.write(CACHE, JSON.stringify({ ...cacheIn(files), work: {} }));
     const faulty = new FaultyFiles(files).fail('read', CACHE, systemError('EIO')).fail('write', CACHE, systemError('EACCES'));
-    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities)).weights], BOTH);
+    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities, NOW)).weights], BOTH);
     assert.deepEqual(cacheIn(files)['work'], {});
   });
 });

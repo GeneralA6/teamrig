@@ -287,7 +287,7 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     return EXIT.ok;
   }
   const tasks = recountDay === undefined ? await readTasks(runtime.files, kit.paths.events) : undefined;
-  const { weights: work } = tasks === undefined ? NO_WORK : queuedWork(tasks, config.register.priorities);
+  const { weights: work } = tasks === undefined ? NO_WORK : queuedWork(tasks, config.register.priorities, reading.now);
   // A recount shows no budgets, so it reads no other team.
   const onAccount = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
   const { split, others } = fundForDay({ split: splitOf(reading, kit.paths.team, roster, config, work), others: onAccount }, reading.week);
@@ -461,7 +461,7 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const name = nameOf(id);
   const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
   const { week } = reading;
-  const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities);
+  const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities, now);
   const split = splitOf(reading, kit.paths.team, roster, config, work);
   const place = liftPlaceOf(split, id, group);
   if (place === undefined) {
@@ -517,7 +517,7 @@ async function crossTeamLift(runtime: CliRuntime, lifting: LiftingTeam, target: 
   }
   const address = formatAddress({ team: target.team, id: found.id });
   const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
-  const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities);
+  const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities, ask.now);
   const split = splitOf(reading, own, roster, config, work);
   const place = crossLiftPlaceOf(split, address);
   const parent = `team ${own}'s daily budget`;

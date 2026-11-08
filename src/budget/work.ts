@@ -3,10 +3,11 @@ import type { PriorityConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField } from '../core/guards.ts';
 import { parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
-import { parseSizeBase, type SizeBase } from '../register/events.ts';
+import { isItemType, parseSizeBase, type SizeBase } from '../register/events.ts';
 import type { Task } from '../register/fold.ts';
 import { layoutPaths } from '../register/layout.ts';
-import type { TaskStatus } from '../register/model.ts';
+import { isTaskStatus, type TaskStatus } from '../register/model.ts';
+import { likeTasksOf, type LikeTask } from '../register/ranking.ts';
 import { JsonlEventLog } from '../register/store.ts';
 
 /** The statuses whose tasks are a session's queued work: what it can work on now. */
@@ -70,13 +71,22 @@ export interface QueuedWork {
    * register change that `cachedWork` already pays for.
    */
   readonly sizeBases: ReadonlyMap<string, SizeBase>;
+  /**
+   * The tasks that measure their like tasks (src/register/ranking.ts `likeTasksOf`), as of the reading, for the medians
+   * a budget hook keeps beside the tasks' spend (src/budget/task-week-file.ts). They ride here as the size bases do; a
+   * reading kept since still gives the medians the register gives, as `likeTasksOf` says.
+   */
+  readonly likeTasks: readonly LikeTask[];
 }
 
-/** No queued work: every part falls back to its session's `share`, no session has p0 work, and no task has a size base. */
-export const NO_WORK: QueuedWork = { weights: new Map(), urgent: new Map(), sizeBases: new Map() };
+/** No queued work: every part falls back to its session's `share`, no session has p0 work, and no task has a size base or measures another. */
+export const NO_WORK: QueuedWork = { weights: new Map(), urgent: new Map(), sizeBases: new Map(), likeTasks: [] };
 
-/** The sessions' queued work: `workWeights`, each session's open and in-progress p0 tasks, and every task's size base. */
-export function queuedWork(tasks: Iterable<Pick<Task, 'id' | 'owner' | 'status' | 'priority' | 'sizeBase'>>, priorities: readonly PriorityConfig[]): QueuedWork {
+/** What `queuedWork` reads of a task. */
+export type WorkTask = Pick<Task, 'id' | 'owner' | 'status' | 'statusAt' | 'priority' | 'sizeBase' | 'workClass' | 'type'>;
+
+/** The sessions' queued work at `now`: `workWeights`, each session's open and in-progress p0 tasks, every task's size base, and the like tasks. */
+export function queuedWork(tasks: Iterable<WorkTask>, priorities: readonly PriorityConfig[], now: number): QueuedWork {
   const all = [...tasks];
   const queued = all.filter((task) => QUEUED.has(task.status));
   const urgent = new Map<string, string[]>();
@@ -91,7 +101,7 @@ export function queuedWork(tasks: Iterable<Pick<Task, 'id' | 'owner' | 'status' 
       sizeBases.set(id, sizeBase);
     }
   }
-  return { weights: workWeights(queued, priorities), urgent, sizeBases };
+  return { weights: workWeights(queued, priorities), urgent, sizeBases, likeTasks: likeTasksOf(all, now) };
 }
 
 /** The tasks of the register's working set at `eventsPath`; undefined when it cannot be read, so a damaged register never stops the budget. */
@@ -104,20 +114,20 @@ export async function readTasks(files: Files, eventsPath: string): Promise<reado
   }
 }
 
-/** The sessions' queued work, read from the register at `eventsPath`; none when the register cannot be read, so every part falls back to its session's `share`. */
-export async function readWork(files: Files, eventsPath: string, priorities: readonly PriorityConfig[]): Promise<QueuedWork> {
+/** The sessions' queued work at `now`, read from the register at `eventsPath`; none when the register cannot be read, so every part falls back to its session's `share`. */
+export async function readWork(files: Files, eventsPath: string, priorities: readonly PriorityConfig[], now: number): Promise<QueuedWork> {
   const tasks = await readTasks(files, eventsPath);
-  return tasks === undefined ? NO_WORK : queuedWork(tasks, priorities);
+  return tasks === undefined ? NO_WORK : queuedWork(tasks, priorities, now);
 }
 
 /** The work cache's file in the usage folder: a name no session id can have, so it is never taken for a session's usage file. */
 export const WORK_CACHE_FILE = 'work.cache.json';
 /**
  * The work cache's format (2: with each session's p0 ids; 3: each session's weights by priority id; 4: its top task's
- * weight only, T1588, so a format-3 cache of every task's weights is read again; 5: with each task's size base, T2141);
- * a cache in any other reads as missing and is written again.
+ * weight only, T1588, so a format-3 cache of every task's weights is read again; 5: with each task's size base, T2141;
+ * 6: with the like tasks, T2194); a cache in any other reads as missing and is written again.
  */
-const WORK_CACHE_FORMAT = 5;
+const WORK_CACHE_FORMAT = 6;
 
 /** What a reading of the work was read from: the stamps of the register files the working set folds, and the priority ids that weighed it. */
 interface WorkKey {
@@ -173,6 +183,34 @@ function storedSizeBases(value: Record<string, unknown>): ReadonlyMap<string, Si
   return sizeBases;
 }
 
+/** A stored like task; undefined when it is not one. */
+function storedLikeTask(value: unknown): LikeTask | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const { id, status, statusAt, workClass, type } = value;
+  if (typeof id !== 'string' || !isTaskStatus(status) || typeof statusAt !== 'string' || (workClass !== null && typeof workClass !== 'string') || (type !== null && !isItemType(type))) {
+    return undefined;
+  }
+  return { id, status, statusAt, workClass, type };
+}
+
+/** The stored like tasks; undefined when the value is not a list of them. */
+function storedLikeTasks(value: unknown): readonly LikeTask[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const likeTasks: LikeTask[] = [];
+  for (const stored of value) {
+    const task = storedLikeTask(stored);
+    if (task === undefined) {
+      return undefined;
+    }
+    likeTasks.push(task);
+  }
+  return likeTasks;
+}
+
 /** A session's stored weights by priority id; undefined when it is not a record of whole priority ids to finite weights. */
 function storedByPriority(value: unknown): WorkByPriority | undefined {
   if (!isRecord(value)) {
@@ -198,7 +236,8 @@ function parseWorkCache(text: string | undefined): CachedWork | undefined {
   const urgent = urgentField === undefined ? undefined : storedUrgent(urgentField);
   const sizeBasesField = stored === undefined ? undefined : recordField(stored, 'sizeBases');
   const sizeBases = sizeBasesField === undefined ? undefined : storedSizeBases(sizeBasesField);
-  if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined || sizeBases === undefined) {
+  const likeTasks = stored === undefined ? undefined : storedLikeTasks(stored['likeTasks']);
+  if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined || sizeBases === undefined || likeTasks === undefined) {
     return undefined;
   }
   const tail = storedStamp(key['tail']);
@@ -215,12 +254,12 @@ function parseWorkCache(text: string | undefined): CachedWork | undefined {
     }
     weights.set(session, byPriority);
   }
-  return { key: { tail, snapshot, priorities }, work: { weights, urgent, sizeBases } };
+  return { key: { tail, snapshot, priorities }, work: { weights, urgent, sizeBases, likeTasks } };
 }
 
 function formatWorkCache(key: WorkKey, work: QueuedWork): string {
   const weights = Object.fromEntries([...work.weights].map(([session, byPriority]) => [session, Object.fromEntries(byPriority)]));
-  return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: weights, urgent: Object.fromEntries(work.urgent), sizeBases: Object.fromEntries(work.sizeBases) });
+  return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: weights, urgent: Object.fromEntries(work.urgent), sizeBases: Object.fromEntries(work.sizeBases), likeTasks: work.likeTasks });
 }
 
 /** The key of a reading taken now; undefined when a stamp cannot be taken. */
@@ -244,10 +283,10 @@ async function workKeyOf(files: Pick<Files, 'stamp'>, eventsPath: string, priori
  * and is not cached, nor is a reading whose stamps could not be taken; a cache that cannot be read is missing,
  * and one that cannot be written is left for the next call. It never throws, so the cache never stops the budget.
  */
-export async function cachedWork(files: Files, eventsPath: string, cachePath: string, priorities: readonly PriorityConfig[]): Promise<QueuedWork> {
+export async function cachedWork(files: Files, eventsPath: string, cachePath: string, priorities: readonly PriorityConfig[], now: number): Promise<QueuedWork> {
   const key = await workKeyOf(files, eventsPath, priorities);
   if (key === undefined) {
-    return readWork(files, eventsPath, priorities);
+    return readWork(files, eventsPath, priorities, now);
   }
   const cached = parseWorkCache(await files.read(cachePath).catch(() => undefined));
   if (cached !== undefined && sameKey(cached.key, key)) {
@@ -257,7 +296,7 @@ export async function cachedWork(files: Files, eventsPath: string, cachePath: st
   if (tasks === undefined) {
     return NO_WORK;
   }
-  const work = queuedWork(tasks, priorities);
+  const work = queuedWork(tasks, priorities, now);
   await files.write(cachePath, formatWorkCache(key, work)).catch(() => undefined);
   return work;
 }
