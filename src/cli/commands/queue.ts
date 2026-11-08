@@ -22,10 +22,10 @@ import { envSession, markedSessionOf } from './hook-input.ts';
 
 const MINUTE_MS = 60_000;
 
-/** A small step's reserve is read from at most this many of its latest ended runs. */
+/** A step's measured reserve is read from at most this many of its latest ended runs. */
 const RESERVE_RUNS = 20;
 
-/** A small step's reserve is the most its latest runs held, with this margin. */
+/** A step's measured reserve is the most its latest runs held, with this margin. */
 const RESERVE_MARGIN = 1.25;
 
 /**
@@ -64,14 +64,24 @@ function watchOf(runtime: CliRuntime, config: QueueConfig): StepWatch | undefine
 }
 
 /**
- * The MB held for a small step: the most its process tree held in its latest `RESERVE_RUNS` ended runs, under the same
- * session and label in the ledger, with a quarter more; the config's `smallReserveMb` when none was measured.
+ * The most a step's process tree held in its latest `RESERVE_RUNS` ended runs, under the same session and label in the
+ * ledger, with a quarter more; undefined when none was measured.
  */
-async function reserveMbOf(runtime: CliRuntime, ledger: string, session: string, what: string, config: QueueConfig): Promise<number> {
+async function measuredReserveMbOf(runtime: CliRuntime, ledger: string, session: string, what: string): Promise<number | undefined> {
   const records = parseLedger((await runtime.files.read(ledger)) ?? '');
   const peaks = records.flatMap((record) => (record.type === 'heavy' && record.session === session && record.what === what && record.peakTreeMb !== undefined ? [record.peakTreeMb] : []));
   const latest = peaks.slice(-RESERVE_RUNS);
-  return latest.length === 0 ? config.smallReserveMb : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
+  return latest.length === 0 ? undefined : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
+}
+
+/**
+ * What the step asks of the host: a small step shares it, holding its measured reserve or the config's
+ * `smallReserveMb`; a heavy one takes the lock, holding its measured reserve or `heavyReserveMb`, whichever is more, so
+ * a step known to peak higher waits for that much room.
+ */
+async function needOf(runtime: CliRuntime, ledger: string, session: string, what: string, small: boolean, config: QueueConfig): Promise<StepNeed> {
+  const measuredMb = await measuredReserveMbOf(runtime, ledger, session, what);
+  return small ? { shares: true, reserveMb: measuredMb ?? config.smallReserveMb } : { shares: false, reserveMb: Math.max(measuredMb ?? 0, config.heavyReserveMb) };
 }
 
 /** The line a small step holding `reserveMb` prints when it shares the host. */
@@ -223,9 +233,9 @@ interface Step {
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
  * so a `queue` among them (a git hook's checks) runs at once under this lock. Every step waits in its turn until the
  * host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small steps sharing the host
- * (`hostLockOf`'s memory gate): `heavyReserveMb` for a step that takes the lock. With `--small` (a spec run, a lint)
- * the step shares the host with other small steps instead, holding `reserveMbOf`; a step without it waits for them to
- * end. A small step is killed after `smallMaxRunMinutes`
+ * (`hostLockOf`'s memory gate): for a step that takes the lock, `heavyReserveMb` or its measured peak (`needOf`). With
+ * `--small` (a spec run, a lint) the step shares the host with other small steps instead, holding its measured peak or
+ * `smallReserveMb`; a step without it waits for them to end. A small step is killed after `smallMaxRunMinutes`
  * instead, and its `--max-minutes` goes no higher. Once the shell that started it ends (Claude Code's
  * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
  * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
@@ -259,7 +269,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     }
     refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
     const queuedAt = runtime.clock.now();
-    const need: StepNeed | undefined = small ? { shares: true, reserveMb: await reserveMbOf(runtime, places.ledger, session, what, delivery.queue) } : undefined;
+    const need = await needOf(runtime, places.ledger, session, what, small, delivery.queue);
     const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
     const taking = await unlessStopped(
       watching.stop,
@@ -285,7 +295,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     const waitedMs = runtime.clock.now() - queuedAt;
     try {
       refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
-      const sharing = need === undefined ? undefined : sharingText(need.reserveMb, taking);
+      const sharing = sharingText(need.reserveMb, taking);
       if (sharing !== undefined) {
         say(sharing);
       }

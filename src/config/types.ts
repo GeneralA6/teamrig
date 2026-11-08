@@ -748,7 +748,7 @@ export interface QueueConfig {
    * ledger record's `peakTreeMb` and `lowFreeMb`; 0 samples nothing.
    */
   readonly memorySampleSeconds: number;
-  /** A small step (`queue --small`) shares the host only while it keeps this many MB free besides those held for the small steps. */
+  /** A queued step, a merge or a deploy starts only while the host keeps this many MB free besides those held for it and for the small steps sharing the host. */
   readonly memoryFloorMb: number;
   /** The MB held for a small step with no ledger record of its peak yet. */
   readonly smallReserveMb: number;

@@ -746,7 +746,7 @@
               "default": 15
             },
             "memoryFloorMb": {
-              "description": "A small step (queue --small) shares the host only while it keeps this many MB free besides those held for the small steps.",
+              "description": "A queued step, a merge or a deploy starts only while the host keeps this many MB free besides those held for it and for the small steps sharing the host.",
               "type": "integer",
               "minimum": 0,
               "maximum": 1048576,

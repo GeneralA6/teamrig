@@ -352,7 +352,7 @@ The host lock and the limits of one queued step.
 | `smallMaxRunMinutes` | integer (1 to 1430) | `10` | A small step (queue --small) still running after this many minutes is killed the same way, so a hung one does not hold back the steps waiting for the lock; a longer step runs without --small. At most maxRunMinutes. |
 | `waitMinutes` | integer (0 to 1440) | `60` | A queued step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. |
 | `memorySampleSeconds` | integer (0 to 600) | `15` | While a queued step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing. |
-| `memoryFloorMb` | integer (0 to 1048576) | `4096` | A small step (queue --small) shares the host only while it keeps this many MB free besides those held for the small steps. |
+| `memoryFloorMb` | integer (0 to 1048576) | `4096` | A queued step, a merge or a deploy starts only while the host keeps this many MB free besides those held for it and for the small steps sharing the host. |
 | `smallReserveMb` | integer (0 to 1048576) | `2048` | The MB held for a small step with no ledger record of its peak yet. |
 | `heavyReserveMb` | integer (0 to 1048576) | `4096` | The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only while free memory covers both (at most half the host's RAM). A heavy step whose ledger peak and a quarter is more holds that instead. |
 
