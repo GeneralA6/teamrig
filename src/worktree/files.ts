@@ -1,4 +1,4 @@
-import { lstat, readdir, readlink, symlink, unlink } from 'node:fs/promises';
+import { lstat, readdir, readlink, rmdir, symlink, unlink } from 'node:fs/promises';
 import { realpathSync, type Dirent } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { errorCode } from '../core/guards.ts';
@@ -13,7 +13,8 @@ export interface TreeEntry {
 
 /**
  * The file steps `teamrig worktree remove` takes. None of them deletes through a link or a folder: `unlinkLink`
- * removes one link and nothing it points to, and the git step that follows removes the worktree's own files.
+ * removes one link and nothing it points to, `removeEmptyFolder` one empty folder, and the git step that follows
+ * removes the worktree's own files.
  */
 export interface WorktreeFiles {
   /** A folder's entries, each with its kind; empty when the folder does not exist. */
@@ -28,6 +29,8 @@ export interface WorktreeFiles {
   unlinkLink(path: string): Promise<void>;
   /** Makes `path` a link to the folder `target`, as `unlinkLink` found it; refused when something is at `path` or its folder is gone. */
   makeLink(path: string, target: string): Promise<void>;
+  /** Removes the folder at `path` when it is empty; one that holds anything is refused by the system (ENOTEMPTY), never emptied. */
+  removeEmptyFolder(path: string): Promise<void>;
   /** The one spelling of an existing path (its case, separators and links resolved), to compare two spellings; undefined when nothing is there. */
   canonical(path: string): Promise<string | undefined>;
 }
@@ -91,6 +94,10 @@ export const NODE_WORKTREE_FILES: WorktreeFiles = {
   async makeLink(path, target) {
     // A junction on Windows, which needs no privilege; elsewhere Node ignores the type and makes a symlink.
     await symlink(target, path, 'junction');
+  },
+  async removeEmptyFolder(path) {
+    // rmdir with no recursive option: it fails on a folder that holds anything, so nothing in it can be lost.
+    await rmdir(path);
   },
   async canonical(path) {
     try {

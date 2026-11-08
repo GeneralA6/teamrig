@@ -19,6 +19,10 @@ export class FakeWorktreeFiles implements WorktreeFiles {
   readonly linked: string[] = [];
   /** Links whose unlink leaves them in place, as a system that did not remove them would. */
   readonly stuck = new Set<string>();
+  /** Each folder removeEmptyFolder removed, in order. */
+  readonly removedFolders: string[] = [];
+  /** Folders a program keeps, whose removal fails with EBUSY as Windows fails one a program has as its working folder. */
+  readonly busy = new Set<string>();
 
   constructor(nodes: Readonly<Record<string, FakeNode>> = {}) {
     for (const [path, node] of Object.entries(nodes)) {
@@ -100,6 +104,21 @@ export class FakeWorktreeFiles implements WorktreeFiles {
     this.linked.push(`${key} -> ${resolve(target)}`);
   }
 
+  async removeEmptyFolder(path: string): Promise<void> {
+    const key = resolve(path);
+    if (this.nodes.get(key)?.kind !== 'folder') {
+      throw systemError('ENOTDIR', `not a folder: ${path}`);
+    }
+    if (this.children(key).length > 0) {
+      throw systemError('ENOTEMPTY', `directory not empty, rmdir '${path}'`);
+    }
+    if (this.busy.has(key)) {
+      throw systemError('EBUSY', `resource busy or locked, rmdir '${path}'`);
+    }
+    this.nodes.delete(key);
+    this.removedFolders.push(key);
+  }
+
   async canonical(path: string): Promise<string | undefined> {
     const key = resolve(path);
     return this.nodes.has(key) ? key : undefined;
@@ -113,6 +132,11 @@ function ancestry(path: string): string[] {
     chain.push(parent);
   }
   return chain;
+}
+
+/** An error with a Node system error's `code` and message, as fs/promises throws one. */
+function systemError(code: string, message: string): Error {
+  return Object.assign(new Error(`${code}: ${message}`), { code });
 }
 
 function kindOf(node: FakeNode | undefined): EntryKind {
