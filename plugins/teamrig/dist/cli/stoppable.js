@@ -37,7 +37,7 @@ function eitherStop(stop, own) {
 /** `lock`, whose wait rejects with the stop's reason once `stop` aborts, releasing what it took (`HostLock.acquire`). */
 export function stoppableLock(lock, stop) {
     return {
-        acquire: (session, purpose, maxWaitMs, pollMs, onWait, need, own) => lock.acquire(session, purpose, maxWaitMs, pollMs, onWait, need, eitherStop(stop, own)),
+        acquire: (session, purpose, maxWaitMs, pollMs, onWait, ask, own) => lock.acquire(session, purpose, maxWaitMs, pollMs, onWait, ask, eitherStop(stop, own)),
         release: (held) => lock.release(held),
     };
 }

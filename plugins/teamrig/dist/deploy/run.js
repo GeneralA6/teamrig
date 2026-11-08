@@ -3,6 +3,7 @@ import { coveringFreezes, freezeText, readFreezes } from "../delivery/freezes.js
 import { refusalOf, takeWhenClear } from "../delivery/clearance.js";
 import { underLock } from "../delivery/host-lock.js";
 import { appendDeploy } from "../delivery/ledger.js";
+import { lineRequest, processRequest } from "../delivery/process-request.js";
 import { NOT_STARTED_EXIT, recordQueuedStep, recordRefusal } from "../delivery/recorded-step.js";
 import { sayingWaits, WaitLog } from "../delivery/wait-log.js";
 import { queueCutoffReason, resetBlackoutReason } from "../delivery/schedule.js";
@@ -24,6 +25,10 @@ import { deployRepos, plural, readPending, short } from "./pending.js";
 const MINUTE_MS = 60_000;
 /** The line a deploy command prints when nothing needed deploying: the pull stays, and no deploy is recorded. */
 export const NO_DEPLOY_LINE = 'no-deploy';
+/** What a deploy's ticket in the host lock's line says it asks: deploy work for no task, so at the team's default class. */
+export function deployLine(setup) {
+    return lineRequest(processRequest('deploy', undefined), undefined, setup.focus);
+}
 function runExitCode(run) {
     switch (run.kind) {
         case 'notPulled':
@@ -291,6 +296,7 @@ export async function deployRepo(setup, ports, request) {
     const clearance = await takeWhenClear(readinessOf(setup, ports, request, repo, view), ports, {
         session: request.session,
         purpose: `deploy ${repo.name}`,
+        line: deployLine(setup),
         maxWaitMs: wait.maxMinutes * MINUTE_MS,
         pollMs: wait.pollSeconds * 1_000,
         zone: setup.zone,

@@ -3,7 +3,7 @@ import { coveringFreezes, freezeText, readFreezes } from "../delivery/freezes.js
 import { refusalOf, takeWhenClear } from "../delivery/clearance.js";
 import { underLock } from "../delivery/host-lock.js";
 import { appendDeploy, rangeText } from "../delivery/ledger.js";
-import { processRequest, withTaskPriority } from "../delivery/process-request.js";
+import { lineRequestOf, processRequest } from "../delivery/process-request.js";
 import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded } from "../delivery/recorded-step.js";
 import { sayingWaits, WaitLog } from "../delivery/wait-log.js";
 import { queueCutoffReason, resetBlackoutReason } from "../delivery/schedule.js";
@@ -510,12 +510,14 @@ export async function mergeBranch(setup, ports, request) {
     }
     const { wait } = setup.delivery;
     // Every step a merge runs (its checks, its push or merge command) is recorded as merge work for the branch's task, at
-    // the priority that task has as the merge queues.
-    const owner = { session: request.session, ...(await withTaskPriority(processRequest('merge', taskOfBranch(plan.branch)), (id) => ports.taskOf(id))) };
+    // the priority that task has as the merge queues; only its ticket in the host lock's line carries the task's class.
+    const line = await lineRequestOf(processRequest('merge', taskOfBranch(plan.branch)), (id) => ports.taskOf(id), setup.focus);
+    const owner = { session: request.session, ...processRequest(line.kind, line.task, line.priority) };
     const waits = new WaitLog(ports.clock, ports.memory.freeMb());
     const clearance = await takeWhenClear(readinessOf(setup, ports, repo), ports, {
         session: request.session,
         purpose: `merge ${repo.name}`,
+        line,
         maxWaitMs: wait.maxMinutes * MINUTE_MS,
         pollMs: wait.pollSeconds * 1_000,
         zone: setup.zone,

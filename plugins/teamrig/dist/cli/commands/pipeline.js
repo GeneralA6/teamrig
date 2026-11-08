@@ -1,4 +1,4 @@
-import { holderText } from "../../delivery/host-lock.js";
+import { holderText, isHeavyShare, sharesCount } from "../../delivery/host-lock.js";
 import { parseLedger } from "../../delivery/ledger.js";
 import { holdersText, treeMb } from "../../delivery/memory.js";
 import { deliveryPlaces } from "../../delivery/places.js";
@@ -17,7 +17,7 @@ function spanText(fromIso, nowMs) {
 function useText(pid, rows) {
     return rows === undefined ? '' : `, its tree uses ${treeMb(pid, rows)} MB`;
 }
-/** The pids of the steps running now: the lock's holder, when it holds a live lock, and each small step sharing the host. */
+/** The pids of the steps running now: the lock's holder, when it holds a live lock, and each step sharing the host. */
 function runningPids(state, shares) {
     return [...(state.kind === 'held' ? [state.info.pid] : []), ...shares.map((share) => share.pid)];
 }
@@ -29,7 +29,7 @@ async function hostLines(memory, floorMb, shares, pids, rows) {
     }
     if (shares.length > 0) {
         const heldMb = shares.reduce((total, share) => total + share.reserveMb, 0);
-        parts.push(`${heldMb} MB held for ${shares.length} small step${shares.length === 1 ? '' : 's'}`);
+        parts.push(`${heldMb} MB held for ${sharesCount(shares)}`);
     }
     if (pids.length > 0) {
         parts.push(rows === undefined ? "the running steps' trees unknown (the host lists no processes)" : `the running steps' trees use ${pids.reduce((total, pid) => total + treeMb(pid, rows), 0)} MB`);
@@ -54,7 +54,8 @@ function runningLines(state, shares, rows, nowMs, zone) {
             break;
     }
     for (const share of shares) {
-        lines.push(`  ${share.session} (${share.purpose}) shares the host, ${share.reserveMb} MB held for it, for ${spanText(share.acquiredAt, nowMs)}${useText(share.pid, rows)}`);
+        const kind = isHeavyShare(share) ? ' as a heavy step' : '';
+        lines.push(`  ${share.session} (${share.purpose}) shares the host${kind}, ${share.reserveMb} MB held for it, for ${spanText(share.acquiredAt, nowMs)}${useText(share.pid, rows)}`);
     }
     const count = runningPids(state, shares).length;
     return [`RUNNING ${count === 0 ? 'none' : count}`, ...lines];
@@ -77,10 +78,11 @@ function refusalLine(record, zone) {
 }
 /**
  * `teamrig pipeline`: the host's steps now, in one read, taking and removing nothing. HOST: free memory, RAM and the
- * floor, the commit charge, the MB held for the small steps sharing the host, what the running steps' process trees
- * use, and the programs holding the most memory. RUNNING: the lock's holder and each small step, with its run time,
- * the MB held for a small step and what its tree uses. WAITING: the line in order, each with how long it has waited and
- * what its ticket says it waits on, with that wait's numbers. REFUSED: the queued steps of the last day that waited and
+ * floor, the commit charge, the MB held for the steps sharing the host (by kind: heavy, small), what the running steps'
+ * process trees use, and the programs holding the most memory. RUNNING: the lock's holder and each step sharing the
+ * host (a heavy one named so), with its run time, the MB held for it and what its tree uses. WAITING: the line in the
+ * order steps are let in (`HostLock.line`), each with how long it has waited and what its ticket says it waits on, with
+ * that wait's numbers. REFUSED: the queued steps of the last day that waited and
  * did not run, from the ledger. Exit 0.
  */
 export async function pipeline(_args, runtime) {
@@ -90,7 +92,7 @@ export async function pipeline(_args, runtime) {
     const { delivery } = config;
     const zone = teamZone(config, runtime);
     const places = deliveryPlaces(delivery, kit.paths);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, zone);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
     const state = await lock.state();
     const shares = await lock.shares();
     const pids = runningPids(state, shares);
