@@ -3936,11 +3936,15 @@ a declared need holds `delivery.queue.smallReserveMb` (2048). The wait line says
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
 In its turn, while the lock is not held and host memory lets it in, it writes a share in `<lock>.shared` and runs.
 
-A step without `--small` that takes the lock holds it while it waits for the small steps to end. So builds,
-merges, deploys and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing
-the lock, when no small step ended for `waitMinutes`, and its lock is renewed if it had to wait. A share whose process is gone, or that
-expired, is removed by the next step that looks. An older kit does not know shares and may take a free lock while
-small steps run.
+A step without `--small` is a heavy step. With `delivery.queue.admission` `pipeline` (the default) it shares the
+host too, as a heavy share in `<lock>.shared` marked `heavy`, while fewer than `delivery.queue.maxHeavyParallel` (2)
+heavy steps run and host memory lets it in with every running step's MB counted; past that cap it waits
+(`2 heavy steps running, the cap 2: ...`, refused with `heavy cap still reached: ...`), and the lock file stays free. With `serial`, or with `--exclusive`, it
+takes the lock instead and holds it while it waits for every step sharing the host to end, so a step that must run
+alone still does, and no new share is let in meanwhile; a merge and a deploy always take the whole host this way. It
+gives up, releasing the lock, when no share ended for `waitMinutes`, and its lock is renewed if it had to wait. A share
+whose process is gone, or that expired, is removed by the next step that looks. An older kit does not know shares and
+may take a free lock while steps share the host, and reads a heavy share as a small one.
 
 Then it runs the command in the shell at below-normal CPU priority (nice 10 on POSIX), which every process it starts
 inherits, so the owner's terminal and apps win the CPU and the step takes what they leave; a step started at a lower
@@ -4019,6 +4023,9 @@ Flags:
 - `--memory-mb <MB>`: the MB the step needs besides `memoryFloorMb`, held when it is at least the need learned from
   its past runs (see above); a whole number from 1, else refused (exit 64).
 - `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).
+- `--exclusive`: take the whole host, waiting for every step sharing it to end, where a heavy step would share it
+  under `pipeline` admission: for a step that must run alone, such as one timed or one that takes the disk for
+  itself (see above). With `--small`, refused (exit 64).
 - `--pre-push`: a git pre-push hook's checks: reuse or record their pass on this clean tree, and decline a push
   whose checks waited over a minute for the lock (see above).
 
