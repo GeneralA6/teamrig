@@ -266,7 +266,10 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   session's card on the pane's Teams tab (`parseSessionsWeek` reads it).
   With them, `usage/tasks.week.json` holds what each task has cost in the days the meter keeps, at the same rate, for
   a reader that ranks tasks without metering them, such as the pane's lists (`parseTasksWeek` reads it). A task with a
-  size base counts only from that base, as the ranking does, so a reader scores it as `teamrig list` does.
+  size base counts only from that base, as the ranking does, so a reader scores it as `teamrig list` does. The file
+  also holds the median cost of each class and type of task done in the last 14 days, which `teamrig list` sizes an
+  unsized task by, so a reader sizes those as `list` does too (`storedSizing` reads them) without working them out
+  again.
 
 ## Planning the week
 

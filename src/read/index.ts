@@ -46,8 +46,18 @@ export {
   type TreeTask,
   type WaitingOnYou,
 } from '../register/tree.ts';
-// A task's WSJF rank (T2076): what builds a tree's ranking and what scores a row, so a reader ranks as the CLI does.
-export { ownSizing, treeRanking, type RankingFocus, type RankingInput, type Sizing } from '../register/ranking.ts';
+// A task's WSJF rank (T2076): what builds a tree's ranking and what scores a row, so a reader ranks as the CLI does;
+// `storedSizing` sizes the rows from the tasks' week file (T2194), as the CLI sizes them from the meter.
+export {
+  ownSizing,
+  storedSizing,
+  treeRanking,
+  type LikeMedian,
+  type RankingFocus,
+  type RankingInput,
+  type Sizing,
+  type StoredSpend,
+} from '../register/ranking.ts';
 export { bandOf, scoreOf, sizePctOf, valueOf, type Band as ScoreBand, type ScoreFacts, type ScoreFocus, type SizeFacts, type TaskScore } from '../register/score.ts';
 // The park and untriaged rules (T2076 part 2C), so a reader hides and flags the rows the CLI does.
 export { isUntriaged, wouldPark, type Leaders, type ParkFocus, type ParkInput, type ParkRow } from '../register/park.ts';
