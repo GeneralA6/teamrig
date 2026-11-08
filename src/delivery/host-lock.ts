@@ -6,7 +6,7 @@ import type { Clock, Sleep } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { admissionOrder, classOf, placeInLine, type AdmissionRules } from './admission.ts';
-import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
+import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
 import { isLineRequest, type LineRequest } from './process-request.ts';
 import { causeOfLockWait, WAIT_CAUSES, type WaitCause } from './wait-log.ts';
@@ -967,11 +967,14 @@ export class HostLock {
    * `step`'s charge when a step was admitted. It writes the turns file when that changed it (a missing file with no
    * turns stays missing), then removes each ended marker it read that no open charge names. In that order: a step that
    * stops between the two leaves markers whose charges are closed, which the next admission removes, never counting an
-   * end twice.
+   * end twice. A turns file a newer teamrig wrote is kept as it is, its markers too, for a teamrig that reads it.
    */
   private async keepTurns(view: AdmissionView, step: OpenCharge | undefined): Promise<void> {
     const { files } = this.ports;
     const { turns, waiting } = view;
+    if (isNewerTurns(turns.text)) {
+      return;
+    }
     const next = step === undefined ? turns.state : charge(turns.state, step, waiting);
     const text = turnsText(next);
     if (text !== (turns.text ?? turnsText(EMPTY_TURNS))) {

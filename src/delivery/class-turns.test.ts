@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { charge, EMPTY_TURNS, endedAtOf, endedText, parseTurns, settle, turnsFor, turnsText, virtualMinutes, type OpenCharge, type TurnsState } from './class-turns.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
+import { charge, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, TURNS_FORMAT, turnsFor, turnsText, virtualMinutes, type OpenCharge, type TurnsState } from './class-turns.ts';
 
 const AT = '2030-01-08T10:00:00.000Z';
 const AT_MS = Date.parse(AT);
@@ -52,6 +53,29 @@ describe('class turns: the turns file', () => {
       damaged.map((text) => parseTurns(text)),
       damaged.map(() => EMPTY_TURNS),
     );
+  });
+
+  it('writes the pinned fields of its format: a field added to the file raises TURNS_FORMAT', () => {
+    const written: Readonly<Record<number, readonly string[]>> = {
+      1: ['classes.*', 'floor', 'open[].at', 'open[].class', 'open[].minutes', 'open[].pct', 'open[].ticket', 'v'],
+    };
+    const turns = state(3, { Roadmap: 12.5 }, [step('t1', 'Roadmap', 40, 5)]);
+    assert.deepEqual(fieldPaths(JSON.parse(turnsText(turns)), new Set(['classes'])), written[TURNS_FORMAT]);
+  });
+
+  it('reads a file a newer teamrig wrote as no turns, and tells it apart from a missing, damaged or current one', () => {
+    const newer = '{"v": 2, "floor": 3, "classes": {"Roadmap": 12.5}, "open": [], "weights": {}}';
+    const others = [undefined, '{"floor": 1,', '{"v": "two", "floor": 0, "classes": {}, "open": []}', turnsText(state(3, { Roadmap: 12.5 }))];
+    assert.deepEqual([parseTurns(newer), isNewerTurns(newer)], [EMPTY_TURNS, true]);
+    assert.deepEqual(
+      others.map((text) => isNewerTurns(text)),
+      others.map(() => false),
+    );
+  });
+
+  it('reads a file that names no format as the first one', () => {
+    const turns = state(3, { Roadmap: 12.5 });
+    assert.deepEqual(parseTurns('{"floor": 3, "classes": {"Roadmap": 12.5}, "open": []}'), turns);
   });
 
   it('writes and reads a step\'s end marker, and reads a damaged one as no end', () => {

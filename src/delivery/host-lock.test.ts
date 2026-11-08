@@ -1411,7 +1411,7 @@ const ENDED = `${PATH}.ended`;
 
 /** The turns file `[path, text]`: each class's virtual time, the open charges and the floor. */
 function turnsFile(classes: Readonly<Record<string, number>>, open: readonly OpenCharge[] = [], floor: number = 0): [string, string] {
-  return [TURNS, JSON.stringify({ floor, classes, open })];
+  return [TURNS, JSON.stringify({ v: 1, floor, classes, open })];
 }
 
 /** What the turns file says, read back; undefined when there is none. */
@@ -1447,7 +1447,7 @@ describe('HostLock class turns (T2210)', () => {
       const { files, lock } = world({}, undefined, undefined, PIPELINE);
       const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { ...(need === undefined ? {} : { need }), request: REQUEST });
       assert.equal(taking.kind, 'taken');
-      assert.deepEqual(turnsIn(files), { floor: 0, classes: { Maintenance: turn }, open: [{ ...maintenance('t1'), minutes }] }, `${minutes} minutes at 25% is ${turn}`);
+      assert.deepEqual(turnsIn(files), { v: 1, floor: 0, classes: { Maintenance: turn }, open: [{ ...maintenance('t1'), minutes }] }, `${minutes} minutes at 25% is ${turn}`);
     });
   }
 
@@ -1471,7 +1471,7 @@ describe('HostLock class turns (T2210)', () => {
       const second = await lock.acquire('alpha', 'heavy: lint', 0, 30_000, () => undefined, ask);
       assert.equal(second.kind, 'taken');
       // 30 minutes run where 5 were charged at 25%: 20 + 100; then the second step's 5 minutes: 140.
-      assert.deepEqual(turnsIn(files), { floor: 120, classes: { Maintenance: 140 }, open: [maintenance('t2', '2030-01-08T10:30:00.000Z')] });
+      assert.deepEqual(turnsIn(files), { v: 1, floor: 120, classes: { Maintenance: 140 }, open: [maintenance('t2', '2030-01-08T10:30:00.000Z')] });
       assert.deepEqual(await files.list(ENDED), []);
     });
   }
@@ -1482,7 +1482,7 @@ describe('HostLock class turns (T2210)', () => {
     const taken = await dead.lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
     const live = world(Object.fromEntries([preset, [PATH, heldBy({ id: 'gone' })]]), undefined, undefined, PIPELINE);
     const busy = await live.lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
-    assert.deepEqual([taken.kind, turnsIn(dead.files)], ['taken', { floor: 20, classes: { Maintenance: 40 }, open: [maintenance('t1')] }]);
+    assert.deepEqual([taken.kind, turnsIn(dead.files)], ['taken', { v: 1, floor: 20, classes: { Maintenance: 40 }, open: [maintenance('t1')] }]);
     assert.deepEqual([busy.kind, live.files.get(TURNS)], ['busy', preset[1]], 'the running step keeps its charge, and the file stays as it was');
   });
 
@@ -1493,14 +1493,25 @@ describe('HostLock class turns (T2210)', () => {
     const { files, lock } = world(initial, undefined, new FakeHostMemory(16_000), PIPELINE);
     const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
     assert.equal(taking.kind, 'taken', "Maintenance's 10 is under the waiting Roadmap's 50");
-    assert.deepEqual(turnsIn(files), { floor: 10, classes: { Maintenance: 30, Roadmap: 50, Idle: 10, Busy: 0 }, open: [running, maintenance('t1')] });
+    assert.deepEqual(turnsIn(files), { v: 1, floor: 10, classes: { Maintenance: 30, Roadmap: 50, Idle: 10, Busy: 0 }, open: [running, maintenance('t1')] });
   });
 
   it('reads a damaged turns file as no turns, so priority orders the line, and writes the file whole at the admission', async () => {
     const { files, lock } = world(Object.fromEntries([bravoAt(3), [TURNS, '{"floor":']]), undefined, undefined, PIPELINE);
     const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: roadmap });
     assert.equal(taking.kind, 'taken', 'its p1 passes the p3 waiter');
-    assert.deepEqual(turnsIn(files), { floor: 0, classes: { Roadmap: 10 }, open: [{ ticket: 't1', class: 'Roadmap', pct: 50, at: '2030-01-08T10:00:00.000Z', minutes: 5 }] });
+    assert.deepEqual(turnsIn(files), { v: 1, floor: 0, classes: { Roadmap: 10 }, open: [{ ticket: 't1', class: 'Roadmap', pct: 50, at: '2030-01-08T10:00:00.000Z', minutes: 5 }] });
+  });
+
+  it('keeps a turns file a newer teamrig wrote as it is, its end marks too, and orders the line by priority', async () => {
+    // Read, these turns would give the earlier p3 Maintenance waiter its class's turn before alpha's Roadmap step.
+    const newer = '{"v":2,"floor":0,"classes":{"Maintenance":0,"Roadmap":100},"open":[],"weights":{}}';
+    const mark = `${ENDED}/gone.json`;
+    const { files, lock } = world(Object.fromEntries([bravoAt(3), [TURNS, newer], [mark, '{"endedAt":"2030-01-08T09:30:00.000Z"}']]), undefined, undefined, PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: roadmap });
+    assert.ok(taking.kind === 'taken', 'its p1 passes the p3 waiter');
+    assert.equal(await lock.release(taking.lock), true);
+    assert.deepEqual([files.get(TURNS), await files.list(ENDED)], [newer, ['gone.json']]);
   });
 
   it("counts an older kit's ticket, which names no request, in the default class", async () => {
