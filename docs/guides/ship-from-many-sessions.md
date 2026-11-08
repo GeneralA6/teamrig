@@ -20,8 +20,9 @@ in, from its worktree to the task's proof, in
 
 ## One host lock
 
-`teamrig queue` runs one queued step, such as a build, a test run or a database script, under the host lock, so the
-host's queued steps run one at a time instead of competing for its CPU and memory:
+`teamrig queue` runs one queued step, such as a build, a test run or a database script, in its turn under the host
+lock, so the host runs only as many queued steps at once as its memory allows instead of letting them compete for its
+CPU and memory:
 
 ```sh
 teamrig queue --session api --what "build api" -- npm run build
@@ -34,32 +35,34 @@ teamrig queue --session api --what "test api" -- teamrig test -- npm test
 DONE exit 0
 ```
 
-Waiting steps take the lock in admission order, each told its place in line: an incident's (p0) step first, then the
+Waiting steps go in admission order, each told its place in line: an incident's (p0) step first, then the
 work class whose turn it is, so each class gets its `focus.allocation` share of the host's run time, then the task's
 priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, then arrival. A session runs at most
 `delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it.
-`delivery.queue.admission: serial` keeps the line in arrival order with no cap. A step is refused once its line has not
+`delivery.queue.admission: serial` keeps the line in arrival order with no cap and one heavy step at a time. A step is refused once its line has not
 moved for `delivery.queue.waitMinutes` (60), and one that runs is killed, with every process it started, after
 `delivery.queue.maxRunMinutes` (45; `--max-minutes` for one step). A test run wrapped in `teamrig test`, as
 above, gets both the lock and the short summary. The lock is `host.lock` in the kit home, one for every team on the
 host, unless `delivery.queue.lockPath` names another; a lock past `lockTtlMinutes` (150), or whose process is
-gone, is taken over.
+gone, is taken over by the next step that takes the lock (a step that shares the host leaves it).
 
 A step runs at below-normal CPU priority (nice 10 on POSIX), and every process it starts inherits it, as do a merge's
 and a deploy's commands and checks: your terminal and apps win the CPU while it runs, and it takes what they leave,
 so a build on a busy host no longer freezes your screen.
 
 Every step, merge and deploy waits in its turn for host memory: it starts only while the host's free memory, less
-what the running small steps hold, leaves `delivery.queue.memoryFloorMb` (4096) plus its own, and the commit charge
+what the steps sharing the host hold, leaves `delivery.queue.memoryFloorMb` (4096) plus its own, and the commit charge
 stays under `open.headroom.commitMaxPct` (92) with its own counted, so a build no longer starts on a host about to
 run out of memory. A step's own is the most its process tree held in its latest 20 runs under the same session and
-`--what`, plus a quarter: at least `heavyReserveMb` (2048) for a step that takes the lock, else `smallReserveMb`
-(2048) before it has a run.
+`--what`, plus a quarter: at least `heavyReserveMb` (2048) for a heavy step, else `smallReserveMb` (2048) before it
+has a run.
 
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
-of taking the lock. A small
-step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step waiting for the lock. A step
-that takes the lock waits for the small steps to end, so builds, merges, deploys and full suites still run alone.
+of taking the lock. A small step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step
+waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) shares the host too, at
+most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in memory no longer wait for each other.
+A merge, a deploy and a step queued with `--exclusive` take the lock instead and wait for every step sharing the host
+to end, so they still run alone; with `admission: serial` every heavy step does.
 
 A repository's git hooks can wrap their checks in `teamrig queue`, so a plain `git commit` takes the host lock for
 its hook. A step started under the lock (a hook run by a merge's push, say) runs at once, as part of its
@@ -324,7 +327,7 @@ JOB 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig job en
 
 ## The deploy state in one read
 
-`teamrig deploy-status` prints the state now: who holds the host lock and which small steps share the host, the queue
+`teamrig deploy-status` prints the state now: who holds the host lock and which steps share the host, heavy ones first, the queue
 cutoff (its `heavy cutoff:` line) and the reset blackout (each marked IN FORCE while it holds), the deploy freezes
 and background jobs still open (its `claims:` and `loads:` lines), and what each repository with a deploy block has
 pushed but not deployed, with why a deploy would refuse it.
