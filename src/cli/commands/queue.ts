@@ -105,6 +105,18 @@ async function refuseWaited(runtime: CliRuntime, ledger: string, waits: WaitLog,
 }
 
 /**
+ * `--exclusive`: the step takes the whole host (the lock file), waiting for every step sharing it, where a heavy step
+ * would share the host under `pipeline` admission. A small step shares by definition, so the two flags refuse together.
+ */
+function exclusiveOf(args: ParsedArgs, small: boolean): boolean {
+  const exclusive = args.switches.has('exclusive');
+  if (exclusive && small) {
+    throw new UsageError('--exclusive takes the whole host and --small shares it: give one of them');
+  }
+  return exclusive;
+}
+
+/**
  * What the step asks of the host (`stepNeedOf`): its need learned from its own past runs in the ledger, or its
  * `--memory-mb`, else the config's default, so a step known to need more waits for that much room.
  */
@@ -275,10 +287,11 @@ interface Step {
  * get `$TEAMRIG_HOST_LOCK`, so a `queue` among them (a git hook's checks) runs at once under this lock. Every step
  * waits in its turn until the host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small
  * steps sharing the host (`hostLockOf`'s memory gate): its need learned from its past runs or declared with
- * `--memory-mb` (`needOf`), at least `heavyReserveMb` for a step that takes the lock. With `--small` (a spec run, a
- * lint) the step shares the host with other small steps instead, holding its need or `smallReserveMb`; a step without
- * it waits for them to end. A small step is killed after `smallMaxRunMinutes` instead, and its `--max-minutes` goes no
- * higher. Once the shell that started it ends (Claude Code's
+ * `--memory-mb` (`needOf`), at least `heavyReserveMb` for a heavy step. With `--small` (a spec run, a lint) the step
+ * shares the host with other small steps, holding its need or `smallReserveMb`; a heavy step shares it too under
+ * `pipeline` admission, at most `maxHeavyParallel` at once, and takes the lock, waiting for every share to end, under
+ * `serial` or with `--exclusive`. A small step is killed after `smallMaxRunMinutes` instead, and its `--max-minutes`
+ * goes no higher. Once the shell that started it ends (Claude Code's
  * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
  * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
  * one when they pass, and declines a push whose checks waited past PRE_PUSH_MAX_WAIT_MS for the lock (push-pass.ts).
@@ -295,6 +308,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const zone = teamZone(config, runtime);
   const say = logLineOf(runtime, zone);
   const small = args.switches.has('small');
+  const exclusive = exclusiveOf(args, small);
   const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
   const places = deliveryPlaces(delivery, kit.paths);
   const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
@@ -332,7 +346,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
           waits.tell({ cause: causeOfLockWait(holder), text });
           say(text);
         },
-        { need, request: line },
+        { need, request: line, exclusive },
         watching.stop,
       ),
     );

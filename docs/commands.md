@@ -399,8 +399,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       leads, the lead any, and any session one on a detached HEAD whose every commit is on the branch
       origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too, once every
       commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
-  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--memory-mb <MB>] [--small] [--pre-push] -- <command ...>   runs one queued step
-      (a build, a test run, a database script) under the host lock, so the host runs one at a time, and at
+  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--memory-mb <MB>] [--small] [--exclusive] [--pre-push] -- <command ...>   runs one queued step
+      (a build, a test run, a database script) in its turn under the host lock, so the host runs only what its memory allows, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
       delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
@@ -420,8 +420,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       delivery.queue.heavyReserveMb without --small, else with neither delivery.queue.smallReserveMb.
       The wait line says where a learned or declared need came from. --small (a spec run, a lint):
       shares the host with other small steps and is killed after delivery.queue.smallMaxRunMinutes
-      (--max-minutes up to it); a step without --small waits for them to end, and a step waiting
-      behind it is told which. --pre-push (a git pre-push hook's checks): on a clean tree
+      (--max-minutes up to it). A step without --small shares the host as a heavy step under
+      delivery.queue.admission pipeline, at most delivery.queue.maxHeavyParallel at once; under serial,
+      or with --exclusive (a step that must run alone; never with --small), it takes the whole host and waits for every
+      step sharing it to end, and a step waiting behind it is told which. --pre-push (a git pre-push hook's checks): on a clean tree
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass

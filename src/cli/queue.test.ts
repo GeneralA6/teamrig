@@ -700,6 +700,49 @@ describe('teamrig queue --small', () => {
   });
 });
 
+describe('teamrig queue --exclusive', () => {
+  const EXCLUSIVE = ['queue', '--session', 'alpha', '--what', 'build api', '--exclusive', '--', 'npm', 'run', 'build'];
+
+  it('takes the whole host under the default pipeline admission: the lock file, no share, recorded as not shared (T2210)', async () => {
+    const { kit, steps } = harness();
+    let whileRunning: unknown[] = [];
+    steps.ends(0, 5 * MINUTE).whileRunning(async () => {
+      whileRunning = [JSON.parse(kit.files.get(LOCK) ?? '{}'), kit.files.get(`${SHARED}/id-1.json`)];
+    });
+    const result = await kit.run(EXCLUSIVE, { steps });
+    assert.deepEqual(result, { code: 0, stdout: ['2030-01-08 10:00:02 UTC running: build api (killed after 45m)', 'DONE exit 0'], stderr: [] });
+    const lock = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z' };
+    assert.deepEqual(whileRunning, [lock, undefined]);
+    assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }]);
+  });
+
+  it('asks for the whole host on its ticket and waits for the small steps sharing it to end, then refuses, leaving no lock (T2210)', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    await kit.files.append(`${SHARED}/other.json`, sharedBy());
+    const requests: unknown[] = [];
+    const sleep = async (ms: number): Promise<void> => {
+      requests.push(...(await lineRequests(kit.files, LOCK)));
+      await kit.clock.sleep(ms);
+    };
+    const result = await kit.run(EXCLUSIVE, { steps, sessionProcesses: otherRuns(), sleep });
+    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:02 UTC waiting for the host lock: ${held}`, `REFUSED host lock still held by ${held}`], stderr: [] });
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(`${SHARED}/other.json`)], [[], undefined, sharedBy()]);
+    const request = { kind: 'build', class: 'Improvements', classPct: 15, needMb: 2048, heavy: true, exclusive: true };
+    assert.deepEqual([requests.length > 0, requests.filter((seen) => !isDeepStrictEqual(seen, request))], [true, []]);
+  });
+
+  it('refuses --exclusive with --small as a usage error, before it waits or records anything (T2210)', async () => {
+    const { kit, steps } = harness();
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'specs', '--small', '--exclusive', '--', 'npm', 'test'], { steps });
+    assert.equal(result.code, EXIT.usage);
+    assert.match(result.stderr.join('\n'), /--exclusive takes the whole host and --small shares it: give one of them/);
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
+  });
+});
+
 
 describe('teamrig queue --pre-push', () => {
   const PRE_PUSH = ['queue', '--session', 'alpha', '--what', 'pre-push checks', '--pre-push', '--', 'npm', 'test'];
