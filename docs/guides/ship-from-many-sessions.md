@@ -34,7 +34,11 @@ teamrig queue --session api --what "test api" -- teamrig test -- npm test
 DONE exit 0
 ```
 
-Waiting steps take the lock in arrival order, each told its place in line. A step is refused once its line has not
+Waiting steps take the lock in admission order, each told its place in line: an incident's (p0) step first, then the
+work class whose turn it is, so each class gets its `focus.allocation` share of the host's run time, then the task's
+priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, then arrival. A session runs at most
+`delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it.
+`delivery.queue.admission: serial` keeps the line in arrival order with no cap. A step is refused once its line has not
 moved for `delivery.queue.waitMinutes` (60), and one that runs is killed, with every process it started, after
 `delivery.queue.maxRunMinutes` (45; `--max-minutes` for one step). A test run wrapped in `teamrig test`, as
 above, gets both the lock and the short summary. The lock is `host.lock` in the kit home, one for every team on the
