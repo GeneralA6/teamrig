@@ -3366,13 +3366,18 @@ A current config prints `UNCHANGED <path> needs no migration`, and one from a ne
 ### teamrig automode install
 
 Writes the team's lines into Claude Code's `autoMode.environment` setting on this machine: the facts auto mode's
-classifier takes as true when it decides whether a tool call may run without asking. There are five, each starting
+classifier takes as true when it decides whether a tool call may run without asking. There are six, each starting
 with the team's tag `[teamrig <team>] `: the protected branches and what a push to one does (from the config's
 `pushGuard` and `roles.lead`), the register commands every session runs (they write only under the team's folder),
 what `teamrig queue` and `teamrig test` wrap (nothing is granted: the command after `--` is judged on its own),
-that every session may run `teamrig worktree remove`, which removes only the worktrees the session may remove, and
+that every session may run `teamrig worktree remove`, which removes only the worktrees the session may remove,
 that every session may rebase its own branch in its own worktree onto the fresh default branch and push it back to
-that branch with `--force-with-lease` (a protected branch is never rebased). A plugin cannot ship these (its settings take only `agent` and `subagentStatusLine`), so this writes them into your
+that branch with `--force-with-lease` (a protected branch is never rebased), and that in its own worktree editing,
+`git rm` or `git mv` of a clean tracked file (git restores it) is ordinary code editing, not destruction. That last
+line keeps out what git cannot restore or what guards the session: a file with uncommitted changes, an untracked or
+ignored one, a script the session has not read, `rm -rf` of a folder, git commands that discard work or history,
+another session's worktree, a main checkout, and agent config and gates (`.claude/`, `CLAUDE.md`, `.husky/`, git
+hooks). A plugin cannot ship these (its settings take only `agent` and `subagentStatusLine`), so this writes them into your
 own Claude Code settings (`settings.json` in `$CLAUDE_CONFIG_DIR`, else in `~/.claude`). The lines replace the
 team's tagged lines where they were, else go at the end; your own lines and other teams' tagged lines stay as they
 are. With no list yet, the new one starts with `"$defaults"`, so Claude Code's built-in entries stay on; a list you
@@ -3402,6 +3407,7 @@ WROTE the changes below; the old settings file is at /home/me/.teamrig/backups/c
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig queue ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (queue waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session lead), and refuses the main checkout, uncommitted work and a branch with a commit not on its base.
   ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Every session may rebase its own branch in its own git worktree onto the fresh default branch (`git fetch`, then `git rebase origin/<branch>` or `git pull --rebase`, and `git rebase --continue` or `--abort` to settle a stopped one): it rewrites only that session's own commits not yet merged. A branch it pushed before goes back with `git push --force-with-lease` to that same branch. A protected branch (main, master) is never rebased, nor a repo's main checkout.
+  ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] In a session's own git worktree on its own branch, a file git tracks with no uncommitted change (clean in `git status`) comes back with `git restore`, so editing it with Edit or Write, deleting or moving it with `git rm` (without `-f`) or `git mv`, or running a script the session wrote or read in full whose writes stay in that worktree, is ordinary code editing, not destruction. It does not cover `rm -rf` of a folder (it also deletes untracked and ignored files, and can follow a junction into the main checkout), git commands that discard work or history (`reset --hard`, `checkout --` or `restore` over uncommitted changes, `clean`, `stash drop` or `clear`, `branch -D`, `git worktree remove`, `gc --prune`, `reflog expire`), a file with uncommitted changes, an untracked or ignored file, another session's worktree, a repo's main checkout, or agent config and gates even when tracked (`.claude/`, `CLAUDE.md`, `.husky/`, git hooks).
 ```
 
 A line that changed shows as `REMOVE` (the old text) and `ADD` (the new). `UNCHANGED <settings>: team <team>'s lines
@@ -3434,6 +3440,7 @@ PREVIEW nothing written (add --yes to write)
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig queue ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (queue waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig worktree remove <path> [--delete-branch]` is how a session removes its finished worktree, and every session may run it: teamrig itself removes only a worktree whose t<id>- branch names a task the session owns or one of a session it leads (any for the lead, session lead), and refuses the main checkout, uncommitted work and a branch with a commit not on its base.
   REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Every session may rebase its own branch in its own git worktree onto the fresh default branch (`git fetch`, then `git rebase origin/<branch>` or `git pull --rebase`, and `git rebase --continue` or `--abort` to settle a stopped one): it rewrites only that session's own commits not yet merged. A branch it pushed before goes back with `git push --force-with-lease` to that same branch. A protected branch (main, master) is never rebased, nor a repo's main checkout.
+  REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] In a session's own git worktree on its own branch, a file git tracks with no uncommitted change (clean in `git status`) comes back with `git restore`, so editing it with Edit or Write, deleting or moving it with `git rm` (without `-f`) or `git mv`, or running a script the session wrote or read in full whose writes stay in that worktree, is ordinary code editing, not destruction. It does not cover `rm -rf` of a folder (it also deletes untracked and ignored files, and can follow a junction into the main checkout), git commands that discard work or history (`reset --hard`, `checkout --` or `restore` over uncommitted changes, `clean`, `stash drop` or `clear`, `branch -D`, `git worktree remove`, `gc --prune`, `reflog expire`), a file with uncommitted changes, an untracked or ignored file, another session's worktree, a repo's main checkout, or agent config and gates even when tracked (`.claude/`, `CLAUDE.md`, `.husky/`, git hooks).
 ```
 
 `UNCHANGED <settings>: team <team> has no lines there` when it has none.
