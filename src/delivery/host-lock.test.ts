@@ -9,6 +9,7 @@ import type { Files } from '../core/files.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { AdmissionRules } from './admission.ts';
+import type { OpenCharge } from './class-turns.ts';
 import {
   busyText,
   FIRST_IN_LINE_POLL_MS,
@@ -139,7 +140,7 @@ function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep
   });
 }
 
-type Operation = 'read' | 'write' | 'createExclusive';
+type Operation = 'read' | 'write' | 'createExclusive' | 'remove';
 
 /** Files in memory where another process acts once, right after this one first does \`operation\` on a path \`at\` picks. */
 class Interleaved extends MemoryFiles {
@@ -169,6 +170,12 @@ class Interleaved extends MemoryFiles {
     const created = await super.createExclusive(path, text);
     await this.after('createExclusive', path);
     return created;
+  }
+
+  override async remove(path: string): Promise<boolean> {
+    const removed = await super.remove(path);
+    await this.after('remove', path);
+    return removed;
   }
 
   private async after(operation: Operation, path: string): Promise<void> {
@@ -1397,4 +1404,126 @@ describe('HostLock admission (T2210)', () => {
       ['another step being admitted', 'host lock still held by another step being admitted', 'another step being admitted'],
     );
   });
+});
+
+const TURNS = `${PATH}.turns.json`;
+const ENDED = `${PATH}.ended`;
+
+/** The turns file `[path, text]`: each class's virtual time, the open charges and the floor. */
+function turnsFile(classes: Readonly<Record<string, number>>, open: readonly OpenCharge[] = [], floor: number = 0): [string, string] {
+  return [TURNS, JSON.stringify({ floor, classes, open })];
+}
+
+/** What the turns file says, read back; undefined when there is none. */
+function turnsIn(files: MemoryFiles): unknown {
+  const text = files.get(TURNS);
+  return text === undefined ? undefined : JSON.parse(text);
+}
+
+/** The charge alpha's step `ticket` opened in REQUEST's class (Maintenance, 25%) when it was admitted at `at`. */
+function maintenance(ticket: string, at: string = '2030-01-08T10:00:00.000Z'): OpenCharge {
+  return { ticket, class: 'Maintenance', pct: 25, at, minutes: 5 };
+}
+
+describe('HostLock class turns (T2210)', () => {
+  const roadmap: LineRequest = { ...REQUEST, class: 'Roadmap', classPct: 50 };
+
+  it('lets the class with the least virtual time go first, past an earlier waiter at a more urgent priority', async () => {
+    const results: string[] = [];
+    const presets: Readonly<Record<string, string>>[] = [{}, Object.fromEntries([turnsFile({ Maintenance: 100, Roadmap: 10 })])];
+    for (const preset of presets) {
+      const { lock } = world({ ...Object.fromEntries([bravoAt(1)]), ...preset }, undefined, undefined, PIPELINE);
+      const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: { ...roadmap, priority: 3 } });
+      results.push(taking.kind === 'busy' && taking.holder.kind === 'queued' ? `queued behind ${taking.holder.first.id}` : taking.kind);
+    }
+    assert.deepEqual(results, ['queued behind bravo', 'taken'], "with no turns, priority decides; with turns, it is Roadmap's turn");
+  });
+
+  for (const [label, need, minutes, turn] of [
+    ['the minutes its need expects', { shares: false, reserveMb: 0, expectedMinutes: 12 }, 12, 48],
+    ['5 minutes when its need learned none', undefined, 5, 20],
+  ] as const) {
+    it(`charges the class of a step it admits ${label}, the charge kept open under its ticket's id`, async () => {
+      const { files, lock } = world({}, undefined, undefined, PIPELINE);
+      const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { ...(need === undefined ? {} : { need }), request: REQUEST });
+      assert.equal(taking.kind, 'taken');
+      assert.deepEqual(turnsIn(files), { floor: 0, classes: { Maintenance: turn }, open: [{ ...maintenance('t1'), minutes }] }, `${minutes} minutes at 25% is ${turn}`);
+    });
+  }
+
+  for (const [label, need, held] of [
+    ['its lock', undefined, PATH],
+    ["a small step's share", SMALL, `${SHARED}/t1.json`],
+  ] as const) {
+    it(`marks a step's end before ${label} goes; the next admission corrects its charge to the minutes it ran and removes the mark`, async () => {
+      const marks: (string | undefined)[] = [];
+      const files = new Interleaved({}, 'remove', (at) => at.replaceAll('\\', '/') === held, async (store) => {
+        marks.push(store.get(`${ENDED}/t1.json`));
+      });
+      const clock = new FakeClock('2030-01-08T10:00:00Z');
+      const lock = lockOver(files, clock, ME, clock.sleep, PIPELINE);
+      const ask = { ...(need === undefined ? {} : { need }), request: REQUEST };
+      const first = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, ask);
+      assert.ok(first.kind === 'taken');
+      clock.advance(30 * 60_000);
+      assert.equal(await lock.release(first.lock), true);
+      assert.deepEqual(marks, ['{"endedAt":"2030-01-08T10:30:00.000Z"}'], 'the mark is there once it is gone');
+      const second = await lock.acquire('alpha', 'heavy: lint', 0, 30_000, () => undefined, ask);
+      assert.equal(second.kind, 'taken');
+      // 30 minutes run where 5 were charged at 25%: 20 + 100; then the second step's 5 minutes: 140.
+      assert.deepEqual(turnsIn(files), { floor: 120, classes: { Maintenance: 140 }, open: [maintenance('t2', '2030-01-08T10:30:00.000Z')] });
+      assert.deepEqual(await files.list(ENDED), []);
+    });
+  }
+
+  it("closes the charge of a step that died before marking its end, its estimate standing, and keeps a running step's charge open", async () => {
+    const preset = turnsFile({ Maintenance: 20 }, [maintenance('gone', '2030-01-08T09:00:00.000Z')]);
+    const dead = world(Object.fromEntries([preset]), undefined, undefined, PIPELINE);
+    const taken = await dead.lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
+    const live = world(Object.fromEntries([preset, [PATH, heldBy({ id: 'gone' })]]), undefined, undefined, PIPELINE);
+    const busy = await live.lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: REQUEST });
+    assert.deepEqual([taken.kind, turnsIn(dead.files)], ['taken', { floor: 20, classes: { Maintenance: 40 }, open: [maintenance('t1')] }]);
+    assert.deepEqual([busy.kind, live.files.get(TURNS)], ['busy', preset[1]], 'the running step keeps its charge, and the file stays as it was');
+  });
+
+  it('lifts a class idle while others ran to the floor at an admission, but not a class whose step still runs', async () => {
+    const running: OpenCharge = { ticket: 'other', class: 'Busy', pct: 10, at: '2030-01-08T09:50:00.000Z', minutes: 30 };
+    const waiting = ticket(waiterOf('2030-01-08T09:59:00.000Z', { request: { ...roadmap, needMb: 0, heavy: true } }));
+    const initial = Object.fromEntries([turnsFile({ Maintenance: 10, Roadmap: 50, Idle: 0, Busy: 0 }, [running]), shareFile(shareOf()), waiting]);
+    const { files, lock } = world(initial, undefined, new FakeHostMemory(16_000), PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    assert.equal(taking.kind, 'taken', "Maintenance's 10 is under the waiting Roadmap's 50");
+    assert.deepEqual(turnsIn(files), { floor: 10, classes: { Maintenance: 30, Roadmap: 50, Idle: 10, Busy: 0 }, open: [running, maintenance('t1')] });
+  });
+
+  it('reads a damaged turns file as no turns, so priority orders the line, and writes the file whole at the admission', async () => {
+    const { files, lock } = world(Object.fromEntries([bravoAt(3), [TURNS, '{"floor":']]), undefined, undefined, PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: roadmap });
+    assert.equal(taking.kind, 'taken', 'its p1 passes the p3 waiter');
+    assert.deepEqual(turnsIn(files), { floor: 0, classes: { Roadmap: 10 }, open: [{ ticket: 't1', class: 'Roadmap', pct: 50, at: '2030-01-08T10:00:00.000Z', minutes: 5 }] });
+  });
+
+  it("counts an older kit's ticket, which names no request, in the default class", async () => {
+    const older = waiterOf('2030-01-08T09:59:00.000Z', { id: 'older' });
+    const results: string[] = [];
+    for (const classes of [{ Improvements: 100, Maintenance: 10 }, { Improvements: 10, Maintenance: 100 }]) {
+      const { lock } = world(Object.fromEntries([ticket(older), turnsFile(classes)]), undefined, undefined, PIPELINE);
+      const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { request: { ...REQUEST, priority: 3 } });
+      results.push(taking.kind === 'busy' && taking.holder.kind === 'queued' ? `queued behind ${taking.holder.first.id}` : taking.kind);
+    }
+    assert.deepEqual(results, ['taken', 'queued behind older']);
+  });
+
+  for (const [label, admission, ask] of [
+    ['serial rules', { ...PIPELINE, mode: 'serial' }, { request: REQUEST }],
+    ['a step that names no request', PIPELINE, {}],
+  ] as const) {
+    it(`writes no turns file and marks no end for ${label}`, async () => {
+      const { files, lock } = world({}, undefined, undefined, admission);
+      const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, ask);
+      assert.ok(taking.kind === 'taken');
+      assert.equal(await lock.release(taking.lock), true);
+      assert.deepEqual([files.get(TURNS), await files.list(ENDED)], [undefined, []]);
+    });
+  }
 });

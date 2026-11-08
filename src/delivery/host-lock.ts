@@ -5,7 +5,8 @@ import { ENV, type Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { admissionOrder, placeInLine, type AdmissionRules, type ClassTurns } from './admission.ts';
+import { admissionOrder, classOf, placeInLine, type AdmissionRules } from './admission.ts';
+import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
 import { isLineRequest, type LineRequest } from './process-request.ts';
 import { causeOfLockWait, WAIT_CAUSES, type WaitCause } from './wait-log.ts';
@@ -99,6 +100,23 @@ interface OwnTicket {
 interface LinePlace {
   readonly ahead: readonly LockWaiter[];
   readonly capped?: SessionCapWait;
+}
+
+/**
+ * The class turns as one look found them: the turns file's text (undefined when there is none), its state once the
+ * steps' ends were read, and the names of the ended markers read.
+ */
+interface TurnsLook {
+  readonly text: string | undefined;
+  readonly state: TurnsState;
+  readonly markers: readonly string[];
+}
+
+/** A waiter's place in the admission order, with the class turns it was ordered by and the classes with a step in line, its own among them. */
+interface AdmissionView {
+  readonly place: LinePlace;
+  readonly turns: TurnsLook;
+  readonly waiting: ReadonlySet<string>;
 }
 
 /** One look in line: the waiters ahead that this step may not pass, and what it found. */
@@ -264,14 +282,21 @@ function isAdmitClaim(value: unknown): value is AdmitClaim {
   return isRecord(value) && typeof value['ticket'] === 'string' && typeof value['pid'] === 'number' && isTime(value['expiresAt']);
 }
 
-/** Every class at one turn, so admission orders the line by urgency, aged priority and arrival alone. */
-const NO_TURNS: ClassTurns = new Map();
-
 /** A ticket's name; a writer's temporary sibling (`<name>.<pid>.<n>.tmp`) does not match. */
 const TICKET_NAME = /^\d{15}-[^/\\]+\.json$/;
 
 /** A share's name, its id's; a writer's temporary sibling does not match. */
 const SHARE_NAME = /^[^/\\]+\.json$/;
+
+/** An ended marker's name, its step's id's, as a share's is. */
+const MARKER_NAME = SHARE_NAME;
+
+const MARKER_SUFFIX = '.json';
+
+/** The id of the step an ended marker named `name` (one {@link MARKER_NAME} matches) is for. */
+function markerId(name: string): string {
+  return name.slice(0, -MARKER_SUFFIX.length);
+}
 
 function byAcquiredAt(a: HostLockInfo, b: HostLockInfo): number {
   return Date.parse(a.acquiredAt) - Date.parse(b.acquiredAt);
@@ -639,6 +664,8 @@ export class HostLock {
   private readonly queue: string;
   private readonly shared: string;
   private readonly admit: string;
+  private readonly turns: string;
+  private readonly ended: string;
   private readonly ttlMs: number;
   private readonly ports: HostLockPorts;
 
@@ -647,6 +674,8 @@ export class HostLock {
     this.queue = `${path}.queue`;
     this.shared = `${path}.shared`;
     this.admit = `${path}.admit`;
+    this.turns = `${path}.turns.json`;
+    this.ended = `${path}.ended`;
     this.ttlMs = ttlMs;
     this.ports = ports;
   }
@@ -722,8 +751,12 @@ export class HostLock {
     }
   }
 
-  /** Releases a lock or share this step took; false when it is no longer the holder (it expired and another step took it). */
+  /**
+   * Releases a lock or share this step took; false when it is no longer the holder (it expired and another step took
+   * it). Its end is marked first while its class's charge is open ({@link markEnded}).
+   */
   async release(lock: HostLockInfo): Promise<boolean> {
+    await this.markEnded(lock.id);
     if (await this.removeAt(this.path, (text) => parseLock(text)?.id === lock.id)) {
       return true;
     }
@@ -733,6 +766,20 @@ export class HostLock {
     }
     await this.ports.files.remove(share.path);
     return true;
+  }
+
+  /**
+   * Marks the end of the step that took `id` (`<lock>.ended/<id>.json`) while its class's charge in the turns file is
+   * open, so the next admission corrects that charge to the minutes the step ran. It is written before the lock or share
+   * goes ({@link turnsLook} says why); a step admitted with no charge (`serial`, or no request) marks nothing.
+   */
+  private async markEnded(id: string): Promise<void> {
+    const { files, clock } = this.ports;
+    const name = `${id}${MARKER_SUFFIX}`;
+    if (!MARKER_NAME.test(name) || !parseTurns(await files.read(this.turns)).open.some(({ ticket }) => ticket === id)) {
+      return;
+    }
+    await files.write(join(this.ended, name), endedText(new Date(clock.now()).toISOString()));
   }
 
   /** The lock or share while the taking with `id` holds it and it is not stale; undefined otherwise. Takes and removes nothing. */
@@ -821,8 +868,9 @@ export class HostLock {
 
   /**
    * One look in line: in arrival order (no admission rules, or `serial`), or in admission order (`pipeline`), where a
-   * step that finds itself first looks again under the admit file and takes its turn there; while another step holds
-   * that file, it waits on it (`admitting`). Undefined once its ticket is gone, withdrawn.
+   * step that finds itself first looks again under the admit file and takes its turn there, keeping the class turns
+   * ({@link keepTurns}); while another step holds that file, it waits on it (`admitting`). Undefined once its ticket is
+   * gone, withdrawn.
    */
   private async lookInLine(ticket: OwnTicket, removeUnknown: boolean, need: StepNeed | undefined): Promise<LineLook | undefined> {
     const { admission } = this.ports;
@@ -830,12 +878,12 @@ export class HostLock {
       const ahead = await this.waitersAhead(ticket.name);
       return ahead === undefined ? undefined : { ahead, look: await this.inTurn(ticket.waiter, ahead, removeUnknown, need) };
     }
-    const place = await this.placeOf(ticket, admission);
-    if (place === undefined) {
+    const view = await this.placeOf(ticket, admission);
+    if (view === undefined) {
       return undefined;
     }
-    if (place.capped !== undefined || place.ahead.length > 0) {
-      return this.lookFrom(place, ticket.waiter, removeUnknown, need);
+    if (view.place.capped !== undefined || view.place.ahead.length > 0) {
+      return this.lookFrom(view.place, ticket.waiter, removeUnknown, need);
     }
     const claim = await this.claimAdmit(ticket.waiter);
     if (claim === undefined) {
@@ -843,7 +891,12 @@ export class HostLock {
     }
     try {
       const again = await this.placeOf(ticket, admission);
-      return again === undefined ? undefined : await this.lookFrom(again, ticket.waiter, removeUnknown, need);
+      if (again === undefined) {
+        return undefined;
+      }
+      const looked = await this.lookFrom(again.place, ticket.waiter, removeUnknown, need);
+      await this.keepTurns(again, looked.look.kind === 'taken' ? this.openCharge(ticket.waiter, need) : undefined);
+      return looked;
     } finally {
       await this.removeAt(this.admit, (text) => text === claim);
     }
@@ -862,27 +915,86 @@ export class HostLock {
 
   /**
    * Where `ticket` stands in the line in admission order under `rules`, given the steps each session runs now (the
-   * lock's live holder and the live shares); undefined once its ticket is gone, withdrawn.
+   * lock's live holder and the live shares) and the class turns with the steps' ends read; undefined once its ticket is
+   * gone, withdrawn.
    */
-  private async placeOf(ticket: OwnTicket, rules: AdmissionRules): Promise<LinePlace | undefined> {
+  private async placeOf(ticket: OwnTicket, rules: AdmissionRules): Promise<AdmissionView | undefined> {
     const line = await this.liveLine(ticket);
     if (line === undefined) {
       return undefined;
     }
     const running = await this.running();
+    const turns = await this.turnsLook(new Set(running.map(({ id }) => id)));
+    const waiting = new Set(line.map(({ waiter }) => classOf(waiter, rules)));
     const counts = new Map<string, number>();
     for (const { session } of running) {
       counts.set(session, (counts.get(session) ?? 0) + 1);
     }
-    const place = placeInLine(admissionOrder(line, this.ports.clock.now(), rules, NO_TURNS), ticket.name, counts, rules);
+    const place = placeInLine(admissionOrder(line, this.ports.clock.now(), rules, turnsFor(turns.state, waiting)), ticket.name, counts, rules);
     if (place === undefined) {
       return undefined;
     }
     const ahead = place.ahead.map(({ waiter }) => waiter);
     if (place.kind === 'inLine') {
-      return { ahead };
+      return { place: { ahead }, turns, waiting };
     }
-    return { ahead, capped: { kind: 'sessionCap', cap: place.cap, running: running.filter(({ session }) => session === ticket.waiter.session) } };
+    const capped: SessionCapWait = { kind: 'sessionCap', cap: place.cap, running: running.filter(({ session }) => session === ticket.waiter.session) };
+    return { place: { ahead, capped }, turns, waiting };
+  }
+
+  /**
+   * The class turns as they stand, given the ids of the steps running now (`running`: the lock's live holder and the
+   * live shares), which the caller reads BEFORE this reads the ended markers: a release writes its marker before it
+   * removes its lock or share, so a step that ends meanwhile is seen running or ended, never neither, which would close
+   * its charge as a dead step's and drop the correction to the minutes it ran.
+   */
+  private async turnsLook(running: ReadonlySet<string>): Promise<TurnsLook> {
+    const { files } = this.ports;
+    const text = await files.read(this.turns);
+    const markers = (await files.list(this.ended)).filter((name) => MARKER_NAME.test(name));
+    const ended = new Map<string, number>();
+    for (const name of markers) {
+      const endedAt = endedAtOf(await files.read(join(this.ended, name)));
+      if (endedAt !== undefined) {
+        ended.set(markerId(name), endedAt);
+      }
+    }
+    return { text, state: settle(parseTurns(text), ended, running), markers };
+  }
+
+  /**
+   * Keeps, under the admit file, the class turns this admission read (`view`): with the steps' ends settled, and with
+   * `step`'s charge when a step was admitted. It writes the turns file when that changed it (a missing file with no
+   * turns stays missing), then removes each ended marker it read that no open charge names. In that order: a step that
+   * stops between the two leaves markers whose charges are closed, which the next admission removes, never counting an
+   * end twice.
+   */
+  private async keepTurns(view: AdmissionView, step: OpenCharge | undefined): Promise<void> {
+    const { files } = this.ports;
+    const { turns, waiting } = view;
+    const next = step === undefined ? turns.state : charge(turns.state, step, waiting);
+    const text = turnsText(next);
+    if (text !== (turns.text ?? turnsText(EMPTY_TURNS))) {
+      await files.write(this.turns, text);
+    }
+    const open = new Set(next.open.map(({ ticket }) => ticket));
+    for (const name of turns.markers.filter((marker) => !open.has(markerId(marker)))) {
+      await files.remove(join(this.ended, name));
+    }
+  }
+
+  /**
+   * The charge a step admitted now opens for its class: the minutes its need expects it to run, else
+   * {@link DEFAULT_EXPECTED_MINUTES}. None for a step whose ticket names no request, as only a request gives its class's
+   * allocation percent.
+   */
+  private openCharge(waiter: LockWaiter, need: StepNeed | undefined): OpenCharge | undefined {
+    const { request } = waiter;
+    if (request === undefined) {
+      return undefined;
+    }
+    const at = new Date(this.ports.clock.now()).toISOString();
+    return { ticket: waiter.id, class: request.class, pct: request.classPct, at, minutes: need?.expectedMinutes ?? DEFAULT_EXPECTED_MINUTES };
   }
 
   /** The steps running on the host: the lock's live holder, then the live shares, oldest first (a stale share is removed). */
