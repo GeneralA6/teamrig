@@ -3816,6 +3816,14 @@ checkout's `node_modules` through a link (a directory junction on Windows) needs
 unlinks each untracked link in the worktree, the link alone, and checks it is gone; then it runs
 `git worktree remove`, and checks each link's target holds as many entries as before.
 
+A removal git stopped partway (Windows keeps a folder a program has open) can leave the folder behind, unlisted by
+git, holding only its links and the folders around them. Such a folder, directly in a folder `teamrig worktree add`
+makes worktrees in and holding nothing but folders and links, is cleared the same way: each link unlinked and its
+target shown untouched, then each folder removed once empty, deepest first, never by a recursive delete. Any session
+may clear one: it has no branch to own and nothing to lose. A folder with a file in it, one git still lists or
+tracks, one inside a linked worktree, or one outside the worktree folders keeps the refusal below; `--delete-branch`
+is refused for it, as git no longer knows its branch.
+
 It refuses (exit 2) before any change for: the main checkout; a path inside a worktree instead of its top folder;
 a locked worktree; a run from inside the worktree; a real `node_modules` folder (removing the worktree would delete
 it); a link with tracked files under it; and uncommitted changes or untracked files, the files behind a link left
