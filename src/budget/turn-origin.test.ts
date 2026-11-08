@@ -41,6 +41,26 @@ describe('isPushedPrompt', () => {
     assert.equal(isPushedPrompt(`${'x'.repeat(1_200)} The day started at`), false);
     assert.equal(isPushedPrompt(`${'x'.repeat(1_100)} The day started at`), true);
   });
+
+  // The shape of the 11-07 paste that read as a push: a cost table quoting push words, then the owner's own words.
+  const pasted = (inner: string, id = '8494'): string => `\n\n<pasted_content id="${id}">\n${inner}\n</pasted_content id="${id}">\n\n`;
+  const table = '┌──────────────────────┬───────┐\n│ What the calls did   │  W    │\n│ Writing the handover │ 1.2M  │\n│ Stop hook nudges     │ 0.4M  │\n└──────────────────────┴───────┘';
+
+  it('leaves what the owner pasted, whatever push words it quotes', () => {
+    assert.equal(isPushedPrompt(`${pasted(table)} ok that is a good analysis, go on`), false);
+    assert.equal(isPushedPrompt(`${pasted('The day started at 02:00 IST')} and this one?`), false);
+    assert.equal(isPushedPrompt(`look at these ${pasted(table)} and ${pasted('You were started fresh', '8495')} both`), false);
+    assert.equal(isPushedPrompt(`<pasted_content>\n${table}\n</pasted_content>`), false);
+  });
+
+  it('still reads the owner words around a paste, and the head after it', () => {
+    assert.equal(isPushedPrompt(`${pasted(table)} read your handover now`), true);
+    assert.equal(isPushedPrompt(`${pasted('y'.repeat(2_000))} The day started at 02:00 IST`), true);
+  });
+
+  it('drops only a closed paste: an id that closes no block stays in the text', () => {
+    assert.equal(isPushedPrompt('<pasted_content id="1">\nthe handover\n</pasted_content id="2">'), true);
+  });
 });
 
 describe('isStopFeedback', () => {
