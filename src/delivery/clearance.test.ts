@@ -8,6 +8,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { refusalOf, takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
 import { lineRequests } from '../testing/line-tickets.ts';
 import { withdrawnLock } from '../testing/withdrawn-lock.ts';
+import type { AdmissionRules } from './admission.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
 import { MemoryGate } from './memory-gate.ts';
 import type { LineRequest } from './process-request.ts';
@@ -46,9 +47,10 @@ interface World {
 
 /**
  * A deploy step's lock over files in memory at 10:00, waiting at most `maxWaitMs`; with `memory`, the step passes a
- * memory gate over that host first (the config defaults; its read gaps take no time).
+ * memory gate over that host first (the config defaults; its read gaps take no time); with `admission`, the line is
+ * ordered by those rules.
  */
-function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number = 60 * 60_000, memory?: FakeHostMemory): World {
+function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number = 60 * 60_000, memory?: FakeHostMemory, admission?: AdmissionRules): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
   const asked: unknown[] = [];
@@ -64,6 +66,7 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     newId: () => 'mine',
     zone: TimeZone.UTC,
     ...(memory === undefined ? {} : { memory: new MemoryGate(memory, async () => undefined, { floorMb: 4096, heavyReserveMb: 4096, commitMaxPct: 92 }) }),
+    ...(admission === undefined ? {} : { admission }),
   });
   const [waits, causes]: [string[], WaitCause[]] = [[], []];
   const onWait: ClearanceRequest['onWait'] = (told) => {
@@ -88,6 +91,13 @@ const GO: Readiness = { kind: 'go' };
 const FROZEN: Readiness = { kind: 'wait', cause: 'freeze', reason: 'deploy freeze by po on cloud-api until 2030-01-08 10:02 UTC (p95)' };
 
 describe('takeWhenClear', () => {
+  it('takes the lock file, never a share, under pipeline admission: a merge or a deploy takes the whole host (T2210)', async () => {
+    const pipeline: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, defaultClass: 'Improvements' };
+    const { files, clock, lock, request } = world({}, 60 * 60_000, undefined, pipeline);
+    const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
+    assert.deepEqual([clearance.kind, files.get(LOCK_PATH) === undefined, await files.list(`${LOCK_PATH}.shared`)], ['taken', false, []]);
+  });
+
   it('takes the lock at once when nothing holds the step', async () => {
     const { files, clock, lock, waits, request } = world();
     const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
@@ -190,7 +200,7 @@ describe('takeWhenClear', () => {
     assert.ok(held.asked.length > 0 && short.asked.length > 0);
     assert.deepEqual(
       [held.asked, short.asked],
-      [held.asked.map(() => ({ ...LINE, needMb: 0, heavy: true })), short.asked.map(() => ({ ...LINE, needMb: 4096, heavy: true }))],
+      [held.asked.map(() => ({ ...LINE, needMb: 0, heavy: true, exclusive: true })), short.asked.map(() => ({ ...LINE, needMb: 4096, heavy: true, exclusive: true }))],
     );
   });
 });

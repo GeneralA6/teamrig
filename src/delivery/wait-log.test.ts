@@ -54,6 +54,7 @@ describe('causeOfLockWait', () => {
       [{ kind: 'memory', freeMb: 3000, heldMb: 0, needMb: 8000, floorMb: 2000, reserveMb: 6000, shares: [] }, 'memory'],
       [{ kind: 'commit', usedMb: 60_000, limitMb: 64_000, maxPct: 90, reserveMb: 6000, shares: [] }, 'commit'],
       [{ kind: 'sessionCap', cap: 2, running: [INFO] }, 'session'],
+      [{ kind: 'heavyCap', cap: 2, running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'heavyCap'],
       [{ kind: 'admitting' }, 'line'],
     ];
     assert.deepEqual(

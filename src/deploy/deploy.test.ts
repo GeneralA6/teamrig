@@ -243,7 +243,7 @@ describe('redeployTargets', () => {
     await world.files.write(PLACES.hostLock, heldBy());
     assert.equal((await world.run()).kind, 'refused');
     assert.ok(world.asked.length > 0);
-    assert.deepEqual(world.asked, world.asked.map(() => ({ kind: 'deploy', class: 'Improvements', classPct: 15, needMb: 2048, heavy: true })));
+    assert.deepEqual(world.asked, world.asked.map(() => ({ kind: 'deploy', class: 'Improvements', classPct: 15, needMb: 2048, heavy: true, exclusive: true })));
   });
 
   it('names the programs holding the most memory when it refuses after its wait on host memory (T2209)', async () => {

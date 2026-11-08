@@ -129,4 +129,16 @@ describe('teamrig pipeline', () => {
     ]);
     assert.equal(kit.files.get(LOCK), stale);
   });
+
+  it('counts the heavy steps sharing the host apart from the small ones (T2210)', async () => {
+    const kit = new CliHarness(TEAM);
+    await shared(kit, SHARE);
+    await shared(kit, { ...SHARE, id: 'share2', session: 'bravo', purpose: 'heavy: build', reserveMb: 4096, heavy: true });
+    const memory = new FakeHostMemory(16000).lists(undefined);
+    const result = await kit.run(['pipeline'], { memory, sessionProcesses: running(SHARER) });
+    assert.equal(
+      result.stdout[0],
+      "HOST 16000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); 6144 MB held for 1 heavy step and 1 small step; the running steps' trees unknown (the host lists no processes)",
+    );
+  });
 });

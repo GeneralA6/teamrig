@@ -21,6 +21,8 @@ export interface AdmissionRules {
   readonly agingMinutes: number;
   /** A session with this many steps running (the lock or a share) waits for one to end, and later steps pass it; 0 caps nothing. */
   readonly perSessionRunning: number;
+  /** In pipeline mode, how many heavy steps share the host at once, memory allowing; serial mode runs one at a time. */
+  readonly maxHeavyParallel: number;
   /** The class a ticket that names none counts as: an older kit's, or one written without a request. */
   readonly defaultClass: string;
 }

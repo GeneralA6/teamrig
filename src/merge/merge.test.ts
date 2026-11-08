@@ -1015,7 +1015,7 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
     await world.files.write(PLACES.hostLock, heldBy());
     refused(await world.run(), /^host lock still held by po/);
     assert.ok(world.asked.length > 0);
-    assert.deepEqual(world.asked, world.asked.map(() => ({ kind: 'merge', task: 'T9', priority: 1, class: 'Maintenance', classPct: 25, needMb: 2048, heavy: true })));
+    assert.deepEqual(world.asked, world.asked.map(() => ({ kind: 'merge', task: 'T9', priority: 1, class: 'Maintenance', classPct: 25, needMb: 2048, heavy: true, exclusive: true })));
   });
 
   it('names the programs holding the most memory when it refuses after its wait on host memory (T2209)', async () => {

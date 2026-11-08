@@ -1,7 +1,7 @@
 import { QUEUE_TTL_MARGIN_MINUTES } from '../../config/defaults.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { QueueConfig } from '../../config/types.ts';
-import { busyText, holderText, underLock, waitText, type HostLock, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
+import { busyText, holderText, isHeavyShare, underLock, waitText, type HostLock, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
@@ -112,14 +112,27 @@ async function needOf(runtime: CliRuntime, ledger: string, ask: NeedAsk, config:
   return stepNeedOf(parseLedger((await runtime.files.read(ledger)) ?? ''), ask, config);
 }
 
-/** The line a small step holding `reserveMb` prints when it shares the host. */
+/**
+ * The line a step holding `reserveMb` prints when it shares the host: the other steps of its own kind (small or heavy)
+ * sharing it, then those of the other kind when any do.
+ */
 function sharingText(reserveMb: number, taking: Extract<Taking, { kind: 'taken' }>): string | undefined {
-  if (taking.sharing === undefined) {
+  const { sharing } = taking;
+  if (sharing === undefined) {
     return undefined;
   }
-  const others = taking.sharing.others.length;
-  const free = taking.sharing.freeMb === undefined ? '' : `${taking.sharing.freeMb} MB free, `;
-  return `sharing the host: ${reserveMb} MB held for it (${free}${others} other small step${others === 1 ? '' : 's'})`;
+  const heavy = sharing.others.filter(isHeavyShare).length;
+  const small = sharing.others.length - heavy;
+  const counts = sharing.heavy
+    ? [stepCount(heavy, 'other heavy'), ...(small === 0 ? [] : [stepCount(small, 'small')])]
+    : [stepCount(small, 'other small'), ...(heavy === 0 ? [] : [stepCount(heavy, 'heavy')])];
+  const free = sharing.freeMb === undefined ? '' : `${sharing.freeMb} MB free, `;
+  return `sharing the host${sharing.heavy ? ' as a heavy step' : ''}: ${reserveMb} MB held for it (${free}${counts.join(', ')})`;
+}
+
+/** `<count> <kind> step`, or `steps`. */
+function stepCount(count: number, kind: string): string {
+  return `${count} ${kind} step${count === 1 ? '' : 's'}`;
 }
 
 /** The last line: DONE, FAILED, TIMED OUT or STOPPED, with the exit code the ledger recorded. */
@@ -346,7 +359,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       }
       say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
       const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
-      const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined ? {} : { shared: true as const }), request: run };
+      const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined || taking.sharing.heavy ? {} : { shared: true as const }), request: run };
       const end = await runRecorded(runtime, { places, delivery }, mark);
       const code = report(runtime, say, end, maxRunMinutes, watching);
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);

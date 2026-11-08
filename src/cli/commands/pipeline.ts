@@ -1,5 +1,5 @@
 import type { TimeZone } from '../../core/zone.ts';
-import { holderText, type HostShare, type LockState, type LockWaiter } from '../../delivery/host-lock.ts';
+import { holderText, sharesCount, type HostShare, type LockState, type LockWaiter } from '../../delivery/host-lock.ts';
 import { parseLedger, type LedgerRecord, type RefusalRecord } from '../../delivery/ledger.ts';
 import { holdersText, treeMb, type HostMemory, type ProcessRow } from '../../delivery/memory.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
@@ -24,7 +24,7 @@ function useText(pid: number, rows: readonly ProcessRow[] | undefined): string {
   return rows === undefined ? '' : `, its tree uses ${treeMb(pid, rows)} MB`;
 }
 
-/** The pids of the steps running now: the lock's holder, when it holds a live lock, and each small step sharing the host. */
+/** The pids of the steps running now: the lock's holder, when it holds a live lock, and each step sharing the host. */
 function runningPids(state: LockState, shares: readonly HostShare[]): number[] {
   return [...(state.kind === 'held' ? [state.info.pid] : []), ...shares.map((share) => share.pid)];
 }
@@ -37,7 +37,7 @@ async function hostLines(memory: HostMemory, floorMb: number, shares: readonly H
   }
   if (shares.length > 0) {
     const heldMb = shares.reduce((total, share) => total + share.reserveMb, 0);
-    parts.push(`${heldMb} MB held for ${shares.length} small step${shares.length === 1 ? '' : 's'}`);
+    parts.push(`${heldMb} MB held for ${sharesCount(shares)}`);
   }
   if (pids.length > 0) {
     parts.push(rows === undefined ? "the running steps' trees unknown (the host lists no processes)" : `the running steps' trees use ${pids.reduce((total, pid) => total + treeMb(pid, rows), 0)} MB`);
@@ -90,9 +90,9 @@ function refusalLine(record: RefusalRecord, zone: TimeZone): string {
 
 /**
  * `teamrig pipeline`: the host's steps now, in one read, taking and removing nothing. HOST: free memory, RAM and the
- * floor, the commit charge, the MB held for the small steps sharing the host, what the running steps' process trees
- * use, and the programs holding the most memory. RUNNING: the lock's holder and each small step, with its run time,
- * the MB held for a small step and what its tree uses. WAITING: the line in order, each with how long it has waited and
+ * floor, the commit charge, the MB held for the steps sharing the host (by kind: heavy, small), what the running steps'
+ * process trees use, and the programs holding the most memory. RUNNING: the lock's holder and each step sharing the
+ * host, with its run time, the MB held for it and what its tree uses. WAITING: the line in order, each with how long it has waited and
  * what its ticket says it waits on, with that wait's numbers. REFUSED: the queued steps of the last day that waited and
  * did not run, from the ledger. Exit 0.
  */
