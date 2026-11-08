@@ -44,8 +44,9 @@ export function agedPriority(priority: number | undefined, waitedMs: number, agi
 }
 
 /**
- * Each work class's virtual time in the class turns (T2210 commit 3): the minutes its steps ran divided by its
- * allocation percent. The class with the least goes next among the classes with a step waiting.
+ * Each work class's virtual time in the class turns (`class-turns.ts`): the minutes its steps ran times 100 over its
+ * allocation percent, a 0% class counting as 1%. The class with the least goes next among the classes with a step
+ * waiting.
  */
 export type ClassTurns = ReadonlyMap<string, number>;
 
