@@ -3182,7 +3182,7 @@ Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `n
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `tree-role` (a
 `roles.securityReviewer` or `roles.deliveryOwner` of `<team>/<id>` whose team is not above this one, or whose
 session does not hold that role there), `name-two-teams`, `effort-env`, `model-env`, `settings-json`, `launch-effort`,
-`allow-wide`, `deny-missing`, `project-missing`, `shell-history`.
+`allow-wide`, `quiet-ask`, `deny-missing`, `project-missing`, `shell-history`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
@@ -3218,6 +3218,15 @@ session owns, so the lead's `start` shows it and its inbox gets one line on it.
 
 ```text
 WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls, or hold a credential saved with an approved command (Bash credential 1, Bash wide 1, Read wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes
+```
+
+`quiet-ask` is a budget that is on with [budget.quietHours] action `ask`: in the quiet hours a session's helper
+launch then waits on a permission prompt, nobody at the host answers it at night, and the tab stalls until someone
+does. `block` refuses the launch with its reason, so the tab goes on. Quiet hours are the team's own key, so a child
+team is checked on its own config.
+
+```text
+WARN quiet-ask budget.quietHours.action is ask, so in the quiet hours (22:00-06:00 IST) a helper launch waits on a permission prompt nobody at the host answers, and its tab stalls until someone does: set budget.quietHours.action to block, which refuses the launch with its reason and lets the tab go on
 ```
 
 `deny-missing` lists the secret deny lines that no settings file a session in the project reads holds word for word
