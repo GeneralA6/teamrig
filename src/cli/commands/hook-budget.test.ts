@@ -80,8 +80,8 @@ describe('the budget hooks', () => {
     assert.equal(await kit.files.read(TASKS), undefined);
     await meterToday(kit, [{ id: 'alpha', tab: ALPHA_TAB, w: 100_000_000 }]);
     const text = await kit.files.read(TASKS);
-    // At 10M W per percent.
-    assert.deepEqual(text === undefined ? undefined : parseTasksWeek(text), { at: kit.clock.now(), spentPct: { T7: 2.5, T8: 1 } });
+    // At 10M W per percent; no task is done in the like window, so no median.
+    assert.deepEqual(text === undefined ? undefined : parseTasksWeek(text), { at: kit.clock.now(), spentPct: { T7: 2.5, T8: 1 }, likeMedians: [] });
   });
 
   it("keep a sized task's spend from its size base, as the list counts it (T2141)", async () => {
