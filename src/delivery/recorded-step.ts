@@ -6,6 +6,7 @@ import { appendRecord, type QueuedStepRecord } from './ledger.ts';
 import type { HostMemory, MemoryPeaks } from './memory.ts';
 import type { DeliveryPlaces } from './places.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
+import type { Waited, WaitTotals } from './wait-log.ts';
 
 /** The exit code recorded for a step that could not start, as a missing folder makes it. */
 export const NOT_STARTED_EXIT = 1;
@@ -40,20 +41,33 @@ export interface StepMark {
   readonly what: string;
   /** When the step began to wait for the host lock, in ms; recorded as `queuedAt`. */
   readonly queuedAt?: number;
+  /** The ms it waited by cause (see `WaitLog`); recorded as `waits` when it waited on any. */
+  readonly waits?: WaitTotals;
+  /** The host's free memory when it began to wait, in MB; recorded as `queueFreeMb`. */
+  readonly queueFreeMb?: number;
   /** Set for a small step sharing the host; recorded as `shared`. */
   readonly shared?: true;
 }
 
 /**
- * Marks for the queued steps one taking of the host lock runs, in order: only the first carries `queuedAt`, when the
- * taking began to wait, since a later step's wait would count the steps before it.
+ * Marks for the queued steps one taking of the host lock runs, in order: only the first carries the taking's wait (when
+ * it began, the ms by cause and the host's free memory then), since a later step's wait would count the steps before it.
  */
-export function marksOfTaking(session: string, queuedAt: number): (what: string) => StepMark {
-  let waited: number | undefined = queuedAt;
+export function marksOfTaking(session: string, waited: Waited): (what: string) => StepMark {
+  let first: Waited | undefined = waited;
   return (what) => {
-    const mark: StepMark = waited === undefined ? { session, what } : { session, what, queuedAt: waited };
-    waited = undefined;
+    const mark: StepMark = first === undefined ? { session, what } : { session, what, ...first };
+    first = undefined;
     return mark;
+  };
+}
+
+/** A mark's wait as the start record stores it: `queuedAt` as an ISO time, `waits` only when any cause took time. */
+function waitFieldsOf(mark: StepMark): Pick<QueuedStepRecord, 'queuedAt' | 'waits' | 'queueFreeMb'> {
+  return {
+    ...(mark.queuedAt === undefined ? {} : { queuedAt: new Date(mark.queuedAt).toISOString() }),
+    ...(mark.waits === undefined || Object.keys(mark.waits).length === 0 ? {} : { waits: mark.waits }),
+    ...(mark.queueFreeMb === undefined ? {} : { queueFreeMb: mark.queueFreeMb }),
   };
 }
 
@@ -90,7 +104,7 @@ export async function recordQueuedStep<T>(ports: StepRecordPorts, setup: StepRec
     session: mark.session,
     what: mark.what,
     kit: KIT_VERSION,
-    ...(mark.queuedAt === undefined ? {} : { queuedAt: new Date(mark.queuedAt).toISOString() }),
+    ...waitFieldsOf(mark),
     ...(mark.shared === true ? { shared: true } : {}),
     startedAt: new Date(ports.clock.now()).toISOString(),
     endedAt: null,

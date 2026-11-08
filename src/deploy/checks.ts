@@ -57,17 +57,17 @@ export function checkReadiness(name: string, end: HookEnd, reason: string | unde
         return { kind: 'refuse', reason: `check ${name} refuses the deploy${because}` };
       }
       if (end.code === HOOK_WAIT_EXIT) {
-        return { kind: 'wait', reason: `check ${name} holds the deploy${because}` };
+        return { kind: 'wait', cause: 'check', reason: `check ${name} holds the deploy${because}` };
       }
-      return { kind: 'wait', reason: `check ${name} failed (exit ${end.code}), so the deploy waits${because}` };
+      return { kind: 'wait', cause: 'check', reason: `check ${name} failed (exit ${end.code}), so the deploy waits${because}` };
     case 'timedOut':
-      return { kind: 'wait', reason: `check ${name} gave no answer within ${timeoutSeconds} s, so the deploy waits` };
+      return { kind: 'wait', cause: 'check', reason: `check ${name} gave no answer within ${timeoutSeconds} s, so the deploy waits` };
     case 'signal':
-      return { kind: 'wait', reason: `check ${name} was stopped by ${end.signal}, so the deploy waits` };
+      return { kind: 'wait', cause: 'check', reason: `check ${name} was stopped by ${end.signal}, so the deploy waits` };
     case 'notStarted':
-      return { kind: 'wait', reason: `check ${name} could not start (${end.error}), so the deploy waits` };
+      return { kind: 'wait', cause: 'check', reason: `check ${name} could not start (${end.error}), so the deploy waits` };
     case 'stopped':
-      return { kind: 'wait', reason: `check ${name} was killed when its launching shell ended, so the deploy waits` };
+      return { kind: 'wait', cause: 'check', reason: `check ${name} was killed when its launching shell ended, so the deploy waits` };
   }
 }
 

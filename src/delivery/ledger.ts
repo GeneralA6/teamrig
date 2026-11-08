@@ -1,7 +1,8 @@
 import type { Files } from '../core/files.ts';
-import { isStringArray, stringField, type JsonRecord } from '../core/guards.ts';
+import { isRecord, isStringArray, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
 import { formatUtcMinute } from '../core/time.ts';
+import { WAIT_CAUSES, type WaitCause, type WaitTotals } from './wait-log.ts';
 
 /** The ledger's file name in the delivery folder: one JSON record a line, appended. */
 export const LEDGER_FILE = 'ledger.jsonl';
@@ -26,6 +27,10 @@ export interface QueuedStepRecord {
   readonly kit?: string;
   /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
   readonly queuedAt?: string;
+  /** The ms of that wait by cause (lock, line, draining, memory, commit, freeze, check), each one that took time. */
+  readonly waits?: WaitTotals;
+  /** The host's free memory when the step began to wait, in MB. */
+  readonly queueFreeMb?: number;
   /** Set when the step was a small one sharing the host (`queue --small`), not holding the host lock. */
   readonly shared?: true;
   /** An ISO time: when it took the host lock and started. */
@@ -46,8 +51,8 @@ export interface QueuedStepRecord {
   readonly commitLimitMb?: number;
 }
 
-/** The memory fields a queued step's end record may carry, each a whole number of MB. */
-const STEP_MEMORY_FIELDS = ['peakTreeMb', 'lowFreeMb', 'startFreeMb', 'endFreeMb', 'commitMb', 'commitLimitMb'] as const;
+/** The memory fields a queued step's records may carry, each a whole number of MB. */
+const STEP_MEMORY_FIELDS = ['queueFreeMb', 'peakTreeMb', 'lowFreeMb', 'startFreeMb', 'endFreeMb', 'commitMb', 'commitLimitMb'] as const;
 
 type StepMemoryField = (typeof STEP_MEMORY_FIELDS)[number];
 
@@ -144,18 +149,34 @@ function timeField(record: JsonRecord, key: string): string | undefined {
   return value !== undefined && Number.isFinite(Date.parse(value)) ? value : undefined;
 }
 
-/** A whole number of MB; undefined when it is missing or anything else. */
-function mbField(record: JsonRecord, key: string): number | undefined {
+/** A whole number at least 0, of MB or ms; undefined when it is missing or anything else. */
+function wholeField(record: JsonRecord, key: string): number | undefined {
   const value = record[key];
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
+/** A step's waits by cause: each known cause with a whole positive number of ms; undefined when none is. */
+function waitsField(record: JsonRecord): WaitTotals | undefined {
+  const value = record['waits'];
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const waits: Partial<Record<WaitCause, number>> = {};
+  for (const cause of WAIT_CAUSES) {
+    const ms = wholeField(value, cause);
+    if (ms !== undefined && ms > 0) {
+      waits[cause] = ms;
+    }
+  }
+  return Object.keys(waits).length === 0 ? undefined : waits;
+}
+
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kit' | 'queuedAt' | 'shared' | StepMemoryField> {
-  const [kit, queuedAt] = [stringField(record, 'kit'), timeField(record, 'queuedAt')];
+function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kit' | 'queuedAt' | 'waits' | 'shared' | StepMemoryField> {
+  const [kit, queuedAt, waits] = [stringField(record, 'kit'), timeField(record, 'queuedAt'), waitsField(record)];
   const memory: Partial<Record<StepMemoryField, number>> = {};
   for (const field of STEP_MEMORY_FIELDS) {
-    const mb = mbField(record, field);
+    const mb = wholeField(record, field);
     if (mb !== undefined) {
       memory[field] = mb;
     }
@@ -163,6 +184,7 @@ function queuedStepExtrasOf(record: JsonRecord): Pick<QueuedStepRecord, 'kit' | 
   return {
     ...(kit === undefined ? {} : { kit }),
     ...(queuedAt === undefined ? {} : { queuedAt }),
+    ...(waits === undefined ? {} : { waits }),
     ...(record['shared'] === true ? { shared: true } : {}),
     ...memory,
   };

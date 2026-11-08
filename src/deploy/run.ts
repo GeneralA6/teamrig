@@ -6,6 +6,7 @@ import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lo
 import { appendDeploy } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
 import { NOT_STARTED_EXIT, recordQueuedStep, type StepRecordPorts } from '../delivery/recorded-step.ts';
+import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import type { Files } from '../core/files.ts';
 import type { GitOutcome } from '../core/git-run.ts';
@@ -165,10 +166,10 @@ export async function scheduleReadiness(setup: DeploySetup, ports: DeployPorts, 
   }
   const read = await readFreezes(ports.files, setup.places.freezes);
   if (read.kind === 'unreadable') {
-    return { kind: 'wait', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
+    return { kind: 'wait', cause: 'freeze', reason: `the deploy freezes in ${setup.places.freezes} are unreadable (${read.reason})` };
   }
   const covering = coveringFreezes(read.freezes, targets, now);
-  return covering.length === 0 ? undefined : { kind: 'wait', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
+  return covering.length === 0 ? undefined : { kind: 'wait', cause: 'freeze', reason: covering.map((freeze) => freezeText(freeze, setup.zone)).join('; ') };
 }
 
 /** A hook's line as it is shown and recorded: redacted, and said as it comes. */
@@ -371,14 +372,14 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
   ports.say(`${plural(early.pending.commits.length, 'commit')} pending in ${repo.name} (${early.pending.range})`);
   const view: LockedView = { read: undefined, tag: undefined, range: early.pending };
   const { wait } = setup.delivery;
-  const queuedAt = ports.clock.now();
+  const waits = new WaitLog(ports.clock, ports.memory.freeMb());
   const clearance = await takeWhenClear(readinessOf(setup, ports, request, repo, view), ports, {
     session: request.session,
     purpose: `deploy ${repo.name}`,
     maxWaitMs: wait.maxMinutes * MINUTE_MS,
     pollMs: wait.pollSeconds * 1_000,
     zone: setup.zone,
-    onWait: (reason) => ports.say(`waiting: ${reason}`),
+    onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
     return { kind: 'refused', reason: clearance.reason };
@@ -395,7 +396,7 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
     const { tag } = view;
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
-    const run = await recordQueuedStep(ports, setup, { session: request.session, what: `deploy ${repo.name} ${pending.range}`, queuedAt }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
+    const run = await recordQueuedStep(ports, setup, { session: request.session, what: `deploy ${repo.name} ${pending.range}`, ...waits.end() }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
     return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
   } finally {
     await ports.lock.release(clearance.lock);

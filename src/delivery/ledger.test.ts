@@ -82,9 +82,27 @@ describe('parseLedger', () => {
   });
 
   it("reads a queued step's kit, wait, sharing and memory, and leaves out only a bad optional field", () => {
-    const measured = { ...queuedStep, kit: '0.113.0', queuedAt: '2030-01-08T09:01:00.000Z', shared: true, peakTreeMb: 1800, lowFreeMb: 6200, startFreeMb: 7400, endFreeMb: 900, commitMb: 61000, commitLimitMb: 64000 };
-    const damaged = { ...queuedStep, kit: 113, queuedAt: 'soon', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5, startFreeMb: '7400', endFreeMb: null, commitMb: -5, commitLimitMb: 2.5 };
+    const measured = {
+      ...queuedStep,
+      kit: '0.113.0',
+      queuedAt: '2030-01-08T09:01:00.000Z',
+      waits: { line: 120_000, memory: 360_000 },
+      queueFreeMb: 3200,
+      shared: true,
+      peakTreeMb: 1800,
+      lowFreeMb: 6200,
+      startFreeMb: 7400,
+      endFreeMb: 900,
+      commitMb: 61000,
+      commitLimitMb: 64000,
+    };
+    const damaged = { ...queuedStep, kit: 113, queuedAt: 'soon', waits: { lock: -1, memory: 0, idle: 5000 }, queueFreeMb: 'low', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5, startFreeMb: '7400', endFreeMb: null, commitMb: -5, commitLimitMb: 2.5 };
     assert.deepEqual(parseLedger([JSON.stringify(measured), JSON.stringify(damaged)].join('\n')), [measured, queuedStep]);
+  });
+
+  it("keeps a queued step's good waits and leaves out the bad ones", () => {
+    const someBad = { ...queuedStep, waits: { lock: 1.5, freeze: 30_000, check: 'long' } };
+    assert.deepEqual(parseLedger([JSON.stringify(someBad), JSON.stringify({ ...queuedStep, waits: [5] })].join('\n')), [{ ...queuedStep, waits: { freeze: 30_000 } }, queuedStep]);
   });
 
   it("reads the targets a deploy of some of its repository's targets names, and leaves out only bad ones", () => {

@@ -97,7 +97,7 @@ class World {
 
   /** The queued step's two records, its end with `exitCode`. */
   queuedStep(exitCode: number, startedAt: string, endedAt: string): unknown[] {
-    const start = { type: 'heavy', id: 'step-1', session: 'sec', what: 'deploy api,live of pipeline', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt, endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'sec', what: 'deploy api,live of pipeline', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: this.memory.free, startedAt, endedAt: null, exitCode: null };
     return [start, { ...start, endedAt, exitCode }];
   }
 
@@ -152,7 +152,7 @@ describe('redeployTargets', () => {
     world.hooks.answer(RESTART, { lines: ['restarted 2 deployments'], takesMs: 90_000 });
     await world.run();
     assert.deepEqual(world.memory.watches, [{ root: 4242, intervalMs: DEFAULT_QUEUE.memorySampleSeconds * 1_000, stopped: true }]);
-    const start = { type: 'heavy', id: 'step-1', session: 'sec', what: 'deploy api,live of pipeline', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'sec', what: 'deploy api,live of pipeline', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records().slice(0, 2), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0, peakTreeMb: 1800, lowFreeMb: 5200, startFreeMb: 7600 }]);
   });
 

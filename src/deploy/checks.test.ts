@@ -30,21 +30,23 @@ describe('checkReadiness', () => {
   it('reads exit 0 as go, 2 as refuse and 75 as wait, each with the gate’s reason', () => {
     assert.deepEqual(checkReadiness('flow', { kind: 'exited', code: 0 }, 'clear', 20), { kind: 'go' });
     assert.deepEqual(checkReadiness('flow', { kind: 'exited', code: 2 }, 'the deploy is frozen', 20), { kind: 'refuse', reason: 'check flow refuses the deploy: the deploy is frozen' });
-    assert.deepEqual(checkReadiness('flow', { kind: 'exited', code: 75 }, undefined, 20), { kind: 'wait', reason: 'check flow holds the deploy' });
+    assert.deepEqual(checkReadiness('flow', { kind: 'exited', code: 75 }, undefined, 20), { kind: 'wait', cause: 'check', reason: 'check flow holds the deploy' });
   });
 
   it('waits on any other end, so a broken check never lets a deploy through', () => {
     assert.deepEqual(checkReadiness('flow', { kind: 'exited', code: 1 }, 'TypeError: x is undefined', 20), {
       kind: 'wait',
+      cause: 'check',
       reason: 'check flow failed (exit 1), so the deploy waits: TypeError: x is undefined',
     });
-    assert.deepEqual(checkReadiness('flow', { kind: 'timedOut' }, undefined, 20), { kind: 'wait', reason: 'check flow gave no answer within 20 s, so the deploy waits' });
-    assert.deepEqual(checkReadiness('flow', { kind: 'signal', signal: 'SIGTERM' }, undefined, 20), { kind: 'wait', reason: 'check flow was stopped by SIGTERM, so the deploy waits' });
+    assert.deepEqual(checkReadiness('flow', { kind: 'timedOut' }, undefined, 20), { kind: 'wait', cause: 'check', reason: 'check flow gave no answer within 20 s, so the deploy waits' });
+    assert.deepEqual(checkReadiness('flow', { kind: 'signal', signal: 'SIGTERM' }, undefined, 20), { kind: 'wait', cause: 'check', reason: 'check flow was stopped by SIGTERM, so the deploy waits' });
     assert.deepEqual(checkReadiness('flow', { kind: 'notStarted', error: 'spawn node ENOENT' }, undefined, 20), {
       kind: 'wait',
+      cause: 'check',
       reason: 'check flow could not start (spawn node ENOENT), so the deploy waits',
     });
-    assert.deepEqual(checkReadiness('flow', { kind: 'stopped' }, undefined, 20), { kind: 'wait', reason: 'check flow was killed when its launching shell ended, so the deploy waits' });
+    assert.deepEqual(checkReadiness('flow', { kind: 'stopped' }, undefined, 20), { kind: 'wait', cause: 'check', reason: 'check flow was killed when its launching shell ended, so the deploy waits' });
   });
 });
 
@@ -76,7 +78,7 @@ describe('askChecks', () => {
   it('stops at the first check that does not pass, with its redacted reason and no tag', async () => {
     const hooks = new FakeHooks().answer(FLOW.command, { lines: ['tag=v1', ['flow open; db password', '=', 'hunter2'].join('')], end: 75 });
     const answer = await askChecks([FLOW, REGISTRY], 'before', run(hooks));
-    assert.deepEqual(answer, { readiness: { kind: 'wait', reason: 'check flow holds the deploy: flow open; db [redacted password or key assignment]' }, tag: undefined });
+    assert.deepEqual(answer, { readiness: { kind: 'wait', cause: 'check', reason: 'check flow holds the deploy: flow open; db [redacted password or key assignment]' }, tag: undefined });
     assert.deepEqual(hooks.commands, ['node checks/flow.js']);
   });
 

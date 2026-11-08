@@ -117,11 +117,30 @@ describe('recordQueuedStep', () => {
   });
 });
 
+describe('recordQueuedStep: the wait', () => {
+  it('records the ms waited by cause and the free memory at the queueing on the start record, the end record keeping them', async () => {
+    const { files, steps, ports } = world();
+    steps.ends(0, 60_000);
+    const waited = { queuedAt: Date.parse('2030-01-08T09:58:00Z'), waits: { memory: 90_000, lock: 30_000 }, queueFreeMb: 3100 };
+    await runRecorded(ports, UNSAMPLED, { ...STEP, ...waited });
+    const start = { ...START, queuedAt: '2030-01-08T09:58:00.000Z', waits: { memory: 90_000, lock: 30_000 }, queueFreeMb: 3100 };
+    assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:01:00.000Z', exitCode: 0 }]);
+  });
+
+  it('leaves out the waits of a step that waited on no cause', async () => {
+    const { files, steps, ports } = world();
+    steps.ends(0, 1_000);
+    await runRecorded(ports, UNSAMPLED, { ...STEP, queuedAt: Date.parse('2030-01-08T10:00:00Z'), waits: {}, queueFreeMb: 9000 });
+    assert.deepEqual(records(files)[0], { ...START, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: 9000 });
+  });
+});
+
 describe('marksOfTaking', () => {
   it('puts the wait on the first step a taking of the lock runs, never on the steps after it', () => {
-    const markOf = marksOfTaking('api', Date.parse('2030-01-08T09:58:00Z'));
+    const waited = { queuedAt: Date.parse('2030-01-08T09:58:00Z'), waits: { freeze: 60_000, lock: 30_000 }, queueFreeMb: 5200 };
+    const markOf = marksOfTaking('api', waited);
     assert.deepEqual([markOf('check'), markOf('push'), markOf('push again')], [
-      { session: 'api', what: 'check', queuedAt: Date.parse('2030-01-08T09:58:00Z') },
+      { session: 'api', what: 'check', ...waited },
       { session: 'api', what: 'push' },
       { session: 'api', what: 'push again' },
     ]);
