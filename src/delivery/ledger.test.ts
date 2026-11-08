@@ -81,11 +81,12 @@ describe('parseLedger', () => {
     assert.deepEqual(parseLedger([...bad, JSON.stringify(queuedStep)].join('\r\n')), [queuedStep]);
   });
 
-  it("reads a queued step's kind, task, kit, wait, sharing and memory, and leaves out only a bad optional field", () => {
+  it("reads a queued step's kind, task, priority, kit, wait, sharing and memory, and leaves out only a bad optional field", () => {
     const measured = {
       ...queuedStep,
       kind: 'test',
       task: 'T12',
+      priority: 2,
       kit: '0.113.0',
       queuedAt: '2030-01-08T09:01:00.000Z',
       waits: { line: 120_000, memory: 360_000 },
@@ -98,8 +99,13 @@ describe('parseLedger', () => {
       commitMb: 61000,
       commitLimitMb: 64000,
     };
-    const damaged = { ...queuedStep, kind: 'tests', task: 'T0', kit: 113, queuedAt: 'soon', waits: { lock: -1, memory: 0, idle: 5000 }, queueFreeMb: 'low', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5, startFreeMb: '7400', endFreeMb: null, commitMb: -5, commitLimitMb: 2.5 };
+    const damaged = { ...queuedStep, kind: 'tests', task: 'T0', priority: 'p1', kit: 113, queuedAt: 'soon', waits: { lock: -1, memory: 0, idle: 5000 }, queueFreeMb: 'low', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5, startFreeMb: '7400', endFreeMb: null, commitMb: -5, commitLimitMb: 2.5 };
     assert.deepEqual(parseLedger([JSON.stringify(measured), JSON.stringify(damaged)].join('\n')), [measured, queuedStep]);
+  });
+
+  it('keeps a priority only as a whole number beside a good task, as it is that task\'s (T2209)', () => {
+    const lines = [{ ...queuedStep, task: 'T12', priority: -1 }, { ...queuedStep, task: 'T12', priority: 1.5 }, { ...queuedStep, priority: 2 }, { ...queuedStep, task: 'T0', priority: 2 }];
+    assert.deepEqual(parseLedger(lines.map((line) => JSON.stringify(line)).join('\n')), [{ ...queuedStep, task: 'T12' }, { ...queuedStep, task: 'T12' }, queuedStep, queuedStep]);
   });
 
   it("keeps a queued step's good waits and leaves out the bad ones", () => {
@@ -129,9 +135,9 @@ describe('parseLedger: refusals', () => {
 
   it('reads what appendRecord writes, and keeps its good optional fields, leaving out only a bad one (T2209)', async () => {
     const files = new MemoryFiles();
-    const measured: RefusalRecord = { ...refusal, kind: 'build', task: 'T12', kit: '0.309.0', waits: { lock: 1_200_000, memory: 600_000 }, queueFreeMb: 3100, endFreeMb: 2500 };
+    const measured: RefusalRecord = { ...refusal, kind: 'build', task: 'T12', priority: 1, kit: '0.309.0', waits: { lock: 1_200_000, memory: 600_000 }, queueFreeMb: 3100, endFreeMb: 2500 };
     await appendRecord(files, PLACES.ledger, measured);
-    await files.append(PLACES.ledger, `${JSON.stringify({ ...refusal, kind: 5, task: 'merge', kit: 309, waits: { lock: -1 }, queueFreeMb: 'low', endFreeMb: 1.5 })}\n`);
+    await files.append(PLACES.ledger, `${JSON.stringify({ ...refusal, kind: 5, task: 'merge', priority: 1, kit: 309, waits: { lock: -1 }, queueFreeMb: 'low', endFreeMb: 1.5 })}\n`);
     assert.deepEqual(parseLedger((await files.read(PLACES.ledger)) ?? ''), [measured, refusal]);
   });
 

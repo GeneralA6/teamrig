@@ -3913,7 +3913,8 @@ step that shares the host holds back every step waiting for the lock, so a hung 
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
 being killed. The step's start and end go to the delivery ledger,
 `ledger.jsonl` in `delivery.dir` (default `deploys` in the team's state folder), with the teamrig version that ran
-it (`kit`), the kind of work it is (`kind`) and the task it works for (`task`, when it names one), when it began to
+it (`kit`), the kind of work it is (`kind`), the task it works for (`task`, when it names one) and that task's
+register priority as it queued (`priority`, 1 for `p1`; left out when the register lacks the task), when it began to
 wait (`queuedAt`) and, sampled every `delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the most memory its
 process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`), and `shared: true` for
 a small step. Exit 0 when the command passed, 1 when it failed or was killed. REFUSED (exit 2) from
@@ -3967,8 +3968,9 @@ Flags:
   package's `test` script tests; a linter or a `lint` script lints; `tsc`, a bundler or a `build` or `typecheck`
   script builds; anything else (`npm run check`, a script of the team's own) is `other`. Any other value is refused
   (exit 64).
-- `--task <T id>`: the register task the step works for, recorded on its ledger records; default the first task id
-  `--what` names (`--what "T12 specs"`), else none. A value that is not a task id is refused (exit 64).
+- `--task <T id>`: the register task the step works for, recorded on its ledger records with that task's register
+  priority; default the first task id `--what` names (`--what "T12 specs"`), else none. A value that is not a task id
+  is refused (exit 64).
 - `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).
 - `--pre-push`: a git pre-push hook's checks: reuse or record their pass on this clean tree, and decline a push
   whose checks waited over a minute for the lock (see above).

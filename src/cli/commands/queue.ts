@@ -5,7 +5,7 @@ import { busyText, holderText, underLock, waitText, type HostLock, type HostLock
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
-import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
+import { isStepKind, kindOfCommand, processRequest, STEP_KINDS, taskOfLabel, withTaskPriority, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
 import { recordRefusal, runRecorded, type RefusalMark, type StepOwner } from '../../delivery/recorded-step.ts';
 import { causeOfLockWait, WaitLog } from '../../delivery/wait-log.ts';
 import { queueCutoffReason, minutesText } from '../../delivery/schedule.ts';
@@ -14,6 +14,7 @@ import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../de
 import { ENV } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { TASK_ID } from '../../register/model.ts';
+import { JsonlEventLog } from '../../register/store.ts';
 import { commandLine } from '../../test-run/shell.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, type Say } from '../delivery-ports.ts';
@@ -289,7 +290,6 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
-  const owner: StepOwner = { session, ...request };
   const watching = await watchStarters(runtime, say);
   try {
     const step: Step = { what, words, maxRunMinutes, watching };
@@ -302,6 +302,9 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
     }
     refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
+    // The register is read only for a step that queues: a nested step or one refused at once records nothing.
+    const register = new JsonlEventLog(runtime.files, kit.paths.events);
+    const owner: StepOwner = { session, ...(await withTaskPriority(request, async (id) => (await register.read()).state.tasks.get(id))) };
     const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());
     const need = await needOf(runtime, places.ledger, session, what, small, delivery.queue);
     const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';

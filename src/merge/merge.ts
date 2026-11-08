@@ -5,7 +5,7 @@ import { refusalOf, takeWhenClear, type Readiness } from '../delivery/clearance.
 import { underLock, type HostLock, type HostLockInfo } from '../delivery/host-lock.ts';
 import { appendDeploy, rangeText } from '../delivery/ledger.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
-import { processRequest } from '../delivery/process-request.ts';
+import { processRequest, withTaskPriority, type RequestTask } from '../delivery/process-request.ts';
 import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded, type StepMark, type StepOwner, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
@@ -84,6 +84,9 @@ export interface MergeSetup {
   readonly tasksFolder: string;
 }
 
+/** A register task as a merge reads it: what its gates weigh, and the priority its recorded steps carry. */
+export type MergedTask = GatedTask & RequestTask;
+
 export interface MergePorts {
   readonly git: MergeGit;
   readonly steps: StepRunner;
@@ -104,8 +107,8 @@ export interface MergePorts {
   readonly merges: Pick<MergeLog, 'append'>;
   /** The commits a change lands with their files, which the self-merge gates weigh. */
   readonly commitLog: CommitLog;
-  /** The register's task by id, for the review gate and the self-merge gates; undefined when it has none. */
-  taskOf(id: string): Promise<GatedTask | undefined>;
+  /** The register's task by id, for the review gate, the self-merge gates and the priority its steps record; undefined when it has none. */
+  taskOf(id: string): Promise<MergedTask | undefined>;
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly lock: Pick<HostLock, 'acquire' | 'release'>;
@@ -691,6 +694,9 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
     ports.say(`NOTE ${repo.name} is not in delivery.repos: no deploy targets, no dependency gate, no main checkout to follow`);
   }
   const { wait } = setup.delivery;
+  // Every step a merge runs (its checks, its push or merge command) is recorded as merge work for the branch's task, at
+  // the priority that task has as the merge queues.
+  const owner: StepOwner = { session: request.session, ...(await withTaskPriority(processRequest('merge', taskOfBranch(plan.branch)), (id) => ports.taskOf(id))) };
   const waits = new WaitLog(ports.clock, ports.memory.freeMb());
   const clearance = await takeWhenClear(readinessOf(setup, ports, repo), ports, {
     session: request.session,
@@ -700,8 +706,6 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
     zone: setup.zone,
     onWait: sayingWaits(waits, ports.say),
   });
-  // Every step a merge runs (its checks, its push or merge command) is recorded as merge work for the branch's task.
-  const owner: StepOwner = { session: request.session, ...processRequest('merge', taskOfBranch(plan.branch)) };
   if (clearance.kind !== 'taken') {
     return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { ...owner, what: `merge ${repo.name}: ${plan.branch}` })) };
   }
