@@ -63,7 +63,7 @@ export async function accountTeamsOf(files, teams, scope) {
             continue;
         }
         const lifts = await liftsOf(files, kit.paths.lifts);
-        const { weights: work } = await cachedWork(files, kit.paths.events, join(scope.usageDir, workCacheFileOf(team)), config.register.priorities);
+        const { weights: work } = await cachedWork(files, kit.paths.events, join(scope.usageDir, workCacheFileOf(team)), config.register.priorities, scope.now);
         others.push(budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, pausable: pausableOf(config, team, roster.ids), lifts, now: scope.now, usedPct: scope.usedPct }));
     }
     return others;

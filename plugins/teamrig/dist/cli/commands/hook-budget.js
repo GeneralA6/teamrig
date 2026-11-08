@@ -84,7 +84,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const lift = activeLift(lifts, id, now, week.usedPct);
     const { cuts } = await new CutLog(files, kit.paths.cuts).read();
     const cut = activeCut(cuts, lifts, id, now);
-    const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
+    const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities, now);
     const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work: work.weights, pausable: pausableOf(config, kit.paths.team, roster.ids), lifts, now, usedPct: week.usedPct });
     const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, now, week.usedPct);
     const teams = { split, others };
@@ -96,7 +96,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     if (sessionsWeek !== undefined) {
         await keepSessionsWeek(files, kit.paths.sessionsWeek, sessionsWeek);
     }
-    const tasksWeek = tasksWeekOf({ wPerPct: week.wPerPct, bySession: new Map([...byId, [OUTSIDE_ID, outside]]), bases: work.sizeBases, now });
+    const tasksWeek = tasksWeekOf({ wPerPct: week.wPerPct, bySession: new Map([...byId, [OUTSIDE_ID, outside]]), bases: work.sizeBases, likeTasks: work.likeTasks, focus: config.focus, now });
     if (tasksWeek !== undefined) {
         await keepTasksWeek(files, kit.paths.tasksWeek, tasksWeek);
     }
