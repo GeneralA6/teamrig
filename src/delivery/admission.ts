@@ -60,6 +60,11 @@ export interface InLine {
   };
 }
 
+/** The class a waiter counts in: the one its request names, else the rules' `defaultClass` (an older kit's ticket, or one written without a request). */
+export function classOf(waiter: InLine['waiter'], rules: Pick<AdmissionRules, 'defaultClass'>): string {
+  return waiter.request?.class ?? rules.defaultClass;
+}
+
 function byName(a: InLine, b: InLine): number {
   if (a.name === b.name) {
     return 0;
@@ -85,9 +90,8 @@ export function admissionOrder<T extends InLine>(line: readonly T[], now: number
   if (rules === undefined || rules.mode === 'serial') {
     return byArrival;
   }
-  const classOf = (ticket: InLine): string => ticket.waiter.request?.class ?? rules.defaultClass;
   const known = byArrival.flatMap((ticket) => {
-    const turn = turns.get(classOf(ticket));
+    const turn = turns.get(classOf(ticket.waiter, rules));
     return turn === undefined ? [] : [turn];
   });
   const fresh = known.length === 0 ? 0 : Math.min(...known);
@@ -95,7 +99,7 @@ export function admissionOrder<T extends InLine>(line: readonly T[], now: number
     const priority = ticket.waiter.request?.priority;
     const rank: Rank = {
       urgent: priority !== undefined && priority <= NOW_PRIORITY.id,
-      turn: turns.get(classOf(ticket)) ?? fresh,
+      turn: turns.get(classOf(ticket.waiter, rules)) ?? fresh,
       priority: agedPriority(priority, now - Date.parse(ticket.waiter.arrivedAt), rules.agingMinutes),
     };
     return { ticket, rank };
