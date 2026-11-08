@@ -24,9 +24,9 @@ export type Clearance =
 export type NotCleared = Exclude<Clearance, { readonly kind: 'taken' }>;
 
 /** The refusal record of a step whose wait for clearance ended without the lock (`recordRefusal`). */
-export function refusalOf(clearance: NotCleared, step: { readonly session: string; readonly what: string }): RefusalMark {
+export function refusalOf(clearance: NotCleared, step: Omit<RefusalMark, 'outcome' | 'reason'>): RefusalMark {
   const outcome = clearance.kind === 'gaveUp' ? 'timedOut' : clearance.kind;
-  return { session: step.session, what: step.what, outcome, reason: clearance.reason };
+  return { ...step, outcome, reason: clearance.reason };
 }
 
 export interface ClearanceRequest {

@@ -382,7 +382,7 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
     onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
-    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `deploy ${repo.name} ${early.pending.range}` })) };
+    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, kind: 'deploy', what: `deploy ${repo.name} ${early.pending.range}` })) };
   }
   try {
     const latest = view.read ?? (await readPending(ports.git, repo));
@@ -396,7 +396,7 @@ export async function deployRepo(setup: DeploySetup, ports: DeployPorts, request
     const { tag } = view;
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
-    const run = await recordQueuedStep(ports, setup, { session: request.session, what: `deploy ${repo.name} ${pending.range}`, ...waits.end() }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
+    const run = await recordQueuedStep(ports, setup, { session: request.session, kind: 'deploy', what: `deploy ${repo.name} ${pending.range}`, ...waits.end() }, () => pullAndDeploy(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
     return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
   } finally {
     await ports.lock.release(clearance.lock);

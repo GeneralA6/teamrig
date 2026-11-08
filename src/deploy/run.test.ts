@@ -118,7 +118,7 @@ class World {
 
   /** The queued step's two records, its end with `exitCode`. */
   queuedStep(exitCode: number, endedAt: string, what = 'deploy pipeline c1..c2'): unknown[] {
-    const start = { type: 'heavy', id: 'step-1', session: 'po', what, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: this.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what, kind: 'deploy', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: this.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     return [start, { ...start, endedAt, exitCode }];
   }
 
@@ -193,7 +193,7 @@ describe('deployRepo', () => {
     world.hooks.answer(FLOW.command, { lines: ['no flow open', 'tag=sha-0f8e'] }).answer(COMMAND, { lines: ['deployed api, workers on sha-0f8e'], takesMs: 120_000 });
     await world.run();
     assert.deepEqual(world.memory.watches, [{ root: 4242, intervalMs: DEFAULT_QUEUE.memorySampleSeconds * 1_000, stopped: true }]);
-    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'deploy pipeline c1..c2', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'deploy pipeline c1..c2', kind: 'deploy', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: world.memory.free, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records().slice(0, 2), [start, { ...start, endedAt: '2030-01-08T10:02:00.000Z', exitCode: 0, peakTreeMb: 2400, lowFreeMb: 5100, startFreeMb: 7700 }]);
   });
 
@@ -211,7 +211,7 @@ describe('deployRepo', () => {
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c3 deployed' });
     assert.ok(world.said.includes('waiting: check flow holds the deploy: batch run open since 23:10 UTC'));
     assert.equal(world.clock.now(), Date.parse('2030-01-08T10:00:00Z') + DEFAULT_DELIVERY_WAIT.pollSeconds * 1_000);
-    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'deploy pipeline c1..c3', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', waits: { check: DEFAULT_DELIVERY_WAIT.pollSeconds * 1_000 }, queueFreeMb: world.memory.free, startedAt: new Date(world.clock.now()).toISOString(), endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'deploy pipeline c1..c3', kind: 'deploy', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', waits: { check: DEFAULT_DELIVERY_WAIT.pollSeconds * 1_000 }, queueFreeMb: world.memory.free, startedAt: new Date(world.clock.now()).toISOString(), endedAt: null, exitCode: null };
     assert.deepEqual(world.records()[0], start, 'its record shows the wait from its first look, under the check');
     assert.equal(teamrigEnv(world.hooks.ran[2]?.env ?? {})['TEAMRIG_PENDING_RANGE'], 'base..c3', 'the check under the lock judges the range pulled');
     assert.equal(world.git.heads.get(MAIN_CHECKOUT), 'c3');
@@ -248,6 +248,7 @@ describe('deployRepo', () => {
       id: 'step-1',
       session: 'po',
       what: 'deploy pipeline c1..c2',
+      kind: 'deploy',
       kit: KIT_VERSION,
       queuedAt: '2030-01-08T10:00:00.000Z',
       endedAt: new Date(endedAt).toISOString(),
@@ -275,6 +276,7 @@ describe('deployRepo', () => {
       id: 'step-1',
       session: 'po',
       what: 'deploy pipeline c1..c2',
+      kind: 'deploy',
       kit: KIT_VERSION,
       queuedAt: '2030-01-08T10:00:00.000Z',
       endedAt: new Date(endedAt).toISOString(),

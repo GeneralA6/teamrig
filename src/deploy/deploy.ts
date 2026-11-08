@@ -115,14 +115,14 @@ export async function redeployTargets(setup: DeploySetup, ports: DeployPorts, re
     onWait: sayingWaits(waits, ports.say),
   });
   if (clearance.kind !== 'taken') {
-    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, what: `deploy ${request.targets.join(',')} of ${repo.name}` })) };
+    return { kind: 'refused', reason: await recordRefusal(ports, setup.places.ledger, waits, refusalOf(clearance, { session: request.session, kind: 'deploy', what: `deploy ${request.targets.join(',')} of ${repo.name}` })) };
   }
   try {
     const startedAt = new Date(ports.clock.now()).toISOString();
     const head = ports.git.sha(repo.main, 'HEAD') ?? early;
     ports.say(`clear; deploying ${targets} of ${repo.name}: ${request.argv.join(' ')}`);
     const what = `deploy ${request.targets.join(',')} of ${repo.name}`;
-    const run = await recordQueuedStep(ports, setup, { session: request.session, what, ...waits.end() }, () => runCommand(setup, ports, request, underLock(env, clearance.lock)), (ran) => hookExitCode(ran.end));
+    const run = await recordQueuedStep(ports, setup, { session: request.session, kind: 'deploy', what, ...waits.end() }, () => runCommand(setup, ports, request, underLock(env, clearance.lock)), (ran) => hookExitCode(ran.end));
     const why = shownLine(ports.scanner, request.why);
     const said = run.lastLine === undefined ? '' : `: ${run.lastLine}`;
     if (run.end.kind === 'notStarted') {

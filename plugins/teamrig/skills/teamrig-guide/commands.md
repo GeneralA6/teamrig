@@ -3913,7 +3913,8 @@ step that shares the host holds back every step waiting for the lock, so a hung 
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
 being killed. The step's start and end go to the delivery ledger,
 `ledger.jsonl` in `delivery.dir` (default `deploys` in the team's state folder), with the teamrig version that ran
-it (`kit`), when it began to wait (`queuedAt`) and, sampled every `delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the most memory its
+it (`kit`), the kind of work it is (`kind`) and the task it works for (`task`, when it names one), when it began to
+wait (`queuedAt`) and, sampled every `delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the most memory its
 process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`), and `shared: true` for
 a small step. Exit 0 when the command passed, 1 when it failed or was killed. REFUSED (exit 2) from
 `delivery.schedule.queueCutoffUtc` to midnight UTC, also when the wait for the lock ran past it, and when the lock
@@ -3961,6 +3962,13 @@ Flags:
 - `--max-minutes <n>`: kill the step after this many minutes instead of `delivery.queue.maxRunMinutes`; a
   whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock; with `--small`, from 1 to
   `smallMaxRunMinutes` (a longer step runs without `--small`).
+- `--kind <kind>`: the kind of work the step is, recorded on its ledger records: `build`, `test`, `lint`, `push`,
+  `merge`, `deploy` or `other`. Default: read from the command. A `git push` pushes; `node --test`, a test runner or a
+  package's `test` script tests; a linter or a `lint` script lints; `tsc`, a bundler or a `build` or `typecheck`
+  script builds; anything else (`npm run check`, a script of the team's own) is `other`. Any other value is refused
+  (exit 64).
+- `--task <T id>`: the register task the step works for, recorded on its ledger records; default the first task id
+  `--what` names (`--what "T12 specs"`), else none. A value that is not a task id is refused (exit 64).
 - `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).
 - `--pre-push`: a git pre-push hook's checks: reuse or record their pass on this clean tree, and decline a push
   whose checks waited over a minute for the lock (see above).
