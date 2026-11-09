@@ -27,6 +27,7 @@ function inputOf(due: readonly Task[], askWith: MeetInput['askWith'] = 'text'): 
     ownerMarker: 'owner',
     command: 'teamrig',
     askWith,
+    runFiles: new Map(),
   };
 }
 
@@ -34,7 +35,7 @@ describe('meetCardLines', () => {
   it("prints only the session's due cards, each with its card facts, then how to bring, ask and record them", () => {
     const input = inputOf([DECIDE, APPROVE]);
     const lines = meetCardLines(input);
-    const facts = [...cardFacts(DECIDE, input.tree), ...cardFacts(APPROVE, input.tree)];
+    const facts = [...cardFacts(DECIDE, input.tree, input.runFiles), ...cardFacts(APPROVE, input.tree, input.runFiles)];
     assert.equal(lines[0], 'MEET api (session alpha): 2 card(s) waiting on owner');
     assert.deepEqual(lines.slice(1, 1 + facts.length), facts);
     assert.deepEqual(lines.slice(1 + facts.length), [

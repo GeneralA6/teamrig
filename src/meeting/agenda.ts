@@ -1,6 +1,7 @@
 import type { AskWith, Weekday } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from '../register/card.ts';
+import type { RunFiles } from '../register/hand-step.ts';
 import { doneGroups, doneGroupTitle } from '../register/done-groups.ts';
 import type { Task } from '../register/fold.ts';
 import { isLate, type GoalScore } from '../register/goal-board.ts';
@@ -71,6 +72,8 @@ export interface AgendaInput {
   readonly focus: DecisionFocus;
   /** `focus.improvementsDay`: the UTC weekday the Improvements batch is asked. */
   readonly improvementsDay: Weekday;
+  /** What the hand step file of each card asked, the lead's team's and those under it, hashes to now (T2312). */
+  readonly runFiles: RunFiles;
 }
 
 /** Text on one line: line breaks and runs of spaces become one space. */
@@ -111,15 +114,16 @@ function noCardLine(task: Task, team: string | undefined): string {
 /**
  * A decision's card facts: its row, then what and why, then its card (card.ts) or that it has none, then since when
  * it waits with its newest note, where it was asked, and the title of each other task these name. `tree` is the read
- * of the register that holds the task, and `team` names that register when it is another team's (`web/T5`).
+ * of the register that holds the task, `runFiles` what its card's hand step file hashes to now, and `team` names that
+ * register when it is another team's (`web/T5`).
  */
-export function cardFacts(task: Task, tree: TaskTree, team?: string): string[] {
+export function cardFacts(task: Task, tree: TaskTree, runFiles: RunFiles, team?: string): string[] {
   const note = task.note === null ? '' : `: ${cut(oneLine(task.note), NOTE_CHARS)}`;
   const texts = [task.title, task.description ?? '', task.note ?? '', ...(task.card === null ? [] : cardTexts(task.card))];
   return [
     rowOf(task, tree, team),
     ...(task.description === null ? [] : [`    what and why: ${cut(oneLine(task.description), DESCRIPTION_CHARS)}`]),
-    ...(task.card === null ? [noCardLine(task, team)] : cardLines(task.card, '    ', task.audits)),
+    ...(task.card === null ? [noCardLine(task, team)] : cardLines(task.card, '    ', task.audits, runFiles)),
     `    waiting since ${tree.zone.shortMinute(new Date(task.statusAt))}${note}`,
     ...(task.ref === null ? [] : [`    asked at: ${task.ref}`]),
     ...namedLines(task, texts, tree, team),
@@ -132,8 +136,8 @@ function decisionRead(register: Omit<AgendaTeam, 'team'>, team: string | undefin
   return { tasks: tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))), tree, team, focus };
 }
 
-function cardsOf(decisions: readonly Decision[]): string[] {
-  return decisions.flatMap(({ task, tree, team }) => cardFacts(task, tree, team));
+function cardsOf(decisions: readonly Decision[], runFiles: RunFiles): string[] {
+  return decisions.flatMap(({ task, tree, team }) => cardFacts(task, tree, runFiles, team));
 }
 
 /**
@@ -174,8 +178,8 @@ function decisionLines(input: AgendaInput): string[] {
   const handed = below ? ' (and --team <team> for a team under yours)' : '';
   return [
     head,
-    ...cardsOf(order.daily),
-    ...(batch.length === 0 ? [] : [`  Improvements batch ${batch.length}, weekly, after the daily cards:`, ...cardsOf(batch)]),
+    ...cardsOf(order.daily, input.runFiles),
+    ...(batch.length === 0 ? [] : [`  Improvements batch ${batch.length}, weekly, after the daily cards:`, ...cardsOf(batch, input.runFiles)]),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
     askLine(input.askWith, input.ownerMarker),
     `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,

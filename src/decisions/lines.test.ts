@@ -27,7 +27,7 @@ function viewOf(tasks: readonly Task[], config: BatchConfig = CHECKPOINTS): Batc
   const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
   const register = { team: undefined, tasks, tree, ownerMarker: 'owner', requireGate: true, focus: DEFAULT_FOCUS };
   const batch = decisionBatch({ registers: [register], now: NOW, askedAt: ASKED_AT, config, improvementsDay: 'wed' });
-  return { batch, tree, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', askedBy: undefined, zone: TimeZone.UTC };
+  return { batch, tree, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', askedBy: undefined, zone: TimeZone.UTC, runFiles: new Map() };
 }
 
 /** A new wait of the batch's own register. */

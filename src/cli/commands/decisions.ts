@@ -8,6 +8,7 @@ import { batchLines } from '../../decisions/lines.ts';
 import { AskedStore } from '../../decisions/store.ts';
 import { taskLabel } from '../../register/views.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { readRunFiles } from '../hand-step-file.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { ownerBatchOf } from '../owner-batch.ts';
@@ -58,7 +59,11 @@ async function decisionsKit(args: ParsedArgs, runtime: CliRuntime, access: Acces
 export async function decisions(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const dk = await decisionsKit(args, runtime, 'read');
   const askedBy = dk.askedBy === undefined ? undefined : formatAddress(dk.askedBy);
-  const lines = batchLines({ batch: dk.batch, ownerMarker: dk.config.register.ownerSource, command: KIT_NAME, lead: dk.lead, askedBy, zone: dk.zone });
+  const runFiles = await readRunFiles(
+    runtime,
+    [...dk.batch.pending, ...dk.batch.overdue].map((wait) => wait.task),
+  );
+  const lines = batchLines({ batch: dk.batch, ownerMarker: dk.config.register.ownerSource, command: KIT_NAME, lead: dk.lead, askedBy, zone: dk.zone, runFiles });
   lines.forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
