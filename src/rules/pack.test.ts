@@ -397,7 +397,7 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack, /deliveryOwner|securityReviewer|queueCutoffUtc|teamrig queue|\[delivery\]|Pace the week|\[budget\]/);
   });
 
-  it('gives a team with a delivery repository the queue, test, merge and deploy commands, all in the background', () => {
+  it("gives a team with a delivery repository the queue, test, merge and deploy commands, all in the background with no human's OK, re-runs too", () => {
     const pack = renderCorePack(
       testConfig({ delivery: { schedule: { queueCutoffUtc: '22:30' }, repos: { app: DEPLOYED_REPO } } }),
       COMMAND,
@@ -406,7 +406,7 @@ describe('renderCorePack', () => {
     );
     assert.match(
       pack,
-      /^7\. .*before then\. Run queued steps \(builds, test runs, data scripts\) in the background through `teamrig queue`, a test run inside `teamrig test`, none starting 22:30-00:00 UTC; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge` and run it with `teamrig deploy`, also in the background \[delivery\]\.$/m,
+      /^7\. .*before then\. Run builds, test runs and data scripts through `teamrig queue`, tests inside `teamrig test`, none starting 22:30-00:00 UTC\. Merge a tested branch with `teamrig merge`, run it with `teamrig deploy`\. Run each in the background with no human's OK, re-runs too: they wait for memory\. A commit stays a plain `git commit` \[delivery\]\.$/m,
     );
     assert.doesNotMatch(pack, /No queued step/);
   });
@@ -415,7 +415,7 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig({ delivery: { repos: { app: { mainCheckout: 'C:/src/app' } } } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack,
-      / a test run inside `teamrig test`; a commit stays a plain `git commit`\. Merge a tested branch with `teamrig merge`, also in the background \[delivery\]\.$/m,
+      / tests inside `teamrig test`\. Merge a tested branch with `teamrig merge`\. Run each in the background with no human's OK, re-runs too: they wait for memory\. A commit stays a plain `git commit` \[delivery\]\.$/m,
     );
     assert.doesNotMatch(pack, /teamrig deploy|none starting/);
   });

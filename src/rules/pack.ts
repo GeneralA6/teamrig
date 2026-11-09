@@ -154,13 +154,19 @@ function queuedSteps(delivery: DeliveryConfig, command: string, cutoff: string |
   if (repos.length === 0) {
     return cutoff === undefined ? '' : ` No queued step (builds, test runs, data scripts) starts ${cutoff} [delivery.schedule.queueCutoffUtc].`;
   }
-  const deploy = repos.some((repo) => repo.deploy !== undefined) ? ` and run it with \`${command} deploy\`` : '';
+  const deploy = repos.some((repo) => repo.deploy !== undefined) ? `, run it with \`${command} deploy\`` : '';
   return (
-    ` Run queued steps (builds, test runs, data scripts) in the background through \`${command} queue\`, a test run inside \`${command} test\`` +
+    ` Run builds, test runs and data scripts through \`${command} queue\`, tests inside \`${command} test\`` +
     (cutoff === undefined ? '' : `, none starting ${cutoff}`) +
+    `. Merge a tested branch with \`${command} merge\`${deploy}.` +
+    // T2301: Claude Code's low-memory stop notice tells a session to get a human's OK before it re-runs what was
+    // stopped, and sessions carded the owner for merges the queue would have run. Queued steps, merges and deploys
+    // each wait for free memory and the host lock themselves (delivery/memory-gate.ts), so the human's OK adds
+    // nothing; a leader's approval and the owner gates (rule 6) still hold.
+    " Run each in the background with no human's OK, re-runs too: they wait for memory." +
     // Never `queue -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
     // refuses that form in a worktree session (the guide's `teamrig queue` section).
-    `; a commit stays a plain \`git commit\`. Merge a tested branch with \`${command} merge\`${deploy}, also in the background [delivery].`
+    ' A commit stays a plain `git commit` [delivery].'
   );
 }
 
