@@ -5,7 +5,9 @@
 # (husky runs a hook in `sh -e`, and the hook runs this). So the Windows ids of every shell above this script, nearest
 # first, up to the first one a Windows program started (its Cygwin parent is 1), and this script's own go to the CLI,
 # whose starter watch ends a step once one of those shells is gone (src/delivery/starter-watch.ts, launchingShellsOf).
-# The walk stops after 16 shells so it can never hang a teamrig call; a real chain is a few shells long. A shell that
+# The first shell's own Windows starter may be gone too: Git for Windows runs a `#!/usr/bin/env sh` hook through an env
+# that execs the shell and ends; the CLI's line of starters goes on from that shell through the env stub that stays
+# (src/open/session-processes.ts, lineageOf). The walk stops after 16 shells so it can never hang a teamrig call; a real chain is a few shells long. A shell that
 # ends mid-walk ends it there.
 if [ -r "/proc/$$/winpid" ]; then
   read -r TEAMRIG_LAUNCHER_WINPID < "/proc/$$/winpid"

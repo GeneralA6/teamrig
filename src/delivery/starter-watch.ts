@@ -26,7 +26,9 @@ export const LAUNCHER_PID_ENV = 'TEAMRIG_LAUNCHER_WINPID';
  * The shells above this process's launcher, nearest first, as the launcher recorded them. Git Bash runs a command in a
  * forked copy of itself that ends once the command starts, so no process listing links the launcher to the shell that
  * ran it, and each shell one shell runs cuts the link once more (husky's hook runner runs the hook in `sh -e`, which
- * runs the launcher): only the launcher can name them, up to the first shell a Windows program started. Empty unless
+ * runs the launcher): only the launcher can name them, up to the first shell a Windows program started. That shell's
+ * own starter may be gone as well (Git for Windows runs a `#!/usr/bin/env sh` hook through an env that execs the shell
+ * and ends); its lineage goes on through the env stub that stays (`lineageOf`'s exec stub). Empty unless
  * the launcher that recorded them is this process's own starter (`parentPid`): a process that inherited an outer
  * launcher's record from a step it runs was not started by those shells.
  */
