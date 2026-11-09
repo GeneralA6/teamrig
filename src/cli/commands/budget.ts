@@ -18,7 +18,7 @@ import { calibrationOf } from '../../budget/calibration.ts';
 import { classRowsOf } from '../../budget/class-spend.ts';
 import { activeCut, CutLog, cutText, decideCut, type Cut } from '../../budget/cut.ts';
 import { claudeProjectsDir } from '../../budget/discover.ts';
-import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
+import { ExtraLog, lastSpentOf, type ExtraEntry } from '../../budget/extra.ts';
 import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, outsideUsageDir, type Measured } from '../../budget/measure.ts';
@@ -651,8 +651,15 @@ export async function extra(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       logged.push(`added ${formatUsd(added)} to the pool`);
     }
     if (spent !== undefined) {
+      // A reading below the last is read as claude.ai's monthly counter restarting (budget/extra.ts `spentUsdOf`): say
+      // so, as a mistyped reading would count the same way.
+      const before = lastSpentOf(await log.read());
       await log.append({ ...entry, kind: 'spent', usd: spent });
-      logged.push(`${formatUsd(spent)} spent from it so far`);
+      const restart =
+        before !== undefined && spent < before.usd
+          ? `, below the last reading of ${formatUsd(before.usd)}: read as claude.ai's monthly counter restarting, the ${formatUsd(before.usd)} staying spent`
+          : '';
+      logged.push(`${formatUsd(spent)} spent from it so far${restart}`);
     }
     runtime.out.stdout(`EXTRA ${logged.join('; ')}.`);
   }

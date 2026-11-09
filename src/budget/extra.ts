@@ -125,6 +125,12 @@ export function fitWPerUsd(entries: readonly ExtraEntry[]): UsdRate | undefined 
   return wPerUsd > 0 ? { wPerUsd, pairs: steps.length } : undefined;
 }
 
+/** The newest spent reading of the log; undefined with none. */
+export function lastSpentOf(entries: readonly ExtraEntry[]): ExtraEntry | undefined {
+  const spent = spentReadings(entries);
+  return spent[spent.length - 1];
+}
+
 /**
  * The dollars the spent readings (oldest first) show spent from the pool so far. claude.ai's extra-usage counter restarts each month
  * while the dollars put in the pool stay, so a reading below the one before starts a new count: each count's last
