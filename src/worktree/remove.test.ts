@@ -337,8 +337,8 @@ class PartwayGit extends FakeWorktreeGit {
   private readonly partly: () => void;
   private dropped = false;
 
-  constructor(listed: readonly WorktreeEntry[], partly: () => void = () => undefined) {
-    super({ removal: { ok: false, reason: "error: failed to delete '/w/t4': Permission denied" } });
+  constructor(listed: readonly WorktreeEntry[], partly: () => void = () => undefined, deletion: GitOutcome = { ok: true }) {
+    super({ removal: { ok: false, reason: "error: failed to delete '/w/t4': Permission denied" }, deletion });
     this.listed = listed;
     this.partly = partly;
   }
@@ -442,6 +442,23 @@ describe('carryOut puts back every link it unlinked when the removal stops', () 
       assert.equal(await files.kindOf(LINK), 'missing');
       assert.equal(await files.kindOf(TOP), 'folder');
       assert.deepEqual(lines.slice(-2), [`target ${resolve(MODULES)} untouched: 2 entries, as before`, `target ${resolve(WEB_MODULES)} untouched: 1 entry, as before`]);
+    });
+
+    it('still deletes the branch it proved merged: a rerun cannot tell which branch the folder had (T743)', async () => {
+      const { files, plan } = twoLinks();
+      const git = new PartwayGit(LISTED);
+      const lines: string[] = [];
+      const message = await failure(carryOut({ ...plan, branch: { name: 't4', base: 'origin/main' } }, { git, files }, (line) => lines.push(line)));
+      assert.match(message, /stopped partway: .* again to clear what is left$/);
+      assert.deepEqual(git.steps, [`worktree remove ${TOP} in ${MAIN}`, `branch -D t4 in ${MAIN}`]);
+      assert.equal(lines.at(-1), 'deleted branch t4: every commit of it is on origin/main');
+    });
+
+    it('names the branch it kept when that delete fails', async () => {
+      const { files, plan } = twoLinks();
+      const git = new PartwayGit(LISTED, () => undefined, { ok: false, reason: 'error: cannot lock ref' });
+      const message = await failure(carried({ ...plan, branch: { name: 't4', base: 'origin/main' } }, { git, files }));
+      assert.match(message, /again to clear what is left\. Its branch is kept: git branch -D t4: error: cannot lock ref$/);
     });
 
     it('throws a target that changed first, as the graver fault', async () => {
