@@ -186,7 +186,7 @@ describe('dbWritesOf, each client, runner and option it reads', () => {
     assert.deepEqual(await writes("node '' --apply", apply('./')), []);
   });
 
-  it('finds the script a package runner runs, past its valued options and by a bin path', async () => {
+  it('finds the script a package runner runs, past its valued options and by a bin path, and none it only knows at run time', async () => {
     for (const line of [
       `pnpx tsx ${FIX}`,
       `npx -p tsx tsx ${FIX}`,
@@ -196,6 +196,8 @@ describe('dbWritesOf, each client, runner and option it reads', () => {
     ]) {
       assert.deepEqual(await writes(line, scripts()), [`tsx ${FIX} runs deleteMany`], line);
     }
+    // As with a program word the line itself only knows at run time, which the line's walker never reads as a run.
+    assert.deepEqual(await writes(`npx $BIN/tsx ${FIX}`, scripts()), []);
   });
 
   it("finds the script node runs past its preload and env-file options, and none under an option that runs no script", async () => {
@@ -218,6 +220,8 @@ describe('dbWritesOf, each client, runner and option it reads', () => {
 
   it('reads the code node takes on stdin from a pipe or a here-document, not a file named after the - word', async () => {
     assert.deepEqual(await writes('cat fix.cjs | node', scripts()), ['node runs deleteMany']);
+    // Each file the printer pipes is one input; a write they share is named once.
+    assert.deepEqual(await writes('cat fix.cjs fix.cjs | node', scripts()), ['node runs deleteMany']);
     assert.deepEqual(await writes(`node - read.cjs <<'EOF'\n${DOC_FIX}EOF`, scripts()), ['node runs deleteMany']);
   });
 
@@ -268,9 +272,10 @@ describe('dbWritesOf, each client, runner and option it reads', () => {
   });
 
   it('reads a remote line by the dialect of the shell that runs it, not the host line', async () => {
-    // bash drops the backslashes, so the echo hands the client `db.a.drop()`; PowerShell would keep them.
+    // ssh hands the remote shell one line; bash there drops the backslashes, so the echo hands the client
+    // `db.a.drop()`, where PowerShell would keep them. A `sh -c` line is bash under any host, so it proves no dialect.
     const ctx = { ...context(), dialect: 'powershell' as const };
-    assert.deepEqual(await writes(String.raw`kubectl exec -i p -- sh -c 'echo db.a.drop\(\) | docsh'`, ctx), [
+    assert.deepEqual(await writes(String.raw`ssh h 'echo db.a.drop\(\) | docsh'`, ctx), [
       'docsh runs drop in a container or on a remote host',
     ]);
   });
