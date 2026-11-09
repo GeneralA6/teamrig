@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD } from '../testing/card.ts';
-import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, sameCard } from './card.ts';
+import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, sameCard, typedHandStep } from './card.ts';
 import type { HandStepAudit, RunFiles } from './hand-step.ts';
 
 const WHY_ASK = 'the ordered tier cannot ship at that price';
@@ -43,6 +43,19 @@ describe('the decision card', () => {
       cardProblem({ ...TEST_CARD, options: ['Basic at 9 dollars'] }, false),
       '--options lists 1: a decision lists at least 2, separated by |; an approval lists none or as many',
     );
+  });
+
+  it('finds a hand step typed into any part of a card, naming the part and its shape (T2312)', () => {
+    assert.equal(typedHandStep(TEST_OWNER_CARD), undefined);
+    assert.deepEqual(typedHandStep({ ...TEST_CARD, question: 'One paste adds the key file to the guard paths?' }), { flag: '--question', shape: 'an ask to paste' });
+    assert.deepEqual(typedHandStep({ ...TEST_CARD, whyAsk: 'only you hold the `settings.json` file' }), { flag: '--why-ask', shape: 'a backticked span' });
+    assert.deepEqual(typedHandStep({ ...TEST_CARD, options: ['Basic at 9 dollars', 'add { "tier": "pro" } to the plan'] }), { flag: '--options choice 2', shape: 'a JSON object' });
+    assert.deepEqual(typedHandStep({ ...TEST_CARD, recommend: 'Basic, by one Set-Content line' }), { flag: '--recommend', shape: 'a PowerShell write cmdlet' });
+    assert.deepEqual(typedHandStep({ ...TEST_CARD, byDefault: "nothing until & 'C:/steps/a.ps1' runs" }), { flag: '--default', shape: "PowerShell's call operator (& ')" });
+  });
+
+  it('leaves a card that hands its step as a run file, where its text may name the step (T2312)', () => {
+    assert.equal(typedHandStep({ ...TEST_CARD, question: 'Grant read by pasting the line?', run: '/w/tasks/T5/grant-read.ps1' }), undefined);
   });
 
   it('compares cards part by part', () => {

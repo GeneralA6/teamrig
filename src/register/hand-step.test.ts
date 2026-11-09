@@ -1,6 +1,30 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { auditOf, handStepFileProblem, handStepKindOf, parseAuditPin, runLineOf, sha256Hex, shortSha256, withAudit, type HandStepAudit } from './hand-step.ts';
+import { auditOf, handStepFileProblem, handStepKindOf, handStepShapeOf, parseAuditPin, runLineOf, sha256Hex, shortSha256, withAudit, type HandStepAudit } from './hand-step.ts';
+
+describe('handStepShapeOf', () => {
+  it('names code typed for the human: a backticked span, the call operator, a write cmdlet, a JSON object', () => {
+    assert.equal(handStepShapeOf('run `git config core.hooksPath x` once'), 'a backticked span');
+    assert.equal(handStepShapeOf("then & 'C:/steps/grant.ps1' in PowerShell"), "PowerShell's call operator (& ')");
+    assert.equal(handStepShapeOf('then &"C:/steps/grant.ps1"'), "PowerShell's call operator (& ')");
+    assert.equal(handStepShapeOf('one add-content line on the profile'), 'a PowerShell write cmdlet');
+    assert.equal(handStepShapeOf('Set-ItemProperty on the key, then Remove-Item the old one'), 'a PowerShell write cmdlet');
+    assert.equal(handStepShapeOf('add { "prompts": true } to config.json'), 'a JSON object');
+  });
+
+  it('names an ask to paste in any form but the past one, which names a paste done', () => {
+    assert.deepEqual(
+      ['one paste adds the key file to the guard paths', 'Pastes the line', 'after pasting it, restart'].map(handStepShapeOf),
+      ['an ask to paste', 'an ask to paste', 'an ask to paste'],
+    );
+    assert.equal(handStepShapeOf('keep the hand-pasted lines of today'), undefined);
+  });
+
+  it('names nothing in plain prose, nor in words that only hold a shape', () => {
+    const prose = ['Basic at 9 dollars a month, R&D first', 'the pastebin stays, the item is new', 'Set the content of the plan aside', 'a {braced} note'];
+    assert.deepEqual(prose.map(handStepShapeOf), [undefined, undefined, undefined, undefined]);
+  });
+});
 
 describe('handStepKindOf', () => {
   it('names a PowerShell, bash or steps file by its extension in any case', () => {

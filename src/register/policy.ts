@@ -8,8 +8,8 @@ import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../cor
 import type { TimeZone } from '../core/zone.ts';
 import { waitAnswerersOf } from './approval.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, RUN_FLAG, sameCard, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
-import { auditOf, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
+import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
+import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
@@ -673,10 +673,35 @@ export class RegisterPolicy {
     return undefined;
   }
 
-  /** What a card asking the owner (`owners`) must say besides its parts: why, on an owner's order; its gate, on a decision. */
+  /**
+   * What a card asking the owner (`owners`) must say besides its parts, and must not: why, on an owner's order; its
+   * gate, on a decision; and no hand step in its text (typedStepProblem).
+   */
   private ownerAsk(task: Task, owners: readonly PersonWait[], card: DecisionCard | null): Verdict<DecisionCard | null> {
+    const typed = owners.length === 0 || card === null ? undefined : this.typedStepProblem(task, card);
+    if (typed !== undefined) {
+      return refuse(typed);
+    }
     const ordered = this.ownerOrderCard(task, owners, card);
     return ordered.ok ? this.gatedCard(task, owners, card) : ordered;
+  }
+
+  /**
+   * Why a card asking the owner may not say what it says (T2312, core rule 11): a hand step goes to the human only as
+   * a file its auditor read, so a card that types one into a part, as code or an ask to paste, is refused unless it
+   * hands the step as its run file. A card kept from an older row is held to it too, as it still reaches the owner.
+   */
+  private typedStepProblem(task: Task, card: DecisionCard): string | undefined {
+    const typed = typedHandStep(card);
+    if (typed === undefined) {
+      return undefined;
+    }
+    const { ownerSource } = this.config.register;
+    return (
+      `${typed.flag} hands ${ownerSource} a step as text (${typed.shape}): core rule 11 hands ${ownerSource} a step only as a file its auditor read. ` +
+      `Write the step to a ${HAND_STEP_KINDS.join(', ')} file, have it audited (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --file <path>) and give ${RUN_FLAG} <path>; ` +
+      `a card that hands no step says so without code or an ask to paste ("the line is in")`
+    );
   }
 
   /**
