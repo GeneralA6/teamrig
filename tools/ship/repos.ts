@@ -27,6 +27,11 @@ export interface RepoProfile {
   /** Check names as GitHub shows them: an Actions job's name, or a commit status's context. */
   checks: readonly string[];
   local: LocalChecks;
+  /**
+   * Paths every reship writes again on a newer main (the built dist, the version files), a folder ending in
+   * `/`: a remote branch whose other commits main holds is a leftover (leftovers.ts). Empty when not listed.
+   */
+  regenerated: readonly string[];
 }
 
 export const PROFILES_PATH = new URL('./repos.json', import.meta.url);
@@ -43,16 +48,32 @@ function parseLocalChecks(slug: string, value: unknown): LocalChecks {
   return { runner };
 }
 
+function parseRegenerated(slug: string, value: unknown): readonly string[] {
+  if (value === undefined) return [];
+  if (!isNameList(value) || value.some(path => path.startsWith('/') || path.split('/').includes('..'))) {
+    throw new Error(`repos.json: ${slug} "regenerated" needs a list of paths inside the repo (a folder ends in /)`);
+  }
+  if (new Set(value).size !== value.length) throw new Error(`repos.json: ${slug} lists a regenerated path twice`);
+  return value;
+}
+
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "local" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "local", "regenerated" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
     if (new Set(entry['checks']).size !== entry['checks'].length) throw new Error(`repos.json: ${slug} lists a check twice`);
     const gate = entry['gate'];
     if (!isGate(gate)) throw new Error(`repos.json: ${slug} needs a "gate": "ci" (GitHub checks) or "local" (checks run on this machine)`);
-    profiles.set(slug.toLowerCase(), { slug, main: entry['main'], gate, checks: entry['checks'], local: parseLocalChecks(slug, entry['local']) });
+    profiles.set(slug.toLowerCase(), {
+      slug,
+      main: entry['main'],
+      gate,
+      checks: entry['checks'],
+      local: parseLocalChecks(slug, entry['local']),
+      regenerated: parseRegenerated(slug, entry['regenerated']),
+    });
   }
   return profiles;
 }

@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { parseProfiles, profileFor, readProfiles, slugOf } from './repos.ts';
+import { DIST } from './ship-commits.ts';
+import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], local: { runner: null } });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], local: { runner: null }, regenerated: [] });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -37,6 +39,21 @@ test('refuses a "local" entry that names no runner path', () => {
   for (const local of ['[]', '{}', '{"runner":""}', '{"runner":" "}', '{"runner":3}']) {
     assert.throws(() => parseProfiles(entry(local)), /O\/R "local" needs a "runner": the path of the repo's local CI runner/, local);
   }
+});
+
+test('reads the regenerated paths a reship writes again, and refuses a path outside the repo or listed twice', () => {
+  const entry = (regenerated: string): string => `{"O/R":{"main":"main","gate":"ci","checks":["a"],"regenerated":${regenerated}}}`;
+  assert.deepEqual(profileFor(parseProfiles(entry('["dist/","plugin.json"]')), 'O/R').regenerated, ['dist/', 'plugin.json']);
+  for (const regenerated of ['"dist/"', '[3]', '[""]', '["/dist/"]', '["a/../b"]']) {
+    assert.throws(() => parseProfiles(entry(regenerated)), /O\/R "regenerated" needs a list of paths inside the repo \(a folder ends in \/\)/, regenerated);
+  }
+  assert.throws(() => parseProfiles(entry('["dist/","dist/"]')), /O\/R lists a regenerated path twice/);
+});
+
+test('the shipped repos.json calls regenerated exactly the dist and the version files a ship writes again', () => {
+  const profiles = readProfiles();
+  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').regenerated, [`${DIST}/`, ...TEAMRIG_VERSION_FILES.map(file => file.path)]);
+  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').regenerated, ['plugins/teamrig-pane/.claude-plugin/plugin.json']);
 });
 
 test('finds the GitHub slug in an SSH or HTTPS remote', () => {

@@ -17,7 +17,8 @@
     ],
     "local": {
       "runner": "tools/ci/local.ts"
-    }
+    },
+    "regenerated": ["plugins/teamrig/dist/", "plugins/teamrig/.claude-plugin/plugin.json", "src/core/version.ts"]
   },
   "GeneralA6/teamrig-pane": {
     "main": "main",
@@ -36,6 +37,7 @@
     ],
     "local": {
       "runner": "tools/ci/local.ts"
-    }
+    },
+    "regenerated": ["plugins/teamrig-pane/.claude-plugin/plugin.json"]
   }
 }
