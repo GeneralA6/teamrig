@@ -72,6 +72,18 @@ a wait on the owner's decision names it with `--gate` (one of the owner gates, o
 `set` refuses one without it, and `check` flags an older one `UNGATED`. Any other question is the session's or its
 leader's, however many good answers it has: decide it, or wait on your leader (`--waits decision:<leader>`).
 
+A step the human runs by hand that changes anything or touches a secret (core rule 11) reaches the owner only as a
+file its auditor read, never as code or a paste typed into a card: the security reviewer [roles.securityReviewer],
+never the task's owner, reads it and pins it on the task at its sha256 (`teamrig audit T3 --file <path>`), and the
+card hands it with `--run <path>`, a `.ps1`, `.sh` or `.md` file, refused unless that pin holds the sha256 the file
+has now. The card prints the line that runs it (`& '<path>'`, `bash '<path>'` or `follow the steps in <path>`) with
+its short sha256 and its auditor. Every print hashes the file again: one that changed or went since its audit
+prints `CHANGED since its audit` or `MISSING since its audit` and `do not run` in place of the run line, and
+`check` flags it `RUN-CHANGED`. A card asking the owner that types the step into a part instead (a backticked span,
+PowerShell's call operator, a write cmdlet, a JSON object, or an ask to paste) is refused, naming rule 11 and who
+audits; a card that names a past paste ("pasted") passes, and a wait on a leader, which no human reads, is not held
+to it. The [hand-step skill](../hand-step/SKILL.md) has the steps to write the file.
+
 Every session needs teamrig 0.10.0 or later before anyone sets `waiting`: an older one skips the
 line with a warning and shows the task at its earlier status. A `blocked` written by an older teamrig reads as
 `waiting` with no reasons.

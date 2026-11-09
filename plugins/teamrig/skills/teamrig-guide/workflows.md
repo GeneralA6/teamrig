@@ -361,6 +361,8 @@ each flag (full table: [tasks.md](tasks.md#check-flags)):
 - `UNGATED`: a task asks the owner to decide what no owner gate or business decision makes the owner's: never read
   it to the owner; decide it yourself if it is yours to decide, else one inbox line to its owner to decide it, or
   to set it again with `--gate`.
+- `RUN-CHANGED`: a card hands the owner a hand step file that changed or went since its audit: never ask the owner
+  to run it; one inbox line to its owner to have it audited again, or to set the card again without `--run`.
 - `DECISIONS batch due`: ask the human the batch `teamrig decisions --session lead` prints, together, each card as it
   stands; record each answer (`update <id> --decided --note "owner decided: ..."`), then `teamrig decisions asked
   --session lead`.
