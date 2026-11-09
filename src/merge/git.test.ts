@@ -96,6 +96,20 @@ describe('GIT_MERGE where a checkout is', () => {
   });
 });
 
+describe('GIT_MERGE reading the ssh command', () => {
+  it("reads core.sshCommand from git's config, and no longer once it is unset", () => {
+    const { repo } = repoWithOrigin('merge-ssh');
+    try {
+      repo.git('config', 'core.sshCommand', 'ssh -i deploy_key');
+      assert.equal(git.sshCommand(repo.dir), 'ssh -i deploy_key');
+      repo.git('config', '--unset', 'core.sshCommand');
+      assert.notEqual(git.sshCommand(repo.dir), 'ssh -i deploy_key');
+    } finally {
+      repo.remove();
+    }
+  });
+});
+
 describe('GIT_MERGE reading origin and a range', () => {
   it("reads origin's branch from origin itself, and the local copy only after a fetch", () => {
     const { repo } = repoWithOrigin('merge-remote');
