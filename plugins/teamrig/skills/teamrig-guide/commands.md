@@ -2775,6 +2775,35 @@ PREVIEW owner next T14: goes to the top of web's list (the earlier pin on T9 mov
 NEXT T14 open, p2, pinned, owner web, from lead | Saved carts survive a logout
 ```
 
+### teamrig owner wake
+
+The owner wakes one session by hand (`teamrig owner wake <[team/]id|name>`), the pane's Wake on a session row. A
+running session whose tab is idle gets an inbox line from the owner that wakes it at once to work its task list in
+plan order; while that line's wake still waits, a second press posts nothing and says when the first was asked. A
+session that does not run opens in a new tab as [open](#teamrig-open) opens it, refused as `open` refuses when the
+host has no room. A tab in a turn, at a tool call, or with a decision put to the person is refused with nothing
+posted: it reads its list once that step ends, and a question waits on the person in that tab. It is refused on a
+team with `wake.enabled` false, and, as `owner note` is, from an agent's tool call and under `$CLAUDECODE`. The owner
+is above every team, so `<team>/<id>` wakes a session of any team of the tree.
+
+Flags:
+
+- `--terminal <name>`: as `open` takes it, for a session that opens.
+- `--project <dir>`: as `open` takes it: the folder a session that opens opens in, and where a running one's
+  transcript is looked for.
+
+Example:
+
+```sh
+teamrig owner wake web
+```
+
+Output:
+
+```text
+WAKES shop-web (session web) within about 15 s: an inbox line from owner asks it to work its task list in plan order
+```
+
 ### teamrig launch
 
 What a tab started by `open` runs: it sets the session's variables and starts Claude Code under the session's

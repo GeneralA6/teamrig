@@ -48,6 +48,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       other task on its session's list (moving that session's earlier pin), wakes the session to start
       it once the step in hand is done, and tells the lead; refused on a done, dropped or in-progress
       task, and where Claude Code sets $CLAUDECODE; --preview prints what it would do and writes nothing
+  owner wake <[team/]id|name> [--terminal <name>] [--project <dir>]   the owner wakes one session from the
+      pane: a running idle tab gets an inbox line that wakes it at once to work its list (none more while
+      that ask waits), a closed one opens in a new tab; refused on a tab in a turn, at a tool call or with
+      a decision put to the person, where wake.enabled is false, and where Claude Code sets $CLAUDECODE
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask),
       KEEP or DISCARD, and why; it only reads
