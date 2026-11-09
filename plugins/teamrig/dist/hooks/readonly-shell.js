@@ -1,3 +1,4 @@
+import { bashToolReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { bashLineReads } from "../readonly-shell/bash.js";
 import { powershellLineReads } from "../readonly-shell/powershell.js";
@@ -27,10 +28,20 @@ function lineReads(tool, command, rules) {
             return false;
     }
 }
-/** True when the call is a Bash or PowerShell line whose every command provably only reads, and none prints a secret. */
-export function callReads(payload, rules, printsSecret) {
-    const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-    return command !== undefined && lineReads(stringField(payload, 'tool_name'), command, rules) && !printsSecret(payload);
+/**
+ * True when the call is a Bash or PowerShell line whose every command provably only reads, and none prints a secret.
+ * A Bash line on Windows must pass in both readings (core/bash-tool-readings.ts): the text as written and the halved
+ * one bash receives, so a separator or backtick only bash sees never runs a hidden command without a prompt.
+ */
+export function callReads(payload, rules, printsSecret, platform) {
+    const tool = stringField(payload, 'tool_name');
+    const input = recordField(payload, 'tool_input') ?? {};
+    const command = stringField(input, 'command');
+    if (command === undefined) {
+        return false;
+    }
+    const readings = tool === 'Bash' ? bashToolReadings(command, platform) : [command];
+    return readings.every((text) => lineReads(tool, text, rules) && !printsSecret({ ...payload, tool_input: { ...input, command: text } }));
 }
 /**
  * The PreToolUse output for a Bash or PowerShell call: an allow, which skips the permission prompt, when every
@@ -39,8 +50,8 @@ export function callReads(payload, rules, printsSecret) {
  * ask rules, above it. A line that prints a secret is never allowed here, even when the team let the secret guard
  * allow it or that guard failed: reading a secret into the conversation always takes a prompt.
  */
-export function readonlyShellOutput(payload, rules, printsSecret) {
-    if (!isRecord(payload) || !callReads(payload, rules, printsSecret)) {
+export function readonlyShellOutput(payload, rules, printsSecret, platform) {
+    if (!isRecord(payload) || !callReads(payload, rules, printsSecret, platform)) {
         return '';
     }
     return JSON.stringify({
