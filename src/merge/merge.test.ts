@@ -535,19 +535,20 @@ describe('merge pushes a branch to the default branch', () => {
   });
 });
 
+const HALF_HOUR = 30 * 60_000;
+
+/** Origin's main moves to `commit`, which holds the rebased branch's files, as a squash merge of it does. */
+function squashedAs(world: World, commit: string): void {
+  world.git.origin.set('main', commit);
+  world.git.landed = [commit];
+  world.git.diffs.set(`${commit}..rebased`, []);
+}
+
 describe('merge goes through the repository’s merge command, where one is set', () => {
   const MERGE = ['node', 'merge.ts'];
   const MERGING: DeliveryRepoConfig = { ...PLAIN, merge: { command: MERGE, remote: 'origin' } };
   const PENDING = join(PLACES.pendingMerges, 'app%2Ffeat.json');
-  const WAITED: PendingMerge = { session: 'api', repo: 'app', branch: 'feat', head: 'rebased', base: 'base', since: '2030-01-08T10:00:00.000Z', note: 'https://forge/pr/7' };
-  const HALF_HOUR = 30 * 60_000;
-
-  /** Origin's main moves to `commit`, which holds the rebased branch's files, as a squash merge of it does. */
-  function squashedAs(world: World, commit: string): void {
-    world.git.origin.set('main', commit);
-    world.git.landed = [commit];
-    world.git.diffs.set(`${commit}..rebased`, []);
-  }
+  const WAITED: PendingMerge = { session: 'api', repo: 'app', branch: 'feat', head: 'rebased', base: 'base', since: '2030-01-08T10:00:00.000Z', note: 'https://forge/pr/7', merge: undefined };
 
   function pendingOf(world: World): PendingMerge | undefined {
     const text = world.files.get(PENDING);
@@ -1267,6 +1268,21 @@ describe('mergeBranch under pushToProtected: gated', () => {
     assert.equal(world.steps.ran.length, 1);
     assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: [], review: 'untouched', route: 'approved', missed: ['pass'], approvedBy: 'lead' }]);
     assert.equal(await world.gateHolds.read('app', 't9-feat'), undefined);
+  });
+
+  it('logs a change the merge command left waiting once a later run finds it merged, dated that run', async () => {
+    const MERGE = ['node', 'merge.ts'];
+    const world = gatedWorld({ merge: { command: MERGE, remote: 'origin' } });
+    await passed(world);
+    world.hooks.answer(MERGE, { end: 75, lines: ['https://forge/pr/9'] });
+    assert.equal((await world.run(ALPHA)).kind, 'waiting');
+    assert.deepEqual(await mergeRows(world), []);
+    world.clock.advance(HALF_HOUR);
+    squashedAs(world, 'squashed');
+    assert.equal((await world.run(ALPHA)).kind, 'done');
+    assert.equal(world.hooks.ran.length, 1);
+    assert.deepEqual((await world.merges.read()).records.map(({ at }) => at), ['2030-01-08T10:30:00.000Z']);
+    assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: ['unit', 'lint'], review: 'untouched', route: 'self' }]);
   });
 
   it('counts a repo with its review gate off as a missed review', async () => {

@@ -542,9 +542,10 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
   const merged = pending === undefined ? undefined : mergedAt(git, top, onto, pending.base, pending.head);
   if (pending !== undefined && merged !== undefined) {
     ports.say(`${branch} (${short(pending.head)}) is merged into ${defaultBranch}: ${onto} at ${short(merged)} holds it`);
-    // The run that gave the command the change ran the self-merge gates; a pending merge does not keep their verdict,
-    // so a merge finished here writes no merges row (T1514).
-    return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, pending.base, merged), merged), after: merged, startedAt: pending.since, endedAt: startedAt, merge: undefined };
+    // The run that gave the command the change weighed the self-merge gates and kept their merges row in the pending
+    // merge; it lands now (T1514).
+    const merge = pending.merge === undefined ? undefined : { ...pending.merge, at: startedAt };
+    return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, pending.base, merged), merged), after: merged, startedAt: pending.since, endedAt: startedAt, merge };
   }
   const before = git.sha(top, onto);
   if (before === undefined) {
@@ -584,7 +585,9 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
     hookExitCode,
   );
   if (end.kind === 'exited' && end.code === HOOK_WAIT_EXIT) {
-    await writePendingMerge(ports.files, setup.places, { session: taking.session, repo: repo.name, branch, head, base: before, since: pending?.since ?? startedAt, note: last ?? '' });
+    // The row's `at` is a placeholder: the run that finds the merge sets it.
+    const merge = mergeOf(checked, plan, startedAt, before, head);
+    await writePendingMerge(ports.files, setup.places, { session: taking.session, repo: repo.name, branch, head, base: before, since: pending?.since ?? startedAt, note: last ?? '', merge });
     return { kind: 'waiting', reason: last ?? `the merge command \`${command}\` says ${branch} waits to merge into ${defaultBranch}` };
   }
   if (!succeeded(end)) {
