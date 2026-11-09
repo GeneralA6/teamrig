@@ -19,7 +19,7 @@ import { hostLockOf, logLineOf } from "../delivery-ports.js";
 import { commandWordsOf, sessionRef } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
+import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
 import { envSession, markedSessionOf } from "./hook-input.js";
 const MINUTE_MS = 60_000;
 /**
@@ -136,7 +136,7 @@ function report(runtime, say, end, maxRunMinutes, watching) {
     switch (end.kind) {
         case 'stopped':
             say(`its launching shell ended (${endedText(watching)}): killed its process tree`);
-            runtime.out.stdout(`STOPPED killed, recorded as exit ${STOPPED_EXIT}`);
+            runtime.out.stdout(`STOPPED killed, recorded as exit ${STOPPED_EXIT}; ${rerunAdvice('partway')}`);
             return EXIT.failed;
         case 'timedOut':
             say(`timed out after ${minutesText(maxRunMinutes)}: killed its process tree`);
