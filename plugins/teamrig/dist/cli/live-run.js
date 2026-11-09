@@ -3,6 +3,20 @@ import { KIT_NAME } from "../core/home.js";
 import { runsClaude } from "../open/session-processes.js";
 import { measureSessions, runningPlaces } from "../sessions/measure.js";
 import { SessionRecordStore } from "../sessions/record.js";
+import { RefusedError } from "./runtime.js";
+/**
+ * Session `id`'s start record while its Claude Code runs now, of a team whose sessions are `ids`; undefined when it runs
+ * in none. Every session's record counts: a later one on the same process (a /clear that bound the tab to it) wins it.
+ * Refused when the host's processes cannot be listed, since then nothing tells whether it runs.
+ */
+export async function runningRecordOf(runtime, paths, ids, id) {
+    const records = await new SessionRecordStore(runtime.files, paths).readEach(ids);
+    const rows = await runtime.memory.processes();
+    if (rows === undefined) {
+        throw new RefusedError(`${KIT_NAME} could not list the host's processes, so it cannot tell whether ${id} runs`);
+    }
+    return runningPlaces(measureSessions(records, rows)).some((place) => place.id === id) ? records.get(id) : undefined;
+}
 /**
  * The Claude Code process session `id`, of a team whose sessions are `ids`, runs in now, unless that is `own`: its
  * recorded process while it still runs Claude Code and, as `teamrig sessions` tells it (src/sessions/measure.ts),

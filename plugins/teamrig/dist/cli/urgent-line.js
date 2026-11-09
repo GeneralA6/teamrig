@@ -4,6 +4,7 @@ import { inboxLineOf, postLine } from "../inbox/inbox.js";
 import { lineHash } from "../inbox/line-hash.js";
 import { WakeAsks } from "../wake/asks.js";
 import { inboxDepsOf } from "./commands/inbox.js";
+import { RefusedError } from "./runtime.js";
 /**
  * The ask that makes the posted line wake its receiver. An `atOnce` one is a timed ask due at its post time, bound to
  * the posted line by its hash, so the next wake check takes it while the line is unseen and drops it once the
@@ -38,4 +39,20 @@ export async function postUrgentLine(runtime, kit, config, line) {
         return `posted to the inbox, but it does not wake ${line.to}: ${errorMessage(error)}`;
     }
     return undefined;
+}
+/**
+ * Posts `line` with an at-once ask (T2207), for a person waiting live on its receiver, unless an ask with the same
+ * sender and text still waits for the receiver's tab (busy in a turn, or its next wake check not yet run): a second
+ * press would only put the same line in its inbox again. Refused, naming the receiver as `shown`, when it is not posted.
+ */
+export async function postAtOnce(runtime, kit, config, line, shown) {
+    const waiting = (await new WakeAsks(runtime.files, kit.paths.wakeAsks).read(line.to)).find(({ ask }) => ask?.from === line.from && ask.text === line.text)?.ask;
+    if (waiting !== undefined) {
+        return { kind: 'waiting', at: waiting.at };
+    }
+    const problem = await postUrgentLine(runtime, kit, config, { ...line, atOnce: true });
+    if (problem !== undefined) {
+        throw new RefusedError(`${shown} was not woken: ${problem}`);
+    }
+    return { kind: 'posted' };
 }
