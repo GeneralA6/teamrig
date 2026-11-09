@@ -8,7 +8,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf } from './hook-guard-load.ts';
-import { execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from './hook-guard-outputs.ts';
 import { envSession, parseJson } from './hook-input.ts';
 import { callRouteOf } from './hook-route-context.ts';
 
@@ -38,6 +38,7 @@ async function routeAllowOutputOf(runtime: CliRuntime, payload: JsonRecord, deps
     pushGuardOutputOf(runtime, guard, payload),
     packageGuardOutputOf(runtime, guard, payload),
     execGuardOutputOf(runtime, guard, payload),
+    dbWriteGuardOutputOf(runtime, guard, payload),
   ]);
   if (!guardsPassed([...answers, secretGuardOutputOf(runtime, guard, payload), passRecordGuardOutput(payload)])) {
     return '';
@@ -51,7 +52,7 @@ async function routeAllowOutputOf(runtime: CliRuntime, payload: JsonRecord, deps
 /**
  * PreToolUse on Bash: under `prompts.hookAsks: refuse` with `prompts.routeAllow` on (its default), lets a line that runs
  * a sanctioned route marked for it (permissions/sanctioned.ts: merge, deploy, exec request, worktree remove, git commit)
- * run with no permission check, once the push, package, secret, exec and pass-record guards all passed it; logs each
+ * run with no permission check, once the push, package, secret, exec, db-write and pass-record guards all passed it; logs each
  * allow to `state/prompt-answers.jsonl` by its route, never its command. Outside a team, with asks on, the switch off or
  * the config missing or broken, for any other line or tool, when a guard asks or refuses, for input that is not a hook
  * payload or on any error, it prints nothing, so the guards and Claude Code's own permission check decide: it fails

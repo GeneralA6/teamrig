@@ -5839,6 +5839,27 @@ Output: nothing for a result that holds no secret, with `secretGuard.redact` set
 projects, for another tool's result or for input that is not a hook payload; otherwise a JSON `PostToolUse` output
 with the redacted result (`updatedToolOutput`) and the line naming the kinds (`additionalContext`).
 
+### teamrig hook db-write-guard
+
+Before a Bash or PowerShell call, asks about (or refuses, as `dbWriteGuard.writes` says) a line that writes to a
+database by hand: SQL that changes data or schema through a built-in SQL client (`psql -c "DELETE FROM orders"`,
+`mysql -e`, `mariadb`, `sqlite3`), code that a database program the team names in `dbWriteGuard.programs` runs, Node
+code that writes through a client module the team names in `dbWriteGuard.nodeClients`, or a team data script
+(`dbWriteGuard.entrypoints`) run with its apply flag. Reads and dry runs pass. See [Hooks and permissions](hooks.md).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook db-write-guard < pre-tool-use.json
+```
+
+Output: nothing for a line that writes to no database, with `writes` set to `allow`, or for input that is not a hook
+payload; otherwise a JSON permission decision (`ask`, or `deny` when the team set it) with the reason naming each
+write and the count or dry run to show the owner first; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose
+reason says what to do instead. A missing or broken config keeps `ask`.
+
 ### teamrig hook exec-guard
 
 Before a Bash or PowerShell call, refuses a `teamrig exec approve`, `refuse` or `escalate` run as anyone but the

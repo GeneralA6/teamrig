@@ -4,6 +4,7 @@ import { formatAddress } from '../../core/address.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { checkClient, clientRootOf } from '../../exec/client-integrity.ts';
 import { ClientInstalls, ShellPathSearch } from '../../exec/client-launch.ts';
+import { dbWriteGuardOf, dbWriteGuardOutput } from '../../hooks/db-write-guard.ts';
 import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
 import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
 import { hookAsksOf } from '../../hooks/permission.ts';
@@ -116,6 +117,20 @@ export function packageGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payl
     clock: runtime.clock,
     hookAsks: hookAsksOf(guard.load),
     platform: runtime.platform,
+  });
+}
+
+/**
+ * The db-write guard's answer: it asks about, or refuses as `dbWriteGuard.writes` says, a line that writes to a database
+ * by hand, so the owner sees counts or a preview first.
+ */
+export function dbWriteGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): Promise<string> {
+  return dbWriteGuardOutput(payload, {
+    ...dbWriteGuardOf(guard.load),
+    cwd: runtime.cwd,
+    home: runtime.userHome,
+    files: runtime.files,
+    hookAsks: hookAsksOf(guard.load),
   });
 }
 

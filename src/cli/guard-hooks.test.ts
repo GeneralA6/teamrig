@@ -8,7 +8,7 @@ const RUNNER = '${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js';
 const CLI = '${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js';
 
 /** The PreToolUse hooks that can refuse a call, so they run under the fail-closed runner: a crash must block the call. */
-const WRAPPED: ReadonlySet<string> = new Set(['push-guard', 'package-guard', 'secret-guard', 'exec-guard', 'pass-record-guard', 'cold-send', 'helper-gate', 'picker-guard']);
+const WRAPPED: ReadonlySet<string> = new Set(['push-guard', 'package-guard', 'secret-guard', 'db-write-guard', 'exec-guard', 'pass-record-guard', 'cold-send', 'helper-gate', 'picker-guard']);
 
 /** The PreToolUse hooks left on the plain CLI, each with why failing open is its safe side. */
 const UNWRAPPED: ReadonlyMap<string, string> = new Map([

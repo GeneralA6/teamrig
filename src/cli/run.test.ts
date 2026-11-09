@@ -871,6 +871,35 @@ describe('runCli: hook pass-record-guard', () => {
   });
 });
 
+describe('runCli: hook db-write-guard', () => {
+  const remove = bash('psql -c "DELETE FROM orders"');
+
+  it('asks about a hand-run database write and lets a read run', async () => {
+    const kit = new CliHarness();
+    assert.equal(decisionOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })), 'ask');
+    assert.match(reasonOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })) ?? '', /psql runs DELETE/);
+    assert.deepEqual((await kit.run(['hook', 'db-write-guard'], { stdin: bash('psql -c "SELECT 1"') })).stdout, []);
+  });
+
+  it('refuses or lets it run as the team config says, refuses an ask when asks are off, and asks on a broken config', async () => {
+    assert.equal(decisionOf(await new CliHarness({ ...TEAM, dbWriteGuard: { writes: 'deny' } }).run(['hook', 'db-write-guard'], { stdin: remove })), 'deny');
+    assert.deepEqual((await new CliHarness({ ...TEAM, dbWriteGuard: { writes: 'allow' } }).run(['hook', 'db-write-guard'], { stdin: remove })).stdout, []);
+    const asksOff = await new CliHarness({ ...TEAM, prompts: { hookAsks: 'refuse' } }).run(['hook', 'db-write-guard'], { stdin: remove });
+    assert.equal(decisionOf(asksOff), 'deny');
+    assert.ok(reasonOf(asksOff)?.endsWith(` ${ASK_REFUSED_NOTE}`));
+    const entrypoints = new CliHarness({ ...TEAM, dbWriteGuard: { entrypoints: [{ path: 'scripts/backfill.ts', applyFlags: ['--apply'] }] } });
+    assert.equal(decisionOf(await entrypoints.run(['hook', 'db-write-guard'], { stdin: bash('node scripts/backfill.ts --apply') })), 'ask');
+    for (const kit of [new CliHarness(null), new CliHarness('{ not json')]) {
+      assert.equal(decisionOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })), 'ask');
+    }
+  });
+
+  it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {
+    assert.deepEqual(await new CliHarness(null, null).run(['hook', 'db-write-guard'], { stdin: remove }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness().run(['hook', 'db-write-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
 describe('runCli: hook package-guard', () => {
   it('refuses an npx of a tool not installed and lets one in node_modules/.bin run', async () => {
     const kit = new CliHarness();
