@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { ProgramRequest, ProgramResult } from '../github/credentials.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import {
+  EXEC_STUB_MS,
   isClaudeProcess,
   lineageOf,
   nodeSessionProcesses,
@@ -67,7 +68,12 @@ function listingEntry(pid: number, parentPid: number, name: string, started: num
 
 /** A listed process named `p<pid>`, with its start when given. */
 function listed(pid: number, parentPid: number, startedMs?: number): ListedProcess {
-  const info = { pid, parentPid, name: `p${pid}`, commandLine: '' };
+  return running(pid, parentPid, `p${pid}`, '', startedMs);
+}
+
+/** A listed process with its program and command line, and its start when given. */
+function running(pid: number, parentPid: number, name: string, commandLine: string, startedMs?: number): ListedProcess {
+  const info = { pid, parentPid, name, commandLine };
   return startedMs === undefined ? { info } : { info, startedMs };
 }
 
@@ -163,6 +169,46 @@ describe('parseWindowsListing, parsePosixListing and lineageOf', () => {
     assert.deepEqual(lineageOf(5, [listed(5, 6), listed(6, 5)]).map((info) => info.pid), [5, 6]);
     assert.deepEqual(lineageOf(4, [listed(0, 0, 0), listed(4, 0, 0)]).map((info) => info.pid), [4]);
     assert.deepEqual(lineageOf(99, [listed(5, 6)]), []);
+  });
+
+  // As measured under Git for Windows (T764): git runs the hook as `env <hook>` (stub 20), whose runtime execs the hook
+  // shell (31) through a second env that ended (30), so the shell's own starter is gone.
+  const git = running(10, 7, 'git.exe', '"C:\\Git\\mingw64\\bin\\git.exe" commit -m x', 1_000);
+  const stub = running(20, 10, 'env.exe', 'env .git/hooks/pre-commit', 1_050);
+  const hook = running(31, 30, 'sh.exe', '"C:\\Git\\usr\\bin\\sh.exe" .git/hooks/pre-commit', 1_083);
+  const pids = (pid: number, entries: readonly ListedProcess[]): readonly number[] => lineageOf(pid, entries).map((info) => info.pid);
+
+  it("go on through the one exec stub with the stopped process's arguments under another program (T764)", () => {
+    assert.deepEqual(pids(31, [git, stub, hook]), [31, 20, 10]);
+    const oldGit = running(10, 7, 'git.exe', 'git commit -m x', 1_000 - EXEC_STUB_MS);
+    assert.deepEqual(pids(31, [oldGit, running(20, 10, 'env.exe', 'env .git/hooks/pre-commit', 1_083 - EXEC_STUB_MS), hook]), [31, 20, 10], 'a stub as old as the limit');
+  });
+
+  it('stop where two processes could be the stub, as two hooks with one path in two worktrees at once (T764)', () => {
+    assert.deepEqual(pids(31, [git, stub, running(21, 11, 'env.exe', 'env .git/hooks/pre-commit', 1_060), hook]), [31]);
+  });
+
+  it('take no stub under the same program, as a second identical launcher or hook shell (T764)', () => {
+    assert.deepEqual(pids(31, [git, running(20, 10, 'SH.EXE', 'sh .git/hooks/pre-commit', 1_050), hook]), [31]);
+  });
+
+  it('take no stub started after the process, or longer than the limit before it, or with no start known (T764)', () => {
+    assert.deepEqual(pids(31, [git, running(20, 10, 'env.exe', 'env .git/hooks/pre-commit', 1_084), hook]), [31]);
+    assert.deepEqual(pids(31, [git, running(20, 10, 'env.exe', 'env .git/hooks/pre-commit', 1_082 - EXEC_STUB_MS), hook]), [31]);
+    assert.deepEqual(pids(31, [git, running(20, 10, 'env.exe', 'env .git/hooks/pre-commit'), hook]), [31]);
+    assert.deepEqual(pids(31, [git, stub, running(31, 30, 'sh.exe', 'sh .git/hooks/pre-commit')]), [31], 'nor for a process whose start is unknown');
+  });
+
+  it('take no stub for a process with no arguments, nor one with other arguments (T764)', () => {
+    assert.deepEqual(pids(31, [running(20, 10, 'env.exe', 'env', 1_050), running(31, 30, '"C:\\Git\\usr\\bin\\sh.exe"', '"C:\\Git\\usr\\bin\\sh.exe"', 1_083)]), [31]);
+    assert.deepEqual(pids(31, [git, running(20, 10, 'env.exe', 'env .git/hooks/pre-push', 1_050), hook]), [31]);
+  });
+
+  it('count no process already in the line as a stub, so the one stub outside it is taken (T764)', () => {
+    // 42 runs under 40 with 40's arguments and the same start; counted as a stub it would make two and stop the line.
+    const shell = running(40, 39, 'sh.exe', 'sh run.sh', 1_000);
+    const child = running(42, 40, 'node.exe', 'node run.sh', 1_000);
+    assert.deepEqual(pids(42, [running(7, 1, 'git.exe', 'git commit', 900), running(41, 7, 'env.exe', 'env run.sh', 990), shell, child]), [42, 40, 41, 7]);
   });
 });
 

@@ -5,6 +5,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gitEnvironment } from '../core/git-run.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { endingOf, livenessOf } from '../testing/process-liveness.ts';
@@ -20,7 +21,9 @@ const LAUNCHED: ProcessInfo = { pid: 16, parentPid: 14, name: 'node.exe', comman
 /**
  * A hooked commit from SHELL under Git Bash, as husky runs a hook: git starts the hook runner's shell, which runs the
  * hook in a second shell (`sh -e`) from a forked copy that has ended (pid 23); that one runs the launcher the same way
- * (pid 25), so neither the CLI's own line nor the second shell's reaches the hook runner, git or SHELL.
+ * (pid 25), so neither the CLI's own line nor the second shell's reaches the hook runner, git or SHELL. Git for Windows
+ * links the hook runner to git only through its `env.exe` exec stub, which the real lineage goes through
+ * (session-processes.ts, lineageOf); the fake lists the runner as git's child.
  */
 const GIT: ProcessInfo = { pid: 20, parentPid: SHELL.pid, name: 'git.exe', commandLine: 'git commit' };
 const HOOK_RUNNER: ProcessInfo = { pid: 21, parentPid: GIT.pid, name: 'sh.exe', commandLine: 'sh .husky/_/pre-commit' };
@@ -349,6 +352,38 @@ describe('starterWatch on this machine', () => {
       assert.equal(readFileSync(plugin.ended, 'utf8'), String(target));
     } finally {
       shell.kill();
+      await endWatcher(plugin.ready, plugin.ended);
+    }
+  });
+
+  const noGit = spawnSync('git', ['--version'], { stdio: 'ignore', windowsHide: true }).status !== 0 ? 'no git on this machine' : false;
+
+  it('finds git ended where a real commit runs the launcher from a `#!/usr/bin/env sh` hook, as husky does (T764)', { skip: noShell || noGit }, async () => {
+    const plugin = pluginHome('plugin-git-hook');
+    const repo = join(plugin.home, 'repo');
+    // Git alone, away from this machine's own git config: no hooks folder, signing or identity of its own.
+    const global = join(plugin.home, 'gitconfig');
+    writeFileSync(global, '');
+    const identity = { GIT_AUTHOR_NAME: 'spec', GIT_AUTHOR_EMAIL: 'spec', GIT_COMMITTER_NAME: 'spec', GIT_COMMITTER_EMAIL: 'spec' };
+    const env = { ...gitEnvironment(process.env), GIT_CONFIG_GLOBAL: global, GIT_CONFIG_NOSYSTEM: '1', ...identity };
+    assert.equal(spawnSync('git', ['init', '-q', repo], { env, stdio: 'ignore', windowsHide: true }).status, 0, 'git init');
+    // As husky's hook runner: a `#!/usr/bin/env sh` hook that runs the hook in `sh -e`, which runs teamrig. Git for
+    // Windows runs it as `env <hook>`, and the hook shell's own starter is a second env that has ended at once.
+    const hook = join(repo, '.git', 'hooks', 'pre-commit');
+    const body = join(repo, '.git', 'pre-commit');
+    writeFileSync(hook, ['#!/usr/bin/env sh', `sh -e "${body.replaceAll('\\', '/')}"`, 'exit $?', ''].join('\n'));
+    writeFileSync(body, [`"${plugin.launcher}"`, 'exit $?', ''].join('\n'));
+    chmodSync(hook, 0o755);
+    const git = spawn('git', ['-C', repo, 'commit', '-q', '--allow-empty', '-m', 'spec'], { env, stdio: 'ignore', windowsHide: true });
+    try {
+      assert.equal(await until(() => written(plugin.ready), REAL_WAIT_MS), true, 'the CLI listed its starters');
+      const target = git.pid ?? 0;
+      assert.ok(plugin.starters().includes(target), `git ${target} is among the starters ${plugin.starters().join(',')}`);
+      process.kill(target);
+      assert.equal(await until(() => written(plugin.ended), REAL_WAIT_MS), true, 'the CLI found git ended');
+      assert.equal(readFileSync(plugin.ended, 'utf8'), String(target));
+    } finally {
+      git.kill();
       await endWatcher(plugin.ready, plugin.ended);
     }
   });
