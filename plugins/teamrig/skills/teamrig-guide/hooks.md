@@ -235,7 +235,8 @@ current name in any case only binds the tab and renames nothing. If the `.teamri
 
 ## Before a shell command: the push guard
 
-Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
+Before Claude runs a Bash or PowerShell command, the guard reads it (on Windows a Bash line also as bash receives
+it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and decides:
 
 - **Runs as usual**: no `git push` in it, a `--dry-run`, or a push that updates no protected branch
   (`main` and `master` by default [pushGuard.protectedBranches]; an empty list guards nothing, mirrors included).
@@ -688,8 +689,9 @@ that prints or holds a secret ([the secret guard](#before-a-shell-command-or-a-r
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. On Windows, Claude Code's
 Bash tool halves each run of backslashes not followed by a double quote, rounded up, before bash reads the line, so
 a Bash line must only read both as written and halved: `ls a\\\; rm -f x` reads as one `ls`, but bash gets
-`ls a\\; rm -f x` and runs the `rm`, so that line gets the prompt. Like the guards, it reads only the line, so it
-cannot see:
+`ls a\\; rm -f x` and runs the `rm`, so that line gets the prompt. The push, package, secret and exec guards weigh
+both readings the same way and answer for the stricter one, so `echo a\\\; git push origin HEAD:main` is asked about
+like the push bash runs. Like the guards, it reads only the line, so it cannot see:
 
 - git obeying the repository's own config, which can name a program to run (`core.fsmonitor`, `diff.external`): it
   trusts the repository as git does;
