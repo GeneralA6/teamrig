@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { dbWritesOf, describeDbWrite, type DbWriteContext, type DbWriteRules } from './writes.ts';
 
@@ -39,6 +40,21 @@ describe('dbWritesOf', () => {
     const ctx = context({ [join(APP, 'fix.cjs')]: DOC_FIX }, NO_RULES);
     assert.deepEqual(await writes('psql -c "DELETE FROM rows"; sqlite3 app.db "DROP TABLE rows"', ctx), ['psql runs DELETE', 'sqlite3 runs DROP']);
     assert.deepEqual(await writes('docsh --eval "db.orders.deleteMany({})"; kvcli FLUSHALL; node fix.cjs', ctx), []);
+  });
+
+  it("reads a named file's first MiB only, and never a file on a network share", async () => {
+    const padding = `-- ${'x'.repeat(1024 * 1024)}\n`;
+    const ctx = context({ [join(APP, 'head.sql')]: `DELETE FROM rows;\n${padding}`, [join(APP, 'tail.sql')]: `${padding}DROP TABLE rows;\n` });
+    assert.deepEqual(await writes('psql -f head.sql; psql -f tail.sql', ctx), ['psql runs DELETE']);
+    // A drive in the folder reads the line by Windows rules on every host, where two leading separators name a share.
+    const share = { ...context({ '//host/share/fix.sql': 'DELETE FROM rows;\n' }), cwd: 'C:\\work\\app' };
+    assert.deepEqual(await writes("psql -f '//host/share/fix.sql'; psql app < '\\\\host\\share\\fix.sql'", share), []);
+  });
+
+  it('finds no write in a file it cannot read, and the rest of the line its own', async () => {
+    const files = new FaultyFiles(new MemoryFiles({ [join(APP, 'locked.sql')]: 'DROP TABLE rows;\n' }));
+    files.fail('readHead', join(APP, 'locked.sql'), systemError('EACCES'));
+    assert.deepEqual(await writes("psql -c 'DELETE FROM rows' -f locked.sql", { ...context(), files }), ['psql runs DELETE']);
   });
 
   it("reads a team's program before a built-in of the same name, by the name a line runs", async () => {
