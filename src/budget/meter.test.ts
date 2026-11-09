@@ -286,6 +286,24 @@ describe('runMeter', () => {
     assert.equal(result.state.cursors['/t/p/gone.jsonl'], undefined);
   });
 
+  it("charges a shrunk transcript's held turn to its tasks when its position is replaced, once (T2106)", async () => {
+    const naming: FixtureReply = { ...R2, tools: [{ id: 'b1', name: 'Bash', command: 'teamrig show T5' }] };
+    const meter = world(at(12), { [MAIN]: transcript([promptLine(at(9)), replyLine(naming)]) });
+    const mainOnly: TranscriptSet = { main: [MAIN], subagents: [] };
+    const held = (await meter.run(10_000_000, mainOnly)).state;
+    assert.deepEqual(held.byTask, {});
+    assert.deepEqual(held.cursors[MAIN]?.turn.tasks, ['T5']);
+
+    meter.bytes.set(MAIN, transcript([replyLine({ id: 'n1', at: at(10), usage: { input: 9 } })]));
+    const replaced = (await meter.run(10_000_000, mainOnly)).state;
+    near(replaced.byTask[DAY]?.['T5'], R2_W, 'T5');
+    assert.deepEqual(replaced.cursors[MAIN]?.turn.tasks, []);
+
+    meter.bytes.append(MAIN, transcript([promptLine(at(10, 5))]));
+    const next = (await meter.run(10_000_000, mainOnly)).state;
+    near(next.byTask[DAY]?.['T5'], R2_W, 'T5 after the next prompt');
+  });
+
   it('writes nothing when another run saved first, and the next run counts what it missed', async () => {
     const files = new RacingFiles();
     const bytes = new MemoryTranscripts({ [MAIN]: transcript([replyLine(R1)]) });
