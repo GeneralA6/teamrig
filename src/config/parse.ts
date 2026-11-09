@@ -1236,10 +1236,13 @@ function parseIdle(read: ConfigReader, raw: JsonRecord, sessions: readonly strin
 /** `open.headroom`: the room a new session needs on the host. */
 function parseHeadroom(read: ConfigReader, raw: JsonRecord): HeadroomConfig {
   const path = 'open.headroom';
+  const floorMb = read.optionalInteger(raw, 'floorMb', path, CONFIG_LIMITS.headroomFloorMb);
   return {
     sessionMb: read.integer(raw, 'sessionMb', path, DEFAULT_HEADROOM.sessionMb, CONFIG_LIMITS.headroomSessionMb),
     commitMaxPct: read.integer(raw, 'commitMaxPct', path, DEFAULT_HEADROOM.commitMaxPct, CONFIG_LIMITS.headroomCommitMaxPct),
     closeIdleMinutes: read.integer(raw, 'closeIdleMinutes', path, DEFAULT_HEADROOM.closeIdleMinutes, CONFIG_LIMITS.headroomCloseIdleMinutes),
+    ...(floorMb === undefined ? {} : { floorMb }),
+    loadMinutes: read.integer(raw, 'loadMinutes', path, DEFAULT_HEADROOM.loadMinutes, CONFIG_LIMITS.headroomLoadMinutes),
   };
 }
 

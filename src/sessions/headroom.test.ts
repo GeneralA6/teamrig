@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { HeadroomConfig } from '../config/types.ts';
 import { headroomFor, noRoomText } from './headroom.ts';
 
-const CONFIG: HeadroomConfig = { sessionMb: 1200, commitMaxPct: 92, closeIdleMinutes: 60 };
+const CONFIG: HeadroomConfig = { sessionMb: 1200, commitMaxPct: 92, closeIdleMinutes: 60, loadMinutes: 5 };
 const FLOOR = 4096;
 const ROOMY = { freeMb: 20_000, commit: undefined, runningCommittedMb: [] };
 const NONE_RUNNING = { runningMb: [], runningCommittedMb: [] };

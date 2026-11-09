@@ -1139,6 +1139,13 @@ export interface HeadroomConfig {
   readonly commitMaxPct: number;
   /** How long, in minutes, a session stays quiet before `teamrig close` may end it. */
   readonly closeIdleMinutes: number;
+  /**
+   * The MB free memory must keep with a new tab and the tabs still loading counted; unset, what queued steps keep free
+   * plus one heavy step's reserve (`delivery.queue.memoryFloorMb` + `heavyReserveMb`), so a new tab leaves a heavy step room.
+   */
+  readonly floorMb?: number;
+  /** How long, in minutes, a tab just opened holds the MB it was counted at, while it loads and free memory does not show it yet. */
+  readonly loadMinutes: number;
 }
 
 /**
