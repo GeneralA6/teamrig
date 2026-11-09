@@ -1,3 +1,4 @@
+import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { placeProgram, placeScript } from "../exec/client-launch.js";
 import { runsOf } from "../package-guard/programs.js";
@@ -205,13 +206,27 @@ function reviewRefusalOf(call, identity) {
     return id === identity.session ? undefined : `${command} names --session ${named}, but this tab is ${identity.session}'s; a session reviews only as itself (${own}).`;
 }
 /**
+ * What every reading of a tool call runs, reading after reading. Joining them is safe, unlike the push guard's
+ * checkouts: each run carries its own folder and shell, and the guard refuses a run whatever else the line runs.
+ */
+function runsOfReadings(readings, context) {
+    const each = readings.map((text) => runsOf(text, context));
+    return {
+        programs: each.flatMap((runs) => runs.programs),
+        bare: each.flatMap((runs) => runs.bare),
+        opaque: each.flatMap((runs) => runs.opaque),
+        fedShells: each.flatMap((runs) => runs.fedShells),
+    };
+}
+/**
  * The PreToolUse output for a Bash or PowerShell call: a refusal when the line runs a `teamrig exec` review as anyone
  * but the tab's own session, named by `--session` (the flag wins over `$TEAMRIG_SESSION` in the CLI, so a variable
  * set on the line changes nothing), when the guard cannot read who it reviews as, or when it runs any `teamrig exec`
  * command through a client that is no install of this plugin, one only known when it runs, or one whose files differ
  * from its build; whenever the line runs a `teamrig owner` command, through any client, as it acts as the owner; and
  * when a shell on the line takes its commands from a pipe the guard cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec` calls start
- * once, and reads the tab's session only for a line that holds a review.
+ * once, and reads the tab's session only for a line that holds a review. A Bash line on Windows is read in each
+ * reading bash may run (`toolCommandReadings`), so a call the line as written escapes is still refused.
  */
 export async function execGuardOutput(payload, env) {
     if (!isRecord(payload)) {
@@ -221,12 +236,13 @@ export async function execGuardOutput(payload, env) {
     if (command === undefined) {
         return '';
     }
+    const tool = stringField(payload, 'tool_name');
     const context = {
         cwd: stringField(payload, 'cwd') ?? env.cwd,
         home: env.home,
-        dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
+        dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
     };
-    const runs = runsOf(command, context);
+    const runs = runsOfReadings(toolCommandReadings(tool, command, env.platform), context);
     const calls = runs.programs.flatMap((run) => {
         const launch = teamrigLaunchOf(run);
         const call = launch === undefined ? undefined : guardedCallOf(launch.words);

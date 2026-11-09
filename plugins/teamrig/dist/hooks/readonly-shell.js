@@ -1,4 +1,4 @@
-import { bashToolReadings } from "../core/bash-tool-readings.js";
+import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { bashLineReads } from "../readonly-shell/bash.js";
 import { powershellLineReads } from "../readonly-shell/powershell.js";
@@ -40,8 +40,7 @@ export function callReads(payload, rules, printsSecret, platform) {
     if (command === undefined) {
         return false;
     }
-    const readings = tool === 'Bash' ? bashToolReadings(command, platform) : [command];
-    return readings.every((text) => lineReads(tool, text, rules) && !printsSecret({ ...payload, tool_input: { ...input, command: text } }));
+    return toolCommandReadings(tool, command, platform).every((text) => lineReads(tool, text, rules) && !printsSecret({ ...payload, tool_input: { ...input, command: text } }));
 }
 /**
  * The PreToolUse output for a Bash or PowerShell call: an allow, which skips the permission prompt, when every

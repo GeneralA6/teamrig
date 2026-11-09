@@ -1,10 +1,24 @@
 import { DEFAULT_SECRET_GUARD } from "../config/defaults.js";
+import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { resolveDir } from "../push-guard/location.js";
-import { describeFinding } from "../secret-guard/findings.js";
+import { describeFinding, uniqueFindings } from "../secret-guard/findings.js";
 import { literalFindings, writtenFindings } from "../secret-guard/literals.js";
 import { shellFindings } from "../secret-guard/shell.js";
 import { holdBackOutput } from "./permission.js";
+/**
+ * The call once for each text its shell may run (`toolCommandReadings`): a Bash line on Windows also as bash receives
+ * it, so a secret the line as written hides behind a backslash run is still found. `secretFindingsOf` reads one text,
+ * the way the read-only allow calls it per reading; a call with no command line is itself.
+ */
+function callReadings(payload, platform) {
+    const input = recordField(payload, 'tool_input');
+    const command = input === undefined ? undefined : stringField(input, 'command');
+    if (input === undefined || command === undefined) {
+        return [payload];
+    }
+    return toolCommandReadings(stringField(payload, 'tool_name'), command, platform).map((text) => ({ ...payload, tool_input: { ...input, command: text } }));
+}
 /** The secret guard's config. A missing or unreadable config keeps the default, so a broken config never switches the guard off. */
 export function secretGuardOf(load) {
     return load?.status === 'loaded' ? load.config.secretGuard : DEFAULT_SECRET_GUARD;
@@ -134,13 +148,14 @@ export function secretPatternsOf(load) {
  * would print a secret into the conversation, as `secretGuard.secretReads` says, or its command line or the text it
  * writes holds one, as `secretGuard.writes` says; a refusal when either refuses, naming only the findings a key does
  * not allow. Else nothing, so the normal permission flow decides. Under `hookAsks: refuse` the question is a refusal
- * instead, its reason saying what to do (see `holdBack`).
+ * instead, its reason saying what to do (see `holdBack`). A Bash line on Windows is judged in each reading bash may run
+ * (`toolCommandReadings`), naming each finding once.
  */
 export function secretGuardOutput(payload, env) {
     if ((env.secretReads === 'allow' && env.writes === 'allow') || !isRecord(payload)) {
         return '';
     }
-    const findings = secretFindingsOf(payload, env.cwd, env.rules).filter((finding) => actionOf(finding, env) !== 'allow');
+    const findings = uniqueFindings(callReadings(payload, env.platform).flatMap((call) => secretFindingsOf(call, env.cwd, env.rules))).filter((finding) => actionOf(finding, env) !== 'allow');
     if (findings.length === 0) {
         return '';
     }

@@ -1,5 +1,7 @@
 import { DEFAULT_PACKAGE_GUARD } from "../config/defaults.js";
+import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
+import { uniqueBy } from "../core/unique-by.js";
 import { adHocCallsOf } from "../package-guard/ad-hoc.js";
 import { installCallsOf } from "../package-guard/installs.js";
 import { linkedModulesWritesOf } from "../package-guard/linked-modules.js";
@@ -40,34 +42,47 @@ export function linkedModulesReason(writes) {
         'breaking every checkout that shares it. Remove the link itself first (Bash `rm <link>` or `cmd /c rmdir <link>`; a recursive delete ' +
         'empties its target too), then install a copy here; or install in the checkout that owns the folder.');
 }
-/** The ad-hoc runs in a line, refused or asked about as the team set, or undefined for none. */
-async function adHocVerdict(command, context, env) {
+/** Every field of an install target, so one a line's readings both name is vetted once. */
+function targetKey(target) {
+    if (target.kind === 'unvetted') {
+        return JSON.stringify([target.kind, target.spec, target.why]);
+    }
+    const wanted = target.wanted.kind === 'version' ? target.wanted.version : target.wanted.tag;
+    return JSON.stringify([target.kind, target.spec, target.name, target.wanted.kind, wanted]);
+}
+/** The ad-hoc runs in a line's readings, each once, refused or asked about as the team set, or undefined for none. */
+async function adHocVerdict(readings, context, env) {
     if (env.adHocRunners === 'allow') {
         return undefined;
     }
-    const calls = await adHocCallsOf(command, context, env.files);
+    const each = await Promise.all(readings.map((text) => adHocCallsOf(text, context, env.files)));
+    const calls = [...new Set(each.flat())];
     return calls.length === 0 ? undefined : { decision: env.adHocRunners, reason: adHocReason(calls) };
 }
-/** The packages a line installs that the registry does not vouch for, refused or asked about as the team set, or undefined for none. */
-async function installVerdict(command, context, env) {
+/**
+ * The packages a line's readings install that the registry does not vouch for, refused or asked about as the team
+ * set, or undefined for none. Each target is vetted once, so the registry is read once per package.
+ */
+async function installVerdict(readings, context, env) {
     if (env.installs === 'allow') {
         return undefined;
     }
-    const targets = installCallsOf(command, context).flatMap((call) => call.targets);
+    const targets = uniqueBy(readings.flatMap((text) => installCallsOf(text, context).flatMap((call) => call.targets)), targetKey);
     if (targets.length === 0) {
         return undefined;
     }
     const unvetted = await unvettedOf(targets, env, { cooldownDays: env.cooldownDays, timeoutMs: INSTALL_VET_TIMEOUT_MS });
     return unvetted.length === 0 ? undefined : { decision: env.installs, reason: installReason(unvetted, env.cooldownDays) };
 }
-/** The npx calls in a line that hand their bin's flag to npm: refused whatever the config says, as the line cannot run what it names. */
-function lostFlagVerdict(command, context) {
-    const lost = lostFlagsOf(command, context);
+/** The npx calls in a line's readings that hand their bin's flag to npm, each once: refused whatever the config says, as the line cannot run what it names. */
+function lostFlagVerdict(readings, context) {
+    const lost = uniqueBy(readings.flatMap((text) => lostFlagsOf(text, context)), ({ bin, flag }) => `${bin} ${flag}`);
     return lost.length === 0 ? undefined : { decision: 'deny', reason: lostFlagReason(lost) };
 }
-/** The calls in a line that would write through a node_modules link: refused whatever the config says, as no answer makes them safe. */
-async function linkedModulesVerdict(command, context, tree) {
-    const writes = await linkedModulesWritesOf(command, context, tree);
+/** The calls in a line's readings that would write through a node_modules link, each once: refused whatever the config says, as no answer makes them safe. */
+async function linkedModulesVerdict(readings, context, tree) {
+    const each = await Promise.all(readings.map((text) => linkedModulesWritesOf(text, context, tree)));
+    const writes = uniqueBy(each.flat(), ({ call, modules }) => JSON.stringify([call, modules]));
     return writes.length === 0 ? undefined : { decision: 'deny', reason: linkedModulesReason(writes) };
 }
 /**
@@ -76,7 +91,8 @@ async function linkedModulesVerdict(command, context, tree) {
  * for, and a refusal whatever the config says when an npx call hands its bin's flag to npm or a package manager would
  * rewrite node_modules through a link; else nothing, so the normal permission flow decides. One refusal among them
  * refuses the line, naming every reason. Under `hookAsks: refuse` the question is a refusal instead, its reason saying
- * what to do (see `holdBack`).
+ * what to do (see `holdBack`). A Bash line on Windows is judged in each reading bash may run (`toolCommandReadings`),
+ * naming each call once.
  */
 export async function packageGuardOutput(payload, env) {
     if (!isRecord(payload)) {
@@ -86,17 +102,19 @@ export async function packageGuardOutput(payload, env) {
     if (command === undefined) {
         return '';
     }
+    const tool = stringField(payload, 'tool_name');
     const context = {
         cwd: stringField(payload, 'cwd') ?? env.cwd,
         home: env.home,
-        dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
+        dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
     };
+    const readings = toolCommandReadings(tool, command, env.platform);
     const [adHoc, install, linked] = await Promise.all([
-        adHocVerdict(command, context, env),
-        installVerdict(command, context, env),
-        linkedModulesVerdict(command, context, env.tree),
+        adHocVerdict(readings, context, env),
+        installVerdict(readings, context, env),
+        linkedModulesVerdict(readings, context, env.tree),
     ]);
-    const verdicts = [lostFlagVerdict(command, context), linked, adHoc, install].filter((verdict) => verdict !== undefined);
+    const verdicts = [lostFlagVerdict(readings, context), linked, adHoc, install].filter((verdict) => verdict !== undefined);
     if (verdicts.length === 0) {
         return '';
     }

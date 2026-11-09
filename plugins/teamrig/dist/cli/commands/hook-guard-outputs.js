@@ -90,6 +90,7 @@ export function pushGuardOutputOf(runtime, guard, payload) {
         skipHooks: skipHooksOf(load),
         hookAsks: hookAsksOf(load),
         clearance: () => pushClearanceOf(runtime, kit, payload),
+        platform: runtime.platform,
     });
 }
 /**
@@ -107,6 +108,7 @@ export function packageGuardOutputOf(runtime, guard, payload) {
         registry: runtime.packageRegistry,
         clock: runtime.clock,
         hookAsks: hookAsksOf(guard.load),
+        platform: runtime.platform,
     });
 }
 /** The secret guard's answer: it refuses, or asks about, a call that would print a secret or whose text holds one. */
@@ -118,6 +120,7 @@ export function secretGuardOutputOf(runtime, guard, payload) {
         secretReads: config.secretReads,
         writes: config.writes,
         hookAsks: hookAsksOf(guard.load),
+        platform: runtime.platform,
     });
 }
 /**
@@ -158,5 +161,6 @@ export function execGuardOutputOf(runtime, guard, payload) {
         installs: new ClientInstalls(clientRootOf(runtime.self.script), runtime.platform),
         search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
         checkClient: (root) => checkClient(root, runtime.files),
+        platform: runtime.platform,
     });
 }
