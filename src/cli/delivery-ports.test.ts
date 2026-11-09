@@ -7,6 +7,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { TabHolds, tabHoldsDir } from '../sessions/tab-holds.ts';
 import { freezesLockOf, hostLockOf } from './delivery-ports.ts';
 import type { CliRuntime } from './runtime.ts';
 
@@ -19,9 +20,12 @@ const PID = 4242;
 /** A small step's ask: to share the host with 100 MB held for it. */
 const SMALL = { need: { shares: true, reserveMb: 100 } };
 
-/** The CLI's ports over files in memory at 10:00, on a host with `memory`, where `processes` run (none by default). */
-function runtimeOf(memory: FakeHostMemory, processes: FakeSessionProcesses = new FakeSessionProcesses()): Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessionProcesses' | 'newId' | 'memory'> {
-  const clock = new FakeClock('2030-01-08T10:00:00Z');
+/** The CLI's ports over files in memory at `clock`'s time (10:00 by default), on a host with `memory`, where `processes` run (none by default). */
+function runtimeOf(
+  memory: FakeHostMemory,
+  processes: FakeSessionProcesses = new FakeSessionProcesses(),
+  clock: FakeClock = new FakeClock('2030-01-08T10:00:00Z'),
+): Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessionProcesses' | 'newId' | 'memory'> {
   let ids = 0;
   return {
     files: new MemoryFiles({}, clock),
@@ -99,6 +103,24 @@ describe('hostLockOf (T2192)', () => {
     const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
 
     assert.deepEqual(taking, { kind: 'busy', holder: { kind: 'commit', usedMb: 28_000, limitMb: 32_000, maxPct: 92, reserveMb: 4096, shares: [] } });
+  });
+
+  it('counts the tabs still loading beside the lock as held, until their holds run out (T2199)', async () => {
+    const clock = new FakeClock('2030-01-08T10:00:00Z');
+    const runtime = runtimeOf(new FakeHostMemory(10_000), new FakeSessionProcesses(), clock);
+    const tabs = new TabHolds(tabHoldsDir(PATH), runtime);
+    await tabs.add({ id: 'h1', team: 'alpha', session: 'web', needMb: 2500, needCommittedMb: 5000, openedAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T10:05:00.000Z' });
+    const lock = hostLockOf(runtime, PATH, QUEUE, HEADROOM, FOCUS, TimeZone.UTC);
+
+    const waiting = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
+    clock.advance(5 * 60_000);
+    const loaded = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
+
+    assert.deepEqual(waiting, {
+      kind: 'busy',
+      holder: { kind: 'memory', freeMb: 10_000, heldMb: 0, needMb: 8192, floorMb: 4096, reserveMb: 4096, loading: { tabs: 1, mb: 2500 }, shares: [] },
+    });
+    assert.equal(loaded.kind, 'taken', '10000 MB free clears the 8192 needed once the tab has loaded');
   });
 
   it('holds a lock taken on a roomy host for delivery.queue.lockTtlMinutes', async () => {

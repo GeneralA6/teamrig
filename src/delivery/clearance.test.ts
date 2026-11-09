@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
-import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { FakeHostMemory, noLoadingTabs } from '../testing/fake-host-memory.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { refusalOf, takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
 import { lineRequests } from '../testing/line-tickets.ts';
@@ -65,7 +65,7 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     alive: (pid) => pid === ME || pid === OTHER,
     newId: () => 'mine',
     zone: TimeZone.UTC,
-    ...(memory === undefined ? {} : { memory: new MemoryGate(memory, async () => undefined, { floorMb: 4096, heavyReserveMb: 4096, commitMaxPct: 92 }) }),
+    ...(memory === undefined ? {} : { memory: new MemoryGate(memory, async () => undefined, { floorMb: 4096, heavyReserveMb: 4096, commitMaxPct: 92 }, noLoadingTabs) }),
     ...(admission === undefined ? {} : { admission }),
   });
   const [waits, causes]: [string[], WaitCause[]] = [[], []];
