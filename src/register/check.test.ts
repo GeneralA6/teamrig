@@ -5,9 +5,10 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
-import { checkTasks, formatFlag, leaderWaitFlags, PACE_DAYS, peerWaitFlags, untriagedFlags } from './check.ts';
+import { checkTasks, formatFlag, leaderWaitFlags, PACE_DAYS, peerWaitFlags, runFileFlags, untriagedFlags } from './check.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
+import type { RunFiles } from './hand-step.ts';
 import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
 import { WATCH_USAGE } from './verify.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -256,6 +257,35 @@ describe('peerWaitFlags', () => {
       peerWaitFlags(tasks, new LeadTree(testConfig()), { securityReviewer: 'bravo' }, 'owner').map((flag) => flag.task.id),
       ['T2', 'T3'],
     );
+  });
+});
+
+describe('runFileFlags (T2312)', () => {
+  const step = '/w/tasks/T1/grant-read.ps1';
+  const audit = { path: step, sha256: 'c'.repeat(64), by: 'gamma', at: FRESH };
+  const asked = testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: { ...TEST_OWNER_CARD, run: step }, audits: [audit] });
+  const rows = (tasks: readonly Task[], runFiles: RunFiles): string[] => runFileFlags(tasks, runFiles).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`);
+  const fix = 'have it audited again (audit T1 --file <path>) or set the card again without --run';
+
+  it('flags no card whose hand step file still has the sha256 its audit pins', () => {
+    assert.deepEqual(rows([asked], new Map([[step, audit.sha256]])), []);
+  });
+
+  it('flags a card whose hand step file changed or went since its audit, a file not read as gone', () => {
+    assert.deepEqual(rows([asked], new Map([[step, 'd'.repeat(64)]])), [`RUN-CHANGED T1: ${step} CHANGED since its audit (sha256 cccccccc by gamma, now dddddddd): ${fix}`]);
+    const missing = [`RUN-CHANGED T1: ${step} MISSING since its audit (sha256 cccccccc by gamma): ${fix}`];
+    assert.deepEqual(rows([asked], new Map([[step, null]])), missing);
+    assert.deepEqual(rows([asked], new Map()), missing);
+  });
+
+  it('leaves a card with no run, a run no audit pins (the card says so), and a card no longer asked to other flags', () => {
+    const gone = new Map([[step, null]]);
+    const tasks = [
+      { ...asked, id: 'T2', card: TEST_OWNER_CARD },
+      { ...asked, id: 'T3', audits: [] },
+      { ...asked, id: 'T4', status: 'done' as const, waits: [] },
+    ];
+    assert.deepEqual(rows(tasks, gone), []);
   });
 });
 

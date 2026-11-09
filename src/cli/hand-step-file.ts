@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
-import { sha256Hex, type AuditPin } from '../register/hand-step.ts';
+import type { Task } from '../register/fold.ts';
+import { sha256Hex, type AuditPin, type RunFiles } from '../register/hand-step.ts';
 import { UsageError } from './args.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
@@ -17,9 +18,29 @@ export async function handStepPin(runtime: CliRuntime, flag: string, typed: stri
     throw new UsageError(`--${flag} takes the hand step file's path on one line: a path with a line break is not pinned`);
   }
   const path = resolve(runtime.cwd, typed);
-  const bytes = await runtime.fileBytes.read(path);
-  if (bytes === undefined) {
+  const sha256 = await sha256Now(runtime, path);
+  if (sha256 === null) {
     throw new RefusedError(`no file ${path}`);
   }
-  return { path, sha256: sha256Hex(bytes) };
+  return { path, sha256 };
+}
+
+/** The sha256 of the file at `path` now, null when there is none. */
+async function sha256Now(runtime: CliRuntime, path: string): Promise<string | null> {
+  const bytes = await runtime.fileBytes.read(path);
+  return bytes === undefined ? null : sha256Hex(bytes);
+}
+
+/**
+ * What each hand step file the cards of `tasks` hand the owner hashes to now (T2312), read as handStepPin reads it,
+ * each file once, so a card printed from it shows the run line only while the file still has its audit's sha256.
+ */
+export async function readRunFiles(runtime: CliRuntime, tasks: Iterable<Task>): Promise<RunFiles> {
+  const paths = new Set(
+    [...tasks].flatMap((task) => {
+      const run = task.card?.run;
+      return run === undefined ? [] : [run];
+    }),
+  );
+  return new Map(await Promise.all([...paths].map(async (path): Promise<[string, string | null]> => [path, await sha256Now(runtime, path)])));
 }

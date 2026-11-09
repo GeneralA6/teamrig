@@ -2,9 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD } from '../testing/card.ts';
 import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, sameCard } from './card.ts';
-import type { HandStepAudit } from './hand-step.ts';
+import type { HandStepAudit, RunFiles } from './hand-step.ts';
 
 const WHY_ASK = 'the ordered tier cannot ship at that price';
+
+/** What the CLI read for a card that hands no hand step file: no file. */
+const NO_FILES: RunFiles = new Map();
 
 describe('the decision card', () => {
   it('counts the plain words a text says, task ids apart', () => {
@@ -72,7 +75,7 @@ describe('the decision card', () => {
 
   it('prints the question, each option numbered, the recommendation and the default', () => {
     assert.deepEqual(cardTexts(TEST_CARD), [TEST_CARD.question, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
-    assert.deepEqual(cardLines(TEST_CARD, '  ', []), [
+    assert.deepEqual(cardLines(TEST_CARD, '  ', [], NO_FILES), [
       '  decide: Which pricing tier ships first',
       '    1. Basic at 9 dollars a month',
       '    2. Pro at 29 dollars a month',
@@ -84,7 +87,7 @@ describe('the decision card', () => {
   it('prints why the owner is asked under the question, and drops it on request', () => {
     const asked = { ...TEST_CARD, whyAsk: WHY_ASK };
     assert.deepEqual(cardTexts(asked), [TEST_CARD.question, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
-    assert.deepEqual(cardLines(asked, '  ', []).slice(0, 2), ['  decide: Which pricing tier ships first', `  why asked: ${WHY_ASK}`]);
+    assert.deepEqual(cardLines(asked, '  ', [], NO_FILES).slice(0, 2), ['  decide: Which pricing tier ships first', `  why asked: ${WHY_ASK}`]);
     assert.deepEqual(keptCard(asked, { whyAsk: false, gate: true, run: false }), TEST_CARD);
     assert.deepEqual(keptCard(asked, { whyAsk: true, gate: true, run: false }), asked);
   });
@@ -92,7 +95,7 @@ describe('the decision card', () => {
   it('prints the gate that makes it the owner\'s under the question, and drops it on request (T1194)', () => {
     const both = { ...TEST_OWNER_CARD, whyAsk: WHY_ASK };
     assert.deepEqual(cardTexts(both), [TEST_CARD.question, TEST_GATE, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
-    assert.deepEqual(cardLines(both, '  ', []).slice(0, 3), ['  decide: Which pricing tier ships first', `  gate: ${TEST_GATE}`, `  why asked: ${WHY_ASK}`]);
+    assert.deepEqual(cardLines(both, '  ', [], NO_FILES).slice(0, 3), ['  decide: Which pricing tier ships first', `  gate: ${TEST_GATE}`, `  why asked: ${WHY_ASK}`]);
     assert.deepEqual(keptCard(both, { whyAsk: true, gate: false, run: false }), { ...TEST_CARD, whyAsk: WHY_ASK });
     assert.deepEqual(keptCard(both, { whyAsk: false, gate: false, run: false }), TEST_CARD);
   });
@@ -116,14 +119,31 @@ describe('the decision card', () => {
       assert.deepEqual(keptCard(handed, { whyAsk: false, gate: true, run: false }), TEST_OWNER_CARD);
     });
 
-    it('prints the line that runs it last, with its short sha256 and auditor', () => {
-      assert.deepEqual(cardLines(handed, '  ', [audit]).at(-1), `  run: & '${step}'   (sha256 cccccccc, audited by gamma)`);
-      assert.deepEqual(cardLines(handed, '  ', [audit]).slice(0, -1), cardLines(TEST_OWNER_CARD, '  ', [audit]));
+    /** The file as its audit pinned it. */
+    const pinned: RunFiles = new Map([[step, audit.sha256]]);
+
+    it('prints the line that runs it last, with its short sha256 and auditor, while the file still has that sha256', () => {
+      assert.deepEqual(cardLines(handed, '  ', [audit], pinned).at(-1), `  run: & '${step}'   (sha256 cccccccc, audited by gamma)`);
+      assert.deepEqual(cardLines(handed, '  ', [audit], pinned).slice(0, -1), cardLines(TEST_OWNER_CARD, '  ', [audit], pinned));
     });
 
     it('prints that it is not to be run when no audit on the task pins it', () => {
-      assert.equal(cardLines(handed, '  ', []).at(-1), `  run: do not run ${step}: no audit on the task pins it (core rule 11)`);
-      assert.equal(cardLines(handed, '  ', [{ ...audit, path: '/w/other.ps1' }]).at(-1), `  run: do not run ${step}: no audit on the task pins it (core rule 11)`);
+      assert.equal(cardLines(handed, '  ', [], pinned).at(-1), `  run: do not run ${step}: no audit on the task pins it (core rule 11)`);
+      assert.equal(cardLines(handed, '  ', [{ ...audit, path: '/w/other.ps1' }], pinned).at(-1), `  run: do not run ${step}: no audit on the task pins it (core rule 11)`);
+    });
+
+    it('prints that it is not to be run once the file changed since its audit, with both short sha256s', () => {
+      const changed: RunFiles = new Map([[step, 'd'.repeat(64)]]);
+      assert.equal(
+        cardLines(handed, '  ', [audit], changed).at(-1),
+        `  run: CHANGED since its audit (sha256 cccccccc by gamma, now dddddddd): do not run ${step}; audit it again`,
+      );
+    });
+
+    it('prints that it is not to be run once the file is gone, or when the file was not read at all', () => {
+      const missing = `  run: MISSING since its audit (sha256 cccccccc by gamma): do not run ${step}; audit it again`;
+      assert.equal(cardLines(handed, '  ', [audit], new Map([[step, null]])).at(-1), missing);
+      assert.equal(cardLines(handed, '  ', [audit], NO_FILES).at(-1), missing, 'a path the map lacks is never handed as safe');
     });
   });
 

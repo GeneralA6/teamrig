@@ -1,5 +1,5 @@
 import { isRecord } from '../core/guards.ts';
-import { auditOf, runLineOf, shortSha256, type HandStepAudit } from './hand-step.ts';
+import { auditOf, runFileDrift, runLineOf, shortSha256, type HandStepAudit, type RunFiles } from './hand-step.ts';
 
 /**
  * A decision card (T514): what a task waiting on a decision or an approval asks, written so whoever decides needs
@@ -214,9 +214,10 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
 /**
  * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's and
  * why the owner is asked (when the card says), each option numbered, the recommendation and the default, then the
- * hand step to run (when the card hands one), each line led by `indent`. `audits` are the task's (fold.ts).
+ * hand step to run (when the card hands one), each line led by `indent`. `audits` are the task's (fold.ts), and
+ * `runFiles` what its hand step file hashes to now.
  */
-export function cardLines(card: DecisionCard, indent: string, audits: readonly HandStepAudit[]): string[] {
+export function cardLines(card: DecisionCard, indent: string, audits: readonly HandStepAudit[], runFiles: RunFiles): string[] {
   return [
     `${indent}decide: ${card.question}`,
     ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
@@ -224,19 +225,21 @@ export function cardLines(card: DecisionCard, indent: string, audits: readonly H
     ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
     `${indent}recommended: ${card.recommend}`,
     `${indent}with no answer: ${card.byDefault}`,
-    ...(card.run === undefined ? [] : [`${indent}run: ${runText(card.run, audits)}`]),
+    ...(card.run === undefined ? [] : [`${indent}run: ${runText(card.run, audits, runFiles)}`]),
   ];
 }
 
 /**
  * How the owner runs a card's hand step file, with the sha256 its audit pins and who audited it, so the owner can
- * match the file; with no audit of it on the task (a register line written by hand), that it is not to be run.
+ * match the file; that it is not to be run with no audit of it on the task (a register line written by hand), or
+ * once the file changed or went since its audit (runFileDrift), until it is audited again.
  */
-function runText(run: string, audits: readonly HandStepAudit[]): string {
+function runText(run: string, audits: readonly HandStepAudit[], runFiles: RunFiles): string {
   const audit = auditOf(audits, run);
   const line = runLineOf(run);
   if (audit === undefined || line === undefined) {
     return `do not run ${run}: no audit on the task pins it (core rule 11)`;
   }
-  return `${line}   (sha256 ${shortSha256(audit.sha256)}, audited by ${audit.by})`;
+  const drift = runFileDrift(audit, runFiles);
+  return drift === undefined ? `${line}   (sha256 ${shortSha256(audit.sha256)}, audited by ${audit.by})` : `${drift}: do not run ${run}; audit it again`;
 }

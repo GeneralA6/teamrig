@@ -29,6 +29,7 @@ import {
   sizeText,
   SUMMARY_VERIFY_ROWS,
   verifySummaryPointer,
+  type DetailExtras,
 } from './views.ts';
 import type { Task } from './fold.ts';
 import { NO_TASKS_ELSEWHERE, TaskTree } from './tree.ts';
@@ -43,6 +44,9 @@ const NOW = new Date('2030-01-08T10:00:00.000Z');
 
 /** A read with no task in it, at NOW: each task keeps its own due. */
 const TREE = treeOf();
+
+/** What `show` adds when no card hands a hand step file. */
+const EXTRAS: DetailExtras = { runFiles: new Map() };
 
 function treeOf(...tasks: Task[]): TaskTree {
   return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
@@ -519,7 +523,7 @@ describe('formatEvent and formatTaskDetail', () => {
 
   it('shows a task with its own history only', () => {
     const task = testTask({ status: 'done', ref: 'inbox:3', note: 'ok', evidence: 'abc1234', skill: 'none' });
-    const detail = formatTaskDetail(task, events, TREE).split('\n');
+    const detail = formatTaskDetail(task, events, TREE, EXTRAS).split('\n');
     assert.deepEqual(detail.slice(1, 6), ['ref: inbox:3', 'note: ok', 'evidence: abc1234', 'skill: none', 'history:']);
     assert.equal(detail.length, 9);
     assert.ok(detail.slice(6).every((line) => !line.includes('owner=bravo')));
@@ -539,14 +543,14 @@ describe('formatEvent and formatTaskDetail', () => {
       proof: 'the nightly run',
     };
     assert.equal(formatEvent(proven, TimeZone.UTC), '2030-01-07 14:00 UTC alpha status verifying note="shipped" proof="the nightly run"');
-    const detail = formatTaskDetail(testTask({ id: 'T3', status: 'verifying', note: 'shipped', proof: 'the nightly run' }), [proven], TREE).split('\n');
+    const detail = formatTaskDetail(testTask({ id: 'T3', status: 'verifying', note: 'shipped', proof: 'the nightly run' }), [proven], TREE, EXTRAS).split('\n');
     assert.deepEqual(detail.slice(1, 3), ['note: shipped', 'proof: the nightly run']);
   });
 
   it('shows the sighting a done task is watched for and its status line (T1306)', () => {
     const closed: RegisterEvent = { v: 2, type: 'status', id: 'T3', at: '2030-01-07T14:00:00.000Z', by: 'alpha', status: 'done', note: 'tests green', evidence: '6012 tests', skill: 'none', watch: 'the row shows' };
     assert.equal(formatEvent(closed, TimeZone.UTC), '2030-01-07 14:00 UTC alpha status done note="tests green" watch="the row shows" evidence=6012 tests skill=none');
-    const detail = formatTaskDetail(testTask({ id: 'T3', status: 'done', note: 'tests green', evidence: '6012 tests', watch: 'the row shows' }), [closed], TREE).split('\n');
+    const detail = formatTaskDetail(testTask({ id: 'T3', status: 'done', note: 'tests green', evidence: '6012 tests', watch: 'the row shows' }), [closed], TREE, EXTRAS).split('\n');
     assert.deepEqual(detail.slice(1, 4), ['note: tests green', 'watch: the row shows', 'evidence: 6012 tests']);
   });
 
@@ -566,32 +570,32 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.equal(formatEvent(closed, TimeZone.UTC), '2030-01-07 14:00 UTC alpha status done note="ok" evidence=abc1234 skill=none followups=T4,T5');
     assert.match(formatEvent({ ...closed, followups: [] }, TimeZone.UTC), / skill=none followups=none$/);
     const task = testTask({ id: 'T3', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none', followups: ['T4', 'T5'] });
-    assert.deepEqual(formatTaskDetail(task, [closed], TREE).split('\n').slice(1, 6), ['note: ok', 'evidence: abc1234', 'skill: none', 'followups: T4, T5', 'history:']);
-    assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('followups'), 'a task with none prints no line');
+    assert.deepEqual(formatTaskDetail(task, [closed], TREE, EXTRAS).split('\n').slice(1, 6), ['note: ok', 'evidence: abc1234', 'skill: none', 'followups: T4, T5', 'history:']);
+    assert.ok(!formatTaskDetail(testTask(), [], TREE, EXTRAS).includes('followups'), 'a task with none prints no line');
   });
 
   it('prints the files line after the fields, above the history, so a long history never buries it (T1457)', () => {
     const task = testTask({ id: 'T3', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' });
     const files = 'files in /kit/teams/app/tasks/T3: design.md';
-    assert.deepEqual(formatTaskDetail(task, [], TREE, { files }).split('\n').slice(3, 6), ['skill: none', files, 'history:']);
-    assert.ok(!formatTaskDetail(task, [], TREE).includes('files in'), 'no line unless show gives one');
+    assert.deepEqual(formatTaskDetail(task, [], TREE, { ...EXTRAS, files }).split('\n').slice(3, 6), ['skill: none', files, 'history:']);
+    assert.ok(!formatTaskDetail(task, [], TREE, EXTRAS).includes('files in'), 'no line unless show gives one');
   });
 
   it("prints a bug's review in show, a line per part given, and the parts a status line gave in the history", () => {
     const review = { cause: 'the parser skipped blank rows', missedLog: 'the skip logged nothing at all' };
     const reviewed: RegisterEvent = { v: 2, type: 'status', id: 'T3', at: '2030-01-07T14:00:00.000Z', by: 'alpha', status: 'in-progress', note: null, evidence: null, skill: null, review };
     assert.match(formatEvent(reviewed, TimeZone.UTC), / status in-progress review=cause,missed-log$/);
-    const lines = formatTaskDetail(testTask({ id: 'T3', type: 'bug', review }), [], TREE).split('\n');
+    const lines = formatTaskDetail(testTask({ id: 'T3', type: 'bug', review }), [], TREE, EXTRAS).split('\n');
     const at = lines.indexOf('review:');
     assert.deepEqual(lines.slice(at, at + 3), ['review:', '  cause: the parser skipped blank rows', '  missed by log: the skip logged nothing at all']);
-    assert.ok(!formatTaskDetail(testTask({ type: 'bug' }), [], TREE).includes('review:'), 'an unreviewed bug prints no review');
+    assert.ok(!formatTaskDetail(testTask({ type: 'bug' }), [], TREE, EXTRAS).includes('review:'), 'an unreviewed bug prints no review');
   });
 
   it('shows the description under the task line, its later lines indented and a blank one kept blank', () => {
     const task = testTask({ ref: 'inbox:3', description: 'Users lose saved carts.\n\nKeep them:\n- a week' });
-    const detail = formatTaskDetail(task, [], TREE).split('\n');
+    const detail = formatTaskDetail(task, [], TREE, EXTRAS).split('\n');
     assert.deepEqual(detail.slice(1, 7), ['description: Users lose saved carts.', '', '  Keep them:', '  - a week', 'ref: inbox:3', 'history:']);
-    assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('description'), 'a task with none prints no line');
+    assert.ok(!formatTaskDetail(testTask(), [], TREE, EXTRAS).includes('description'), 'a task with none prints no line');
   });
 
   it('prints a changed description on one quoted line, cut, and a cleared one as none', () => {
@@ -608,10 +612,10 @@ describe('formatEvent and formatTaskDetail', () => {
     const resized = (size: number | null): RegisterEvent => ({ v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { size }, note: null });
     assert.equal(formatEvent(resized(0.5), TimeZone.UTC), '2030-01-07 09:00 UTC lead update size=0.5%');
     assert.equal(formatEvent(resized(null), TimeZone.UTC), '2030-01-07 09:00 UTC lead update size=none');
-    assert.ok(formatTaskDetail(sized, [], TREE).split('\n').includes('size: 1.25% of the weekly limit'));
-    assert.ok(formatTaskDetail(sized, [], TREE, { sizeCost: (pct) => `about ${pct * 2}M W` }).split('\n').includes('size: 1.25% of the weekly limit, about 2.51M W'));
-    assert.ok(formatTaskDetail(sized, [], TREE, { sizeCost: () => undefined }).split('\n').includes('size: 1.25% of the weekly limit'));
-    assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('size'), 'a task with none prints no line');
+    assert.ok(formatTaskDetail(sized, [], TREE, EXTRAS).split('\n').includes('size: 1.25% of the weekly limit'));
+    assert.ok(formatTaskDetail(sized, [], TREE, { ...EXTRAS, sizeCost: (pct) => `about ${pct * 2}M W` }).split('\n').includes('size: 1.25% of the weekly limit, about 2.51M W'));
+    assert.ok(formatTaskDetail(sized, [], TREE, { ...EXTRAS, sizeCost: () => undefined }).split('\n').includes('size: 1.25% of the weekly limit'));
+    assert.ok(!formatTaskDetail(testTask(), [], TREE, EXTRAS).includes('size'), 'a task with none prints no line');
     assert.deepEqual([sizeText(2), sizeText(0.125), sizeText(33.333)], ['2%', '0.13%', '33.33%']);
   });
 
@@ -645,8 +649,8 @@ describe('formatEvent and formatTaskDetail', () => {
   it('names a pinned task on its row after the priority, and who pinned it in the detail and the history (T637)', () => {
     const pinned = testTask({ type: 'bug', pin: 'lead' });
     assert.equal(formatTask(pinned, undefined, TREE), 'T1 open, p2, pinned, bug, owner alpha, from lead | Add a health check');
-    assert.ok(formatTaskDetail(pinned, [], TREE).split('\n').includes('pinned by lead: above every other task of alpha'));
-    assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('pinned'), 'an unpinned task prints no line');
+    assert.ok(formatTaskDetail(pinned, [], TREE, EXTRAS).split('\n').includes('pinned by lead: above every other task of alpha'));
+    assert.ok(!formatTaskDetail(testTask(), [], TREE, EXTRAS).includes('pinned'), 'an unpinned task prints no line');
     const pinning: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { pin: 'lead' }, note: null };
     assert.equal(formatEvent(pinning, TimeZone.UTC), '2030-01-07 09:00 UTC lead update pin=lead');
   });
@@ -754,7 +758,7 @@ describe('the answer to an approval (T684)', () => {
     const task = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'lead' }], note: 'branch t1', answer });
     assert.match(formatTask(task, undefined, TREE), /\(waiting: approval lead · lead approved; branch t1\)/);
     const event: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: answer.at, by: 'lead', changes: {}, note: 'tests green', verdict: 'approved' };
-    const detail = formatTaskDetail(task, [event], TREE);
+    const detail = formatTaskDetail(task, [event], TREE, EXTRAS);
     assert.match(detail, /^answer: lead approved at 2030-01-07 14:00 UTC: tests green, small commits$/m);
     assert.match(detail, / lead update verdict=approved note="tests green"$/m);
   });
@@ -768,7 +772,7 @@ describe("the owner's decision a leader recorded (T1366)", () => {
     assert.match(formatTask(task, undefined, TREE), /\(waiting: owner decided, by lead; branch t1\)/);
     assert.match(formatTask({ ...task, waits: [{ kind: 'task', id: 'T2' }] }, undefined, TREE), /\(waiting: on T2 ready · owner decided, by lead; branch t1\)/);
     const event: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: decided.at, by: 'lead', changes: {}, note: decided.note, waits: [], decided: true };
-    const detail = formatTaskDetail(task, [event], TREE);
+    const detail = formatTaskDetail(task, [event], TREE, EXTRAS);
     assert.match(detail, /^decided: lead at 2030-01-07 14:00 UTC: human decided: ship it$/m);
     assert.match(detail, / lead update decided note="human decided: ship it"$/m);
   });

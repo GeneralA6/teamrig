@@ -85,3 +85,23 @@ export function auditOf(audits: readonly HandStepAudit[], path: string): HandSte
 export function withAudit(audits: readonly HandStepAudit[], audit: HandStepAudit): readonly HandStepAudit[] {
   return audits.some((kept) => kept.path === audit.path) ? audits.map((kept) => (kept.path === audit.path ? audit : kept)) : [...audits, audit];
 }
+
+/**
+ * The sha256 each card's hand step file has now, by its path, as the CLI read it just before the card prints
+ * (T2312): null for a file gone. `set --run` matched the file only when the card was written, so every print matches
+ * it again; a path the map lacks reads as one gone, so a caller that read no file never hands the owner a run line.
+ */
+export type RunFiles = ReadonlyMap<string, string | null>;
+
+/**
+ * How the hand step file an audit pins drifted from it (`CHANGED since its audit (sha256 <8> by <who>, now <8>)` or
+ * `MISSING since its audit (...)`), by the sha256 it has now in `runFiles`; undefined while it still has the pinned one.
+ */
+export function runFileDrift(audit: HandStepAudit, runFiles: RunFiles): string | undefined {
+  const now = runFiles.get(audit.path);
+  if (now === audit.sha256) {
+    return undefined;
+  }
+  const pinned = `sha256 ${shortSha256(audit.sha256)} by ${audit.by}`;
+  return typeof now === 'string' ? `CHANGED since its audit (${pinned}, now ${shortSha256(now)})` : `MISSING since its audit (${pinned})`;
+}

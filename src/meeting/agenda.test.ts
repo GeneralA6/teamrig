@@ -40,6 +40,7 @@ function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate =
     board: [],
     focus: DEFAULT_FOCUS,
     improvementsDay: 'wed',
+    runFiles: new Map(),
   };
 }
 
@@ -110,7 +111,7 @@ describe('the meeting agenda', () => {
     ]);
     const step = '/w/tasks/T4/grant-read.ps1';
     const handed: Task = { ...DECIDE, card: { ...TEST_OWNER_CARD, run: step }, audits: [{ path: step, sha256: 'c'.repeat(64), by: 'gamma', at: '2030-01-07T15:00:00.000Z' }] };
-    const run = section(agendaLines(inputOf([handed])), 'DECISIONS');
+    const run = section(agendaLines({ ...inputOf([handed]), runFiles: new Map([[step, 'c'.repeat(64)]]) }), 'DECISIONS');
     assert.deepEqual(run.slice(8, 10), ['    with no answer: Basic ships on the due date', `    run: & '${step}'   (sha256 cccccccc, audited by gamma)`], 'the hand step file a card hands, after its default (T2312)');
     assert.match(lines[14] ?? '', /^ {2}Read each card to owner as it stands, .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
     // T1278: by default the owner answers in plain text, never through the picker.
@@ -405,7 +406,7 @@ describe('the meeting agenda: no task number stands alone', () => {
   it("names another team's task and the tasks it names by their team, from that team's register", () => {
     const naming: Task = { ...DECIDE, card: null, note: 'T2 and T9 both matter' };
     const tasks = [naming, testTask({ id: 'T2', title: 'Ship the basic tier' })];
-    const lines = cardFacts(naming, inputOf(tasks).tree, 'web');
+    const lines = cardFacts(naming, inputOf(tasks).tree, new Map(), 'web');
     assert.match(lines[0] ?? '', /^ {2}web\/T4 waiting, p2, owner alpha \| Pick the pricing tier/);
     assert.ok(lines.includes("    no card yet: alpha owes one, and team web's check flags it NO-CARD to its lead"), lines.join('\n'));
     assert.deepEqual(

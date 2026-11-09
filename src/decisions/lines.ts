@@ -1,6 +1,7 @@
 import type { Weekday } from '../config/types.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { cardFacts, laterLine } from '../meeting/agenda.ts';
+import type { RunFiles } from '../register/hand-step.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { taskLabel } from '../register/views.ts';
 import { dueBeforeNextBatch, nextBatchText, triggerText, type BatchTrigger, type DecisionBatch, type OwnerWait } from './batch.ts';
@@ -16,6 +17,8 @@ export interface BatchView {
   readonly askedBy: string | undefined;
   /** The team's clock, which the batch times print on. */
   readonly zone: TimeZone;
+  /** What the hand step file of each card in the batch hashes to now (T2312). */
+  readonly runFiles: RunFiles;
 }
 
 /** `DECISIONS 2 to ask owner, 1 asked and past due; BATCH DUE: <why>`, or `...; the next batch Tue 01-08 13:03 UTC`. */
@@ -41,12 +44,12 @@ function weeklyLines(batch: DecisionBatch): string[] {
  * asks them and how each answer comes back.
  */
 export function batchLines(view: BatchView): string[] {
-  const { batch, ownerMarker, command, lead, askedBy, zone } = view;
+  const { batch, ownerMarker, command, lead, askedBy, zone, runFiles } = view;
   const head = [batchHead(batch, ownerMarker, zone), ...weeklyLines(batch)];
   if (batch.pending.length + batch.overdue.length === 0) {
     return head;
   }
-  const facts = (waits: readonly OwnerWait[]): string[] => waits.flatMap((wait) => cardFacts(wait.task, wait.tree, wait.team));
+  const facts = (waits: readonly OwnerWait[]): string[] => waits.flatMap((wait) => cardFacts(wait.task, wait.tree, runFiles, wait.team));
   const how =
     askedBy === undefined
       ? [

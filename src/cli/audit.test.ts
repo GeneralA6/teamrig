@@ -19,6 +19,11 @@ function filesOf(kit: CliHarness): [string, string | undefined][] {
   return kit.files.paths().map((path) => [path, kit.files.get(path)]);
 }
 
+/** `text` matched as itself in a RegExp. */
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function lastLineOf(text: string | undefined): string | undefined {
   return text?.trimEnd().split('\n').at(-1);
 }
@@ -147,6 +152,33 @@ describe('runCli: set --run, a card hands the owner an audited hand step file (T
     assert.equal(handed.code, EXIT.ok, handed.stderr.join('\n'));
     const shown = (await kit.run(['show', 'T1'])).stdout.join('\n');
     assert.ok(shown.split('\n').includes(`  run: & '${STEP}'   (sha256 ${SHORT}, audited by bravo)`), shown);
+  });
+
+  it('matches the file again on every print: show and check name one changed or gone since its audit, never its run line', async () => {
+    const kit = await started();
+    await kit.run(['audit', 'T1', '--file', STEP, '--session', 'bravo']);
+    const handed = await kit.run([...asks, '--run', STEP]);
+    assert.equal(handed.code, EXIT.ok, handed.stderr.join('\n'));
+    const fix = 'have it audited again (audit T1 --file <path>) or set the card again without --run';
+    const quiet = (await kit.run(['check', '--all', '--session', 'alpha'])).stdout.join('\n');
+    assert.ok(!quiet.includes('RUN-CHANGED'), quiet);
+
+    const edited = 'Write-Host "granted to all"\n';
+    await kit.files.write(STEP, edited);
+    const now = createHash('sha256').update(edited).digest('hex').slice(0, 8);
+    const changed = `CHANGED since its audit (sha256 ${SHORT} by bravo, now ${now})`;
+    const shown = (await kit.run(['show', 'T1'])).stdout.join('\n').split('\n');
+    assert.ok(shown.includes(`  run: ${changed}: do not run ${STEP}; audit it again`), shown.join('\n'));
+    assert.ok(!shown.some((line) => line.includes(`& '${STEP}'`)), 'no line hands the changed file to run');
+    const flagged = (await kit.run(['check', '--all', '--session', 'alpha'])).stdout.join('\n');
+    assert.match(flagged, new RegExp(`^RUN-CHANGED \\(${escaped(`${STEP} ${changed}: ${fix}`)}\\) T1 `, 'm'));
+
+    assert.equal(await kit.files.remove(STEP), true);
+    const missing = `MISSING since its audit (sha256 ${SHORT} by bravo)`;
+    const gone = (await kit.run(['show', 'T1'])).stdout.join('\n').split('\n');
+    assert.ok(gone.includes(`  run: ${missing}: do not run ${STEP}; audit it again`), gone.join('\n'));
+    const checked = (await kit.run(['check', '--all', '--session', 'alpha'])).stdout.join('\n');
+    assert.match(checked, new RegExp(`^RUN-CHANGED \\(${escaped(`${STEP} ${missing}: ${fix}`)}\\) T1 `, 'm'));
   });
 
   it('refuses a file no audit pins, one changed since its audit, a missing file and a blank path, writing nothing', async () => {

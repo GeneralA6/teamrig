@@ -1,4 +1,5 @@
 import type { AskWith } from '../config/types.ts';
+import type { RunFiles } from '../register/hand-step.ts';
 import type { OwnerCards } from '../register/owner-waits.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { askLine, cardFacts, laterLine } from './agenda.ts';
@@ -22,6 +23,8 @@ export interface MeetInput {
   readonly command: string;
   /** `decisions.askWith`: plain text or the question picker (T1278). */
   readonly askWith: AskWith;
+  /** What the hand step file of each due card hashes to now (T2312). */
+  readonly runFiles: RunFiles;
 }
 
 /** The session's due cards on the owner, then how it brings them one at a time and records each answer on its task. */
@@ -30,7 +33,7 @@ export function meetCardLines(input: MeetInput): string[] {
   const { due } = input.cards;
   return [
     `MEET ${input.name} (session ${id}): ${due.length} card(s) waiting on ${ownerMarker}`,
-    ...due.flatMap((task) => cardFacts(task, input.tree)),
+    ...due.flatMap((task) => cardFacts(task, input.tree, input.runFiles)),
     `  Bring them to ${ownerMarker} one at a time, each read as it stands, each figure explained; where one says no card yet, the card is yours: give its question, options and your recommendation first. Never point to a doc; \`${command} show <id>\` prints a task whole.`,
     askLine(input.askWith, ownerMarker),
     `  A question a card does not answer is yours to find: find it now, or ask ${ownerMarker} to put the card off until you have it.`,

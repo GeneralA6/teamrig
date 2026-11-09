@@ -21,11 +21,12 @@ import { formatTaskLines, taskLinesOf } from '../../inbox/task-lines.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { teamDayStartAt } from '../../wake/day-start.ts';
 import { waitAnswerersOf } from '../../register/approval.ts';
-import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags, untriagedFlags } from '../../register/check.ts';
+import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags, runFileFlags, untriagedFlags } from '../../register/check.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
 import type { Task } from '../../register/fold.ts';
+import type { RunFiles } from '../../register/hand-step.ts';
 import { heldFirst } from '../../register/leader-wait.ts';
 import { bugHint } from '../../register/bug-hint.ts';
 import { reviewGap, reviewGapText } from '../../register/review.ts';
@@ -47,7 +48,7 @@ import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow, teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
-import { handStepPin } from '../hand-step-file.ts';
+import { handStepPin, readRunFiles } from '../hand-step-file.ts';
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
@@ -882,7 +883,7 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
   const sizeCost = (pct: number) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`);
   const files = await taskFilesLine(runtime, own.paths.kitHome, own.team, id);
-  runtime.out.stdout(formatTaskDetail(task, events, tree, { sizeCost, files }));
+  runtime.out.stdout(formatTaskDetail(task, events, tree, { sizeCost, files, runFiles: await readRunFiles(runtime, [task]) }));
   const named = await taskLinesOf(inboxDepsOf(runtime, own.paths).inboxes, id);
   formatTaskLines(id, named, tree.zone).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
@@ -949,7 +950,8 @@ function weekFor(args: ParsedArgs, snapshot: RegisterSnapshot, now: Date, zone: 
  * The task flags of one register, against its own team's config and day, in its `zone`; with `team`, for
  * `check --tree`, its task ids name it. `leftPct` is what is left of the week's usage target (one account's limit
  * covers every team read). A wait on another register's task of the tree is judged against that task, and one on the
- * parent team's lead, `above`, is the lead's own approver's (T1140).
+ * parent team's lead, `above`, is the lead's own approver's (T1140). `runFiles` is what each card's hand step file
+ * hashes to now (RUN-CHANGED).
  */
 function checkRegister(
   { snapshot, config, elsewhere, above, ranking }: Pick<RolledTeam, 'snapshot' | 'config' | 'elsewhere' | 'above' | 'ranking'>,
@@ -957,6 +959,7 @@ function checkRegister(
   zone: TimeZone,
   week: string | null,
   leftPct: number | undefined,
+  runFiles: RunFiles,
   team?: string,
 ): CheckSection {
   const tasks = [...snapshot.state.tasks.values()];
@@ -967,6 +970,7 @@ function checkRegister(
   const flags = [
     ...checkTasks(tasks, now, zone, week, config.register, elsewhere, ranking),
     ...peerWaitFlags(tasks, leads, config.roles, config.register.ownerSource),
+    ...runFileFlags(tasks, runFiles),
     // In plan order, so the leader reads the most urgent wait first.
     ...leaderWaitFlags(tree.inPlanOrder(tasks), leads, config.focus, now.getTime()),
     ...untriagedFlags(tasks, leads),
@@ -1041,8 +1045,12 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   // OVER-SIZE reads the own team's metered use, as STOPGAP-DONE reads its files: a sub-team's sessions meter in its own home.
   const { overSizeMultiple } = own.config.register.check;
   const spent = overSizeMultiple > 0 ? await readTaskSpend(runtime, own.paths, own.config, now.getTime()) : undefined;
+  const runFiles = await readRunFiles(
+    runtime,
+    teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()]),
+  );
   const checked = teams.map((rolled) => {
-    const section = checkRegister(rolled, now, teamZone(rolled.config, runtime), week, leftPct, tree ? rolled.team : undefined);
+    const section = checkRegister(rolled, now, teamZone(rolled.config, runtime), week, leftPct, runFiles, tree ? rolled.team : undefined);
     const ownFlags =
       rolled.team === own.team
         ? [...stopgapFlags(tags, rolled.snapshot.state.tasks, zone), ...(spent === undefined ? [] : overSizeFlags(rolled.snapshot.state.tasks.values(), spent, overSizeMultiple))]
