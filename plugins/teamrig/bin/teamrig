@@ -1,11 +1,23 @@
 #!/bin/sh
 # The teamrig CLI. Claude Code adds this folder to the Bash tool PATH while the plugin is enabled.
-# Under Git Bash the shell that ran this script is in no Windows process listing above it (it ran the script in a
-# forked copy that ends once the script starts), so its Windows id and this script's go to the CLI, whose starter
-# watch ends a step once that shell is gone (src/delivery/starter-watch.ts, launchingShellOf).
-if [ -r "/proc/$PPID/winpid" ] && [ -r "/proc/$$/winpid" ]; then
-  read -r TEAMRIG_SHELL_WINPID < "/proc/$PPID/winpid"
+# Under Git Bash no Windows process listing links this script to the shell that ran it: a shell runs a command in a
+# forked copy of itself that ends once the command starts, and each shell that one shell runs cuts the link once more
+# (husky runs a hook in `sh -e`, and the hook runs this). So the Windows ids of every shell above this script, nearest
+# first, up to the first one a Windows program started (its Cygwin parent is 1), and this script's own go to the CLI,
+# whose starter watch ends a step once one of those shells is gone (src/delivery/starter-watch.ts, launchingShellsOf).
+# The walk stops after 16 shells so it can never hang a teamrig call; a real chain is a few shells long. A shell that
+# ends mid-walk ends it there.
+if [ -r "/proc/$$/winpid" ]; then
   read -r TEAMRIG_LAUNCHER_WINPID < "/proc/$$/winpid"
-  export TEAMRIG_SHELL_WINPID TEAMRIG_LAUNCHER_WINPID
+  TEAMRIG_SHELL_WINPIDS=
+  teamrig_pid=$PPID
+  teamrig_hops=0
+  while [ "$teamrig_pid" != 1 ] && [ "$teamrig_hops" -lt 16 ]; do
+    { read -r teamrig_winpid < "/proc/$teamrig_pid/winpid"; } 2>/dev/null || break
+    TEAMRIG_SHELL_WINPIDS=${TEAMRIG_SHELL_WINPIDS:+$TEAMRIG_SHELL_WINPIDS,}$teamrig_winpid
+    { read -r teamrig_pid < "/proc/$teamrig_pid/ppid"; } 2>/dev/null || break
+    teamrig_hops=$((teamrig_hops + 1))
+  done
+  export TEAMRIG_SHELL_WINPIDS TEAMRIG_LAUNCHER_WINPID
 fi
 exec node "$(dirname "$0")/../dist/cli/main.js" "$@"
