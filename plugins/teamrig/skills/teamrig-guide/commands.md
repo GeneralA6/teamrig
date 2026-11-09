@@ -5081,8 +5081,11 @@ account's `state/usage/extra-log.jsonl` (in the folder of the highest team above
 budget](#teamrig-budget)) with the week's use on the status line and the W metered since the period's
 start. Two successive spent readings in one period, the week at 100% or more at both, teach the pool's W per dollar
 (a fit through 0 over every such pair, like the meter's W per percent); until then `budget.extraWPerUsd` stands in,
-else the pool is known in dollars only. What is left is the dollars added, less the last spent reading, less the W
-metered past 100% since that reading at the pool's rate; it outlives the week. While the week reads 100% or more
+else the pool is known in dollars only. What is left is the dollars added, less the dollars spent, less the W
+metered past 100% since the last spent reading at the pool's rate; it outlives the week. claude.ai's count of the
+dollars spent restarts each month while the pool's dollars stay, so a spent reading below the one before starts a new
+count, and each count's last reading adds to the dollars spent (since 0.315.0); dollars spent between a count's last
+reading and its restart show in no reading, so a reading near the month's end keeps them. While the week reads 100% or more
 and the pool holds W, the team's daily budget comes from the pool: its W, in percent of the week, spread over the
 active time to the pace end like the week's own remainder; the pace line and the reset do not move. Without a pool,
 the week at 100% leaves no room, as before. The week line of `teamrig budget` and `teamrig start` names the pool;
@@ -5094,7 +5097,9 @@ Flags:
 
 - `--session <id|name>`: the caller; with `--add` or `--spent` it must be the lead.
 - `--add <usd>`: dollars put in the pool (above 0).
-- `--spent <usd>`: the dollars claude.ai shows spent from the pool so far (0 or more).
+- `--spent <usd>`: the dollars claude.ai shows spent from the pool so far (0 or more). A reading below the last is
+  read as claude.ai's monthly count restarting, and the output says so: `EXTRA $1.00 spent from it so far, below the
+  last reading of $7.00: read as claude.ai's monthly counter restarting, the $7.00 staying spent.`
 
 Example:
 
