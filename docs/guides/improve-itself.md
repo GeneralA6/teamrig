@@ -140,7 +140,7 @@ rule that loosens one goes to you.
 
 At each start, resume, `/clear` and compaction, every session gets the core rules, then the team's `rules.md`, and so
 does each helper it starts, told whose helper it is. In a sub-team, the `rules.md` of each team above comes first, the
-root's first. The files share one budget of 2,750 characters: a file that does not fit comes as a pointer to it, and
+root's first. The files share one budget of 2,330 characters: a file that does not fit comes as a pointer to it, and
 `teamrig doctor` names it. `teamrig rules` prints what a session gets:
 
 ```sh

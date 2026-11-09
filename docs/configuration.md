@@ -74,7 +74,7 @@ Each role's session, by id.
 | --- | --- | --- | --- |
 | `lead` (required) | [session name](#shared-types) |  | Owns priorities, team rules and the owner's decision queue. |
 | `deliveryOwner` | [role holder](#shared-types) |  | Owns the delivery flow and fleet health, when the team has that role; a child team may leave it to a team above. |
-| `securityReviewer` | [role holder](#shared-types) |  | Reviews the privileged commands sessions ask to run (exec), when the team has that role; the owner always may too. A child team may leave it to a team above. |
+| `securityReviewer` | [role holder](#shared-types) |  | Reviews the privileged commands sessions ask to run (exec) and the hand steps they give the human (core rule 11), when the team has that role; the owner always may too. A child team may leave it to a team above. |
 
 ## `ruleConflicts[]`
 
