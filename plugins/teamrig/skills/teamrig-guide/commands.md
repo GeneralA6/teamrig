@@ -480,6 +480,43 @@ Output:
 APPROVED T1 waiting, p1, owner web, from web | Fix the broken login form (waiting: approval lead · lead approved; branch web-login, tests green)
 ```
 
+### teamrig audit
+
+The security reviewer's audit of a hand step: a file the task's owner will hand the human to run, say a settings
+line, a grant or a key change (core rule 11). The reviewer reads the file and pins it for the task at the sha256 of
+its bytes now, and the task's owner gets one inbox line naming the pin. An edit to the file needs a new audit: the
+latest audit of a path wins.
+Who audits: the security reviewer (`roles.securityReviewer`); on a task the reviewer owns, a leader above it; with
+no reviewer set (or a reviewer that is the root lead, on its own task), any session of the team but the task's
+owner. The task's own owner never audits its own hand step. Only a `.ps1`, `.sh` or `.md` file is audited (the
+kinds with a run line), only for a task still to finish; a missing file, another kind, a done or dropped task and
+any other caller are refused, writing nothing.
+
+In a tree of teams, a child team's reviewer may sit on a team above (`roles.securityReviewer: app/security`): it
+audits from its own team with `--team web`, and the audit lands in that team's register by `app/security`. A team
+that is not below the caller's, a reviewer the child team does not name, and `--team` naming your own team are
+refused.
+
+Flags:
+
+- `--session <id|name>`: the caller, the security reviewer.
+- `--file <path>`: the hand step file, read from the caller's folder; required.
+- `--note "<text>"`: what you checked.
+- `--team <child>`: audit a task of that team below yours.
+
+Example:
+
+```sh
+teamrig audit T1 --file steps/grant-read.ps1 --session security --note "read every line, binds 127.0.0.1"
+```
+
+Output:
+
+```text
+AUDITED T1 open, p1, owner web, from lead | Grant the read
+NOTE web has an inbox line: security audited the hand step C:/work/steps/grant-read.ps1 for T1 at sha256 3f2a9c1e; an edit to it needs a new audit (core rule 11)
+```
+
 ### teamrig list
 
 Lists tasks, most valuable first, in plan order: pinned, band, can move, score, then in progress, effective due date (undated last), what

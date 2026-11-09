@@ -1509,6 +1509,60 @@ describe('RegisterPolicy.approve (T684)', () => {
   });
 });
 
+describe('RegisterPolicy.audit: a hand step file pinned at its sha256 (T2312)', () => {
+  const PIN = { path: 'C:/steps/grant-read.ps1', sha256: 'a'.repeat(64) };
+  const reviewed = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'bravo' } }));
+
+  it("lets the security reviewer pin a hand step file of another session's task, the note trimmed or none", () => {
+    assert.deepEqual(reviewed.audit(TASK, 'bravo', PIN, ' read every line '), { ok: true, value: { changes: {}, note: 'read every line', audit: PIN } });
+    assert.deepEqual(reviewed.audit(TASK, 'bravo', PIN, undefined), { ok: true, value: { changes: {}, note: null, audit: PIN } });
+  });
+
+  it("refuses the task's own owner, naming core rule 11, and any session but the reviewer", () => {
+    assert.equal(error(reviewed.audit(TASK, 'alpha', PIN, undefined)), 'alpha owns T1, so it does not audit its own hand step (core rule 11); who audits it: the security reviewer (bravo)');
+    assert.equal(error(reviewed.audit(TASK, 'lead', PIN, undefined)), "lead does not audit a hand step of alpha's; who audits it: the security reviewer (bravo)");
+  });
+
+  it("hands the reviewer's own hand step to its leaders, and the root lead's to any other session", () => {
+    const bravos = testTask({ owner: 'bravo', status: 'in-progress' });
+    assert.equal(error(reviewed.audit(bravos, 'lead', PIN, undefined)), 'allowed');
+    assert.equal(error(reviewed.audit(bravos, 'alpha', PIN, undefined)), "alpha does not audit a hand step of bravo's; who audits it: the lead (lead), as bravo is the security reviewer");
+    assert.match(error(reviewed.audit(bravos, 'bravo', PIN, undefined)), /^bravo owns T1, so it does not audit its own hand step \(core rule 11\)/);
+    const root = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'lead' } }));
+    const leads = testTask({ owner: 'lead', status: 'in-progress' });
+    assert.equal(error(root.audit(leads, 'alpha', PIN, undefined)), 'allowed');
+    assert.equal(error(root.audit(leads, 'lead', PIN, undefined)), 'lead owns T1, so it does not audit its own hand step (core rule 11); who audits it: any session of this team but lead');
+  });
+
+  it('lets any session but the owner audit on a team with no security reviewer, never one from above', () => {
+    const plain = new RegisterPolicy(testConfig(), { team: 'app', id: 'boss' });
+    assert.equal(error(plain.audit(TASK, 'bravo', PIN, undefined)), 'allowed');
+    assert.equal(error(plain.audit(TASK, 'alpha', PIN, undefined)), 'alpha owns T1, so it does not audit its own hand step (core rule 11); who audits it: any session of this team but its owner (no roles.securityReviewer is set)');
+    assert.match(error(plain.auditFrom(TASK, 'app/boss', PIN, undefined)), /^app\/boss does not audit a hand step of alpha's; who audits it: any session of this team but its owner/);
+  });
+
+  it('takes a reviewer on a team above only from there, through auditFrom (T1143)', () => {
+    const child = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'app/sec' } }), { team: 'app', id: 'boss' });
+    assert.deepEqual(child.auditFrom(TASK, 'app/sec', PIN, 'ok'), { ok: true, value: { changes: {}, note: 'ok', audit: PIN } });
+    assert.equal(error(child.audit(TASK, 'bravo', PIN, undefined)), "bravo does not audit a hand step of alpha's; who audits it: the security reviewer (app/sec), from its own team with --team");
+    assert.match(error(child.auditFrom(TASK, 'app/boss', PIN, undefined)), /^app\/boss does not audit a hand step of alpha's/);
+  });
+
+  it("takes a child team's lead's own hand step, the lead being its reviewer, from the parent team's lead (T1140)", () => {
+    const child = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'lead' } }), { team: 'app', id: 'boss' });
+    const leads = testTask({ owner: 'lead', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] });
+    assert.equal(error(child.auditFrom(leads, 'app/boss', PIN, undefined)), 'allowed');
+    assert.equal(error(child.audit(leads, 'alpha', PIN, undefined)), "alpha does not audit a hand step of lead's; who audits it: the parent team's lead (app/boss), as lead is the security reviewer");
+  });
+
+  it('refuses a finished task, a file of a kind with no run line, and a note with a secret', () => {
+    assert.equal(error(reviewed.audit(testTask({ status: 'done' }), 'bravo', PIN, undefined)), 'T1 is done: a hand step is audited for a task still to finish');
+    assert.equal(error(reviewed.audit(TASK, 'bravo', { ...PIN, path: 'C:/steps/grant-read.txt' }, undefined)), 'C:/steps/grant-read.txt is not a hand step file: only .ps1, .sh, .md files have a run line');
+    assert.equal(error(reviewed.audit(TASK, 'bravo', { ...PIN, path: 'C:/steps/GRANT.SH' }, undefined)), 'allowed');
+    assert.notEqual(error(reviewed.audit(TASK, 'bravo', PIN, credentialUrl())), 'allowed');
+  });
+});
+
 describe('RegisterPolicy.defer: a Later (T1295)', () => {
   const policy = new RegisterPolicy(testConfig());
   const at = { now: NOW, zone: TimeZone.UTC };
