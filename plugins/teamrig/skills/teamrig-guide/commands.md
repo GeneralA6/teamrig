@@ -4301,7 +4301,8 @@ merge again once it is approved
 The leader answers with `teamrig approve <task>`; `teamrig merge` again merges the change. Like a review hold, a
 gate hold binds the base, the head and the tree, and an approval counts only for the gates its hold named. Each
 change merged under `gated` is one line in `merges.jsonl` in `delivery.dir`: route `self`, or `approved` with the
-gates it missed and who approved them. A merge the `merge` command finishes on a later run writes no line yet.
+gates it missed and who approved them. A merge the `merge` command left waiting writes its line on the run that finds
+it merged, dated that run, with the gates weighed before the command ran.
 
 Decision records (`decisionRecordGate`): a design settled in a task's notes sits in its task folder, outside the
 repository, so a reader of the code never learns why it was built that way unless the design lands there too. Before
