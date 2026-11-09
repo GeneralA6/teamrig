@@ -5,6 +5,7 @@ import { ENV, type Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { AdmitFile } from './admit-file.ts';
 import { admissionOrder, classOf, placeInLine, type AdmissionRules } from './admission.ts';
 import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
@@ -285,26 +286,6 @@ function ticketExpiry(deadline: number): string {
 
 /** Digits of a ticket's arrival time in its name: enough for any millisecond time, so names sort as times do. */
 const ARRIVAL_DIGITS = 15;
-
-/**
- * How long one admission may hold the admit file: its look at the line, the memory gate's reads (about 2 s) and its
- * take; a claim older than this is a step that died admitting.
- */
-const ADMIT_TTL_MS = 30_000;
-
-/**
- * What the admit file says: the waiter being admitted, by its ticket's id, its process and when the claim runs out. The
- * id is stored as `ticket`, never `token`, which the secret redactor reads as a secret ({@link STORED_ID}).
- */
-interface AdmitClaim {
-  readonly ticket: string;
-  readonly pid: number;
-  readonly expiresAt: string;
-}
-
-function isAdmitClaim(value: unknown): value is AdmitClaim {
-  return isRecord(value) && typeof value['ticket'] === 'string' && typeof value['pid'] === 'number' && isTime(value['expiresAt']);
-}
 
 /** A ticket's name; a writer's temporary sibling (`<name>.<pid>.<n>.tmp`) does not match. */
 const TICKET_NAME = /^\d{15}-[^/\\]+\.json$/;
@@ -702,9 +683,7 @@ class Patience {
  * The line is in arrival order; with admission rules in `pipeline` mode it is in admission order (`admissionOrder`:
  * p0 first, then class turn, aged priority, arrival), and a waiter whose session already runs its cap of steps is
  * passed (`placeInLine`). As that order moves with the clock, a waiter that finds itself first looks again and takes
- * its turn under the admit file, `<lock>.admit` (created whole, naming its process, running out after
- * `ADMIT_TTL_MS`), so two waiters never both take a turn as first; a claim whose process is gone, that ran out or
- * that cannot be read is removed by the next waiter that finds it.
+ * its turn under the admit file, `<lock>.admit` ({@link AdmitFile}), so two waiters never both take a turn as first.
  * A wait runs out only once the line has not moved for its whole length (see `Patience`), so a step far back in a line
  * that keeps moving is not refused; its ticket's expiry moves on with its wait each time the line moves.
  * A step that does not join the line (an older kit, a team's own deploy tool) may still take a free lock first.
@@ -729,7 +708,7 @@ export class HostLock {
   private readonly path: string;
   private readonly queue: string;
   private readonly shared: string;
-  private readonly admit: string;
+  private readonly admit: AdmitFile;
   private readonly turns: string;
   private readonly ended: string;
   private readonly ttlMs: number;
@@ -739,7 +718,7 @@ export class HostLock {
     this.path = path;
     this.queue = `${path}.queue`;
     this.shared = `${path}.shared`;
-    this.admit = `${path}.admit`;
+    this.admit = new AdmitFile(`${path}.admit`, ports);
     this.turns = `${path}.turns.json`;
     this.ended = `${path}.ended`;
     this.ttlMs = ttlMs;
@@ -964,7 +943,7 @@ export class HostLock {
     if (view.place.capped !== undefined || view.place.ahead.length > 0) {
       return this.lookFrom(view.place, ticket.waiter, removeUnknown, ask);
     }
-    const claim = await this.claimAdmit(ticket.waiter);
+    const claim = await this.admit.claim(ticket.waiter.id);
     if (claim === undefined) {
       return { ahead: [], look: { kind: 'busy', holder: { kind: 'admitting' } } };
     }
@@ -977,7 +956,7 @@ export class HostLock {
       await this.keepTurns(again, looked.look.kind === 'taken' ? this.openCharge(ticket.waiter, ask.need) : undefined);
       return looked;
     } finally {
-      await this.removeAt(this.admit, (text) => text === claim);
+      await this.admit.release(claim);
     }
   }
 
@@ -1100,31 +1079,6 @@ export class HostLock {
     const seen = await this.read();
     const holder = seen.kind === 'held' && !this.isStale(seen.info) ? [seen.info] : [];
     return [...holder, ...(await this.liveShares())];
-  }
-
-  /**
-   * Claims the admit file for `waiter`'s admission: the text it wrote while this step holds it, undefined while another
-   * live step does. A claim whose process is gone, that ran out or that cannot be read (the file is created whole) is
-   * removed while its text is unchanged, and the file claimed again.
-   */
-  private async claimAdmit(waiter: LockWaiter): Promise<string | undefined> {
-    const { files, clock, pid } = this.ports;
-    const claim: AdmitClaim = { ticket: waiter.id, pid, expiresAt: new Date(clock.now() + ADMIT_TTL_MS).toISOString() };
-    const text = JSON.stringify(claim);
-    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-      if (await files.createExclusive(this.admit, text)) {
-        return text;
-      }
-      const seen = await files.read(this.admit);
-      if (seen !== undefined) {
-        const other = parseAs(seen, isAdmitClaim);
-        if (other !== undefined && !this.isStale(other)) {
-          return undefined;
-        }
-        await this.removeAt(this.admit, (now) => now === seen);
-      }
-    }
-    return undefined;
   }
 
   /**
@@ -1468,7 +1422,7 @@ export class HostLock {
     return info === undefined ? { kind: 'unknown', text } : { kind: 'held', info };
   }
 
-  /** Removes the file at `path` (the lock, the admit file) while its text still passes `still`, so one another step wrote meanwhile stays. */
+  /** Removes the file at `path` (the lock) while its text still passes `still`, so one another step wrote meanwhile stays. */
   private async removeAt(path: string, still: (text: string) => boolean): Promise<boolean> {
     const text = await this.ports.files.read(path);
     if (text === undefined || !still(text)) {
