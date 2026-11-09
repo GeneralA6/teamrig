@@ -4,6 +4,7 @@ import { WAKE_TICK_MS } from "../../mod/wake-hand.js";
 import { meetAsk, meetPrompt } from "../../open/prompt.js";
 import { ownerCardsBySession } from "../../register/owner-waits.js";
 import { onePositional, UsageError } from "../args.js";
+import { readRunFiles } from "../hand-step-file.js";
 import { callerOf } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { runningRecordOf } from "../live-run.js";
@@ -61,7 +62,8 @@ async function meetCards(args, runtime) {
         throw new UsageError(`meet --cards prints the caller's own cards: it takes no "${extra}"`);
     }
     const { id, name, cards, tree, config } = await meetFactsOf(runtime, callerOf(args.flags, runtime.env));
-    const lines = meetCardLines({ id, name, cards, tree, ownerMarker: config.register.ownerSource, command: KIT_NAME, askWith: config.decisions.askWith });
+    const runFiles = await readRunFiles(runtime, cards.due);
+    const lines = meetCardLines({ id, name, cards, tree, ownerMarker: config.register.ownerSource, command: KIT_NAME, askWith: config.decisions.askWith, runFiles });
     lines.forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }

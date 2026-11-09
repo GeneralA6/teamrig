@@ -1,3 +1,4 @@
+import { withAudit } from "./hand-step.js";
 import { WAIT_STATUSES } from "./model.js";
 import { namesNewWait } from "./waits.js";
 /** The numeric part of a task id (`T12` → 12). */
@@ -85,6 +86,7 @@ function created(id, fields, at, by) {
         followups: [],
         review: {},
         sizeBase: null,
+        audits: [],
         startedAt: null,
         createdAt: at,
         createdBy: by,
@@ -140,9 +142,10 @@ function reparksAfter(task, event) {
  * verifying task's, so the time the owner put it off to is one of its waits, or the owner's wait is gone; a Decided
  * marks the task `decided`. On a task in any other status they mean nothing. A pin holds for the owner it was set for:
  * handing the task on clears it, unless the same update pins it (T637). An update that gives a size, or clears it,
- * gives its size base too (T649).
+ * gives its size base too (T649). An update with an `audit` pins a hand step file for the task, by the session that
+ * wrote it (T2312).
  */
-function withChanges(task, { changes, note, at, by, verdict, waits, decided, sizeBase }) {
+function withChanges(task, { changes, note, at, by, verdict, waits, decided, sizeBase, audit }) {
     const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
     const shown = note !== null && by === task.owner ? note : task.note;
     const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
@@ -159,6 +162,7 @@ function withChanges(task, { changes, note, at, by, verdict, waits, decided, siz
         waits: kept,
         waitsAt: namesNewWait(task.waits, kept) ? at : task.waitsAt,
         sizeBase: base,
+        audits: audit === undefined ? task.audits : withAudit(task.audits, { ...audit, by, at }),
         updatedAt: at,
         updatedBy: by,
         priorityAt,

@@ -5,6 +5,7 @@ import { batchLines } from "../../decisions/lines.js";
 import { AskedStore } from "../../decisions/store.js";
 import { taskLabel } from "../../register/views.js";
 import { noPositionals } from "../args.js";
+import { readRunFiles } from "../hand-step-file.js";
 import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { ownerBatchOf } from "../owner-batch.js";
@@ -31,7 +32,8 @@ async function decisionsKit(args, runtime, access) {
 export async function decisions(args, runtime) {
     const dk = await decisionsKit(args, runtime, 'read');
     const askedBy = dk.askedBy === undefined ? undefined : formatAddress(dk.askedBy);
-    const lines = batchLines({ batch: dk.batch, ownerMarker: dk.config.register.ownerSource, command: KIT_NAME, lead: dk.lead, askedBy, zone: dk.zone });
+    const runFiles = await readRunFiles(runtime, [...dk.batch.pending, ...dk.batch.overdue].map((wait) => wait.task));
+    const lines = batchLines({ batch: dk.batch, ownerMarker: dk.config.register.ownerSource, command: KIT_NAME, lead: dk.lead, askedBy, zone: dk.zone, runFiles });
     lines.forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }

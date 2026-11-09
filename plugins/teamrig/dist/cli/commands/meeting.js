@@ -13,6 +13,7 @@ import { goalScores } from "../../register/goal-board.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines } from "../../register/fit.js";
 import { noPositionals, UsageError } from "../args.js";
+import { readRunFiles } from "../hand-step-file.js";
 import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { subtreeOf } from "../roll-up.js";
@@ -166,6 +167,7 @@ async function printAgenda(args, runtime, mk, phase) {
         board: await goalBoard(runtime, mk, rolled),
         focus: mk.config.focus,
         improvementsDay: mk.config.focus.improvementsDay,
+        runFiles: await readRunFiles(runtime, teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()])),
     });
     lines.forEach((line) => runtime.out.stdout(line));
     statsTopLines(await foldStats(runtime, rolled, AGENDA_STATS_RANGE), own.team, teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));

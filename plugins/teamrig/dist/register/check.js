@@ -1,8 +1,9 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
 import { NOW_PRIORITY, topPriority } from "../config/priorities.js";
 import { approvalCleared, waitAnswerersOf } from "./approval.js";
-import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from "./card.js";
+import { CARD_FLAGS, GATE_FLAG, RUN_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
+import { auditOf, runFileDrift } from "./hand-step.js";
 import { leaderHolds, waitedMinutes } from "./leader-wait.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { isUngated } from "./owner-waits.js";
@@ -25,6 +26,7 @@ export const FLAG_KINDS = [
     'NO-CARD',
     'OWNER-ORDERED',
     'UNGATED',
+    'RUN-CHANGED',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
     'SELF-MADE',
@@ -157,6 +159,24 @@ export function peerWaitFlags(tasks, tree, roles, ownerSource) {
         return peer === undefined
             ? []
             : [{ kind: 'PEER-WAIT', task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
+    });
+}
+/**
+ * RUN-CHANGED: a card hands the owner a hand step file (`run`, card.ts) that changed or went since the audit on its
+ * task pinned it (T2312, core rule 11), by the sha256 it has now in `runFiles`: the card tells the owner not to run it,
+ * so the task's owner has it audited again or sets the card without it. Only while the card is asked (a decision or
+ * approval wait): a step run and cleaned up after its answer is no flag. Apart from {@link checkTasks}, as the CLI
+ * reads the files.
+ */
+export function runFileFlags(tasks, runFiles) {
+    return [...tasks].flatMap((task) => {
+        const asked = task.waits.some((reason) => reason.kind === 'decision' || reason.kind === 'approval');
+        const run = asked ? task.card?.run : undefined;
+        const audit = run === undefined ? undefined : auditOf(task.audits, run);
+        const drift = audit === undefined ? undefined : runFileDrift(audit, runFiles);
+        return audit === undefined || drift === undefined
+            ? []
+            : [{ kind: 'RUN-CHANGED', task, detail: `${audit.path} ${drift}: have it audited again (audit ${task.id} --file <path>) or set the card again without ${RUN_FLAG}` }];
     });
 }
 /**

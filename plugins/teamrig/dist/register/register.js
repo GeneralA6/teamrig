@@ -231,28 +231,43 @@ export class Register {
      * (T1295), an update that changes no field and gives the task its waits from then on.
      */
     defer(caller, id, until, note) {
-        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))));
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))));
     }
     /**
      * A Later from the lead above who asks the owner this team's decisions, `asker` being its `<team>/<id>`, as in
      * noteFrom: the tree decides who that may be, so this team's roster check and the policy's caller check are skipped.
      */
     deferFrom(asker, id, until, note) {
-        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))));
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))));
     }
     /**
      * `update <id> --decided`: the owner's answer to a card (T1366), an update that changes no field, drops the task's
      * wait on the owner and marks it decided for its session to act on.
      */
     decide(caller, id, note) {
-        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, caller, this.deps.policy.decide(task, caller, note)))));
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.decide(task, caller, note)))));
     }
     /** A Decided from the lead above who asks the owner this team's decisions, `asker` being its `<team>/<id>`, as in deferFrom. */
     decideFrom(asker, id, note) {
-        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, asker, this.deps.policy.decideFrom(task, note)))));
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.decideFrom(task, note)))));
     }
-    /** The update a Later or a Decided writes: no field changed, the task's waits from then on. */
-    waitsEvent(task, by, change) {
+    /**
+     * `audit <id> --file <path>`: a session of this team pins a hand step file for the task at its sha256 (T2312), an
+     * update that changes no field, so the task's card may hand the file to the owner.
+     */
+    audit(caller, id, pin, note) {
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.audit(task, caller, pin, note)))));
+    }
+    /**
+     * `audit <id> --file <path> --team <child>`: an audit from a team above, `asker` being its `<team>/<id>`, as in
+     * approveFrom: the tree decides who that may be, so this team's roster check is skipped; the policy still holds the
+     * audit to the task owner's auditors.
+     */
+    auditFrom(asker, id, pin, note) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.auditFrom(task, asker, pin, note)))));
+    }
+    /** The update a Later, a Decided or an audit writes: no field changed; the task's waits from then on, or the file pinned. */
+    noFieldEvent(task, by, change) {
         return change.ok ? { ok: true, value: { ...this.base(task.id, by), type: 'update', ...change.value } } : change;
     }
     /** The clock and zone a write judges a time against. */
