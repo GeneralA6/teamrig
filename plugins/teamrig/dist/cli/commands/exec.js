@@ -5,6 +5,7 @@ import { errorMessage } from "../../core/guards.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { AuditChainError, AuditLog, nextRequestId, REQUEST_ID, } from "../../exec/audit.js";
 import { resolveProgram } from "../../exec/binding.js";
+import { nodeLaunchRefusal } from "../../exec/node-launch.js";
 import { parseDraft } from "../../exec/request.js";
 import { decideReview, RANDOM_NONCES, UnsignedReviews } from "../../exec/review.js";
 import { baseEnvironment, environmentCredentials, Executor } from "../../exec/runner.js";
@@ -15,7 +16,15 @@ import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { fileLockOf } from "../file-locks.js";
+/** Refuses an exec command on a node started with an option that can run code beside the pinned client (T1036). */
+function refuseForeignLaunch(runtime) {
+    const refusal = nodeLaunchRefusal(runtime.self.execArgv, runtime.env, runtime.platform);
+    if (refusal !== undefined) {
+        throw new RefusedError(refusal);
+    }
+}
 async function openExec(runtime, access) {
+    refuseForeignLaunch(runtime);
     const kit = await openTeamKit(runtime);
     return execTeamOf(runtime, kit, requireConfig(kit, runtime, access));
 }
@@ -38,6 +47,7 @@ async function actorOf(args, runtime, team) {
     return caller === team.config.register.ownerSource ? caller : sessionIdOf(await rosterOf(runtime, team.kit, team.config), caller);
 }
 async function childExecOf(runtime, child, access) {
+    refuseForeignLaunch(runtime);
     const kit = await openTeamKit(runtime);
     const own = { kit, config: requireConfig(kit, runtime, 'read') };
     const { tree, teams } = await loadTree(runtime);
