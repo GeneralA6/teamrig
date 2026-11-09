@@ -6,7 +6,7 @@ import { nodeFileBytes } from "../core/file-bytes.js";
 import { nodeFiles } from "../core/files.js";
 import { GIT_TREES } from "../delivery/git-tree.js";
 import { nodeHostMemory } from "../delivery/memory.js";
-import { launchingShellOf, nodeEvery, starterWatch } from "../delivery/starter-watch.js";
+import { launchingShellsOf, nodeEvery, starterWatch } from "../delivery/starter-watch.js";
 import { nodeStepRunner } from "../delivery/steps.js";
 import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
@@ -69,7 +69,7 @@ export async function runWithNode(argv, entry) {
         platform: process.platform,
         processes: nodeProcesses(),
         sessionProcesses,
-        starters: starterWatch(sessionProcesses, { pid: process.pid, shell: launchingShellOf(process.env, process.ppid) }, nodeEvery),
+        starters: starterWatch(sessionProcesses, { pid: process.pid, shells: launchingShellsOf(process.env, process.ppid) }, nodeEvery),
         shell: nodeShellRunner(),
         steps: nodeStepRunner(process.platform),
         memory: nodeHostMemory(process.platform),
