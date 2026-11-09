@@ -30,7 +30,7 @@ async function readonlyAllowOutputOf(runtime, payload) {
         return '';
     }
     const check = await readonlyCheckOf(runtime, kit.load.config);
-    return readonlyShellOutput(payload, check.rules, check.printsSecret);
+    return readonlyShellOutput(payload, check.rules, check.printsSecret, runtime.platform);
 }
 /**
  * PreToolUse on Bash and PowerShell: with `readonlyShell.enabled`, lets a line whose every command provably only
