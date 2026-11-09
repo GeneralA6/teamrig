@@ -8,6 +8,7 @@ import { execDraft } from '../testing/exec-request.ts';
 import { FakeCheckout, probeOf } from '../testing/fake-checkout.ts';
 import { FakeExecSpawner } from '../testing/fake-exec-spawner.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
+import { quietWorld } from '../testing/quiet-world.ts';
 import { teamConfigOf } from '../testing/team-tree.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
@@ -25,6 +26,8 @@ interface ExecTeamOptions {
   /** Variables on top of both database ones. */
   readonly env?: Env;
   readonly webhook?: FakeWebhook;
+  /** The options node took on its command line (`process.execArgv`); default none. */
+  readonly execArgv?: readonly string[];
 }
 
 /** A team whose exec PATH holds node, run on Windows with both database variables set, over one fake spawner and webhook. */
@@ -34,10 +37,11 @@ class ExecTeam {
   readonly webhook: FakeWebhook;
   private readonly options: RunOptions;
 
-  constructor(config: JsonRecord = EXEC_TEAM, { env = {}, webhook = new FakeWebhook() }: ExecTeamOptions = {}) {
+  constructor(config: JsonRecord = EXEC_TEAM, { env = {}, webhook = new FakeWebhook(), execArgv = [] }: ExecTeamOptions = {}) {
     this.kit = new CliHarness(config);
     this.webhook = webhook;
     this.options = {
+      self: { ...quietWorld().self, execArgv },
       platform: 'win32',
       probe: probeOf('C:/nodejs/node.exe'),
       exec: { spawner: this.spawner, checkout: new FakeCheckout() },
@@ -130,6 +134,46 @@ describe('runCli: exec request, a privileged command asked for review (T755)', (
     assertRefused(await team.request(execDraft({ argv: ['python', 'fix.py'] })), /argv\[0\] "python" is not a file on the exec PATH \(exec\.path: C:\/nodejs\)/);
     const bare = new ExecTeam(TEAM);
     assertRefused(await bare.request(), /argv\[0\] "node" is not a file on the exec PATH \(exec\.path names no folder\)/);
+  });
+});
+
+describe('runCli: exec refuses a node started with an option that can run code beside the client (T1036)', () => {
+  /** Every exec command, each refused before it opens its team or reads its request. */
+  const EVERY_COMMAND: readonly (readonly string[])[] = [
+    ['request', '--file', 'r1.json', '--session', 'alpha'],
+    ['dry-run', 'R1'],
+    ['run', 'R1'],
+    ['approve', 'R1', '--session', 'bravo'],
+    ['refuse', 'R1', '--session', 'bravo', '--note', 'use the read tool'],
+    ['escalate', 'R1', '--session', 'bravo', '--note', 'deletes rows'],
+    ['status'],
+    ['status', 'R1'],
+    ['status', '--team', 'child'],
+    ['approve', 'R1', '--session', 'bravo', '--team', 'child'],
+  ];
+
+  async function assertEveryCommandRefused(team: ExecTeam, named: RegExp): Promise<void> {
+    await team.kit.files.write(REQUEST_FILE, JSON.stringify(execDraft()));
+    for (const argv of EVERY_COMMAND) {
+      assertRefused(await team.run(...argv), named);
+    }
+    assert.equal(await team.kit.files.read(AUDIT), undefined);
+    assert.deepEqual(team.spawner.asks, []);
+  }
+
+  it('refuses every exec command on a node with a preload on its command line, and logs nothing', async () => {
+    await assertEveryCommandRefused(new ExecTeam(EXEC_TEAM, { execArgv: ['--require', 'x.js'] }), /this one has --require x\.js \(on node's command line\); drop them from node's command line, then run it again/);
+  });
+
+  it('refuses every exec command when NODE_OPTIONS holds a preload, under any case of its name on Windows', async () => {
+    await assertEveryCommandRefused(new ExecTeam(EXEC_TEAM, { env: { NODE_OPTIONS: '--import=y.mjs' } }), /this one has --import=y\.mjs \(in NODE_OPTIONS\); unset NODE_OPTIONS or take them out of it/);
+    await assertEveryCommandRefused(new ExecTeam(EXEC_TEAM, { env: { node_options: '--inspect' } }), /this one has --inspect \(in NODE_OPTIONS\)/);
+  });
+
+  it('runs on a node with options that load nothing', async () => {
+    const team = new ExecTeam(EXEC_TEAM, { execArgv: ['--disable-warning=ExperimentalWarning'], env: { NODE_OPTIONS: '--max-old-space-size=4096' } });
+    assertOk(await team.request());
+    assertOk(await team.run('dry-run', 'R1'));
   });
 });
 

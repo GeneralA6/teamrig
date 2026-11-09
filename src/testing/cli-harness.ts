@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import type { Sleep } from '../core/lock.ts';
 import { join, resolve } from 'node:path';
 import { runCli } from '../cli/run.ts';
-import type { CliRuntime, ExitCode, Output } from '../cli/runtime.ts';
+import type { CliRuntime, ExitCode, Output, SelfLocation } from '../cli/runtime.ts';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../config/limits.ts';
 import { formatConfig } from '../config/load.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
@@ -170,6 +170,8 @@ export interface RunOptions {
   readonly exec?: ExecPorts;
   /** The chat webhook posts go to; default one that keeps them and answers each as posted. */
   readonly webhook?: ChatWebhook;
+  /** Where the CLI runs from and the node options it was started with; default the quiet world's, with none. */
+  readonly self?: SelfLocation;
 }
 
 /**
@@ -248,6 +250,7 @@ export class CliHarness {
       ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),
       ...(options.exec === undefined ? {} : { exec: options.exec }),
       ...(options.webhook === undefined ? {} : { webhook: options.webhook }),
+      ...(options.self === undefined ? {} : { self: options.self }),
       out,
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
       ...(options.cmdShimLine === undefined ? {} : { cmdShimLine: options.cmdShimLine }),
