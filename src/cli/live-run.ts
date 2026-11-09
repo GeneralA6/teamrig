@@ -2,8 +2,22 @@ import { treeOf } from '../delivery/processes.ts';
 import { KIT_NAME, type TeamPaths } from '../core/home.ts';
 import { runsClaude } from '../open/session-processes.ts';
 import { measureSessions, runningPlaces } from '../sessions/measure.ts';
-import { SessionRecordStore } from '../sessions/record.ts';
-import type { CliRuntime } from './runtime.ts';
+import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
+import { RefusedError, type CliRuntime } from './runtime.ts';
+
+/**
+ * Session `id`'s start record while its Claude Code runs now, of a team whose sessions are `ids`; undefined when it runs
+ * in none. Every session's record counts: a later one on the same process (a /clear that bound the tab to it) wins it.
+ * Refused when the host's processes cannot be listed, since then nothing tells whether it runs.
+ */
+export async function runningRecordOf(runtime: Pick<CliRuntime, 'files' | 'memory'>, paths: Pick<TeamPaths, 'sessions'>, ids: readonly string[], id: string): Promise<SessionRecord | undefined> {
+  const records = await new SessionRecordStore(runtime.files, paths).readEach(ids);
+  const rows = await runtime.memory.processes();
+  if (rows === undefined) {
+    throw new RefusedError(`${KIT_NAME} could not list the host's processes, so it cannot tell whether ${id} runs`);
+  }
+  return runningPlaces(measureSessions(records, rows)).some((place) => place.id === id) ? records.get(id) : undefined;
+}
 
 /** The Claude Code process a session runs in now, and the processes within its tree, such as a `claude -p` it ran. */
 export interface LiveRun {

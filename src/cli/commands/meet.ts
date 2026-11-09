@@ -6,12 +6,11 @@ import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
 import { meetAsk, meetPrompt } from '../../open/prompt.ts';
 import { ownerCardsBySession, type OwnerCards } from '../../register/owner-waits.ts';
 import type { TaskTree } from '../../register/tree.ts';
-import { measureSessions, runningPlaces } from '../../sessions/measure.ts';
-import { SessionRecordStore } from '../../sessions/record.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type FoundTeam, type Kit } from '../kit.ts';
+import { runningRecordOf } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRanking } from '../team-ranking.ts';
 import { teamRegister } from '../team-register.ts';
@@ -56,17 +55,6 @@ async function meetFactsOf(runtime: CliRuntime, ref: string): Promise<MeetFacts>
     throw new RefusedError(`${name} (session ${id}) has no card waiting on ${ownerSource} now${later.length === 0 ? '' : `; put off: ${later.join(', ')}`}`);
   }
   return { found, kit, config, roster, id, name, cards, tree };
-}
-
-/** Whether the session's Claude Code runs now; refused when the host's processes cannot be listed. */
-async function isRunning(runtime: CliRuntime, kit: Kit, roster: Roster, id: string): Promise<boolean> {
-  // Every session's record: a later one on the same process (a /clear that bound the tab to it) wins it.
-  const records = await new SessionRecordStore(runtime.files, kit.paths).readEach(roster.ids);
-  const rows = await runtime.memory.processes();
-  if (rows === undefined) {
-    throw new RefusedError(`${KIT_NAME} could not list the host's processes, so it cannot tell whether ${id} runs`);
-  }
-  return runningPlaces(measureSessions(records, rows)).some((place) => place.id === id);
 }
 
 /**
@@ -116,7 +104,7 @@ export async function meet(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   }
   const facts = await meetFactsOf(runtime, onePositional(args, 'id|name'));
   const { found, kit, config, roster, id } = facts;
-  if (await isRunning(runtime, kit, roster, id)) {
+  if ((await runningRecordOf(runtime, kit.paths, roster.ids, id)) !== undefined) {
     runtime.out.stdout(await wakeToMeet(runtime, facts));
     return EXIT.ok;
   }
