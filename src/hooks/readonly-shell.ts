@@ -1,4 +1,5 @@
 import type { ReadonlyShellConfig } from '../config/types.ts';
+import { bashToolReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
@@ -37,10 +38,22 @@ function lineReads(tool: string | undefined, command: string, rules: ReadonlyRul
 /** True when the call would print a secret into the conversation or its line holds one as text (hooks/secret-guard.ts). */
 export type PrintsSecret = (payload: JsonRecord) => boolean;
 
-/** True when the call is a Bash or PowerShell line whose every command provably only reads, and none prints a secret. */
-export function callReads(payload: JsonRecord, rules: ReadonlyRules, printsSecret: PrintsSecret): boolean {
-  const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-  return command !== undefined && lineReads(stringField(payload, 'tool_name'), command, rules) && !printsSecret(payload);
+/**
+ * True when the call is a Bash or PowerShell line whose every command provably only reads, and none prints a secret.
+ * A Bash line on Windows must pass in both readings (core/bash-tool-readings.ts): the text as written and the halved
+ * one bash receives, so a separator or backtick only bash sees never runs a hidden command without a prompt.
+ */
+export function callReads(payload: JsonRecord, rules: ReadonlyRules, printsSecret: PrintsSecret, platform: NodeJS.Platform): boolean {
+  const tool = stringField(payload, 'tool_name');
+  const input = recordField(payload, 'tool_input') ?? {};
+  const command = stringField(input, 'command');
+  if (command === undefined) {
+    return false;
+  }
+  const readings = tool === 'Bash' ? bashToolReadings(command, platform) : [command];
+  return readings.every(
+    (text) => lineReads(tool, text, rules) && !printsSecret({ ...payload, tool_input: { ...input, command: text } }),
+  );
 }
 
 /**
@@ -50,8 +63,8 @@ export function callReads(payload: JsonRecord, rules: ReadonlyRules, printsSecre
  * ask rules, above it. A line that prints a secret is never allowed here, even when the team let the secret guard
  * allow it or that guard failed: reading a secret into the conversation always takes a prompt.
  */
-export function readonlyShellOutput(payload: unknown, rules: ReadonlyRules, printsSecret: PrintsSecret): string {
-  if (!isRecord(payload) || !callReads(payload, rules, printsSecret)) {
+export function readonlyShellOutput(payload: unknown, rules: ReadonlyRules, printsSecret: PrintsSecret, platform: NodeJS.Platform): string {
+  if (!isRecord(payload) || !callReads(payload, rules, printsSecret, platform)) {
     return '';
   }
   return JSON.stringify({

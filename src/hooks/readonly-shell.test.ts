@@ -33,34 +33,57 @@ describe('readonlyRulesOf', () => {
 
 describe('readonlyShellOutput', () => {
   it('allows a line that only reads, in the dialect of the tool that runs it', () => {
-    assert.equal(readonlyShellOutput(call('Bash', 'grep -n x src/a.ts | head -5'), RULES, NO_SECRET), ALLOW);
-    assert.equal(readonlyShellOutput(call('PowerShell', 'Get-Content f | Select-Object -First 5'), RULES, NO_SECRET), ALLOW);
-    assert.equal(readonlyShellOutput(call('Bash', 'npx tsc --noEmit -p tsconfig.json'), RULES, NO_SECRET), ALLOW);
+    assert.equal(readonlyShellOutput(call('Bash', 'grep -n x src/a.ts | head -5'), RULES, NO_SECRET, 'linux'), ALLOW);
+    assert.equal(readonlyShellOutput(call('PowerShell', 'Get-Content f | Select-Object -First 5'), RULES, NO_SECRET, 'linux'), ALLOW);
+    assert.equal(readonlyShellOutput(call('Bash', 'npx tsc --noEmit -p tsconfig.json'), RULES, NO_SECRET, 'linux'), ALLOW);
   });
 
   it('prints nothing for a line that writes, or reads only in the other dialect', () => {
-    assert.equal(readonlyShellOutput(call('Bash', 'grep x f > out.txt'), RULES, NO_SECRET), '');
-    assert.equal(readonlyShellOutput(call('Bash', 'Get-Content f'), RULES, NO_SECRET), '');
-    assert.equal(readonlyShellOutput(call('PowerShell', 'grep x f'), RULES, NO_SECRET), '');
+    assert.equal(readonlyShellOutput(call('Bash', 'grep x f > out.txt'), RULES, NO_SECRET, 'linux'), '');
+    assert.equal(readonlyShellOutput(call('Bash', 'Get-Content f'), RULES, NO_SECRET, 'linux'), '');
+    assert.equal(readonlyShellOutput(call('PowerShell', 'grep x f'), RULES, NO_SECRET, 'linux'), '');
   });
 
   it('prints nothing for a name the environment exports, which the line may not set', () => {
-    assert.equal(readonlyShellOutput(call('Bash', 'npm_config_prefix=/tmp/x'), RULES, NO_SECRET), '');
-    assert.equal(readonlyShellOutput(call('Bash', 'prefix=/tmp/x'), RULES, NO_SECRET), ALLOW);
+    assert.equal(readonlyShellOutput(call('Bash', 'npm_config_prefix=/tmp/x'), RULES, NO_SECRET, 'linux'), '');
+    assert.equal(readonlyShellOutput(call('Bash', 'prefix=/tmp/x'), RULES, NO_SECRET, 'linux'), ALLOW);
   });
 
   it('prints nothing for another tool, a missing command or input that is not a payload', () => {
-    assert.equal(readonlyShellOutput(call('Read', 'grep x f'), RULES, NO_SECRET), '');
-    assert.equal(readonlyShellOutput(call('Bash', 7), RULES, NO_SECRET), '');
-    assert.equal(readonlyShellOutput({ tool_name: 'Bash' }, RULES, NO_SECRET), '');
-    assert.equal(readonlyShellOutput('grep x f', RULES, NO_SECRET), '');
+    assert.equal(readonlyShellOutput(call('Read', 'grep x f'), RULES, NO_SECRET, 'linux'), '');
+    assert.equal(readonlyShellOutput(call('Bash', 7), RULES, NO_SECRET, 'linux'), '');
+    assert.equal(readonlyShellOutput({ tool_name: 'Bash' }, RULES, NO_SECRET, 'linux'), '');
+    assert.equal(readonlyShellOutput('grep x f', RULES, NO_SECRET, 'linux'), '');
   });
 
   it('never allows a line that prints a secret, whatever the secret guard decides', () => {
     const secrets = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
     const printsSecret: PrintsSecret = (payload) => secretFindingsOf(payload, 'C:/w', secrets).length > 0;
-    assert.equal(readonlyShellOutput(call('Bash', 'cat .env'), RULES, printsSecret), '');
-    assert.equal(readonlyShellOutput(call('PowerShell', 'Get-Content ~/.npmrc'), RULES, printsSecret), '');
-    assert.equal(readonlyShellOutput(call('Bash', 'cat .env | wc -c'), RULES, printsSecret), ALLOW);
+    assert.equal(readonlyShellOutput(call('Bash', 'cat .env'), RULES, printsSecret, 'linux'), '');
+    assert.equal(readonlyShellOutput(call('PowerShell', 'Get-Content ~/.npmrc'), RULES, printsSecret, 'linux'), '');
+    assert.equal(readonlyShellOutput(call('Bash', 'cat .env | wc -c'), RULES, printsSecret, 'linux'), ALLOW);
+  });
+});
+
+describe('readonlyShellOutput on Windows, where the Bash tool halves backslash runs', () => {
+  const bs = (n: number): string => '\\'.repeat(n);
+
+  it('prints nothing when the halved text bash receives runs a command the text as written only escapes', () => {
+    for (const command of [`ls a${bs(3)}; rm -f x`, `echo "p${bs(3)}\`rm -f x${bs(3)}\`q"`]) {
+      assert.equal(readonlyShellOutput(call('Bash', command), RULES, NO_SECRET, 'win32'), '', command);
+      assert.equal(readonlyShellOutput(call('Bash', command), RULES, NO_SECRET, 'linux'), ALLOW, command);
+    }
+  });
+
+  it('allows a line that reads in both readings, a run before a double quote kept as it is', () => {
+    assert.equal(readonlyShellOutput(call('Bash', `grep -n "x${bs(2)}" f`), RULES, NO_SECRET, 'win32'), ALLOW);
+    assert.equal(readonlyShellOutput(call('Bash', `grep -n 'a${bs(4)}b' f | head -5`), RULES, NO_SECRET, 'win32'), ALLOW);
+  });
+
+  it('checks the halved text for a secret too', () => {
+    const secrets = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
+    const printsSecret: PrintsSecret = (payload) => secretFindingsOf(payload, 'C:/w', secrets).length > 0;
+    assert.equal(readonlyShellOutput(call('Bash', `cat .e${bs(2)}nv`), RULES, printsSecret, 'win32'), '');
+    assert.equal(readonlyShellOutput(call('Bash', `cat .e${bs(2)}nv`), RULES, printsSecret, 'linux'), ALLOW);
   });
 });

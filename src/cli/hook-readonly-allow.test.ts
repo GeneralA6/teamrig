@@ -29,6 +29,13 @@ describe('hook readonly-allow', () => {
     }
   });
 
+  it('prints nothing on Windows for a line whose halved text, the one bash receives there, runs a hidden command', async () => {
+    const kit = new CliHarness(ON_TEAM);
+    const hidden = bash(`ls a${'\\'.repeat(3)}; rm -f x`);
+    assert.deepEqual(await kit.run(HOOK, { stdin: hidden, platform: 'win32' }), NOTHING);
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: hidden, platform: 'linux' })), 'allow');
+  });
+
   it("refuses to let the line set a name Claude Code's environment exports", async () => {
     const kit = new CliHarness(ON_TEAM);
     assert.equal(decisionOf(await kit.run(HOOK, { stdin: bash('npm_config_prefix=/tmp/x') })), 'allow');
