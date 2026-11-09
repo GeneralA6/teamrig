@@ -2,10 +2,10 @@
 
 Your sessions run for hours while you are away, and a rule in their instructions can be missed. teamrig's guards
 hold those rules on every line: before Claude runs a command, they read it and ask you, or refuse, when it would push
-to a protected branch, skip the repository's git hooks, run a package nobody vetted or print a secret, and a
-privileged command runs only once a reviewer approves it. On Windows they read a Bash line both as written and as
-Claude Code's Bash tool hands it to bash, with each run of backslashes halved, and answer for the stricter reading.
-Each guard's keys in the
+to a protected branch, skip the repository's git hooks, run a package nobody vetted, write to a database by hand or
+print a secret, and a privileged command runs only once a reviewer approves it. On Windows they read a Bash line both
+as written and as Claude Code's Bash tool hands it to bash, with each run of backslashes halved, and answer for the
+stricter reading. Each guard's keys in the
 [team config](../configuration.md) set what it does. The guards catch mistakes; they are not a sandbox, so protect
 your main branch on your git host too.
 
@@ -14,6 +14,7 @@ your main branch on your git host too.
 - [Unvetted packages](#unvetted-packages)
 - [Secrets kept out of the conversation](#secrets-kept-out-of-the-conversation)
 - [Secrets kept out of commits](#secrets-kept-out-of-commits)
+- [Database writes after a preview](#database-writes-after-a-preview)
 - [Privileged commands on review](#privileged-commands-on-review)
 - [Hand steps you run yourself](#hand-steps-you-run-yourself)
 - [Reads without a prompt](#reads-without-a-prompt)
@@ -242,6 +243,22 @@ or later) and one in a pushed annotated tag's message. Outside a team the defaul
 one, the team's `register.secretPatterns` and `secretGuard.paths` are added. `teamrig check` warns the lead
 (SECRET-HOOK) of each repository in `delivery.repos` whose hooks skip one of the three, with the line to add
 ([the commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-secrets-staged)).
+
+## Database writes after a preview
+
+A write to a database run by hand cannot be taken back like a code change, so it should follow counts or a preview
+you have seen. Before each Bash or PowerShell call, the db-write guard reads the line (with the push guard's parser)
+and asks you about one that writes: SQL that changes data or its schema through `psql`, `mysql`, `mariadb` or
+`sqlite3`; the code a database program the team names in `dbWriteGuard.programs` runs, by the shape it reads (a
+document shell's `--eval` or script, a key-value client's command or Lua script); Node code that writes through a
+client module the team names in `dbWriteGuard.nodeClients`; and a team data script in `dbWriteGuard.entrypoints` run
+with its apply flag (`--apply`), whose run without it is a dry run and passes. It reads the files a line names and
+what it pipes or redirects in, and the line a container or a host runs (`kubectl exec`, `docker exec`, `ssh`). Reads
+pass, and the reason names each write and the count or dry run to show you first. `dbWriteGuard.writes` (`ask` by
+default, `deny` or `allow`) sets what such a call gets, and under `prompts.hookAsks: refuse` the question is a
+refusal, so the session records the write for you and goes on. A write you approve and want reviewed runs as a
+[privileged command](#privileged-commands-on-review) of kind `db-write`
+([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-db-write-guard)).
 
 ## Privileged commands on review
 

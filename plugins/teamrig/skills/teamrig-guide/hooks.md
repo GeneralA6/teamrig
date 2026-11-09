@@ -13,7 +13,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook db-write-guard` | Asks before a line that writes to a database by hand (a built-in SQL client, a database program or Node client module the team names, a data script the team names run with its apply flag), so the owner sees counts or a preview first; refuses it instead under `dbWriteGuard.writes: deny` or with asks off |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook db-write-guard` | Asks before a line that writes to a database by hand (a built-in SQL client, a database program or Node client module the team names, a data script the team names run with its apply flag), so the owner sees counts or a preview first; refuses it instead under `dbWriteGuard.writes: deny` or with asks off ([the db-write guard](#before-a-shell-command-the-db-write-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
@@ -391,7 +391,8 @@ with overrides.
 A permission prompt holds the session until a human answers it, for hours when nobody is there. With
 `prompts.hookAsks` set to `refuse` in the team config, every question a teamrig hook would raise is a refusal
 instead: the push guard's (a push to a protected branch, a `--force-with-lease` push, a line it cannot read), the
-commit guard's, the package guard's and the secret guard's under their `ask` choice, and the helper gate's. The hook's own reason
+commit guard's, the package guard's and the secret guard's under their `ask` choice, the db-write guard's, and the
+helper gate's. The hook's own reason
 comes first, then:
 "Asks are off [prompts.hookAsks], so teamrig refuses this instead of asking; do not retry it or route around it.
 Record the step as waiting for the owner (`teamrig set <task> --status waiting --waits approval:owner --note "<the
@@ -436,8 +437,8 @@ person decide those.
 Auto mode can refuse a call before any prompt, and a refusal it makes is a dead end no `PermissionRequest` answer
 reaches. So with asks off, `hook route-allow` (since 0.268.0) lets five of those routes run before any permission
 check, at `PreToolUse`: `teamrig merge`, `teamrig deploy`, `teamrig exec request`, `teamrig worktree remove` and the
-`git commit`, as plain as above. It answers only once the push, package, secret, exec and pass-record guards all passed
-the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
+`git commit`, as plain as above. It answers only once the push, package, secret, db-write, exec and pass-record guards
+all passed the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
 route, never the command (a commit message is free text). `prompts.routeAllow: off` takes this allow away without a
 release; no config adds a route. With asks on it never answers.
 
@@ -593,6 +594,78 @@ shows results whole, the owner's call. It does not cover:
   Code hands as plain text instead of an object: not yet probed, so they pass as they are;
 - a secret with no shape or frame it knows, as for the guard.
 
+## Before a shell command: the db-write guard
+
+A write to a database run by hand cannot be taken back the way a code change can, so it should follow counts or a
+preview the owner has seen. Before Claude runs a Bash or PowerShell call, `hook db-write-guard` reads the line (as the
+push guard does: chains, subshells, nested shells, `cd`, pipes and substitutions) and asks the human about one that
+writes:
+
+- **SQL through a built-in client**: `psql` (`-c`, a `-f` file, stdin), `mysql` and `mariadb` (`-e`, stdin) and
+  `sqlite3` (the SQL after its database file, `-cmd`, stdin), with a statement that changes data or its schema:
+  `INSERT`, `UPDATE`, `DELETE`, `DROP`, `TRUNCATE`, `ALTER`, `CREATE`, `GRANT`, `REVOKE`, `REPLACE INTO`, `MERGE INTO`;
+- **a database program the team names**: `dbWriteGuard.programs` lists each by its `name` and the shape it `reads`
+  its code in:
+  - `document-shell`: `--eval` code, `-f` files and a script file named as a word (`fix.js`), calling a method that
+    changes stored data (`insertOne`, `updateMany`, `deleteMany`, `drop`, `bulkWrite`, `createIndex`,
+    `runCommand`...) or an aggregation with `$out` or `$merge`;
+  - `key-value-cli`: a write command (`SET`, `DEL`, `FLUSHALL`, `XTRIM`...), commands piped in one a line, or a Lua
+    script (`EVAL '<script>'`, `--eval trim.lua`) whose `<host>.call('DEL', ...)` writes;
+  - `sql-command`, `sql-execute` and `sql-database-file`: read as `psql`, `mysql` and `sqlite3` are.
+
+  A team's entry is read before the built-in clients, so it can read a built-in name its own way, and never takes
+  one away;
+- **Node code that writes through a client module the team names**: `node`, `tsx` or `ts-node` (through `npx` or
+  `pnpx` too) running `-e` or `-p` code, a script file or code on stdin, read only when it loads a module
+  `dbWriteGuard.nodeClients` names (`require('docstore')`, or a path under it: `from 'docstore/admin'`). Each module
+  has a `vocabulary`: `document` (`insertOne`, `updateMany`, `deleteMany`, `drop`, `bulkWrite`, a model's
+  `create`...) or `key-value` (`set`, `del`, `hset`, `expire`, `flushAll`..., in any case). A key-value name that
+  other objects share (`set`, `rename`, `copy`, `append`, `eval`, `move`, `restore`, `unlink`) counts only on a
+  receiver named like a client: `client` is built in, and `dbWriteGuard.clientReceivers` adds the team's words, so
+  with `cache` there `cache.set(` writes while `map.set(` stays a read. A script that loads none of those modules is
+  never read as one, and `--test`, `--check`, `--version` or `--help` run no script;
+- **a team data script run with an apply flag**: a script `dbWriteGuard.entrypoints` names, matched against the end
+  of the path the line runs, is a dry run without one of its `applyFlags` and passes; with one (`--apply`,
+  `--apply=yes`) it is asked about, whatever the script holds.
+
+```json
+{
+  "dbWriteGuard": {
+    "programs": [{ "name": "docsh", "reads": "document-shell" }, { "name": "kvcli", "reads": "key-value-cli" }],
+    "nodeClients": [
+      { "module": "docstore", "vocabulary": "document" },
+      { "module": "kvstore", "vocabulary": "key-value" }
+    ],
+    "clientReceivers": ["cache"],
+    "entrypoints": [{ "path": "scripts/backfill.ts", "applyFlags": ["--apply"] }]
+  }
+}
+```
+
+The guard reads the code a line hands over: its arguments, the files they name (from the folder the call runs in), a
+here-document, a file redirected in, and what `echo`, `printf`, `Write-Output` or a `cat` or `Get-Content` of a file
+pipes to it. The line a container or a host runs (`kubectl exec ... --`, `docker exec`, `podman exec`, `ssh host
+'...'`) is read as a line of its own, with what the host pipes or redirects into it, and the reason says it runs
+there. The reason names each write and the step to show first:
+
+```text
+teamrig db-write guard: this line writes to a database by hand: docsh runs deleteMany. First run a count or find of what it would change, show the owner the counts or a preview, and run the write only with the owner's OK. [dbWriteGuard.writes]
+```
+
+For a data script it says "First run it without its apply flag (its dry run)". `dbWriteGuard.writes` sets what such
+a call gets: `ask` the human (the default), `deny`, or `allow`. A missing or broken config keeps `ask`, and outside a
+team's projects the guard does nothing; under `prompts.hookAsks: refuse` the question is a refusal with the note
+[asks off](#asks-off-a-refusal-instead-of-a-prompt) adds. The read-only allow cannot let such a line skip the
+question: Claude Code ranks the guard's `ask` over its `allow`. The guard reads only the line and the files it names,
+so it cannot see, and lets through:
+
+- code built or chosen when the line runs (`docsh --eval "$CODE"`, `node $(ls scripts/*.js)`), a file it cannot
+  read, or a file on the far side of a container or host (`ssh host 'psql -f fix.sql'`);
+- a script that writes through a client it gets from another module of its own (`import { db } from './db.ts'`): a
+  team names such a script as an entrypoint;
+- a database tool that is no built-in client and not in `programs` (an import or restore tool, a migration command),
+  and Node code through a client module not in `nodeClients`.
+
 ## Before a shell command: the exec guard
 
 A [privileged command](commands.md#privileged-commands) runs only after a reviewer approves it, and the CLI takes
@@ -706,7 +779,8 @@ and lets it run without a prompt when every command in it, substitutions and loo
 It only ever allows: a line it cannot prove reads prints nothing, and Claude Code's own permission check decides,
 as without the hook; so it does outside a team, with a missing or broken config, or on any error. Claude Code ranks
 one hook's `deny` over another's `ask` over an `allow`, and its settings' deny and ask rules still apply under an
-allow, so the push guard's question and the package, secret and pass-record guards' refusals always win. It never allows a line
+allow, so the push and db-write guards' questions and the package, secret and pass-record guards' refusals always
+win. It never allows a line
 that prints or holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
 `secretGuard.secretReads` or `secretGuard.writes` is `allow`. The hook reads the session's team
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. On Windows, Claude Code's
@@ -1529,7 +1603,8 @@ turn as it was.
 
 Claude Code lets a tool call through when a `PreToolUse` command hook ends with any exit code but 0 or 2, or
 outlives its timeout, so a guard that breaks would stop guarding with no sign. The guards that can refuse a call
-(`push-guard`, `package-guard`, `secret-guard`, `exec-guard`, `pass-record-guard`, `cold-send`, `helper-gate` and
+(`push-guard`, `package-guard`, `secret-guard`, `db-write-guard`, `exec-guard`, `pass-record-guard`, `cold-send`,
+`helper-gate` and
 `picker-guard`) therefore run through `dist/cli/guard-main.js`, a runner that loads the CLI itself and blocks the
 call (exit 2) when the guard:
 
@@ -1578,6 +1653,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   unless `secretGuard.secretReads` (a print) or `secretGuard.writes` (text) is `ask` or `allow`.
 - **The secret redactor** replaces a secret in a call's result on its own, whatever the mode, unless
   `secretGuard.redact` is `false`.
+- **The db-write guard** asks before a line that writes to a database by hand on its own, whatever the mode, unless
+  `dbWriteGuard.writes` is `allow`; under `deny` or `prompts.hookAsks: refuse` it refuses the line.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, any
   `exec` call through a client that is no install of the plugin or was changed, every `owner` command, and a shell fed its commands from a pipe, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,

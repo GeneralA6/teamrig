@@ -179,7 +179,8 @@ in the last two weeks or with a known advisory, or one that would rewrite a work
 main checkout's. A call that would print a secret file, the whole environment or a
 Kubernetes secret, or whose command line or written file holds a token or a password as text, is refused before it runs, and a secret
 a call prints anyway is redacted before Claude sees it. A repository's git hooks call `teamrig secrets`, which refuses
-a commit or a push that adds a token or a secret file, whoever makes it. Each helper a member starts gets the same team rules and knows whose
+a commit or a push that adds a token or a secret file, whoever makes it. A hand-run write to a database asks you
+first, naming the count or dry run to see before it. Each helper a member starts gets the same team rules and knows whose
 helper it is. Everything runs on your machine, with no account and no cloud bill.
 
 ## Also in the box
@@ -217,7 +218,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | --- | --- |
 | [Start here](docs/guides/start-here.md) | New to teamrig: install it, set up your first team, and the five words every page uses |
 | [How it works in detail](docs/how-it-works.md) | The design, the files and [updating the plugin](docs/how-it-works.md#updating-the-plugin) |
-| [Keep it safe](docs/guides/keep-it-safe.md) | The guards: safe pushes, skipped hooks, unvetted packages, secrets, privileged commands on review |
+| [Keep it safe](docs/guides/keep-it-safe.md) | The guards: safe pushes, skipped hooks, unvetted packages, secrets, database writes, privileged commands on review |
 | [Run your day](docs/guides/run-your-day.md) | The daily meeting, a question that never stops a session, notes between sessions, waking on urgent work |
 | [Recover from a crash or a full context](docs/guides/recover.md) | Sessions reopened after a crash or a reboot, a fresh context at a task boundary, the turn log |
 | [Plan the week](docs/guides/plan-the-week.md) | The week plan and task sizes against the weekly limit, the week's split among the teams, the daily budget and its pace line, bursts |
