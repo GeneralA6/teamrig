@@ -45,6 +45,7 @@ function env(branch = 'feature') {
     skipHooks: 'deny',
     hookAsks: 'ask',
     clearance: async () => assert.fail('read the clearance outside pushToProtected: lead'),
+    platform: 'linux',
   } satisfies PushGuardEnv;
 }
 
@@ -379,6 +380,44 @@ describe('pushGuardOutput: skipped hooks', () => {
     for (const command of ['git commit -m "skip --no-verify next time"', 'git push -n origin feature', 'git config --get core.hooksPath']) {
       assert.equal(await pushGuardOutput(payload(command), env()), '', command);
     }
+  });
+});
+
+describe('pushGuardOutput: a Bash line on Windows (T2319)', () => {
+  /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
+  const bs = (n: number): string => '\\'.repeat(n);
+  const windows = (branch = 'feature'): PushGuardEnv => ({ ...env(branch), platform: 'win32' });
+  const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
+  const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
+
+  it('asks about a push bash runs behind a separator or backtick the line as written escapes', async () => {
+    for (const command of [hiddenSeparator('git push origin HEAD:main'), hiddenBacktick('git push origin HEAD:main')]) {
+      assert.equal(decisionOf(await pushGuardOutput(payload(command), windows())), 'ask', command);
+      assert.equal(await pushGuardOutput(payload(command), env()), '', `off Windows bash runs the line as written: ${command}`);
+    }
+  });
+
+  it('keeps the strictest reading: a hidden force-push and a hidden skip of the hooks are refused', async () => {
+    const forced = hookOutput(await pushGuardOutput(payload(hiddenSeparator('git push --force origin main')), windows()));
+    assert.equal(forced.decision, 'deny');
+    assert.match(forced.reason, /^Force-pushing, mirroring or deleting a protected branch \(main\)/);
+    const skipped = hookOutput(await pushGuardOutput(payload(hiddenSeparator('git commit --no-verify -m fix')), windows()));
+    assert.equal(skipped.decision, 'deny');
+    assert.match(skipped.reason, /git commit \(--no-verify\)/);
+  });
+
+  it("judges each reading alone, so the written line's checkout never moves the branch of the halved line's push", async () => {
+    const written = `echo a${bs(2)}; git checkout -b topic; git push origin HEAD`;
+    assert.equal(await pushGuardOutput(payload(written), env('main')), '', 'as written, the push sends the new topic branch');
+    assert.equal(decisionOf(await pushGuardOutput(payload(`echo a${bs(1)}; git checkout -b topic; git push origin HEAD`), env('main'))), 'ask', 'as bash receives it, the checkout is echoed');
+    assert.equal(decisionOf(await pushGuardOutput(payload(written), windows('main'))), 'ask');
+  });
+
+  it('leaves a line whose readings both only push a feature branch or run no git, and a PowerShell line as written', async () => {
+    for (const command of [`grep 'a${bs(4)}b' f`, `echo a${bs(3)}; git push origin feature`, `git log --grep 'x${bs(2)}y'`]) {
+      assert.equal(await pushGuardOutput(payload(command), windows()), '', command);
+    }
+    assert.equal(await pushGuardOutput(payload(`echo a${bs(3)}; git status`, { tool_name: 'PowerShell' }), windows()), '');
   });
 });
 
