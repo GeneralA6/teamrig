@@ -6,7 +6,7 @@ import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import type { Files } from '../core/files.ts';
-import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { FakeHostMemory, noLoadingTabs } from '../testing/fake-host-memory.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { AdmissionRules } from './admission.ts';
 import type { OpenCharge } from './class-turns.ts';
@@ -98,7 +98,7 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
       ids += 1;
       return `t${ids}`;
     },
-    ...(memory === undefined ? {} : { memory: new MemoryGate(memory, noGap, GATE) }),
+    ...(memory === undefined ? {} : { memory: new MemoryGate(memory, noGap, GATE, noLoadingTabs) }),
     ...(admission === undefined ? {} : { admission }),
   });
   return { files, clock, running, lock };

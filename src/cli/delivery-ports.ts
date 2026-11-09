@@ -8,6 +8,7 @@ import { HostLock, type HostLockPorts } from '../delivery/host-lock.ts';
 import { MemoryGate } from '../delivery/memory-gate.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { TabHolds, tabHoldsDir } from '../sessions/tab-holds.ts';
 import type { CliRuntime } from './runtime.ts';
 
 const MINUTE_MS = 60_000;
@@ -29,7 +30,8 @@ type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessi
  * The host lock at `path`, held by this process for `delivery.queue.lockTtlMinutes`; a holder whose process ended is
  * stale. Every step that takes it or shares the host passes its memory gate first: free memory over
  * `delivery.queue.memoryFloorMb` plus the step's reserve (`heavyReserveMb` at least for a step that takes the lock),
- * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted. Its line is ordered as
+ * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted, the tabs still loading beside the
+ * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered as
  * `delivery.queue.admission` says, a ticket naming no class counting as `focus.defaultClass`. A waiter's ticket says
  * what it waits on with the times on `zone`'s clock.
  */
@@ -41,7 +43,8 @@ export function hostLockOf(
   focus: Pick<FocusConfig, 'defaultClass'>,
   zone: TimeZone,
 ): HostLock {
-  const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct });
+  const tabs = new TabHolds(tabHoldsDir(path), runtime);
+  const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct }, () => tabs.live());
   const admission: AdmissionRules = {
     mode: queue.admission,
     agingMinutes: queue.agingMinutes,

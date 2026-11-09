@@ -1,7 +1,7 @@
 import { DEFAULT_HEADROOM, DEFAULT_QUEUE } from '../config/defaults.ts';
 import type { Sleep } from '../core/lock.ts';
 import type { CommitCharge, HostMemory, MemoryHolder, MemoryPeaks, MemoryWatch, ProcessRow } from '../delivery/memory.ts';
-import { MemoryGate } from '../delivery/memory-gate.ts';
+import { MemoryGate, type LoadingTabs } from '../delivery/memory-gate.ts';
 
 /** One watch a step started: its root and interval, and whether it was stopped. */
 export interface FakeWatch {
@@ -100,7 +100,10 @@ export class FakeHostMemory implements HostMemory {
   }
 }
 
-/** The memory gate the CLI puts on the host lock under the default config (`hostLockOf`), reading `memory`. */
+/** A host with no tab still loading. */
+export const noLoadingTabs: LoadingTabs = async () => [];
+
+/** The memory gate the CLI puts on the host lock under the default config (`hostLockOf`), reading `memory`, with no tab loading. */
 export function defaultGateOn(memory: FakeHostMemory, sleep: Sleep): MemoryGate {
-  return new MemoryGate(memory, sleep, { floorMb: DEFAULT_QUEUE.memoryFloorMb, heavyReserveMb: DEFAULT_QUEUE.heavyReserveMb, commitMaxPct: DEFAULT_HEADROOM.commitMaxPct });
+  return new MemoryGate(memory, sleep, { floorMb: DEFAULT_QUEUE.memoryFloorMb, heavyReserveMb: DEFAULT_QUEUE.heavyReserveMb, commitMaxPct: DEFAULT_HEADROOM.commitMaxPct }, noLoadingTabs);
 }

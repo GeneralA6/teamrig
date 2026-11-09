@@ -1,10 +1,9 @@
 import type { HeadroomConfig, QueueConfig } from '../config/types.ts';
 import type { CommitCharge } from '../delivery/memory.ts';
+import { tabsText, type LoadingTab } from '../delivery/memory-gate.ts';
 import { KIT_NAME } from '../core/home.ts';
-import type { TabHold } from './tab-holds.ts';
 
-/** A tab still loading: the MB it holds of free memory and of the commit charge, which the host does not show yet. */
-export type LoadingTab = Pick<TabHold, 'needMb' | 'needCommittedMb'>;
+export type { LoadingTab };
 
 /** What the host holds as one more session is about to be added. */
 export interface HostRoom {
@@ -60,10 +59,6 @@ function medianOf(values: readonly number[]): number | undefined {
 
 function sumOf(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0);
-}
-
-function tabsText(count: number): string {
-  return count === 1 ? '1 tab' : `${count} tabs`;
 }
 
 /**
