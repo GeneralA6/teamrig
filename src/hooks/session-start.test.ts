@@ -260,8 +260,8 @@ describe('sessionStartContext: long notes within the context cap (T1376)', () =>
     // The largest parent rules file a lead's worst start still shows in full, with a line on its own file after it:
     // the lead's lines come before any rules file (fitContext), so each one a lead gets takes this room. On the
     // budget, the owner decisions that hold a slice, the week split and the appeal line (T2215) cut it from 2,339
-    // characters to 1,520; past it the file comes as its pointer.
-    const parent: TeamRules = { ...ROOT_RULES, text: '- Root rule.\n'.repeat(117).trim() };
+    // characters to 1,520, and rule 11's hand-step sentence (T2309) to 1,247; past it the file comes as its pointer.
+    const parent: TeamRules = { ...ROOT_RULES, text: '- Root rule.\n'.repeat(96).trim() };
     const text = context({
       load: loaded({ config: testConfig({ names: { lead: 'captain' }, budget: { enabled: true, accountLead: 'a'.repeat(32), shareFloorPct: CONFIG_LIMITS.shareFloorPct.max } }) }),
       session: 'captain',
