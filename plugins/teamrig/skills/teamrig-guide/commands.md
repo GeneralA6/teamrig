@@ -2537,9 +2537,17 @@ the next is. A batch is due when:
 - a time in `decisions.batchTimesUtc` passed with a wait set before it not yet asked, or one asked before it past
   due. None are set by default: the daily meeting is the batch.
 
+A wait whose decision frees only Improvements work (by the agenda's rule: its task and everything it unblocks have a
+class other than `focus.roadmapClass` and `focus.maintenanceClass` and none is an expedite) waits for the weekly Improvements
+batch, as on the agenda (since 0.318.0). Off `focus.improvementsDay` (a UTC weekday, `wed` by default) it is held:
+out of the batch and every trigger above, even when due, and named after the head on one line, `IMPROVEMENTS <n>
+held for the weekly Improvements batch on wed UTC (focus.improvementsDay): T5, web/T7`. On that day it is in the
+batch, and only an ask that day counts, so it is asked again each week while it waits.
+
 The lead's `start` and `check` print one `DECISIONS batch due (<why>)` line while a batch is due, and nothing
 otherwise; other sessions get no line. A new owner wait's inbox line to the lead ends with when the owner hears of
-it: `AT ONCE, due <date> before the next batch`, `BATCH DUE: <why>` or `asked in the next batch <date>`. Its times,
+it: `AT ONCE, due <date> before the next batch`, `BATCH DUE: <why>`, `asked in the next batch <date>` or, for a held
+wait, `asked in the weekly Improvements batch on wed UTC (focus.improvementsDay)`. Its times,
 and a typed due date, are on the team's clock (`timeZone`); `batchTimesUtc` stays in UTC. An `AT ONCE` line to the
 lead also wakes it, as an `inbox add --wake now` line does; one that went to a sub-lead leaves the session setting
 the wait the `--wake now` line to post the lead. With `wake.enabled: false` that session is told to message the lead

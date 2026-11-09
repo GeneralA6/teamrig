@@ -114,9 +114,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
       decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
       and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a
-      decisions.batchTimesUtc time passed) or when the next is; decisions asked (the lead's) records the
-      batch asked, as a meeting start does; in a tree of teams the root lead's batch holds every team's
-      waits under it, and a child team's decisions prints its own and its teams' waits, naming that lead
+      decisions.batchTimesUtc time passed) or when the next is; a wait that frees only Improvements work
+      is held, on an IMPROVEMENTS line, until focus.improvementsDay; decisions asked (the lead's) records
+      the batch asked, as a meeting start does; in a tree of teams the root lead's batch holds every
+      team's waits under it, and a child team's decisions prints its own and its teams' waits, naming
+      that lead
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b|none]
       [--week <date>] [--after T5,T6] [--size <pct>] [--type task|bug] [--critical] [--class <name>]

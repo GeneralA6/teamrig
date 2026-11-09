@@ -64,8 +64,9 @@ session with none.
 The start counts as asking you every decision it lists. Between meetings the lead asks the new ones in batches:
 `teamrig decisions` lists the waits not yet asked and the asked ones past due, and the lead's `start` and `check` say
 when a batch is due (`decisions.batchTimesUtc`, `decisions.batchAt`); a wait due before the next batch is asked at
-once. In a tree of teams only the root team's lead holds the meeting, and its `DECISIONS` lists the waits of every
-team under it as `<team>/<id>`.
+once. A decision that frees only Improvements work waits for the weekly Improvements batch on
+`focus.improvementsDay`, as on your agenda. In a tree of teams only the root team's lead holds the meeting, and its
+`DECISIONS` lists the waits of every team under it as `<team>/<id>`.
 
 ## Never stuck on a question
 
