@@ -122,7 +122,7 @@ export interface WeekInput {
   readonly statusUse: WeekUse | undefined;
   /** The span the use counts in (budget/period.ts); undefined while no reset is known. */
   readonly period: Pick<Period, 'start' | 'end' | 'kind'> | undefined;
-  /** Every usage store: each team session's and the outside one. */
+  /** Every usage store on the account: each team session's, the outside one and each other team's sessions (T1778). */
   readonly states: readonly UsageState[];
   /** The meter log's fit and forecasts (budget/calibration.ts); the fit, once there is one, sets the rate. */
   readonly calibration: Calibration;

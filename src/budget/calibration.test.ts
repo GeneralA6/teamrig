@@ -4,6 +4,8 @@ import { NewerDataError, toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from '../core/time.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import {
+  ACCOUNT_SCOPE,
+  accountReadings,
   calibrationOf,
   crossingOf,
   FIT_SPREAD_PTS,
@@ -18,7 +20,6 @@ import {
   parseMeterRecord,
   periodForecasts,
   READINGS_KEPT_MS,
-  readingsOfTeam,
   useAtW,
   type LoggedReading,
   type MeterReading,
@@ -51,6 +52,11 @@ function reading(usedPct: number, w: number, overrides: Partial<MeterReading> = 
 /** A line of `team`'s, whose stores metered `w`. */
 function teamLine(team: string, usedPct: number, w: number, overrides: Partial<MeterReading> = {}): LoggedReading {
   return { ...reading(usedPct, w, overrides), team };
+}
+
+/** An account line, whose `w` every team's stores on the account metered. */
+function accountLine(usedPct: number, w: number, overrides: Partial<MeterReading> = {}): LoggedReading {
+  return { ...reading(usedPct, w, overrides), scope: ACCOUNT_SCOPE };
 }
 
 describe('crossingOf', () => {
@@ -241,37 +247,52 @@ describe('useAtW', () => {
 });
 
 describe('meter log records', () => {
-  it('round-trips a reading, with and without a forecast or a team', () => {
-    for (const each of [reading(13, 120_000_000, { forecastPct: 12.5 }), reading(13, 120_000_000), teamLine('app', 13, 120_000_000)]) {
+  it('round-trips a reading, with and without a forecast, a team or the account scope', () => {
+    for (const each of [reading(13, 120_000_000, { forecastPct: 12.5 }), reading(13, 120_000_000), teamLine('app', 13, 120_000_000), accountLine(13, 120_000_000)]) {
       assert.deepEqual(parseMeterRecord(meterRecordOf(each)), each);
     }
     assert.deepEqual(meterRecordOf(reading(13, 5)), { v: METER_LOG_FORMAT, at: '2026-10-22T12:00:00.000Z', usedPct: 13, start: '2026-10-21T01:00:00.000Z', end: '2026-10-28T01:00:00.000Z', w: 5 });
     assert.equal(meterRecordOf(teamLine('app', 13, 5))['team'], 'app');
+    assert.equal(meterRecordOf(accountLine(13, 5))['scope'], 'account');
   });
 
-  it('reads a damaged record as nothing', () => {
+  it('reads a damaged record, an unknown scope or a line on two scales as nothing', () => {
     const good = meterRecordOf(reading(13, 5));
     const damages = [{ at: 'soon' }, { usedPct: 0 }, { usedPct: '13' }, { w: -1 }, { end: '2026-10-20T01:00:00.000Z' }, { start: 7 }, { forecastPct: 'x' }, { team: '' }, { team: 7 }];
-    for (const damage of damages) {
+    const scopes = [{ scope: 'team' }, { scope: '' }, { scope: 7 }, { scope: 'account', team: 'app' }];
+    for (const damage of [...damages, ...scopes]) {
       assert.equal(parseMeterRecord({ ...good, ...damage }), undefined, JSON.stringify(damage));
     }
   });
 });
 
-describe('readingsOfTeam', () => {
+describe('accountReadings', () => {
   const LAST = { start: START - MS_PER_WEEK, end: START };
+  const HOUR_AGO = { at: NOW - MS_PER_HOUR };
 
-  it("takes a team's own lines, never another team's", () => {
-    const logged = [teamLine('root', 13, 100), teamLine('app', 13, 110), teamLine('root', 14, 108), teamLine('app', 14, 119)];
-    assert.deepEqual(readingsOfTeam(logged, { team: 'app', keeper: 'root' }), [teamLine('app', 13, 110), teamLine('app', 14, 119)]);
-    assert.deepEqual(readingsOfTeam(logged, { team: 'root', keeper: 'root' }), [teamLine('root', 13, 100), teamLine('root', 14, 108)]);
+  it('takes the account lines and drops every team line logged after the first of them, the keeper\'s too', () => {
+    // A tab still on an older teamrig logs its own team's W, for the keeper and for another team alike.
+    const logged = [accountLine(13, 100, HOUR_AGO), teamLine('root', 14, 60), teamLine('app', 14, 40), accountLine(14, 108)];
+    assert.deepEqual(accountReadings(logged, 'root'), [accountLine(13, 100, HOUR_AGO), accountLine(14, 108)]);
   });
 
-  it("counts a line logged before lines named a team for the log's keeper only, in a period with no named line", () => {
-    // Last week's lines name no team: the keeper's scale. This week's untagged ones were logged by both teams in turn.
-    const logged = [reading(40, 400, LAST), reading(50, 500, LAST), reading(12, 130), reading(13, 120), teamLine('root', 14, 130)];
-    assert.deepEqual(readingsOfTeam(logged, { team: 'root', keeper: 'root' }), [reading(40, 400, LAST), reading(50, 500, LAST), teamLine('root', 14, 130)]);
-    assert.deepEqual(readingsOfTeam(logged, { team: 'app', keeper: 'root' }), []);
+  it("bridges a period with the keeper's own lines before its first account line, never another team's", () => {
+    const logged = [
+      teamLine('root', 40, 400, LAST),
+      teamLine('app', 40, 300, LAST),
+      teamLine('root', 12, 90, { at: NOW - 2 * MS_PER_HOUR }),
+      teamLine('app', 12, 50, { at: NOW - 2 * MS_PER_HOUR }),
+      accountLine(13, 100, HOUR_AGO),
+    ];
+    const expected = [teamLine('root', 40, 400, LAST), teamLine('root', 12, 90, { at: NOW - 2 * MS_PER_HOUR }), accountLine(13, 100, HOUR_AGO)];
+    assert.deepEqual(accountReadings(logged, 'root'), expected);
+    assert.deepEqual(accountReadings(logged, 'app'), [teamLine('app', 40, 300, LAST), teamLine('app', 12, 50, { at: NOW - 2 * MS_PER_HOUR }), accountLine(13, 100, HOUR_AGO)]);
+  });
+
+  it('counts a line naming no scale only in a period with no line naming one', () => {
+    // Last week's lines name none. This week's untagged ones were logged by the teams in turn, each on its own scale.
+    const logged = [reading(40, 400, LAST), reading(50, 500, LAST), reading(12, 130), reading(13, 120), accountLine(14, 130)];
+    assert.deepEqual(accountReadings(logged, 'root'), [reading(40, 400, LAST), reading(50, 500, LAST), accountLine(14, 130)]);
   });
 });
 
@@ -291,11 +312,11 @@ describe('MeterLog', () => {
     assert.deepEqual(await log.read(NOW), [reading(13, 5), reading(13, 9, { start: START - MS_PER_WEEK, end: START })]);
   });
 
-  it("reads each team's line for a percent, and one per team when two of its readers logged at once", async () => {
+  it("reads each scale's line for a percent, and one per scale when two of its readers logged at once", async () => {
     const log = new MeterLog(new MemoryFiles(), LOG);
-    await log.appendAll([teamLine('root', 13, 5), teamLine('app', 13, 6)], NOW);
-    await log.appendAll([teamLine('app', 13.2, 7), teamLine('root', 13.2, 8)], NOW);
-    assert.deepEqual(await log.read(NOW), [teamLine('root', 13, 5), teamLine('app', 13, 6)]);
+    await log.appendAll([teamLine('root', 13, 5), teamLine('app', 13, 6), accountLine(13, 11)], NOW);
+    await log.appendAll([teamLine('app', 13.2, 7), accountLine(13.2, 15), teamLine('root', 13.2, 8)], NOW);
+    assert.deepEqual(await log.read(NOW), [teamLine('root', 13, 5), teamLine('app', 13, 6), accountLine(13, 11)]);
   });
 
   it('appends several lines in one write, and writes nothing for none, even beside a newer line', async () => {

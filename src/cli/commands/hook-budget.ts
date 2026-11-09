@@ -29,7 +29,7 @@ import { helperLaunchReminder } from '../../rules/helper-default.ts';
 import { accountWeekOn, otherTeamsOnAccount } from '../account-teams.ts';
 import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
-import { meterScaleOf } from '../stored-week.ts';
+import { peerStatesOf } from '../stored-week.ts';
 import { liftNamesOf } from './budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 
@@ -100,8 +100,8 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   }
   const outside = (await new UsageStore(files, outsideUsageDir(kit.paths.usage)).load(OUTSIDE_ID)).state;
   const account = await accountWeekOn(runtime, budget, kit.paths, now);
-  const states = [...byId.values(), outside];
-  const week = await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), { budget, now, statusUse: account.statusUse, states });
+  const states = [...byId.values(), outside, ...(await peerStatesOf(runtime, account.peers))];
+  const week = await teamWeekOf(files, account, { budget, now, statusUse: account.statusUse, states });
   const { teamDay, todayWPerPct } = week;
   if (week.usedPct === undefined || todayWPerPct === undefined || teamDay === undefined) {
     return undefined;

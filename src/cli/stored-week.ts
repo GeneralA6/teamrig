@@ -1,11 +1,11 @@
 import { OUTSIDE_ID, outsideUsageDir } from '../budget/measure.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
-import { calibrationOf, MeterLog, readingsOfTeam } from '../budget/calibration.ts';
-import { teamWeekOf, type MeterScale } from '../budget/team-week.ts';
+import { accountReadings, calibrationOf, MeterLog } from '../budget/calibration.ts';
+import { teamWeekOf } from '../budget/team-week.ts';
 import { rateOf, type WeekReading } from '../budget/week.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { accountWeekOn, type AccountWeek } from './account-teams.ts';
+import { accountWeekOn, type AccountPeer, type AccountWeek } from './account-teams.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /** The team paths a stored reading of the week reads. */
@@ -23,22 +23,24 @@ export async function readStoredUsage(runtime: CliRuntime, paths: Pick<TeamPaths
 }
 
 /**
- * The asking team's scale in the account's meter log (budget/team-week.ts `MeterScale`): its own lines, the keeper's
- * untagged ones when it is the keeper, and the other teams on the account with their usage stores as last stored,
- * read only when a crossing is logged.
+ * The session stores of the other teams on the account (`AccountWeek.peers`) as last stored, which the account's W
+ * counts (budget/team-week.ts `teamWeekOf`, T1778). Never a peer's outside store: it holds the same use in no team as
+ * the asking team's, so the account's W would count it twice.
  */
-export function meterScaleOf(runtime: CliRuntime, team: string, account: Pick<AccountWeek, 'keeper' | 'peers'>): MeterScale {
-  return {
-    team,
-    keeper: account.keeper,
-    peers: async () =>
-      Promise.all(account.peers.map(async (peer) => ({ team: peer.team, states: [...(await readStoredUsage(runtime, peer, peer.ids)).values()] }))),
-  };
+export async function peerStatesOf(runtime: CliRuntime, peers: readonly AccountPeer[]): Promise<UsageState[]> {
+  const byPeer = await Promise.all(
+    peers.map(async (peer) => {
+      const store = new UsageStore(runtime.files, peer.usage);
+      return Promise.all(peer.ids.map(async (id) => (await store.load(id)).state));
+    }),
+  );
+  return byPeer.flat();
 }
 
 /**
- * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest
- * status-line reading on the account, in the account's week files (`accountWeekOn`), no transcript measured.
+ * The week as a hook reads it: each session's use as last stored, the use outside the team, the other teams'
+ * sessions on the account (`peerStatesOf`) and the newest status-line reading on the account, in the account's week
+ * files (`accountWeekOn`), no transcript measured.
  */
 export async function readStoredWeek(
   runtime: CliRuntime,
@@ -57,13 +59,13 @@ async function storedWeekOn(
   account: AccountWeek,
 ): Promise<WeekReading> {
   const { budget, sessions } = config;
-  const states = [...(await readStoredUsage(runtime, paths, sessions)).values()];
-  return teamWeekOf(runtime.files, account.paths, meterScaleOf(runtime, paths.team, account), { budget, now, statusUse: account.statusUse, states });
+  const states = [...(await readStoredUsage(runtime, paths, sessions)).values(), ...(await peerStatesOf(runtime, account.peers))];
+  return teamWeekOf(runtime.files, account, { budget, now, statusUse: account.statusUse, states });
 }
 
 /**
- * The week's W per percent as `teamrig budget` reads it: learned from the team's lines of the account's meter log
- * (`accountWeekOn`, `readingsOfTeam`), else
+ * The week's W per percent as `teamrig budget` reads it: learned from the account's lines of its meter log
+ * (`accountWeekOn`, `accountReadings`), else
  * from `budget.weeklyLimitW`, which read no usage store, else the stored week's estimate; undefined while none is known.
  * It prices a spend over several days (a task's size); a spend made now takes `readTodayWPerPct`.
  */
@@ -75,7 +77,7 @@ export async function readWPerPct(
 ): Promise<number | undefined> {
   const account = await accountWeekOn(runtime, config.budget, paths, now);
   const logged = await new MeterLog(runtime.files, account.paths.meterLog).read(now);
-  const calibration = calibrationOf(readingsOfTeam(logged, { team: paths.team, keeper: account.keeper }));
+  const calibration = calibrationOf(accountReadings(logged, account.keeper));
   return rateOf(calibration, config.budget, undefined)?.wPerPct ?? (await storedWeekOn(runtime, paths, config, now, account)).wPerPct;
 }
 

@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { USAGE_FORMAT } from '../budget/store.ts';
+import { ACCOUNT_SCOPE, MeterLog } from '../budget/calibration.ts';
+import { emptyPatterns } from '../budget/patterns.ts';
+import { formatPeriod } from '../budget/period.ts';
+import { EMPTY_USAGE, USAGE_FORMAT, UsageStore } from '../budget/store.ts';
 import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { WORK_CACHE_FILE } from '../budget/work.ts';
 import type { JsonRecord } from '../core/guards.ts';
@@ -14,7 +17,7 @@ import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
 import { ok } from '../testing/hired-team.ts';
-import { teamConfigOf } from '../testing/team-tree.ts';
+import { teamConfigOf, teamHomeOf } from '../testing/team-tree.ts';
 import { formatConfig } from '../config/load.ts';
 import { EXIT } from './runtime.ts';
 
@@ -312,6 +315,35 @@ describe('the budget in the hooks', () => {
     await tight.kit.files.write(teamConfigOf('web'), web);
     const quiet = (await tight.hook('inbox-reminder', LEAD_TAB, { prompt: 'next', session_title: 'app-lead' })).stdout;
     assert.ok(!quiet.some((line) => line.startsWith('teamrig burst:')), quiet.join('\n'));
+  });
+
+  it("counts its parent team's session stores in the account line a turn end logs, while the parent's hooks meter them (T1778)", async () => {
+    /**
+     * The app team under org, alpha stored as having used 40M W on the week's first day (so the stores reach its start
+     * whether org's are read or not) and org's lead 70M W today; the lines logged as the status line passes 31%.
+     */
+    async function loggedAt31(org: JsonRecord): Promise<ReadonlyArray<readonly [string | undefined, number]>> {
+      const { kit, hook } = await world({}, 0, 30, { team: { id: 'app', parent: 'org' } });
+      await kit.files.write(teamConfigOf('org'), formatConfig({ configVersion: 1, team: { id: 'org' }, sessions: ['lead'], roles: { lead: 'lead' }, ...org }));
+      const orgUsage = join(teamHomeOf('org'), 'state', 'usage');
+      const stored = [[join(TEAM_HOME, 'state', 'usage'), 'alpha', '2030-01-07', 40_000_000], [orgUsage, 'lead', '2030-01-08', 70_000_000]] as const;
+      for (const [folder, id, day, w] of stored) {
+        const store = new UsageStore(kit.files, folder);
+        const byDay = { [day]: { w, calls: 1, patterns: emptyPatterns() } };
+        assert.ok(await store.save(id, { ...EMPTY_USAGE, byDay }, (await store.load(id)).rev), `${id}'s use saved`);
+      }
+      const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', lastPct: 30, lastAt: kit.clock.now() } as const;
+      await kit.files.write(join(orgUsage, 'period.json'), formatPeriod(period));
+      kit.clock.advance(60_000);
+      assert.equal((await kit.run(['statusline'], { stdin: status(31) })).code, EXIT.ok);
+      await hook('stop', ALPHA_TAB);
+      const readings = await new MeterLog(kit.files, join(orgUsage, 'meter-log.jsonl')).read(kit.clock.now());
+      return readings.filter((reading) => reading.usedPct === 31).map((reading) => [reading.scope, reading.w] as const);
+    }
+    const metered = await loggedAt31({ budget: { enabled: true } });
+    const unmetered = await loggedAt31({});
+    assert.deepEqual([...metered, ...unmetered].map(([scope]) => scope), [ACCOUNT_SCOPE, ACCOUNT_SCOPE]);
+    assert.equal((metered[0]?.[1] ?? 0) - (unmetered[0]?.[1] ?? 0), 70_000_000);
   });
 
   it('does nothing with the budget off but give a helper launch the helper default', async () => {

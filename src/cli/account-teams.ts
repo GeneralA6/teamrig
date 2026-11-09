@@ -105,17 +105,17 @@ export interface AccountWeek {
   /**
    * The week's files of the account (`accountHolderOf`): its period, meter log and extra-usage log, kept in the folder
    * of the highest team above the asking one on its account, else its own. A child team reads and writes them there,
-   * so the tree reads one period and one extra-usage pool, each team's W per percent learned from its own lines of the
-   * one meter log; nothing else is written in another team's folder.
+   * so the tree reads one period, one extra-usage pool and one W per percent, learned from the account lines of the one
+   * meter log (budget/calibration.ts `accountReadings`); nothing else is written in another team's folder.
    */
   readonly paths: TeamWeekPaths;
   /** The team whose folder keeps those files (`accountHolderOf`): the asking team itself, or one above it. */
   readonly keeper: string;
   /**
    * The other teams on the account keeping their week in those files (the keeper's, when it is not the asking team)
-   * with the budget on, as their config reads with what it inherits: a crossing is logged for each on its own W scale
-   * (budget/team-week.ts `teamWeekOf`, T1669), and the tabs they mark are left to their hooks. A team with the budget
-   * off is none: its hooks meter nothing, so its use stays outside.
+   * with the budget on, as their config reads with what it inherits: their session stores count in the account's W
+   * (src/cli/stored-week.ts `peerStatesOf`, T1778), and the tabs they mark are left to their hooks. A team with the
+   * budget off is none: its hooks meter nothing, so its use stays outside.
    */
   readonly peers: readonly AccountPeer[];
 }
