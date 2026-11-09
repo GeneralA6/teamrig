@@ -17,6 +17,7 @@ import { readPassRecord } from "../push-guard/pass-record.js";
 import { commandLine } from "../test-run/shell.js";
 import { decisionRecordHold } from "./decision-records.js";
 import { rangeInstallTouches, runDependencyCheck } from "./dependencies.js";
+import { withSshKeepalive } from "./ssh-keepalive.js";
 import { gatedVerdict } from "./gated-step.js";
 import { ORIGIN } from "./git.js";
 import { LOCKFILE } from "./manifest.js";
@@ -266,7 +267,8 @@ function readinessOf(setup, ports, repo) {
  * Under the host lock `taking` holds: rebases onto the fresh default branch, runs the checks on what the rebase made
  * (see {@link checksOf}) and pushes, again from the rebase when origin moved meanwhile, unless the push was killed as
  * its launching shell ended (no one waits for it any more). The checks and the push get the lock's token, so a
- * pre-push hook that wraps its checks in `teamrig queue` runs them under this lock.
+ * pre-push hook that wraps its checks in `teamrig queue` runs them under this lock. The push's ssh sends keepalives
+ * (see {@link withSshKeepalive}), so its connection, open while the pre-push hook runs, outlives long checks.
  */
 async function mergeByPush(setup, ports, plan, taking) {
     const { git } = ports;
@@ -300,7 +302,7 @@ async function mergeByPush(setup, ports, plan, taking) {
             request: {
                 command: commandLine(['git', 'push', 'origin', `HEAD:refs/heads/${defaultBranch}`], ports.platform),
                 cwd: top,
-                env: underLock(gitEnvironment(ports.env), taking.lock),
+                env: underLock(withSshKeepalive(gitEnvironment(ports.env), git.sshCommand(top)), taking.lock),
                 timeoutMs: setup.delivery.queue.maxRunMinutes * MINUTE_MS,
             },
         });
