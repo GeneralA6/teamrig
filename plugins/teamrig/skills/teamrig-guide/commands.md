@@ -2615,11 +2615,24 @@ team and name, `[shop] web`; Claude Code's own session name stays `shop-web`, th
 `$TEAMRIG_TEAM`, the session's model and effort from the config's `launch`, and a first prompt that reads its inbox
 and list. A rehired session's first prompt reads the handover its retire left first.
 
-It refuses any session but the lead when the host has no room for one more: its free memory must stay over
-`delivery.queue.memoryFloorMb` with the session counted, and its commit charge within `open.headroom.commitMaxPct`
-(92%; Windows and Linux). A session is counted at the median running session's Claude Code process tree, else at
-`open.headroom.sessionMb` (1200 MB): what it holds resident against free memory, and what it committed (about twice
-that) against the commit charge. [teamrig sessions](#teamrig-sessions) shows what each one holds and committed.
+It refuses any session but the lead when the host has no room for one more: its free memory, less what the tabs
+still loading hold, must stay over the floor a new tab keeps free with the session counted, and its commit charge,
+with those tabs counted, within `open.headroom.commitMaxPct` (92%; Windows and Linux). The floor is
+`open.headroom.floorMb` when set, else `delivery.queue.memoryFloorMb` plus `delivery.queue.heavyReserveMb` (4096 +
+2048), so a tab opened at the floor still leaves a heavy queued step the room it starts at. A session is counted at
+the median running session's Claude Code process tree, else at `open.headroom.sessionMb` (1200 MB): what it holds
+resident against free memory, and what it committed (about twice that) against the commit charge.
+[teamrig sessions](#teamrig-sessions) shows what each one holds and committed. The refusal names the numbers
+(`8000 MB free, 1500 MB of it held for 1 tab still loading, under the 6144 MB a new tab keeps free (...) plus 1200 MB
+for it`): close an idle session, or open it once the tabs loading are up.
+
+A tab that opens, the lead's too, holds the MB it was counted at for `open.headroom.loadMinutes` (5) while Claude Code
+loads, since the host's free memory shows a new tab only once it is up: every team's next `teamrig open`,
+`hire --yes` and queued step count it as taken till then, and [teamrig pipeline](#teamrig-pipeline) names it. A tab
+that fails to open gives its hold back at once. One tab is admitted at a time on the host, for every team, under
+the same admit file queued steps take, so two opens at once never count the same free memory. When other opens and
+steps keep it for 31 s, the open is refused with `the host's room could not be read to open ...: other tabs and
+queued steps were being admitted for all of 31 s; try again`.
 
 It refuses any session, the lead too, that already runs in a Claude Code, as [teamrig sessions](#teamrig-sessions)
 tells it (its recorded process still runs Claude Code, started before the record and bound to no other session
@@ -3918,9 +3931,11 @@ each time, its ticket's expiry moves on with its wait. A step that does not join
 deploy tool) may still take a free lock first.
 
 Every step, merge and deploy first waits in its turn for host memory, so a step never starts on a host too short
-for it. It goes ahead while the host's free memory, less the MB held for the running small steps, leaves
-`delivery.queue.memoryFloorMb` (4096) plus its own, and the commit charge with its own counted stays under
-`open.headroom.commitMaxPct` (92). Free memory is read 3 times 1 s apart and the least read counts, since a step
+for it. It goes ahead while the host's free memory, less the MB held for the running small steps and for the tabs
+still loading, leaves `delivery.queue.memoryFloorMb` (4096) plus its own, and the commit charge with its own and
+those tabs' counted stays under `open.headroom.commitMaxPct` (92). A tab [teamrig open](#teamrig-open) just opened
+holds the MB it was counted at for `open.headroom.loadMinutes` (5), as free memory does not show it while Claude Code
+loads; the wait line names them (`..., 1500 MB held for 1 tab still loading, ...`). Free memory is read 3 times 1 s apart and the least read counts, since a step
 that just ended or started gives back or takes its memory in a burst. On a host with less than twice that RAM, half
 the host's RAM is enough. Until then it waits first in line (`...; host memory: 7000 MB free, 4096 MB held for them,
 6144 MB needed (4096 floor + 2048 for this step)`), and when its wait runs out it is refused with `host memory still
@@ -4088,8 +4103,9 @@ Shows the host's queued steps (`queue`, `merge`, `deploy`) in one read, taking n
 session that waits on the host lock sees why without reading the lock, the tickets and the ledger by hand:
 
 - `HOST`: free memory of the RAM, the floor kept free (`delivery.queue.memoryFloorMb`), the commit charge, the MB
-  held for the steps sharing the host (heavy and small), what the running steps' process trees use, and the top
-  memory holders.
+  held for the steps sharing the host (heavy and small) and for the tabs still loading (each named by its team and
+  session, held for `open.headroom.loadMinutes` after its open), what the running steps' process trees use, and the
+  top memory holders.
 - `RUNNING`: the lock's holder (how long it has held the lock and what its process tree uses) and each step sharing
   the host (the MB held for it; a heavy one says `shares the host as a heavy step`). A lock whose process has ended is
   called stale; the next step removes it.
@@ -4111,7 +4127,7 @@ teamrig pipeline
 Output:
 
 ```text
-HOST 7000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); commit charge 30000 of 48000 MB; 2048 MB held for 1 small step; the running steps' trees use 3500 MB
+HOST 7000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); commit charge 30000 of 48000 MB; 2048 MB held for 1 small step; 1500 MB held for 1 tab still loading (shop/web); the running steps' trees use 3500 MB
   top memory holders: vmmem 22.4 GB, msedge 20.9 GB in 35 processes, claude 900 MB in 12 processes
 RUNNING 2
   lead (heavy: build) holds the lock, for 12m, its tree uses 3000 MB
