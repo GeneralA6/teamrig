@@ -22,7 +22,7 @@ export interface ShipArgs {
 }
 
 export const SHIP_USAGE =
-  'usage: ship.ts <teamrig dir> <plan.json> [base] [--merge [--note-file <path>]] | ship.ts check <repo dir> | ship.ts merge <repo dir> ...';
+  'usage: ship.ts <teamrig dir> <plan.json> [base] [--merge [--note-file <path>]] | ship.ts check <repo dir> | ship.ts merge <repo dir> ... | ship.ts leftovers <repo dir>';
 
 export function parseShipArgs(argv: readonly string[]): ShipArgs {
   const positional: string[] = [];

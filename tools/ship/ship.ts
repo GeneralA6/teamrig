@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
+import { leftoversCommand } from './leftovers.ts';
 import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
 import { mergeCommand } from './merge.ts';
 import { pushOwnBranch } from './push.ts';
@@ -21,6 +22,8 @@ import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
  *   node ship.ts check <repo dir>
  * And merges a pushed change branch into main (merge.ts: PR, its head proven by the repo's gate, rebase):
  *   node ship.ts merge <repo dir> [--head <branch>, default the checked-out one] [--timeout-min 45] [--interval-s 30]
+ * And lists origin's branches whose work is already on main, deleting none (leftovers.ts):
+ *   node ship.ts leftovers <repo dir>
  * This file only wires the real git, sync, local gate, push and GitHub merge into those commands; ship.test.ts
  * runs it as its own process.
  */
@@ -54,4 +57,5 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
 const argv = process.argv.slice(2);
 if (argv[0] === 'merge') process.exitCode = await mergeCommand(argv.slice(1));
 else if (argv[0] === 'check') process.exitCode = checkCommand(argv.slice(1));
+else if (argv[0] === 'leftovers') process.exitCode = leftoversCommand(argv.slice(1));
 else process.exitCode = await shipCommand(argv, realShipDeps, (line) => console.error(line));
