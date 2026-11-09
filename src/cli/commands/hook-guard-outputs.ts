@@ -115,6 +115,7 @@ export function packageGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payl
     registry: runtime.packageRegistry,
     clock: runtime.clock,
     hookAsks: hookAsksOf(guard.load),
+    platform: runtime.platform,
   });
 }
 
