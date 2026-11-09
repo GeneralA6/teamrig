@@ -360,11 +360,23 @@ async function proveTargets(links, files, tell) {
         tell(`target ${link.target} untouched: ${entriesText(after)}, as before`);
     }
 }
+/** Deletes the plan's branch, proven on its base when the plan was made, telling it; why the delete failed, else undefined. */
+function deletePlannedBranch(plan, git, tell) {
+    if (plan.branch === undefined) {
+        return undefined;
+    }
+    const deleted = git.deleteBranch(plan.mainDir, plan.branch.name);
+    if (!deleted.ok) {
+        return `git branch -D ${plan.branch.name}: ${deleted.reason}`;
+    }
+    tell(`deleted branch ${plan.branch.name}: every commit of it is on ${plan.branch.base}`);
+    return undefined;
+}
 /**
  * Carries out a plan, telling each step as it is done. A link that fails its unlink or is still there after it stops
  * it before git runs; that, or a git removal that fails, first puts back every link already unlinked, unless git
- * stopped partway, past dropping its record of the worktree. A target that changed after the removal, or a branch
- * delete that fails, is thrown with what was already done.
+ * stopped partway, past dropping its record of the worktree; the branch is then deleted all the same. A target that
+ * changed after the removal, or a branch delete that fails, is thrown with what was already done.
  */
 export async function carryOut(plan, ports, tell) {
     const { git, files } = ports;
@@ -390,8 +402,13 @@ export async function carryOut(plan, ports, tell) {
         // The worktree is no more: links put back would leave a folder holding only them, which a rerun could not tell
         // from any other folder (T1051). A changed target is thrown first, as the graver fault.
         await proveTargets(plan.links, files, tell);
+        // The branch is checked out nowhere now, and a rerun on the folder git no longer lists cannot tell which branch it
+        // had (T743): delete it here or never.
+        const branchFailure = deletePlannedBranch(plan, git, tell);
+        const branchKept = branchFailure === undefined ? '' : `. Its branch is kept: ${branchFailure}`;
         throw new Error(`git worktree remove ${plan.top} stopped partway: ${removed.reason}. git no longer lists it, and ${plan.top} is left on disk: ` +
-            `${HELD_BY_A_PROGRAM}. Close that program or move it out, then run teamrig worktree remove ${plan.top} again to clear what is left`);
+            `${HELD_BY_A_PROGRAM}. Close that program or move it out, then run teamrig worktree remove ${plan.top} again to clear what is left` +
+            branchKept);
     }
     if (!removed.ok) {
         const put = await putBack(files, unlinked, tell);
@@ -399,11 +416,8 @@ export async function carryOut(plan, ports, tell) {
     }
     tell(`removed the worktree ${plan.top}`);
     await proveTargets(plan.links, files, tell);
-    if (plan.branch !== undefined) {
-        const deleted = git.deleteBranch(plan.mainDir, plan.branch.name);
-        if (!deleted.ok) {
-            throw new Error(`the worktree is removed, but git branch -D ${plan.branch.name}: ${deleted.reason}`);
-        }
-        tell(`deleted branch ${plan.branch.name}: every commit of it is on ${plan.branch.base}`);
+    const branchFailure = deletePlannedBranch(plan, git, tell);
+    if (branchFailure !== undefined) {
+        throw new Error(`the worktree is removed, but ${branchFailure}`);
     }
 }
