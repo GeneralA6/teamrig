@@ -96,6 +96,7 @@ export function pushGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload
     skipHooks: skipHooksOf(load),
     hookAsks: hookAsksOf(load),
     clearance: () => pushClearanceOf(runtime, kit, payload),
+    platform: runtime.platform,
   });
 }
 

@@ -1,6 +1,7 @@
 import { DEFAULT_COMMIT_GUARD, DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
 import type { CommitsConfig, HookAsks, PushToProtected, SkipHooks } from '../config/types.ts';
+import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { describeLargeCommits, largeCommits, type CommitLog, type CommitStat, type LargeCommit } from '../push-guard/commit-size.ts';
 import { hookSkips, type HookSkip } from '../push-guard/hook-skips.ts';
@@ -36,6 +37,8 @@ export interface PushGuardEnv {
   readonly hookAsks: HookAsks;
   /** Under `pushToProtected: lead` or `gated`, what lets this session's normal push to a protected branch through; read only for such a push. */
   readonly clearance: () => Promise<PushClearance>;
+  /** The host's platform: on Windows a Bash line is judged as written and as bash receives it (core/bash-tool-readings.ts). */
+  readonly platform: NodeJS.Platform;
 }
 
 /** The choices under which a normal push to a protected branch goes through only when cleared (`PushClearance`). */
@@ -151,6 +154,30 @@ function stopReason(verdict: PushVerdict, decision: Exclude<PushDecision, 'allow
 }
 
 /**
+ * How strict a verdict is, in the order `judgePushes` weighs one line: a refusal, then a leased push's question, then
+ * any other question, then a push to a protected branch let through (under `lead` and `gated`, only once cleared).
+ */
+function strictness(verdict: PushVerdict): number {
+  switch (verdict.decision) {
+    case 'deny':
+      return 4;
+    case 'ask':
+      return verdict.protectedPush === 'leased' ? 3 : 2;
+    case 'allow':
+      return verdict.protectedPush === undefined ? 0 : 1;
+  }
+}
+
+/**
+ * The strictest of the readings' verdicts (`toolCommandReadings` gives at least one), the command as written on a tie.
+ * Each reading is judged alone, never their git commands joined: the judge follows each line's checkouts in order, so
+ * another reading's checkout would move the branch a push is read against.
+ */
+function strictestVerdict(verdicts: readonly PushVerdict[]): PushVerdict {
+  return verdicts.reduce((kept, verdict) => (strictness(verdict) > strictness(kept) ? verdict : kept));
+}
+
+/**
  * The PreToolUse hook's stdout for one Bash or PowerShell call: a permission decision when the
  * command pushes to a protected branch, else nothing, so the normal permission flow decides.
  * Under `pushToProtected: allow` a normal push to a protected branch gets a note (`systemMessage`)
@@ -160,7 +187,8 @@ function stopReason(verdict: PushVerdict, decision: Exclude<PushDecision, 'allow
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
  * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
  * asked about first, as `skipHooks` says; a refused push stays refused under `ask`. Under `hookAsks: refuse`
- * every such question is a refusal instead, its reason saying what to do (see `holdBack`).
+ * every such question is a refusal instead, its reason saying what to do (see `holdBack`). A Bash line on Windows is
+ * judged in each reading bash may run (`toolCommandReadings`), keeping the strictest verdict and every hook skip.
  */
 export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Promise<string> {
   if (!isRecord(payload)) {
@@ -170,18 +198,22 @@ export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Prom
   if (command === undefined) {
     return '';
   }
+  const tool = stringField(payload, 'tool_name');
   const context: GuardContext = {
     cwd: stringField(payload, 'cwd') ?? env.cwd,
     home: env.home,
-    dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
+    dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
     protectedBranches: env.protectedBranches,
     pushToProtected: env.pushToProtected,
     repo: env.repo,
   };
-  const found = findGitInvocations(command, finderContextOf(context));
-  const verdict = judgePushes(found, context);
+  const readings = toolCommandReadings(tool, command, env.platform).map((text) => {
+    const found = findGitInvocations(text, finderContextOf(context));
+    return { found, verdict: judgePushes(found, context) };
+  });
+  const verdict = strictestVerdict(readings.map((reading) => reading.verdict));
   if (env.skipHooks !== 'allow') {
-    const skips = hookSkips(found.invocations);
+    const skips = readings.flatMap(({ found }) => hookSkips(found.invocations));
     if (skips.length > 0 && (env.skipHooks === 'deny' || verdict.decision !== 'deny')) {
       return holdBackOutput(env.skipHooks, skipHooksReason(skips), env.hookAsks);
     }
