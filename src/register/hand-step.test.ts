@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { handStepKindOf, parseAuditPin, sha256Hex, withAudit, type HandStepAudit } from './hand-step.ts';
+import { handStepKindOf, parseAuditPin, sha256Hex, shortSha256, withAudit, type HandStepAudit } from './hand-step.ts';
 
 describe('handStepKindOf', () => {
   it('names a PowerShell, bash or steps file by its extension in any case', () => {
@@ -15,6 +15,12 @@ describe('handStepKindOf', () => {
 describe('sha256Hex', () => {
   it('hashes the bytes in lowercase hex', () => {
     assert.equal(sha256Hex(new TextEncoder().encode('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  });
+});
+
+describe('shortSha256', () => {
+  it('shows the first 8 characters of a sha256', () => {
+    assert.equal(shortSha256('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'), 'ba7816bf');
   });
 });
 

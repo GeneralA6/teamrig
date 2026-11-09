@@ -68,6 +68,9 @@ describe('runCli: audit, the security reviewer pins a hand step file for a task 
     const bare = await kit.run(['audit', 'T1', '--session', 'bravo']);
     assert.equal(bare.code, EXIT.usage);
     assert.match(bare.stderr[0] ?? '', /--file is required/);
+    const blank = await kit.run(['audit', 'T1', '--file', ' ', '--session', 'bravo']);
+    assert.equal(blank.code, EXIT.usage);
+    assert.match(blank.stderr[0] ?? '', /--file needs the hand step file's path/);
     assert.deepEqual(filesOf(kit), before);
   });
 });

@@ -36,6 +36,14 @@ export function sha256Hex(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+/** How many characters of a pin's sha256 the lines about it show: enough to tell two audits of a file apart. */
+const SHORT_SHA256 = 8;
+
+/** A pin's sha256 as the lines about it show it, its first SHORT_SHA256 characters. */
+export function shortSha256(sha256: string): string {
+  return sha256.slice(0, SHORT_SHA256);
+}
+
 /** The pin an update line gives, or why it is not one. */
 export function parseAuditPin(value: unknown): AuditPin | string {
   if (!isRecord(value)) {
