@@ -60,7 +60,8 @@ export interface SessionProcesses {
    * `pid` first, then the process that started it, and so on to the oldest that still runs, from one listing of
    * every process; undefined when the system would not tell. Where ids are reused (Windows), a listed starter that
    * started after the process it would have started is a later process with an ended starter's id, and the line
-   * stops there.
+   * stops there. Where it would stop at a process an exec stub runs (a Git hook's shell under `env.exe`), it goes on
+   * through that stub when exactly one is listed.
    */
   lineage(pid: number): Promise<readonly ProcessInfo[] | undefined>;
   /**
@@ -229,9 +230,16 @@ export function parseWindowsListing(stdout: string): readonly ListedProcess[] | 
 }
 
 /**
+ * How long before a shell its exec stub may have started: the measured gap from Git's `env.exe` to the hook shell it
+ * runs was 33 ms (T764), so this is room for a busy host, still short of matching an unrelated older process.
+ */
+export const EXEC_STUB_MS = 5_000;
+
+/**
  * `pid` and its starters, from a listing of every process: it stops at a starter that is not listed (it ended), at
  * one that started after the process it would have started (an ended starter's reused id), and at a loop or id 0
- * (Windows lists its idle process as its own starter).
+ * (Windows lists its idle process as its own starter). Where it would stop, it goes on through the process's exec
+ * stub when exactly one is listed (`execStubOf`): the `env.exe` Git for Windows runs a `#!/usr/bin/env sh` hook in.
  */
 export function lineageOf(pid: number, listed: readonly ListedProcess[]): readonly ProcessInfo[] {
   const byPid = new Map(listed.map((entry) => [entry.info.pid, entry]));
@@ -242,7 +250,7 @@ export function lineageOf(pid: number, listed: readonly ListedProcess[]): readon
     seen.add(current.info.pid);
     chain.push(current.info);
     const starter = isPid(current.info.parentPid) ? byPid.get(current.info.parentPid) : undefined;
-    current = starter !== undefined && startedFirst(starter, current) ? starter : undefined;
+    current = starter !== undefined && startedFirst(starter, current) ? starter : execStubOf(current, listed, seen);
   }
   return chain;
 }
@@ -250,6 +258,41 @@ export function lineageOf(pid: number, listed: readonly ListedProcess[]): readon
 /** Whether `starter` started no later than `child`; true where either start is unknown, as in a `ps` listing. */
 function startedFirst(starter: ListedProcess, child: ListedProcess): boolean {
   return starter.startedMs === undefined || child.startedMs === undefined || starter.startedMs <= child.startedMs;
+}
+
+/** A command line's arguments: all after its program, a "quoted path" or the first word; empty for none. */
+function argumentsOf(commandLine: string): string {
+  const line = commandLine.trim();
+  const program = /^("[^"]*"|\S+)\s*/.exec(line);
+  return program === null ? '' : line.slice(program[0].length);
+}
+
+/**
+ * The process that ran `stopped` by an exec, where the line from `stopped` up has ended: Git for Windows runs a
+ * `#!/usr/bin/env sh` hook as `env <hook>`, a Windows child of git that stays for the whole hook, and its runtime execs
+ * the shell through a second `env` that ends at once, so the hook shell's own starter is gone and no listing links it
+ * to git. The stub has the same arguments under another program (the exec swapped `env` for `sh`), started no later
+ * than `stopped` and at most `EXEC_STUB_MS` before, and is not in the line yet. Only one such process counts: two
+ * (two hooks with one path, in two worktrees of a repo at once) or none leave the line where it stopped, as does an
+ * unknown start (a `ps` listing, where starters stay linked) or no arguments.
+ */
+function execStubOf(stopped: ListedProcess, listed: readonly ListedProcess[], seen: ReadonlySet<number>): ListedProcess | undefined {
+  const args = argumentsOf(stopped.info.commandLine);
+  const started = stopped.startedMs;
+  if (args === '' || started === undefined) {
+    return undefined;
+  }
+  const name = stopped.info.name.toLowerCase();
+  const stubs = listed.filter(
+    (entry) =>
+      !seen.has(entry.info.pid) &&
+      entry.startedMs !== undefined &&
+      entry.startedMs <= started &&
+      started - entry.startedMs <= EXEC_STUB_MS &&
+      entry.info.name.toLowerCase() !== name &&
+      argumentsOf(entry.info.commandLine) === args,
+  );
+  return stubs.length === 1 ? stubs[0] : undefined;
 }
 
 function feedProgram(request: FeedRequest, timeoutMs: number): Promise<FeedOutcome> {
