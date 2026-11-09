@@ -11,16 +11,17 @@ import { helperDefaultClause } from './helper-default.ts';
  * KEPT_RULES_MAX_CHARS (a CI test holds it). With a team rules file at TEAM_RULES_MAX_CHARS beside it, the two still
  * fit CONTEXT_MAX_CHARS, with 3 characters to spare: a longer rule needs shorter words elsewhere, not a higher cap,
  * unless it takes over text a team's rules file carried, when the cap moves over from TEAM_RULES_MAX_CHARS with it.
- * Moved up from 7,225 for rule 11's hand-step sentence (T2309), which takes over a team rules file's stopgap line.
+ * Moved up from 7,225 for rule 11's hand-step sentence (T2309), which takes over a team rules file's stopgap line, and
+ * as the worst case now counts the security reviewer, whom it had left unset.
  */
-export const CORE_PACK_MAX_CHARS = 7_487;
+export const CORE_PACK_MAX_CHARS = 7_645;
 /** The kept local rules the core pack lists [ruleConflicts] fit in this many characters (see `renderKeptRules`). */
 export const KEPT_RULES_MAX_CHARS = 420;
 /**
  * The team rules files a session is shown in full, its own and those of the teams above it, share this size; one that
  * does not fit gets a pointer. Down from 2,750 as rules moved into the core pack (CORE_PACK_MAX_CHARS).
  */
-export const TEAM_RULES_MAX_CHARS = 2_488;
+export const TEAM_RULES_MAX_CHARS = 2_330;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
 export const CONTEXT_MAX_CHARS = 10_000;
 /**

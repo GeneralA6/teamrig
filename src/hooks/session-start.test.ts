@@ -222,7 +222,7 @@ WORKTREE line.`));
 
 describe('sessionStartContext: long notes within the context cap (T1376)', () => {
   /** A parent team's rules file the size of a real one: past the cap it was the part a session lost first. */
-  const ROOT_RULES: TeamRules = { ancestor: 'root', path: '/kit/teams/root/rules.md', text: '- Root rule.\n'.repeat(180).trim() };
+  const ROOT_RULES: TeamRules = { ancestor: 'root', path: '/kit/teams/root/rules.md', text: '- Root rule.\n'.repeat(179).trim() };
   const ROOT_HEADING = "\n\n# Team root's rules (a team above yours; they win over a lower team's)\n";
   const note = (head: string, length: number): CuttableNote => ({ text: `${head}${'t'.repeat(length - head.length)}`, pointer: `${head} pointer.` });
   /** The room `fitContext` leaves the long notes: the cap less the context with each at its pointer. */
@@ -260,10 +260,11 @@ describe('sessionStartContext: long notes within the context cap (T1376)', () =>
     // The largest parent rules file a lead's worst start still shows in full, with a line on its own file after it:
     // the lead's lines come before any rules file (fitContext), so each one a lead gets takes this room. On the
     // budget, the owner decisions that hold a slice, the week split and the appeal line (T2215) cut it from 2,339
-    // characters to 1,520, and rule 11's hand-step sentence (T2309) to 1,247; past it the file comes as its pointer.
-    const parent: TeamRules = { ...ROOT_RULES, text: '- Root rule.\n'.repeat(96).trim() };
+    // characters to 1,520, rule 11's hand-step sentence (T2309) to 1,247, and the security reviewer rule 1 names (a
+    // team above's, `<team>/<id>`, prints longest) to 1,091; past it the file comes as its pointer.
+    const parent: TeamRules = { ...ROOT_RULES, text: '- Root rule.\n'.repeat(84).trim() };
     const text = context({
-      load: loaded({ config: testConfig({ names: { lead: 'captain' }, budget: { enabled: true, accountLead: 'a'.repeat(32), shareFloorPct: CONFIG_LIMITS.shareFloorPct.max } }) }),
+      load: loaded({ config: testConfig({ names: { lead: 'captain' }, roles: { lead: 'lead', securityReviewer: `${'t'.repeat(32)}/${'r'.repeat(32)}` }, budget: { enabled: true, accountLead: 'a'.repeat(32), shareFloorPct: CONFIG_LIMITS.shareFloorPct.max } }) }),
       session: 'captain',
       refreshNote: 'Read your handover.',
       liveTasksNote: note('LIVE', 20_000),
