@@ -122,7 +122,7 @@ describe('teamrig merge', () => {
     };
     const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, starters, sleep, sessionProcesses: otherRuns() });
     assert.equal(result.code, 1);
-    assert.equal(result.stdout.at(-1), 'STOPPED before the host lock was free: nothing ran');
+    assert.equal(result.stdout.at(-1), "STOPPED before the host lock was free: nothing ran; re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose");
     assert.equal(result.stdout.at(-2), '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more');
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), starters.openWatches], [[], heldBy(), undefined, 0]);
   });

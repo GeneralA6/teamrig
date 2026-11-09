@@ -7,7 +7,7 @@ import type { HookRequest } from '../deploy/hooks.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
-import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, unlessStopped, watchStarters } from './stoppable.ts';
+import { rerunAdvice, stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, unlessStopped, watchStarters } from './stoppable.ts';
 
 const HELD: HostLockInfo = { id: 't1', pid: 4242, session: 'alpha', purpose: 'merge app', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
 const STEP: StepRequest = { command: 'npm test', cwd: '/repo', env: {}, timeoutMs: 60_000 };
@@ -88,6 +88,18 @@ describe('unlessStopped', () => {
     const stop = new AbortController();
     stop.abort();
     assert.equal(await unlessStopped(stop.signal, Promise.reject(new Error('lock file gone'))), undefined);
+  });
+});
+
+describe('rerunAdvice', () => {
+  it("re-runs a stopped run with no human's OK unless it was stopped on purpose, or, killed partway, changed stored data (T2301)", () => {
+    assert.deepEqual(
+      [rerunAdvice('nothing'), rerunAdvice('partway')],
+      [
+        "re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose",
+        "re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose or its part run changed stored data",
+      ],
+    );
   });
 });
 
