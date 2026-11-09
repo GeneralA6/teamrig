@@ -176,7 +176,7 @@ describe('teamrig deploy', () => {
     };
     const result = await kit.run(DEPLOY, { ...ELSEWHERE, mergeGit: git, hooks, starters, sleep, sessionProcesses: otherRuns() });
     assert.equal(result.code, 1);
-    assert.equal(result.stdout.at(-1), 'STOPPED before the host lock was free: nothing ran');
+    assert.equal(result.stdout.at(-1), "STOPPED before the host lock was free: nothing ran; re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose");
     assert.equal(result.stdout.at(-2), '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more');
     assert.deepEqual([hooks.ran, kit.files.get(LOCK), starters.openWatches], [[], heldBy(), 0]);
   });

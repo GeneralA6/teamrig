@@ -22,7 +22,7 @@ import { hostLockOf, logLineOf, type Say } from '../delivery-ports.ts';
 import { commandWordsOf, sessionRef } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
+import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
 import { envSession, markedSessionOf } from './hook-input.ts';
 
 const MINUTE_MS = 60_000;
@@ -152,7 +152,7 @@ function report(runtime: CliRuntime, say: Say, end: StepEnd, maxRunMinutes: numb
   switch (end.kind) {
     case 'stopped':
       say(`its launching shell ended (${endedText(watching)}): killed its process tree`);
-      runtime.out.stdout(`STOPPED killed, recorded as exit ${STOPPED_EXIT}`);
+      runtime.out.stdout(`STOPPED killed, recorded as exit ${STOPPED_EXIT}; ${rerunAdvice('partway')}`);
       return EXIT.failed;
     case 'timedOut':
       say(`timed out after ${minutesText(maxRunMinutes)}: killed its process tree`);

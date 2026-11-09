@@ -292,7 +292,7 @@ describe('teamrig queue', () => {
       stdout: [
         '2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC',
         '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more',
-        'STOPPED before the host lock was free: nothing ran',
+        "STOPPED before the host lock was free: nothing ran; re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose",
       ],
       stderr: [],
     });
@@ -310,7 +310,7 @@ describe('teamrig queue', () => {
       stdout: [
         '2030-01-08 10:00:02 UTC running: build api (killed after 45m)',
         '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100): killed its process tree',
-        'STOPPED killed, recorded as exit 129',
+        "STOPPED killed, recorded as exit 129; re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose or its part run changed stored data",
       ],
       stderr: [],
     });
@@ -330,7 +330,7 @@ describe('teamrig queue', () => {
       sessionProcesses: otherRuns(),
       env: { TEAMRIG_HOST_LOCK: 'other' },
     });
-    assert.deepEqual([result.code, result.stdout.at(-1), kit.files.get(LOCK), starters.openWatches], [1, 'STOPPED killed, recorded as exit 129', heldBy(), 0]);
+    assert.deepEqual([result.code, result.stdout.at(-1), kit.files.get(LOCK), starters.openWatches], [1, "STOPPED killed, recorded as exit 129; re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose or its part run changed stored data", heldBy(), 0]);
   });
 
   it('says when it cannot list the processes that started it, and runs the step as usual', async () => {
