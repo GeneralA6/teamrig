@@ -660,7 +660,8 @@ question: Claude Code ranks the guard's `ask` over its `allow`. The guard reads 
 so it cannot see, and lets through:
 
 - code built or chosen when the line runs (`docsh --eval "$CODE"`, `node $(ls scripts/*.js)`), a file it cannot
-  read, or a file on the far side of a container or host (`ssh host 'psql -f fix.sql'`);
+  read, what follows a file's first MiB, a file on a network share (`//host/share/fix.sql`) or anything that is no
+  regular file (a pipe, a device), and a file on the far side of a container or host (`ssh host 'psql -f fix.sql'`);
 - a script that writes through a client it gets from another module of its own (`import { db } from './db.ts'`): a
   team names such a script as an entrypoint;
 - a database tool that is no built-in client and not in `programs` (an import or restore tool, a migration command),
