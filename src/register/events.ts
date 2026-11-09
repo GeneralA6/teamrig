@@ -4,6 +4,7 @@ import type { JsonlRecord } from '../core/jsonl.ts';
 import { parseUtcDeadline } from '../core/time.ts';
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, WORK_CLASS_NAME, type TaskStatus } from './model.ts';
 import { parseCard, type DecisionCard } from './card.ts';
+import { parseAuditPin, type AuditPin } from './hand-step.ts';
 import { parseReview, type ProblemReview } from './review.ts';
 import { parseWaits, type WaitReason } from './waits.ts';
 
@@ -19,7 +20,8 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
  * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
- * `sizeBase` (T649), a task's `workClass` (T2076) and a start's `oneCommit` mark (T2110), which an older reader ignores:
+ * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110) and an update's hand step `audit`
+ * (T2312), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -176,6 +178,8 @@ export interface UpdateEvent extends EventBase {
   readonly decided?: true;
   /** What the task had cost on the UTC day its size was set, when it was set (T649); only an update that gives a size writes it. */
   readonly sizeBase?: SizeBase;
+  /** A hand step file a session other than the task's owner audited for it, pinned at its sha256 (T2312); only `audit` writes it. */
+  readonly audit?: AuditPin;
 }
 
 /**
@@ -348,6 +352,10 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (typeof sizeBase === 'string') {
         return unreadable(sizeBase);
       }
+      const audit = record['audit'] === undefined ? undefined : parseAuditPin(record['audit']);
+      if (typeof audit === 'string') {
+        return unreadable(audit);
+      }
       const event: UpdateEvent = {
         ...base,
         type: 'update',
@@ -357,6 +365,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         ...(waits === undefined ? {} : { waits }),
         ...(decided === undefined ? {} : { decided }),
         ...(sizeBase === undefined ? {} : { sizeBase }),
+        ...(audit === undefined ? {} : { audit }),
       };
       return { kind: 'event', event };
     }

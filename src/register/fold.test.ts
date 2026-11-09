@@ -71,6 +71,36 @@ describe('foldEvents: the size base OVER-SIZE counts from (T649)', () => {
   });
 });
 
+describe('foldEvents: the hand step files audited for a task (T2312)', () => {
+  const first = 'a'.repeat(64);
+  const second = 'b'.repeat(64);
+  const audited = (hour: number, by: string, path: string, sha256: string): RegisterEvent => ({ v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by, changes: {}, note: 'read it', audit: { path, sha256 } });
+
+  it('starts with none', () => {
+    assert.deepEqual(taskAfter([create(9)]).audits, []);
+  });
+
+  it('pins each audited file with who audited it and when, and keeps the pins through a status change', () => {
+    const task = taskAfter([create(9), audited(10, 'gamma', '/w/a.ps1', first), audited(11, 'gamma', '/w/b.md', second), status(12, 'waiting')]);
+    assert.deepEqual(task.audits, [
+      { path: '/w/a.ps1', sha256: first, by: 'gamma', at: at(10) },
+      { path: '/w/b.md', sha256: second, by: 'gamma', at: at(11) },
+    ]);
+  });
+
+  it('replaces the pin of a path audited again, in its place', () => {
+    const task = taskAfter([create(9), audited(10, 'gamma', '/w/a.ps1', first), audited(11, 'gamma', '/w/b.md', first), audited(12, 'lead', '/w/a.ps1', second)]);
+    assert.deepEqual(task.audits, [
+      { path: '/w/a.ps1', sha256: second, by: 'lead', at: at(12) },
+      { path: '/w/b.md', sha256: first, by: 'gamma', at: at(11) },
+    ]);
+  });
+
+  it('keeps them through an update with no audit', () => {
+    assert.equal(taskAfter([create(9), audited(10, 'gamma', '/w/a.ps1', first), update(11, { priority: 1 })]).audits.length, 1);
+  });
+});
+
 describe('foldEvents: when a task took its status and priority', () => {
   it('starts both at the creation', () => {
     const task = taskAfter([create(9)]);

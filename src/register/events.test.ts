@@ -213,6 +213,16 @@ describe('parseEvent', () => {
     assert.equal(reason(parse({ ...BASE, type: 'update', changes: { size: 0.5 }, sizeBase: 5 }, 2)), 'sizeBase is not an object');
   });
 
+  it("reads an update's hand step audit, round trips it, and refuses a bad one (T2312)", () => {
+    const sha256 = 'a'.repeat(64);
+    const audited: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: {}, note: 'read every line', audit: { path: '/work/steps/add-key.ps1', sha256 } };
+    assert.deepEqual(parse(eventRecord(audited), 2), { kind: 'event', event: audited });
+    for (const bad of [{ path: '/work/a.ps1' }, { path: '', sha256 }, { path: '/work/a.ps1\n& evil', sha256 }, { path: '/work/a.ps1', sha256: 'A'.repeat(64) }, { path: '/work/a.ps1', sha256: 'a'.repeat(63) }, { path: 7, sha256 }]) {
+      assert.match(reason(parse({ ...BASE, type: 'update', changes: {}, audit: bad }, 2)), /^bad audit /, JSON.stringify(bad));
+    }
+    assert.equal(reason(parse({ ...BASE, type: 'update', changes: {}, audit: 'a.ps1' }, 2)), 'audit is not an object');
+  });
+
   it('reads the type and critical mark of a create line and of an update, and an older line as neither (T1252)', () => {
     const marked: RegisterEvent = { ...BASE, v: 2, type: 'create', task: { ...TASK, type: 'bug', critical: true } };
     assert.deepEqual(parse(eventRecord(marked), 2), { kind: 'event', event: marked });
