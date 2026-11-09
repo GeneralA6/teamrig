@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { Task } from '../register/fold.ts';
-import { sha256Hex, type AuditPin, type RunFiles } from '../register/hand-step.ts';
+import type { AuditPin, RunFiles } from '../register/hand-step.ts';
 import { UsageError } from './args.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
@@ -25,10 +26,10 @@ export async function handStepPin(runtime: CliRuntime, flag: string, typed: stri
   return { path, sha256 };
 }
 
-/** The sha256 of the file at `path` now, null when there is none. */
+/** The sha256 of the file at `path` now, in lowercase hex as an audit pins it; null when there is none. */
 async function sha256Now(runtime: CliRuntime, path: string): Promise<string | null> {
   const bytes = await runtime.fileBytes.read(path);
-  return bytes === undefined ? null : sha256Hex(bytes);
+  return bytes === undefined ? null : createHash('sha256').update(bytes).digest('hex');
 }
 
 /**
