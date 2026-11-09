@@ -1297,12 +1297,14 @@ describe('parseConfig', () => {
 
   it('reads the terminal teamrig open uses and the room it needs, refusing a terminal it does not know or a bad size', () => {
     assert.deepEqual(parseConfig(ROSTER).config.open, DEFAULT_OPEN);
-    const chosen = { terminal: 'tmux', teamWindow: true, headroom: { sessionMb: 900, commitMaxPct: 95, closeIdleMinutes: 120 } };
+    assert.deepEqual([DEFAULT_OPEN.headroom.floorMb, DEFAULT_OPEN.headroom.loadMinutes], [undefined, 5], 'a tab floor unset is the queue floor plus a heavy reserve; a tab holds its MB 5 minutes');
+    const chosen = { terminal: 'tmux', teamWindow: true, headroom: { sessionMb: 900, commitMaxPct: 95, closeIdleMinutes: 120, floorMb: 3000, loadMinutes: 8 } };
     const set = parseConfig({ ...ROSTER, open: chosen });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.open, { ...chosen, idle: DEFAULT_IDLE });
-    const bad = parseConfig({ ...ROSTER, open: { terminal: 'iterm', teamWindow: 'yes', headroom: { sessionMb: 99, commitMaxPct: 101, closeIdleMinutes: 5 } } });
-    assert.deepEqual(paths(bad.issues).sort(), ['open.headroom.closeIdleMinutes', 'open.headroom.commitMaxPct', 'open.headroom.sessionMb', 'open.teamWindow', 'open.terminal']);
+    const bad = parseConfig({ ...ROSTER, open: { terminal: 'iterm', teamWindow: 'yes', headroom: { sessionMb: 99, commitMaxPct: 101, closeIdleMinutes: 5, floorMb: -1, loadMinutes: 0 } } });
+    assert.deepEqual(paths(bad.issues).sort(), ['open.headroom.closeIdleMinutes', 'open.headroom.commitMaxPct', 'open.headroom.floorMb', 'open.headroom.loadMinutes', 'open.headroom.sessionMb', 'open.teamWindow', 'open.terminal']);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { headroom: { floorMb: '4096', loadMinutes: 61 } } }).issues).sort(), ['open.headroom.floorMb', 'open.headroom.loadMinutes']);
     assert.match(bad.issues.find((issue) => issue.path === 'open.terminal')?.message ?? '', /expected one of auto, tmux, windows-terminal/);
     assert.deepEqual(bad.config.open, DEFAULT_OPEN);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { headroom: 5 } }).issues), ['open.headroom']);

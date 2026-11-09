@@ -584,18 +584,20 @@ How teamrig open starts a session in a new terminal tab.
 | --- | --- | --- | --- |
 | `terminal` | one of `"auto"`, `"tmux"`, `"windows-terminal"`, `"macos-terminal"`, `"gnome-terminal"`, `"konsole"`, `"x-terminal-emulator"`, `"print"` | `"auto"` | The terminal to open the tab in. auto takes tmux inside tmux, else Windows Terminal on Windows, Terminal on macOS, or the first of gnome-terminal, konsole and x-terminal-emulator on Linux; print opens nothing and prints the command to run. teamrig open --terminal wins over it. |
 | `teamWindow` | boolean | `false` | Opens each tab of the team's sessions (teamrig open, a meeting start, a refresh restart, the idle pass's reopen and a restore after a reboot) in a Windows Terminal window of the team's own, named teamrig-\<team>, made when none is open, so each team's tabs stay apart from other teams'. Off opens them in the most recent window. Other terminals open as before. |
-| `headroom` | [object](#openheadroom) |  | The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over delivery.queue.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room. |
+| `headroom` | [object](#openheadroom) |  | The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over floorMb with the session and the tabs still loading counted, and the commit charge within commitMaxPct. One tab is admitted at a time on the host, for every team. The lead opens whatever the room. |
 | `idle` | [object](#openidle) |  | The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the delivery owner are never closed. |
 
 ## `open.headroom`
 
-The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over delivery.queue.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room.
+The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over floorMb with the session and the tabs still loading counted, and the commit charge within commitMaxPct. One tab is admitted at a time on the host, for every team. The lead opens whatever the room.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `sessionMb` | integer (100 to 65536) | `1200` | The MB a new session is counted to need while no session runs to measure; else the median running session's Claude Code process tree. |
 | `commitMaxPct` | integer (50 to 100) | `92` | The most of the host's commit limit, in %, its commit charge may reach with the new session counted (Windows and Linux; elsewhere free memory alone is checked). |
 | `closeIdleMinutes` | integer (15 to 10080) | `60` | How long, in minutes, a session stays quiet before teamrig close may end it to free the host; teamrig open resumes it. |
+| `floorMb` | integer (0 to 1048576) |  | The MB free memory must keep with a new tab and the tabs still loading counted. Unset: delivery.queue.memoryFloorMb plus delivery.queue.heavyReserveMb, so a new tab leaves room for one heavy queued step. |
+| `loadMinutes` | integer (1 to 60) | `5` | How long, in minutes, a tab just opened holds the MB it was counted at, while it loads and free memory does not show it yet. Tab opens and queued steps on the host count the held MB as taken. |
 
 ## `open.idle`
 
