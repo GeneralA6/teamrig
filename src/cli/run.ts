@@ -691,7 +691,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a session removes its own (its t<id>- branch names a task it owns) and those of the sessions it
       leads, the lead any, and any session one on a detached HEAD whose every commit is on the branch
       origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too, once every
-      commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
+      commit of it is on --base (default the branch origin/HEAD names), even when git stops partway, as
+      a rerun no longer knows the branch; --dry-run: prints the steps
   queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--memory-mb <MB>] [--small] [--exclusive] [--pre-push] -- <command ...>   runs one queued step
       (a build, a test run, a database script) in its turn under the host lock, so the host runs only what its memory allows, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your

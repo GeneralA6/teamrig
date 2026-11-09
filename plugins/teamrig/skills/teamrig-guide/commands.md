@@ -3838,7 +3838,9 @@ makes worktrees in and holding nothing but folders and links, is cleared the sam
 target shown untouched, then each folder removed once empty, deepest first, never by a recursive delete. Any session
 may clear one: it has no branch to own and nothing to lose. A folder with a file in it, one git still lists or
 tracks, one inside a linked worktree, or one outside the worktree folders keeps the refusal below; `--delete-branch`
-is refused for it, as git no longer knows its branch.
+is refused for it, as git no longer knows its branch. So the first run's `--delete-branch` deletes the branch even
+when git stops partway: the branch was proven on its base before the removal. A delete that fails then is named at
+the end of the failure, with the `git branch -D` to run by hand.
 
 It refuses (exit 2) before any change for: the main checkout; a path inside a worktree instead of its top folder;
 a locked worktree; a run from inside the worktree; a real `node_modules` folder (removing the worktree would delete
