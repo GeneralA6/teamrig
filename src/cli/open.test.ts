@@ -74,8 +74,9 @@ describe('teamrig open', () => {
     const refused = await openAlpha(processes, { platform: 'win32', memory });
     assert.equal(refused.code, EXIT.refused);
     assert.deepEqual(refused.stdout, [
-      'REFUSED no room on the host to open app-alpha (session alpha), counted at 1200 MB resident and 1200 MB committed: 5000 MB free, under the 4096 MB queued ' +
-        'steps keep free (delivery.queue.memoryFloorMb) plus 1200 MB for it. Close a session first: teamrig sessions lists what each one holds',
+      'REFUSED no room on the host to open app-alpha (session alpha), counted at 1200 MB resident and 1200 MB committed: 5000 MB free, under the 6144 MB ' +
+        'a new tab keeps free (delivery.queue.memoryFloorMb + heavyReserveMb, while open.headroom.floorMb is unset) plus 1200 MB for it. Close a session ' +
+        'first: teamrig sessions lists what each one holds',
     ]);
     assert.deepEqual(processes.started, []);
     const lead = await new CliHarness(TEAM).run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', memory });
@@ -92,17 +93,36 @@ describe('teamrig open', () => {
     });
     const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const resident = new FakeHostMemory().lists([{ pid: 6900, parent: 1, bytes: 3000 * MB }]);
-    resident.free = 6000;
+    resident.free = 8000;
     const refused = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory: resident });
     assert.deepEqual(refused.stdout, [
-      'REFUSED no room on the host to open app-alpha (session alpha), counted at 3000 MB resident and 1200 MB committed: 6000 MB free, under the 4096 MB queued ' +
-        'steps keep free (delivery.queue.memoryFloorMb) plus 3000 MB for it. Close a session first: teamrig sessions lists what each one holds',
+      'REFUSED no room on the host to open app-alpha (session alpha), counted at 3000 MB resident and 1200 MB committed: 8000 MB free, under the 6144 MB ' +
+        'a new tab keeps free (delivery.queue.memoryFloorMb + heavyReserveMb, while open.headroom.floorMb is unset) plus 3000 MB for it. Close a session ' +
+        'first: teamrig sessions lists what each one holds',
     ]);
     const unlisted = new FakeHostMemory().lists(undefined);
-    unlisted.free = 6000;
+    unlisted.free = 8000;
     const opened = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory: unlisted });
     assert.equal(opened.code, EXIT.ok, opened.stdout.join('\n'));
     assert.equal(processes.started.length, 1);
+  });
+
+  it("counts another team's tab still loading against the room, and drops a hold whose load time is over (T2199)", async () => {
+    const kit = new CliHarness(TEAM);
+    const hold = join(KIT, 'host.lock.tabs', 'h1.json');
+    const loading = { id: 'h1', team: 'web', session: 'beta', needMb: 1000, needCommittedMb: 2000, openedAt: '2030-01-08T09:58:00.000Z' };
+    await kit.files.write(hold, JSON.stringify({ ...loading, expiresAt: '2030-01-08T10:03:00.000Z' }));
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const refused = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory: new FakeHostMemory() });
+    assert.deepEqual(refused.stdout, [
+      'REFUSED no room on the host to open app-alpha (session alpha), counted at 1200 MB resident and 1200 MB committed: 8000 MB free, 1000 MB of it held ' +
+        'for 1 tab still loading, under the 6144 MB a new tab keeps free (delivery.queue.memoryFloorMb + heavyReserveMb, while open.headroom.floorMb is ' +
+        'unset) plus 1200 MB for it. Close a session first: teamrig sessions lists what each one holds',
+    ]);
+    await kit.files.write(hold, JSON.stringify({ ...loading, expiresAt: '2030-01-08T10:00:00.000Z' }));
+    const opened = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory: new FakeHostMemory() });
+    assert.equal(opened.code, EXIT.ok, opened.stdout.join('\n'));
+    assert.equal(kit.files.get(hold), undefined, 'the hold ran out at the clock and is removed');
   });
 
   it('opens a tmux window inside tmux, and a Terminal window on macOS', async () => {
