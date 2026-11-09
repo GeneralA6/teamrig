@@ -1156,6 +1156,62 @@ describe('parseConfig', () => {
     assert.deepEqual(bad.config.prompts, { hookAsks: 'refuse', routeAllow: 'on' });
   });
 
+  it('reads the db-write guard, asking by default with no program, client or script of the team', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.dbWriteGuard, { writes: 'ask', entrypoints: [], programs: [], nodeClients: [], clientReceivers: [] });
+    const own = {
+      entrypoints: [{ path: 'scripts/backfill.ts', applyFlags: ['--apply', '-y'] }],
+      programs: [
+        { name: 'docsh', reads: 'document-shell' },
+        { name: 'kvcli', reads: 'key-value-cli' },
+        { name: 'pgx', reads: 'sql-command' },
+        { name: 'my-sql.exe', reads: 'sql-execute' },
+        { name: 'lite3', reads: 'sql-database-file' },
+      ],
+      nodeClients: [
+        { module: 'docstore', vocabulary: 'document' },
+        { module: '@scope/kvstore', vocabulary: 'key-value' },
+      ],
+      clientReceivers: ['cache', '$kv'],
+    };
+    for (const writes of ['deny', 'ask', 'allow']) {
+      const set = parseConfig({ ...ROSTER, dbWriteGuard: { ...own, writes } });
+      assert.deepEqual(set.issues, []);
+      assert.deepEqual(set.config.dbWriteGuard, { ...own, writes });
+    }
+  });
+
+  it('drops each broken db-write guard entry with its issue and keeps the rest', () => {
+    const kept = { path: 'scripts/backfill.ts', applyFlags: ['--apply'] };
+    const program = { name: 'docsh', reads: 'document-shell' };
+    const client = { module: 'docstore', vocabulary: 'document' };
+    const bad = parseConfig({
+      ...ROSTER,
+      dbWriteGuard: {
+        writes: 'never',
+        entrypoints: [kept, { path: 'scripts/fix.ts' }, { path: 'scripts/trim.ts', applyFlags: [] }, { path: 'scripts/move.ts', applyFlags: ['apply'] }, 'scripts/raw.ts'],
+        programs: [program, { name: 'bin/docsh', reads: 'document-shell' }, { name: 'kvcli', reads: 'key-value' }, { reads: 'sql-command' }],
+        nodeClients: [client, { module: 'Docstore', vocabulary: 'document' }, { module: 'kvstore', vocabulary: 'kv' }],
+        clientReceivers: ['cache', 'a.b', 'x'.repeat(41)],
+      },
+    });
+    assert.deepEqual(paths(bad.issues), [
+      'dbWriteGuard.writes',
+      'dbWriteGuard.entrypoints[1].applyFlags',
+      'dbWriteGuard.entrypoints[2].applyFlags',
+      'dbWriteGuard.entrypoints[3].applyFlags[0]',
+      'dbWriteGuard.entrypoints[4]',
+      'dbWriteGuard.programs[1].name',
+      'dbWriteGuard.programs[2].reads',
+      'dbWriteGuard.programs[3].name',
+      'dbWriteGuard.nodeClients[1].module',
+      'dbWriteGuard.nodeClients[2].vocabulary',
+      'dbWriteGuard.clientReceivers[1]',
+      'dbWriteGuard.clientReceivers[2]',
+    ]);
+    assert.match(bad.issues[0]?.message ?? '', /deny, ask, allow/);
+    assert.deepEqual(bad.config.dbWriteGuard, { writes: 'ask', entrypoints: [kept], programs: [program], nodeClients: [client], clientReceivers: ['cache'] });
+  });
+
   it('reads the secret guard, refusing with the default secrets alone and redacting unless the team says otherwise', () => {
     const none = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
     assert.deepEqual(parseConfig(ROSTER).config.secretGuard, none);

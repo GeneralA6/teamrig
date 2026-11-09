@@ -82,6 +82,7 @@ const CHILD_TAKES: Readonly<Record<Exclude<keyof KitConfig, keyof typeof REWORKE
   commitGuard: 'copy',
   prompts: 'copy',
   secretGuard: 'copy',
+  dbWriteGuard: 'copy',
   commits: 'copy',
   leadBoundary: 'copy',
   loops: 'copy',

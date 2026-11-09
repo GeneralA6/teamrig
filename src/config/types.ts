@@ -390,6 +390,67 @@ export type SecretReads = 'deny' | 'ask' | 'allow';
 export type SecretWrites = 'deny' | 'ask' | 'allow';
 
 /**
+ * The hook that asks before a Bash or PowerShell call writes to a database by hand (hook-db-write-guard). The SQL
+ * clients are built in; a team adds the programs and Node client modules its own stores take, since a store named by
+ * its product is the team's to add. A team's list only adds: a missing or broken key never switches a built-in off.
+ */
+export interface DbWriteGuardConfig {
+  /** What a Bash or PowerShell call that writes to a database by hand does. */
+  readonly writes: DbWrites;
+  /** The team's data scripts that write only when one of their apply flags is on the line. */
+  readonly entrypoints: readonly DbWriteEntrypoint[];
+  /** The team's database programs, each by the arguments it reads, read before the built-in SQL clients. */
+  readonly programs: readonly DbWriteProgram[];
+  /** The Node client modules whose calls write, read in `node -e` code, a script file or stdin that loads one. */
+  readonly nodeClients: readonly DbWriteNodeClient[];
+  /**
+   * Words that mark a key-value client in Node code, matched in any case inside a receiver's name, added to the
+   * built-in `client`: a call named like a shared method (`set`, `rename`, `copy`) writes only on such a receiver.
+   */
+  readonly clientReceivers: readonly string[];
+}
+
+/**
+ * A hand-run database write: a SQL client or a team's database program whose code writes, a Node script or `node -e`
+ * whose team-named client writes, a container or remote host running one, or an entrypoint run with an apply flag:
+ * `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ */
+export type DbWrites = 'deny' | 'ask' | 'allow';
+
+/** A script a team runs on purpose, which writes only when one of its apply flags is on the line. */
+export interface DbWriteEntrypoint {
+  /** The script's path, matched against the end of the path a line runs: `scripts/backfill.ts`. */
+  readonly path: string;
+  /** The flags that make it write, `--apply` or `--apply=yes`; without one it is a dry run whatever its code holds. */
+  readonly applyFlags: readonly string[];
+}
+
+/**
+ * How a database program takes the code it runs: `document-shell` (`--eval` code, `-f` files, a positional script
+ * file; document methods), `key-value-cli` (a command word, `EVAL` scripts, `--eval` files, stdin lines),
+ * `sql-command` (`-c`, `-f`, stdin), `sql-execute` (`-e`, stdin) or `sql-database-file` (a database file, then SQL;
+ * `-cmd`, stdin).
+ */
+export const DB_PROGRAM_SHAPES = ['document-shell', 'key-value-cli', 'sql-command', 'sql-execute', 'sql-database-file'] as const;
+export type DbProgramShape = (typeof DB_PROGRAM_SHAPES)[number];
+
+/** A database program the guard reads, by its name as a line runs it and the arguments it takes. */
+export interface DbWriteProgram {
+  readonly name: string;
+  readonly reads: DbProgramShape;
+}
+
+/** The write vocabulary of a Node client: a document store's methods, or a key-value store's commands. */
+export const DB_CLIENT_VOCABULARIES = ['document', 'key-value'] as const;
+export type DbClientVocabulary = (typeof DB_CLIENT_VOCABULARIES)[number];
+
+/** A Node client module (`module`, or a `module/sub` path under it) and the write vocabulary of its calls. */
+export interface DbWriteNodeClient {
+  readonly module: string;
+  readonly vocabulary: DbClientVocabulary;
+}
+
+/**
  * The opt-in hook that lets a Bash or PowerShell line run without a permission prompt when every command in it
  * provably only reads (hook-readonly-allow.ts). It only ever allows: a line it cannot prove reads falls through to
  * Claude Code's own permission check.
@@ -457,6 +518,20 @@ export const SECRET_WRITES: readonly SecretWrites[] = ['deny', 'ask', 'allow'];
 
 export function isSecretWrites(value: unknown): value is SecretWrites {
   return SECRET_WRITES.some((choice) => choice === value);
+}
+
+export const DB_WRITES: readonly DbWrites[] = ['deny', 'ask', 'allow'];
+
+export function isDbWrites(value: unknown): value is DbWrites {
+  return DB_WRITES.some((choice) => choice === value);
+}
+
+export function isDbProgramShape(value: unknown): value is DbProgramShape {
+  return DB_PROGRAM_SHAPES.some((shape) => shape === value);
+}
+
+export function isDbClientVocabulary(value: unknown): value is DbClientVocabulary {
+  return DB_CLIENT_VOCABULARIES.some((vocabulary) => vocabulary === value);
 }
 
 export const COMMIT_GATES = ['off', 'warn', 'refuse'] as const;
@@ -1466,6 +1541,8 @@ export interface KitConfig {
   readonly prompts: PromptsConfig;
   /** Refuses a call that would print a secret file, the environment or a secret variable, or whose line holds a secret as text (hook-secret-guard). */
   readonly secretGuard: SecretGuardConfig;
+  /** Asks before a call that writes to a database by hand (hook-db-write-guard). */
+  readonly dbWriteGuard: DbWriteGuardConfig;
   readonly commits: CommitsConfig;
   readonly delivery: DeliveryConfig;
   readonly budget: BudgetConfig;

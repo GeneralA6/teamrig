@@ -32,6 +32,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `commitGuard` | [object](#commitguard) |  | The commit guard: what a Bash or PowerShell call that runs git without the repository's hooks does. |
 | `prompts` | [object](#prompts) |  | The permission prompts teamrig's own hooks raise. |
 | `secretGuard` | [object](#secretguard) |  | Refuses a Bash, PowerShell, Read or Grep call that would print a secret into the session, where it stays in the transcript and every later prompt: a secret file's content, the whole environment, a secret variable's value, a Kubernetes secret's data or a dump command's output (kubectl config view --raw); and a Bash or PowerShell line that holds a secret as text (a token, credentials in a URL or an Authorization header), as the line itself stays in the transcript; and a Write, Edit, MultiEdit or NotebookEdit whose written text holds one, unless it writes a secret file (paths). A value handed to the tool that needs it (a pipe into docker login --password-stdin, a redirect into a file) stays allowed, and the read-only shell hook never lets such a line run without a prompt. |
+| `dbWriteGuard` | [object](#dbwriteguard) |  | Asks before a Bash or PowerShell call writes to a database by hand: a SQL client (psql, mysql, mariadb, sqlite3, built in) or a program of the team's (programs) whose code writes, a Node script, node -e or stdin whose client of the team's (nodeClients) writes, a container or remote host running one (kubectl exec, docker exec, ssh), or a data script (entrypoints) run with its apply flag. A read stays silent. A team's lists only add: a missing or broken entry never switches a built-in off. |
 | `commits` | [object](#commits) |  | The small-commits rule: one logical change per commit; a commit over either bound needs a reason line. |
 | `delivery` | [object](#delivery) |  | The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig freeze holds deploys while a session measures; each step is recorded in the ledger. |
 | `budget` | [object](#budget) |  | The weekly token budget: the pace line the team is measured against and each session's daily part of it. Usage is in weighted tokens (W) read from the session transcripts, and in % of the week from the status line when there is one. The defaults only measure and show; nothing blocks or acts. |
@@ -264,6 +265,45 @@ Refuses a Bash, PowerShell, Read or Grep call that would print a secret into the
 | `envNames` | array (at most 16 items) of string (at most 120 characters) | `[]` | The team's own patterns for environment variables whose values are secrets, regular expressions over the name with case ignored, read after the defaults (TOKEN, SECRET, PASSW, PASS, CRED, AUTH except AUTHOR and an auth mechanism or source, PRIVATE, KEY, DSN, WEBHOOK, COOKIE, PAT, SALT, and a store's connection URL or string by its kind: DB\_URL, DATABASE\_URL, PG\_URI, CACHE\_URL, BROKER\_URL, CONNECTION\_STRING). A store named by its product is the team's to add. The last pattern that matches a name decides: !pattern keeps a variable printable. |
 | `commands` | array (at most 16 items) of string (at most 200 characters) | `[]` | The team's own commands whose output is a secret whatever file or variable they name, regular expressions over a command's program and arguments with case ignored, read after the default (kubectl config view --raw). The last pattern that matches a command decides: !pattern lets it print. |
 | `redact` | boolean | `true` | After a Bash, PowerShell, Read or Grep call runs, replace each secret its result holds (a token by its shape, a match of register.secretPatterns, the value of a secret variable) before the model and the transcript see it, and tell the session which kinds it held and the task filed to rotate each. false shows results whole; turning it off is the owner's call: check flags it (SECRET-GUARD-OFF). |
+
+## `dbWriteGuard`
+
+Asks before a Bash or PowerShell call writes to a database by hand: a SQL client (psql, mysql, mariadb, sqlite3, built in) or a program of the team's (programs) whose code writes, a Node script, node -e or stdin whose client of the team's (nodeClients) writes, a container or remote host running one (kubectl exec, docker exec, ssh), or a data script (entrypoints) run with its apply flag. A read stays silent. A team's lists only add: a missing or broken entry never switches a built-in off.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `writes` | one of `"deny"`, `"ask"`, `"allow"` | `"ask"` | A hand-run database write: deny refuses it, ask asks the human (or refuses with the move-on note under prompts.hookAsks: refuse), allow lets it run. |
+| `entrypoints` | array (at most 32 items) of [object](#dbwriteguardentrypoints) | `[]` | The team's data scripts that write only with an apply flag, so a dry run passes: the script's path, matched against the end of the path a line runs (scripts/backfill.ts), and the flags that make it write (--apply, or --apply=yes on the line). |
+| `programs` | array (at most 16 items) of [object](#dbwriteguardprograms) | `[]` | The team's database programs, by name and the arguments each reads, read before the built-in SQL clients: document-shell (--eval code, -f files, a script file named as a word; document methods such as insertOne, deleteMany, drop, an aggregation's $out or $merge), key-value-cli (a command word such as SET or DEL, EVAL scripts, --eval files, stdin lines), sql-command (-c, -f, stdin), sql-execute (-e, stdin) or sql-database-file (a database file, then SQL; -cmd, stdin). |
+| `nodeClients` | array (at most 16 items) of [object](#dbwriteguardnodeclients) | `[]` | The Node client modules whose calls write, each with its vocabulary: document (insertOne, updateMany, deleteMany, drop, bulkWrite...) or key-value (set, del, hset, expire, flushall, eval...). Node code (node -e, a script file, stdin) is read only when it imports or requires one of them, or a module/sub path under it. |
+| `clientReceivers` | array (at most 8 items) of string (at most 40 characters, matching `^[A-Za-z_$][\w$]*$`) | `[]` | Words that mark a key-value client in Node code, matched in any case inside a receiver's name, added to the built-in client: a call named like a shared method (set, rename, copy, append, eval, move, restore) writes only on such a receiver (cache.set, not map.set). |
+
+## `dbWriteGuard.entrypoints[]`
+
+The team's data scripts that write only with an apply flag, so a dry run passes: the script's path, matched against the end of the path a line runs (scripts/backfill.ts), and the flags that make it write (--apply, or --apply=yes on the line).
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `path` (required) | string (1 to 260 characters) |  | The script's path, matched against the end of the path a line runs: scripts/backfill.ts. |
+| `applyFlags` (required) | array (1 to 4 items) of string (at most 40 characters, matching `^--?[A-Za-z][\w-]*$`) |  | The flags that make the script write, --apply or --apply=yes; a run without one is a dry run. |
+
+## `dbWriteGuard.programs[]`
+
+The team's database programs, by name and the arguments each reads, read before the built-in SQL clients: document-shell (--eval code, -f files, a script file named as a word; document methods such as insertOne, deleteMany, drop, an aggregation's $out or $merge), key-value-cli (a command word such as SET or DEL, EVAL scripts, --eval files, stdin lines), sql-command (-c, -f, stdin), sql-execute (-e, stdin) or sql-database-file (a database file, then SQL; -cmd, stdin).
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `name` (required) | string (at most 60 characters, matching `^[A-Za-z0-9][\w.+-]*$`) |  | The program's name as a line runs it, no path: my-cli, tool.exe. |
+| `reads` (required) | one of `"document-shell"`, `"key-value-cli"`, `"sql-command"`, `"sql-execute"`, `"sql-database-file"` |  | The arguments it takes its code from, one of the shapes programs lists. |
+
+## `dbWriteGuard.nodeClients[]`
+
+The Node client modules whose calls write, each with its vocabulary: document (insertOne, updateMany, deleteMany, drop, bulkWrite...) or key-value (set, del, hset, expire, flushall, eval...). Node code (node -e, a script file, stdin) is read only when it imports or requires one of them, or a module/sub path under it.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `module` (required) | string (at most 120 characters, matching `^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$`) |  | The package name code loads, store or @scope/store; a store/sub path under it counts too. |
+| `vocabulary` (required) | one of `"document"`, `"key-value"` |  | The write vocabulary of its calls: document or key-value. |
 
 ## `commits`
 
