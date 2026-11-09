@@ -349,9 +349,9 @@ async function ownerWaitOf(runtime, team, { task, state, elsewhere }) {
     const ranking = await teamRanking(runtime, team.paths, team.config, state.tasks.values());
     const own = { team: team.paths.team, config: team.config, paths: team.paths, tasks: state.tasks, elsewhere, ranking };
     const loaded = await loadTree(runtime);
-    const { batch, askedBy } = await ownerBatchOf(runtime, own, loaded, now);
+    const { batch, askedBy, ownTeam } = await ownerBatchOf(runtime, own, loaded, now);
     const home = askedBy === undefined ? undefined : loaded.teams.get(askedBy.team);
-    const timing = waitTiming(batch, task, new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere), now);
+    const timing = waitTiming(batch, { task, team: ownTeam }, new TaskTree(state.tasks, new Date(now), team.zone, undefined, elsewhere), now);
     return { timing, askedBy: askedBy === undefined || home === undefined ? undefined : { address: askedBy, home } };
 }
 /**

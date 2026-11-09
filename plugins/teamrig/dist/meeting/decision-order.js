@@ -32,6 +32,13 @@ function byRank(a, b) {
 function waitsForBatch(tasks, tree, focus) {
     return tasks.every((task) => task.workClass !== null && task.workClass !== focus.roadmapClass && task.workClass !== focus.maintenanceClass && tree.rankedOf(task)?.band !== 0);
 }
+/**
+ * True for a decision on `task` that waits for the weekly batch ({@link waitsForBatch} over what it unblocks): the one
+ * rule the agenda and the owner's decision batch (src/decisions/batch.ts) both hold such a decision back by.
+ */
+export function waitsForWeeklyBatch(task, tree, focus) {
+    return waitsForBatch(unblockedBy(task, tree), tree, focus);
+}
 /** The decisions of every register in one ranked list, a tie in the order handed in, split by {@link waitsForBatch}. */
 export function decisionOrder(reads) {
     const ranked = reads
