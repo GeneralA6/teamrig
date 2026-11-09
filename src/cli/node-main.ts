@@ -6,7 +6,7 @@ import { nodeFileBytes } from '../core/file-bytes.ts';
 import { nodeFiles } from '../core/files.ts';
 import { GIT_TREES } from '../delivery/git-tree.ts';
 import { nodeHostMemory } from '../delivery/memory.ts';
-import { launchingShellOf, nodeEvery, starterWatch } from '../delivery/starter-watch.ts';
+import { launchingShellsOf, nodeEvery, starterWatch } from '../delivery/starter-watch.ts';
 import { nodeStepRunner } from '../delivery/steps.ts';
 import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
@@ -80,7 +80,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     platform: process.platform,
     processes: nodeProcesses(),
     sessionProcesses,
-    starters: starterWatch(sessionProcesses, { pid: process.pid, shell: launchingShellOf(process.env, process.ppid) }, nodeEvery),
+    starters: starterWatch(sessionProcesses, { pid: process.pid, shells: launchingShellsOf(process.env, process.ppid) }, nodeEvery),
     shell: nodeShellRunner(),
     steps: nodeStepRunner(process.platform),
     memory: nodeHostMemory(process.platform),

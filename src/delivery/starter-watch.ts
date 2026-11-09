@@ -15,30 +15,42 @@ export const nodeEvery: Every = (everyMs, check) => {
   return () => clearInterval(timer);
 };
 
-/** Where the launcher (plugins/teamrig/bin/teamrig) records, under Git Bash, the Windows ids of the shell that ran it and its own. */
-export const SHELL_PID_ENV = 'TEAMRIG_SHELL_WINPID';
+/**
+ * Where the launcher (plugins/teamrig/bin/teamrig) records, under Git Bash, the Windows ids of the shells above it
+ * (comma-separated, nearest first) and its own.
+ */
+export const SHELLS_PID_ENV = 'TEAMRIG_SHELL_WINPIDS';
 export const LAUNCHER_PID_ENV = 'TEAMRIG_LAUNCHER_WINPID';
 
 /**
- * The shell that ran this process's launcher, as the launcher recorded it. Git Bash runs a command in a forked copy of
- * itself that ends once the launcher starts, so no process listing links the launcher to the shell; only the launcher
- * can name it. Undefined unless the launcher that recorded it is this process's own starter (`parentPid`): a process
- * that inherited an outer launcher's record from a step it runs was not started by that shell.
+ * The shells above this process's launcher, nearest first, as the launcher recorded them. Git Bash runs a command in a
+ * forked copy of itself that ends once the command starts, so no process listing links the launcher to the shell that
+ * ran it, and each shell one shell runs cuts the link once more (husky's hook runner runs the hook in `sh -e`, which
+ * runs the launcher): only the launcher can name them, up to the first shell a Windows program started. Empty unless
+ * the launcher that recorded them is this process's own starter (`parentPid`): a process that inherited an outer
+ * launcher's record from a step it runs was not started by those shells.
  */
-export function launchingShellOf(env: Readonly<Record<string, string | undefined>>, parentPid: number): number | undefined {
-  const shell = Number(env[SHELL_PID_ENV]);
-  return Number(env[LAUNCHER_PID_ENV]) === parentPid && Number.isSafeInteger(shell) && shell > 0 ? shell : undefined;
+export function launchingShellsOf(env: Readonly<Record<string, string | undefined>>, parentPid: number): readonly number[] {
+  if (Number(env[LAUNCHER_PID_ENV]) !== parentPid) {
+    return [];
+  }
+  return (env[SHELLS_PID_ENV] ?? '')
+    .split(',')
+    .map(Number)
+    .filter((shell) => Number.isSafeInteger(shell) && shell > 0);
 }
 
 /**
- * The processes worth watching: the ones that started this one (`lineage` past its first entry), then the launching
- * shell's (`shellLineage`, from the shell up) where the first stops short of them, up to and with the nearest Claude
- * Code, since what runs above it (a terminal, the desktop) ends a tab only through it; with no Claude Code among them,
- * as in a person's own terminal, every one.
+ * The processes worth watching: the ones that started this one (`lineage` past its first entry), then each launching
+ * shell's in turn (`shellLineages`, nearest shell first, each from the shell up) where the lines before stop short of
+ * them, up to and with the nearest Claude Code, since what runs above it (a terminal, the desktop) ends a tab only
+ * through it; with no Claude Code among them, as in a person's own terminal, every one.
  */
-export function startersOf(lineage: readonly ProcessInfo[], shellLineage: readonly ProcessInfo[] = []): readonly ProcessInfo[] {
-  const own = lineage.slice(1);
-  const starters = [...own, ...shellLineage.filter((shell) => !own.some((starter) => starter.pid === shell.pid))];
+export function startersOf(lineage: readonly ProcessInfo[], shellLineages: readonly (readonly ProcessInfo[])[] = []): readonly ProcessInfo[] {
+  const starters = lineage.slice(1);
+  for (const shellLineage of shellLineages) {
+    starters.push(...shellLineage.filter((shell) => !starters.some((starter) => starter.pid === shell.pid)));
+  }
   const claude = starters.findIndex(isClaudeProcess);
   return claude === -1 ? starters : starters.slice(0, claude + 1);
 }
@@ -64,8 +76,8 @@ export function endedText(watching: Pick<StarterWatching, 'ended'>): string {
 /** The process a watch is for. */
 export interface Watched {
   readonly pid: number;
-  /** The shell that ran its launcher, where the launcher named one (`launchingShellOf`). */
-  readonly shell: number | undefined;
+  /** The shells above its launcher, nearest first, where the launcher named them (`launchingShellsOf`). */
+  readonly shells: readonly number[];
 }
 
 /**
@@ -79,15 +91,15 @@ export interface StarterWatch {
 }
 
 /**
- * The watch over the system's processes: `lineage` once for the process and once for its launching shell, then `alive`
+ * The watch over the system's processes: `lineage` once for the process and once for each launching shell, then `alive`
  * on each starter every `everyMs`. A starter whose id another process took between two checks still looks alive; that
  * only leaves the step to its time limit.
  */
 export function starterWatch(processes: Pick<SessionProcesses, 'lineage' | 'alive'>, watched: Watched, every: Every, everyMs: number = STARTER_CHECK_MS): StarterWatch {
   return {
     async watch() {
-      const [lineage, shellLineage] = await Promise.all([processes.lineage(watched.pid), watched.shell === undefined ? undefined : processes.lineage(watched.shell)]);
-      const starters = startersOf(lineage ?? [], shellLineage ?? []);
+      const [lineage, ...shellLineages] = await Promise.all([watched.pid, ...watched.shells].map((pid) => processes.lineage(pid)));
+      const starters = startersOf(lineage ?? [], shellLineages.map((shellLineage) => shellLineage ?? []));
       const controller = new AbortController();
       let ended: ProcessInfo | undefined;
       let cancel: () => void = () => undefined;

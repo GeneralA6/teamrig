@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { endingOf, livenessOf } from '../testing/process-liveness.ts';
-import { endedText, LAUNCHER_PID_ENV, launchingShellOf, nodeEvery, SHELL_PID_ENV, STARTER_CHECK_MS, starterWatch, startersOf, type Every } from './starter-watch.ts';
+import { endedText, LAUNCHER_PID_ENV, launchingShellsOf, nodeEvery, SHELLS_PID_ENV, STARTER_CHECK_MS, starterWatch, startersOf, type Every } from './starter-watch.ts';
 
 const TERMINAL: ProcessInfo = { pid: 10, parentPid: 1, name: 'WindowsTerminal.exe', commandLine: 'wt' };
 const CLAUDE: ProcessInfo = { pid: 11, parentPid: 10, name: 'claude.exe', commandLine: 'claude' };
@@ -17,6 +17,16 @@ const SELF: ProcessInfo = { pid: 13, parentPid: 12, name: 'node.exe', commandLin
 /** Under Git Bash: the launcher's `sh` stub, started by a forked copy of SHELL (pid 15) that has ended, and the CLI it runs. */
 const STUB: ProcessInfo = { pid: 14, parentPid: 15, name: 'sh.exe', commandLine: 'sh teamrig queue' };
 const LAUNCHED: ProcessInfo = { pid: 16, parentPid: 14, name: 'node.exe', commandLine: 'node main.js queue' };
+/**
+ * A hooked commit from SHELL under Git Bash, as husky runs a hook: git starts the hook runner's shell, which runs the
+ * hook in a second shell (`sh -e`) from a forked copy that has ended (pid 23); that one runs the launcher the same way
+ * (pid 25), so neither the CLI's own line nor the second shell's reaches the hook runner, git or SHELL.
+ */
+const GIT: ProcessInfo = { pid: 20, parentPid: SHELL.pid, name: 'git.exe', commandLine: 'git commit' };
+const HOOK_RUNNER: ProcessInfo = { pid: 21, parentPid: GIT.pid, name: 'sh.exe', commandLine: 'sh .husky/_/pre-commit' };
+const HOOK: ProcessInfo = { pid: 22, parentPid: 23, name: 'sh.exe', commandLine: 'sh -e .husky/pre-commit' };
+const HOOK_STUB: ProcessInfo = { pid: 24, parentPid: 25, name: 'sh.exe', commandLine: 'sh teamrig queue' };
+const HOOK_CLI: ProcessInfo = { pid: 26, parentPid: HOOK_STUB.pid, name: 'node.exe', commandLine: 'node main.js queue' };
 
 /** An `Every` the test runs by hand: it keeps the check and each period asked, and whether its stop was called. */
 class ManualEvery {
@@ -99,24 +109,29 @@ describe('startersOf', () => {
   });
 
   it("goes on with the launching shell's line where the own line stops short of it, and adds no starter twice", () => {
-    assert.deepEqual(startersOf([LAUNCHED, STUB], [SHELL, CLAUDE, TERMINAL]), [STUB, SHELL, CLAUDE]);
-    assert.deepEqual(startersOf([SELF, SHELL, CLAUDE, TERMINAL], [SHELL, CLAUDE, TERMINAL]), [SHELL, CLAUDE]);
-    assert.deepEqual(startersOf([], [SHELL, CLAUDE]), [SHELL, CLAUDE]);
+    assert.deepEqual(startersOf([LAUNCHED, STUB], [[SHELL, CLAUDE, TERMINAL]]), [STUB, SHELL, CLAUDE]);
+    assert.deepEqual(startersOf([SELF, SHELL, CLAUDE, TERMINAL], [[SHELL, CLAUDE, TERMINAL]]), [SHELL, CLAUDE]);
+    assert.deepEqual(startersOf([], [[SHELL, CLAUDE]]), [SHELL, CLAUDE]);
+  });
+
+  it("goes on with each launching shell's line in turn, nearest first, where the one before stops short", () => {
+    assert.deepEqual(startersOf([HOOK_CLI, HOOK_STUB], [[HOOK], [HOOK_RUNNER, GIT, SHELL, CLAUDE, TERMINAL]]), [HOOK_STUB, HOOK, HOOK_RUNNER, GIT, SHELL, CLAUDE]);
+    assert.deepEqual(startersOf([HOOK_CLI, HOOK_STUB], [[HOOK], [HOOK_RUNNER, GIT, SHELL], [SHELL, CLAUDE]]), [HOOK_STUB, HOOK, HOOK_RUNNER, GIT, SHELL, CLAUDE]);
   });
 });
 
-describe('launchingShellOf', () => {
-  it("reads the shell the launcher recorded when that launcher is this process's starter", () => {
-    assert.equal(launchingShellOf({ [SHELL_PID_ENV]: '12', [LAUNCHER_PID_ENV]: '14' }, 14), 12);
+describe('launchingShellsOf', () => {
+  it("reads the shells the launcher recorded, nearest first, when that launcher is this process's starter", () => {
+    assert.deepEqual(launchingShellsOf({ [SHELLS_PID_ENV]: '12', [LAUNCHER_PID_ENV]: '14' }, 14), [12]);
+    assert.deepEqual(launchingShellsOf({ [SHELLS_PID_ENV]: '22,21', [LAUNCHER_PID_ENV]: '24' }, 24), [22, 21]);
   });
 
-  it("ignores a record inherited from an outer launcher, a missing one and one that names no process", () => {
-    assert.equal(launchingShellOf({ [SHELL_PID_ENV]: '12', [LAUNCHER_PID_ENV]: '14' }, 16), undefined);
-    assert.equal(launchingShellOf({}, 14), undefined);
-    assert.equal(launchingShellOf({ [LAUNCHER_PID_ENV]: '14' }, 14), undefined);
-    for (const shell of ['0', '-3', '1.5', 'bash']) {
-      assert.equal(launchingShellOf({ [SHELL_PID_ENV]: shell, [LAUNCHER_PID_ENV]: '14' }, 14), undefined, shell);
-    }
+  it('ignores a record inherited from an outer launcher, a missing one and an entry that names no process', () => {
+    assert.deepEqual(launchingShellsOf({ [SHELLS_PID_ENV]: '12', [LAUNCHER_PID_ENV]: '14' }, 16), []);
+    assert.deepEqual(launchingShellsOf({}, 14), []);
+    assert.deepEqual(launchingShellsOf({ [LAUNCHER_PID_ENV]: '14' }, 14), []);
+    assert.deepEqual(launchingShellsOf({ [SHELLS_PID_ENV]: '', [LAUNCHER_PID_ENV]: '14' }, 14), []);
+    assert.deepEqual(launchingShellsOf({ [SHELLS_PID_ENV]: '0,-3,1.5,bash,,22', [LAUNCHER_PID_ENV]: '14' }, 14), [22]);
   });
 });
 
@@ -124,7 +139,7 @@ describe('starterWatch', () => {
   it('checks each starter every 5 seconds, and once one ended, stops the checks and aborts', async () => {
     const processes = tab();
     const manual = new ManualEvery();
-    const watching = await starterWatch(processes, { pid: SELF.pid, shell: undefined }, manual.every).watch();
+    const watching = await starterWatch(processes, { pid: SELF.pid, shells: [] }, manual.every).watch();
     assert.deepEqual([watching.starters, manual.periods], [[SHELL, CLAUDE], [STARTER_CHECK_MS]]);
     manual.tick();
     assert.deepEqual([watching.stop.aborted, watching.ended(), endedText(watching)], [false, undefined, 'a process that started it']);
@@ -136,7 +151,7 @@ describe('starterWatch', () => {
   it('finds Claude Code ended though the shell under it runs on, as a launcher stub does on Windows', async () => {
     const processes = tab();
     const manual = new ManualEvery();
-    const watching = await starterWatch(processes, { pid: SELF.pid, shell: undefined }, manual.every, 200).watch();
+    const watching = await starterWatch(processes, { pid: SELF.pid, shells: [] }, manual.every, 200).watch();
     processes.exit(CLAUDE.pid);
     manual.tick();
     assert.deepEqual([manual.periods, watching.ended(), watching.stop.aborted], [[200], CLAUDE, true]);
@@ -144,20 +159,33 @@ describe('starterWatch', () => {
 
   it("under Git Bash, finds the shell ended through the launcher's record, where its own line ends at the launcher stub", async () => {
     const processes = tab().add(STUB).add(LAUNCHED);
-    const unnamed = await starterWatch(processes, { pid: LAUNCHED.pid, shell: undefined }, new ManualEvery().every).watch();
+    const unnamed = await starterWatch(processes, { pid: LAUNCHED.pid, shells: [] }, new ManualEvery().every).watch();
     assert.deepEqual(unnamed.starters, [STUB], 'without the record the stub alone is watched, and it runs on');
     const manual = new ManualEvery();
-    const watching = await starterWatch(processes, { pid: LAUNCHED.pid, shell: SHELL.pid }, manual.every).watch();
+    const watching = await starterWatch(processes, { pid: LAUNCHED.pid, shells: [SHELL.pid] }, manual.every).watch();
     assert.deepEqual(watching.starters, [STUB, SHELL, CLAUDE]);
     processes.exit(SHELL.pid);
     manual.tick();
     assert.deepEqual([watching.ended(), watching.stop.aborted], [SHELL, true]);
   });
 
+  it("finds the Bash tool's shell ended under a hook that a second Git Bash shell runs, through every shell the launcher named (T764)", async () => {
+    const processes = tab().add(GIT).add(HOOK_RUNNER).add(HOOK).add(HOOK_STUB).add(HOOK_CLI);
+    const nearest = await starterWatch(processes, { pid: HOOK_CLI.pid, shells: [HOOK.pid] }, new ManualEvery().every).watch();
+    assert.deepEqual(nearest.starters, [HOOK_STUB, HOOK], 'with the nearest shell alone, nothing watched ends with the Bash tool');
+    processes.lineages.length = 0;
+    const manual = new ManualEvery();
+    const watching = await starterWatch(processes, { pid: HOOK_CLI.pid, shells: [HOOK.pid, HOOK_RUNNER.pid] }, manual.every).watch();
+    assert.deepEqual([watching.starters, processes.lineages], [[HOOK_STUB, HOOK, HOOK_RUNNER, GIT, SHELL, CLAUDE], [HOOK_CLI.pid, HOOK.pid, HOOK_RUNNER.pid]]);
+    processes.exit(SHELL.pid);
+    manual.tick();
+    assert.deepEqual([watching.ended(), watching.stop.aborted], [SHELL, true]);
+  });
+
   it('checks nothing and never aborts when the system will not list the starters, or lists none', async () => {
-    for (const [processes, pid, shell] of [[tab().hideLineage(), SELF.pid, SHELL.pid], [tab(), 99, undefined]] as const) {
+    for (const [processes, pid, shells] of [[tab().hideLineage(), SELF.pid, [SHELL.pid]], [tab(), 99, []]] as const) {
       const manual = new ManualEvery();
-      const watching = await starterWatch(processes, { pid, shell }, manual.every).watch();
+      const watching = await starterWatch(processes, { pid, shells }, manual.every).watch();
       watching.close();
       assert.deepEqual([watching.starters, manual.periods, watching.stop.aborted, watching.ended()], [[], [], false, undefined]);
     }
@@ -165,7 +193,7 @@ describe('starterWatch', () => {
 
   it('stops checking once closed', async () => {
     const manual = new ManualEvery();
-    const watching = await starterWatch(tab(), { pid: SELF.pid, shell: undefined }, manual.every).watch();
+    const watching = await starterWatch(tab(), { pid: SELF.pid, shells: [] }, manual.every).watch();
     watching.close();
     assert.equal(manual.cancelled, true);
   });
@@ -200,7 +228,7 @@ describe('starterWatch on this machine', () => {
         `import { nodeEvery, starterWatch } from ${JSON.stringify(new URL('./starter-watch.ts', import.meta.url).href)};`,
         `import { nodeSessionProcesses } from ${JSON.stringify(new URL('../open/session-processes.ts', import.meta.url).href)};`,
         `const quit = setTimeout(() => process.exit(3), ${REAL_QUIT_MS});`,
-        'const watching = await starterWatch(nodeSessionProcesses(), { pid: process.pid, shell: undefined }, nodeEvery, 200).watch();',
+        'const watching = await starterWatch(nodeSessionProcesses(), { pid: process.pid, shells: [] }, nodeEvery, 200).watch();',
         "watching.stop.addEventListener('abort', () => {",
         `  writeFileSync(${JSON.stringify(ended)}, String(watching.ended()?.pid));`,
         '  clearTimeout(quit);',
@@ -228,8 +256,28 @@ describe('starterWatch on this machine', () => {
 
   const noShell = spawnSync('sh', ['-c', 'exit 0'], { stdio: 'ignore', windowsHide: true }).status !== 0 ? 'no sh on this machine' : false;
 
-  it('finds the shell that ran the real launcher ended once that shell is killed', { skip: noShell }, async () => {
-    const home = join(dir, 'plugin');
+  /** A plugin folder holding the real launcher, whose CLI watches its starters as the real one does. */
+  interface PluginHome {
+    /** The folder, for a spec's own files. */
+    readonly home: string;
+    /** The launcher, with forward slashes, as a shell takes its path. */
+    readonly launcher: string;
+    /** Written by the CLI once it lists its starters: its own id, then theirs. */
+    readonly ready: string;
+    /** Written by the CLI once it finds a starter ended: that starter's id. */
+    readonly ended: string;
+    /** The shells the launcher named, nearest first, once the CLI listed its starters; none where it named none. */
+    shells(): readonly number[];
+    /** The CLI's starters, once it listed them. */
+    starters(): readonly number[];
+  }
+
+  /**
+   * Sets up `name` under the spec folder as the plugin: the real launcher, and as the CLI it runs a watcher that reads
+   * the launcher's record as the real CLI does, writes the shells it names, then `ready`, and `ended` once a starter ends.
+   */
+  function pluginHome(name: string): PluginHome {
+    const home = join(dir, name);
     const bin = join(home, 'bin');
     const cli = join(home, 'dist', 'cli');
     mkdirSync(bin, { recursive: true });
@@ -238,43 +286,70 @@ describe('starterWatch on this machine', () => {
     copyFileSync(fileURLToPath(new URL('../../plugins/teamrig/bin/teamrig', import.meta.url)), launcher);
     chmodSync(launcher, 0o755);
     writeFileSync(join(home, 'package.json'), '{ "type": "module" }\n');
+    const shells = join(home, 'shells.txt');
     const ready = join(home, 'ready.txt');
     const ended = join(home, 'ended.txt');
-    // The CLI the launcher runs: it watches its starters as the real one does, from the launcher's record.
     writeFileSync(
       join(cli, 'main.js'),
       [
         "import { writeFileSync } from 'node:fs';",
-        `import { launchingShellOf, nodeEvery, starterWatch } from ${JSON.stringify(new URL('./starter-watch.ts', import.meta.url).href)};`,
+        `import { launchingShellsOf, nodeEvery, starterWatch } from ${JSON.stringify(new URL('./starter-watch.ts', import.meta.url).href)};`,
         `import { nodeSessionProcesses } from ${JSON.stringify(new URL('../open/session-processes.ts', import.meta.url).href)};`,
         `const quit = setTimeout(() => process.exit(3), ${REAL_QUIT_MS});`,
-        'const shell = launchingShellOf(process.env, process.ppid);',
-        'const watching = await starterWatch(nodeSessionProcesses(), { pid: process.pid, shell }, nodeEvery, 200).watch();',
+        'const shells = launchingShellsOf(process.env, process.ppid);',
+        'const watching = await starterWatch(nodeSessionProcesses(), { pid: process.pid, shells }, nodeEvery, 200).watch();',
         "watching.stop.addEventListener('abort', () => {",
         `  writeFileSync(${JSON.stringify(ended)}, String(watching.ended()?.pid));`,
         '  clearTimeout(quit);',
         '});',
-        `writeFileSync(${JSON.stringify(ready)}, [process.pid, shell ?? 0, ...watching.starters.map((starter) => starter.pid)].join(','));`,
+        `writeFileSync(${JSON.stringify(shells)}, shells.join(','));`,
+        `writeFileSync(${JSON.stringify(ready)}, [process.pid, ...watching.starters.map((starter) => starter.pid)].join(','));`,
       ].join('\n'),
     );
+    const ids = (path: string): readonly number[] => (written(path) ? readFileSync(path, 'utf8').split(',').map(Number) : []);
+    return { home, launcher: launcher.replaceAll('\\', '/'), ready, ended, shells: () => ids(shells), starters: () => ids(ready).slice(1) };
+  }
+
+  it('finds the shell that ran the real launcher ended once that shell is killed', { skip: noShell }, async () => {
+    const plugin = pluginHome('plugin');
     // As the Bash tool runs a command: in a forked copy of the shell, since more follows it. Under Git Bash that copy
     // ends once the launcher starts, so only the launcher's record links the CLI to this shell.
-    const shell = spawn('sh', ['-c', '"$0"; exit $?', launcher.replaceAll('\\', '/')], { stdio: 'ignore', windowsHide: true });
-    const cliPids = (): readonly number[] => (written(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : []);
+    const shell = spawn('sh', ['-c', '"$0"; exit $?', plugin.launcher], { stdio: 'ignore', windowsHide: true });
     try {
-      assert.equal(await until(() => written(ready), REAL_WAIT_MS), true, 'the CLI listed its starters');
-      const [, recorded = 0, ...starters] = cliPids();
+      assert.equal(await until(() => written(plugin.ready), REAL_WAIT_MS), true, 'the CLI listed its starters');
+      const [recorded = 0] = plugin.shells();
       // On Windows `sh` may be Git's bin\sh.exe, which runs the real shell as its child: the shell to end is the one
       // the launcher recorded. Elsewhere nothing is recorded and the CLI's own line reaches the shell.
       assert.ok(process.platform !== 'win32' || recorded > 0, 'the launcher recorded its shell under Git Bash');
       const target = recorded > 0 ? recorded : (shell.pid ?? 0);
-      assert.ok(starters.includes(target), `the shell ${target} is among the starters ${starters.join(',')}`);
+      assert.ok(plugin.starters().includes(target), `the shell ${target} is among the starters ${plugin.starters().join(',')}`);
       process.kill(target);
-      assert.equal(await until(() => written(ended), REAL_WAIT_MS), true, 'the CLI found its shell ended');
-      assert.equal(readFileSync(ended, 'utf8'), String(target));
+      assert.equal(await until(() => written(plugin.ended), REAL_WAIT_MS), true, 'the CLI found its shell ended');
+      assert.equal(readFileSync(plugin.ended, 'utf8'), String(target));
     } finally {
       shell.kill();
-      await endWatcher(ready, ended);
+      await endWatcher(plugin.ready, plugin.ended);
+    }
+  });
+
+  it('finds the outer shell ended where a second shell runs the real launcher, as husky runs a hook (T764)', { skip: noShell }, async () => {
+    const plugin = pluginHome('plugin-hook');
+    const outer = join(plugin.home, 'outer.txt');
+    // The outer shell writes its own id (its Windows one under Git Bash), then runs a second shell that runs the
+    // launcher, each from a forked copy as more follows it: husky's hook runner runs `sh -e <hook>`, and the hook
+    // runs teamrig. Under Git Bash neither the CLI's own line nor the second shell's reaches the outer shell.
+    const script = ['if [ -r "/proc/$$/winpid" ]; then cat "/proc/$$/winpid"; else echo "$$"; fi > "$1"', `sh -c '"$0"; exit $?' "$0"`, 'exit $?'].join('\n');
+    const shell = spawn('sh', ['-c', script, plugin.launcher, outer.replaceAll('\\', '/')], { stdio: 'ignore', windowsHide: true });
+    try {
+      assert.equal(await until(() => written(plugin.ready), REAL_WAIT_MS), true, 'the CLI listed its starters');
+      const target = Number(readFileSync(outer, 'utf8'));
+      assert.ok(plugin.starters().includes(target), `the outer shell ${target} is among the starters ${plugin.starters().join(',')}`);
+      process.kill(target);
+      assert.equal(await until(() => written(plugin.ended), REAL_WAIT_MS), true, 'the CLI found the outer shell ended');
+      assert.equal(readFileSync(plugin.ended, 'utf8'), String(target));
+    } finally {
+      shell.kill();
+      await endWatcher(plugin.ready, plugin.ended);
     }
   });
 });
