@@ -74,6 +74,17 @@ describe('runCli: audit, the security reviewer pins a hand step file for a task 
     assert.match(blank.stderr[0] ?? '', /--file needs the hand step file's path/);
     assert.deepEqual(filesOf(kit), before);
   });
+
+  it('refuses a path with a line break, which a register line would read back as bad, writing nothing', async () => {
+    const kit = await reviewed();
+    const broken = join(APP, 'steps', 'grant\nread.ps1');
+    await kit.files.write(broken, STEP_TEXT);
+    const before = filesOf(kit);
+    const result = await kit.run(['audit', 'T1', '--file', broken, '--session', 'bravo']);
+    assert.equal(result.code, EXIT.usage);
+    assert.match(result.stderr[0] ?? '', /^--file takes the hand step file's path on one line: a path with a line break is not pinned/);
+    assert.deepEqual(filesOf(kit), before);
+  });
 });
 
 describe('runCli: audit --team, from the reviewer on a team above (T2312)', () => {
