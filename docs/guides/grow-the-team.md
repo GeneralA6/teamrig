@@ -183,9 +183,12 @@ sequenceDiagram
   With `open.teamWindow: true`, each tab of the team's sessions opens in a Windows Terminal window of the team's
   own (`teamrig-<team>`), apart from other teams' tabs, a restore after a reboot included.
   It refuses any session but the lead when the host has no room for one more (`hire --yes` then hires it home):
-  free memory over `delivery.queue.memoryFloorMb` and the commit charge within `open.headroom.commitMaxPct` (92%),
-  with the session counted at the median running one (what it holds resident against free memory, what it
-  committed against the commit charge), else `open.headroom.sessionMb` (1200 MB). A session
+  free memory over `open.headroom.floorMb` (unset: `delivery.queue.memoryFloorMb` plus `heavyReserveMb`, so a heavy
+  queued step still has room) and the commit charge within `open.headroom.commitMaxPct` (92%), with the session
+  counted at the median running one (what it holds resident against free memory, what it committed against the
+  commit charge), else `open.headroom.sessionMb` (1200 MB). Each tab opened holds that MB for
+  `open.headroom.loadMinutes` (5) while it loads, so tabs opened one after another, from any team, never count the
+  same free memory. A session
   `teamrig close` ended goes on in its last Claude Code session, in the folder it ran in (a worktree too), when that
   is small and recent enough, else opens fresh; `state/session-log.jsonl` logs each close and reopen, and a reboot's
   restore leaves a closed session closed. `teamrig close` (the lead) ends only a session

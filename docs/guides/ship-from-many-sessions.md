@@ -51,9 +51,9 @@ and a deploy's commands and checks: your terminal and apps win the CPU while it 
 so a build on a busy host no longer freezes your screen.
 
 Every step, merge and deploy waits in its turn for host memory: it starts only while the host's free memory, less
-what the steps sharing the host hold, leaves `delivery.queue.memoryFloorMb` (4096) plus its own, and the commit charge
-stays under `open.headroom.commitMaxPct` (92) with its own counted, so a build no longer starts on a host about to
-run out of memory. A step's own is the most its process tree held in its latest 20 runs under the same session and
+what the steps sharing the host and the tabs still loading hold, leaves `delivery.queue.memoryFloorMb` (4096) plus its
+own, and the commit charge stays under `open.headroom.commitMaxPct` (92) with its own counted, so a build no longer
+starts on a host about to run out of memory, nor just as a tab opened. A step's own is the most its process tree held in its latest 20 runs under the same session and
 `--what`, plus a quarter: at least `heavyReserveMb` (2048) for a heavy step, else `smallReserveMb` (2048) before it
 has a run.
 
