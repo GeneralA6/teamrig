@@ -48,6 +48,7 @@ function env(
       checked.push(root);
       return Promise.resolve(root === INSTALL ? client : (placing.others?.[root] ?? INTACT));
     },
+    platform: 'linux',
     reads: () => reads,
     checks: () => checked.length,
     checked: () => checked,
@@ -397,5 +398,41 @@ describe('execGuardOutput', () => {
   it('knows every teamrig owner command the CLI has, so a call through an unknown program reads as one', () => {
     const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('owner ')).map((name) => name.slice('owner '.length));
     assert.deepEqual([...OWNER_COMMANDS].sort(), commands.sort());
+  });
+});
+
+describe('execGuardOutput: a Bash line on Windows (T2319)', () => {
+  /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
+  const bs = (n: number): string => '\\'.repeat(n);
+  const windows = (): ReturnType<typeof env> => ({ ...env(), platform: 'win32' });
+  const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
+  const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
+
+  it('refuses an owner call, a review as another session and a fed shell that bash runs behind what the line as written escapes', async () => {
+    const owner = 'teamrig exec guard: `teamrig owner note` acts as the owner';
+    const review = "teamrig exec guard: `teamrig exec approve` names --session bravo, but this tab is alpha's";
+    const fed = 'teamrig exec guard: a shell here reads its commands from a pipe';
+    for (const [line, reason] of [
+      [hiddenSeparator('teamrig owner note T1 --text x'), owner],
+      [hiddenBacktick('teamrig owner note T1 --text x'), owner],
+      [hiddenSeparator('teamrig exec approve R1 --session bravo'), review],
+      [hiddenBacktick('teamrig exec approve R1 --session bravo'), review],
+      [`echo teamrig owner next T1 ${bs(3)}| bash`, fed],
+    ] as const) {
+      const found = await verdict(bash(line), windows());
+      assert.equal(found?.decision, 'deny', line);
+      assert.ok(found?.reason.startsWith(reason), `${line}: ${found?.reason ?? ''}`);
+      assert.equal(await verdict(bash(line)), undefined, `off Windows bash runs the line as written: ${line}`);
+    }
+  });
+
+  it('leaves a line whose readings run no guarded call, or review only as the tab, and checks its client and reads the tab once', async () => {
+    for (const line of [`grep 'a${bs(4)}b' f`, hiddenSeparator('git status'), hiddenSeparator('teamrig exec approve R1 --session alpha')]) {
+      assert.equal(await verdict(bash(line), windows()), undefined, line);
+    }
+    const quiet = windows();
+    assert.equal(await verdict(bash(`teamrig exec approve R1 --session alpha --note 'a${bs(2)}b'`), quiet), undefined);
+    assert.equal(quiet.reads(), 1);
+    assert.deepEqual(quiet.checked(), [INSTALL]);
   });
 });

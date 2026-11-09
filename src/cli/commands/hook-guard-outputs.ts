@@ -168,5 +168,6 @@ export function execGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload
     installs: new ClientInstalls(clientRootOf(runtime.self.script), runtime.platform),
     search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
     checkClient: (root) => checkClient(root, runtime.files),
+    platform: runtime.platform,
   });
 }
