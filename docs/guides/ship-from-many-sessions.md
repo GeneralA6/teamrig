@@ -68,10 +68,15 @@ lock. `serial` stays the default while a team's own deploy tool may take the loc
 A repository's git hooks can wrap their checks in `teamrig queue`, so a plain `git commit` takes the host lock for
 its hook. A step started under the lock (a hook run by a merge's push, say) runs at once, as part of its
 parent, instead of waiting on itself. A pre-push hook's `queue` takes `--pre-push`: git opens the push's connection
-before the hook runs, and a host such as GitHub drops it while the checks wait. With it, the checks' pass on a clean
-tree is recorded, and a push of the same tree with the same command line reuses it at once, with no lock. When the
-checks waited over a minute for the lock, it declines the push once they pass, since its connection may have closed:
-push again, and it reuses their pass.
+before the hook runs, and a host such as GitHub drops it once it sits idle for about 6 minutes while the checks wait
+or run. With it, the checks' pass on a clean tree is recorded, and a push of the same tree with the same command line
+reuses it at once, with no lock. When the checks waited over a minute for the lock, it declines the push once they
+pass, since its connection may have closed: push again, and it reuses their pass.
+
+Checks that run long idle the connection too. `teamrig merge` keeps its push's connection open with an ssh keepalive
+every 30 seconds, unless `GIT_SSH_COMMAND`, `GIT_SSH` or the repository's `core.sshCommand` sets an ssh command of
+your own. For a plain `git push`, add `ServerAliveInterval 30` under `Host github.com` in `~/.ssh/config`. A remote
+over https uses no ssh, so neither applies to it.
 
 Each step's start and end go to the ledger, `ledger.jsonl` in `delivery.dir` (by default `deploys` in the team's
 state folder), with how long it waited, the most memory its processes held at once and the least free memory the
