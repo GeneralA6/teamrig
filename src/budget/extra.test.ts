@@ -14,6 +14,7 @@ import {
   parseExtraRecord,
   pastLimitOf,
   poolOf,
+  spentUsdOf,
   type ExtraEntry,
   type ExtraPool,
   wAtFullOf,
@@ -94,6 +95,29 @@ describe('poolOf', () => {
 
   it('never leaves less than nothing in the pool', () => {
     assert.equal(poolOf([ADD, spent(0, 0, 0), spent(60, 1, 120_000_000)], SIGHT)?.leftUsd, 0);
+  });
+
+  it("keeps the dollars spent before claude.ai's monthly counter restarts, a reading below the one before starting a new count (T997)", () => {
+    const restarted = [ADD, spent(30, 0, 0, 99), spent(4, 1, 8_000_000, 99)];
+    assert.deepEqual(poolOf(restarted, { ...SIGHT, usedPct: 99 }), {
+      addedUsd: 50,
+      spentUsd: 34,
+      leftUsd: 16,
+      wPerUsd: undefined,
+      learned: false,
+      leftW: undefined,
+    });
+  });
+});
+
+describe('spentUsdOf', () => {
+  it("is the last reading while claude.ai's counter only rises, and nothing with no reading", () => {
+    assert.equal(spentUsdOf([]), 0);
+    assert.equal(spentUsdOf([spent(0, 0, 0), spent(10, 1, 0), spent(10, 2, 0), spent(25, 3, 0)]), 25);
+  });
+
+  it("adds each count's last reading once the counter restarts, as often as it does", () => {
+    assert.equal(spentUsdOf([spent(12, 0, 0), spent(30, 1, 0), spent(0, 2, 0), spent(8, 3, 0), spent(3, 4, 0), spent(5, 5, 0)]), 30 + 8 + 5);
   });
 });
 

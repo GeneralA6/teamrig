@@ -126,9 +126,23 @@ export function fitWPerUsd(entries: readonly ExtraEntry[]): UsdRate | undefined 
 }
 
 /**
+ * The dollars the spent readings (oldest first) show spent from the pool so far. claude.ai's extra-usage counter restarts each month
+ * while the dollars put in the pool stay, so a reading below the one before starts a new count: each count's last
+ * reading adds to the total, the current count's last reading included (T997). Dollars spent between a count's last
+ * reading and its restart show in no reading, so they are not counted.
+ */
+export function spentUsdOf(spent: readonly ExtraEntry[]): number {
+  const counts = spent.reduce(
+    (sum, entry) => (entry.usd < sum.current ? { closed: sum.closed + sum.current, current: entry.usd } : { closed: sum.closed, current: entry.usd }),
+    { closed: 0, current: 0 },
+  );
+  return counts.closed + counts.current;
+}
+
+/**
  * The pool at `sight`; undefined while nothing was added. Dollars spent since the last spent reading count only while
  * the week reads 100% or more, from the later of that reading (when it is of this period) and the period's 100%
- * crossing; without either, or without a rate, the last reading stands.
+ * crossing; without either, or without a rate, the readings' dollars (`spentUsdOf`) stand.
  */
 export function poolOf(entries: readonly ExtraEntry[], sight: PoolSight): ExtraPool | undefined {
   const addedUsd = entries.reduce((sum, entry) => (entry.kind === 'add' ? sum + entry.usd : sum), 0);
@@ -141,7 +155,7 @@ export function poolOf(entries: readonly ExtraEntry[], sight: PoolSight): ExtraP
   const last = spent[spent.length - 1];
   const anchors = [last?.start === sight.start ? last.w : undefined, sight.wAtFull].filter((w): w is number => w !== undefined);
   const sinceW = sight.usedPct >= FULL_PCT && anchors.length > 0 ? Math.max(0, sight.w - Math.max(...anchors)) : 0;
-  const spentUsd = (last?.usd ?? 0) + (wPerUsd === undefined ? 0 : sinceW / wPerUsd);
+  const spentUsd = spentUsdOf(spent) + (wPerUsd === undefined ? 0 : sinceW / wPerUsd);
   const leftUsd = Math.max(0, addedUsd - spentUsd);
   return { addedUsd, spentUsd, leftUsd, wPerUsd, learned: rate !== undefined, leftW: wPerUsd === undefined ? undefined : leftUsd * wPerUsd };
 }
