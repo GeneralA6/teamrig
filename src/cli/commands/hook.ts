@@ -64,7 +64,7 @@ import { restartOrPark, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { promptSecretBlock } from './hook-prompt-secret.ts';
 import { guardLoadOf, hookTeam } from './hook-guard-load.ts';
-import { execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from './hook-guard-outputs.ts';
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
@@ -111,6 +111,24 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
     return EXIT.ok;
   }
   const output = await packageGuardOutputOf(runtime, guard, payload);
+  if (output !== '') {
+    runtime.out.stdout(output);
+  }
+  return EXIT.ok;
+}
+
+/**
+ * PreToolUse on Bash and PowerShell: asks about, or refuses as the team set, a line that writes to a database by hand
+ * (a SQL client, a database program or Node client module the team names, a team entrypoint run with its apply flag).
+ */
+export async function dbWriteGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const payload = parseJson(await runtime.readStdin());
+  const guard = await guardLoadOf(payload, runtime);
+  if (guard === undefined) {
+    return EXIT.ok;
+  }
+  const output = await dbWriteGuardOutputOf(runtime, guard, payload);
   if (output !== '') {
     runtime.out.stdout(output);
   }

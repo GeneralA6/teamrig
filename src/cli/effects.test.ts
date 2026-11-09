@@ -130,6 +130,7 @@ const EXPECTED = {
   'hook push-guard': 'internal',
   'hook package-guard': 'internal',
   'hook secret-guard': 'internal',
+  'hook db-write-guard': 'internal',
   'hook secret-redact': 'internal',
   'hook exec-guard': 'internal',
   'hook pass-record-guard': 'internal',
