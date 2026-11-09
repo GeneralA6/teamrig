@@ -310,6 +310,7 @@ function runFixture(fixture: RunFixture = {}): {
   ghWrites: string[][];
   local: FakeGate;
   renamedCallers: ReturnType<typeof mock.fn<MergeDeps['renamedCallers']>>;
+  sweep: ReturnType<typeof mock.fn<MergeDeps['sweep']>>;
 } {
   const gitCalls: string[] = [];
   const answers: Record<string, string> = {
@@ -332,6 +333,7 @@ function runFixture(fixture: RunFixture = {}): {
   const local = fakeGate(fixture.local ?? {}, line => out.push(line));
   const ghFor = mock.fn((_token: string): Gh => gh);
   const renamedCallers = mock.fn((_base: string, _tip: string, _repo: string): string | null => fixture.renamedCallers ?? null);
+  const sweep = mock.fn<MergeDeps['sweep']>(() => undefined);
   const deps: MergeDeps = {
     git: (...args) => {
       const key = args.join(' ');
@@ -346,10 +348,11 @@ function runFixture(fixture: RunFixture = {}): {
     waiter: fakeWaiter(),
     gate: local.gate,
     renamedCallers,
+    sweep,
     out: line => out.push(line),
     err: line => err.push(line),
   };
-  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers };
+  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep };
 }
 
 const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null };
@@ -446,6 +449,20 @@ test('a branch main moved past is refused before any pull request; a merge onto 
   assert.equal(await runMerge(ARGS, drifted.deps), 1);
   assert.equal(drifted.out.at(-1), 'MERGED #3 into main, now at main999');
   assert.match(drifted.err[0] ?? '', /^DRIFTED main moved just before the merge: main999 is not the tree the checks passed on abc1234/);
+});
+
+test("once merged, drifted or not, it sweeps the merged head's leftovers; a refusal sweeps nothing", async () => {
+  const merged = runFixture();
+  assert.equal(await runMerge(ARGS, merged.deps), 0);
+  assert.deepEqual(merged.sweep.mock.calls.map(call => [call.arguments[0], call.arguments[1].main]), [[BRANCH, 'main']]);
+  const drifted = runFixture({ mergedTree: 'tree-other' });
+  assert.equal(await runMerge(ARGS, drifted.deps), 1);
+  assert.equal(drifted.sweep.mock.callCount(), 1);
+  for (const fixture of [{ mainTip: MOVED }, { rounds: [[['gates', 'completed', 'failure'], ['test', 'completed', 'success']]] }] as const) {
+    const refused = runFixture(fixture);
+    assert.equal(await runMerge(ARGS, refused.deps), 1);
+    assert.equal(refused.sweep.mock.callCount(), 0);
+  }
 });
 
 test('the command turns a usage or git error into one line and exit 1', async t => {
