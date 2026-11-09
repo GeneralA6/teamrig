@@ -252,8 +252,9 @@ and asks you about one that writes: SQL that changes data or its schema through 
 `sqlite3`; the code a database program the team names in `dbWriteGuard.programs` runs, by the shape it reads (a
 document shell's `--eval` or script, a key-value client's command or Lua script); Node code that writes through a
 client module the team names in `dbWriteGuard.nodeClients`; and a team data script in `dbWriteGuard.entrypoints` run
-with its apply flag (`--apply`), whose run without it is a dry run and passes. It reads the files a line names and
-what it pipes or redirects in, and the line a container or a host runs (`kubectl exec`, `docker exec`, `ssh`). Reads
+with its apply flag (`--apply`), whose run without it is a dry run and passes. It reads the files a line names (the
+first MiB of each, never a pipe, a device or a network share) and what it pipes or redirects in, and the line a
+container or a host runs (`kubectl exec`, `docker exec`, `ssh`). Reads
 pass, and the reason names each write and the count or dry run to show you first. `dbWriteGuard.writes` (`ask` by
 default, `deny` or `allow`) sets what such a call gets, and under `prompts.hookAsks: refuse` the question is a
 refusal, so the session records the write for you and goes on. A write you approve and want reviewed runs as a
