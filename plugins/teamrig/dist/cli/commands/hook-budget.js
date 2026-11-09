@@ -7,7 +7,7 @@ import { surplusHintOf } from "../../budget/burst-lines.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { activeCut, CutLog } from "../../budget/cut.js";
 import { activeLift, LiftLog } from "../../budget/lift.js";
-import { OUTSIDE_ID } from "../../budget/measure.js";
+import { OUTSIDE_ID, outsideUsageDir } from "../../budget/measure.js";
 import { runMeter } from "../../budget/meter.js";
 import { budgetSplitOf, dailyBudgetOf } from "../../budget/parts.js";
 import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
@@ -25,7 +25,7 @@ import { holdBack } from "../../hooks/permission.js";
 import { helperLaunchReminder } from "../../rules/helper-default.js";
 import { accountWeekOn, otherTeamsOnAccount } from "../account-teams.js";
 import { teamZone } from "../kit.js";
-import { meterScaleOf } from "../stored-week.js";
+import { peerStatesOf } from "../stored-week.js";
 import { liftNamesOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 const TRANSCRIPT = '.jsonl';
@@ -72,10 +72,10 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     for (const each of roster.ids) {
         byId.set(each, (await team.load(each)).state);
     }
-    const outside = (await new UsageStore(files, join(kit.paths.usage, 'outside')).load(OUTSIDE_ID)).state;
+    const outside = (await new UsageStore(files, outsideUsageDir(kit.paths.usage)).load(OUTSIDE_ID)).state;
     const account = await accountWeekOn(runtime, budget, kit.paths, now);
-    const states = [...byId.values(), outside];
-    const week = await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), { budget, now, statusUse: account.statusUse, states });
+    const states = [...byId.values(), outside, ...(await peerStatesOf(runtime, account.peers))];
+    const week = await teamWeekOf(files, account, { budget, now, statusUse: account.statusUse, states });
     const { teamDay, todayWPerPct } = week;
     if (week.usedPct === undefined || todayWPerPct === undefined || teamDay === undefined) {
         return undefined;

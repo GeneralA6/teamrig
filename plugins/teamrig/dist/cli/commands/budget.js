@@ -17,7 +17,7 @@ import { claudeProjectsDir } from "../../budget/discover.js";
 import { ExtraLog } from "../../budget/extra.js";
 import { formatPct, formatUsd } from "../../budget/format.js";
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText } from "../../budget/lift.js";
-import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
+import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, outsideUsageDir } from "../../budget/measure.js";
 import { paceLineOfWeek } from "../../budget/pace.js";
 import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, teamPartOf } from "../../budget/parts.js";
 import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
@@ -35,12 +35,12 @@ import { NO_WORK, queuedWork, readTasks, readWork } from "../../budget/work.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { TASK_ID } from "../../register/model.js";
-import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount } from "../account-teams.js";
+import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } from "../account-teams.js";
 import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { meterScaleOf } from "../stored-week.js";
+import { peerUsageOf } from "../stored-week.js";
 import { loadTree } from "../tree.js";
 /**
  * The weekly budget from the command line: `budget` measures every session's use from the Claude Code
@@ -62,11 +62,13 @@ async function readBudget(runtime, kit, config, roster, options) {
     const now = options.recountDay === undefined ? runtime.clock.now() : options.recountDay + MS_PER_DAY - 1;
     const clock = { now: () => now };
     const { marks } = await new JsonlMarkLog(new PlainLogFile(files, kit.paths.inboxMarks)).read();
+    const account = recount ? undefined : await accountWeekOn(runtime, config.budget, kit.paths, now);
+    const peers = account === undefined ? [] : await peerMarksOf(files, account.peers);
     const measured = await measure({
         transcripts: runtime.transcripts,
         titleOf: (path) => transcriptTitleOf(runtime.transcripts, path),
         team: recount ? new MemoryUsageStore() : new UsageStore(files, kit.paths.usage),
-        outside: recount ? new MemoryUsageStore() : new UsageStore(files, join(kit.paths.usage, 'outside')),
+        outside: recount ? new MemoryUsageStore() : new UsageStore(files, outsideUsageDir(kit.paths.usage)),
         clock,
     }, {
         projectsDir: claudeProjectsDir(runtime.env, runtime.userHome),
@@ -74,21 +76,23 @@ async function readBudget(runtime, kit, config, roster, options) {
         team: kit.paths.team,
         roster,
         areaBySession: indexMarks(marks).areaBySession,
+        peers,
         subagentWeight: config.budget.subagentWeight,
         chunkBytes: CATCH_UP_CHUNK_BYTES,
         maxRuns: MAX_RUNS_PER_SESSION,
     });
-    const account = recount ? undefined : await accountWeekOn(runtime, config.budget, kit.paths, now);
-    const states = [...measured.bySession.values(), measured.outside];
+    // The account's W: the other teams' sessions on it count too, as their stores last held them (T1778).
+    const peerUsage = account === undefined ? [] : await peerUsageOf(runtime, account.peers);
+    const states = [...measured.bySession.values(), measured.outside, ...peerUsage.flatMap((peer) => peer.states)];
     const input = { budget: config.budget, now, statusUse: account?.statusUse, states };
     // A recount reads no team state, the meter log included: its rate is the configured one.
     const week = account === undefined
         ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]), readings: [] })
-        : await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), input);
+        : await teamWeekOf(files, account, input);
     const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
     const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
     const cuts = recount ? [] : (await new CutLog(files, kit.paths.cuts).read()).cuts;
-    return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts, cuts };
+    return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts, cuts, peerUsage };
 }
 /** The week and the team's usage now, for `burst`: its floor reads its sessions' use today. */
 export async function usageReadingOf(runtime, kit, config, roster) {
@@ -123,6 +127,22 @@ function groupsToday(reading, roster, split, others) {
         const lift = activeGroupLift(reading.lifts, group.id, reading.now, reading.week.usedPct);
         return { id: group.id, name: roster.nameOf(group.id) ?? group.id, sessions: group.sessions, budgetPct: group.budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, group.id, lift) };
     });
+}
+/**
+ * Another team on the account today: its sessions' use as their stores last held it and its part of the account's
+ * daily budget, from its split among the `others` beside the asking team's `split`; no part when it has none there.
+ */
+function peerToday(peer, reading, split, others) {
+    const today = formatUtcDay(new Date(reading.now));
+    const own = others.find((each) => each.team === peer.team);
+    const budgetPct = own === undefined ? undefined : teamPartOf(reading.week.allowancePct, own, [split, ...others.filter((each) => each !== own)]);
+    return {
+        team: peer.team,
+        sessions: peer.states.length,
+        w: wSince(peer.states, reading.week.todayFrom, reading.now),
+        calls: peer.states.reduce((sum, state) => sum + (state.byDay[today]?.calls ?? 0), 0),
+        budgetPct,
+    };
 }
 /**
  * The lift of session `id`, or of the group sub-lead `id` leads, by name: the leader that gave it, the sub-lead whose
@@ -246,7 +266,8 @@ export async function budget(args, runtime) {
         const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
         if (recountDay === undefined) {
             const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
-            lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, outside, behind, all, zone });
+            const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
+            lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone });
         }
         else {
             lines = recountLines(today, { week, sessions, outside, all });

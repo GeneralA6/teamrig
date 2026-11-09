@@ -51,6 +51,8 @@ export async function attributeInTree(input) {
         team: member.team,
         roster: member.roster,
         areaBySession,
+        // The sessions another team of the tree claims are filtered out above, so no peer is left to skip.
+        peers: [],
         titleOf: async (transcript) => {
             const title = await input.titleOf(transcript);
             return title !== undefined && titleClaims(input.tree, title) === 1 ? title : undefined;
