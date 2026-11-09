@@ -74,6 +74,17 @@ export interface OutsideToday {
   readonly titles: readonly string[];
 }
 
+/** Another team on the account today, from its sessions' stores as last stored (src/cli/stored-week.ts `peerUsageOf`). */
+export interface PeerToday {
+  readonly team: string;
+  /** Its roster's sessions. */
+  readonly sessions: number;
+  readonly w: number;
+  readonly calls: number;
+  /** Its part of the account's daily budget (src/budget/parts.ts `teamPartOf`); undefined when unknown. */
+  readonly budgetPct: number | undefined;
+}
+
 export interface TodayReport {
   readonly week: WeekReading;
   /** The five-hour window running now; undefined on a plan without one or once it has reset, which prints no line. */
@@ -86,6 +97,11 @@ export interface TodayReport {
   readonly groups: readonly GroupToday[];
   /** The team's spend by work class (`classRowsOf`); undefined when the register cannot be read, which prints no block. */
   readonly classes: readonly ClassRow[] | undefined;
+  /**
+   * The other teams on the account whose sessions the account's W counts (T1778), so the table's rows and the use
+   * outside them add up to the account's day; none while the team is alone on its account.
+   */
+  readonly peers: readonly PeerToday[];
   readonly outside: OutsideToday;
   /** The names of sessions whose transcripts still have unread lines. */
   readonly behind: readonly string[];
@@ -219,11 +235,11 @@ function indented(lines: readonly string[]): string[] {
 
 /**
  * Today's use as a table: the team, each sub-lead's group (its sessions' use summed), then each session, with its use
- * and daily budget in % of the week, its mark (lifted, burst, paused), its W and calls; W and calls alone while the week's W
- * is unknown.
+ * and daily budget in % of the week, its mark (lifted, burst, paused), its W and calls, then each other team on the
+ * account with its part of the account's day; W and calls alone while the week's W is unknown.
  */
 function todayTable(report: TodayReport, teamW: number, teamCalls: number): string[] {
-  const { week, sessions, groups, all } = report;
+  const { week, sessions, groups, peers, all } = report;
   const row = (who: string, w: number, calls: number, budgetPct: number | undefined, mark: string): string[] => {
     const use = [formatW(w), formatCount(calls)];
     const used = todayPctOf(w, week);
@@ -237,10 +253,11 @@ function todayTable(report: TodayReport, teamW: number, teamCalls: number): stri
     const calls = members.reduce((sum, session) => sum + session.calls, 0);
     return row(`group ${group.name} (${group.sessions.length})`, w, calls, group.budgetPct, budgetMarkOf(group.lift, false, false));
   });
+  const peerRows = peers.map((peer) => row(`team ${peer.team} (${peer.sessions})`, peer.w, peer.calls, peer.budgetPct, ''));
   if (week.wPerPct === undefined) {
-    return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...groupRows, ...rows]), ...notes])];
+    return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...groupRows, ...rows, ...peerRows]), ...notes])];
   }
-  const table = aligned([['session', 'used', 'budget', '', 'W', 'calls'], team, ...groupRows, ...rows], ['left', 'right', 'right', 'left', 'right', 'right']);
+  const table = aligned([['session', 'used', 'budget', '', 'W', 'calls'], team, ...groupRows, ...rows, ...peerRows], ['left', 'right', 'right', 'left', 'right', 'right']);
   return ['Today (UTC day), used and daily budget in % of the week:', ...indented([...table, ...notes])];
 }
 
@@ -316,12 +333,13 @@ function outsideSessionsText(outside: OutsideToday, all: boolean): string {
   return `${outside.sessions} Claude Code session${outside.sessions === 1 ? '' : 's'}${titles}`;
 }
 
-function outsideLine(outside: OutsideToday, all: boolean): string | undefined {
+/** The tabs of no team in the table: neither the team's nor, with other teams on the account, theirs. */
+function outsideLine(outside: OutsideToday, peers: readonly PeerToday[], all: boolean): string | undefined {
   if (outside.sessions === 0 && outside.w === 0) {
     return undefined;
   }
   return (
-    `Not on the team: ${outsideSessionsText(outside, all)}, ${formatW(outside.w)} W today. ` +
+    `${peers.length === 0 ? 'Not on the team' : 'Not on these teams'}: ${outsideSessionsText(outside, all)}, ${formatW(outside.w)} W today. ` +
     'A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.'
   );
 }
@@ -384,7 +402,7 @@ export function todayLines(report: TodayReport): string[] {
   if (paused !== undefined) {
     lines.push(paused);
   }
-  const outsideText = outsideLine(outside, all);
+  const outsideText = outsideLine(outside, report.peers, all);
   if (outsideText !== undefined) {
     lines.push(outsideText);
   }

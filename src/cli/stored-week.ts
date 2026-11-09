@@ -22,19 +22,30 @@ export async function readStoredUsage(runtime: CliRuntime, paths: Pick<TeamPaths
   return states;
 }
 
+/** Another team on the account and its sessions' use as last stored (`peerUsageOf`). */
+export interface PeerUsage {
+  readonly team: string;
+  /** One per session of its roster, in roster order. */
+  readonly states: readonly UsageState[];
+}
+
 /**
- * The session stores of the other teams on the account (`AccountWeek.peers`) as last stored, which the account's W
- * counts (budget/team-week.ts `teamWeekOf`, T1778). Never a peer's outside store: it holds the same use in no team as
- * the asking team's, so the account's W would count it twice.
+ * The session stores of the other teams on the account (`AccountWeek.peers`) as last stored, by team, which the
+ * account's W counts (budget/team-week.ts `teamWeekOf`, T1778). Never a peer's outside store: it holds the same use in
+ * no team as the asking team's, so the account's W would count it twice.
  */
-export async function peerStatesOf(runtime: CliRuntime, peers: readonly AccountPeer[]): Promise<UsageState[]> {
-  const byPeer = await Promise.all(
+export async function peerUsageOf(runtime: CliRuntime, peers: readonly AccountPeer[]): Promise<PeerUsage[]> {
+  return Promise.all(
     peers.map(async (peer) => {
       const store = new UsageStore(runtime.files, peer.usage);
-      return Promise.all(peer.ids.map(async (id) => (await store.load(id)).state));
+      return { team: peer.team, states: await Promise.all(peer.ids.map(async (id) => (await store.load(id)).state)) };
     }),
   );
-  return byPeer.flat();
+}
+
+/** `peerUsageOf`'s stores in one list, for a reader that sums the account's W. */
+export async function peerStatesOf(runtime: CliRuntime, peers: readonly AccountPeer[]): Promise<UsageState[]> {
+  return (await peerUsageOf(runtime, peers)).flatMap((peer) => peer.states);
 }
 
 /**

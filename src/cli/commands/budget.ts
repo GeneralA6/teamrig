@@ -39,6 +39,7 @@ import {
   todayLines,
   weekLine,
   type GroupToday,
+  type PeerToday,
   type SessionToday,
 } from '../../budget/report.ts';
 import {
@@ -71,7 +72,7 @@ import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } 
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { peerStatesOf } from '../stored-week.ts';
+import { peerUsageOf, type PeerUsage } from '../stored-week.ts';
 import { loadTree } from '../tree.ts';
 
 /**
@@ -100,6 +101,8 @@ interface Reading {
   readonly bursts: readonly BurstRecord[];
   /** The leaders' cuts, as the Stop hook reads them (src/cli/commands/hook-budget.ts); a recount reads none. */
   readonly cuts: readonly Cut[];
+  /** The other teams' session stores on the account, by team, which the week's W counts (T1778); a recount reads none. */
+  readonly peerUsage: readonly PeerUsage[];
 }
 
 interface ReadOptions {
@@ -137,8 +140,8 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
     },
   );
   // The account's W: the other teams' sessions on it count too, as their stores last held them (T1778).
-  const peerStates = account === undefined ? [] : await peerStatesOf(runtime, account.peers);
-  const states = [...measured.bySession.values(), measured.outside, ...peerStates];
+  const peerUsage = account === undefined ? [] : await peerUsageOf(runtime, account.peers);
+  const states = [...measured.bySession.values(), measured.outside, ...peerUsage.flatMap((peer) => peer.states)];
   const input = { budget: config.budget, now, statusUse: account?.statusUse, states };
   // A recount reads no team state, the meter log included: its rate is the configured one.
   const week =
@@ -148,7 +151,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
   const cuts = recount ? [] : (await new CutLog(files, kit.paths.cuts).read()).cuts;
-  return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts, cuts };
+  return { now, measured, week, weekPaths: account?.paths ?? kit.paths, lifts, bursts, cuts, peerUsage };
 }
 
 /** The week now and each team session's usage, measured up to now as `budget` measures them. */
@@ -195,6 +198,23 @@ function groupsToday(reading: Reading, roster: Roster, split: BudgetSplit, other
     const lift = activeGroupLift(reading.lifts, group.id, reading.now, reading.week.usedPct);
     return { id: group.id, name: roster.nameOf(group.id) ?? group.id, sessions: group.sessions, budgetPct: group.budgetPct, lift, ...liftNamesOf({ split, others }, reading.week.allowancePct, roster, group.id, lift) };
   });
+}
+
+/**
+ * Another team on the account today: its sessions' use as their stores last held it and its part of the account's
+ * daily budget, from its split among the `others` beside the asking team's `split`; no part when it has none there.
+ */
+function peerToday(peer: PeerUsage, reading: Reading, split: BudgetSplit, others: readonly BudgetSplit[]): PeerToday {
+  const today = formatUtcDay(new Date(reading.now));
+  const own = others.find((each) => each.team === peer.team);
+  const budgetPct = own === undefined ? undefined : teamPartOf(reading.week.allowancePct, own, [split, ...others.filter((each) => each !== own)]);
+  return {
+    team: peer.team,
+    sessions: peer.states.length,
+    w: wSince(peer.states, reading.week.todayFrom, reading.now),
+    calls: peer.states.reduce((sum, state) => sum + (state.byDay[today]?.calls ?? 0), 0),
+    budgetPct,
+  };
 }
 
 /**
@@ -322,7 +342,8 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
     if (recountDay === undefined) {
       const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
-      lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, outside, behind, all, zone });
+      const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
+      lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone });
     } else {
       lines = recountLines(today, { week, sessions, outside, all });
     }
