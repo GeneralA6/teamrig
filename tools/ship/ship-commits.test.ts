@@ -45,7 +45,13 @@ function fake(options: FakeOptions = {}): Fake {
       return args[0] === 'diff' ? (options.numstat ?? '') : 'abc1234 core: a\n';
     },
     log: (line) => logs.push(line),
-    sync: () => options.sync ?? { kind: 'current', sets: '0.134.0' },
+    takeBack: (chunks, base) => {
+      events.push(`take back ${chunks.length} chunk(s) since ${base}`);
+    },
+    sync: () => {
+      events.push('sync');
+      return options.sync ?? { kind: 'current', sets: '0.134.0' };
+    },
     buildSteps: () => [['tools/build/bundle.ts']],
     proveTree: () => {
       events.push('prove');
@@ -66,10 +72,12 @@ function fake(options: FakeOptions = {}): Fake {
 const committed = (subject: string, body: string, ...extra: string[]): string =>
   ['git commit -q -s -m', subject, '-m', body, ...extra.flatMap((line) => ['-m', line]), '-m', TRAILER].join(' ');
 
-test('typechecks, runs the coverage gate, commits each chunk, builds and proves the tree, and stops there without --merge', async () => {
+test('takes back an earlier run first, then syncs, typechecks, runs the coverage gate, commits each chunk, builds and proves the tree, and stops there without --merge', async () => {
   const { deps, events } = fake();
   assert.equal(await shipCommits(ARGS, CHUNKS, deps), 0);
   assert.deepEqual(events, [
+    'take back 2 chunk(s) since origin/main',
+    'sync',
     TSC,
     'node tools/ci/coverage-cli.ts',
     'git add -- src/a.ts',

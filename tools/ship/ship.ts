@@ -7,6 +7,7 @@ import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
 import { mergeCommand } from './merge.ts';
 import { pushOwnBranch } from './push.ts';
 import { profileFor, readProfiles, slugOf } from './repos.ts';
+import { takeBackEarlierRun } from './rerun.ts';
 import { shipCommand } from './ship-command.ts';
 import { DIST, type ShipDeps } from './ship-commits.ts';
 import { syncToMain } from './sync.ts';
@@ -42,6 +43,9 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     node: (args) => run(process.execPath, ['--disable-warning=ExperimentalWarning', ...args]),
     git,
     log,
+    takeBack: (chunks, base) => {
+      takeBackEarlierRun({ git: gitLine, log }, chunks, base);
+    },
     sync: () =>
       syncToMain(
         { git: gitLine, readText: (path) => readFileSync(join(repo, path), 'utf8'), writeText: (path, text) => writeFileSync(join(repo, path), text), log },
