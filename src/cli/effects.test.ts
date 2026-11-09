@@ -51,6 +51,7 @@ const EXPECTED = {
   meet: 'write',
   'owner note': 'write',
   'owner next': 'write',
+  'owner wake': 'write',
   decisions: 'read',
   'decisions asked': 'write',
   'exec request': 'write',

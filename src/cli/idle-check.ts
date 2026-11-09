@@ -71,8 +71,8 @@ export interface IdleOptions {
   readonly project: string;
 }
 
-/** Why a tab's last turn keeps it open, by where it stands. */
-const ACTIVITY_CLAUSES: Readonly<Record<Exclude<TabActivity, 'idle'>, string>> = {
+/** Why a tab's last turn keeps it open (or refuses the owner's wake), by where it stands. */
+export const TAB_ACTIVITY_CLAUSES: Readonly<Record<Exclude<TabActivity, 'idle'>, string>> = {
   turn: 'is in a turn',
   call: 'is at a tool call (running, or waiting on a permission or an answer)',
   question: 'put a decision to the person and waits for the answer',
@@ -114,6 +114,25 @@ async function measuredTranscriptOf(runtime: CliRuntime, record: SessionRecord, 
   }
   const found = await findTranscript(runtime.transcripts, projectsDir, project, record.claudeSession);
   return found === undefined ? undefined : measuredOf(await measureTranscript(runtime, found));
+}
+
+/** The last REPLY_TAIL_BYTES of `transcript`, and whether that cut off its start. */
+async function transcriptTailOf(runtime: CliRuntime, transcript: string): Promise<{ readonly tail: string; readonly cut: boolean }> {
+  const tail = (await runtime.files.readTail(transcript, REPLY_TAIL_BYTES)) ?? '';
+  return { tail, cut: Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES };
+}
+
+/**
+ * Where `record`'s tab stands now, read from its transcript's last turn as the idle check reads it: undefined when no
+ * transcript of its Claude Code session is found.
+ */
+export async function tabActivityNow(runtime: CliRuntime, record: SessionRecord, project: string): Promise<TabActivity | undefined> {
+  const last = await measuredTranscriptOf(runtime, record, claudeProjectsDir(runtime.env, runtime.userHome), project);
+  if (last === undefined) {
+    return undefined;
+  }
+  const { tail, cut } = await transcriptTailOf(runtime, last.transcript);
+  return tabActivityOf(tail, cut);
 }
 
 function measuredOf(last: LastSession): MeasuredSession | undefined {
@@ -166,8 +185,7 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   if (last === undefined) {
     return keep(`has no transcript of Claude Code session ${record.claudeSession} in any project folder, so its idle time is unknown`);
   }
-  const tail = (await runtime.files.readTail(last.transcript, REPLY_TAIL_BYTES)) ?? '';
-  const cut = Buffer.byteLength(tail, 'utf8') >= REPLY_TAIL_BYTES;
+  const { tail, cut } = await transcriptTailOf(runtime, last.transcript);
   // A tail with no timed own entry falls back to the file's last change, which is never earlier.
   const idleMinutes = Math.floor((now - (lastTurnAtOf(tail, cut) ?? last.changedAt)) / MINUTE_MS);
   const needed = config.open.headroom.closeIdleMinutes;
@@ -180,7 +198,7 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
   }
   const activity = tabActivityOf(tail, cut);
   if (activity !== 'idle') {
-    return keep(ACTIVITY_CLAUSES[activity]);
+    return keep(TAB_ACTIVITY_CLAUSES[activity]);
   }
   if ((await readRunningWork(runtime.files, last.transcript, now)) > 0) {
     return keep('still runs background work its transcript shows');

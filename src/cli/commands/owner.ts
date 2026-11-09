@@ -24,16 +24,16 @@ export function namesOf(label: string | undefined): Names {
 }
 
 /** The pane button that runs each owner action. */
-const BUTTON = { note: 'Note', next: 'Next' } as const;
+const BUTTON = { note: 'Note', next: 'Next', wake: 'Wake' } as const;
 
 /**
- * Refuses an owner action where Claude Code set CLAUDECODE: an agent's tool call, a script one runs, a hook command
- * (T1780). The exec guard reads only the tool call's own line, so a script the agent writes slips past it; this
+ * Refuses an owner action (note, next, wake) where Claude Code set CLAUDECODE: an agent's tool call, a script one
+ * runs, a hook command (T1780). The exec guard reads only the tool call's own line, so a script the agent writes slips past it; this
  * refusal holds there too. The pane's buttons and a typed `/teamrig owner ..` run through the plugin's mod with Claude
  * Code's own environment, which lacks the variable, so the owner's routes still write. A script that unsets it still
  * passes: every session runs as the same OS user as the owner.
  */
-function refuseUnderClaudeCode(runtime: CliRuntime, command: keyof typeof BUTTON): void {
+export function refuseUnderClaudeCode(runtime: CliRuntime, command: keyof typeof BUTTON): void {
   const set = runtime.env[ENV.claudeCode];
   if (set !== undefined && set !== '') {
     throw new RefusedError(
