@@ -1477,6 +1477,41 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
       assert.deepEqual(toLead.ok ? toLead.value.card : undefined, TEST_CARD, "a wait moved to the lead's decision drops it");
     });
   });
+
+  describe('a hand step typed into a card asking the owner (T2312, core rule 11)', () => {
+    const reviewed = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'bravo' } }));
+    const pasteCard: DecisionCard = { ...TEST_OWNER_CARD, recommend: 'Yes: one paste adds the key file to the guard paths' };
+    const refusal =
+      "--recommend hands owner a step as text (an ask to paste): core rule 11 hands owner a step only as a file its auditor read. " +
+      `Write the step to a .ps1, .sh, .md file, have it audited (the security reviewer (bravo), with teamrig audit ${TASK.id} --file <path>) and give --run <path>; ` +
+      'a card that hands no step says so without code or an ask to paste ("the line is in")';
+
+    it("refuses code or an ask to paste in a card on the owner's decision or approval, naming rule 11 and who audits", () => {
+      assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: pasteCard }, reviewed)), refusal);
+      assert.match(
+        error(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, options: [], question: 'Add { "prompts": true } to the config?' } }, reviewed)),
+        /^--question hands owner a step as text \(a JSON object\): core rule 11/,
+      );
+      assert.match(error(set(TASK, { waits: OWNER_DECISION, card: pasteCard })), /have it audited \(any session of this team but its owner \(no roles\.securityReviewer is set\), with teamrig audit/);
+    });
+
+    it('refuses a card kept from an older row too, as it still reaches the owner', () => {
+      assert.equal(error(set({ ...ASKED, card: pasteCard }, { waits: OWNER_DECISION, note: 'asked again' }, reviewed)), refusal);
+    });
+
+    it("takes it on a leader's wait, which no human reads, and with the step handed as an audited run file", () => {
+      assert.equal(set(TASK, { waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, recommend: pasteCard.recommend } }, reviewed).ok, true);
+      const step = '/w/tasks/T1/add-key.ps1';
+      const sha256 = 'a'.repeat(64);
+      const audited: Task = { ...TASK, audits: [{ path: step, sha256, by: 'bravo', at: '2030-01-08T09:00:00.000Z' }] };
+      const handed = set(audited, { waits: OWNER_DECISION, card: pasteCard, run: { path: step, sha256 } }, reviewed);
+      assert.deepEqual(handed.ok ? handed.value.card : undefined, { ...pasteCard, run: step });
+    });
+
+    it('takes a card that names a past paste', () => {
+      assert.equal(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, byDefault: 'the hand-pasted settings line stays' } }, reviewed).ok, true);
+    });
+  });
 });
 
 describe("RegisterPolicy.setStatus: a time wait in the team's zone", () => {

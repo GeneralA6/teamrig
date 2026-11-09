@@ -1,5 +1,5 @@
 import { isRecord } from '../core/guards.ts';
-import { auditOf, runFileDrift, runLineOf, shortSha256, type HandStepAudit, type RunFiles } from './hand-step.ts';
+import { auditOf, handStepShapeOf, runFileDrift, runLineOf, shortSha256, type HandStepAudit, type RunFiles } from './hand-step.ts';
 
 /**
  * A decision card (T514): what a task waiting on a decision or an approval asks, written so whoever decides needs
@@ -139,19 +139,51 @@ export function namedTaskIds(texts: readonly string[]): string[] {
  * approval none or as many.
  */
 export function cardProblem(card: DecisionCard, decision: boolean): string | undefined {
-  const parts: readonly [string, string][] = [
+  const thin = typedParts(card).find(([, text]) => plainWords(text) < CARD_MIN_WORDS);
+  if (thin !== undefined) {
+    return `${thin[0]} says "${thin[1]}": give at least ${CARD_MIN_WORDS} plain words besides task ids, so it reads without the task list`;
+  }
+  if (card.options.length === 1 || (decision && card.options.length < MIN_DECISION_OPTIONS)) {
+    return `--options lists ${card.options.length}: a decision lists at least ${MIN_DECISION_OPTIONS}, separated by ${OPTION_SEPARATOR}${decision ? '' : '; an approval lists none or as many'}`;
+  }
+  return undefined;
+}
+
+/**
+ * The parts of a card its writer types, each with the flag that wrote it, for the refusals that name one: the
+ * question, why asked, each option, the recommendation and the default. The gate is left out, as it is one of the
+ * names the config gives, and the run file, as it is a path.
+ */
+function typedParts(card: DecisionCard): readonly (readonly [string, string])[] {
+  return [
     ['--question', card.question],
     ...(card.whyAsk === undefined ? [] : [[WHY_ASK_FLAG, card.whyAsk] satisfies [string, string]]),
     ...card.options.map((option, index): [string, string] => [`--options choice ${index + 1}`, option]),
     ['--recommend', card.recommend],
     ['--default', card.byDefault],
   ];
-  const thin = parts.find(([, text]) => plainWords(text) < CARD_MIN_WORDS);
-  if (thin !== undefined) {
-    return `${thin[0]} says "${thin[1]}": give at least ${CARD_MIN_WORDS} plain words besides task ids, so it reads without the task list`;
+}
+
+/** A card part that hands the human a hand step in its text (T2312, core rule 11): the flag that wrote it, and the step's shape in words. */
+export interface TypedHandStep {
+  readonly flag: string;
+  readonly shape: string;
+}
+
+/**
+ * The first typed part of a card that holds a hand step in its text, code or an ask to paste (handStepShapeOf);
+ * undefined when none does. A card that hands its step as a run file is not asked, as the run line is where the
+ * step is, and its text may name it.
+ */
+export function typedHandStep(card: DecisionCard): TypedHandStep | undefined {
+  if (card.run !== undefined) {
+    return undefined;
   }
-  if (card.options.length === 1 || (decision && card.options.length < MIN_DECISION_OPTIONS)) {
-    return `--options lists ${card.options.length}: a decision lists at least ${MIN_DECISION_OPTIONS}, separated by ${OPTION_SEPARATOR}${decision ? '' : '; an approval lists none or as many'}`;
+  for (const [flag, text] of typedParts(card)) {
+    const shape = handStepShapeOf(text);
+    if (shape !== undefined) {
+      return { flag, shape };
+    }
   }
   return undefined;
 }

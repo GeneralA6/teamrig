@@ -37,6 +37,28 @@ export function runLineOf(path: string): string | undefined {
   return kind === undefined ? undefined : RUN_LINES[kind](path);
 }
 
+/** The PowerShell cmdlets that write, move or remove a file, an item or a setting: a hand step when a card holds one. */
+const WRITE_CMDLETS = ['Set-Content', 'Add-Content', 'Clear-Content', 'Out-File', 'New-Item', 'Set-Item', 'Copy-Item', 'Move-Item', 'Rename-Item', 'Remove-Item', 'New-ItemProperty', 'Set-ItemProperty', 'Remove-ItemProperty'];
+
+/**
+ * The shapes a hand step takes when it is typed into text for the human instead of handed as an audited file (T2312,
+ * core rule 11), each named in words: code (a backticked span, PowerShell's call operator, a write cmdlet, a JSON
+ * object) or an ask to paste. The ask counts as much as the code: the card of the incident behind the rule held no
+ * code, only "one paste adds the exact file ... to secretGuard.paths". `pasted` names a past paste, so it passes.
+ */
+const HAND_STEP_SHAPES: readonly (readonly [string, RegExp])[] = [
+  ['a backticked span', /`[^`]+`/],
+  ["PowerShell's call operator (& ')", /&\s*['"]/],
+  ['a PowerShell write cmdlet', new RegExp(`\\b(?:${WRITE_CMDLETS.join('|')})\\b`, 'i')],
+  ['a JSON object', /\{\s*"[^"]*"\s*:/],
+  ['an ask to paste', /\bpast(?:e|es|ing)\b/i],
+];
+
+/** The hand step shape `text` holds, in words, the first that HAND_STEP_SHAPES lists; undefined when it holds none. */
+export function handStepShapeOf(text: string): string | undefined {
+  return HAND_STEP_SHAPES.find(([, shape]) => shape.test(text))?.[0];
+}
+
 /** What an audit pins: a hand step file by its absolute path, at the sha256 of its bytes (lowercase hex). */
 export interface AuditPin {
   readonly path: string;
