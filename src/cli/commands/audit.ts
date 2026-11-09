@@ -1,9 +1,9 @@
-import { resolve } from 'node:path';
 import { formatAddress } from '../../core/address.ts';
-import { sha256Hex, type AuditPin } from '../../register/hand-step.ts';
+import { shortSha256, type AuditPin } from '../../register/hand-step.ts';
 import type { Verdict } from '../../register/policy.ts';
 import type { WriteResult } from '../../register/register.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
+import { handStepPin } from '../hand-step-file.ts';
 import { callerOf, taskIdOf } from '../inputs.ts';
 import { findTeam, openKit, sessionIdOf } from '../kit.ts';
 import { RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -11,22 +11,9 @@ import { report } from './register.ts';
 import { openTeam, teamOf, tellLine, type Team } from './register-team.ts';
 import { treeCallerOf } from './team-ask.ts';
 
-/** How many characters of a pin's sha256 the lines about it show, as the card's run line does (T2312). */
-const SHORT_SHA256 = 8;
-
-/** The pin of the hand step file `--file` names, read from the caller's folder: its absolute path and the sha256 of its bytes. */
-async function pinOf(args: ParsedArgs, runtime: CliRuntime): Promise<AuditPin> {
-  const path = resolve(runtime.cwd, requiredFlag(args.flags, 'file'));
-  const bytes = await runtime.fileBytes.read(path);
-  if (bytes === undefined) {
-    throw new RefusedError(`no file ${path}`);
-  }
-  return { path, sha256: sha256Hex(bytes) };
-}
-
 /** The line the task's owner reads: who audited which file at which sha256, and that an edit to it needs a new audit. */
 function auditedNotice(by: string, id: string, pin: AuditPin): string {
-  return `${by} audited the hand step ${pin.path} for ${id} at sha256 ${pin.sha256.slice(0, SHORT_SHA256)}; an edit to it needs a new audit (core rule 11)`;
+  return `${by} audited the hand step ${pin.path} for ${id} at sha256 ${shortSha256(pin.sha256)}; an edit to it needs a new audit (core rule 11)`;
 }
 
 /**
@@ -78,7 +65,7 @@ export async function audit(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const caller = callerOf(args.flags, runtime.env);
   const note = args.flags.get('note');
   const child = args.flags.get('team');
-  const pin = await pinOf(args, runtime);
+  const pin = await handStepPin(runtime, 'file', requiredFlag(args.flags, 'file'));
   if (child !== undefined) {
     return auditBelow(runtime, caller, child, id, pin, note);
   }
