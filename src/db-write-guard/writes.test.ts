@@ -225,10 +225,18 @@ describe('dbWritesOf, each client, runner and option it reads', () => {
     assert.deepEqual(await writes(`node - read.cjs <<'EOF'\n${DOC_FIX}EOF`, scripts()), ['node runs deleteMany']);
   });
 
-  it('finds a document-shell file named by -f, and reads no file named by a connection string', async () => {
-    const ctx = context({ [join(APP, 'fix-rows')]: 'db.rows.deleteMany({})', [join(APP, 'db.example.com', 'app')]: 'db.rows.drop()' });
+  it('finds a document-shell file named by -f, and reads no file named by a connection string, an option or an address', async () => {
+    // Files at the words' written text: reading an option or an address word as a script would find these writes.
+    const ctx = context({
+      [join(APP, 'fix-rows')]: 'db.rows.deleteMany({})',
+      [join(APP, 'db.example.com', 'app')]: 'db.rows.drop()',
+      [join(APP, '--quiet.js')]: 'db.rows.drop()',
+      [join(APP, 'scheme://h/app.js')]: 'db.rows.drop()',
+    });
     assert.deepEqual(await writes('docsh -f fix-rows', ctx), ['docsh runs deleteMany']);
     assert.deepEqual(await writes('docsh db.example.com/app --eval "db.a.find()"', ctx), []);
+    assert.deepEqual(await writes('docsh --quiet.js', ctx), []);
+    assert.deepEqual(await writes('docsh scheme://h/app.js', ctx), []);
   });
 
   it('finds a key-value command past valued options, in any case, and an EVAL in lower case', async () => {
