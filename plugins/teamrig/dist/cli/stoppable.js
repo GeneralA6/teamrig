@@ -24,10 +24,20 @@ export async function unlessStopped(stop, running) {
         throw error;
     }
 }
+/**
+ * What the session does with a run its launching shell's end stopped (T2301). Claude Code's low-memory stop notice
+ * says to get a human's OK before re-running, yet a queued step, merge or deploy waits for free memory and the host
+ * lock itself, so that OK adds nothing (rule 7). One stopped on purpose stays stopped, and one killed partway may
+ * have changed stored data, whose hand-run change is the owner's (rule 11).
+ */
+export function rerunAdvice(ran) {
+    const partway = ran === 'partway' ? ' or its part run changed stored data' : '';
+    return `re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose${partway}`;
+}
 /** The end of a run whose launching shell ended while it waited for the host lock: said, and STOPPED, as nothing ran. */
 export function stoppedWhileWaiting(runtime, say, watching) {
     say(`its launching shell ended (${endedText(watching)}) while it waited: no one waits for it any more`);
-    runtime.out.stdout('STOPPED before the host lock was free: nothing ran');
+    runtime.out.stdout(`STOPPED before the host lock was free: nothing ran; ${rerunAdvice('nothing')}`);
     return EXIT.failed;
 }
 /** `stop`, or the first of `stop` and `own` to abort when the caller passed its own. */
