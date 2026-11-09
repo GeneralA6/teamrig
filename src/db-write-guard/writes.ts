@@ -103,7 +103,32 @@ const SQLITE_VALUED: ReadonlySet<string> = new Set([
  * the guard cannot read, and code only known when the line runs, raise no doubt.
  */
 export async function dbWritesOf(command: string, context: DbWriteContext): Promise<DbWrite[]> {
-  return writesOfLine(command, context, { readText: (path) => context.files.read(path), elsewhere: false, inherited: [] });
+  return writesOfLine(command, context, { readText: (path) => readLocal(context.files, path), elsewhere: false, inherited: [] });
+}
+
+/**
+ * How much of a file a line names is read for its writes. A script or a SQL file is far smaller, while a dump fed to
+ * a client (`psql app < dump.sql`) can be gigabytes, which the hook would hold in memory past its timeout. A write
+ * further into a file is missed.
+ */
+const READ_LIMIT_BYTES = 1024 * 1024;
+
+/** Two leading separators: a network share (`\\host\share`) or a Windows device path, which opening reaches before the human answers. */
+const NETWORK_PATH = /^[\\/]{2}/;
+
+/**
+ * The first MiB of a file the host holds; undefined for a path on a network share, for no regular file (a pipe, a
+ * device, a folder) and for a file it cannot read, which raises no doubt.
+ */
+async function readLocal(files: Files, path: string): Promise<string | undefined> {
+  if (NETWORK_PATH.test(path)) {
+    return undefined;
+  }
+  try {
+    return await files.readHead(path, READ_LIMIT_BYTES);
+  } catch {
+    return undefined;
+  }
 }
 
 async function writesOfLine(command: string, context: DbWriteContext, scan: Scan): Promise<DbWrite[]> {
