@@ -28,6 +28,8 @@ export interface OwnerBatch {
   readonly batch: DecisionBatch;
   /** For a child team, the lead at its tree's root (TeamTree.ownerLeadAbove); undefined for a root team, whose own lead asks it. */
   readonly askedBy: SessionAddress | undefined;
+  /** The team label the batch gives `own`'s waits (OwnerWait.team): undefined when `own`'s register is the batch's own. */
+  readonly ownTeam: string | undefined;
 }
 
 /**
@@ -45,7 +47,7 @@ export async function ownerBatchOf(runtime: CliRuntime, own: BatchedTeam, loaded
   const [first = own, ...rest] = rolled.map((team) => (team.team === own.team ? own : batchedOf(team)));
   const registers: DecisionRegister[] = rest.map((team) => registerOf(runtime, team, team.team));
   const batch = await teamDecisions(runtime.files, first.paths, first.config, [registerOf(runtime, first, undefined), ...registers], now);
-  return { batch, askedBy };
+  return { batch, askedBy, ownTeam: first.team === own.team ? undefined : own.team };
 }
 
 function batchedOf({ team, config, paths, snapshot, elsewhere, ranking }: RolledTeam): BatchedTeam {
@@ -54,5 +56,14 @@ function batchedOf({ team, config, paths, snapshot, elsewhere, ranking }: Rolled
 
 /** A register of the batch, labelled with its team, `label`, unless it is the batch's own. */
 function registerOf(runtime: CliRuntime, { config, tasks, elsewhere, ranking }: BatchedTeam, label: string | undefined): DecisionRegister {
-  return { team: label, tasks, ownerMarker: config.register.ownerSource, requireGate: config.register.requireDecisionCard, zone: teamZone(config, runtime), elsewhere, ranking };
+  return {
+    team: label,
+    tasks,
+    ownerMarker: config.register.ownerSource,
+    requireGate: config.register.requireDecisionCard,
+    zone: teamZone(config, runtime),
+    elsewhere,
+    ranking,
+    focus: config.focus,
+  };
 }

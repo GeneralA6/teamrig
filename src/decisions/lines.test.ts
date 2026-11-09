@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
@@ -18,12 +19,24 @@ function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}):
   return testTask({ id, title: `Decide ${id}`, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, statusAt, ...overrides });
 }
 
-/** The view of a batch of `tasks`, with the tree it was judged on, which a new wait's timing reads. */
+/**
+ * The view of a batch of `tasks` whose Improvements day is a Wednesday (NOW is a Tuesday), with the tree it was judged
+ * on, which a new wait's timing reads.
+ */
 function viewOf(tasks: readonly Task[], config: BatchConfig = CHECKPOINTS): BatchView & { readonly tree: TaskTree } {
   const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC);
-  const batch = decisionBatch({ registers: [{ team: undefined, tasks, tree, ownerMarker: 'owner', requireGate: true }], now: NOW, askedAt: ASKED_AT, config });
+  const register = { team: undefined, tasks, tree, ownerMarker: 'owner', requireGate: true, focus: DEFAULT_FOCUS };
+  const batch = decisionBatch({ registers: [register], now: NOW, askedAt: ASKED_AT, config, improvementsDay: 'wed' });
   return { batch, tree, ownerMarker: 'owner', command: 'teamrig', lead: 'lead', askedBy: undefined, zone: TimeZone.UTC };
 }
+
+/** A new wait of the batch's own register. */
+function ownOf(task: Task): { readonly task: Task; readonly team: undefined } {
+  return { task, team: undefined };
+}
+
+const IMPROVEMENTS = { workClass: 'Improvements' } as const;
+const WEEKLY_LINE = 'IMPROVEMENTS 1 held for the weekly Improvements batch on wed UTC (focus.improvementsDay): T5';
 
 describe('the decisions listing', () => {
   it('heads with the counts and when the next batch is, alone when nothing waits on the owner', () => {
@@ -54,6 +67,14 @@ describe('the decisions listing', () => {
     assert.deepEqual(lines.slice(-1), ['  app/lead asks owner these in its batches and records each answer on its task as decided: "owner decided: <decision>".']);
     assert.ok(!lines.some((line) => line.includes('decisions asked')), lines.join('\n'));
   });
+
+  // T2113: the waits held for the weekly Improvements batch, named after the head.
+  it('names after the head the waits held for the weekly Improvements batch, alone or before the ones to ask', () => {
+    const held = ownerWait('T5', '2030-01-08T09:00:00.000Z', IMPROVEMENTS);
+    assert.deepEqual(batchLines(viewOf([held])), ['DECISIONS 0 to ask owner, 0 asked and past due; the next batch Tue 01-08 13:03 UTC', WEEKLY_LINE]);
+    const lines = batchLines(viewOf([held, ownerWait('T1', '2030-01-08T09:00:00.000Z')]));
+    assert.deepEqual(lines.slice(0, 3), ['DECISIONS 1 to ask owner, 0 asked and past due; the next batch Tue 01-08 13:03 UTC', WEEKLY_LINE, 'NOT YET ASKED']);
+  });
 });
 
 describe("the lead's check line", () => {
@@ -70,17 +91,17 @@ describe('when the owner hears of a new wait', () => {
   it('at once when it is due before the next batch, in the batch due now, else in the next batch', () => {
     const urgent = ownerWait('T1', '2030-01-08T09:50:00.000Z', { due: '2030-01-08 12:00' });
     const view = viewOf([urgent]);
-    const atOnce = waitTiming(view.batch, urgent, view.tree, NOW);
+    const atOnce = waitTiming(view.batch, ownOf(urgent), view.tree, NOW);
     assert.deepEqual(atOnce, { kind: 'at-once', due: Date.parse('2030-01-08T12:00:00Z') });
     assert.equal(timingText(atOnce, TimeZone.UTC), 'AT ONCE, due Tue 01-08 12:00 UTC before the next batch');
     assert.equal(timingText(atOnce, JERUSALEM), 'AT ONCE, due Tue 01-08 14:00 IST before the next batch', "on the team's clock");
 
     const calm = ownerWait('T2', '2030-01-08T09:50:00.000Z');
     const counted = viewOf([ownerWait('T3', '2030-01-08T09:00:00.000Z'), calm], { batchTimesUtc: CHECKPOINTS.batchTimesUtc, batchAt: 2 });
-    assert.equal(timingText(waitTiming(counted.batch, calm, counted.tree, NOW), TimeZone.UTC), 'BATCH DUE: 2 not yet asked, decisions.batchAt is 2');
+    assert.equal(timingText(waitTiming(counted.batch, ownOf(calm), counted.tree, NOW), TimeZone.UTC), 'BATCH DUE: 2 not yet asked, decisions.batchAt is 2');
 
     const next = viewOf([calm]);
-    const later = waitTiming(next.batch, calm, next.tree, NOW);
+    const later = waitTiming(next.batch, ownOf(calm), next.tree, NOW);
     assert.equal(timingText(later, TimeZone.UTC), 'asked in the next batch Tue 01-08 13:03 UTC');
     assert.equal(timingText(later, JERUSALEM), 'asked in the next batch Tue 01-08 15:03 IST');
   });
@@ -88,7 +109,17 @@ describe('when the owner hears of a new wait', () => {
   it('asks a wait due within a day at once when no batch time is set', () => {
     const today = ownerWait('T1', '2030-01-08T09:50:00.000Z', { due: '2030-01-08' });
     const view = viewOf([today], { batchTimesUtc: [], batchAt: 5 });
-    assert.equal(waitTiming(view.batch, today, view.tree, NOW).kind, 'at-once');
+    assert.equal(waitTiming(view.batch, ownOf(today), view.tree, NOW).kind, 'at-once');
     assert.equal(batchHead(viewOf([], { batchTimesUtc: [], batchAt: 5 }).batch, 'owner', TimeZone.UTC), 'DECISIONS 0 to ask owner, 0 asked and past due; the next batch at the daily meeting');
+  });
+
+  // T2113: the batch asks no held wait, so the lead's line says so even for one due before the next batch.
+  it('in the weekly Improvements batch while the batch holds it there, even when due before the next batch', () => {
+    const held = ownerWait('T5', '2030-01-08T09:50:00.000Z', { ...IMPROVEMENTS, due: '2030-01-08 12:00' });
+    const view = viewOf([held]);
+    const weekly = waitTiming(view.batch, ownOf(held), view.tree, NOW);
+    assert.deepEqual(weekly, { kind: 'weekly', day: 'wed' });
+    assert.equal(timingText(weekly, TimeZone.UTC), 'asked in the weekly Improvements batch on wed UTC (focus.improvementsDay)');
+    assert.equal(waitTiming(view.batch, { task: held, team: 'web' }, view.tree, NOW).kind, 'at-once', "web's T5 is another task than the batch's own T5");
   });
 });

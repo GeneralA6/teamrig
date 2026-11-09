@@ -1,7 +1,8 @@
+import type { Weekday } from '../config/types.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { cardFacts, laterLine } from '../meeting/agenda.ts';
-import type { Task } from '../register/fold.ts';
 import type { TaskTree } from '../register/tree.ts';
+import { taskLabel } from '../register/views.ts';
 import { dueBeforeNextBatch, nextBatchText, triggerText, type BatchTrigger, type DecisionBatch, type OwnerWait } from './batch.ts';
 
 /** What `decisions` prints a batch with. */
@@ -23,15 +24,27 @@ export function batchHead(batch: DecisionBatch, ownerMarker: string, zone: TimeZ
   return `DECISIONS ${batch.pending.length} to ask ${ownerMarker}, ${batch.overdue.length} asked and past due; ${when}`;
 }
 
+/** `the weekly Improvements batch on wed UTC (focus.improvementsDay)`. */
+function weeklyBatchText(day: Weekday): string {
+  return `the weekly Improvements batch on ${day} UTC (focus.improvementsDay)`;
+}
+
+/** `IMPROVEMENTS 2 held for the weekly Improvements batch on wed UTC (focus.improvementsDay): T5, web/T7`; none with none held. */
+function weeklyLines(batch: DecisionBatch): string[] {
+  const labels = batch.weekly.map((wait) => taskLabel(wait.task, wait.team)).join(', ');
+  return batch.weekly.length === 0 ? [] : [`IMPROVEMENTS ${batch.weekly.length} held for ${weeklyBatchText(batch.improvementsDay)}: ${labels}`];
+}
+
 /**
- * `decisions`: the head, then each wait's card facts, the ones not yet asked before the ones asked and past due, then
- * how to ask them and record the batch and each answer; in a child team, who asks them and how each answer comes back.
+ * `decisions`: the head and the waits held for the weekly batch, then each wait's card facts, the ones not yet asked
+ * before the ones asked and past due, then how to ask them and record the batch and each answer; in a child team, who
+ * asks them and how each answer comes back.
  */
 export function batchLines(view: BatchView): string[] {
   const { batch, ownerMarker, command, lead, askedBy, zone } = view;
-  const head = batchHead(batch, ownerMarker, zone);
+  const head = [batchHead(batch, ownerMarker, zone), ...weeklyLines(batch)];
   if (batch.pending.length + batch.overdue.length === 0) {
-    return [head];
+    return head;
   }
   const facts = (waits: readonly OwnerWait[]): string[] => waits.flatMap((wait) => cardFacts(wait.task, wait.tree, wait.team));
   const how =
@@ -43,7 +56,7 @@ export function batchLines(view: BatchView): string[] {
         ]
       : [`  ${askedBy} asks ${ownerMarker} these in its batches and records each answer on its task as decided: "${ownerMarker} decided: <decision>".`];
   return [
-    head,
+    ...head,
     ...(batch.pending.length === 0 ? [] : ['NOT YET ASKED', ...facts(batch.pending)]),
     ...(batch.overdue.length === 0 ? [] : ['PAST DUE, asked before: ask again', ...facts(batch.overdue)]),
     ...how,
@@ -58,13 +71,22 @@ export function checkDecisionLines(batch: DecisionBatch, command: string, lead: 
   return [`DECISIONS batch due (${triggerText(batch.trigger, zone)}): ${batch.pending.length} to ask, ${batch.overdue.length} past due; ${command} decisions --session ${lead}`];
 }
 
-/** When the owner hears of a new wait on them: at once, in the batch due now, or in the next one. */
+/** When the owner hears of a new wait on them: at once, in the batch due now, in the next one, or in the weekly one. */
 export type WaitTiming =
   | { readonly kind: 'at-once'; readonly due: number }
   | { readonly kind: 'batch-due'; readonly trigger: BatchTrigger }
-  | { readonly kind: 'next'; readonly nextAt: number | undefined };
+  | { readonly kind: 'next'; readonly nextAt: number | undefined }
+  | { readonly kind: 'weekly'; readonly day: Weekday };
 
-export function waitTiming(batch: DecisionBatch, task: Task, tree: TaskTree, now: number): WaitTiming {
+/**
+ * When the owner hears of `wait`, labelled as the batch labels its register's waits: the weekly batch while the batch
+ * holds it there, even when it is due before the next batch (the batch asks no held wait), else by its due and the batch.
+ */
+export function waitTiming(batch: DecisionBatch, wait: Pick<OwnerWait, 'task' | 'team'>, tree: TaskTree, now: number): WaitTiming {
+  const { task, team } = wait;
+  if (batch.weekly.some((held) => held.team === team && held.task.id === task.id)) {
+    return { kind: 'weekly', day: batch.improvementsDay };
+  }
   const due = dueBeforeNextBatch(task, tree, now, batch.nextAt);
   if (due !== undefined) {
     return { kind: 'at-once', due };
@@ -74,7 +96,7 @@ export function waitTiming(batch: DecisionBatch, task: Task, tree: TaskTree, now
 
 /**
  * The end of the lead's inbox line of a new wait on the owner, its times on `zone`'s clock: `AT ONCE, due ... before
- * the next batch`, `BATCH DUE: <why>` or `asked in the next batch ...`.
+ * the next batch`, `BATCH DUE: <why>`, `asked in the next batch ...` or `asked in the weekly Improvements batch ...`.
  */
 export function timingText(timing: WaitTiming, zone: TimeZone): string {
   switch (timing.kind) {
@@ -84,5 +106,7 @@ export function timingText(timing: WaitTiming, zone: TimeZone): string {
       return `BATCH DUE: ${triggerText(timing.trigger, zone)}`;
     case 'next':
       return `asked in ${nextBatchText(timing, zone)}`;
+    case 'weekly':
+      return `asked in ${weeklyBatchText(timing.day)}`;
   }
 }

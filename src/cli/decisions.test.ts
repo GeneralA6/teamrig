@@ -137,4 +137,18 @@ describe('runCli: the owner decisions the lead asks in batches', () => {
     assert.deepEqual((await kit.run(['decisions', 'asked', '--session', 'lead'])).stdout, ['ASKED nothing: no wait on owner to ask; nothing recorded']);
     assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'decisions-asked.json')), undefined);
   });
+
+  // T2113: a decision that frees only Improvements work waits for focus.improvementsDay (wed by default; NOW is a Tuesday).
+  it('holds a wait that frees only Improvements work for the weekly batch: no trigger, and the lead is told when it is asked', async () => {
+    const kit = new CliHarness(BATCHED);
+    const weekly = 'asked in the weekly Improvements batch on wed UTC (focus.improvementsDay)';
+    assert.deepEqual(await ownerWait(kit, 'Pick the pricing tier', '--class', 'Improvements'), [`${WAIT_LINE} | ${weekly}`]);
+    await ownerWait(kit, 'Pick the launch day', '--class', 'Improvements', '--due', '2030-01-08 12:00');
+    assert.deepEqual(await decisionLines(kit, 'lead'), [], 'neither batchAt 2 nor the 12:00 due asks them before Wednesday');
+    assert.deepEqual((await kit.run(['decisions', '--session', 'lead'])).stdout, [
+      'DECISIONS 0 to ask owner, 0 asked and past due; the next batch Tue 01-08 13:03 UTC',
+      'IMPROVEMENTS 2 held for the weekly Improvements batch on wed UTC (focus.improvementsDay): T2, T1',
+    ], 'in plan order: T2 is due first');
+    assert.deepEqual(await asksOf(kit, 'lead'), [], 'a held wait due before the next batch wakes no one');
+  });
 });
