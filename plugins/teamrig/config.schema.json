@@ -561,7 +561,7 @@
           "default": []
         },
         "clientReceivers": {
-          "description": "Words that mark a key-value client in Node code, matched in any case inside a receiver's name, added to the built-in client: a call named like a shared method (set, rename, copy, append, eval, move, restore) writes only on such a receiver (cache.set, not map.set).",
+          "description": "Words that mark a key-value client in Node code, matched in any case inside a receiver's name, added to the built-in client: a call named like a shared method (set, rename, copy, append, eval, move, restore, unlink) writes only on such a receiver (cache.set, not map.set).",
           "type": "array",
           "maxItems": 8,
           "items": { "type": "string", "maxLength": 40, "pattern": "^[A-Za-z_$][\\w$]*$" },
