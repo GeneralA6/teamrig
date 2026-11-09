@@ -3,16 +3,14 @@ import { meetCardLines } from "../../meeting/meet.js";
 import { WAKE_TICK_MS } from "../../mod/wake-hand.js";
 import { meetAsk, meetPrompt } from "../../open/prompt.js";
 import { ownerCardsBySession } from "../../register/owner-waits.js";
-import { measureSessions, runningPlaces } from "../../sessions/measure.js";
-import { SessionRecordStore } from "../../sessions/record.js";
-import { WakeAsks } from "../../wake/asks.js";
 import { onePositional, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { runningRecordOf } from "../live-run.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRanking } from "../team-ranking.js";
 import { teamRegister } from "../team-register.js";
-import { postUrgentLine } from "../urgent-line.js";
+import { postAtOnce } from "../urgent-line.js";
 import { openSession, printOpenResult, terminalFlag } from "./open.js";
 import { taskTreeOf } from "./register.js";
 import { sessionProjectOf } from "./setup.js";
@@ -40,34 +38,18 @@ async function meetFactsOf(runtime, ref) {
     }
     return { found, kit, config, roster, id, name, cards, tree };
 }
-/** Whether the session's Claude Code runs now; refused when the host's processes cannot be listed. */
-async function isRunning(runtime, kit, roster, id) {
-    // Every session's record: a later one on the same process (a /clear that bound the tab to it) wins it.
-    const records = await new SessionRecordStore(runtime.files, kit.paths).readEach(roster.ids);
-    const rows = await runtime.memory.processes();
-    if (rows === undefined) {
-        throw new RefusedError(`${KIT_NAME} could not list the host's processes, so it cannot tell whether ${id} runs`);
-    }
-    return runningPlaces(measureSessions(records, rows)).some((place) => place.id === id);
-}
 /**
  * Asks the running session met to bring its cards, and returns what that prints (T2207). The owner waits on it live,
- * so the ask is due at once, not after the `wake.batchSeconds` a plain ask waits. While a meet ask from the owner
- * still waits for its tab (busy in a turn, or the next wake check not yet run), nothing more is posted: a second press
- * would only put the same line in its inbox again.
+ * so the ask is due at once, not after the `wake.batchSeconds` a plain ask waits; while one still waits, nothing more
+ * is posted (postAtOnce).
  */
 async function wakeToMeet(runtime, facts) {
     const { kit, config, id, name } = facts;
     const owner = config.register.ownerSource;
-    const text = meetAsk(id, owner);
-    const waiting = (await new WakeAsks(runtime.files, kit.paths.wakeAsks).read(id)).find(({ ask }) => ask?.from === owner && ask.text === text)?.ask;
-    if (waiting !== undefined) {
-        const at = teamZone(config, runtime).clock(new Date(waiting.at));
+    const posted = await postAtOnce(runtime, kit, config, { to: id, from: owner, text: meetAsk(id, owner) }, `${name} (session ${id})`);
+    if (posted.kind === 'waiting') {
+        const at = teamZone(config, runtime).clock(new Date(posted.at));
         return `ASKED ${name} (session ${id}) at ${at}: that ask still waits for its tab to be idle (a running turn ends first), so no second line was posted`;
-    }
-    const problem = await postUrgentLine(runtime, kit, config, { to: id, from: owner, text, atOnce: true });
-    if (problem !== undefined) {
-        throw new RefusedError(`${name} (session ${id}) was not woken: ${problem}`);
     }
     const within = Math.ceil(WAKE_TICK_MS / SECOND_MS);
     return `WAKES ${name} (session ${id}) within about ${within} s once its tab is idle (a running turn ends first): ${facts.cards.due.length} card(s) waiting on ${owner}; an inbox line asks it to bring them now`;
@@ -95,7 +77,7 @@ export async function meet(args, runtime) {
     }
     const facts = await meetFactsOf(runtime, onePositional(args, 'id|name'));
     const { found, kit, config, roster, id } = facts;
-    if (await isRunning(runtime, kit, roster, id)) {
+    if ((await runningRecordOf(runtime, kit.paths, roster.ids, id)) !== undefined) {
         runtime.out.stdout(await wakeToMeet(runtime, facts));
         return EXIT.ok;
     }

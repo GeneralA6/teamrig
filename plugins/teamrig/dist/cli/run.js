@@ -49,6 +49,7 @@ const skillsCommands = () => import("./commands/skills.js");
 const openCommands = () => import("./commands/open.js");
 const meetCommands = () => import("./commands/meet.js");
 const ownerCommands = () => import("./commands/owner.js");
+const ownerWakeCommands = () => import("./commands/owner-wake.js");
 const restartCommands = () => import("./commands/restart.js");
 const idleActCommands = () => import("./commands/idle-act.js");
 const budgetCommands = () => import("./commands/budget.js");
@@ -154,6 +155,7 @@ const COMMANDS = {
     // tool call (src/hooks/exec-guard.ts), and their writes refuse themselves under CLAUDECODE (commands/owner.ts).
     'owner note': { effect: 'write', flags: ['text'], load: async () => (await ownerCommands()).ownerNote },
     'owner next': { effect: 'write', flags: [], switches: ['preview'], load: async () => (await ownerCommands()).ownerNext },
+    'owner wake': { effect: 'write', flags: ['terminal', 'project'], load: async () => (await ownerWakeCommands()).ownerWake },
     launch: { effect: 'internal', flags: ['team', 'project', 'home', 'encoded-prompt', 'resume', 'effort'], switches: ['no-prompt'], load: async () => (await openCommands()).launch },
     restore: { effect: 'read', flags: [], load: async () => (await restoreCommands()).restorePreview },
     'restore run': { effect: 'write', flags: ['since', 'terminal', 'home'], switches: ['tab'], load: async () => (await restoreCommands()).restoreRun },
@@ -320,6 +322,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       other task on its session's list (moving that session's earlier pin), wakes the session to start
       it once the step in hand is done, and tells the lead; refused on a done, dropped or in-progress
       task, and where Claude Code sets $CLAUDECODE; --preview prints what it would do and writes nothing
+  owner wake <[team/]id|name> [--terminal <name>] [--project <dir>]   the owner wakes one session from the
+      pane: a running idle tab gets an inbox line that wakes it at once to work its list (none more while
+      that ask waits), a closed one opens in a new tab; refused on a tab in a turn, at a tool call or with
+      a decision put to the person, where wake.enabled is false, and where Claude Code sets $CLAUDECODE
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask),
       KEEP or DISCARD, and why; it only reads
