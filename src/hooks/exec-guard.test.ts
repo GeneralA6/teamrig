@@ -332,6 +332,7 @@ describe('execGuardOutput', () => {
       [bash(`node ${INSTALL}/dist/cli/main.js owner next T1 --preview`), 'teamrig owner next'],
       [bash('C:/kit/bin/teamrig owner next T1'), 'teamrig owner next'],
       [powershell('teamrig owner next web/T1'), 'teamrig owner next'],
+      [bash('teamrig owner wake web/front'), 'teamrig owner wake'],
       [bash('teamrig owner "$ACTION" T1'), 'teamrig owner'],
       [bash('teamrig owner'), 'teamrig owner'],
     ] as const) {
@@ -353,6 +354,7 @@ describe('execGuardOutput', () => {
       ['"$KIT/bin/teamrig" owner next T1', 'teamrig owner next'],
       ['$T owner "$ACTION" T1', 'teamrig owner'],
       ['node $SCRIPT owner next T1', 'teamrig owner next'],
+      ['$T owner wake alpha', 'teamrig owner wake'],
     ] as const) {
       assert.match((await verdict(bash(line), quiet))?.reason ?? '', new RegExp(`^teamrig exec guard: \`${command}\` acts as the owner;`), line);
     }
