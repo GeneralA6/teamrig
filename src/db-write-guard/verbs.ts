@@ -43,7 +43,7 @@ const KEY_VALUE_WRITES: ReadonlySet<string> = new Set([
  * Key-value writes whose names other Node objects share (a Map's `set`, fs's `unlink`, `rename`, `copy` and
  * `appendFile`'s kin, a script's `eval`): in Node code they count only on a receiver named like a client.
  */
-const SHARED_NAMES: ReadonlySet<string> = new Set(['APPEND', 'COPY', 'EVAL', 'MOVE', 'RENAME', 'RESTORE', 'SET', 'UNLINK']);
+export const SHARED_METHOD_NAMES: ReadonlySet<string> = new Set(['APPEND', 'COPY', 'EVAL', 'MOVE', 'RENAME', 'RESTORE', 'SET', 'UNLINK']);
 
 /**
  * A method call in Node code, with the name it is called on: `cache` in `this.cache.del(`, none in `.multi().del(`.
@@ -126,7 +126,7 @@ function keyValueClientWritesIn(code: string, receivers: readonly string[]): str
     if (method === undefined || !isKeyValueWrite(method)) {
       continue;
     }
-    if (!SHARED_NAMES.has(method.toUpperCase()) || (receiver !== undefined && namedLikeClient(receiver))) {
+    if (!SHARED_METHOD_NAMES.has(method.toUpperCase()) || (receiver !== undefined && namedLikeClient(receiver))) {
       found.add(method);
     }
   }

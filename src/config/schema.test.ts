@@ -21,6 +21,7 @@ import {
 } from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
+import { SHARED_METHOD_NAMES } from '../db-write-guard/verbs.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS } from '../rules/keys.ts';
 import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, DB_CLIENT_VOCABULARIES, DB_PROGRAM_SHAPES, DB_WRITES, EFFORT_LEVELS, GOALS_MODES, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, VERIFY_GATES } from './types.ts';
@@ -494,6 +495,13 @@ describe('config.schema.json', () => {
     );
     assert.equal(receiver['pattern'], CLIENT_RECEIVER_PATTERN.source);
     assert.deepEqual([entrypoint['required'], program['required'], client['required']], [['path', 'applyFlags'], ['name', 'reads'], ['module', 'vocabulary']]);
+  });
+
+  it('names every shared method the db-write guard counts only on a client-named receiver', async () => {
+    const description = nodeAt(await loadSchema(), 'dbWriteGuard.clientReceivers')['description'];
+    assert.ok(typeof description === 'string');
+    const listed = /a shared method \(([^)]*)\)/.exec(description)?.[1]?.split(', ') ?? [];
+    assert.deepEqual(listed.toSorted(), [...SHARED_METHOD_NAMES].map((name) => name.toLowerCase()).toSorted());
   });
 
   it('takes the rule conflicts the parser takes', async () => {
