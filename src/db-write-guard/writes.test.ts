@@ -151,3 +151,78 @@ describe('dbWritesOf', () => {
     assert.deepEqual(await writes("docsh --eval 'db.a.drop()'; kvcli GET k", { ...context(), dialect: 'powershell' }), ['docsh runs drop']);
   });
 });
+
+describe('dbWritesOf, each client, runner and option it reads', () => {
+  // Forward slashes on every host: a bash line reads a backslash as an escape, so `join`'s Windows path would name another file.
+  const FIX = 'scratchpad/fix-rows.cjs';
+  const KV_CODE = "const r = new (require('kvstore'))(); r.flushall()";
+  const scripts = (): DbWriteContext =>
+    context({ [join(APP, 'scratchpad', 'fix-rows.cjs')]: DOC_FIX, [join(APP, 'fix.cjs')]: DOC_FIX, [join(APP, 'read.cjs')]: DOC_READ });
+
+  it('finds the SQL writes of mariadb, the long option forms and SQL a redirect hands the client', async () => {
+    const ctx = context({ [join(APP, 'fix.sql')]: 'UPDATE rows SET a = 1;' }, NO_RULES);
+    assert.deepEqual(await writes("mariadb -e 'DELETE FROM rows'", ctx), ['mariadb runs DELETE']);
+    assert.deepEqual(await writes("psql --command 'DELETE FROM rows'; mysql --execute 'DELETE FROM rows'", ctx), ['psql runs DELETE', 'mysql runs DELETE']);
+    assert.deepEqual(await writes('psql app < fix.sql; psql app 0< fix.sql; sqlite3 app.db < fix.sql', ctx), ['psql runs UPDATE', 'psql runs UPDATE', 'sqlite3 runs UPDATE']);
+  });
+
+  it("reads sqlite3's -cmd as SQL and skips the value of its valued options, never reading a database name as SQL", async () => {
+    assert.deepEqual(await writes("sqlite3 -cmd 'DELETE FROM rows' app.db"), ['sqlite3 runs DELETE']);
+    assert.deepEqual(await writes("sqlite3 -cmd '.mode csv' backups/pre-update.db 'SELECT 1'; sqlite3 -init x.sql backups/pre-update.db 'SELECT 1'"), []);
+  });
+
+  it('finds the script a package runner runs, past its valued options and by a bin path', async () => {
+    for (const line of [
+      `pnpx tsx ${FIX}`,
+      `npx -p tsx tsx ${FIX}`,
+      `npx --package tsx tsx ${FIX}`,
+      `npx -w packages/api tsx ${FIX}`,
+      `npx ./node_modules/.bin/tsx ${FIX}`,
+    ]) {
+      assert.deepEqual(await writes(line, scripts()), [`tsx ${FIX} runs deleteMany`], line);
+    }
+  });
+
+  it("finds the script node runs past its preload and env-file options, and none under an option that runs no script", async () => {
+    for (const options of ['-r dotenv/config', '--require dotenv/config', '--import tsx', '--env-file .env']) {
+      assert.deepEqual(await writes(`node ${options} ${FIX}`, scripts()), [`node ${FIX} runs deleteMany`], options);
+    }
+    for (const option of ['--test', '--check', '-c', '--version', '-v', '--help', '-h']) {
+      assert.deepEqual(await writes(`node ${option} ${FIX}`, scripts()), [], option);
+    }
+  });
+
+  it('finds the client writes of code node evaluates or prints, named by the option without its value', async () => {
+    assert.deepEqual(await writes(`node --eval "${KV_CODE}"; node -p "${KV_CODE}"; node --print "${KV_CODE}"`), [
+      'node --eval runs flushall',
+      'node -p runs flushall',
+      'node --print runs flushall',
+    ]);
+    assert.deepEqual(await writes(`node --eval="${KV_CODE}"; node --print="${KV_CODE}"`), ['node --eval runs flushall', 'node --print runs flushall']);
+  });
+
+  it('reads the code node takes on stdin from a pipe or a here-document, not a file named after the - word', async () => {
+    assert.deepEqual(await writes('cat fix.cjs | node', scripts()), ['node runs deleteMany']);
+    assert.deepEqual(await writes(`node - read.cjs <<'EOF'\n${DOC_FIX}EOF`, scripts()), ['node runs deleteMany']);
+  });
+
+  it('finds a document-shell file named by -f, and reads no file named by a connection string', async () => {
+    const ctx = context({ [join(APP, 'fix-rows')]: 'db.rows.deleteMany({})', [join(APP, 'db.example.com', 'app')]: 'db.rows.drop()' });
+    assert.deepEqual(await writes('docsh -f fix-rows', ctx), ['docsh runs deleteMany']);
+    assert.deepEqual(await writes('docsh db.example.com/app --eval "db.a.find()"', ctx), []);
+  });
+
+  it('finds a key-value command past valued options, in any case, and an EVAL in lower case', async () => {
+    assert.deepEqual(await writes('kvcli -p 7000 DEL k; kvcli -a "$KV_AUTH" DEL k; kvcli del k'), ['kvcli runs DEL', 'kvcli runs DEL', 'kvcli runs DEL']);
+    assert.deepEqual(await writes(`kvcli eval "kv.call('DEL', KEYS[1])" 1 k`), ['kvcli runs DEL']);
+    assert.deepEqual(await writes("echo -n 'DEL k' | kvcli"), ['kvcli runs DEL']);
+  });
+
+  it('reads what a PowerShell writer or file reader pipes to a client', async () => {
+    const ctx = { ...context({ [join(APP, 'fix.js')]: 'db.rows.deleteMany({})' }), dialect: 'powershell' as const };
+    assert.deepEqual(await writes("Write-Output 'DEL k' | kvcli", ctx), ['kvcli runs DEL']);
+    for (const reader of ['Get-Content', 'gc', 'type']) {
+      assert.deepEqual(await writes(`${reader} fix.js | docsh`, ctx), ['docsh runs deleteMany'], reader);
+    }
+  });
+});
