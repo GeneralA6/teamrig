@@ -31,6 +31,7 @@ function env(overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv {
     registry: new FakePackageRegistry(PACKAGES),
     clock: new FakeClock('2026-10-20T12:00:00Z'),
     hookAsks: 'ask',
+    platform: 'linux',
     ...overrides,
   };
 }
@@ -141,6 +142,44 @@ describe('packageGuardOutput', () => {
     const verdict = verdictOf(await packageGuardOutput(payload('npm ci'), env(allowAll)));
     assert.deepEqual(verdict, { decision: 'deny', reason: linkedModulesReason([{ call: 'npm ci', modules: join(APP, 'node_modules'), target: main }]) });
     assert.equal(verdictOf(await packageGuardOutput(payload('npm ci', { cwd: OTHER }), env(allowAll))), undefined);
+  });
+});
+
+describe('packageGuardOutput: a Bash line on Windows (T2319)', () => {
+  /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
+  const bs = (n: number): string => '\\'.repeat(n);
+  const windows = (overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv => env({ platform: 'win32', ...overrides });
+  const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
+  const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
+  const main = resolve('/', 'work', 'main', 'node_modules');
+  const linkedTree = (): FakeWorktreeFiles => new FakeWorktreeFiles({ [join(APP, 'node_modules')]: { kind: 'link', target: main } });
+
+  it('refuses an ad-hoc run, an unvetted install, a lost flag and a linked install that bash runs behind what the line as written escapes', async () => {
+    for (const [command, reason, overrides] of [
+      ['npx some-pkg', adHocReason(['npx some-pkg']), {}],
+      ['npm i typescript', installReason([YOUNG_TYPESCRIPT], 14), {}],
+      ['npx --no tsc --version', lostFlagReason([{ bin: 'tsc', flag: '--version' }]), {}],
+      ['npm ci', linkedModulesReason([{ call: 'npm ci', modules: join(APP, 'node_modules'), target: main }]), { tree: linkedTree() }],
+    ] as const) {
+      for (const line of [hiddenSeparator(command), hiddenBacktick(command)]) {
+        assert.deepEqual(verdictOf(await packageGuardOutput(payload(line), windows(overrides))), { decision: 'deny', reason }, line);
+        assert.equal(await packageGuardOutput(payload(line), env(overrides)), '', `off Windows bash runs the line as written: ${line}`);
+      }
+    }
+  });
+
+  it('names a call both readings run once and reads the registry once for it, and leaves a line whose readings run none', async () => {
+    const registry = new FakePackageRegistry(PACKAGES);
+    const line = `npx --no tsc --version; npx eslint .; npm i typescript; grep 'a${bs(4)}b' f`;
+    const verdict = verdictOf(await packageGuardOutput(payload(line), windows({ registry })));
+    assert.deepEqual(verdict, {
+      decision: 'deny',
+      reason: `${lostFlagReason([{ bin: 'tsc', flag: '--version' }])} ${adHocReason(['npx eslint'])} ${installReason([YOUNG_TYPESCRIPT], 14)}`,
+    });
+    assert.deepEqual(registry.docsAsked, ['typescript']);
+    for (const benign of [`grep 'a${bs(4)}b' f`, hiddenSeparator('npm ci'), hiddenSeparator('npx --no -- tsc --version')]) {
+      assert.equal(await packageGuardOutput(payload(benign), windows()), '', benign);
+    }
   });
 });
 
