@@ -6,7 +6,7 @@ import { lineHash } from '../inbox/line-hash.ts';
 import { WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { inboxDepsOf } from './commands/inbox.ts';
 import type { Kit } from './kit.ts';
-import type { CliRuntime } from './runtime.ts';
+import { RefusedError, type CliRuntime } from './runtime.ts';
 
 /**
  * An inbox line that wakes its receiver: the session it is for, who posts it, and what it says. `atOnce` is for a
@@ -52,4 +52,24 @@ export async function postUrgentLine(runtime: CliRuntime, kit: Kit, config: KitC
     return `posted to the inbox, but it does not wake ${line.to}: ${errorMessage(error)}`;
   }
   return undefined;
+}
+
+/** An at-once line's post: posted now, or not, since the same ask from the same sender still waits from `at`. */
+export type AtOnceOutcome = { readonly kind: 'posted' } | { readonly kind: 'waiting'; readonly at: number };
+
+/**
+ * Posts `line` with an at-once ask (T2207), for a person waiting live on its receiver, unless an ask with the same
+ * sender and text still waits for the receiver's tab (busy in a turn, or its next wake check not yet run): a second
+ * press would only put the same line in its inbox again. Refused, naming the receiver as `shown`, when it is not posted.
+ */
+export async function postAtOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, line: Omit<UrgentLine, 'atOnce'>, shown: string): Promise<AtOnceOutcome> {
+  const waiting = (await new WakeAsks(runtime.files, kit.paths.wakeAsks).read(line.to)).find(({ ask }) => ask?.from === line.from && ask.text === line.text)?.ask;
+  if (waiting !== undefined) {
+    return { kind: 'waiting', at: waiting.at };
+  }
+  const problem = await postUrgentLine(runtime, kit, config, { ...line, atOnce: true });
+  if (problem !== undefined) {
+    throw new RefusedError(`${shown} was not woken: ${problem}`);
+  }
+  return { kind: 'posted' };
 }

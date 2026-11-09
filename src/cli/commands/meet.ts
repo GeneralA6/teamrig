@@ -6,7 +6,6 @@ import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
 import { meetAsk, meetPrompt } from '../../open/prompt.ts';
 import { ownerCardsBySession, type OwnerCards } from '../../register/owner-waits.ts';
 import type { TaskTree } from '../../register/tree.ts';
-import { WakeAsks } from '../../wake/asks.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type FoundTeam, type Kit } from '../kit.ts';
@@ -14,7 +13,7 @@ import { runningRecordOf } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRanking } from '../team-ranking.ts';
 import { teamRegister } from '../team-register.ts';
-import { postUrgentLine } from '../urgent-line.ts';
+import { postAtOnce } from '../urgent-line.ts';
 import { openSession, printOpenResult, terminalFlag } from './open.ts';
 import { taskTreeOf } from './register.ts';
 import { sessionProjectOf } from './setup.ts';
@@ -59,22 +58,16 @@ async function meetFactsOf(runtime: CliRuntime, ref: string): Promise<MeetFacts>
 
 /**
  * Asks the running session met to bring its cards, and returns what that prints (T2207). The owner waits on it live,
- * so the ask is due at once, not after the `wake.batchSeconds` a plain ask waits. While a meet ask from the owner
- * still waits for its tab (busy in a turn, or the next wake check not yet run), nothing more is posted: a second press
- * would only put the same line in its inbox again.
+ * so the ask is due at once, not after the `wake.batchSeconds` a plain ask waits; while one still waits, nothing more
+ * is posted (postAtOnce).
  */
 async function wakeToMeet(runtime: CliRuntime, facts: MeetFacts): Promise<string> {
   const { kit, config, id, name } = facts;
   const owner = config.register.ownerSource;
-  const text = meetAsk(id, owner);
-  const waiting = (await new WakeAsks(runtime.files, kit.paths.wakeAsks).read(id)).find(({ ask }) => ask?.from === owner && ask.text === text)?.ask;
-  if (waiting !== undefined) {
-    const at = teamZone(config, runtime).clock(new Date(waiting.at));
+  const posted = await postAtOnce(runtime, kit, config, { to: id, from: owner, text: meetAsk(id, owner) }, `${name} (session ${id})`);
+  if (posted.kind === 'waiting') {
+    const at = teamZone(config, runtime).clock(new Date(posted.at));
     return `ASKED ${name} (session ${id}) at ${at}: that ask still waits for its tab to be idle (a running turn ends first), so no second line was posted`;
-  }
-  const problem = await postUrgentLine(runtime, kit, config, { to: id, from: owner, text, atOnce: true });
-  if (problem !== undefined) {
-    throw new RefusedError(`${name} (session ${id}) was not woken: ${problem}`);
   }
   const within = Math.ceil(WAKE_TICK_MS / SECOND_MS);
   return `WAKES ${name} (session ${id}) within about ${within} s once its tab is idle (a running turn ends first): ${facts.cards.due.length} card(s) waiting on ${owner}; an inbox line asks it to bring them now`;
