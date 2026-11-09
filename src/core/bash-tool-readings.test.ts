@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bashToolReadings, halvedBackslashRuns } from './bash-tool-readings.ts';
+import { bashToolReadings, halvedBackslashRuns, toolCommandReadings } from './bash-tool-readings.ts';
 
 /** A run of n backslashes, so each case shows its count rather than an escaped literal. */
 const bs = (n: number): string => '\\'.repeat(n);
@@ -37,5 +37,17 @@ describe('bashToolReadings', () => {
 
   it('adds the halved text on Windows, after the command as written', () => {
     assert.deepEqual(bashToolReadings(`ls a${bs(3)}; rm -f x`, 'win32'), [`ls a${bs(3)}; rm -f x`, `ls a${bs(2)}; rm -f x`]);
+  });
+});
+
+describe('toolCommandReadings', () => {
+  it("gives a Bash call's readings, halved on Windows", () => {
+    assert.deepEqual(toolCommandReadings('Bash', `ls a${bs(3)}; rm -f x`, 'win32'), [`ls a${bs(3)}; rm -f x`, `ls a${bs(2)}; rm -f x`]);
+    assert.deepEqual(toolCommandReadings('Bash', `ls a${bs(3)}; rm -f x`, 'linux'), [`ls a${bs(3)}; rm -f x`]);
+  });
+
+  it("gives any other tool's command as written, on Windows too", () => {
+    assert.deepEqual(toolCommandReadings('PowerShell', `ls a${bs(3)}; rm -f x`, 'win32'), [`ls a${bs(3)}; rm -f x`]);
+    assert.deepEqual(toolCommandReadings(undefined, `ls a${bs(3)}`, 'win32'), [`ls a${bs(3)}`]);
   });
 });

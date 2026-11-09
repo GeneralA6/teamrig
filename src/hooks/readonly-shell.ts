@@ -1,5 +1,5 @@
 import type { ReadonlyShellConfig } from '../config/types.ts';
-import { bashToolReadings } from '../core/bash-tool-readings.ts';
+import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import { bashLineReads } from '../readonly-shell/bash.ts';
@@ -50,8 +50,7 @@ export function callReads(payload: JsonRecord, rules: ReadonlyRules, printsSecre
   if (command === undefined) {
     return false;
   }
-  const readings = tool === 'Bash' ? bashToolReadings(command, platform) : [command];
-  return readings.every(
+  return toolCommandReadings(tool, command, platform).every(
     (text) => lineReads(tool, text, rules) && !printsSecret({ ...payload, tool_input: { ...input, command: text } }),
   );
 }
