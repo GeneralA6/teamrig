@@ -214,13 +214,13 @@ describe('doctorFindings', () => {
 
   it('flags a rules file that fits alone but not beside the files of the teams above, and skips an empty one', () => {
     const teamRules = [
-      { path: 'app/rules.md', chars: 1_500 },
+      { path: 'app/rules.md', chars: 1_200 },
       { path: 'web/rules.md', chars: 0 },
       { path: 'ui/rules.md', chars: 1_000 },
       { path: 'own/rules.md', chars: 1_000 },
     ];
     assert.deepEqual(lines(input({ teamRules })), [
-      `WARN rules-long own/rules.md is 1000 characters, but the team rules shown before it (app/rules.md, ui/rules.md) take 2500 of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`,
+      `WARN rules-long own/rules.md is 1000 characters, but the team rules shown before it (app/rules.md, ui/rules.md) take 2200 of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`,
     ]);
   });
 

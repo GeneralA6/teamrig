@@ -280,8 +280,23 @@ describe('renderCorePack', () => {
   it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^11\. A hand-run change or delete of stored data needs the owner's OK after counts or a preview\. Code that writes data/m);
-    assert.match(pack, /a parity run explaining each differing row; archive history and audit data before any TTL\. Never print secret values;/);
+    assert.match(pack, /a parity run explaining each differing row; archive history and audit data before any TTL\. A hand step for the human/);
     assert.match(pack, /Never print secret values; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
+  });
+
+  it('hands the human a hand step only as a file the security reviewer audited, pinned by its sha256', () => {
+    const pack = renderCorePack(testConfig({ roles: { lead: 'lead', securityReviewer: 'alpha' } }), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(
+      pack,
+      /before any TTL\. A hand step for the human that changes anything or touches a secret \(a paste, a settings, config or guard line, a grant, a key\) goes only as a file the security reviewer audited, its sha256 on the task, run by one line, never as code in chat; an edit needs a new audit\. Never print secret values;/,
+    );
+    assert.match(pack, /alpha reviews privileged commands \(`teamrig exec`\) and hand steps \[roles\.securityReviewer\]\. Other sessions own/);
+  });
+
+  it('has another session audit a hand step on a team with no security reviewer, never its author alone', () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(pack, /goes only as a file another session audited, its sha256 on the task, .*an edit needs a new audit\. Never print/);
+    assert.doesNotMatch(pack, /securityReviewer/);
   });
 
   it('states the small-commits rule and its gate', () => {
@@ -431,7 +446,7 @@ describe('renderCorePack', () => {
       'win32',
       RULES_CLOCK,
     );
-    assert.match(pack, /bravo owns the delivery flow and fleet health \[roles\.deliveryOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Other sessions own/);
+    assert.match(pack, /bravo owns the delivery flow and fleet health \[roles\.deliveryOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) and hand steps \[roles\.securityReviewer\]\. Other sessions own/);
     assert.match(pack, /No queued step \(builds, test runs, data scripts\) starts 22:30-00:00 UTC \[delivery\.schedule\.queueCutoffUtc\]\./);
     const cutoff = { delivery: { schedule: { queueCutoffUtc: '22:30' } } };
     const inIsrael = renderCorePack(testConfig(cutoff), COMMAND, 'win32', { ...RULES_CLOCK, machineZone: 'Asia/Jerusalem' });
