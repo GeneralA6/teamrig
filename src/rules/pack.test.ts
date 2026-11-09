@@ -44,11 +44,13 @@ interface Wording {
 function worstCaseConfig(wording: Wording = { pushToProtected: 'ask', hookAsks: 'refuse', wakeEnabled: true }) {
   const lead = longest('l', 32);
   const delivery = longest('c', 32);
+  // A team above's reviewer, `<team>/<id>`, prints longest in rule 1; with one set, rule 11's auditor wording is longer.
+  const reviewer = `${longest('t', 32)}/${longest('r', 32)}`;
   return testConfig({
     // Its mark and offset, `ACWST` and `UTC+8:45`, print widest of every zone's, in either season.
     timeZone: 'Australia/Eucla',
     sessions: [lead, delivery],
-    roles: { lead, deliveryOwner: delivery },
+    roles: { lead, deliveryOwner: delivery, securityReviewer: reviewer },
     ownerGates: filled(CONFIG_LIMITS.ownerGates, 'g'),
     messages: { maxLines: CONFIG_LIMITS.maxLines.max },
     register: {
@@ -629,11 +631,13 @@ describe('renderSessionContext', () => {
   });
 
   it('names the room the context cap leaves when a long core, not the file, is the cause', () => {
-    const long = 'c'.repeat(7_500);
+    // A file inside its own cap that a core past CORE_PACK_MAX_CHARS still pushes over the context cap.
+    const long = 'c'.repeat(CONTEXT_MAX_CHARS - TEAM_RULES_MAX_CHARS);
+    const file = 'x'.repeat(TEAM_RULES_MAX_CHARS - 10);
     const before = `${long}\n\n# Your team's rules\n`;
     assert.equal(
-      renderSessionContext(long, [own('x'.repeat(2_620))], COMMAND),
-      `${long}\n\nYour team's rules are in rules.md (2620 characters; this start has room for ${CONTEXT_MAX_CHARS - before.length}): read them now.`,
+      renderSessionContext(long, [own(file)], COMMAND),
+      `${long}\n\nYour team's rules are in rules.md (${file.length} characters; this start has room for ${CONTEXT_MAX_CHARS - before.length}): read them now.`,
     );
   });
 
