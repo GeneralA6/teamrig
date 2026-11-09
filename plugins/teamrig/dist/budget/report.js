@@ -122,11 +122,11 @@ function indented(lines) {
 }
 /**
  * Today's use as a table: the team, each sub-lead's group (its sessions' use summed), then each session, with its use
- * and daily budget in % of the week, its mark (lifted, burst, paused), its W and calls; W and calls alone while the week's W
- * is unknown.
+ * and daily budget in % of the week, its mark (lifted, burst, paused), its W and calls, then each other team on the
+ * account with its part of the account's day; W and calls alone while the week's W is unknown.
  */
 function todayTable(report, teamW, teamCalls) {
-    const { week, sessions, groups, all } = report;
+    const { week, sessions, groups, peers, all } = report;
     const row = (who, w, calls, budgetPct, mark) => {
         const use = [formatW(w), formatCount(calls)];
         const used = todayPctOf(w, week);
@@ -140,10 +140,11 @@ function todayTable(report, teamW, teamCalls) {
         const calls = members.reduce((sum, session) => sum + session.calls, 0);
         return row(`group ${group.name} (${group.sessions.length})`, w, calls, group.budgetPct, budgetMarkOf(group.lift, false, false));
     });
+    const peerRows = peers.map((peer) => row(`team ${peer.team} (${peer.sessions})`, peer.w, peer.calls, peer.budgetPct, ''));
     if (week.wPerPct === undefined) {
-        return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...groupRows, ...rows]), ...notes])];
+        return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...groupRows, ...rows, ...peerRows]), ...notes])];
     }
-    const table = aligned([['session', 'used', 'budget', '', 'W', 'calls'], team, ...groupRows, ...rows], ['left', 'right', 'right', 'left', 'right', 'right']);
+    const table = aligned([['session', 'used', 'budget', '', 'W', 'calls'], team, ...groupRows, ...rows, ...peerRows], ['left', 'right', 'right', 'left', 'right', 'right']);
     return ['Today (UTC day), used and daily budget in % of the week:', ...indented([...table, ...notes])];
 }
 /**
@@ -215,11 +216,12 @@ function outsideSessionsText(outside, all) {
     const titles = shown.length === 0 ? '' : ` (titled ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''})`;
     return `${outside.sessions} Claude Code session${outside.sessions === 1 ? '' : 's'}${titles}`;
 }
-function outsideLine(outside, all) {
+/** The tabs of no team in the table: neither the team's nor, with other teams on the account, theirs. */
+function outsideLine(outside, peers, all) {
     if (outside.sessions === 0 && outside.w === 0) {
         return undefined;
     }
-    return (`Not on the team: ${outsideSessionsText(outside, all)}, ${formatW(outside.w)} W today. ` +
+    return (`${peers.length === 0 ? 'Not on the team' : 'Not on these teams'}: ${outsideSessionsText(outside, all)}, ${formatW(outside.w)} W today. ` +
         'A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.');
 }
 /**
@@ -274,7 +276,7 @@ export function todayLines(report) {
     if (paused !== undefined) {
         lines.push(paused);
     }
-    const outsideText = outsideLine(outside, all);
+    const outsideText = outsideLine(outside, report.peers, all);
     if (outsideText !== undefined) {
         lines.push(outsideText);
     }

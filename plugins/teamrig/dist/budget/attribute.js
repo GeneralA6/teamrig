@@ -10,6 +10,8 @@ export async function transcriptTitleOf(transcripts, path) {
 /**
  * Which team session each Claude Code session's use counts for, by the same rules that bind a tab:
  * its inbox mark first, else its title when that is exactly one team session's id or current name.
+ * A session a peer team's mark binds comes before the title: that team's hooks meter it into its own
+ * stores, so it counts neither for this team nor outside, where it would be counted twice on the account.
  * A session that only ran subagents has no title of its own and goes by its mark alone.
  */
 export async function attribute(input) {
@@ -20,6 +22,9 @@ export async function attribute(input) {
     for (const session of input.sessions) {
         const marked = input.areaBySession.get(session.claudeSession);
         let id = marked !== undefined && input.roster.ids.includes(marked) ? marked : undefined;
+        if (id === undefined && input.peers.some((peer) => isMarkedBy(peer, session.claudeSession))) {
+            continue;
+        }
         let title;
         if (id === undefined) {
             title = await titleOfFirst(input, session.main);
@@ -37,6 +42,11 @@ export async function attribute(input) {
         byTeamSession.set(id, joined(byTeamSession.get(id) ?? NO_TRANSCRIPTS, session));
     }
     return { byTeamSession, outside, outsideSessions, outsideTitles };
+}
+/** Whether the peer's mark binds the Claude Code session to one of its sessions; a mark of a session it no longer has does not. */
+function isMarkedBy(peer, claudeSession) {
+    const area = peer.areaBySession.get(claudeSession);
+    return area !== undefined && peer.ids.includes(area);
 }
 /** Both sets' transcripts, each kind in order. */
 function joined(set, more) {

@@ -5,6 +5,9 @@ import { budgetSplitOf } from "../budget/parts.js";
 import { pausableOf } from "../budget/pause.js";
 import { snapshotDirOf, weekUseAt } from "../budget/snapshot.js";
 import { claudeConfigDir } from "../core/home.js";
+import { PlainLogFile } from "../core/log-file.js";
+import { indexMarks } from "../inbox/marks.js";
+import { JsonlMarkLog } from "../inbox/store.js";
 import { loadTree } from "./tree.js";
 /**
  * The asking team's Claude account and each team's of the kit home (`accountsOf`), read-only: each team's from its config
@@ -55,8 +58,17 @@ export async function accountWeekOn(runtime, budget, paths, now) {
     const accountOfTeam = (team) => accounts.accounts.get(team);
     const holder = accountHolderOf(tree, paths.team, account, accountOfTeam);
     const keepsHere = (team) => team !== paths.team && accountOfTeam(team) === account && accountHolderOf(tree, team, account, accountOfTeam) === holder;
-    const peers = [...teams].filter(([team]) => keepsHere(team)).map(([team, loaded]) => ({ team, usage: loaded.kit.paths.usage, ids: loaded.roster.ids }));
+    const peers = [...teams]
+        .filter(([team, loaded]) => keepsHere(team) && loaded.config.budget.enabled)
+        .map(([team, loaded]) => ({ team, usage: loaded.kit.paths.usage, ids: loaded.roster.ids, inboxMarks: loaded.kit.paths.inboxMarks }));
     return { account, statusUse, paths: teams.get(holder)?.kit.paths ?? paths, keeper: holder, peers };
+}
+/** Each peer's session ids with the session of it each Claude Code session last read its inbox as, read-only. */
+export async function peerMarksOf(files, peers) {
+    return Promise.all(peers.map(async (peer) => {
+        const { marks } = await new JsonlMarkLog(new PlainLogFile(files, peer.inboxMarks)).read();
+        return { ids: peer.ids, areaBySession: indexMarks(marks).areaBySession };
+    }));
 }
 async function statusUseOf(runtime, teams, budget, paths, scope) {
     const fold = await accountWeekOf(runtime.files, teams, snapshotDirOf(budget, paths), scope);
