@@ -59,6 +59,13 @@ describe('TabHolds', () => {
     });
   }
 
+  it('lists the live holds for a report, leaving one that ran out in place', async () => {
+    const spent = JSON.stringify(holdOf({ expiresAt: '2030-01-08T10:00:00.000Z' }));
+    const kept = holdOf({ id: 'h2' });
+    const { files, holds } = world({ [join(DIR, 'h1.json')]: spent, ...Object.fromEntries([fileOf(kept)]) });
+    assert.deepEqual([await holds.held(), files.get(join(DIR, 'h1.json'))], [[kept], spent]);
+  });
+
   it("passes over a writer's temporary sibling", async () => {
     const [path, text] = fileOf(holdOf());
     const { files, holds } = world({ [`${path}.4242.1.tmp`]: text });

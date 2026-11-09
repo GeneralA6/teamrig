@@ -144,6 +144,23 @@ describe('teamrig pipeline', () => {
     );
   });
 
+  it('names the tabs still loading with the MB held for them, leaving a hold that ran out in place (T2199)', async () => {
+    const kit = new CliHarness(TEAM);
+    await shared(kit, SHARE);
+    const tab = { team: 'alpha', needCommittedMb: 3000, openedAt: '2030-01-08T09:58:00.000Z', expiresAt: '2030-01-08T10:03:00.000Z' };
+    const loaded = JSON.stringify({ ...tab, id: 't0', session: 'docs', needMb: 900, expiresAt: '2030-01-08T09:59:00.000Z' });
+    await kit.files.write(join(`${LOCK}.tabs`, 't0.json'), loaded);
+    await kit.files.write(join(`${LOCK}.tabs`, 't1.json'), JSON.stringify({ ...tab, id: 't1', session: 'web', needMb: 1500 }));
+    await kit.files.write(join(`${LOCK}.tabs`, 't2.json'), JSON.stringify({ ...tab, id: 't2', team: 'bravo', session: 'api', needMb: 1000, openedAt: '2030-01-08T09:59:00.000Z' }));
+    const memory = new FakeHostMemory(16000).lists(undefined);
+    const result = await kit.run(['pipeline'], { memory, sessionProcesses: running(SHARER) });
+    assert.equal(
+      result.stdout[0],
+      "HOST 16000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); 2048 MB held for 1 small step; 2500 MB held for 2 tabs still loading (alpha/web, bravo/api); the running steps' trees unknown (the host lists no processes)",
+    );
+    assert.equal(kit.files.get(join(`${LOCK}.tabs`, 't0.json')), loaded);
+  });
+
   it('names a heavy step sharing the host as one, and shows the line in the order steps are let in, not arrival (T2210)', async () => {
     const kit = new CliHarness(PIPELINE);
     await shared(kit, { ...SHARE, purpose: 'heavy: build', reserveMb: 4096, heavy: true });

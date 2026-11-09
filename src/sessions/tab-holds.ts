@@ -74,8 +74,23 @@ export class TabHolds {
    * is removed as it is found.
    */
   async live(): Promise<TabHold[]> {
+    const { live, spent } = await this.read();
+    for (const path of spent) {
+      await this.ports.files.remove(path);
+    }
+    return live;
+  }
+
+  /** The holds still live, oldest first, removing none: for a report that changes nothing (`teamrig pipeline`). */
+  async held(): Promise<TabHold[]> {
+    return (await this.read()).live;
+  }
+
+  /** The live holds, oldest first, and the paths of those that ran out or cannot be read. */
+  private async read(): Promise<{ readonly live: TabHold[]; readonly spent: readonly string[] }> {
     const { files, clock } = this.ports;
-    const found: TabHold[] = [];
+    const live: TabHold[] = [];
+    const spent: string[] = [];
     for (const name of (await files.list(this.dir)).filter((entry) => HOLD_NAME.test(entry))) {
       const path = join(this.dir, name);
       const text = await files.read(path);
@@ -84,12 +99,12 @@ export class TabHolds {
       }
       const hold = parseHold(text);
       if (hold === undefined || Date.parse(hold.expiresAt) <= clock.now()) {
-        await files.remove(path);
+        spent.push(path);
       } else {
-        found.push(hold);
+        live.push(hold);
       }
     }
-    return found.sort((a, b) => Date.parse(a.openedAt) - Date.parse(b.openedAt));
+    return { live: live.sort((a, b) => Date.parse(a.openedAt) - Date.parse(b.openedAt)), spent };
   }
 
   async add(hold: TabHold): Promise<void> {

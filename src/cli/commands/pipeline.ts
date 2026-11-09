@@ -1,9 +1,11 @@
 import type { TimeZone } from '../../core/zone.ts';
 import { holderText, isHeavyShare, sharesCount, type HostShare, type LockState, type LockWaiter } from '../../delivery/host-lock.ts';
 import { parseLedger, type LedgerRecord, type RefusalRecord } from '../../delivery/ledger.ts';
+import { tabsText } from '../../delivery/memory-gate.ts';
 import { holdersText, treeMb, type HostMemory, type ProcessRow } from '../../delivery/memory.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { minutesText } from '../../delivery/schedule.ts';
+import { TabHolds, tabHoldsDir, type TabHold } from '../../sessions/tab-holds.ts';
 import type { ParsedArgs } from '../args.ts';
 import { hostLockOf } from '../delivery-ports.ts';
 import { openTeamKit, requireConfig, teamZone } from '../kit.ts';
@@ -29,7 +31,13 @@ function runningPids(state: LockState, shares: readonly HostShare[]): number[] {
   return [...(state.kind === 'held' ? [state.info.pid] : []), ...shares.map((share) => share.pid)];
 }
 
-async function hostLines(memory: HostMemory, floorMb: number, shares: readonly HostShare[], pids: readonly number[], rows: readonly ProcessRow[] | undefined): Promise<string[]> {
+/** What the host holds for its steps and tabs: the steps sharing it, and the tabs still loading (`TabHolds.held`). */
+interface HostHolds {
+  readonly shares: readonly HostShare[];
+  readonly tabs: readonly TabHold[];
+}
+
+async function hostLines(memory: HostMemory, floorMb: number, { shares, tabs }: HostHolds, pids: readonly number[], rows: readonly ProcessRow[] | undefined): Promise<string[]> {
   const parts = [`${memory.freeMb()} MB free of ${memory.totalMb()} MB, ${floorMb} MB kept free (delivery.queue.memoryFloorMb)`];
   const commit = await memory.commit();
   if (commit !== undefined) {
@@ -38,6 +46,10 @@ async function hostLines(memory: HostMemory, floorMb: number, shares: readonly H
   if (shares.length > 0) {
     const heldMb = shares.reduce((total, share) => total + share.reserveMb, 0);
     parts.push(`${heldMb} MB held for ${sharesCount(shares)}`);
+  }
+  if (tabs.length > 0) {
+    const heldMb = tabs.reduce((total, tab) => total + tab.needMb, 0);
+    parts.push(`${heldMb} MB held for ${tabsText(tabs.length)} still loading (${tabs.map((tab) => `${tab.team}/${tab.session}`).join(', ')})`);
   }
   if (pids.length > 0) {
     parts.push(rows === undefined ? "the running steps' trees unknown (the host lists no processes)" : `the running steps' trees use ${pids.reduce((total, pid) => total + treeMb(pid, rows), 0)} MB`);
@@ -91,8 +103,9 @@ function refusalLine(record: RefusalRecord, zone: TimeZone): string {
 
 /**
  * `teamrig pipeline`: the host's steps now, in one read, taking and removing nothing. HOST: free memory, RAM and the
- * floor, the commit charge, the MB held for the steps sharing the host (by kind: heavy, small), what the running steps'
- * process trees use, and the programs holding the most memory. RUNNING: the lock's holder and each step sharing the
+ * floor, the commit charge, the MB held for the steps sharing the host (by kind: heavy, small) and for the tabs still
+ * loading (each named by its team and session), what the running steps' process trees use, and the programs holding
+ * the most memory. RUNNING: the lock's holder and each step sharing the
  * host (a heavy one named so), with its run time, the MB held for it and what its tree uses. WAITING: the line in the
  * order steps are let in (`HostLock.line`), each with how long it has waited and what its ticket says it waits on, with
  * that wait's numbers. REFUSED: the queued steps of the last day that waited and
@@ -108,12 +121,13 @@ export async function pipeline(_args: ParsedArgs, runtime: CliRuntime): Promise<
   const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
   const state = await lock.state();
   const shares = await lock.shares();
+  const tabs = await new TabHolds(tabHoldsDir(places.hostLock), runtime).held();
   const pids = runningPids(state, shares);
   const rows = pids.length === 0 ? [] : await runtime.memory.processes();
   const line = await lock.line();
   const refused = parseLedger((await runtime.files.read(places.ledger)) ?? '').filter((record) => isRecentRefusal(record, nowMs - REFUSED_SPAN_MS));
   const lines = [
-    ...(await hostLines(runtime.memory, delivery.queue.memoryFloorMb, shares, pids, rows)),
+    ...(await hostLines(runtime.memory, delivery.queue.memoryFloorMb, { shares, tabs }, pids, rows)),
     ...runningLines(state, shares, rows, nowMs, zone),
     `WAITING ${line.length === 0 ? 'none' : line.length}`,
     ...line.map((waiter, index) => waiterLine(waiter, index + 1, nowMs, zone)),
