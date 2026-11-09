@@ -22,6 +22,9 @@ const NODE = '/usr/bin/node';
 const SCRIPT = '/opt/teamrig/dist/cli/main.js';
 const FOLDERS = new FakePathProbe({ folders: [APP] });
 const MB = 2 ** 20;
+/** Every team's tabs still loading, beside the host lock the harness's teams share. */
+const TAB_HOLDS = join(KIT, 'host.lock.tabs');
+const ADMIT_FILE = join(KIT, 'host.lock.admit');
 
 /** What `open alpha` hands the new tab to run, with the default prompt. */
 function launchArgv(project: string = APP, prompt: string = defaultPrompt('app', 'alpha')): string[] {
@@ -79,9 +82,73 @@ describe('teamrig open', () => {
         'first: teamrig sessions lists what each one holds',
     ]);
     assert.deepEqual(processes.started, []);
-    const lead = await new CliHarness(TEAM).run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', memory });
+    const kit = new CliHarness(TEAM);
+    const lead = await kit.run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', memory });
     assert.equal(lead.code, EXIT.ok, lead.stdout.join('\n'));
     assert.equal(processes.started.length, 1);
+    assert.deepEqual(await kit.files.list(TAB_HOLDS), ['id-1.json'], "the lead's tab is held all the same");
+  });
+
+  it('holds the room an opened tab was counted at while it loads, so a second open right after it is refused (T2199)', async () => {
+    const kit = new CliHarness(TEAM);
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const memory = new FakeHostMemory();
+    const first = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', memory });
+    assert.equal(first.code, EXIT.ok, first.stdout.join('\n'));
+    const held: unknown = JSON.parse(kit.files.get(join(TAB_HOLDS, 'id-1.json')) ?? '');
+    assert.deepEqual(held, {
+      id: 'id-1',
+      team: 'app',
+      session: 'alpha',
+      needMb: 1200,
+      needCommittedMb: 1200,
+      openedAt: '2030-01-08T10:00:00.000Z',
+      expiresAt: '2030-01-08T10:05:00.000Z',
+    });
+    assert.equal(kit.files.get(ADMIT_FILE), undefined, 'the admit file is released');
+    const second = await kit.run(['open', 'bravo'], { probe: FOLDERS, processes, platform: 'win32', memory });
+    assert.deepEqual(second.stdout, [
+      'REFUSED no room on the host to open app-bravo (session bravo), counted at 1200 MB resident and 1200 MB committed: 8000 MB free, 1200 MB of it held ' +
+        'for 1 tab still loading, under the 6144 MB a new tab keeps free (delivery.queue.memoryFloorMb + heavyReserveMb, while open.headroom.floorMb is ' +
+        'unset) plus 1200 MB for it. Close a session first: teamrig sessions lists what each one holds',
+    ]);
+    assert.equal(processes.started.length, 1);
+  });
+
+  it('drops the hold of a tab that did not open, so its room is free again at once (T2199)', async () => {
+    const kit = new CliHarness(TEAM);
+    const manual = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes: new FakeProcesses(), platform: 'win32' });
+    assert.equal(manual.code, EXIT.printed, manual.stdout.join('\n'));
+    assert.deepEqual(await kit.files.list(TAB_HOLDS), []);
+  });
+
+  it('refuses a tab while other admissions hold the admit file for all of the wait, but opens the lead without it (T2199)', async () => {
+    const kit = new CliHarness(TEAM);
+    // Live past both runs' waits, as admissions that follow one another without a gap.
+    const claim = JSON.stringify({ ticket: 'step', pid: 5150, expiresAt: '2030-01-08T10:02:00.000Z' });
+    await kit.files.write(ADMIT_FILE, claim);
+    const sessionProcesses = new FakeSessionProcesses().add({ pid: 5150, parentPid: 1, name: 'node.exe', commandLine: 'node teamrig queue' });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const refused = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32', sessionProcesses });
+    assert.deepEqual(refused.stdout, [
+      "REFUSED the host's room could not be read to open app-alpha (session alpha): other tabs and queued steps were being admitted for all of 31 s; try again",
+    ]);
+    assert.deepEqual(kit.clock.sleeps, Array.from({ length: 31 }, () => 1000), 'it looks again once a second');
+    assert.deepEqual(processes.started, []);
+    const lead = await kit.run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', sessionProcesses });
+    assert.equal(lead.code, EXIT.ok, lead.stdout.join('\n'));
+    assert.equal(kit.files.get(ADMIT_FILE), claim, "the other admission's claim stays");
+    assert.deepEqual(await kit.files.list(TAB_HOLDS), ['id-1.json']);
+  });
+
+  it('takes the admit file from an admission whose process is gone', async () => {
+    const kit = new CliHarness(TEAM);
+    await kit.files.write(ADMIT_FILE, JSON.stringify({ ticket: 'step', pid: 5150, expiresAt: '2030-01-08T10:00:20.000Z' }));
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const opened = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32' });
+    assert.equal(opened.code, EXIT.ok, opened.stdout.join('\n'));
+    assert.deepEqual(kit.clock.sleeps, []);
+    assert.equal(kit.files.get(ADMIT_FILE), undefined);
   });
 
   it('counts a running session at its resident size where the host gives no committed one, and at the default where it lists no process', async () => {
@@ -109,7 +176,7 @@ describe('teamrig open', () => {
 
   it("counts another team's tab still loading against the room, and drops a hold whose load time is over (T2199)", async () => {
     const kit = new CliHarness(TEAM);
-    const hold = join(KIT, 'host.lock.tabs', 'h1.json');
+    const hold = join(TAB_HOLDS, 'h1.json');
     const loading = { id: 'h1', team: 'web', session: 'beta', needMb: 1000, needCommittedMb: 2000, openedAt: '2030-01-08T09:58:00.000Z' };
     await kit.files.write(hold, JSON.stringify({ ...loading, expiresAt: '2030-01-08T10:03:00.000Z' }));
     const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
