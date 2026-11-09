@@ -163,8 +163,6 @@ describe('teamrig stats: the goals of the team and those above it (T1420)', () =
   });
 });
 
-const FIELDS: TaskFields ={ title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null };
-
 function create(id: string, at: string, goals: readonly string[] = []): RegisterEvent {
   return { v: EVENT_VERSION, type: 'create', id, at, by: 'lead', task: { ...FIELDS, goals } };
 }
@@ -174,7 +172,7 @@ function doneOn(id: string, at: string): RegisterEvent {
 }
 
 function goalRecord(tag: string, target: string): Goal {
-  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target, parent: null, addedAt: '2030-01-01T00:00:00.000Z', addedBy: 'lead', slips: [] };
+  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target, parent: null, addedAt: '2030-01-01T00:00:00.000Z', addedBy: 'lead', slips: [], rank: null };
 }
 
 function teamOf(name: string, events: readonly RegisterEvent[]): StatsTeam {
