@@ -8,8 +8,8 @@ import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../cor
 import type { TimeZone } from '../core/zone.ts';
 import { waitAnswerersOf } from './approval.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
-import { HAND_STEP_KINDS, handStepKindOf, type AuditPin } from './hand-step.ts';
+import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, RUN_FLAG, sameCard, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
+import { auditOf, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
@@ -93,9 +93,15 @@ export interface StatusInput {
   readonly waits?: readonly WaitReason[];
   /**
    * The parts of the card a wait on a decision or an approval asks (card.ts); only with such a wait. Parts left out
-   * keep what the task's card said while it was waiting.
+   * keep what the task's card said while it was waiting. Its hand step file comes only as `run`, with its sha256.
    */
-  readonly card?: Partial<DecisionCard>;
+  readonly card?: Partial<Omit<DecisionCard, 'run'>>;
+  /**
+   * The hand step file the card hands the owner to run (T2312, core rule 11), by the path and sha256 the CLI read now;
+   * only with a wait on the owner's decision or approval, and only while an audit on the task pins that path at that
+   * sha256. Left out, the card keeps the file it handed while it still asks the owner.
+   */
+  readonly run?: AuditPin;
   /** What will prove a `verifying` task works; only with that status. */
   readonly proof?: string;
   /**
@@ -590,16 +596,21 @@ export class RegisterPolicy {
    * task the owner ordered that waits on the owner, and a card keeps it only while that holds (T802); while cards
    * are required, such a task asks the owner only with it (ownerOrderCard). `--gate` goes only with a wait on the
    * owner's decision, naming an owner gate or business, and a card keeps it only while that holds (T1194); while
-   * cards are required, the owner is asked to decide only with it (gatedCard).
+   * cards are required, the owner is asked to decide only with it (gatedCard). `--run` hands the owner a hand step
+   * file only while an audit pins it (runProblem), and a card keeps it only while it asks the owner (T2312).
    */
   private cardChange(task: Task, input: StatusInput, waits: readonly WaitReason[]): Verdict<DecisionCard | null> {
     const asks = waits.filter((reason): reason is PersonWait => reason.kind === 'decision' || reason.kind === 'approval');
-    const given = input.card;
+    const { ownerSource, requireDecisionCard } = this.config.register;
+    const owners = asks.filter((reason) => reason.who === ownerSource);
+    const runProblem = input.run === undefined ? undefined : this.runProblem(task, input.run, owners.length > 0);
+    if (runProblem !== undefined) {
+      return refuse(runProblem);
+    }
+    const given = input.run === undefined ? input.card : { ...input.card, run: input.run.path };
     if (asks.length === 0) {
       return given === undefined ? ok(null) : refuse(`${CARD_FLAGS} go only with --status ${WAIT_STATUSES.join(' or ')} on a decision or an approval`);
     }
-    const { ownerSource, requireDecisionCard } = this.config.register;
-    const owners = asks.filter((reason) => reason.who === ownerSource);
     const ordered = task.source === ownerSource && owners.length > 0;
     const decidesOwner = owners.some((reason) => reason.kind === 'decision');
     if (given?.whyAsk !== undefined && !ordered) {
@@ -613,7 +624,7 @@ export class RegisterPolicy {
       return refuse(`${GATE_FLAG} "${given.gate}" is no owner gate [ownerGates] and no business decision: ${gateUsage(this.config.ownerGates)}`);
     }
     const kept = WAIT_STATUSES.includes(task.status) ? task.card : null;
-    const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner });
+    const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner, run: owners.length > 0 });
     if (given === undefined) {
       if (before !== null || owners.length === 0 || !requireDecisionCard || ordered) {
         return this.ownerAsk(task, owners, before);
@@ -632,9 +643,34 @@ export class RegisterPolicy {
       byDefault: parts.byDefault,
       ...(parts.whyAsk === undefined ? {} : { whyAsk: parts.whyAsk }),
       ...(parts.gate === undefined ? {} : { gate: parts.gate }),
+      ...(parts.run === undefined ? {} : { run: parts.run }),
     };
     const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
     return problem === undefined ? this.ownerAsk(task, owners, card) : refuse(problem);
+  }
+
+  /**
+   * Why a card may not hand the owner the hand step file `run` names (T2312, core rule 11): it goes only with a wait
+   * on the owner's decision or approval (`asksOwner`), never a leader's approval, as the owner is who runs it; only as
+   * a file of a kind with a run line; and only while an audit on the task pins that file at the sha256 the CLI read now.
+   */
+  private runProblem(task: Task, run: AuditPin, asksOwner: boolean): string | undefined {
+    const { ownerSource } = this.config.register;
+    if (!asksOwner) {
+      return `${RUN_FLAG} hands ${ownerSource} a hand step to run: it goes only with a wait on ${ownerSource}'s decision or approval`;
+    }
+    const kindProblem = handStepFileProblem(run.path);
+    if (kindProblem !== undefined) {
+      return kindProblem;
+    }
+    const audit = auditOf(task.audits, run.path);
+    if (audit === undefined) {
+      return `no audit on ${task.id} pins ${run.path}: a hand step goes to ${ownerSource} only as a file its auditor read (core rule 11); who audits it: ${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --file ${run.path}`;
+    }
+    if (audit.sha256 !== run.sha256) {
+      return `${run.path} changed since ${audit.by} audited it at sha256 ${shortSha256(audit.sha256)} (now ${shortSha256(run.sha256)}): an edit needs a new audit (core rule 11)`;
+    }
+    return undefined;
   }
 
   /** What a card asking the owner (`owners`) must say besides its parts: why, on an owner's order; its gate, on a decision. */
@@ -873,8 +909,9 @@ export class RegisterPolicy {
     if (!ACTIVE_STATUSES.includes(task.status)) {
       return refuse(`${task.id} is ${task.status}: a hand step is audited for a task still to finish`);
     }
-    if (handStepKindOf(pin.path) === undefined) {
-      return refuse(`${pin.path} is not a hand step file: only ${HAND_STEP_KINDS.join(', ')} files have a run line`);
+    const kindProblem = handStepFileProblem(pin.path);
+    if (kindProblem !== undefined) {
+      return refuse(kindProblem);
     }
     const text = blankToNull(note);
     const problem = this.checkText('note', text);

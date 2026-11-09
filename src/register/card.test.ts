@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD } from '../testing/card.ts';
 import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, sameCard } from './card.ts';
+import type { HandStepAudit } from './hand-step.ts';
 
 const WHY_ASK = 'the ordered tier cannot ship at that price';
 
@@ -71,7 +72,7 @@ describe('the decision card', () => {
 
   it('prints the question, each option numbered, the recommendation and the default', () => {
     assert.deepEqual(cardTexts(TEST_CARD), [TEST_CARD.question, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
-    assert.deepEqual(cardLines(TEST_CARD, '  '), [
+    assert.deepEqual(cardLines(TEST_CARD, '  ', []), [
       '  decide: Which pricing tier ships first',
       '    1. Basic at 9 dollars a month',
       '    2. Pro at 29 dollars a month',
@@ -83,17 +84,47 @@ describe('the decision card', () => {
   it('prints why the owner is asked under the question, and drops it on request', () => {
     const asked = { ...TEST_CARD, whyAsk: WHY_ASK };
     assert.deepEqual(cardTexts(asked), [TEST_CARD.question, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
-    assert.deepEqual(cardLines(asked, '  ').slice(0, 2), ['  decide: Which pricing tier ships first', `  why asked: ${WHY_ASK}`]);
-    assert.deepEqual(keptCard(asked, { whyAsk: false, gate: true }), TEST_CARD);
-    assert.deepEqual(keptCard(asked, { whyAsk: true, gate: true }), asked);
+    assert.deepEqual(cardLines(asked, '  ', []).slice(0, 2), ['  decide: Which pricing tier ships first', `  why asked: ${WHY_ASK}`]);
+    assert.deepEqual(keptCard(asked, { whyAsk: false, gate: true, run: false }), TEST_CARD);
+    assert.deepEqual(keptCard(asked, { whyAsk: true, gate: true, run: false }), asked);
   });
 
   it('prints the gate that makes it the owner\'s under the question, and drops it on request (T1194)', () => {
     const both = { ...TEST_OWNER_CARD, whyAsk: WHY_ASK };
     assert.deepEqual(cardTexts(both), [TEST_CARD.question, TEST_GATE, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
-    assert.deepEqual(cardLines(both, '  ').slice(0, 3), ['  decide: Which pricing tier ships first', `  gate: ${TEST_GATE}`, `  why asked: ${WHY_ASK}`]);
-    assert.deepEqual(keptCard(both, { whyAsk: true, gate: false }), { ...TEST_CARD, whyAsk: WHY_ASK });
-    assert.deepEqual(keptCard(both, { whyAsk: false, gate: false }), TEST_CARD);
+    assert.deepEqual(cardLines(both, '  ', []).slice(0, 3), ['  decide: Which pricing tier ships first', `  gate: ${TEST_GATE}`, `  why asked: ${WHY_ASK}`]);
+    assert.deepEqual(keptCard(both, { whyAsk: true, gate: false, run: false }), { ...TEST_CARD, whyAsk: WHY_ASK });
+    assert.deepEqual(keptCard(both, { whyAsk: false, gate: false, run: false }), TEST_CARD);
+  });
+
+  describe('the hand step file a card hands the owner (T2312)', () => {
+    const step = '/w/tasks/T5/grant-read.ps1';
+    const handed = { ...TEST_OWNER_CARD, run: step };
+    const audit: HandStepAudit = { path: step, sha256: 'c'.repeat(64), by: 'gamma', at: '2030-01-07T09:00:00.000Z' };
+
+    it('reads its path as text, and leaves it out of the prose texts', () => {
+      assert.deepEqual(parseCard(handed), handed);
+      assert.equal(parseCard({ ...TEST_CARD, run: ['/w/a.ps1'] }), 'card run is not text');
+      assert.deepEqual(cardTexts(handed), cardTexts(TEST_OWNER_CARD), 'a task id in its path names no task the card is about');
+    });
+
+    it('tells a card apart by it, and keeps it only on request', () => {
+      assert.equal(sameCard(handed, TEST_OWNER_CARD), false);
+      assert.equal(sameCard(handed, { ...TEST_OWNER_CARD, run: '/w/other.ps1' }), false);
+      assert.equal(sameCard(handed, { ...handed }), true);
+      assert.deepEqual(keptCard(handed, { whyAsk: false, gate: true, run: true }), handed);
+      assert.deepEqual(keptCard(handed, { whyAsk: false, gate: true, run: false }), TEST_OWNER_CARD);
+    });
+
+    it('prints the line that runs it last, with its short sha256 and auditor', () => {
+      assert.deepEqual(cardLines(handed, '  ', [audit]).at(-1), `  run: & '${step}'   (sha256 cccccccc, audited by gamma)`);
+      assert.deepEqual(cardLines(handed, '  ', [audit]).slice(0, -1), cardLines(TEST_OWNER_CARD, '  ', [audit]));
+    });
+
+    it('prints that it is not to be run when no audit on the task pins it', () => {
+      assert.equal(cardLines(handed, '  ', []).at(-1), `  run: do not run ${step}: no audit on the task pins it (core rule 11)`);
+      assert.equal(cardLines(handed, '  ', [{ ...audit, path: '/w/other.ps1' }]).at(-1), `  run: do not run ${step}: no audit on the task pins it (core rule 11)`);
+    });
   });
 
   it('names a gate among the owner gates and business, as configured, case aside (T1194)', () => {

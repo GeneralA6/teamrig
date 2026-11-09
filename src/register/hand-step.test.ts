@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { handStepKindOf, parseAuditPin, sha256Hex, shortSha256, withAudit, type HandStepAudit } from './hand-step.ts';
+import { auditOf, handStepFileProblem, handStepKindOf, parseAuditPin, runLineOf, sha256Hex, shortSha256, withAudit, type HandStepAudit } from './hand-step.ts';
 
 describe('handStepKindOf', () => {
   it('names a PowerShell, bash or steps file by its extension in any case', () => {
@@ -53,5 +53,40 @@ describe('withAudit', () => {
   it('replaces the audit of a path audited again, in its place', () => {
     const again = audit('/w/a.ps1', '3'.repeat(64), '2030-01-07T11:00:00.000Z');
     assert.deepEqual(withAudit([a, b], again), [again, b]);
+  });
+});
+
+describe('handStepFileProblem', () => {
+  it('passes a file of a hand step kind and names the kinds to any other', () => {
+    assert.equal(handStepFileProblem('/w/add-key.ps1'), undefined);
+    assert.equal(handStepFileProblem('/w/run.mjs'), '/w/run.mjs is not a hand step file: only .ps1, .sh, .md files have a run line');
+  });
+});
+
+describe('runLineOf', () => {
+  it('runs a PowerShell file by the call operator, single-quoted, a quote in its path doubled', () => {
+    assert.equal(runLineOf('C:\\w\\add key.ps1'), "& 'C:\\w\\add key.ps1'");
+    assert.equal(runLineOf("C:\\w\\it's\\add.PS1"), "& 'C:\\w\\it''s\\add.PS1'");
+  });
+
+  it('runs a bash file by bash, single-quoted, a quote in its path closed, escaped and opened again', () => {
+    assert.equal(runLineOf('/w/grant read.sh'), "bash '/w/grant read.sh'");
+    assert.equal(runLineOf("/w/it's/grant.sh"), "bash '/w/it'\\''s/grant.sh'");
+  });
+
+  it('says to follow the steps of a steps file, and has no line for a file of no hand step kind', () => {
+    assert.equal(runLineOf('/w/steps.md'), 'follow the steps in /w/steps.md');
+    assert.equal(runLineOf('/w/run.mjs'), undefined);
+  });
+});
+
+describe('auditOf', () => {
+  const a: HandStepAudit = { path: '/w/a.ps1', sha256: '1'.repeat(64), by: 'gamma', at: '2030-01-07T09:00:00.000Z' };
+  const b: HandStepAudit = { path: '/w/b.sh', sha256: '2'.repeat(64), by: 'gamma', at: '2030-01-07T10:00:00.000Z' };
+
+  it('finds the audit a task keeps of a path, and none for a path no audit pins', () => {
+    assert.equal(auditOf([a, b], '/w/b.sh'), b);
+    assert.equal(auditOf([a, b], '/w/c.ps1'), undefined);
+    assert.equal(auditOf([], '/w/a.ps1'), undefined);
   });
 });

@@ -169,6 +169,9 @@ describe('parseEvent', () => {
       const carded = parse({ ...BASE, type: 'status', status, waits, card: TEST_CARD }, 2);
       assert.deepEqual(carded.kind === 'event' && carded.event.type === 'status' ? carded.event.card : undefined, TEST_CARD, status);
     }
+    const handed = { ...TEST_CARD, run: '/w/tasks/T1/grant-read.ps1' };
+    const running = parse({ ...BASE, type: 'status', status: 'waiting', waits, card: handed }, 2);
+    assert.deepEqual(running.kind === 'event' && running.event.type === 'status' ? running.event.card : undefined, handed, 'a card keeps the hand step file it hands (T2312)');
     const closed = parse({ ...BASE, type: 'status', status: 'done', card: TEST_CARD }, 2);
     assert.equal(closed.kind === 'event' && closed.event.type === 'status' ? closed.event.card : 'no event', undefined, 'a card goes only with a wait status');
   });
