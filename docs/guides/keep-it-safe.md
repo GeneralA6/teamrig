@@ -283,8 +283,9 @@ so it cannot tell `grep x f` from `grep x f > out.txt`. With `readonlyShell.enab
 (Bash with the push guard's parser) and allows it when every command in it provably only reads: known readers, git
 and kubectl reading subcommands, the team's trusted prefixes (`readonlyShell.allowPrefixes`), and no write, file
 redirection, command that runs code or variable a program reads. It only ever allows: any other line gets Claude
-Code's own check, a guard's ask or refusal wins over its allow, and a line that prints a secret is never allowed
-([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-read-only-allow)).
+Code's own check, a guard's ask or refusal wins over its allow, a line that prints a secret is never allowed, and on
+Windows a Bash line must only read both as written and with its backslash runs halved, as Claude Code's Bash tool
+hands it to bash ([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-read-only-allow)).
 
 ## A guard that breaks
 

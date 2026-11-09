@@ -685,8 +685,11 @@ one hook's `deny` over another's `ask` over an `allow`, and its settings' deny a
 allow, so the push guard's question and the package, secret and pass-record guards' refusals always win. It never allows a line
 that prints or holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
 `secretGuard.secretReads` or `secretGuard.writes` is `allow`. The hook reads the session's team
-(`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. Like the guards, it reads only
-the line, so it cannot see:
+(`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. On Windows, Claude Code's
+Bash tool halves each run of backslashes not followed by a double quote, rounded up, before bash reads the line, so
+a Bash line must only read both as written and halved: `ls a\\\; rm -f x` reads as one `ls`, but bash gets
+`ls a\\; rm -f x` and runs the `rm`, so that line gets the prompt. Like the guards, it reads only the line, so it
+cannot see:
 
 - git obeying the repository's own config, which can name a program to run (`core.fsmonitor`, `diff.external`): it
   trusts the repository as git does;
