@@ -235,8 +235,10 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   over 8 weeks of lines once they do, so a limit that moves at a reset stops counting, and sooner by a newer period's
   own lines, from 2%, once their rate is 1.5 times that fit or half of it, counting only lines whose W rose from
   the one before, as a team with no tab metering repeats its W while the account's use climbs; a child team on
-  its parent's account reads and writes the one of the highest team above it on that account, each team logging
-  and fitting only its own lines, with the W its own usage stores metered), else
+  its parent's account reads and writes the one of the highest team above it on that account, and every team on it
+  logs a crossing as an account line with the W of all their sessions, each other team's as its own meter last
+  stored it, so they all fit one W per percent; a tab another team's session runs in is left to that team's meter,
+  so the use outside is that of no team), else
   `budget.weeklyLimitW`. Today's use is the use now less the use at today's start, each read between the meter
   log's lines by the W metered and held to the status line's percent, so the fitted rate prices only the part past
   the last line; once that use spans 2 points, the sessions' W today counts at today's own W per percent, so their
@@ -253,7 +255,7 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   writes it.
   On the way, each team's budget hooks keep its week in `usage/team.week.json` in its state folder (`state/` under
   the team's folder, unless `paths.state` moves it): the team's use of the
-  account's week so far, at its own W per percent, and that plus its part of what the account has left to
+  account's week so far, at the account's W per percent, and that plus its part of what the account has left to
   `budget.targetPct`, for a reader that shows each team's week, such as the pane's Teams tab (`parseTeamWeek`,
   from `src/read/index.ts`, reads it). The file names the Claude account it counts in (`budget.account`, else the
   config dir the team's sessions run in) and the stretches that account's week sat at its usage limit, for a reader

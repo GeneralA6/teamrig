@@ -4684,7 +4684,8 @@ left today, tell the lead and can hold its helper launches ([how](hooks.md#the-d
 1.25 to 2, cache reads 0.1, output 5), counted from the Claude Code transcripts under `~/.claude/projects`
 (`$CLAUDE_CONFIG_DIR/projects` when set). A transcript counts for a session once its tab ran
 `teamrig inbox read --session <id>`, or when the user titled it with the session's id or name; the rest counts
-as outside the team.
+as outside the team, unless another team on the same Claude account with the budget on binds the tab the same way:
+that team's meter counts it (since 0.314.0).
 
 A subagent's W is multiplied by `budget.subagentWeight` (default 1, since 0.35.0): what one W of a helper costs
 against the weekly limit, in W of a main session. Every W shown, and `budget.weeklyLimitW`, is then in main-session
@@ -4728,12 +4729,15 @@ none of them.
 
 The week's W per percent is learned from the meter (since 0.136.0). Each time the status line passes a whole
 percent in a period whose start was seen (a weekly reset or a reset inside the week), within 10 minutes of the
-reading and with the usage stores reaching back to that start, the account's `state/usage/meter-log.jsonl` gets one
-line for each team keeping its week there whose usage stores reach that start: the use, the period, the W that
-team's stores metered since its start, and the team. Each team reads only its own lines (since 0.246.0), so teams
-whose stores meter different W for one week never mix their scales; a line from before then names no team and
-counts only for the team keeping the log, and not in a period with a line that names one. A child team so learns
-its own rate from its own lines. A fit of W per percent through 0 sets the rate: over the newest period whose readings
+reading and with the usage stores reaching back to that start, the account's `state/usage/meter-log.jsonl` gets an
+account line (`"scope":"account"`, since 0.314.0): the use, the period, and the W the account's sessions metered
+since its start: the team's own stores, the use in no team, and the session stores of each other team keeping its
+week there with the budget on, as its own meter last stored them. Every team on the account reads the account lines,
+so they all learn one W per percent and their parts of the week add up to the account's. Older lines bridge the
+change: in a period with an account line, the keeping team's own lines (`"team"`, from 0.246.0) logged before the
+period's first account line count too, as its outside use then held every other team's tabs; a team line logged
+after it comes from a tab still on an older teamrig and is dropped, as other teams' lines are, and a line naming
+neither counts only in a period with no line naming one. A fit of W per percent through 0 sets the rate: over the newest period whose readings
 span 10 points, so a limit that moved at a reset stops counting once the new period's readings do, else over the last
 8 weeks' readings once they span 10 points. A newer period's own readings set the rate sooner, from 2%, once their
 rate is at least 1.5 times that fit or at most half of it: a limit moved at a reset, or by a plan changed inside the
@@ -4854,6 +4858,10 @@ group lift. The lifts block then lists group lifts first, adds an `of` column na
 of (`the team` or `group <sub-lead>`), and its heading says that quiet hours do not apply to a session's lift, but do
 to a group's. With no status line snapshot and no `budget.weeklyLimitW`, the week line says its use is
 unknown and the table gives W and calls only. `Not on the team: N Claude Code sessions (titled ...)` counts the tabs not tied to a session.
+With other teams on the same Claude account that have the budget on, a `team <id> (<n>)` row for each follows the
+sessions: the use of its n sessions as its own meter last stored it, against its part of the account's daily budget
+(`-` when it has none). The rows and the outside use then add up to the account's day, and the outside line reads
+`Not on these teams`: tabs that are on none of them.
 `Still reading: <sessions>` means a long transcript is read in steps: run it again for the rest.
 
 ### teamrig budget setup
