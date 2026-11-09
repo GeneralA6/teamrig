@@ -59,7 +59,9 @@ describe('dbWritesOf', () => {
 
   it("reads a team's program before a built-in of the same name, by the name a line runs", async () => {
     const ctx = context({}, { programs: [{ name: 'psql', reads: 'sql-execute' }, { name: 'Docsh.EXE', reads: 'document-shell' }] });
-    assert.deepEqual(await writes("psql -c 'DROP TABLE rows'; psql -e 'DROP TABLE rows'", ctx), ['psql runs DROP']);
+    // Each line alone: joined, a reader trying the built-in first would find the -c write and miss the -e one, the same count.
+    assert.deepEqual(await writes("psql -c 'DROP TABLE rows'", ctx), []);
+    assert.deepEqual(await writes("psql -e 'DROP TABLE rows'", ctx), ['psql runs DROP']);
     assert.deepEqual(await writes('docsh --eval "db.a.drop()"', ctx), ['docsh runs drop']);
   });
 
@@ -169,6 +171,19 @@ describe('dbWritesOf, each client, runner and option it reads', () => {
   it("reads sqlite3's -cmd as SQL and skips the value of its valued options, never reading a database name as SQL", async () => {
     assert.deepEqual(await writes("sqlite3 -cmd 'DELETE FROM rows' app.db"), ['sqlite3 runs DELETE']);
     assert.deepEqual(await writes("sqlite3 -cmd '.mode csv' backups/pre-update.db 'SELECT 1'; sqlite3 -init x.sql backups/pre-update.db 'SELECT 1'"), []);
+  });
+
+  it('reads no value joined to a long single-dash option, and none for a short option that ends the line', async () => {
+    assert.deepEqual(await writes("sqlite3 '-cmdDROP TABLE rows' app.db"), []);
+    // A file at the folder's own path: a bare -f read as a joined empty value would name the folder and find this write.
+    assert.deepEqual(await writes('docsh -f', context({ [APP]: 'db.rows.drop()' })), []);
+  });
+
+  it('matches an entrypoint by its whole path, with or without ./, never by part of a folder name or by an empty path', async () => {
+    const apply = (path: string): DbWriteContext => context({}, { entrypoints: [{ path, applyFlags: ['--apply'] }] });
+    assert.deepEqual(await writes('tsx scripts/backfill.ts --apply', apply('./scripts/backfill.ts')), ['tsx scripts/backfill.ts runs with --apply']);
+    assert.deepEqual(await writes('node xscripts/backfill.ts --apply', apply('scripts/backfill.ts')), []);
+    assert.deepEqual(await writes("node '' --apply", apply('./')), []);
   });
 
   it('finds the script a package runner runs, past its valued options and by a bin path', async () => {
