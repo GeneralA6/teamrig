@@ -1,8 +1,9 @@
 import { join } from 'node:path';
 import type { DeliveryPlaces } from '../delivery/places.ts';
 import type { Files } from '../core/files.ts';
-import { stringField } from '../core/guards.ts';
+import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
+import { MERGE_FORMAT, mergeRecordOf, parseMergeRecord, type MergeRecord } from './merge-log.ts';
 
 /**
  * A branch whose repository's merge command said it waits (exit 75), say on a pull request's checks or review: one
@@ -14,7 +15,10 @@ import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../co
  * - `session`, `repo`, `branch`: who ran the command, and for which repository's branch;
  * - `head`, `base`: the rebased commit the command was given, and the merge remote's default branch when it ran;
  * - `since`: when the first run of the command for this branch started, ISO 8601 UTC;
- * - `note`: the command's last output line, such as the pull request's address; empty when it printed none.
+ * - `note`: the command's last output line, such as the pull request's address; empty when it printed none;
+ * - `merge`: since format 2, the merges row (`merge-log.ts`, with its own `v`) of the change the self-merge step
+ *   weighed before the command ran, which the run that finds it merged logs; null when the step weighed nothing.
+ *   A format 1 file reads with none, so a merge left waiting across an upgrade still finishes.
  */
 export interface PendingMerge {
   readonly session: string;
@@ -28,10 +32,18 @@ export interface PendingMerge {
   readonly since: string;
   /** The command's last output line, such as the pull request's address; empty when it printed none. */
   readonly note: string;
+  /**
+   * The merges row the self-merge step weighed for `head`, logged by the run that finds it merged, with `at` set to
+   * then (T1514); undefined when the push guard is not gated, so the step weighed nothing.
+   */
+  readonly merge: MergeRecord | undefined;
 }
 
 /** The pending merge file's format; a field added to it raises this. */
-export const PENDING_MERGE_FORMAT = 1;
+export const PENDING_MERGE_FORMAT = 2;
+
+/** The format before `merge`: still read, with no merges row. */
+const NO_ROW_FORMAT = 1;
 
 /** The branch's file; git refuses `* ? :` and the like in branch names, so the encoded name is a file name on every OS. */
 export function pendingMergePath(places: Pick<DeliveryPlaces, 'pendingMerges'>, repo: string, branch: string): string {
@@ -40,16 +52,34 @@ export function pendingMergePath(places: Pick<DeliveryPlaces, 'pendingMerges'>, 
 
 /** The file's text for a pending merge. */
 export function formatPendingMerge(pending: PendingMerge): string {
-  const { session, repo, branch, head, base, since, note } = pending;
-  return `${JSON.stringify({ [VERSION_FIELD]: PENDING_MERGE_FORMAT, session, repo, branch, head, base, since, note }, null, 2)}\n`;
+  const { session, repo, branch, head, base, since, note, merge } = pending;
+  const row = merge === undefined ? null : mergeRecordOf(merge);
+  return `${JSON.stringify({ [VERSION_FIELD]: PENDING_MERGE_FORMAT, session, repo, branch, head, base, since, note, merge: row }, null, 2)}\n`;
 }
 
-/** The pending merge a file's text holds; undefined for damaged text, a missing field or a format it cannot read. */
+/** What a file's `merge` field holds: a row or none, else damage, a row of a merges format it cannot read among it. */
+type RowRead = { readonly kind: 'read'; readonly merge: MergeRecord | undefined } | { readonly kind: 'damaged' };
+
+function rowOf(value: JsonRecord, version: number): RowRead {
+  const { merge } = value;
+  if (version === NO_ROW_FORMAT || merge === null) {
+    return { kind: 'read', merge: undefined };
+  }
+  const parsed = isRecord(merge) && recordVersion(merge) === MERGE_FORMAT ? parseMergeRecord(merge) : undefined;
+  return parsed === undefined ? { kind: 'damaged' } : { kind: 'read', merge: parsed };
+}
+
+/**
+ * The pending merge a file's text holds; undefined for damaged text, a missing or damaged field or a format it cannot
+ * read, so the next run gives the merge command the change again.
+ */
 export function parsePendingMerge(text: string): PendingMerge | undefined {
   const value = parseObject(text.trim());
-  if (value === undefined || recordVersion(value) !== PENDING_MERGE_FORMAT) {
+  const version = value === undefined ? undefined : recordVersion(value);
+  if (value === undefined || (version !== PENDING_MERGE_FORMAT && version !== NO_ROW_FORMAT)) {
     return undefined;
   }
+  const row = rowOf(value, version);
   const session = stringField(value, 'session');
   const repo = stringField(value, 'repo');
   const branch = stringField(value, 'branch');
@@ -57,10 +87,10 @@ export function parsePendingMerge(text: string): PendingMerge | undefined {
   const base = stringField(value, 'base');
   const since = stringField(value, 'since');
   const note = stringField(value, 'note');
-  if (session === undefined || repo === undefined || branch === undefined || head === undefined || base === undefined || since === undefined || note === undefined) {
+  if (row.kind === 'damaged' || session === undefined || repo === undefined || branch === undefined || head === undefined || base === undefined || since === undefined || note === undefined) {
     return undefined;
   }
-  return { session, repo, branch, head, base, since, note };
+  return { session, repo, branch, head, base, since, note, merge: row.merge };
 }
 
 /** The branch's pending merge; undefined when there is none, or its file is unreadable or names another branch. */
