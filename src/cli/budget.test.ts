@@ -756,6 +756,18 @@ describe('teamrig budget extra', () => {
     ]);
   });
 
+  it("says a spent reading below the last is read as claude.ai's monthly counter restarting, the dollars before it staying spent (T997)", async () => {
+    const { run } = await world(PRICED);
+    ok(await run(['budget', 'extra', '--add', '10', '--spent', '6', '--session', 'lead']));
+    assert.equal(ok(await run(['budget', 'extra', '--spent', '7', '--session', 'lead']))[0], 'EXTRA $7.00 spent from it so far.');
+    const restarted = ok(await run(['budget', 'extra', '--spent', '1', '--session', 'lead']));
+    assert.equal(
+      restarted[0],
+      "EXTRA $1.00 spent from it so far, below the last reading of $7.00: read as claude.ai's monthly counter restarting, the $7.00 staying spent.",
+    );
+    assert.match(restarted[1] ?? '', / Extra usage: \$2\.00 of \$10\.00 left, /);
+  });
+
   it('takes an add and a spent reading at once, and with no flag shows the pool, or that there is none', async () => {
     const { run } = await world();
     const none = ok(await run(['budget', 'extra']));
