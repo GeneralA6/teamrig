@@ -1,14 +1,18 @@
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
+import { takeRoot } from '../lib/repo-root.ts';
 import { runMain } from '../lib/run-main.ts';
 import { drawPictures, stalePictures, writePictures } from './images.ts';
 
-/** Draws the docs' pictures into docs/images; `--check` only reports the ones that are missing or stale. */
+/**
+ * Draws the docs' pictures into docs/images of this repo (or `--root <repo>`); `--check` only reports the ones that
+ * are missing or stale.
+ */
 async function main(args: readonly string[]): Promise<number> {
-  const unknown = args.filter((arg) => arg !== '--check');
-  if (unknown.length > 0) throw new Error(`unknown option ${unknown.join(' ')} (usage: images-cli.ts [--check])`);
+  const { root, rest } = takeRoot(args);
+  const unknown = rest.filter((arg) => arg !== '--check');
+  if (unknown.length > 0) throw new Error(`unknown option ${unknown.join(' ')} (usage: images-cli.ts [--check] [--root <repo>])`);
   const pictures = await drawPictures();
-  const root = process.cwd();
-  if (!args.includes('--check')) {
+  if (!rest.includes('--check')) {
     writePictures(root, pictures).forEach((path) => console.log(`images: wrote ${path}`));
     return EXIT_CLEAN;
   }

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,9 +23,23 @@ function testFile(body: string): string {
 
 const FULL_TEST = testFile("it('signs', () => {\n  assert.equal(sign(-1), 'negative');\n  assert.equal(sign(1), 'positive');\n});");
 
-/** A throwaway repo with one source file and its test, plus the given overrides (`null` leaves a file out). */
-function gate(files: Readonly<Record<string, string | null>>, env: NodeJS.ProcessEnv = process.env): { readonly status: number | null; readonly output: string } {
-  const repo = mkdtempSync(join(tmpdir(), 'teamrig-coverage-gate-'));
+interface GateRun {
+  readonly status: number | null;
+  readonly output: string;
+  /** What the run left in its cwd, which is not the repo it gates. */
+  readonly strays: readonly string[];
+}
+
+/**
+ * Gates a throwaway repo with one source file and its test, plus the given overrides (`null` leaves a file out),
+ * through `--root` from a folder outside it.
+ */
+function gate(files: Readonly<Record<string, string | null>>, env: NodeJS.ProcessEnv = process.env): GateRun {
+  const base = mkdtempSync(join(tmpdir(), 'teamrig-coverage-gate-'));
+  const repo = join(base, 'repo');
+  const elsewhere = join(base, 'elsewhere');
+  mkdirSync(repo);
+  mkdirSync(elsewhere);
   try {
     const all: Record<string, string | null> = {
       'package.json': '{ "type": "module" }\n',
@@ -42,18 +56,25 @@ function gate(files: Readonly<Record<string, string | null>>, env: NodeJS.Proces
     }
     const init = spawnSync('git', ['init', '-q'], { cwd: repo, encoding: 'utf8' });
     assert.equal(init.status, 0, init.stderr);
-    const result = spawnSync(process.execPath, [CLI], { cwd: repo, encoding: 'utf8', env });
-    return { status: result.status, output: `${result.stdout}${result.stderr}` };
+    const result = spawnSync(process.execPath, [CLI, '--root', repo], { cwd: elsewhere, encoding: 'utf8', env });
+    return { status: result.status, output: `${result.stdout}${result.stderr}`, strays: readdirSync(elsewhere) };
   } finally {
-    rmSync(repo, { recursive: true, force: true });
+    rmSync(base, { recursive: true, force: true });
   }
 }
 
 describe('coverage-cli', () => {
-  it('passes a fully tested repo and prints the totals', () => {
-    const { status, output } = gate({});
+  it('passes a fully tested --root repo, run from another folder, and prints the totals', () => {
+    const { status, output, strays } = gate({});
     assert.equal(status, 0, output);
     assert.match(output, /coverage: 1 tests; 1 files: lines 100%, branches 100%, functions 100%/);
+    assert.deepEqual(strays, []);
+  });
+
+  it('exits 2 on an unknown option before it runs anything', () => {
+    const result = spawnSync(process.execPath, [CLI, '--fix'], { cwd: tmpdir(), encoding: 'utf8' });
+    assert.equal(result.status, 2, result.stdout);
+    assert.equal(result.stderr, 'coverage: unknown option --fix (usage: coverage-cli.ts [--root <repo>])\n');
   });
 
   it('fails a new file that no test loads, before it is committed', () => {
