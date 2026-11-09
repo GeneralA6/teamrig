@@ -8,6 +8,7 @@ import type {
   CommitGuardConfig,
   CommitsConfig,
   ContextFilesConfig,
+  DbWriteGuardConfig,
   DecisionsConfig,
   FocusConfig,
   GithubConfig,
@@ -146,6 +147,13 @@ export const DEFAULT_PROMPTS: PromptsConfig = { hookAsks: 'ask', routeAllow: 'on
 
 /** Refused by default: a secret printed into a session lands in its transcript and every later prompt (T660, 10-19). */
 export const DEFAULT_SECRET_GUARD: SecretGuardConfig = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
+
+/**
+ * Asked by default: a hand-run write is sometimes the right step, once the owner has seen its counts or preview, so
+ * the human answers it rather than the guard refusing it (T661). The SQL clients are built in; no other program, Node
+ * client or script is the guard's until a team names it.
+ */
+export const DEFAULT_DB_WRITE_GUARD: DbWriteGuardConfig = { writes: 'ask', entrypoints: [], programs: [], nodeClients: [], clientReceivers: [] };
 
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL: ReadonlyShellConfig = { enabled: false, allowPrefixes: [] };

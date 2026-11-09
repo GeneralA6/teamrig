@@ -499,6 +499,76 @@
         }
       }
     },
+    "dbWriteGuard": {
+      "description": "Asks before a Bash or PowerShell call writes to a database by hand: a SQL client (psql, mysql, mariadb, sqlite3, built in) or a program of the team's (programs) whose code writes, a Node script, node -e or stdin whose client of the team's (nodeClients) writes, a container or remote host running one (kubectl exec, docker exec, ssh), or a data script (entrypoints) run with its apply flag. A read stays silent. A team's lists only add: a missing or broken entry never switches a built-in off.",
+      "type": "object",
+      "properties": {
+        "writes": {
+          "description": "A hand-run database write: deny refuses it, ask asks the human (or refuses with the move-on note under prompts.hookAsks: refuse), allow lets it run.",
+          "type": "string",
+          "enum": ["deny", "ask", "allow"],
+          "default": "ask"
+        },
+        "entrypoints": {
+          "description": "The team's data scripts that write only with an apply flag, so a dry run passes: the script's path, matched against the end of the path a line runs (scripts/backfill.ts), and the flags that make it write (--apply, or --apply=yes on the line).",
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "description": "The script's path, matched against the end of the path a line runs: scripts/backfill.ts.", "type": "string", "minLength": 1, "maxLength": 260 },
+              "applyFlags": {
+                "description": "The flags that make the script write, --apply or --apply=yes; a run without one is a dry run.",
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 4,
+                "items": { "type": "string", "maxLength": 40, "pattern": "^--?[A-Za-z][\\w-]*$" }
+              }
+            },
+            "required": ["path", "applyFlags"],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "programs": {
+          "description": "The team's database programs, by name and the arguments each reads, read before the built-in SQL clients: document-shell (--eval code, -f files, a script file named as a word; document methods such as insertOne, deleteMany, drop, an aggregation's $out or $merge), key-value-cli (a command word such as SET or DEL, EVAL scripts, --eval files, stdin lines), sql-command (-c, -f, stdin), sql-execute (-e, stdin) or sql-database-file (a database file, then SQL; -cmd, stdin).",
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "description": "The program's name as a line runs it, no path: my-cli, tool.exe.", "type": "string", "maxLength": 60, "pattern": "^[A-Za-z0-9][\\w.+-]*$" },
+              "reads": { "description": "The arguments it takes its code from, one of the shapes programs lists.", "type": "string", "enum": ["document-shell", "key-value-cli", "sql-command", "sql-execute", "sql-database-file"] }
+            },
+            "required": ["name", "reads"],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "nodeClients": {
+          "description": "The Node client modules whose calls write, each with its vocabulary: document (insertOne, updateMany, deleteMany, drop, bulkWrite...) or key-value (set, del, hset, expire, flushall, eval...). Node code (node -e, a script file, stdin) is read only when it imports or requires one of them, or a module/sub path under it.",
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "module": { "description": "The package name code loads, store or @scope/store; a store/sub path under it counts too.", "type": "string", "maxLength": 120, "pattern": "^(?:@[a-z0-9][\\w.-]*\\/)?[a-z0-9][\\w.-]*$" },
+              "vocabulary": { "description": "The write vocabulary of its calls: document or key-value.", "type": "string", "enum": ["document", "key-value"] }
+            },
+            "required": ["module", "vocabulary"],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "clientReceivers": {
+          "description": "Words that mark a key-value client in Node code, matched in any case inside a receiver's name, added to the built-in client: a call named like a shared method (set, rename, copy, append, eval, move, restore) writes only on such a receiver (cache.set, not map.set).",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 40, "pattern": "^[A-Za-z_$][\\w$]*$" },
+          "default": []
+        }
+      }
+    },
     "commits": {
       "description": "The small-commits rule: one logical change per commit; a commit over either bound needs a reason line.",
       "type": "object",

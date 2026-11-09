@@ -5,11 +5,17 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, RESERVED_NAMES } from '../core/ids.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
 import {
+  APPLY_FLAG_PATTERN,
   BUDGET_ACCOUNT_MAX_LENGTH,
+  CLIENT_RECEIVER_PATTERN,
   CONFIG_LIMITS,
+  DB_PROGRAM_NAME_PATTERN,
+  DB_WRITE_ENTRYPOINT_LIMITS,
+  DB_WRITE_NAME_LIMITS,
   GITHUB_LABEL_MAX_LENGTH,
   MEETING_COLOUR_PATTERN,
   MEETING_HELD_TEXT_MAX_LENGTH,
+  NODE_MODULE_PATTERN,
   REVIEW_PATH_LIMITS,
   RULE_CONFLICT_LIMITS,
 } from './limits.ts';
@@ -17,7 +23,7 @@ import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS } from '../rules/keys.ts';
-import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, EFFORT_LEVELS, GOALS_MODES, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, VERIFY_GATES } from './types.ts';
+import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, DB_CLIENT_VOCABULARIES, DB_PROGRAM_SHAPES, DB_WRITES, EFFORT_LEVELS, GOALS_MODES, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, VERIFY_GATES } from './types.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -31,6 +37,13 @@ const EVERY_KEY = {
   team: { id: 'web', parent: 'app' },
   names: { alpha: 'captain' },
   ruleConflicts: [{ file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local', reason: 'solo repo' }],
+  dbWriteGuard: {
+    writes: 'deny',
+    entrypoints: [{ path: 'scripts/backfill.ts', applyFlags: ['--apply'] }],
+    programs: [{ name: 'docsh', reads: 'document-shell' }],
+    nodeClients: [{ module: 'docstore', vocabulary: 'document' }],
+    clientReceivers: ['cache'],
+  },
   launch: { alpha: { model: 'best', effort: 'xhigh' } },
   roles: { lead: 'alpha', deliveryOwner: 'bravo', securityReviewer: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
@@ -149,6 +162,10 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   secretPaths: 'secretGuard.paths',
   secretEnvNames: 'secretGuard.envNames',
   secretCommands: 'secretGuard.commands',
+  dbWriteEntrypoints: 'dbWriteGuard.entrypoints',
+  dbWritePrograms: 'dbWriteGuard.programs',
+  dbWriteNodeClients: 'dbWriteGuard.nodeClients',
+  dbWriteClientReceivers: 'dbWriteGuard.clientReceivers',
   packageCooldownDays: 'packageGuard.cooldownDays',
   searchNudgeAt: 'leadBoundary.searchNudgeAt',
   turnLogKeepHours: 'turnLog.keepHours',
@@ -448,6 +465,35 @@ describe('config.schema.json', () => {
 
   it('takes the goals modes the parser takes', async () => {
     assert.deepEqual(nodeAt(await loadSchema(), 'register.goals')['enum'], [...GOALS_MODES]);
+  });
+
+  it('takes the db-write guard entries the parser takes', async () => {
+    const schema = await loadSchema();
+    assert.deepEqual(nodeAt(schema, 'dbWriteGuard.writes')['enum'], [...DB_WRITES]);
+    const entrypoint = nodeAt(schema, 'dbWriteGuard.entrypoints')['items'];
+    const program = nodeAt(schema, 'dbWriteGuard.programs')['items'];
+    const client = nodeAt(schema, 'dbWriteGuard.nodeClients')['items'];
+    const receiver = nodeAt(schema, 'dbWriteGuard.clientReceivers')['items'];
+    assert.ok(isRecord(entrypoint) && isRecord(program) && isRecord(client) && isRecord(receiver));
+    const { path, applyFlags } = properties(entrypoint);
+    const { name, reads } = properties(program);
+    const { module, vocabulary } = properties(client);
+    assert.ok(isRecord(path) && isRecord(applyFlags) && isRecord(name) && isRecord(reads) && isRecord(module) && isRecord(vocabulary));
+    const flag = applyFlags['items'];
+    assert.ok(isRecord(flag));
+    assert.equal(path['maxLength'], DB_WRITE_ENTRYPOINT_LIMITS.pathMaxLength);
+    assert.deepEqual([applyFlags['minItems'], applyFlags['maxItems']], [1, DB_WRITE_ENTRYPOINT_LIMITS.applyFlagsMaxItems]);
+    assert.deepEqual([flag['maxLength'], flag['pattern']], [DB_WRITE_ENTRYPOINT_LIMITS.applyFlagMaxLength, APPLY_FLAG_PATTERN.source]);
+    assert.deepEqual(
+      [name['maxLength'], name['pattern'], reads['enum']],
+      [DB_WRITE_NAME_LIMITS.programNameMaxLength, DB_PROGRAM_NAME_PATTERN.source, [...DB_PROGRAM_SHAPES]],
+    );
+    assert.deepEqual(
+      [module['maxLength'], module['pattern'], vocabulary['enum']],
+      [DB_WRITE_NAME_LIMITS.nodeModuleMaxLength, NODE_MODULE_PATTERN.source, [...DB_CLIENT_VOCABULARIES]],
+    );
+    assert.equal(receiver['pattern'], CLIENT_RECEIVER_PATTERN.source);
+    assert.deepEqual([entrypoint['required'], program['required'], client['required']], [['path', 'applyFlags'], ['name', 'reads'], ['module', 'vocabulary']]);
   });
 
   it('takes the rule conflicts the parser takes', async () => {

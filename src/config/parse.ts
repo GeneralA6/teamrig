@@ -37,6 +37,7 @@ import {
   DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
   DEFAULT_COMMIT_GUARD,
+  DEFAULT_DB_WRITE_GUARD,
   DEFAULT_SECRET_GUARD,
   DEFAULT_PACKAGE_GUARD,
   DEFAULT_PERMISSIONS,
@@ -58,11 +59,17 @@ import {
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
 import {
+  APPLY_FLAG_PATTERN,
   BUDGET_ACCOUNT_MAX_LENGTH,
+  CLIENT_RECEIVER_PATTERN,
   CONFIG_LIMITS,
+  DB_PROGRAM_NAME_PATTERN,
+  DB_WRITE_ENTRYPOINT_LIMITS,
+  DB_WRITE_NAME_LIMITS,
   GITHUB_LABEL_MAX_LENGTH,
   MEETING_COLOUR_PATTERN,
   MEETING_HELD_TEXT_MAX_LENGTH,
+  NODE_MODULE_PATTERN,
   REVIEW_PATH_LIMITS,
   RULE_CONFLICT_LIMITS,
 } from './limits.ts';
@@ -73,8 +80,14 @@ import {
   PACKAGE_INSTALLS,
   BURST_POLICIES,
   CONFLICT_WINNERS,
+  DB_CLIENT_VOCABULARIES,
+  DB_PROGRAM_SHAPES,
+  DB_WRITES,
   ESCALATIONS,
   GOALS_MODES,
+  isDbClientVocabulary,
+  isDbProgramShape,
+  isDbWrites,
   HIRING_POLICIES,
   isAdHocRunners,
   isPackageInstalls,
@@ -151,6 +164,10 @@ import {
   type PromptsConfig,
   type QuietHours,
   type SecretGuardConfig,
+  type DbWriteEntrypoint,
+  type DbWriteGuardConfig,
+  type DbWriteNodeClient,
+  type DbWriteProgram,
   type SkipHooks,
   type ReadonlyShellConfig,
   type ScaleOutConfig,
@@ -514,6 +531,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
     prompts: parsePrompts(read, read.section(raw, 'prompts', '')),
     secretGuard: parseSecretGuard(read, read.section(raw, 'secretGuard', '')),
+    dbWriteGuard: parseDbWriteGuard(read, read.section(raw, 'dbWriteGuard', '')),
     commits: parseCommits(read, read.section(raw, 'commits', '')),
     delivery: parseDelivery(read, read.section(raw, 'delivery', '')),
     budget,
@@ -1614,6 +1632,75 @@ function keepablePattern(keeps: string): Check<string> {
     const body = value.replace(/^!/, '');
     return body === '' ? `expected a regular expression, with a leading ! to ${keeps}` : isValidRegex(body);
   };
+}
+
+function parseDbWriteGuard(read: ConfigReader, raw: JsonRecord): DbWriteGuardConfig {
+  const path = 'dbWriteGuard';
+  const defaults = DEFAULT_DB_WRITE_GUARD;
+  const writes = read.string(raw, 'writes', path, defaults.writes, oneOf(DB_WRITES));
+  const { dbWriteEntrypoints, dbWritePrograms, dbWriteNodeClients, dbWriteClientReceivers } = CONFIG_LIMITS;
+  return {
+    writes: isDbWrites(writes) ? writes : defaults.writes,
+    entrypoints: read.list(raw, 'entrypoints', path, defaults.entrypoints, (value, itemPath) => parseDbWriteEntrypoint(read, value, itemPath), dbWriteEntrypoints.maxItems),
+    programs: read.list(raw, 'programs', path, defaults.programs, (value, itemPath) => parseDbWriteProgram(read, value, itemPath), dbWritePrograms.maxItems),
+    nodeClients: read.list(raw, 'nodeClients', path, defaults.nodeClients, (value, itemPath) => parseDbWriteNodeClient(read, value, itemPath), dbWriteNodeClients.maxItems),
+    clientReceivers: read.stringList(
+      raw,
+      'clientReceivers',
+      path,
+      defaults.clientReceivers,
+      shortLine(dbWriteClientReceivers.maxLength, matching(CLIENT_RECEIVER_PATTERN, 'expected a word of letters, digits, _ or $, such as cache')),
+      dbWriteClientReceivers.maxItems,
+    ),
+  };
+}
+
+/** A check that `pattern` matches the whole value, else `expected`. */
+function matching(pattern: RegExp, expected: string): Check<string> {
+  return (value) => (pattern.test(value) ? undefined : expected);
+}
+
+function parseDbWriteEntrypoint(read: ConfigReader, value: unknown, path: string): DbWriteEntrypoint | undefined {
+  const entrypoint = read.objectItem(value, path);
+  if (entrypoint === undefined) {
+    return undefined;
+  }
+  const before = read.issues.length;
+  const { pathMaxLength, applyFlagsMaxItems, applyFlagMaxLength } = DB_WRITE_ENTRYPOINT_LIMITS;
+  const scriptPath = read.requiredString(entrypoint, 'path', path, shortLine(pathMaxLength));
+  if (entrypoint['applyFlags'] === undefined) {
+    read.report(`${path}.applyFlags`, 'is required');
+  }
+  const isApplyFlag = matching(APPLY_FLAG_PATTERN, 'expected a flag such as --apply');
+  const applyFlags = read.stringList(entrypoint, 'applyFlags', path, [], shortLine(applyFlagMaxLength, isApplyFlag), applyFlagsMaxItems);
+  if (Array.isArray(entrypoint['applyFlags']) && entrypoint['applyFlags'].length === 0) {
+    read.report(`${path}.applyFlags`, 'expected at least one flag, such as --apply');
+  }
+  return read.issues.length === before ? { path: scriptPath, applyFlags } : undefined;
+}
+
+function parseDbWriteProgram(read: ConfigReader, value: unknown, path: string): DbWriteProgram | undefined {
+  const program = read.objectItem(value, path);
+  if (program === undefined) {
+    return undefined;
+  }
+  const before = read.issues.length;
+  const isName = matching(DB_PROGRAM_NAME_PATTERN, 'expected a program name such as my-cli, no path');
+  const name = read.requiredString(program, 'name', path, shortLine(DB_WRITE_NAME_LIMITS.programNameMaxLength, isName));
+  const reads = read.requiredString(program, 'reads', path, oneOf(DB_PROGRAM_SHAPES));
+  return read.issues.length === before && isDbProgramShape(reads) ? { name, reads } : undefined;
+}
+
+function parseDbWriteNodeClient(read: ConfigReader, value: unknown, path: string): DbWriteNodeClient | undefined {
+  const client = read.objectItem(value, path);
+  if (client === undefined) {
+    return undefined;
+  }
+  const before = read.issues.length;
+  const isModule = matching(NODE_MODULE_PATTERN, 'expected a package name such as store or @scope/store');
+  const module = read.requiredString(client, 'module', path, shortLine(DB_WRITE_NAME_LIMITS.nodeModuleMaxLength, isModule));
+  const vocabulary = read.requiredString(client, 'vocabulary', path, oneOf(DB_CLIENT_VOCABULARIES));
+  return read.issues.length === before && isDbClientVocabulary(vocabulary) ? { module, vocabulary } : undefined;
 }
 
 function parseReadonlyShell(read: ConfigReader, raw: JsonRecord): ReadonlyShellConfig {
