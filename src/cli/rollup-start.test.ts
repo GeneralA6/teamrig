@@ -11,7 +11,7 @@ const TEN_UTC = Date.parse('2030-01-08T10:00:00.000Z');
 function worldOf(): { readonly files: MemoryFiles; readonly processes: FakeProcesses; readonly runtime: Parameters<typeof startDailyRollup>[0] } {
   const files = new MemoryFiles();
   const processes = new FakeProcesses();
-  return { files, processes, runtime: { files, processes, self: { node: 'node', script: 'main.js' }, cwd: '/work', env: {} } };
+  return { files, processes, runtime: { files, processes, self: { node: 'node', script: 'main.js', execArgv: [] }, cwd: '/work', env: {} } };
 }
 
 describe('startDailyRollup', () => {

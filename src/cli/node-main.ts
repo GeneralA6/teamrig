@@ -89,7 +89,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     probe: NODE_PATH_PROBE,
     pluginStore: NODE_STORE_FOLDERS,
     transcripts: nodeTranscriptSource,
-    self: { node: process.execPath, script: entry.script },
+    self: { node: process.execPath, script: entry.script, execArgv: process.execArgv },
     requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
     worktrees: { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES },
     restore: {

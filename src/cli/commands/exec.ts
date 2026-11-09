@@ -21,6 +21,7 @@ import {
   type Stamped,
 } from '../../exec/audit.ts';
 import { resolveProgram } from '../../exec/binding.ts';
+import { nodeLaunchRefusal } from '../../exec/node-launch.ts';
 import { parseDraft, type CodeBinding, type ExecRequest } from '../../exec/request.ts';
 import { decideReview, RANDOM_NONCES, UnsignedReviews, type ReviewKit } from '../../exec/review.ts';
 import { baseEnvironment, environmentCredentials, Executor, type ExecResult } from '../../exec/runner.ts';
@@ -43,7 +44,16 @@ interface ExecTeam {
   readonly scanner: SecretScanner;
 }
 
+/** Refuses an exec command on a node started with an option that can run code beside the pinned client (T1036). */
+function refuseForeignLaunch(runtime: CliRuntime): void {
+  const refusal = nodeLaunchRefusal(runtime.self.execArgv, runtime.env, runtime.platform);
+  if (refusal !== undefined) {
+    throw new RefusedError(refusal);
+  }
+}
+
 async function openExec(runtime: CliRuntime, access: Access): Promise<ExecTeam> {
+  refuseForeignLaunch(runtime);
   const kit = await openTeamKit(runtime);
   return execTeamOf(runtime, kit, requireConfig(kit, runtime, access));
 }
@@ -76,6 +86,7 @@ interface ChildExec {
 }
 
 async function childExecOf(runtime: CliRuntime, child: string, access: Access): Promise<ChildExec> {
+  refuseForeignLaunch(runtime);
   const kit = await openTeamKit(runtime);
   const own: OpenTeam = { kit, config: requireConfig(kit, runtime, 'read') };
   const { tree, teams } = await loadTree(runtime);

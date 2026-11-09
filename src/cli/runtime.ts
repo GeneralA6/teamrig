@@ -39,6 +39,8 @@ export interface SelfLocation {
   readonly node: string;
   /** This CLI's entry script. */
   readonly script: string;
+  /** The options node took on its command line before the script (`process.execArgv`), which `teamrig exec` checks (exec/node-launch.ts). */
+  readonly execArgv: readonly string[];
 }
 
 /** Everything the CLI takes from the process, as one port so every command runs in tests. */

@@ -51,7 +51,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     credentials: new FakeCredentials(),
     probe: { kind: async () => 'none' },
     pluginStore: new FakePluginStore(),
-    self: { node: '/usr/bin/node', script: '/opt/teamrig/dist/cli/main.js' },
+    self: { node: '/usr/bin/node', script: '/opt/teamrig/dist/cli/main.js', execArgv: [] },
     requirements: { problems: async () => [] },
     transcripts: new MemoryTranscripts(),
     worktrees: noWorktrees(),
