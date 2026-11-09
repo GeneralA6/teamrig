@@ -3,7 +3,9 @@
 Your sessions run for hours while you are away, and a rule in their instructions can be missed. teamrig's guards
 hold those rules on every line: before Claude runs a command, they read it and ask you, or refuse, when it would push
 to a protected branch, skip the repository's git hooks, run a package nobody vetted or print a secret, and a
-privileged command runs only once a reviewer approves it. Each guard's keys in the
+privileged command runs only once a reviewer approves it. On Windows they read a Bash line both as written and as
+Claude Code's Bash tool hands it to bash, with each run of backslashes halved, and answer for the stricter reading.
+Each guard's keys in the
 [team config](../configuration.md) set what it does. The guards catch mistakes; they are not a sandbox, so protect
 your main branch on your git host too.
 
