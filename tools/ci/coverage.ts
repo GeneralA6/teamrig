@@ -262,8 +262,11 @@ function emptyCoverage(): MutableCoverage {
   return { lines: { found: 0, hit: 0 }, branches: { found: 0, hit: 0 }, functions: { found: 0, hit: 0 } };
 }
 
-/** Per-file totals from an lcov report; `toRepoPath` turns its absolute paths into repo paths. */
-export function parseLcov(text: string, toRepoPath: (absolute: string) => string): FileCoverage[] {
+/**
+ * Per-file totals from an lcov report; `toRepoPath` turns its source paths into repo paths. Node writes them relative
+ * to the suite's cwd (`SF:src\one.ts` on Node 22), so they mean nothing against another folder.
+ */
+export function parseLcov(text: string, toRepoPath: (path: string) => string): FileCoverage[] {
   const files: FileCoverage[] = [];
   let path: string | undefined;
   let coverage = emptyCoverage();
@@ -422,7 +425,7 @@ export interface SuiteOutput {
 }
 
 /** The run the floors judge. A report the suite never wrote counts as no coverage and no summary, which fails the gate. */
-export function coverageRun(output: SuiteOutput, listing: readonly string[], toRepoPath: (absolute: string) => string): CoverageRun {
+export function coverageRun(output: SuiteOutput, listing: readonly string[], toRepoPath: (path: string) => string): CoverageRun {
   return {
     report: output.lcov === undefined ? [] : parseLcov(output.lcov, toRepoPath),
     listing,
