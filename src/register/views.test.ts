@@ -581,6 +581,16 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.ok(!formatTaskDetail(task, [], TREE, EXTRAS).includes('files in'), 'no line unless show gives one');
   });
 
+  it('prints each hand step file an audit pins, before the card, and the audit in the history line (T2312)', () => {
+    const pin = { path: '/w/tasks/T3/grant-read.ps1', sha256: 'c'.repeat(64) };
+    const task = testTask({ id: 'T3', note: 'ready to ask', audits: [{ ...pin, by: 'gamma', at: '2030-01-07T14:00:00.000Z' }] });
+    const lines = formatTaskDetail(task, [], TREE, EXTRAS).split('\n');
+    assert.deepEqual(lines.slice(1, 3), ['note: ready to ask', 'audit: /w/tasks/T3/grant-read.ps1   (sha256 cccccccc, audited by gamma at 2030-01-07 14:00 UTC)']);
+    const audited: RegisterEvent = { v: 2, type: 'update', id: 'T3', at: '2030-01-07T14:00:00.000Z', by: 'gamma', changes: {}, note: 'read it', audit: pin };
+    assert.match(formatEvent(audited, TimeZone.UTC), / gamma update audit=\/w\/tasks\/T3\/grant-read\.ps1@cccccccc note="read it"$/);
+    assert.ok(!formatTaskDetail(testTask({ id: 'T3' }), [], TREE, EXTRAS).includes('audit:'), 'a task with no audit prints no line');
+  });
+
   it("prints a bug's review in show, a line per part given, and the parts a status line gave in the history", () => {
     const review = { cause: 'the parser skipped blank rows', missedLog: 'the skip logged nothing at all' };
     const reviewed: RegisterEvent = { v: 2, type: 'status', id: 'T3', at: '2030-01-07T14:00:00.000Z', by: 'alpha', status: 'in-progress', note: null, evidence: null, skill: null, review };
