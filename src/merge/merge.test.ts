@@ -30,6 +30,7 @@ import { parsePendingMerge, type PendingMerge } from './pending-merges.ts';
 import { REVIEW_BASE_ENV } from './review-check.ts';
 import type { ReviewGateSetup } from './review-gate-step.ts';
 import { ReviewHolds } from './review-holds.ts';
+import { KEEPALIVE_SSH_COMMAND } from './ssh-keepalive.ts';
 
 const PLACES: DeliveryPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
@@ -450,7 +451,12 @@ describe('merge pushes a branch to the default branch', () => {
     world.git.landed = ['aaaaaaaa1111', 'bbbbbbbb2222'];
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'pushed aaaaaaaa..bbbbbbbb to main' });
     assert.deepEqual(world.steps.ran, [
-      { command: commandLine(['git', 'push', 'origin', 'HEAD:refs/heads/main'], 'linux'), cwd: WORKTREE, env: { PATH: '/bin', TEAMRIG_HOST_LOCK: 'lock-1' }, timeoutMs: DEFAULT_QUEUE.maxRunMinutes * 60_000 },
+      {
+        command: commandLine(['git', 'push', 'origin', 'HEAD:refs/heads/main'], 'linux'),
+        cwd: WORKTREE,
+        env: { PATH: '/bin', GIT_SSH_COMMAND: KEEPALIVE_SSH_COMMAND, TEAMRIG_HOST_LOCK: 'lock-1' },
+        timeoutMs: DEFAULT_QUEUE.maxRunMinutes * 60_000,
+      },
     ]);
     assert.deepEqual(world.git.log, [
       `fetch ${WORKTREE} origin`,
@@ -467,6 +473,13 @@ describe('merge pushes a branch to the default branch', () => {
     assert.ok(world.lockFree());
     assert.ok(world.said.includes('NOTE app is not in delivery.repos: no deploy targets, no dependency gate, no main checkout to follow'));
     assert.equal(world.said.at(-1), `next: teamrig worktree remove "${WORKTREE}"`);
+  });
+
+  it("pushes with the ssh command the repository's git config sets, never the keepalive over it (T1033)", async () => {
+    const world = new World();
+    world.git.sshCommandIs = 'ssh -i deploy_key';
+    assert.equal((await world.run()).kind, 'done');
+    assert.deepEqual(world.steps.ran.map((step) => step.env), [{ PATH: '/bin', TEAMRIG_HOST_LOCK: 'lock-1' }]);
   });
 
   it("records the task its branch names, at that task's register priority, on the push's start and end records (T2209)", async () => {

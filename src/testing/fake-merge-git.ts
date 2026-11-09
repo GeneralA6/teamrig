@@ -71,6 +71,8 @@ export class FakeMergeGit implements MergeGit {
   checkoutFails: string | undefined;
   fastForwardFails: string | undefined;
   resetFails: string | undefined;
+  /** The `core.sshCommand` git's config sets; none by default. */
+  sshCommandIs: string | undefined;
 
   /** A push of ours lands: origin's branch moves, and so does its tracking ref, as git push moves both. */
   pushed(branch: string, commit: string): void {
@@ -137,6 +139,10 @@ export class FakeMergeGit implements MergeGit {
 
   defaultBranch(): string {
     return this.defaultName;
+  }
+
+  sshCommand(): string | undefined {
+    return this.sshCommandIs;
   }
 
   sha(dir: string, ref: string): string | undefined {

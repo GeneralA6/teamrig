@@ -24,6 +24,7 @@ import { readPassRecord } from '../push-guard/pass-record.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { decisionRecordHold } from './decision-records.ts';
 import { rangeInstallTouches, runDependencyCheck } from './dependencies.ts';
+import { withSshKeepalive } from './ssh-keepalive.ts';
 import type { GateHolds } from './gate-holds.ts';
 import { gatedVerdict, type GatedSetup, type GatedTask, type GatedVerdict } from './gated-step.ts';
 import { ORIGIN, type Checkout, type MergeGit } from './git.ts';
@@ -442,7 +443,8 @@ function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () 
  * Under the host lock `taking` holds: rebases onto the fresh default branch, runs the checks on what the rebase made
  * (see {@link checksOf}) and pushes, again from the rebase when origin moved meanwhile, unless the push was killed as
  * its launching shell ended (no one waits for it any more). The checks and the push get the lock's token, so a
- * pre-push hook that wraps its checks in `teamrig queue` runs them under this lock.
+ * pre-push hook that wraps its checks in `teamrig queue` runs them under this lock. The push's ssh sends keepalives
+ * (see {@link withSshKeepalive}), so its connection, open while the pre-push hook runs, outlives long checks.
  */
 async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking): Promise<MergeOutcome> {
   const { git } = ports;
@@ -476,7 +478,7 @@ async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, tak
       request: {
         command: commandLine(['git', 'push', 'origin', `HEAD:refs/heads/${defaultBranch}`], ports.platform),
         cwd: top,
-        env: underLock(gitEnvironment(ports.env), taking.lock),
+        env: underLock(withSshKeepalive(gitEnvironment(ports.env), git.sshCommand(top)), taking.lock),
         timeoutMs: setup.delivery.queue.maxRunMinutes * MINUTE_MS,
       },
     });
