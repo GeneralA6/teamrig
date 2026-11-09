@@ -128,6 +128,7 @@ export function secretGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, paylo
     secretReads: config.secretReads,
     writes: config.writes,
     hookAsks: hookAsksOf(guard.load),
+    platform: runtime.platform,
   });
 }
 

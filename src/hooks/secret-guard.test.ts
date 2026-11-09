@@ -12,7 +12,7 @@ const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
 const PASSWORD = join('s3', 'cret', 'Value9');
 
 function env(overrides: Partial<SecretGuardEnv> = {}): SecretGuardEnv {
-  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', writes: 'deny', hookAsks: 'ask', ...overrides };
+  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', writes: 'deny', hookAsks: 'ask', platform: 'linux', ...overrides };
 }
 
 function call(tool_name: string, tool_input: JsonRecord, extra: JsonRecord = {}): JsonRecord {
@@ -251,6 +251,36 @@ describe('secretGuardOutput on what a command line holds (T1369 acceptance)', ()
     assert.equal(decisionOf('Bash', "node -e 'console.log(`last ${near[near.length-1]}`)'"), undefined);
     assert.equal(decisionOf('Bash', 'cat near[near.length-1]'), undefined);
     assert.equal(decisionOf('Bash', 'cat .en[z-av]'), 'deny');
+  });
+});
+
+describe('secretGuardOutput: a Bash line on Windows (T2319)', () => {
+  /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
+  const bs = (n: number): string => '\\'.repeat(n);
+  const windows = (overrides: Partial<SecretGuardEnv> = {}): SecretGuardEnv => env({ platform: 'win32', ...overrides });
+  const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
+  const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
+
+  it('refuses a secret file read that bash runs behind what the line as written escapes', () => {
+    for (const line of [hiddenSeparator('cat .env'), hiddenBacktick('cat .env')]) {
+      assert.deepEqual(verdictOf(secretGuardOutput(call('Bash', { command: line }), windows())), { decision: 'deny', reason: secretReason([{ kind: 'file', path: '.env' }]) }, line);
+      assert.equal(secretGuardOutput(call('Bash', { command: line }), env()), '', `off Windows bash runs the line as written: ${line}`);
+    }
+  });
+
+  it('names a secret both readings print once, and leaves a line whose readings print none and a call with no command line as it was', () => {
+    const verdict = verdictOf(secretGuardOutput(call('Bash', { command: `cat .env; ${hiddenSeparator('printenv NPM_TOKEN')}` }), windows()));
+    assert.deepEqual(verdict, {
+      decision: 'deny',
+      reason: secretReason([
+        { kind: 'file', path: '.env' },
+        { kind: 'variable', name: 'NPM_TOKEN' },
+      ]),
+    });
+    for (const benign of [`grep 'a${bs(4)}b' f`, hiddenSeparator('cat .env | wc -c')]) {
+      assert.equal(secretGuardOutput(call('Bash', { command: benign }), windows()), '', benign);
+    }
+    assert.equal(verdictOf(secretGuardOutput(call('Read', { file_path: 'C:/w/.env' }), windows()))?.decision, 'deny');
   });
 });
 
