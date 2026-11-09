@@ -2539,7 +2539,7 @@ the next is. A batch is due when:
 
 A wait whose decision frees only Improvements work (by the agenda's rule: its task and everything it unblocks have a
 class other than `focus.roadmapClass` and `focus.maintenanceClass` and none is an expedite) waits for the weekly Improvements
-batch, as on the agenda (since 0.318.0). Off `focus.improvementsDay` (a UTC weekday, `wed` by default) it is held:
+batch, as on the agenda (since 0.320.0). Off `focus.improvementsDay` (a UTC weekday, `wed` by default) it is held:
 out of the batch and every trigger above, even when due, and named after the head on one line, `IMPROVEMENTS <n>
 held for the weekly Improvements batch on wed UTC (focus.improvementsDay): T5, web/T7`. On that day it is in the
 batch, and only an ask that day counts, so it is asked again each week while it waits.
