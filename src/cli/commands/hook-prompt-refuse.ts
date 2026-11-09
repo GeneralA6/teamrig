@@ -39,7 +39,7 @@ async function promptRefuseOutputOf(runtime: CliRuntime, payload: JsonRecord, de
   const route = await callRouteOf(runtime, kit, kit.load.config, payload, deps.table);
   // The prompt would wait for a person under refuse, so a provably read-only line runs even with the read-only allow off.
   const check = await readonlyCheckOf(runtime, kit.load.config);
-  const answer = promptAnswerOf(tool, payload, (call) => callReads(call, check.rules, check.printsSecret), route?.id);
+  const answer = promptAnswerOf(tool, payload, (call) => callReads(call, check.rules, check.printsSecret, runtime.platform), route?.id);
   const facts = { at: new Date(runtime.clock.now()), session: envSession(runtime), claudeSession: sessionIdOf(payload), tool, answer, payload };
   const record = promptAnswerRecord(facts, new SecretScanner(kit.load.config.register.secretPatterns));
   // Best effort: the log feeds the daily triage, and a full disk or a held lock must not turn the answer into an open prompt.

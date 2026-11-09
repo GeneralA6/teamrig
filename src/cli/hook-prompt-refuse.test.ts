@@ -102,6 +102,13 @@ describe('hook prompt-refuse', () => {
     assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: bashRequest('./teamrig merge --session alpha') })), REFUSED('Bash'));
   });
 
+  it('refuses on Windows a line whose halved text, the one bash receives there, runs a hidden command', async () => {
+    const kit = new CliHarness(ASKS_OFF);
+    const hidden = bashRequest(`ls a${'\\'.repeat(3)}; rm -f x`);
+    assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: hidden, platform: 'win32' })), REFUSED('Bash'));
+    assert.deepEqual(permissionOf(await kit.run(HOOK, { stdin: hidden, platform: 'linux' })), { behavior: 'allow' });
+  });
+
   it('refuses a line that only reads but would print a secret', async () => {
     assert.deepEqual(permissionOf(await new CliHarness(ASKS_OFF).run(HOOK, { stdin: bashRequest('cat .env') })), REFUSED('Bash'));
   });
