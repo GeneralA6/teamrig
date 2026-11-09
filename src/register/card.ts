@@ -1,4 +1,5 @@
 import { isRecord } from '../core/guards.ts';
+import { auditOf, runLineOf, shortSha256, type HandStepAudit } from './hand-step.ts';
 
 /**
  * A decision card (T514): what a task waiting on a decision or an approval asks, written so whoever decides needs
@@ -25,6 +26,11 @@ export interface DecisionCard {
    * the question the owner's at all; any other question is its leader's, however many good answers it has.
    */
   readonly gate?: string;
+  /**
+   * Only on a wait on the owner's decision or approval (T2312, core rule 11): the hand step file the owner runs, by its
+   * absolute path, which an audit on the task pins at its sha256; the card prints the line that runs it.
+   */
+  readonly run?: string;
 }
 
 /** The CLI flags that write a card's parts, for the refusals that name them. */
@@ -35,6 +41,9 @@ export const WHY_ASK_FLAG = '--why-ask';
 
 /** The CLI flag that writes a card's `gate`. */
 export const GATE_FLAG = '--gate';
+
+/** The CLI flag that writes a card's `run`. */
+export const RUN_FLAG = '--run';
 
 /** The gate that names a business decision, the owner's besides the owner gates (T1194). */
 export const BUSINESS_GATE = 'business';
@@ -73,7 +82,10 @@ export const MIN_DECISION_OPTIONS = 2;
 /** A task id standing as a word: `T378`, `(T378)`, `T378,`. */
 const TASK_WORD = /\bT[1-9]\d*\b/g;
 
-/** The card's parts as one list of texts, in the order a card prints them. */
+/**
+ * The card's parts as one list of texts, in the order a card prints them, but its run file: a path is no prose, and
+ * a task id in it (`tasks/T5/step.ps1`) names no task the card is about.
+ */
 export function cardTexts(card: DecisionCard): string[] {
   return [
     card.question,
@@ -85,12 +97,14 @@ export function cardTexts(card: DecisionCard): string[] {
   ];
 }
 
-/** Which of a card's owner parts still hold: `whyAsk` and `gate` each go once what they answer no longer applies. */
+/** Which of a card's owner parts still hold: `whyAsk`, `gate` and `run` each go once what they answer no longer applies. */
 export interface KeptOwnerParts {
   /** The task is one the owner ordered and waits on the owner's decision or approval (T802). */
   readonly whyAsk: boolean;
   /** The task waits on the owner's decision (T1194). */
   readonly gate: boolean;
+  /** The task waits on the owner's decision or approval, so a hand step still goes to the owner (T2312). */
+  readonly run: boolean;
 }
 
 /** The card with only the owner parts that still hold (`keep`). */
@@ -102,6 +116,7 @@ export function keptCard(card: DecisionCard, keep: KeptOwnerParts): DecisionCard
     byDefault: card.byDefault,
     ...(keep.whyAsk && card.whyAsk !== undefined ? { whyAsk: card.whyAsk } : {}),
     ...(keep.gate && card.gate !== undefined ? { gate: card.gate } : {}),
+    ...(keep.run && card.run !== undefined ? { run: card.run } : {}),
   };
 }
 
@@ -152,6 +167,7 @@ export function sameCard(a: DecisionCard | null, b: DecisionCard | null): boolea
     a.byDefault === b.byDefault &&
     a.whyAsk === b.whyAsk &&
     a.gate === b.gate &&
+    a.run === b.run &&
     a.options.length === b.options.length &&
     a.options.every((option, index) => option === b.options[index])
   );
@@ -168,7 +184,7 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (!isRecord(value)) {
     return 'card is not an object';
   }
-  const { question, options, recommend, byDefault, whyAsk, gate } = value;
+  const { question, options, recommend, byDefault, whyAsk, gate, run } = value;
   if (typeof question !== 'string' || typeof recommend !== 'string' || typeof byDefault !== 'string') {
     return 'card needs question, recommend and byDefault as text';
   }
@@ -181,15 +197,26 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (gate !== undefined && typeof gate !== 'string') {
     return 'card gate is not text';
   }
-  return { question, options, recommend, byDefault, ...(whyAsk === undefined ? {} : { whyAsk }), ...(gate === undefined ? {} : { gate }) };
+  if (run !== undefined && typeof run !== 'string') {
+    return 'card run is not text';
+  }
+  return {
+    question,
+    options,
+    recommend,
+    byDefault,
+    ...(whyAsk === undefined ? {} : { whyAsk }),
+    ...(gate === undefined ? {} : { gate }),
+    ...(run === undefined ? {} : { run }),
+  };
 }
 
 /**
  * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's and
- * why the owner is asked (when the card says), each option numbered, the recommendation and the default, each line
- * led by `indent`.
+ * why the owner is asked (when the card says), each option numbered, the recommendation and the default, then the
+ * hand step to run (when the card hands one), each line led by `indent`. `audits` are the task's (fold.ts).
  */
-export function cardLines(card: DecisionCard, indent: string): string[] {
+export function cardLines(card: DecisionCard, indent: string, audits: readonly HandStepAudit[]): string[] {
   return [
     `${indent}decide: ${card.question}`,
     ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
@@ -197,5 +224,19 @@ export function cardLines(card: DecisionCard, indent: string): string[] {
     ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
     `${indent}recommended: ${card.recommend}`,
     `${indent}with no answer: ${card.byDefault}`,
+    ...(card.run === undefined ? [] : [`${indent}run: ${runText(card.run, audits)}`]),
   ];
+}
+
+/**
+ * How the owner runs a card's hand step file, with the sha256 its audit pins and who audited it, so the owner can
+ * match the file; with no audit of it on the task (a register line written by hand), that it is not to be run.
+ */
+function runText(run: string, audits: readonly HandStepAudit[]): string {
+  const audit = auditOf(audits, run);
+  const line = runLineOf(run);
+  if (audit === undefined || line === undefined) {
+    return `do not run ${run}: no audit on the task pins it (core rule 11)`;
+  }
+  return `${line}   (sha256 ${shortSha256(audit.sha256)}, audited by ${audit.by})`;
 }

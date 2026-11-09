@@ -108,6 +108,10 @@ describe('the meeting agenda', () => {
       '    no card yet: ask alpha for one (check flags it NO-CARD)',
       '    waiting since 01-07 09:00 UTC',
     ]);
+    const step = '/w/tasks/T4/grant-read.ps1';
+    const handed: Task = { ...DECIDE, card: { ...TEST_OWNER_CARD, run: step }, audits: [{ path: step, sha256: 'c'.repeat(64), by: 'gamma', at: '2030-01-07T15:00:00.000Z' }] };
+    const run = section(agendaLines(inputOf([handed])), 'DECISIONS');
+    assert.deepEqual(run.slice(8, 10), ['    with no answer: Basic ships on the due date', `    run: & '${step}'   (sha256 cccccccc, audited by gamma)`], 'the hand step file a card hands, after its default (T2312)');
     assert.match(lines[14] ?? '', /^ {2}Read each card to owner as it stands, .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
     // T1278: by default the owner answers in plain text, never through the picker.
     assert.equal(

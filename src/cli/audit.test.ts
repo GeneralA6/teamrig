@@ -6,6 +6,7 @@ import { formatConfig } from '../config/load.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { SUB_TEAMS, teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
+import { TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { EXIT } from './runtime.ts';
 
 const STEP = join(APP, 'steps', 'grant-read.ps1');
@@ -112,6 +113,50 @@ describe('runCli: audit --team, from the reviewer on a team above (T2312)', () =
     const own = await kit.run(['audit', 'T1', '--team', 'app', '--file', STEP, '--session', 'alpha']);
     assert.equal(own.code, EXIT.usage);
     assert.match(own.stderr[0] ?? '', /^--team app is your own team: audit T1 without --team/);
+    assert.deepEqual(filesOf(kit), before);
+  });
+});
+
+describe('runCli: set --run, a card hands the owner an audited hand step file (T2312)', () => {
+  const asks = ['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the grant needs the owner', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha'];
+
+  /** reviewed() with T1 started, so it can wait on the owner. */
+  async function started(): Promise<CliHarness> {
+    const kit = await reviewed();
+    const start = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
+    assert.equal(start.code, EXIT.ok, start.stderr.join('\n'));
+    return kit;
+  }
+
+  it('writes the file on the card once its audit pins it, and show prints the line that runs it', async () => {
+    const kit = await started();
+    const audited = await kit.run(['audit', 'T1', '--file', STEP, '--session', 'bravo']);
+    assert.equal(audited.code, EXIT.ok, audited.stderr.join('\n'));
+    const handed = await kit.run([...asks, '--run', join('steps', 'grant-read.ps1')]);
+    assert.equal(handed.code, EXIT.ok, handed.stderr.join('\n'));
+    const shown = (await kit.run(['show', 'T1'])).stdout.join('\n');
+    assert.ok(shown.split('\n').includes(`  run: & '${STEP}'   (sha256 ${SHORT}, audited by bravo)`), shown);
+  });
+
+  it('refuses a file no audit pins, one changed since its audit, a missing file and a blank path, writing nothing', async () => {
+    const kit = await started();
+    const unaudited = await kit.run([...asks, '--run', STEP]);
+    assert.equal(unaudited.code, EXIT.refused);
+    assert.equal(unaudited.stdout[0], `REFUSED no audit on T1 pins ${STEP}: a hand step goes to owner only as a file its auditor read (core rule 11); who audits it: the security reviewer (bravo), with teamrig audit T1 --file ${STEP}`);
+    await kit.run(['audit', 'T1', '--file', STEP, '--session', 'bravo']);
+    const edited = 'Write-Host "granted to all"\n';
+    await kit.files.write(STEP, edited);
+    const before = filesOf(kit);
+    const changed = await kit.run([...asks, '--run', STEP]);
+    assert.equal(changed.code, EXIT.refused);
+    const now = createHash('sha256').update(edited).digest('hex').slice(0, 8);
+    assert.equal(changed.stdout[0], `REFUSED ${STEP} changed since bravo audited it at sha256 ${SHORT} (now ${now}): an edit needs a new audit (core rule 11)`);
+    const missing = join(APP, 'steps', 'missing.ps1');
+    const gone = await kit.run([...asks, '--run', missing]);
+    assert.deepEqual([gone.code, gone.stdout[0]], [EXIT.refused, `REFUSED no file ${missing}`]);
+    const blank = await kit.run([...asks, '--run', ' ']);
+    assert.equal(blank.code, EXIT.usage);
+    assert.match(blank.stderr[0] ?? '', /--run needs the hand step file's path/);
     assert.deepEqual(filesOf(kit), before);
   });
 });

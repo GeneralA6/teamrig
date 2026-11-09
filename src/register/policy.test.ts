@@ -1428,6 +1428,55 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
     assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, question: credentialUrl() } })), /card looks like it holds a secret/);
     assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, byDefault: 'x '.repeat(200) } })), /^card has 400 characters/);
   });
+
+  describe('--run, the hand step file a card hands the owner (T2312)', () => {
+    const step = '/w/tasks/T1/grant-read.ps1';
+    const sha256 = 'a'.repeat(64);
+    const run = { path: step, sha256 };
+    const audits = [{ path: step, sha256, by: 'gamma', at: '2030-01-08T09:00:00.000Z' }];
+    const audited: Task = { ...TASK, audits };
+    const OWNER_APPROVAL: readonly WaitReason[] = [{ kind: 'approval', who: 'owner' }];
+    const notOwner = "--run hands owner a hand step to run: it goes only with a wait on owner's decision or approval";
+
+    it("writes the file on a card asking the owner's decision or approval, while an audit pins it at the sha256 read now", () => {
+      const decided = set(audited, { waits: OWNER_DECISION, card: TEST_OWNER_CARD, run });
+      assert.deepEqual(decided.ok ? decided.value.card : undefined, { ...TEST_OWNER_CARD, run: step });
+      const approved = set(audited, { waits: OWNER_APPROVAL, card: { ...TEST_CARD, options: [] }, run });
+      assert.deepEqual(approved.ok ? approved.value.card : undefined, { ...TEST_CARD, options: [], run: step });
+      const added = set({ ...ASKED, audits }, { waits: OWNER_DECISION, run });
+      assert.deepEqual(added.ok ? added.value.card : undefined, { ...TEST_OWNER_CARD, run: step }, 'a later set adds it to the card alone');
+    });
+
+    it("refuses it without a wait on the owner, a lead's approval too, as the owner is who runs it", () => {
+      assert.equal(error(set(audited, { waits: [{ kind: 'approval', who: 'lead' }], card: { ...TEST_CARD, options: [] }, run })), notOwner);
+      assert.equal(error(set(audited, { waits: [{ kind: 'time', at: '2030-01-09' }], run })), notOwner);
+    });
+
+    it('refuses a file no audit on the task pins, one changed since its audit, and one of no hand step kind', () => {
+      const unaudited = error(set(TASK, { waits: OWNER_DECISION, card: TEST_OWNER_CARD, run }));
+      const prefix = `no audit on ${TASK.id} pins ${step}: a hand step goes to owner only as a file its auditor read (core rule 11); who audits it: `;
+      assert.ok(unaudited.startsWith(prefix) && unaudited.endsWith(`, with teamrig audit ${TASK.id} --file ${step}`), unaudited);
+      assert.equal(
+        error(set(audited, { waits: OWNER_DECISION, card: TEST_OWNER_CARD, run: { path: step, sha256: 'b'.repeat(64) } })),
+        `${step} changed since gamma audited it at sha256 aaaaaaaa (now bbbbbbbb): an edit needs a new audit (core rule 11)`,
+      );
+      assert.equal(
+        error(set(audited, { waits: OWNER_DECISION, card: TEST_OWNER_CARD, run: { path: '/w/grant-read.mjs', sha256 } })),
+        '/w/grant-read.mjs is not a hand step file: only .ps1, .sh, .md files have a run line',
+      );
+    });
+
+    it('keeps the file on a later set while the card asks the owner, and drops it once the wait moves to the lead', () => {
+      const handed: Task = { ...ASKED, audits, card: { ...TEST_OWNER_CARD, run: step } };
+      const kept = set(handed, { waits: OWNER_DECISION, note: 'asked again' });
+      assert.deepEqual(kept.ok ? kept.value.card : undefined, { ...TEST_OWNER_CARD, run: step });
+      const later = 'Pro, since the launch is late';
+      const changed = set(handed, { waits: OWNER_DECISION, card: { recommend: later } });
+      assert.deepEqual(changed.ok ? changed.value.card : undefined, { ...TEST_OWNER_CARD, recommend: later, run: step });
+      const toLead = set(handed, { waits: [{ kind: 'decision', who: 'lead' }] });
+      assert.deepEqual(toLead.ok ? toLead.value.card : undefined, TEST_CARD, "a wait moved to the lead's decision drops it");
+    });
+  });
 });
 
 describe("RegisterPolicy.setStatus: a time wait in the team's zone", () => {

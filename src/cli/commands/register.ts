@@ -46,7 +46,8 @@ import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow, teamSettingsScope } from '../allow-scope.ts';
-import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
+import { noPositionals, onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
+import { handStepPin } from '../hand-step-file.ts';
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
@@ -438,6 +439,15 @@ async function withSpentClasses(runtime: CliRuntime, team: Team, input: StatusIn
   return { ...input, spentClasses: await readSpentClasses(runtime, paths, config, tasks.values(), runtime.clock.now()) };
 }
 
+/**
+ * `--run <path>`: the hand step file a card hands the owner (T2312), pinned at the sha256 its bytes have now, which
+ * the policy matches against the task's audit of it; nothing without the flag.
+ */
+async function runOf(flags: Flags, runtime: CliRuntime): Promise<Pick<StatusInput, 'run'>> {
+  const typed = flags.get('run');
+  return typed === undefined ? {} : { run: await handStepPin(runtime, 'run', typed) };
+}
+
 export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
@@ -445,7 +455,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
   const { config, paths, register, roster } = team;
   const by = sessionIdOf(roster, caller);
-  const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches) });
+  const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches), ...(await runOf(args.flags, runtime)) });
   if (typed.ask !== null) {
     return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
   }

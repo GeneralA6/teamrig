@@ -17,6 +17,26 @@ export function handStepKindOf(path: string): HandStepKind | undefined {
   return HAND_STEP_KINDS.find((kind) => kind === extension);
 }
 
+/** Why the file at `path` is no hand step file, or undefined when it is one: only a kind with a run line is. */
+export function handStepFileProblem(path: string): string | undefined {
+  return handStepKindOf(path) === undefined ? `${path} is not a hand step file: only ${HAND_STEP_KINDS.join(', ')} files have a run line` : undefined;
+}
+
+/** How the human runs a hand step file of each kind, quoted so a path with spaces or quotes runs as one. */
+const RUN_LINES: Readonly<Record<HandStepKind, (path: string) => string>> = {
+  // A single-quoted PowerShell string takes a quote as two, and expands nothing.
+  '.ps1': (path) => `& '${path.replaceAll("'", "''")}'`,
+  // A single-quoted bash string cannot hold a quote: close it, put an escaped one, open it again.
+  '.sh': (path) => `bash '${path.replaceAll("'", "'\\''")}'`,
+  '.md': (path) => `follow the steps in ${path}`,
+};
+
+/** The line the human runs the hand step file at `path` by, after its kind; undefined for a file of no hand step kind. */
+export function runLineOf(path: string): string | undefined {
+  const kind = handStepKindOf(path);
+  return kind === undefined ? undefined : RUN_LINES[kind](path);
+}
+
 /** What an audit pins: a hand step file by its absolute path, at the sha256 of its bytes (lowercase hex). */
 export interface AuditPin {
   readonly path: string;
@@ -54,6 +74,11 @@ export function parseAuditPin(value: unknown): AuditPin | string {
     return `bad audit ${JSON.stringify(value)}`;
   }
   return { path, sha256 };
+}
+
+/** The audit a task keeps of the file at `path`, the latest one; undefined when none pins it. */
+export function auditOf(audits: readonly HandStepAudit[], path: string): HandStepAudit | undefined {
+  return audits.find((audit) => audit.path === path);
 }
 
 /** A task's audits after `audit`: one per path, the latest audit of a path replacing the one before, in the order first audited. */

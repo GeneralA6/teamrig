@@ -160,6 +160,10 @@ Flags:
   owner's to decide, so while cards are required (`register.requireDecisionCard`) such a wait is refused without
   one: any other question is yours or your leader's (decide it, or `--waits decision:<leader>`). `check` flags one
   an older row holds (`UNGATED`); once no wait is on the owner's decision, the part is dropped.
+- `--run <path>`: allowed only with a wait on the owner's decision or approval: the hand step file (`.ps1`, `.sh`
+  or `.md`) the card hands the owner to run (core rule 11), refused unless an audit on the task (`teamrig audit`)
+  pins it at the sha256 its bytes have now, so an edit needs a new audit. The card prints the line that runs it,
+  with its short sha256 and its auditor; once no wait is on the owner, the part is dropped.
 - `--ask <id|name>`: allowed only with `waiting`, and needs `--text`: adds the work you need as that session's task
   (from you, at your task's priority and goals, its description naming your task), tells that session, and sets
   your task waiting on it, in one write. `--note` defaults to the text, and other `--waits` reasons come first.

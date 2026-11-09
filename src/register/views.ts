@@ -437,7 +437,7 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
     lines.push(`note: ${task.note}`);
   }
   if (task.card !== null) {
-    lines.push('card:', ...cardLines(task.card, '  '));
+    lines.push('card:', ...cardLines(task.card, '  ', task.audits));
   }
   if (task.answer !== null) {
     lines.push(`answer: ${task.answer.by} ${task.answer.verdict} at ${tree.zone.minute(new Date(task.answer.at))}${task.answer.note === null ? '' : `: ${task.answer.note}`}`);
