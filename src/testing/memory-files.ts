@@ -45,6 +45,12 @@ export class MemoryFiles implements Files {
     return bytes.subarray(Math.max(0, bytes.length - maxBytes)).toString('utf8');
   }
 
+  /** Every file held here is a regular one, so only a missing path gives undefined. */
+  async readHead(path: string, maxBytes: number): Promise<string | undefined> {
+    const text = this.get(path);
+    return text === undefined ? undefined : Buffer.from(text, 'utf8').subarray(0, maxBytes).toString('utf8');
+  }
+
   async append(path: string, text: string): Promise<void> {
     const key = normalisePath(path);
     this.put(key, (this.contents.get(key) ?? '') + text);

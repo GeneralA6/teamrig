@@ -2,6 +2,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryFiles, MemoryPathProbe } from './memory-files.ts';
 
+describe('MemoryFiles reads', () => {
+  it('reads at most the first bytes of a file, by either separator, and a missing one as undefined', async () => {
+    const files = new MemoryFiles({ '/kit/fix.sql': 'DELETE FROM rows;\nSELECT 1;\n' });
+    const heads = [await files.readHead('/kit/fix.sql', 18), await files.readHead('\\kit\\fix.sql', 1000), await files.readHead('/kit/nope.sql', 10)];
+    assert.deepEqual(heads, ['DELETE FROM rows;\n', 'DELETE FROM rows;\nSELECT 1;\n', undefined]);
+  });
+});
+
 describe('MemoryFiles folders', () => {
   it('lists a made folder before any file is in it, and probes it as a folder', async () => {
     const files = new MemoryFiles();
