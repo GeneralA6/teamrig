@@ -8,21 +8,24 @@ import type { WeekUse } from './snapshot.ts';
 /**
  * The week's W per percent, learned from the meter (T531). Each time the status line's week use passes a whole
  * percent, the account's meter log, `<state>/usage/meter-log.jsonl` of the team that keeps the account's week files
- * (`accountHolderOf`, budget/account.ts), gets one line for each team keeping its week there: the use, the period, the
- * W that team's usage stores metered since its start, and the team. Each team sums the W from its own stores, so the
- * teams' W differ, and each reads only its own lines (`readingsOfTeam`, T1669). A fit of W per percent through 0 over
- * a team's newest period that spans `FIT_SPREAD_PTS` points (`fitRate`) stands in for the configured guess. Each line
- * also keeps the use the fit before it forecast for its W, so the forecast's error shows week by week. Instants are
- * stored as ISO strings, like the burst log.
+ * (`accountHolderOf`, budget/account.ts), gets one account line (T1778): the use, the period and the W every team on
+ * the account metered since its start, whichever team's hook saw the crossing. Every team reads the same lines
+ * (`accountReadings`), so the account has one W per percent: a fit through 0 over the newest period that spans
+ * `FIT_SPREAD_PTS` points (`fitRate`) stands in for the configured guess. Each line also keeps the use the fit before it
+ * forecast for its W, so the forecast's error shows week by week. Instants are stored as ISO strings, like the burst log.
  */
 
 /**
  * The format of the meter log's records; a newer one is skipped on read and refuses a write. The optional `team`
- * (T1669) left it at 1, so a tab still on an older teamrig keeps logging instead of refusing the log: that teamrig
- * reads a tagged line as before, ignoring the field, and its prune keeps each kept line's text whole, so it drops no
- * `team`; its untagged lines count only where `readingsOfTeam` says.
+ * (T1669) and `scope` (T1778) left it at 1, so a tab still on an older teamrig keeps logging instead of refusing the
+ * log: its prune keeps each kept line's text whole, so it drops neither field, and it reads an account line as an
+ * untagged one, which its fit takes only in a period with no tagged line. Its own team lines count only where
+ * `accountReadings` says.
  */
 export const METER_LOG_FORMAT = 1;
+/** The `scope` of a line whose W is the whole account's (T1778); a line without one is on one team's scale or older. */
+export type LineScope = 'account';
+export const ACCOUNT_SCOPE: LineScope = 'account';
 /** The points of the week the readings must span before their fit is used: a narrow spread fits noise. */
 export const FIT_SPREAD_PTS = 10;
 /**
@@ -59,34 +62,54 @@ export interface MeterReading {
   /** The period the use counts in. */
   readonly start: number;
   readonly end: number;
-  /** Everyone's W metered from the period's start to the reading, as one team's usage stores sum it. */
+  /** The account's W metered from the period's start to the reading: every team's usage stores and the use in no team. */
   readonly w: number;
   /** The use the fit before this reading gave for `w`; undefined while there was none. */
   readonly forecastPct: number | undefined;
 }
 
-/** A line of the meter log: a reading and the team whose usage stores metered its W, unset on a line logged before T1669. */
-export interface LoggedReading extends MeterReading {
+/** A line on the account's W scale (T1778). */
+interface AccountLine {
+  readonly scope: LineScope;
+  readonly team?: undefined;
+}
+
+/** A line one team's usage stores metered (T1669, before T1778), naming it; neither field on a line logged before T1669. */
+interface TeamLine {
+  readonly scope?: undefined;
   readonly team?: string;
 }
 
-/** Whose readings a reader of the meter log takes (`readingsOfTeam`). */
-export interface LogScale {
-  /** The team reading the log, whose own lines carry its id. */
-  readonly team: string;
-  /** The team keeping the log (`accountHolderOf`, budget/account.ts). */
-  readonly keeper: string;
-}
+/** A line of the meter log: a reading and the scale its W was metered on. */
+export type LoggedReading = MeterReading & (AccountLine | TeamLine);
 
 /**
- * The readings on one team's W scale (T1669): only the lines its own usage stores metered, which carry its id. A line
- * with no team was logged before the lines named one: it counts for the team keeping the log, whose scale the log was
- * on, but not in a period that has a line naming a team, where the teams on the account logged untagged lines in turn.
+ * The readings on the account's W scale, the one every team on it reads (T1778): its account lines. Before a period's
+ * first one, the lines the keeper's team logged for itself (T1669) bridge: its outside store held every other team's
+ * tabs then, so their W was about the account's. After it, a keeper line comes from a tab still on an older teamrig,
+ * whose W is its own team's alone, and is dropped, as every other team's line is. A line with neither field was logged
+ * before T1669 by whichever team saw the crossing: it counts only in a period with no line naming a scale.
  */
-export function readingsOfTeam(logged: readonly LoggedReading[], scale: LogScale): readonly LoggedReading[] {
-  const tagged = new Set(logged.filter((reading) => reading.team !== undefined).map((reading) => reading.start));
-  const ownUntagged = scale.team === scale.keeper;
-  return logged.filter((reading) => (reading.team === undefined ? ownUntagged && !tagged.has(reading.start) : reading.team === scale.team));
+export function accountReadings(logged: readonly LoggedReading[], keeper: string): readonly LoggedReading[] {
+  const tagged = new Set<number>();
+  const firstAccountAt = new Map<number, number>();
+  for (const reading of logged) {
+    if (reading.scope !== undefined || reading.team !== undefined) {
+      tagged.add(reading.start);
+    }
+    if (reading.scope !== undefined) {
+      firstAccountAt.set(reading.start, Math.min(reading.at, firstAccountAt.get(reading.start) ?? Number.POSITIVE_INFINITY));
+    }
+  }
+  return logged.filter((reading) => {
+    if (reading.scope !== undefined) {
+      return true;
+    }
+    if (reading.team === undefined) {
+      return !tagged.has(reading.start);
+    }
+    return reading.team === keeper && reading.at < (firstAccountAt.get(reading.start) ?? Number.POSITIVE_INFINITY);
+  });
 }
 
 /** W per percent of the week fitted through 0, and how far the fit misses its own readings. */
@@ -119,7 +142,7 @@ export interface ReadingSight {
   readonly use: WeekUse | undefined;
   /** Whether the usage stores reach back to the period's start (`WeekReading.covered`). */
   readonly covered: boolean;
-  /** Everyone's W metered since the period's start. */
+  /** The account's W metered since the period's start. */
   readonly w: number;
   readonly now: number;
 }
@@ -252,6 +275,7 @@ export function meterRecordOf(reading: LoggedReading): JsonRecord {
     end: iso(reading.end),
     w: reading.w,
     ...(reading.forecastPct === undefined ? {} : { forecastPct: reading.forecastPct }),
+    ...(reading.scope === undefined ? {} : { scope: reading.scope }),
     ...(reading.team === undefined ? {} : { team: reading.team }),
   };
 }
@@ -262,7 +286,7 @@ function instantOf(record: JsonRecord, key: string): number | undefined {
   return Number.isNaN(at) ? undefined : at;
 }
 
-/** One record as a reading; undefined when it is damaged. */
+/** One record as a reading; undefined when it is damaged, or names an unknown scope or both a scope and a team. */
 export function parseMeterRecord(record: JsonRecord): LoggedReading | undefined {
   const at = instantOf(record, 'at');
   const usedPct = numberField(record, 'usedPct');
@@ -271,13 +295,18 @@ export function parseMeterRecord(record: JsonRecord): LoggedReading | undefined 
   const w = numberField(record, 'w');
   const forecastPct = numberField(record, 'forecastPct');
   const team = stringField(record, 'team');
+  const scope = stringField(record, 'scope');
   if (at === undefined || usedPct === undefined || usedPct <= 0 || start === undefined || end === undefined || start >= end || w === undefined || w < 0) {
     return undefined;
   }
   if (('forecastPct' in record && forecastPct === undefined) || ('team' in record && (team === undefined || team === ''))) {
     return undefined;
   }
-  return { at, usedPct, start, end, w, forecastPct, ...(team === undefined ? {} : { team }) };
+  if (('scope' in record && scope !== ACCOUNT_SCOPE) || (scope !== undefined && team !== undefined)) {
+    return undefined;
+  }
+  const reading = { at, usedPct, start, end, w, forecastPct };
+  return scope === ACCOUNT_SCOPE ? { ...reading, scope } : { ...reading, ...(team === undefined ? {} : { team }) };
 }
 
 /** The account's append-only log of meter readings, oldest first. */
@@ -291,9 +320,9 @@ export class MeterLog {
   }
 
   /**
-   * The readings that count at `now`, every team's, oldest first (`readingsOfTeam` takes one team's). Damaged lines,
-   * lines from a newer teamrig and a second line of one team for a percent already read in its period (two readers
-   * that logged at once) are skipped.
+   * The readings that count at `now`, on every scale, oldest first (`accountReadings` takes the account's). Damaged
+   * lines, lines from a newer teamrig and a second line on one scale for a percent already read in its period (two
+   * readers that logged at once) are skipped.
    */
   async read(now: number): Promise<readonly LoggedReading[]> {
     const parse = parseJsonl((await this.files.read(this.path)) ?? '');
@@ -301,7 +330,7 @@ export class MeterLog {
     const readings: LoggedReading[] = [];
     for (const { record, version } of parse.records) {
       const reading = version === METER_LOG_FORMAT ? parseMeterRecord(record) : undefined;
-      const key = reading === undefined ? '' : `${reading.team ?? ''}:${reading.start}:${Math.floor(reading.usedPct)}`;
+      const key = reading === undefined ? '' : `${reading.scope ?? ''}:${reading.team ?? ''}:${reading.start}:${Math.floor(reading.usedPct)}`;
       if (reading !== undefined && reading.at >= now - READINGS_KEPT_MS && !seen.has(key)) {
         seen.add(key);
         readings.push(reading);

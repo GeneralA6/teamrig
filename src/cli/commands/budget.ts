@@ -71,7 +71,7 @@ import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } 
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { meterScaleOf } from '../stored-week.ts';
+import { peerStatesOf } from '../stored-week.ts';
 import { loadTree } from '../tree.ts';
 
 /**
@@ -136,13 +136,15 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       maxRuns: MAX_RUNS_PER_SESSION,
     },
   );
-  const states = [...measured.bySession.values(), measured.outside];
+  // The account's W: the other teams' sessions on it count too, as their stores last held them (T1778).
+  const peerStates = account === undefined ? [] : await peerStatesOf(runtime, account.peers);
+  const states = [...measured.bySession.values(), measured.outside, ...peerStates];
   const input = { budget: config.budget, now, statusUse: account?.statusUse, states };
   // A recount reads no team state, the meter log included: its rate is the configured one.
   const week =
     account === undefined
       ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]), readings: [] })
-      : await teamWeekOf(files, account.paths, meterScaleOf(runtime, kit.paths.team, account), input);
+      : await teamWeekOf(files, account, input);
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
   const cuts = recount ? [] : (await new CutLog(files, kit.paths.cuts).read()).cuts;
