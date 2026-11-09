@@ -225,4 +225,38 @@ describe('dbWritesOf, each client, runner and option it reads', () => {
       assert.deepEqual(await writes(`${reader} fix.js | docsh`, ctx), ['docsh runs deleteMany'], reader);
     }
   });
+
+  it('reads no input or script whose name is only known when the line runs, and no printer option as a file', async () => {
+    // A file at the word's written text: reading a dynamic word as a name would find this write.
+    const ctx = context({
+      [join(APP, '$FILE')]: 'db.rows.deleteMany({})',
+      [join(APP, '$SCRIPT')]: DOC_FIX,
+      [join(APP, '-n')]: 'db.rows.drop()',
+      [join(APP, 'read.js')]: 'db.rows.find()',
+    });
+    for (const line of ['docsh < "$FILE"', 'cat "$FILE" | docsh', 'node "$SCRIPT"', 'cat -n read.js | docsh']) {
+      assert.deepEqual(await writes(line, ctx), [], line);
+    }
+  });
+
+  it('reads a piped file from the folder its printer runs in, and no relative file under a folder it cannot know', async () => {
+    const ctx = context({ [join(APP, 'fix.js')]: 'db.rows.deleteMany({})', 'fix.sql': 'DROP TABLE rows;' });
+    assert.deepEqual(await writes('(cd sub && cat ../fix.js) | docsh', ctx), ['docsh runs deleteMany']);
+    assert.deepEqual(await writes('cd "$D" && psql -f fix.sql', ctx), []);
+  });
+
+  it("reads no host file a remote line names, and no host input a remote pipe's receiver does not take", async () => {
+    const ctx = context({ [join(APP, 'fix.js')]: 'db.rows.deleteMany({})' });
+    const hostPath = join(APP, 'fix.js').replace(/\\/g, '/');
+    assert.deepEqual(await writes(`kubectl exec -n ns deploy/api -- docsh ${hostPath}`, ctx), []);
+    assert.deepEqual(await writes("kubectl exec -i p -- sh -c 'cat /x | docsh' < fix.js", ctx), []);
+  });
+
+  it('reads a remote line by the dialect of the shell that runs it, not the host line', async () => {
+    // bash drops the backslashes, so the echo hands the client `db.a.drop()`; PowerShell would keep them.
+    const ctx = { ...context(), dialect: 'powershell' as const };
+    assert.deepEqual(await writes(String.raw`kubectl exec -i p -- sh -c 'echo db.a.drop\(\) | docsh'`, ctx), [
+      'docsh runs drop in a container or on a remote host',
+    ]);
+  });
 });
