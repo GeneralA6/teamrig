@@ -304,8 +304,8 @@ crash or a reboot, a fresh context and the turn log.
 ## Keeping it safe
 
 The guards that read each command before it runs have their own guide, [Keep it safe](guides/keep-it-safe.md):
-safe pushes, skipped hooks, unvetted packages, secrets kept out of the conversation, privileged commands on review
-and reads without a prompt.
+safe pushes, skipped hooks, unvetted packages, secrets kept out of the conversation, database writes after a preview,
+privileged commands on review and reads without a prompt.
 
 ## Shipping from many sessions
 
