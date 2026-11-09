@@ -204,6 +204,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       point and ask again), and check flags the approved task READY
   approve <team>/<id> --note .. [--decline]   the lead of a team's parent team answers a task of that
       team's lead waiting on its approval (approval:app/lead), named as its inbox line prints it: web/T3
+  audit T<n> --file <path> [--note "<what you checked>"] [--team <child>]   the security reviewer
+      (roles.securityReviewer; with none set, any session but the task's owner) pins a hand step file
+      (.ps1, .sh or .md) for a task still to finish at the sha256 of its bytes now (core rule 11), so a
+      card may hand it to the owner; an edit needs a new audit; the task's owner gets an inbox line;
+      --team <child>: the reviewer on a team above audits a task of that team below
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--type task,bug] [--parked|--untriaged] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due

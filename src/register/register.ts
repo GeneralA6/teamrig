@@ -3,9 +3,10 @@ import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type SizeBase, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
+import type { AuditPin } from './hand-step.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type AuditChange, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -373,7 +374,7 @@ export class Register {
    */
   defer(caller: string, id: string, until: string | null, note: string | undefined): Promise<Verdict<WriteResult>> {
     return this.commit(caller, (snapshot, elsewhere) =>
-      onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))),
+      onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.defer(task, caller, until, note, this.timeContext())))),
     );
   }
 
@@ -383,7 +384,7 @@ export class Register {
    */
   deferFrom(asker: string, id: string, until: string | null, note: string | undefined): Promise<Verdict<WriteResult>> {
     return this.write((snapshot, elsewhere) =>
-      onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))),
+      onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.deferFrom(task, until, note, this.timeContext())))),
     );
   }
 
@@ -392,16 +393,33 @@ export class Register {
    * wait on the owner and marks it decided for its session to act on.
    */
   decide(caller: string, id: string, note: string | undefined): Promise<Verdict<WriteResult>> {
-    return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, caller, this.deps.policy.decide(task, caller, note)))));
+    return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.decide(task, caller, note)))));
   }
 
   /** A Decided from the lead above who asks the owner this team's decisions, `asker` being its `<team>/<id>`, as in deferFrom. */
   decideFrom(asker: string, id: string, note: string | undefined): Promise<Verdict<WriteResult>> {
-    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.waitsEvent(task, asker, this.deps.policy.decideFrom(task, note)))));
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.decideFrom(task, note)))));
   }
 
-  /** The update a Later or a Decided writes: no field changed, the task's waits from then on. */
-  private waitsEvent(task: Task, by: string, change: Verdict<DeferChange>): Verdict<UpdateEvent> {
+  /**
+   * `audit <id> --file <path>`: a session of this team pins a hand step file for the task at its sha256 (T2312), an
+   * update that changes no field, so the task's card may hand the file to the owner.
+   */
+  audit(caller: string, id: string, pin: AuditPin, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.audit(task, caller, pin, note)))));
+  }
+
+  /**
+   * `audit <id> --file <path> --team <child>`: an audit from a team above, `asker` being its `<team>/<id>`, as in
+   * approveFrom: the tree decides who that may be, so this team's roster check is skipped; the policy still holds the
+   * audit to the task owner's auditors.
+   */
+  auditFrom(asker: string, id: string, pin: AuditPin, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.auditFrom(task, asker, pin, note)))));
+  }
+
+  /** The update a Later, a Decided or an audit writes: no field changed; the task's waits from then on, or the file pinned. */
+  private noFieldEvent(task: Task, by: string, change: Verdict<DeferChange | AuditChange>): Verdict<UpdateEvent> {
     return change.ok ? { ok: true, value: { ...this.base(task.id, by), type: 'update', ...change.value } } : change;
   }
 

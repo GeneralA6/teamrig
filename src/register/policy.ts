@@ -9,6 +9,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { waitAnswerersOf } from './approval.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
+import { HAND_STEP_KINDS, handStepKindOf, type AuditPin } from './hand-step.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
@@ -211,6 +212,11 @@ export interface DecideChange extends DeferChange {
 /** An owner's action from the pane (T1298): an update written as `by`, the team's register.ownerSource. */
 export interface OwnerChange extends UpdateChange {
   readonly by: string;
+}
+
+/** An audit (T2312): an update that changes no field and pins a hand step file for the task at its sha256. */
+export interface AuditChange extends UpdateChange {
+  readonly audit: AuditPin;
 }
 
 function ok<T>(value: T): Verdict<T> {
@@ -798,6 +804,81 @@ export class RegisterPolicy {
       return task.status !== 'waiting' || reason.kind !== 'time';
     });
     return ok({ changes: {}, note: text, waits, decided: true });
+  }
+
+  /**
+   * Who audits a hand step of the owner's (T2312, core rule 11), never the owner itself: the team's security reviewer
+   * (roles.securityReviewer, a `<team>/<id>` when it sits on a team above), or the reviewer's leaders on the reviewer's
+   * own task. Undefined when the team has no reviewer, or the reviewer owns the task and has no leader but itself (the
+   * root lead): then any session of this team but the owner audits it.
+   */
+  private auditorsOf(owner: string): readonly string[] | undefined {
+    const reviewer = this.config.roles.securityReviewer;
+    if (reviewer === undefined) {
+      return undefined;
+    }
+    if (reviewer !== owner) {
+      return [reviewer];
+    }
+    const leaders = this.tree.approversOf(owner).filter((id) => id !== owner);
+    return leaders.length === 0 ? undefined : leaders;
+  }
+
+  /** The auditors of a hand step of the owner's in words, for the refusals that name them. */
+  private auditorsText(owner: string): string {
+    const reviewer = this.config.roles.securityReviewer;
+    if (reviewer === undefined) {
+      return 'any session of this team but its owner (no roles.securityReviewer is set)';
+    }
+    if (reviewer !== owner) {
+      return ADDRESS_PATTERN.test(reviewer) ? `the security reviewer (${reviewer}), from its own team with --team` : `the security reviewer (${reviewer})`;
+    }
+    return this.auditorsOf(owner) === undefined ? `any session of this team but ${owner}` : `${this.approversText(owner)}, as ${owner} is the security reviewer`;
+  }
+
+  /**
+   * An audit (T2312, core rule 11): `caller`, a session of this team, read the hand step file `pin` names and pins it
+   * for the task at its sha256, so the task's card may hand it to the owner. Only an auditor of the owner's may
+   * (auditorsOf), never the task's own owner, as {@link auditFrom} judges the rest.
+   */
+  audit(task: Task, caller: string, pin: AuditPin, note: string | undefined): Verdict<AuditChange> {
+    if (caller === task.owner) {
+      return refuse(`${caller} owns ${task.id}, so it does not audit its own hand step (core rule 11); who audits it: ${this.auditorsText(task.owner)}`);
+    }
+    const auditors = this.auditorsOf(task.owner);
+    if (auditors !== undefined && !auditors.includes(caller)) {
+      return this.notAuditor(task, caller);
+    }
+    return this.auditContent(task, pin, note);
+  }
+
+  private notAuditor(task: Task, caller: string): Verdict<AuditChange> {
+    return refuse(`${caller} does not audit a hand step of ${task.owner}'s; who audits it: ${this.auditorsText(task.owner)}`);
+  }
+
+  /**
+   * An audit from a team above (T2312), `asker` being its `<team>/<id>`, as the tree decides: only an auditor of the
+   * owner's that this team's roles name there may. A team with no security reviewer audits its hand steps itself.
+   */
+  auditFrom(task: Task, asker: string, pin: AuditPin, note: string | undefined): Verdict<AuditChange> {
+    const auditors = this.auditorsOf(task.owner);
+    if (auditors === undefined || !auditors.includes(asker)) {
+      return this.notAuditor(task, asker);
+    }
+    return this.auditContent(task, pin, note);
+  }
+
+  /** An audit's content: a task still to finish, a hand step file of a kind with a run line, and an optional note. */
+  private auditContent(task: Task, pin: AuditPin, note: string | undefined): Verdict<AuditChange> {
+    if (!ACTIVE_STATUSES.includes(task.status)) {
+      return refuse(`${task.id} is ${task.status}: a hand step is audited for a task still to finish`);
+    }
+    if (handStepKindOf(pin.path) === undefined) {
+      return refuse(`${pin.path} is not a hand step file: only ${HAND_STEP_KINDS.join(', ')} files have a run line`);
+    }
+    const text = blankToNull(note);
+    const problem = this.checkText('note', text);
+    return problem === undefined ? ok({ changes: {}, note: text, audit: pin }) : refuse(problem);
   }
 
   /**

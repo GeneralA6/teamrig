@@ -672,6 +672,36 @@ describe('Register.approveFrom (T1140)', () => {
   });
 });
 
+describe('Register.audit and auditFrom: a hand step file pinned for a task (T2312)', () => {
+  const PIN = { path: 'C:/steps/grant-read.ps1', sha256: 'b'.repeat(64) };
+
+  it("writes the reviewer's audit as one update line that changes no field, the task keeping the pin", async () => {
+    const { files, register } = setup({}, OWN_NUMBERS, NOTHING_ELSEWHERE, undefined, { goals: NO_GOAL_RECORDS, config: testConfig({ roles: { lead: 'lead', securityReviewer: 'bravo' } }) });
+    written(await register.add('lead', { title: 'Grant the read', description: 'what and why', owner: 'alpha', source: 'lead', priority: 1 }));
+    const appended = files.get(LOG)?.length ?? 0;
+    const { task, event } = written(await register.audit('bravo', 'T1', PIN, 'read every line'));
+    assert.deepEqual(readEvents((files.get(LOG) ?? '').slice(appended)).events, [event]);
+    assert.deepEqual(event, { v: TASK_LINE_VERSION, type: 'update', id: 'T1', at: START, by: 'bravo', changes: {}, note: 'read every line', audit: PIN });
+    assert.deepEqual(task.audits, [{ ...PIN, by: 'bravo', at: START }]);
+    const before = files.get(LOG);
+    assert.match(errorOf(await register.audit('alpha', 'T1', PIN, undefined)), /core rule 11/);
+    assert.equal(files.get(LOG), before);
+  });
+
+  it('writes an audit from the reviewer on a team above, on no roster here', async () => {
+    const config = testConfig({ roles: { lead: 'lead', securityReviewer: 'app/sec' } });
+    const { files, register } = setup({}, OWN_NUMBERS, NOTHING_ELSEWHERE, { team: 'app', id: 'boss' }, { goals: NO_GOAL_RECORDS, config });
+    written(await register.add('lead', { title: 'Grant the read', description: 'what and why', owner: 'alpha', source: 'lead', priority: 1 }));
+    assert.match(errorOf(await register.audit('app/sec', 'T1', PIN, undefined)), /app.sec is not a session on this team/);
+    const { task, event } = written(await register.auditFrom('app/sec', 'T1', PIN, undefined));
+    assert.deepEqual([event.by, task.audits], ['app/sec', [{ ...PIN, by: 'app/sec', at: START }]]);
+    const before = files.get(LOG);
+    assert.match(errorOf(await register.auditFrom('app/boss', 'T1', PIN, undefined)), /^app\/boss does not audit a hand step of alpha's/);
+    assert.equal(errorOf(await register.auditFrom('app/sec', 'T9', PIN, undefined)), 'no task T9');
+    assert.equal(files.get(LOG), before);
+  });
+});
+
 describe('Register.defer and deferFrom: a Later (T1295)', () => {
   const OWNER = { kind: 'decision', who: 'owner' } as const;
   const LATER = { kind: 'time', at: '2030-01-09 09:00' } as const;

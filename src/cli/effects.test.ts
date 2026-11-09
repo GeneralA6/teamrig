@@ -15,6 +15,7 @@ const EXPECTED = {
   sweep: 'write',
   'sweep apply': 'write',
   approve: 'write',
+  audit: 'write',
   list: 'read',
   show: 'read',
   check: 'read',
