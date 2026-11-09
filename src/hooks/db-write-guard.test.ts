@@ -78,6 +78,24 @@ describe('dbWriteGuardOutput', () => {
     assert.match(verdict?.reason ?? '', /runs with --apply\. First run it without its apply flag \(its dry run\)/);
   });
 
+  it('names each write of the line, joined by semicolons, and points at the dry run when an entrypoint is among them', async () => {
+    const entrypoints = [{ path: 'scripts/backfill.ts', applyFlags: ['--apply'] }];
+    const line = payload("npx tsx scripts/backfill.ts --apply; psql -c 'DELETE FROM orders'");
+    const reason = verdictOf(await dbWriteGuardOutput(line, env({ entrypoints })))?.reason ?? '';
+    assert.match(reason, /: tsx scripts\/backfill\.ts runs with --apply; psql runs DELETE\. First run it without its apply flag \(its dry run\)/);
+  });
+
+  it('asks about Node code using a client module the team names, and a key-value call on a receiver the team names', async () => {
+    const files = new MemoryFiles({
+      [join(APP, 'fix.cjs')]: "const { Client } = require('docstore');\nawait client.db().collection('rows').deleteMany({});\n",
+      [join(APP, 'warm.mjs')]: "import Kv from 'kvstore';\nawait cache.set(key, 1);\n",
+    });
+    assert.match(verdictOf(await dbWriteGuardOutput(payload('node fix.cjs'), env({ files })))?.reason ?? '', /node fix\.cjs runs deleteMany/);
+    const kv = env({ files, nodeClients: [{ module: 'kvstore', vocabulary: 'key-value' }], clientReceivers: ['cache'] });
+    assert.match(verdictOf(await dbWriteGuardOutput(payload('node warm.mjs'), kv))?.reason ?? '', /node warm\.mjs runs set/);
+    assert.equal(await dbWriteGuardOutput(payload('node warm.mjs'), { ...kv, clientReceivers: [] }), '');
+  });
+
   it("reads a script from the payload's folder, and a PowerShell line in its own dialect", async () => {
     const files = new MemoryFiles({ [join(OTHER, 'fix.js')]: 'db.orders.updateMany({}, { $set: { a: 1 } })' });
     const there = verdictOf(await dbWriteGuardOutput(payload('docsh app fix.js', { cwd: OTHER }), env({ files })));
@@ -85,6 +103,10 @@ describe('dbWriteGuardOutput', () => {
     assert.equal(await dbWriteGuardOutput(payload('docsh app fix.js'), env({ files })), '');
     const powershell = { tool_name: 'PowerShell', tool_input: { command: 'kvcli DEL "cache:x"' } };
     assert.match(verdictOf(await dbWriteGuardOutput(powershell, env()))?.reason ?? '', /kvcli runs DEL/);
+    // bash drops the backslashes, so the echo hands docsh `db.a.drop()`; PowerShell keeps them, so docsh gets no call.
+    const piped = (tool: string): unknown => ({ tool_name: tool, tool_input: { command: String.raw`echo db.a.drop\(\) | docsh` } });
+    assert.match(verdictOf(await dbWriteGuardOutput(piped('Bash'), env()))?.reason ?? '', /docsh runs drop/);
+    assert.equal(await dbWriteGuardOutput(piped('PowerShell'), env()), '');
   });
 
   it('prints nothing for a payload that is not a shell call', async () => {
