@@ -4,6 +4,7 @@ import { readFolderWeek } from "../budget/week-summary.js";
 import { FREEZES_LOCK_TTL_MS } from "../delivery/freeze-store.js";
 import { HostLock } from "../delivery/host-lock.js";
 import { MemoryGate } from "../delivery/memory-gate.js";
+import { TabHolds, tabHoldsDir } from "../sessions/tab-holds.js";
 const MINUTE_MS = 60_000;
 /**
  * Progress lines, each stamped with the time on the team's clock to the second (`2030-01-08 12:00:05 IST running: …`),
@@ -16,12 +17,14 @@ export function logLineOf(runtime, zone) {
  * The host lock at `path`, held by this process for `delivery.queue.lockTtlMinutes`; a holder whose process ended is
  * stale. Every step that takes it or shares the host passes its memory gate first: free memory over
  * `delivery.queue.memoryFloorMb` plus the step's reserve (`heavyReserveMb` at least for a step that takes the lock),
- * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted. Its line is ordered as
+ * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted, the tabs still loading beside the
+ * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered as
  * `delivery.queue.admission` says, a ticket naming no class counting as `focus.defaultClass`. A waiter's ticket says
  * what it waits on with the times on `zone`'s clock.
  */
 export function hostLockOf(runtime, path, queue, headroom, focus, zone) {
-    const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct });
+    const tabs = new TabHolds(tabHoldsDir(path), runtime);
+    const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct }, () => tabs.live());
     const admission = {
         mode: queue.admission,
         agingMinutes: queue.agingMinutes,

@@ -302,7 +302,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
       with --resume, goes on in its last Claude Code session when that is small and recent enough;
-      a session teamrig close ended goes on in its last one by those limits, else opens fresh
+      a session teamrig close ended goes on in its last one by those limits, else opens fresh; any
+      session but the lead is refused while the host has no room for one more (open.headroom), and each
+      tab opened holds its MB for open.headroom.loadMinutes while it loads, counted by every team's next
+      open and queued step
   meet <id|name> [--terminal <name>] [--project <dir>]   the owner meets one session on its cards
       waiting on them: a running one gets an inbox line that wakes it at once (none more while that
       ask waits), any other opens fresh in a new tab; refused when none waits on the owner now (it
@@ -685,8 +688,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       under queue, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
       parent step's session, else the session this Claude Code tab is bound to. Every step, merge and
       deploy waits in its turn for host memory: the least of 3 free-memory reads 1 s apart over
-      delivery.queue.memoryFloorMb plus the MB held for it and for the small steps running (at most half
-      the host's RAM), and the commit charge under open.headroom.commitMaxPct with its MB counted. A step
+      delivery.queue.memoryFloorMb plus the MB held for it, for the small steps running and for the tabs
+      still loading (at most half the host's RAM), and the commit charge under open.headroom.commitMaxPct
+      with its MB and those tabs' counted. A step
       holds the need its latest 20 runs under its session and --what show (their most held and a
       quarter, or their median host drop, whichever is more; with no such run, its session's runs of
       the same --kind and size, never other), or its --memory-mb when more; at least
@@ -708,8 +712,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       $TEAMRIG_SESSION, else the session this Claude Code tab is bound to; REFUSED for another
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
   pipeline                     the host's queued steps now, taking nothing: HOST (free memory, RAM,
-      the floor, the commit charge, the MB held for the steps sharing the host, what the running
-      steps' process trees use, the top memory holders), RUNNING (the lock's holder and each step
+      the floor, the commit charge, the MB held for the steps sharing the host and for the tabs still
+      loading, what the running steps' process trees use, the top memory holders), RUNNING (the lock's holder and each step
       sharing the host, a heavy one named so: run time, MB held, tree use), WAITING (the line in the
       order steps are let in: how long each waited and what its ticket says it waits on, with that
       wait's numbers), REFUSED (queued steps of the last 24h that waited and did not run)
