@@ -280,7 +280,9 @@ too, so unfreeze it first.
 
 - **A shell that ended:** each step watches the processes that started it, up to the tab's Claude Code. Once one
   ends, a waiting step runs nothing, and a running one is killed with every process it started, recorded as exit 129,
-  and frees the lock.
+  and frees the lock. Its session then re-runs the same command in the background with no human's OK, as the STOPPED
+  line says, unless it or the human stopped the step on purpose or a killed step's part run changed stored data: the
+  re-run waits for memory and the lock like the first.
 
 ## Clean measurements
 

@@ -4001,6 +4001,10 @@ tool's shell alone (its low-memory reaper does), and on Windows what that shell 
 ends, no one waits for the step. Still waiting, it stops and runs nothing (`STOPPED before the host lock was free:
 nothing ran`); running, it kills the step with every process it started, records exit 129 and frees the lock
 (`STOPPED killed, recorded as exit 129`). When the system will not list them, it says so and the step runs on.
+Both lines go on to say what to do: re-run the same command in the background with no human's OK, unless you or the
+human stopped it on purpose, or (a killed step) its part run changed stored data, whose hand-run change is the
+owner's. The re-run waits for memory and the lock like the first run, so a human's OK adds nothing, whatever
+Claude Code's own stop notice asks.
 
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig queue ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
@@ -4067,8 +4071,8 @@ DONE exit 0
 ```
 
 The build's own output comes between the last two lines. A step killed at its limit ends with
-`TIMED OUT killed, recorded as exit 124`, one killed as its shell ended with `STOPPED killed, recorded as exit 129`,
-a failed one with `FAILED exit <code>`.
+`TIMED OUT killed, recorded as exit 124`, one killed as its shell ended with `STOPPED killed, recorded as exit 129`
+and the re-run advice above, a failed one with `FAILED exit <code>`.
 
 ### teamrig withdraw
 
@@ -4209,8 +4213,9 @@ hook (kind `merge`, with the task the branch name holds and its register priorit
 moved meanwhile, it rebases and pushes again, 3 times in all. After a merge it deletes the branch on origin and
 here, moves the local default branch to origin's and prints the `teamrig worktree remove` that ends a worktree.
 Like `teamrig queue`, it watches the processes that started it. Once its launching shell ends it stops waiting
-(`STOPPED before the host lock was free: nothing ran`), or kills the push it runs, records exit 129, frees the lock
-and pushes no more (FAILED).
+(`STOPPED before the host lock was free: nothing ran`, with the re-run advice `teamrig queue` gives), or kills the
+push it runs, records exit 129, frees the lock and pushes no more (FAILED). Either way its session runs the same
+merge again in the background, with no human's OK.
 Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check, the decision record
 gate, the review gate or a self-merge gate refused it, 75 when the merge command waits.
 
@@ -4419,8 +4424,9 @@ roll back. The pull stays after a failure, so a new deploy finds nothing pending
 it is fixed. A failed pull deployed nothing: deploy again.
 
 Like `teamrig queue`, it watches the processes that started it. Once its launching shell ends it stops waiting
-(`STOPPED before the host lock was free: nothing ran`), or kills the hook or deploy command it runs, records exit 129
-and frees the lock (FAILED).
+(`STOPPED before the host lock was free: nothing ran`, with the re-run advice `teamrig queue` gives), or kills the
+hook or deploy command it runs, records exit 129 and frees the lock (FAILED). Its session runs the same deploy again
+in the background, with no human's OK, unless the killed part changed stored data.
 
 A deploy that pulls nothing: `teamrig deploy --targets <a,b> --what "<why>" -- <command ...>` restarts some of the
 repository's targets with a command of its own, such as a restart that makes them read a rotated secret on the same
