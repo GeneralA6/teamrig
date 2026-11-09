@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { auditOf, handStepFileProblem, handStepKindOf, handStepShapeOf, parseAuditPin, runLineOf, sha256Hex, shortSha256, withAudit, type HandStepAudit } from './hand-step.ts';
+import { auditOf, handStepFileProblem, handStepKindOf, handStepShapeOf, parseAuditPin, runLineOf, shortSha256, withAudit, type HandStepAudit } from './hand-step.ts';
 
 describe('handStepShapeOf', () => {
   it('names code typed for the human: a backticked span, the call operator, a write cmdlet, a JSON object', () => {
@@ -34,11 +34,10 @@ describe('handStepKindOf', () => {
   it('names no other file, nor one without an extension', () => {
     assert.deepEqual(['/w/run.mjs', '/w/run.cmd', '/w/run.bat', '/w/run.ps1.txt', '/w/run', '/w/.ps1x'].map(handStepKindOf), [undefined, undefined, undefined, undefined, undefined, undefined]);
   });
-});
 
-describe('sha256Hex', () => {
-  it('hashes the bytes in lowercase hex', () => {
-    assert.equal(sha256Hex(new TextEncoder().encode('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  it('reads the extension of the file name only, never of a folder, after either separator', () => {
+    assert.deepEqual(['/w.ps1/run', 'C:\\w.sh\\run', 'C:\\w.md/run', '/w/x.sh\\.ps1'].map(handStepKindOf), [undefined, undefined, undefined, undefined]);
+    assert.deepEqual(['C:/w.d\\run.ps1', 'run.sh', '.\\steps.md'].map(handStepKindOf), ['.ps1', '.sh', '.md']);
   });
 });
 

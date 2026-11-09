@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
-import { extname } from 'node:path';
 import { isRecord } from '../core/guards.ts';
+
+// No node: import here: the fold and the views reach this file, and the read entry (src/read) runs without Node's
+// built-ins. The CLI reads and hashes a hand step file (src/cli/hand-step-file.ts).
 
 /**
  * The file kinds a hand step for the human comes as (T2312, core rule 11), each with its own run line: a PowerShell
@@ -11,9 +12,16 @@ export const HAND_STEP_KINDS = ['.ps1', '.sh', '.md'] as const;
 
 export type HandStepKind = (typeof HAND_STEP_KINDS)[number];
 
+/** The extension of the last name in `path`, after either separator, as node's extname gives it: '' for none or a dot file. */
+function extensionOf(path: string): string {
+  const name = path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+  const dot = name.lastIndexOf('.');
+  return dot <= 0 ? '' : name.slice(dot);
+}
+
 /** The kind of the hand step file at `path`, by its extension in any case; undefined for any other file. */
 export function handStepKindOf(path: string): HandStepKind | undefined {
-  const extension = extname(path).toLowerCase();
+  const extension = extensionOf(path).toLowerCase();
   return HAND_STEP_KINDS.find((kind) => kind === extension);
 }
 
@@ -72,11 +80,6 @@ export interface HandStepAudit extends AuditPin {
 }
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
-
-/** The sha256 of `bytes`, in lowercase hex, as an audit pins it. */
-export function sha256Hex(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
 
 /** How many characters of a pin's sha256 the lines about it show: enough to tell two audits of a file apart. */
 const SHORT_SHA256 = 8;
