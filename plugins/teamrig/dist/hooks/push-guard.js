@@ -1,4 +1,5 @@
 import { DEFAULT_COMMIT_GUARD, DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from "../config/defaults.js";
+import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { describeLargeCommits, largeCommits } from "../push-guard/commit-size.js";
 import { hookSkips } from "../push-guard/hook-skips.js";
@@ -87,6 +88,28 @@ function stopReason(verdict, decision, protectedBranches) {
     return verdict.protectedPush === 'leased' ? leasedReason(protectedBranches) : decisionReason(decision, protectedBranches);
 }
 /**
+ * How strict a verdict is, in the order `judgePushes` weighs one line: a refusal, then a leased push's question, then
+ * any other question, then a push to a protected branch let through (under `lead` and `gated`, only once cleared).
+ */
+function strictness(verdict) {
+    switch (verdict.decision) {
+        case 'deny':
+            return 4;
+        case 'ask':
+            return verdict.protectedPush === 'leased' ? 3 : 2;
+        case 'allow':
+            return verdict.protectedPush === undefined ? 0 : 1;
+    }
+}
+/**
+ * The strictest of the readings' verdicts (`toolCommandReadings` gives at least one), the command as written on a tie.
+ * Each reading is judged alone, never their git commands joined: the judge follows each line's checkouts in order, so
+ * another reading's checkout would move the branch a push is read against.
+ */
+function strictestVerdict(verdicts) {
+    return verdicts.reduce((kept, verdict) => (strictness(verdict) > strictness(kept) ? verdict : kept));
+}
+/**
  * The PreToolUse hook's stdout for one Bash or PowerShell call: a permission decision when the
  * command pushes to a protected branch, else nothing, so the normal permission flow decides.
  * Under `pushToProtected: allow` a normal push to a protected branch gets a note (`systemMessage`)
@@ -96,7 +119,8 @@ function stopReason(verdict, decision, protectedBranches) {
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
  * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
  * asked about first, as `skipHooks` says; a refused push stays refused under `ask`. Under `hookAsks: refuse`
- * every such question is a refusal instead, its reason saying what to do (see `holdBack`).
+ * every such question is a refusal instead, its reason saying what to do (see `holdBack`). A Bash line on Windows is
+ * judged in each reading bash may run (`toolCommandReadings`), keeping the strictest verdict and every hook skip.
  */
 export async function pushGuardOutput(payload, env) {
     if (!isRecord(payload)) {
@@ -106,18 +130,22 @@ export async function pushGuardOutput(payload, env) {
     if (command === undefined) {
         return '';
     }
+    const tool = stringField(payload, 'tool_name');
     const context = {
         cwd: stringField(payload, 'cwd') ?? env.cwd,
         home: env.home,
-        dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
+        dialect: tool === 'PowerShell' ? 'powershell' : 'bash',
         protectedBranches: env.protectedBranches,
         pushToProtected: env.pushToProtected,
         repo: env.repo,
     };
-    const found = findGitInvocations(command, finderContextOf(context));
-    const verdict = judgePushes(found, context);
+    const readings = toolCommandReadings(tool, command, env.platform).map((text) => {
+        const found = findGitInvocations(text, finderContextOf(context));
+        return { found, verdict: judgePushes(found, context) };
+    });
+    const verdict = strictestVerdict(readings.map((reading) => reading.verdict));
     if (env.skipHooks !== 'allow') {
-        const skips = hookSkips(found.invocations);
+        const skips = readings.flatMap(({ found }) => hookSkips(found.invocations));
         if (skips.length > 0 && (env.skipHooks === 'deny' || verdict.decision !== 'deny')) {
             return holdBackOutput(env.skipHooks, skipHooksReason(skips), env.hookAsks);
         }
