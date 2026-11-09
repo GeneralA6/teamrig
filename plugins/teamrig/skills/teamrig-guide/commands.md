@@ -4007,6 +4007,11 @@ with the same command line reuses it: DONE at once, with no lock, even from the 
 more than a minute for the lock, it declines the push once they pass (REFUSED, exit 2), since its connection may
 have closed: push again, and it reuses their pass. A tree with uncommitted changes gets no pass, so commit first.
 
+Checks that run past about 6 minutes idle the connection too. `teamrig merge` sends its push's ssh a keepalive every
+30 seconds, unless `GIT_SSH_COMMAND`, `GIT_SSH` or the repository's `core.sshCommand` sets your own ssh command. For
+a plain `git push`, add `ServerAliveInterval 30` under `Host github.com` in `~/.ssh/config`. An https remote uses no
+ssh, so neither applies to it.
+
 Flags:
 
 - `--what <label>`: what the step is, as the lock, the ledger and a waiting session name it; required.
