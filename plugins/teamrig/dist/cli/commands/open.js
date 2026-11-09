@@ -20,7 +20,7 @@ import { closedOf, SessionLog } from "../../sessions/log.js";
 import { teamWindowOf } from "../../open/terminals.js";
 import { urgentFirstPrompt } from "../../wake/asks.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
-import { headroomOf } from "../headroom.js";
+import { admitBusyText, admitTab, dropTabHold } from "../headroom.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { liveRunOf, liveRunText } from "../live-run.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -135,7 +135,8 @@ export function printOpenResult(runtime, opened) {
 /**
  * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
  * session or fresh (always fresh with `fresh`), refused (`RefusedError`) while it runs in a Claude Code and, for any
- * session but the lead, when the host has no room, and a closed one's reopen logged once its tab opened. A home close
+ * session but the lead, when the host has no room, its tab held while it loads (admitTab, so the next opens of every
+ * team count it before free memory shows it), and a closed one's reopen logged once its tab opened. A home close
  * (a hire that never ran, T1364) opens as a new hire does, its reopen logged too.
  */
 export async function openSession(runtime, kit, config, roster, request) {
@@ -154,15 +155,22 @@ export async function openSession(runtime, kit, config, roster, request) {
     const folder = resume === undefined ? project : (closedIn?.folder ?? project);
     const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
     const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
-    // The lead opens whatever the room: it is the session that decides which others run.
-    if (id !== roster.holderOf('lead')) {
-        const headroom = await headroomOf(runtime, kit.paths, config, roster.ids);
-        if (headroom.short.length > 0) {
-            throw new RefusedError(noRoomText(`open ${name} (session ${id})`, headroom));
-        }
+    const what = `open ${name} (session ${id})`;
+    // The lead opens whatever the room: it is the session that decides which others run. Its tab is held all the same.
+    const admission = await admitTab(runtime, kit.paths, config, roster.ids, { session: id, anyRoom: id === roster.holderOf('lead') });
+    if (admission.kind === 'no-room') {
+        throw new RefusedError(noRoomText(what, admission.headroom));
     }
-    const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, ...(resume === undefined ? {} : { resume }) });
+    if (admission.kind === 'busy') {
+        throw new RefusedError(admitBusyText(what));
+    }
+    const opening = openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, ...(resume === undefined ? {} : { resume }) });
+    const { outcome, argv } = await opening.catch(async (error) => {
+        await dropTabHold(runtime, kit.paths, config, admission.holdId);
+        throw error;
+    });
     if (outcome.kind !== 'opened') {
+        await dropTabHold(runtime, kit.paths, config, admission.holdId);
         return { kind: 'manual', reasons: outcome.reasons, argv, folder };
     }
     if (closed !== undefined) {

@@ -99,6 +99,8 @@ export const CONFIG_LIMITS = {
     headroomSessionMb: { min: 100, max: 65_536 },
     headroomCommitMaxPct: { min: 50, max: 100 },
     headroomCloseIdleMinutes: { min: 15, max: 10_080 },
+    headroomFloorMb: { min: 0, max: 1_048_576 },
+    headroomLoadMinutes: { min: 1, max: 60 },
     deliveryPollSeconds: { min: 1, max: 600 },
     deliveryWaitMaxMinutes: { min: 0, max: 1440 },
     checkTimeoutSeconds: { min: 1, max: 600 },

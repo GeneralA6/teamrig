@@ -218,9 +218,11 @@ export const DEFAULT_REFRESH = {
 /**
  * A session is counted at 1.2 GB (on 10-19, 18 sessions held 21.9 GB with their helpers and MCP servers), and the
  * commit charge stays at most 92% with it (it reached 100% that morning, and Claude Code then killed running steps).
- * A session quiet an hour may be closed: the owner's pick on 10-19.
+ * A session quiet an hour may be closed: the owner's pick on 10-19. A new tab holds its MB 5 minutes, an estimate of
+ * how long a resumed session takes to load its transcript and MCP servers (not measured yet); a longer hold only counts
+ * a loaded tab twice, both in free memory and in its hold, for longer.
  */
-export const DEFAULT_HEADROOM = { sessionMb: 1200, commitMaxPct: 92, closeIdleMinutes: 60 };
+export const DEFAULT_HEADROOM = { sessionMb: 1200, commitMaxPct: 92, closeIdleMinutes: 60, loadMinutes: 5 };
 /**
  * The idle pass closes and reopens sessions unless the team sets it to dry-run or off, so an idle tab spends no tokens
  * on any team (owner order, T1409); it keeps open only the sessions its roles name.
