@@ -9,15 +9,17 @@ import { helperDefaultClause } from "./helper-default.js";
  * KEPT_RULES_MAX_CHARS (a CI test holds it). With a team rules file at TEAM_RULES_MAX_CHARS beside it, the two still
  * fit CONTEXT_MAX_CHARS, with 3 characters to spare: a longer rule needs shorter words elsewhere, not a higher cap,
  * unless it takes over text a team's rules file carried, when the cap moves over from TEAM_RULES_MAX_CHARS with it.
+ * Moved up from 7,225 for rule 11's hand-step sentence (T2309), which takes over a team rules file's stopgap line, and
+ * as the worst case now counts the security reviewer, whom it had left unset.
  */
-export const CORE_PACK_MAX_CHARS = 7_225;
+export const CORE_PACK_MAX_CHARS = 7_645;
 /** The kept local rules the core pack lists [ruleConflicts] fit in this many characters (see `renderKeptRules`). */
 export const KEPT_RULES_MAX_CHARS = 420;
 /**
  * The team rules files a session is shown in full, its own and those of the teams above it, share this size; one that
- * does not fit gets a pointer.
+ * does not fit gets a pointer. Down from 2,750 as rules moved into the core pack (CORE_PACK_MAX_CHARS).
  */
-export const TEAM_RULES_MAX_CHARS = 2_750;
+export const TEAM_RULES_MAX_CHARS = 2_330;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
 export const CONTEXT_MAX_CHARS = 10_000;
 /**
@@ -118,6 +120,18 @@ function timesClause(zone, now) {
     return ` Write times on the team's clock, zone-marked (\`04:00 ${label}\`, ${zone.utcOffset(now)} now); UTC only when UTC is the subject [timeZone].`;
 }
 /**
+ * Rule 11's hand-step sentence (T2309). A lead handed the owner a PowerShell paste that loosened a guard before anyone
+ * reviewed it, and the owner had to ask whether security had (owner order 11-09). A step the human runs by hand is
+ * code no guard sees run, so it goes as a file the security reviewer read, pinned by its sha256 so the file run is the
+ * file read; a team with no reviewer still has a second session read it, never its author alone. Rule 1 names the
+ * reviewer and its key, so the name prints once.
+ */
+function handStepClause(reviewer) {
+    const auditor = reviewer === undefined ? 'another session' : 'the security reviewer';
+    return (' A hand step for the human that changes anything or touches a secret (a paste, a settings, config or guard line, a grant, a key)' +
+        ` goes only as a file ${auditor} audited, its sha256 on the task, run by one line, never as code in chat; an edit needs a new audit.`);
+}
+/**
  * Rule 7's queued-step sentence, `cutoff` the span no queued step starts in, on the team's clock. A team that names a
  * repository in [delivery.repos] merges and runs its changes through it, so it gets the commands
  * too; a cutoff alone gets only its own sentence.
@@ -173,7 +187,7 @@ export function coreRuleTexts(config, command, platform, clock) {
     return {
         roles: `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue [roles.lead].` +
             (roles.deliveryOwner === undefined ? '' : ` ${roles.deliveryOwner} owns the delivery flow and fleet health [roles.deliveryOwner].`) +
-            (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) [roles.securityReviewer].`) +
+            (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) and hand steps [roles.securityReviewer].`) +
             // The lead tree (config/lead-tree.ts, T781): a member's waits, approvals and pushes go to its leaders, nearest
             // first, and a leader sets the work order of the sessions under it (T782) and lifts their budgets, a sub-lead's
             // within the group share its own leader gives it (T784). No member list prints here: `leads` has no size limit,
@@ -212,6 +226,7 @@ export function coreRuleTexts(config, command, platform, clock) {
         resources: 'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement: `stopgap T<id>`.',
         data: "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
             ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
+            handStepClause(roles.securityReviewer) +
             ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
         contracts: 'Tell the other side before changing a contract it reads (API, table or file).' +
             // T1189: a route removal named the pages it would break, had no answer and shipped; its proof saw the routes
