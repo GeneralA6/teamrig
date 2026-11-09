@@ -85,18 +85,20 @@ const execCommands = () => import("./commands/exec.js");
 const refsCommands = () => import("./commands/refs.js");
 const sweepCommands = () => import("./commands/sweep.js");
 const setupBackupCommands = () => import("./commands/setup-backup.js");
+const auditCommand = () => import("./commands/audit.js");
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'class'];
 /** The parts of a bug's review `set` gives (register/review.ts REVIEW_FLAGS). */
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
-    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit'], load: async () => (await registerCommands()).set },
+    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit'], load: async () => (await registerCommands()).set },
     update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
     'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
     // No register changes, but --out writes the path the line names: a line no person typed must not reach that.
     sweep: { effect: 'write', flags: ['session', 'out'], switches: ['tree'], load: async () => (await sweepCommands()).sweep },
     'sweep apply': { effect: 'write', flags: ['session'], switches: ['apply'], load: async () => (await sweepCommands()).apply },
     approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
+    audit: { effect: 'write', flags: ['session', 'file', 'note', 'team'], load: async () => (await auditCommand()).audit },
     list: {
         effect: 'read',
         flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal', 'type'],
@@ -412,7 +414,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
-      [--ask <session> --text "<the work>"] [--one-commit]
+      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
@@ -441,6 +443,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a wait on the owner's decision names what makes it the owner's: --gate "<an owner gate (ownerGates)
       or business>"; any other question is yours or your leader's: decide it, or wait on your leader;
       check flags it UNGATED without one
+      --run <path> (with a wait on the owner's decision or approval): the hand step file the owner runs,
+      refused unless an audit (teamrig audit) pins it at its sha256 now; the card prints its run line
       a bug gives its review (register.review): --cause "<the root cause, at its source>"
       --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and
       --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";
@@ -478,6 +482,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       point and ask again), and check flags the approved task READY
   approve <team>/<id> --note .. [--decline]   the lead of a team's parent team answers a task of that
       team's lead waiting on its approval (approval:app/lead), named as its inbox line prints it: web/T3
+  audit T<n> --file <path> [--note "<what you checked>"] [--team <child>]   the security reviewer
+      (roles.securityReviewer; with none set, any session but the task's owner) pins a hand step file
+      (.ps1, .sh or .md) for a task still to finish at the sha256 of its bytes now (core rule 11), so a
+      card may hand it to the owner; an edit needs a new audit; the task's owner gets an inbox line;
+      --team <child>: the reviewer on a team above audits a task of that team below
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--type task,bug] [--parked|--untriaged] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due

@@ -18,7 +18,7 @@ import { formatTaskLines, taskLinesOf } from "../../inbox/task-lines.js";
 import { WakeAsks } from "../../wake/asks.js";
 import { teamDayStartAt } from "../../wake/day-start.js";
 import { waitAnswerersOf } from "../../register/approval.js";
-import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags, untriagedFlags } from "../../register/check.js";
+import { byFlagKind, checkTasks, leaderWaitFlags, peerWaitFlags, runFileFlags, untriagedFlags } from "../../register/check.js";
 import { currentWeekOf } from "../../register/week.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
 import { heldFirst } from "../../register/leader-wait.js";
@@ -39,6 +39,7 @@ import { SKILL_FILE, SkillDir } from "../../skills/store.js";
 import { weekUseOnAccount } from "../account-teams.js";
 import { readWideAllow, teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
+import { handStepPin, readRunFiles } from "../hand-step-file.js";
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
@@ -390,6 +391,14 @@ async function withSpentClasses(runtime, team, input) {
     const { tasks } = (await register.snapshot()).state;
     return { ...input, spentClasses: await readSpentClasses(runtime, paths, config, tasks.values(), runtime.clock.now()) };
 }
+/**
+ * `--run <path>`: the hand step file a card hands the owner (T2312), pinned at the sha256 its bytes have now, which
+ * the policy matches against the task's audit of it; nothing without the flag.
+ */
+async function runOf(flags, runtime) {
+    const typed = flags.get('run');
+    return typed === undefined ? {} : { run: await handStepPin(runtime, 'run', typed) };
+}
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
@@ -397,7 +406,7 @@ export async function set(args, runtime) {
     const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
     const { config, paths, register, roster } = team;
     const by = sessionIdOf(roster, caller);
-    const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches) });
+    const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches), ...(await runOf(args.flags, runtime)) });
     if (typed.ask !== null) {
         return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
     }
@@ -776,7 +785,7 @@ export async function show(args, runtime) {
     const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
     const sizeCost = (pct) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`);
     const files = await taskFilesLine(runtime, own.paths.kitHome, own.team, id);
-    runtime.out.stdout(formatTaskDetail(task, events, tree, { sizeCost, files }));
+    runtime.out.stdout(formatTaskDetail(task, events, tree, { sizeCost, files, runFiles: await readRunFiles(runtime, [task]) }));
     const named = await taskLinesOf(inboxDepsOf(runtime, own.paths).inboxes, id);
     formatTaskLines(id, named, tree.zone).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
@@ -836,9 +845,10 @@ function weekFor(args, snapshot, now, zone) {
  * The task flags of one register, against its own team's config and day, in its `zone`; with `team`, for
  * `check --tree`, its task ids name it. `leftPct` is what is left of the week's usage target (one account's limit
  * covers every team read). A wait on another register's task of the tree is judged against that task, and one on the
- * parent team's lead, `above`, is the lead's own approver's (T1140).
+ * parent team's lead, `above`, is the lead's own approver's (T1140). `runFiles` is what each card's hand step file
+ * hashes to now (RUN-CHANGED).
  */
-function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zone, week, leftPct, team) {
+function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zone, week, leftPct, runFiles, team) {
     const tasks = [...snapshot.state.tasks.values()];
     const tree = new TaskTree(snapshot.state.tasks, now, zone, week, elsewhere, ranking);
     const dayStart = teamDayStartAt(config.wake.dayStartUtc, now.getTime());
@@ -847,6 +857,7 @@ function checkRegister({ snapshot, config, elsewhere, above, ranking }, now, zon
     const flags = [
         ...checkTasks(tasks, now, zone, week, config.register, elsewhere, ranking),
         ...peerWaitFlags(tasks, leads, config.roles, config.register.ownerSource),
+        ...runFileFlags(tasks, runFiles),
         // In plan order, so the leader reads the most urgent wait first.
         ...leaderWaitFlags(tree.inPlanOrder(tasks), leads, config.focus, now.getTime()),
         ...untriagedFlags(tasks, leads),
@@ -916,8 +927,9 @@ export async function checkReport(args, runtime) {
     // OVER-SIZE reads the own team's metered use, as STOPGAP-DONE reads its files: a sub-team's sessions meter in its own home.
     const { overSizeMultiple } = own.config.register.check;
     const spent = overSizeMultiple > 0 ? await readTaskSpend(runtime, own.paths, own.config, now.getTime()) : undefined;
+    const runFiles = await readRunFiles(runtime, teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()]));
     const checked = teams.map((rolled) => {
-        const section = checkRegister(rolled, now, teamZone(rolled.config, runtime), week, leftPct, tree ? rolled.team : undefined);
+        const section = checkRegister(rolled, now, teamZone(rolled.config, runtime), week, leftPct, runFiles, tree ? rolled.team : undefined);
         const ownFlags = rolled.team === own.team
             ? [...stopgapFlags(tags, rolled.snapshot.state.tasks, zone), ...(spent === undefined ? [] : overSizeFlags(rolled.snapshot.state.tasks.values(), spent, overSizeMultiple))]
             : [];

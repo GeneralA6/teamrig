@@ -3,6 +3,7 @@ import { ID_PATTERN } from "../core/ids.js";
 import { parseUtcDeadline } from "../core/time.js";
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, WORK_CLASS_NAME } from "./model.js";
 import { parseCard } from "./card.js";
+import { parseAuditPin } from "./hand-step.js";
 import { parseReview } from "./review.js";
 import { parseWaits } from "./waits.js";
 /**
@@ -17,7 +18,8 @@ import { parseWaits } from "./waits.js";
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
  * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
- * `sizeBase` (T649), a task's `workClass` (T2076) and a start's `oneCommit` mark (T2110), which an older reader ignores:
+ * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110) and an update's hand step `audit`
+ * (T2312), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -185,6 +187,10 @@ export function parseEvent(line) {
             if (typeof sizeBase === 'string') {
                 return unreadable(sizeBase);
             }
+            const audit = record['audit'] === undefined ? undefined : parseAuditPin(record['audit']);
+            if (typeof audit === 'string') {
+                return unreadable(audit);
+            }
             const event = {
                 ...base,
                 type: 'update',
@@ -194,6 +200,7 @@ export function parseEvent(line) {
                 ...(waits === undefined ? {} : { waits }),
                 ...(decided === undefined ? {} : { decided }),
                 ...(sizeBase === undefined ? {} : { sizeBase }),
+                ...(audit === undefined ? {} : { audit }),
             };
             return { kind: 'event', event };
         }

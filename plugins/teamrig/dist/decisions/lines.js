@@ -21,12 +21,12 @@ function weeklyLines(batch) {
  * asks them and how each answer comes back.
  */
 export function batchLines(view) {
-    const { batch, ownerMarker, command, lead, askedBy, zone } = view;
+    const { batch, ownerMarker, command, lead, askedBy, zone, runFiles } = view;
     const head = [batchHead(batch, ownerMarker, zone), ...weeklyLines(batch)];
     if (batch.pending.length + batch.overdue.length === 0) {
         return head;
     }
-    const facts = (waits) => waits.flatMap((wait) => cardFacts(wait.task, wait.tree, wait.team));
+    const facts = (waits) => waits.flatMap((wait) => cardFacts(wait.task, wait.tree, runFiles, wait.team));
     const how = askedBy === undefined
         ? [
             `  Ask ${ownerMarker} these together, each card as it stands, each figure explained; then ${command} decisions asked --session ${lead} records the batch asked.`,

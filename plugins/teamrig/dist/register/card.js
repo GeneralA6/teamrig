@@ -1,10 +1,13 @@
 import { isRecord } from "../core/guards.js";
+import { auditOf, handStepShapeOf, runFileDrift, runLineOf, shortSha256 } from "./hand-step.js";
 /** The CLI flags that write a card's parts, for the refusals that name them. */
 export const CARD_FLAGS = '--question, --options, --recommend and --default';
 /** The CLI flag that writes a card's `whyAsk`. */
 export const WHY_ASK_FLAG = '--why-ask';
 /** The CLI flag that writes a card's `gate`. */
 export const GATE_FLAG = '--gate';
+/** The CLI flag that writes a card's `run`. */
+export const RUN_FLAG = '--run';
 /** The gate that names a business decision, the owner's besides the owner gates (T1194). */
 export const BUSINESS_GATE = 'business';
 /** The gates a card may name: each owner gate [ownerGates], then a business decision. */
@@ -33,7 +36,10 @@ export const CARD_MIN_WORDS = 3;
 export const MIN_DECISION_OPTIONS = 2;
 /** A task id standing as a word: `T378`, `(T378)`, `T378,`. */
 const TASK_WORD = /\bT[1-9]\d*\b/g;
-/** The card's parts as one list of texts, in the order a card prints them. */
+/**
+ * The card's parts as one list of texts, in the order a card prints them, but its run file: a path is no prose, and
+ * a task id in it (`tasks/T5/step.ps1`) names no task the card is about.
+ */
 export function cardTexts(card) {
     return [
         card.question,
@@ -53,6 +59,7 @@ export function keptCard(card, keep) {
         byDefault: card.byDefault,
         ...(keep.whyAsk && card.whyAsk !== undefined ? { whyAsk: card.whyAsk } : {}),
         ...(keep.gate && card.gate !== undefined ? { gate: card.gate } : {}),
+        ...(keep.run && card.run !== undefined ? { run: card.run } : {}),
     };
 }
 /** How many words a text says besides task ids: letters and digits in runs, so `30 days: 4 GB` is four. */
@@ -72,19 +79,43 @@ export function namedTaskIds(texts) {
  * approval none or as many.
  */
 export function cardProblem(card, decision) {
-    const parts = [
+    const thin = typedParts(card).find(([, text]) => plainWords(text) < CARD_MIN_WORDS);
+    if (thin !== undefined) {
+        return `${thin[0]} says "${thin[1]}": give at least ${CARD_MIN_WORDS} plain words besides task ids, so it reads without the task list`;
+    }
+    if (card.options.length === 1 || (decision && card.options.length < MIN_DECISION_OPTIONS)) {
+        return `--options lists ${card.options.length}: a decision lists at least ${MIN_DECISION_OPTIONS}, separated by ${OPTION_SEPARATOR}${decision ? '' : '; an approval lists none or as many'}`;
+    }
+    return undefined;
+}
+/**
+ * The parts of a card its writer types, each with the flag that wrote it, for the refusals that name one: the
+ * question, why asked, each option, the recommendation and the default. The gate is left out, as it is one of the
+ * names the config gives, and the run file, as it is a path.
+ */
+function typedParts(card) {
+    return [
         ['--question', card.question],
         ...(card.whyAsk === undefined ? [] : [[WHY_ASK_FLAG, card.whyAsk]]),
         ...card.options.map((option, index) => [`--options choice ${index + 1}`, option]),
         ['--recommend', card.recommend],
         ['--default', card.byDefault],
     ];
-    const thin = parts.find(([, text]) => plainWords(text) < CARD_MIN_WORDS);
-    if (thin !== undefined) {
-        return `${thin[0]} says "${thin[1]}": give at least ${CARD_MIN_WORDS} plain words besides task ids, so it reads without the task list`;
+}
+/**
+ * The first typed part of a card that holds a hand step in its text, code or an ask to paste (handStepShapeOf);
+ * undefined when none does. A card that hands its step as a run file is not asked, as the run line is where the
+ * step is, and its text may name it.
+ */
+export function typedHandStep(card) {
+    if (card.run !== undefined) {
+        return undefined;
     }
-    if (card.options.length === 1 || (decision && card.options.length < MIN_DECISION_OPTIONS)) {
-        return `--options lists ${card.options.length}: a decision lists at least ${MIN_DECISION_OPTIONS}, separated by ${OPTION_SEPARATOR}${decision ? '' : '; an approval lists none or as many'}`;
+    for (const [flag, text] of typedParts(card)) {
+        const shape = handStepShapeOf(text);
+        if (shape !== undefined) {
+            return { flag, shape };
+        }
     }
     return undefined;
 }
@@ -98,6 +129,7 @@ export function sameCard(a, b) {
         a.byDefault === b.byDefault &&
         a.whyAsk === b.whyAsk &&
         a.gate === b.gate &&
+        a.run === b.run &&
         a.options.length === b.options.length &&
         a.options.every((option, index) => option === b.options[index]));
 }
@@ -112,7 +144,7 @@ export function parseCard(value) {
     if (!isRecord(value)) {
         return 'card is not an object';
     }
-    const { question, options, recommend, byDefault, whyAsk, gate } = value;
+    const { question, options, recommend, byDefault, whyAsk, gate, run } = value;
     if (typeof question !== 'string' || typeof recommend !== 'string' || typeof byDefault !== 'string') {
         return 'card needs question, recommend and byDefault as text';
     }
@@ -125,14 +157,26 @@ export function parseCard(value) {
     if (gate !== undefined && typeof gate !== 'string') {
         return 'card gate is not text';
     }
-    return { question, options, recommend, byDefault, ...(whyAsk === undefined ? {} : { whyAsk }), ...(gate === undefined ? {} : { gate }) };
+    if (run !== undefined && typeof run !== 'string') {
+        return 'card run is not text';
+    }
+    return {
+        question,
+        options,
+        recommend,
+        byDefault,
+        ...(whyAsk === undefined ? {} : { whyAsk }),
+        ...(gate === undefined ? {} : { gate }),
+        ...(run === undefined ? {} : { run }),
+    };
 }
 /**
  * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's and
- * why the owner is asked (when the card says), each option numbered, the recommendation and the default, each line
- * led by `indent`.
+ * why the owner is asked (when the card says), each option numbered, the recommendation and the default, then the
+ * hand step to run (when the card hands one), each line led by `indent`. `audits` are the task's (fold.ts), and
+ * `runFiles` what its hand step file hashes to now.
  */
-export function cardLines(card, indent) {
+export function cardLines(card, indent, audits, runFiles) {
     return [
         `${indent}decide: ${card.question}`,
         ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
@@ -140,5 +184,20 @@ export function cardLines(card, indent) {
         ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
         `${indent}recommended: ${card.recommend}`,
         `${indent}with no answer: ${card.byDefault}`,
+        ...(card.run === undefined ? [] : [`${indent}run: ${runText(card.run, audits, runFiles)}`]),
     ];
+}
+/**
+ * How the owner runs a card's hand step file, with the sha256 its audit pins and who audited it, so the owner can
+ * match the file; that it is not to be run with no audit of it on the task (a register line written by hand), or
+ * once the file changed or went since its audit (runFileDrift), until it is audited again.
+ */
+function runText(run, audits, runFiles) {
+    const audit = auditOf(audits, run);
+    const line = runLineOf(run);
+    if (audit === undefined || line === undefined) {
+        return `do not run ${run}: no audit on the task pins it (core rule 11)`;
+    }
+    const drift = runFileDrift(audit, runFiles);
+    return drift === undefined ? `${line}   (sha256 ${shortSha256(audit.sha256)}, audited by ${audit.by})` : `${drift}: do not run ${run}; audit it again`;
 }

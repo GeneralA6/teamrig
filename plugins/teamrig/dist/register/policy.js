@@ -6,7 +6,8 @@ import { SecretScanner } from "../core/secrets.js";
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
 import { waitAnswerersOf } from "./approval.js";
 import { NO_GOAL_TAGS } from "./goals.js";
-import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
+import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
+import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256 } from "./hand-step.js";
 import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { isRepark, taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
@@ -390,16 +391,21 @@ export class RegisterPolicy {
      * task the owner ordered that waits on the owner, and a card keeps it only while that holds (T802); while cards
      * are required, such a task asks the owner only with it (ownerOrderCard). `--gate` goes only with a wait on the
      * owner's decision, naming an owner gate or business, and a card keeps it only while that holds (T1194); while
-     * cards are required, the owner is asked to decide only with it (gatedCard).
+     * cards are required, the owner is asked to decide only with it (gatedCard). `--run` hands the owner a hand step
+     * file only while an audit pins it (runProblem), and a card keeps it only while it asks the owner (T2312).
      */
     cardChange(task, input, waits) {
         const asks = waits.filter((reason) => reason.kind === 'decision' || reason.kind === 'approval');
-        const given = input.card;
+        const { ownerSource, requireDecisionCard } = this.config.register;
+        const owners = asks.filter((reason) => reason.who === ownerSource);
+        const runProblem = input.run === undefined ? undefined : this.runProblem(task, input.run, owners.length > 0);
+        if (runProblem !== undefined) {
+            return refuse(runProblem);
+        }
+        const given = input.run === undefined ? input.card : { ...input.card, run: input.run.path };
         if (asks.length === 0) {
             return given === undefined ? ok(null) : refuse(`${CARD_FLAGS} go only with --status ${WAIT_STATUSES.join(' or ')} on a decision or an approval`);
         }
-        const { ownerSource, requireDecisionCard } = this.config.register;
-        const owners = asks.filter((reason) => reason.who === ownerSource);
         const ordered = task.source === ownerSource && owners.length > 0;
         const decidesOwner = owners.some((reason) => reason.kind === 'decision');
         if (given?.whyAsk !== undefined && !ordered) {
@@ -413,7 +419,7 @@ export class RegisterPolicy {
             return refuse(`${GATE_FLAG} "${given.gate}" is no owner gate [ownerGates] and no business decision: ${gateUsage(this.config.ownerGates)}`);
         }
         const kept = WAIT_STATUSES.includes(task.status) ? task.card : null;
-        const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner });
+        const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner, run: owners.length > 0 });
         if (given === undefined) {
             if (before !== null || owners.length === 0 || !requireDecisionCard || ordered) {
                 return this.ownerAsk(task, owners, before);
@@ -432,14 +438,60 @@ export class RegisterPolicy {
             byDefault: parts.byDefault,
             ...(parts.whyAsk === undefined ? {} : { whyAsk: parts.whyAsk }),
             ...(parts.gate === undefined ? {} : { gate: parts.gate }),
+            ...(parts.run === undefined ? {} : { run: parts.run }),
         };
         const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
         return problem === undefined ? this.ownerAsk(task, owners, card) : refuse(problem);
     }
-    /** What a card asking the owner (`owners`) must say besides its parts: why, on an owner's order; its gate, on a decision. */
+    /**
+     * Why a card may not hand the owner the hand step file `run` names (T2312, core rule 11): it goes only with a wait
+     * on the owner's decision or approval (`asksOwner`), never a leader's approval, as the owner is who runs it; only as
+     * a file of a kind with a run line; and only while an audit on the task pins that file at the sha256 the CLI read now.
+     */
+    runProblem(task, run, asksOwner) {
+        const { ownerSource } = this.config.register;
+        if (!asksOwner) {
+            return `${RUN_FLAG} hands ${ownerSource} a hand step to run: it goes only with a wait on ${ownerSource}'s decision or approval`;
+        }
+        const kindProblem = handStepFileProblem(run.path);
+        if (kindProblem !== undefined) {
+            return kindProblem;
+        }
+        const audit = auditOf(task.audits, run.path);
+        if (audit === undefined) {
+            return `no audit on ${task.id} pins ${run.path}: a hand step goes to ${ownerSource} only as a file its auditor read (core rule 11); who audits it: ${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --file ${run.path}`;
+        }
+        if (audit.sha256 !== run.sha256) {
+            return `${run.path} changed since ${audit.by} audited it at sha256 ${shortSha256(audit.sha256)} (now ${shortSha256(run.sha256)}): an edit needs a new audit (core rule 11)`;
+        }
+        return undefined;
+    }
+    /**
+     * What a card asking the owner (`owners`) must say besides its parts, and must not: why, on an owner's order; its
+     * gate, on a decision; and no hand step in its text (typedStepProblem).
+     */
     ownerAsk(task, owners, card) {
+        const typed = owners.length === 0 || card === null ? undefined : this.typedStepProblem(task, card);
+        if (typed !== undefined) {
+            return refuse(typed);
+        }
         const ordered = this.ownerOrderCard(task, owners, card);
         return ordered.ok ? this.gatedCard(task, owners, card) : ordered;
+    }
+    /**
+     * Why a card asking the owner may not say what it says (T2312, core rule 11): a hand step goes to the human only as
+     * a file its auditor read, so a card that types one into a part, as code or an ask to paste, is refused unless it
+     * hands the step as its run file. A card kept from an older row is held to it too, as it still reaches the owner.
+     */
+    typedStepProblem(task, card) {
+        const typed = typedHandStep(card);
+        if (typed === undefined) {
+            return undefined;
+        }
+        const { ownerSource } = this.config.register;
+        return (`${typed.flag} hands ${ownerSource} a step as text (${typed.shape}): core rule 11 hands ${ownerSource} a step only as a file its auditor read. ` +
+            `Write the step to a ${HAND_STEP_KINDS.join(', ')} file, have it audited (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --file <path>) and give ${RUN_FLAG} <path>; ` +
+            `a card that hands no step says so without code or an ask to paste ("the line is in")`);
     }
     /**
      * Only an owner gate [ownerGates] or a business decision is the owner's to decide (T1194), so while
@@ -592,6 +644,76 @@ export class RegisterPolicy {
             return task.status !== 'waiting' || reason.kind !== 'time';
         });
         return ok({ changes: {}, note: text, waits, decided: true });
+    }
+    /**
+     * Who audits a hand step of the owner's (T2312, core rule 11), never the owner itself: the team's security reviewer
+     * (roles.securityReviewer, a `<team>/<id>` when it sits on a team above), or the reviewer's leaders on the reviewer's
+     * own task. Undefined when the team has no reviewer, or the reviewer owns the task and has no leader but itself (the
+     * root lead): then any session of this team but the owner audits it.
+     */
+    auditorsOf(owner) {
+        const reviewer = this.config.roles.securityReviewer;
+        if (reviewer === undefined) {
+            return undefined;
+        }
+        if (reviewer !== owner) {
+            return [reviewer];
+        }
+        const leaders = this.tree.approversOf(owner).filter((id) => id !== owner);
+        return leaders.length === 0 ? undefined : leaders;
+    }
+    /** The auditors of a hand step of the owner's in words, for the refusals that name them. */
+    auditorsText(owner) {
+        const reviewer = this.config.roles.securityReviewer;
+        if (reviewer === undefined) {
+            return 'any session of this team but its owner (no roles.securityReviewer is set)';
+        }
+        if (reviewer !== owner) {
+            return ADDRESS_PATTERN.test(reviewer) ? `the security reviewer (${reviewer}), from its own team with --team` : `the security reviewer (${reviewer})`;
+        }
+        return this.auditorsOf(owner) === undefined ? `any session of this team but ${owner}` : `${this.approversText(owner)}, as ${owner} is the security reviewer`;
+    }
+    /**
+     * An audit (T2312, core rule 11): `caller`, a session of this team, read the hand step file `pin` names and pins it
+     * for the task at its sha256, so the task's card may hand it to the owner. Only an auditor of the owner's may
+     * (auditorsOf), never the task's own owner, as {@link auditFrom} judges the rest.
+     */
+    audit(task, caller, pin, note) {
+        if (caller === task.owner) {
+            return refuse(`${caller} owns ${task.id}, so it does not audit its own hand step (core rule 11); who audits it: ${this.auditorsText(task.owner)}`);
+        }
+        const auditors = this.auditorsOf(task.owner);
+        if (auditors !== undefined && !auditors.includes(caller)) {
+            return this.notAuditor(task, caller);
+        }
+        return this.auditContent(task, pin, note);
+    }
+    notAuditor(task, caller) {
+        return refuse(`${caller} does not audit a hand step of ${task.owner}'s; who audits it: ${this.auditorsText(task.owner)}`);
+    }
+    /**
+     * An audit from a team above (T2312), `asker` being its `<team>/<id>`, as the tree decides: only an auditor of the
+     * owner's that this team's roles name there may. A team with no security reviewer audits its hand steps itself.
+     */
+    auditFrom(task, asker, pin, note) {
+        const auditors = this.auditorsOf(task.owner);
+        if (auditors === undefined || !auditors.includes(asker)) {
+            return this.notAuditor(task, asker);
+        }
+        return this.auditContent(task, pin, note);
+    }
+    /** An audit's content: a task still to finish, a hand step file of a kind with a run line, and an optional note. */
+    auditContent(task, pin, note) {
+        if (!ACTIVE_STATUSES.includes(task.status)) {
+            return refuse(`${task.id} is ${task.status}: a hand step is audited for a task still to finish`);
+        }
+        const kindProblem = handStepFileProblem(pin.path);
+        if (kindProblem !== undefined) {
+            return refuse(kindProblem);
+        }
+        const text = blankToNull(note);
+        const problem = this.checkText('note', text);
+        return problem === undefined ? ok({ changes: {}, note: text, audit: pin }) : refuse(problem);
     }
     /**
      * The owner's Note from the pane (T1298): free text for the task's session, kept in its history as the owner's and
