@@ -74,7 +74,7 @@
           "$ref": "#/$defs/roleHolder"
         },
         "securityReviewer": {
-          "description": "Reviews the privileged commands sessions ask to run (exec), when the team has that role; the owner always may too. A child team may leave it to a team above.",
+          "description": "Reviews the privileged commands sessions ask to run (exec) and the hand steps they give the human (core rule 11), when the team has that role; the owner always may too. A child team may leave it to a team above.",
           "$ref": "#/$defs/roleHolder"
         }
       }

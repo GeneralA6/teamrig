@@ -82,7 +82,7 @@ The injected context holds:
    keeps showing its session; only a failure gives a note, and the tab's first `inbox read` then binds it.
 5. **The team's own `rules.md`**, when it exists. In a sub-team, the `rules.md` of each team above comes first, the
    root's first, headed `Team <id>'s rules (a team above yours; they win over a lower team's)`. The files share one
-   budget of 2,750 characters, in that order: one that does not fit comes as a pointer to it, with the room that was
+   budget of 2,330 characters, in that order: one that does not fit comes as a pointer to it, with the room that was
    left, and `teamrig doctor` names it. Where one of them, a CLAUDE.md, a rules file, a skill, memory or a hook's
    text conflicts with the core rules, the core rules win, except the local rules the team kept (`teamrig rules
    keep`), which the core rules list under `Kept local rules`: in a sub-team, those of each team above first, root

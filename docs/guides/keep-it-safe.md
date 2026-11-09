@@ -13,6 +13,7 @@ your main branch on your git host too.
 - [Secrets kept out of the conversation](#secrets-kept-out-of-the-conversation)
 - [Secrets kept out of commits](#secrets-kept-out-of-commits)
 - [Privileged commands on review](#privileged-commands-on-review)
+- [Hand steps you run yourself](#hand-steps-you-run-yourself)
 - [Reads without a prompt](#reads-without-a-prompt)
 - [A guard that breaks](#a-guard-that-breaks)
 
@@ -266,6 +267,14 @@ command), which the pane's buttons and a typed `/teamrig` line lack. Every sessi
 the routine route and an instruction slipped into what a session reads, not a session set on forging the owner: a
 script can clear that variable, and a session can write the register's files directly. A task line written as the owner is no proof
 that you acted until your own actions run under an account the sessions cannot use.
+
+## Hand steps you run yourself
+
+Some steps only you can take: a line pasted into a settings or guard file, a grant, a key. Code a session types into
+the chat for you to paste is code nobody reviewed, and it can change between the review and your paste. So the core
+rules (rule 11) give you such a step only as a file the security reviewer audited (another session, when the team has
+no reviewer), with its sha256 recorded on the task and run by one line; an edit to the file needs a new audit. The
+rule is in every session's start today; a check that refuses an unpinned hand step is still coming.
 
 ## Reads without a prompt
 
