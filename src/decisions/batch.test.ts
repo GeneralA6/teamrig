@@ -1,13 +1,29 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_FOCUS } from '../config/defaults.ts';
+import type { Weekday } from '../config/types.ts';
 import { TimeZone } from '../core/zone.ts';
+import type { DecisionFocus } from '../meeting/decision-order.ts';
 import type { Task } from '../register/fold.ts';
+import { ownSizing, treeRanking } from '../register/ranking.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { taskLabel } from '../register/views.ts';
-import { decisionBatch, lastBatchTime, nextBatchText, nextBatchTime, triggerText, type BatchConfig, type BatchInput, type BatchRegister, type OwnerWait } from './batch.ts';
+import {
+  decisionBatch,
+  lastBatchTime,
+  nextBatchText,
+  nextBatchTime,
+  triggerText,
+  waitsOfTeams,
+  type BatchConfig,
+  type BatchInput,
+  type BatchRegister,
+  type DecisionBatch,
+  type OwnerWait,
+} from './batch.ts';
 
 /** A Tuesday, between the 13:03 and 19:03 batch times of the day before and of this day. */
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -19,13 +35,17 @@ function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}):
   return testTask({ id, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, statusAt, ...overrides });
 }
 
-/** A register of `tasks` on the owner marker `owner`, the reader's own unless `team` names another; `requireGate` as `register.requireDecisionCard`. */
-function registerOf(tasks: readonly Task[], team?: string, ownerMarker = 'owner', requireGate = true): BatchRegister {
-  return { team, tasks, tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC), ownerMarker, requireGate };
+/**
+ * A register of `tasks` on the owner marker `owner`, the reader's own unless `team` names another; `requireGate` as
+ * `register.requireDecisionCard`, `focus` as its team's focus classes.
+ */
+function registerOf(tasks: readonly Task[], team?: string, ownerMarker = 'owner', requireGate = true, focus: DecisionFocus = DEFAULT_FOCUS): BatchRegister {
+  return { team, tasks, tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC), ownerMarker, requireGate, focus };
 }
 
+/** The input of a batch whose Improvements day is a Wednesday, so NOW (a Tuesday) is not it. */
 function inputOf(tasks: readonly Task[], askedAt: string | undefined, config: BatchConfig = CHECKPOINTS, others: readonly BatchRegister[] = []): BatchInput {
-  return { registers: [registerOf(tasks), ...others], now: NOW, askedAt: askedAt === undefined ? undefined : Date.parse(askedAt), config };
+  return { registers: [registerOf(tasks), ...others], now: NOW, askedAt: askedAt === undefined ? undefined : Date.parse(askedAt), config, improvementsDay: 'wed' };
 }
 
 const ids = (waits: readonly OwnerWait[]): string[] => waits.map((wait) => taskLabel(wait.task, wait.team));
@@ -136,5 +156,62 @@ describe('the decision batch', () => {
     assert.deepEqual(missed.trigger, { kind: 'time', at: Date.parse('2030-01-08T13:03:00Z') }, 'a batch time passed over it');
     const askedSince = decisionBatch(inputOf([back], '2030-01-08T09:30:00.000Z'));
     assert.deepEqual(ids(askedSince.pending), [], 'asked after its time passed');
+  });
+});
+
+// T2113: a decision that frees only Improvements work waits for focus.improvementsDay, as the agenda holds it (T2092).
+describe('the weekly Improvements batch (T2113)', () => {
+  const improvements = { workClass: 'Improvements' } as const;
+  const onDay = (input: BatchInput, day: Weekday = 'tue'): DecisionBatch => decisionBatch({ ...input, improvementsDay: day });
+
+  it('holds off its day a wait that frees only Improvements work out of the batch and every trigger', () => {
+    const waits = [
+      ownerWait('T1', '2030-01-08T09:00:00.000Z', { ...improvements, due: '2030-01-08 12:00' }),
+      ownerWait('T3', '2030-01-07T18:00:00.000Z', improvements),
+      ownerWait('T4', '2030-01-07T11:00:00.000Z', { ...improvements, due: '2030-01-07' }),
+    ];
+    const input = inputOf(waits, '2030-01-07T12:00:00.000Z', { batchTimesUtc: TIMES, batchAt: 2 });
+    const held = decisionBatch(input);
+    assert.deepEqual([ids(held.pending), ids(held.overdue), ids(held.weekly), held.trigger], [[], [], ['T4', 'T1', 'T3'], undefined], 'in plan order; no deadline, count, time or overdue trigger');
+    assert.equal(held.improvementsDay, 'wed');
+    const asked = onDay(input);
+    assert.deepEqual([ids(asked.pending).sort(), ids(asked.overdue), ids(asked.weekly), asked.trigger?.kind], [['T1', 'T3', 'T4'], [], [], 'deadline'], 'T4 asked on Monday is asked again');
+  });
+
+  it('on its day asks a weekly wait unless the lead asked a batch that day', () => {
+    const weekly = ownerWait('T1', '2030-01-07T08:00:00.000Z', improvements);
+    const daily = ownerWait('T2', '2030-01-07T08:00:00.000Z');
+    const mondayAsk = inputOf([weekly, daily], '2030-01-07T12:00:00.000Z');
+    assert.deepEqual(ids(onDay(mondayAsk).pending), ['T1'], "Monday's ask still counts for the daily T2");
+    assert.deepEqual(ids(onDay(inputOf([weekly, daily], '2030-01-08T09:30:00.000Z')).pending), [], 'asked that day');
+    assert.equal(onDay(mondayAsk).trigger, undefined, 'no batch time passed over it since midnight');
+    const afternoon = onDay({ ...mondayAsk, now: Date.parse('2030-01-08T14:00:00Z') });
+    assert.deepEqual(afternoon.trigger, { kind: 'time', at: Date.parse('2030-01-08T13:03:00Z') });
+  });
+
+  it('keeps on the daily batch a wait with no class, on Roadmap or Maintenance work, an expedite, or one that frees Roadmap work', () => {
+    const at = '2030-01-08T09:00:00.000Z';
+    const tasks = [
+      ownerWait('T1', at),
+      ownerWait('T2', at, { workClass: 'Roadmap' }),
+      ownerWait('T3', at, { workClass: 'Maintenance' }),
+      ownerWait('T4', at, { ...improvements, priority: 0 }),
+      ownerWait('T5', at, improvements),
+      testTask({ id: 'T6', workClass: 'Roadmap', after: ['T5'] }),
+      ownerWait('T7', at, improvements),
+    ];
+    const ranking = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals: new Map(), sizing: ownSizing });
+    const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC, null, undefined, ranking);
+    const batch = decisionBatch({ ...inputOf([], undefined), registers: [{ ...registerOf(tasks), tree }] });
+    assert.deepEqual([ids(batch.pending).sort(), ids(batch.weekly)], [['T1', 'T2', 'T3', 'T4', 'T5'], ['T7']]);
+  });
+
+  it("judges each register by its own focus classes, and a child team sees only its registers' held waits", () => {
+    const at = '2030-01-08T09:00:00.000Z';
+    const product = { workClass: 'Product' } as const;
+    const web = registerOf([ownerWait('T1', at, product), ownerWait('T2', at, improvements)], 'web', 'owner', true, { ...DEFAULT_FOCUS, roadmapClass: 'Product' });
+    const batch = decisionBatch(inputOf([ownerWait('T1', at, product)], undefined, CHECKPOINTS, [web]));
+    assert.deepEqual([ids(batch.pending), ids(batch.weekly)], [['web/T1'], ['T1', 'web/T2']], "Product is web's Roadmap class only");
+    assert.deepEqual(ids(waitsOfTeams(batch, ['web']).weekly), ['web/T2']);
   });
 });

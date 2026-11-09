@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import { storedDeadline } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { MeetingStore } from '../meeting/state.ts';
@@ -12,11 +13,12 @@ import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { AskedStore } from './store.ts';
-import { teamDecisions, type DecisionRegister } from './team.ts';
+import { teamDecisions, type DecisionRegister, type TeamDecisionsConfig } from './team.ts';
 
+/** A Tuesday. */
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const PATHS = { decisionsAsked: '/kit/state/decisions-asked.json', meeting: '/kit/state/meeting.json' };
-const CONFIG = { decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 5 } };
+const CONFIG: TeamDecisionsConfig = { decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 5 }, focus: { improvementsDay: 'wed' } };
 
 function ownerWait(id: string, statusAt: string, who = 'owner'): Task {
   return testTask({ id, status: 'waiting', waits: [{ kind: 'decision', who }], card: TEST_OWNER_CARD, statusAt });
@@ -34,7 +36,7 @@ function tasksOf(...tasks: readonly Task[]): Map<string, Task> {
 
 /** The team's own register of `tasks`, its marker for the owner `owner`, on `zone`'s clock. */
 function own(tasks: ReadonlyMap<string, Task>, zone = TimeZone.UTC): DecisionRegister {
-  return { team: undefined, tasks, ownerMarker: 'owner', requireGate: true, zone, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking() };
+  return { team: undefined, tasks, ownerMarker: 'owner', requireGate: true, zone, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking(), focus: DEFAULT_FOCUS };
 }
 
 const TASKS = tasksOf(ownerWait('T1', '2030-01-07T08:00:00.000Z'), ownerWait('T2', '2030-01-08T09:00:00.000Z'));
@@ -82,9 +84,9 @@ describe("a team's decision batch", () => {
     const files = new MemoryFiles();
     await new AskedStore(files, PATHS.decisionsAsked).write({ askedAt: '2030-01-08T08:00:00.000Z', by: 'lead', ids: ['T1', 'web/T1'] });
     const webTasks = tasksOf(ownerWait('T1', '2030-01-07T08:00:00.000Z', 'human'), ownerWait('T2', '2030-01-08T09:00:00.000Z', 'human'), ownerWait('T5', '2030-01-08T09:00:00.000Z'));
-    const web: DecisionRegister = { team: 'web', tasks: webTasks, ownerMarker: 'human', requireGate: true, zone: TimeZone.UTC, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking() };
+    const web: DecisionRegister = { ...own(webTasks), team: 'web', ownerMarker: 'human' };
     const urgent = typedDueWait('14:00', JERUSALEM);
-    const ui: DecisionRegister = { team: 'ui', tasks: tasksOf(urgent, ownerWait('T4', '2030-01-08T09:00:00.000Z')), ownerMarker: 'owner', requireGate: true, zone: JERUSALEM, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking() };
+    const ui: DecisionRegister = { ...own(tasksOf(urgent, ownerWait('T4', '2030-01-08T09:00:00.000Z')), JERUSALEM), team: 'ui' };
     const batch = await teamDecisions(files, PATHS, CONFIG, [own(TASKS), web, ui], NOW);
     assert.deepEqual(
       batch.pending.map((wait) => taskLabel(wait.task, wait.team)),
@@ -92,5 +94,14 @@ describe("a team's decision batch", () => {
       "the own register's first; a wait on another marker than its register's own is no wait on the owner",
     );
     assert.deepEqual(batch.trigger, { kind: 'deadline', task: urgent, team: 'ui', due: Date.parse('2030-01-08T12:00:00Z') }, "ui's 14:00 is on ui's clock");
+  });
+
+  // T2113: the team's focus.improvementsDay says when a wait that frees only Improvements work is asked.
+  it("holds a wait that frees only Improvements work until the team's Improvements day", async () => {
+    const improvements = tasksOf(testTask({ ...ownerWait('T1', '2030-01-08T09:00:00.000Z'), workClass: 'Improvements' }));
+    const held = await teamDecisions(new MemoryFiles(), PATHS, CONFIG, [own(improvements)], NOW);
+    assert.deepEqual([held.pending, held.weekly.map((wait) => wait.task.id), held.improvementsDay], [[], ['T1'], 'wed']);
+    const today = await teamDecisions(new MemoryFiles(), PATHS, { ...CONFIG, focus: { improvementsDay: 'tue' } }, [own(improvements)], NOW);
+    assert.deepEqual([today.pending.map((wait) => wait.task.id), today.weekly], [['T1'], []]);
   });
 });
