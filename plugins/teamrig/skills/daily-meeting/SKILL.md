@@ -95,6 +95,8 @@ task does not hold is its owner's to find (step 3). Keep decisions apart from FY
 gate (destructive data operations, product and design, permissions, budget, resource changes) stays the human's:
 a session's recommendation is not their approval. Each decision card names its gate (`gate:`): the owner gate or
 business decision that makes it the human's; one with no gate (`UNGATED`) is not the human's: never read it out.
+A hands-on step reaches the human only as the card's audited file (`run:`, its run line and short sha256); one
+that prints `do not run` (`RUN-CHANGED`) is not asked until it is audited again, and never type the step yourself.
 
 ## 3. Send a follow-up question to the task's owner
 

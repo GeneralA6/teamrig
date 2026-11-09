@@ -163,7 +163,10 @@ Flags:
 - `--run <path>`: allowed only with a wait on the owner's decision or approval: the hand step file (`.ps1`, `.sh`
   or `.md`) the card hands the owner to run (core rule 11), refused unless an audit on the task (`teamrig audit`)
   pins it at the sha256 its bytes have now, so an edit needs a new audit. The card prints the line that runs it,
-  with its short sha256 and its auditor; once no wait is on the owner, the part is dropped.
+  with its short sha256 and its auditor; once no wait is on the owner, the part is dropped. Every print hashes the
+  file again, and one that changed or went since its audit prints `do not run` in place of the run line (`check`
+  flags it `RUN-CHANGED`). A card asking the owner that types a step into a part (a backticked span, PowerShell's
+  call operator, a write cmdlet, a JSON object, or an ask to paste) is refused unless it hands the step with `--run`.
 - `--ask <id|name>`: allowed only with `waiting`, and needs `--text`: adds the work you need as that session's task
   (from you, at your task's priority and goals, its description naming your task), tells that session, and sets
   your task waiting on it, in one write. `--note` defaults to the text, and other `--waits` reasons come first.
