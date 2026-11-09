@@ -14,7 +14,7 @@ import { formatTeamWeek, TEAM_WEEK_IN_STATE } from '../budget/team-week-summary.
 import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
+import { formatUtcDay, MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import { APP, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
@@ -893,6 +893,26 @@ describe("teamrig budget in a child team on its parent's account", () => {
       const { kit, run } = await childWorld(org);
       await kit.files.append(join(teamHomeOf('org'), 'state', 'inbox-marks.jsonl'), `${JSON.stringify(mark)}\n`);
       assert.equal(ok(await run(['budget'])).includes(OUTSIDE_LINE), outside, `org's config ${JSON.stringify(org)}`);
+    }
+  });
+
+  it("shows its parent as a row of today's table, with the W its sessions' stores hold and its part of the day, none while its budget is off (T1778)", async () => {
+    const cases: ReadonlyArray<readonly [JsonRecord, boolean]> = [
+      [ORG_BUDGET_ON, true],
+      [{}, false],
+    ];
+    for (const [org, shown] of cases) {
+      const { kit, run } = await childWorld(org);
+      const store = new UsageStore(kit.files, ORG_USAGE);
+      const byDay = { [formatUtcDay(new Date(kit.clock.now()))]: { w: 20_000_000, calls: 7, patterns: emptyPatterns() } };
+      assert.ok(await store.save('lead', { ...EMPTY_USAGE, byDay }, (await store.load('lead')).rev), "org's lead's use saved");
+      const lines = ok(await run(['budget']));
+      const row = lines.find((line) => line.startsWith('  team org'));
+      if (shown) {
+        assert.match(row ?? '', /^ {2}team org \(1\) +\d+\.\d+% +\d+\.\d+% +20\.00M +7$/, lines.join('\n'));
+      } else {
+        assert.equal(row, undefined, lines.join('\n'));
+      }
     }
   });
 });

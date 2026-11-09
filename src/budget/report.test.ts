@@ -23,6 +23,7 @@ import {
   W_EXPLAINED,
   type GroupToday,
   type OutsideToday,
+  type PeerToday,
   type SessionToday,
   type TodayReport,
 } from './report.ts';
@@ -112,7 +113,7 @@ function inBurst(id: string, w: number): SessionToday {
 const SESSIONS: readonly SessionToday[] = [session('lead', 7_500_000, 310), session('alpha', 30_000_000, 1_000), session('bravo', 0, 0, 2, LIFT)];
 const OUTSIDE: OutsideToday = { w: 1_200_000, calls: 40, sessions: 2, titles: ['release checks', 'Docs'] };
 const NOBODY_OUTSIDE: OutsideToday = { w: 0, calls: 0, sessions: 0, titles: [] };
-const REPORT: TodayReport = { week: WEEK, fiveHour: undefined, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], classes: undefined, outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
+const REPORT: TodayReport = { week: WEEK, fiveHour: undefined, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], classes: undefined, peers: [], outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
 /** At WEEK's 7.5M W per percent: Roadmap 2% today and 10% of the week, Improvements past its 15%, a class the config dropped, and the rest. */
 const CLASSES: readonly ClassRow[] = [
   { name: 'Roadmap', todayW: 15_000_000, weekW: 75_000_000, allocationPct: 60 },
@@ -367,6 +368,28 @@ describe('todayLines', () => {
       const lines = todayLines({ ...REPORT, sessions: [session('lead', 0, 0), session('alpha', 7_500_000, 5), session('bravo', 0, 0)], groups: [{ ...GROUP, lift: undefined, liftBy: undefined }] });
       assert.match(lines[4] ?? '', /^ {2}group bravo \(2\) +1\.0% +6\.0% +7\.50M +5$/);
       assert.ok(!lines.some((line) => line.startsWith('Lifts')), lines.join('\n'));
+    });
+  });
+
+  describe('with other teams on the account', () => {
+    /** At WEEK's 7.5M W per percent, org's 15M W today is 2.0% of the week, against its 1.5% part of the account's day. */
+    const ORG: PeerToday = { team: 'org', sessions: 2, w: 15_000_000, calls: 400, budgetPct: 1.5 };
+    const QUIET: PeerToday = { team: 'docs', sessions: 1, w: 0, calls: 0, budgetPct: undefined };
+
+    it("gives each other team a row after the team's sessions, its use against its part of the account's day", () => {
+      const lines = todayLines({ ...REPORT, peers: [ORG, QUIET] });
+      assert.match(lines[3] ?? '', /^ {2}the team +5\.0% +10\.3% +37\.50M +1,310$/);
+      assert.match(lines[5] ?? '', /^ {2}commander +1\.0% +3\.4% +7\.50M +310$/);
+      assert.match(lines[6] ?? '', /^ {2}team org \(2\) +2\.0% +1\.5% +15\.00M +400$/);
+      assert.match(lines[7] ?? '', /^ {2}team docs \(1\) +0\.0% +- +0 +0$/);
+      const unknown = todayLines({ ...REPORT, week: UNKNOWN, teamPct: undefined, peers: [ORG], outside: NOBODY_OUTSIDE });
+      assert.match(unknown[6] ?? '', /^ {2}team org \(2\) +15\.00M +400$/);
+    });
+
+    it('says the use outside is on none of the teams in the table, and on no team while the team is alone', () => {
+      const outside = (report: TodayReport): string => todayLines(report).find((line) => line.startsWith('Not on')) ?? '';
+      assert.match(outside({ ...REPORT, peers: [ORG] }), /^Not on these teams: 2 Claude Code sessions \(titled release checks, Docs\), 1\.20M W today\. /);
+      assert.match(outside(REPORT), /^Not on the team: 2 Claude Code sessions/);
     });
   });
 
