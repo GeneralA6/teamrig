@@ -255,6 +255,8 @@ reviews in their own terminal, or with `/teamrig exec approve` typed in a tab), 
 teamrig that is not the installed plugin or was changed after its build
 ([the exec guard](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-exec-guard); every
 field of a request: [exec request](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-exec-request)).
+The `exec` commands also refuse to run on a node told to load code beside teamrig (a `--require` or `--import`
+preload, or one in `NODE_OPTIONS`); the reason names the option, and unsetting it lets the command run.
 The same hook refuses the owner's own actions on a task (`teamrig owner note`, `owner next`) from any session's tool
 call, as they write as the owner: the owner runs them in their own terminal, or types them after `/teamrig` in a tab.
 It also refuses a shell fed its commands from a pipe (`echo ... | bash`), as the pipe can carry a review the line

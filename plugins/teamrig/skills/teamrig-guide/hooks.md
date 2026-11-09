@@ -620,9 +620,18 @@ It always refuses and never asks; no config key turns it off. The guard reads on
 - the PATH a tab really has: it searches the hook's own, with `~/bin` before it for Bash, not the other folders Git
   Bash puts first (`/mingw64/bin`, `/usr/bin`, inside the Git install), and takes a bare `teamrig` it finds
   nowhere as the plugin bin;
-- code node runs before the client: a preload option (`-r`, `--import`) or `NODE_OPTIONS`;
+- code node runs before the client: a preload option (`-r`, `--import`) or `NODE_OPTIONS`, which the `exec`
+  commands themselves refuse (below);
 - a change made to the list too: the list sits beside the code, so the check stops a slip that edits the installed
   files, not a session set on rewriting both.
+
+Every `exec` command also checks the node it runs on, however it was started, and refuses before it reads or writes
+anything when node's command line or `NODE_OPTIONS` holds an option outside `--no-warnings`, `--no-deprecation`,
+`--enable-source-maps`, `--disable-warning <code>` and `--max-old-space-size <MB>`: a preload (`-r`, `--require`,
+`--import`, `--loader`) runs code the SHA-256 list never covered inside the client an approved command runs in, and
+`--inspect` opens that client to a debugger. The reason names each option and where it sits; take it off node's
+command line, or unset `NODE_OPTIONS` (or take the option out of it), and run the command again. Like the list, this
+stops a slip, not a preload written to hide itself, as that runs before the check.
 
 ## Before a write or a shell command: the pass-record guard
 
