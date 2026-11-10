@@ -133,7 +133,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       to mark it, here and when it starts
       --class: the work class, one of focus.classes (Roadmap, Maintenance, Improvements by default); a task
       without one counts as focus.defaultClass
-  add --team <team> [--owner <s>] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
+  add --team <team> [--owner <s>] [--source owner] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
+      --source owner: the lead of a team above <team> relays the owner's order, sourced owner there
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]

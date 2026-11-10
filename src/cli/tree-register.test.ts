@@ -99,8 +99,46 @@ describe('teamrig add --team', () => {
     }
     const sourced = await kit.run(['add', '--team', 'web', '--title', 'x', '--description', 'what and why', '--priority', 'p2', '--source', 'front', '--session', 'lead']);
     assert.equal(sourced.code, EXIT.usage);
-    assert.match(sourced.stderr[0] ?? '', /^--team adds the task from you: it takes no --source/);
+    assert.match(sourced.stderr[0] ?? '', /^--team adds the task from you: its one --source is owner, which a lead above the asked team gives to relay owner's order/);
     for (const team of ['app', 'web', 'ui', 'solo']) {
+      assert.equal(kit.files.get(teamEventsOf(team)), undefined, team);
+    }
+  });
+
+  it("relays an owner's order from the lead of a team above, sourced owner in the asked team, its event by the lead (T2314)", async () => {
+    const kit = await treeHarness();
+    const relays: readonly [string, Record<string, string>, string][] = [
+      ['web', {}, 'Ship login'],
+      ['ui', {}, 'New icons'],
+      ['ui', WEB, 'Dark mode'],
+    ];
+    for (const [asked, env, title] of relays) {
+      const result = await kit.run(['add', '--team', asked, '--source', 'owner', '--title', title, '--description', 'what and why', '--priority', 'p2', '--session', 'lead'], { env });
+      assert.equal(result.code, EXIT.ok, `${asked} ${title}`);
+    }
+    const sourced = (team: string): [string | undefined, string | undefined][] =>
+      readEvents(kit.files.get(teamEventsOf(team)) ?? '').events.map((event) => [event.by, event.type === 'create' ? event.task.source : undefined]);
+    assert.deepEqual(sourced('web'), [['app/lead', 'owner']]);
+    assert.deepEqual(sourced('ui'), [['app/lead', 'owner'], ['web/lead', 'owner']]);
+    assert.equal(kit.files.get(teamInboxOf('web', 'lead')), '- 2030-01-08 10:00 app/lead: T1 is yours (p2): Ship login\n');
+    const owned = await kit.run(['list', '--session', 'lead', '--source', 'owner', '--all'], { env: WEB });
+    assert.deepEqual(owned.stdout.map((line) => line.split(' ')[0]), ['T1']);
+  });
+
+  it("refuses a relay from a session that leads no team above the asked one, writing nothing (T2314)", async () => {
+    const kit = await treeHarness();
+    const refusals: readonly [string, string, Record<string, string>][] = [
+      ['web', 'alpha', {}],
+      ['ui', 'lead', { TEAMRIG_TEAM: 'ops' }],
+      ['ops', 'lead', WEB],
+      ['app', 'lead', { TEAMRIG_TEAM: 'ui' }],
+    ];
+    for (const [asked, session, env] of refusals) {
+      const result = await kit.run(['add', '--team', asked, '--source', 'owner', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', session], { env });
+      assert.equal(result.code, EXIT.refused, `${asked} ${session}`);
+      assert.match(result.stdout[0] ?? '', new RegExp(`^REFUSED [a-z]+/[a-z]+ may not relay owner's order into team ${asked}: only the lead of a team above it does`));
+    }
+    for (const team of ['app', 'web', 'ops', 'ui']) {
       assert.equal(kit.files.get(teamEventsOf(team)), undefined, team);
     }
   });
