@@ -12,7 +12,9 @@ import type { CliRuntime } from './runtime.ts';
  * The bursts as `check`, `hire --burst` and `burst end` read them: the burst log, the week's use from the newest
  * status-line reading on the account (`weekUseOnAccount`) and the week it counts in (whose spare pays `check`'s
  * SCALE-OUT), no transcript measured. With no status-line reading the use is unknown, so a burst then ends by its
- * time or the lead's end only, never by its stop %, and no SCALE-OUT is raised.
+ * time or the lead's end only, never by its stop %, and no SCALE-OUT is raised. The period is only peeked: with no W
+ * metered this reader logs no meter line, and moving the stored period would hide the percent it passed from the
+ * reader that logs it (T2028).
  */
 
 export interface BurstReading {
@@ -32,6 +34,6 @@ export async function readBursts(
   const { records } = await new BurstLog(runtime.files, paths.bursts).read();
   const account = await accountWeekOn(runtime, budget, paths, now);
   const use = account.statusUse;
-  const period = await new PeriodStore(runtime.files, account.paths.period).periodAt(budget, use, now);
+  const period = await new PeriodStore(runtime.files, account.paths.period).peekAt(budget, use, now);
   return { records, usedPct: use?.usedPct, window: period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start) };
 }

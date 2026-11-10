@@ -193,9 +193,10 @@ function samePeriod(a: Period | undefined, b: Period): boolean {
 }
 
 /**
- * The team's period file, which every reader of the week (the budget hooks, `budget`, a hire's price, the bursts)
- * moves on from what it sees and writes back only when it changed. Two readers that write at once saw nearly the
- * same snapshots: a reset one of them lost is seen again at the next read, from a reading before the fall.
+ * The team's period file, which every reader of the week that logs the meter's crossings (the budget hooks, `budget`,
+ * a hire's price) moves on from what it sees and writes back only when it changed. Two readers that write at once saw
+ * nearly the same snapshots: a reset one of them lost is seen again at the next read, from a reading before the fall.
+ * A reader that logs none, the bursts, only peeks (`peekAt`).
  */
 export class PeriodStore {
   private readonly files: Files;
@@ -218,14 +219,19 @@ export class PeriodStore {
 
   /** `advance`, with the stored period it moved on from. */
   async move(sight: PeriodSight): Promise<PeriodMove> {
+    const step = await this.stepped(sight);
+    if (!samePeriod(step.before, step.period)) {
+      await this.files.write(this.path, formatPeriod(step.period));
+    }
+    return step;
+  }
+
+  /** The stored period and the one after `sight`, unwritten; a file a newer teamrig wrote is refused (`NewerDataError`). */
+  private async stepped(sight: PeriodSight): Promise<PeriodMove> {
     const text = await this.files.read(this.path);
     writableObject(this.path, text, PERIOD_FORMAT);
     const stored = text === undefined ? undefined : parsePeriod(text);
-    const next = nextPeriod(stored, sight);
-    if (!samePeriod(stored, next)) {
-      await this.files.write(this.path, formatPeriod(next));
-    }
-    return { before: stored, period: next };
+    return { before: stored, period: nextPeriod(stored, sight) };
   }
 
   /**
@@ -240,5 +246,15 @@ export class PeriodStore {
   async moveAt(budget: Pick<BudgetConfig, 'reset'>, use: WeekUse | undefined, now: number, metered?: Metered): Promise<PeriodMove | undefined> {
     const sight = sightOf(budget, use, now, metered);
     return sight === undefined ? undefined : this.move(sight);
+  }
+
+  /**
+   * The period `periodAt` would move to, left unwritten, for a reader that logs no meter line. The next reader that
+   * logs one finds the percent the use passed from the stored period's latest use (`crossingOf`, budget/calibration.ts),
+   * so a reader that moved it first and logged nothing lost that percent's line for good (T2028).
+   */
+  async peekAt(budget: Pick<BudgetConfig, 'reset'>, use: WeekUse | undefined, now: number): Promise<Period | undefined> {
+    const sight = sightOf(budget, use, now);
+    return sight === undefined ? undefined : (await this.stepped(sight)).period;
   }
 }

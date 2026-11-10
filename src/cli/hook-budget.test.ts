@@ -346,6 +346,23 @@ describe('the budget in the hooks', () => {
     assert.equal((metered[0]?.[1] ?? 0) - (unmetered[0]?.[1] ?? 0), 70_000_000);
   });
 
+  it('logs the percent the status line passed while a check read the week first, as the check only peeks at the period (T2028)', async () => {
+    // Alpha stored as having used 40M W on the week's first day, so the stores reach its start; the period last read 30%.
+    const { kit, hook } = await world({}, 0, 30);
+    const usage = join(TEAM_HOME, 'state', 'usage');
+    const store = new UsageStore(kit.files, usage);
+    const byDay = { '2030-01-07': { w: 40_000_000, calls: 1, patterns: emptyPatterns() } };
+    assert.ok(await store.save('alpha', { ...EMPTY_USAGE, byDay }, (await store.load('alpha')).rev), "alpha's use saved");
+    const period = { start: Date.parse('2030-01-07T01:00:00Z'), end: RESET, kind: 'week', lastPct: 30, lastAt: kit.clock.now() } as const;
+    await kit.files.write(join(usage, 'period.json'), formatPeriod(period));
+    kit.clock.advance(60_000);
+    assert.equal((await kit.run(['statusline'], { stdin: status(31) })).code, EXIT.ok);
+    assert.equal((await kit.run(['check', '--session', 'lead'])).code, EXIT.ok);
+    await hook('stop', ALPHA_TAB);
+    const readings = await new MeterLog(kit.files, join(usage, 'meter-log.jsonl')).read(kit.clock.now());
+    assert.deepEqual(readings.map((reading) => [reading.scope, reading.usedPct]), [[ACCOUNT_SCOPE, 31]]);
+  });
+
   it('does nothing with the budget off but give a helper launch the helper default', async () => {
     const { hook } = await world({ enabled: false, overAction: 'block' }, 10_000_000, 30);
     assert.deepEqual((await hook('stop', ALPHA_TAB)).stdout, []);

@@ -232,4 +232,19 @@ describe('the period file', () => {
     const next = await store.moveAt(UNSET, use(57, NOW), NOW);
     assert.deepEqual(next, { before: first?.period, period: { start: START, end: END, kind: 'assumed', lastPct: 57, lastAt: NOW } });
   });
+
+  it('peeks at the period a move would give and leaves the file as it was (T2028)', async () => {
+    const files = new CountingFiles({ [path]: formatPeriod(STORED) });
+    const store = new PeriodStore(files, path);
+    assert.deepEqual(await store.peekAt(UNSET, use(57, NOW), NOW), { ...STORED, lastPct: 57, lastAt: NOW });
+    assert.deepEqual(await store.peekAt(UNSET, use(50, NOW), NOW), { start: NOW - HOUR, end: END, kind: 'reset', lastPct: 50, lastAt: NOW });
+    assert.equal(await store.peekAt(UNSET, undefined, NOW), undefined);
+    assert.equal(files.writes, 0);
+    assert.deepEqual(await store.read(), STORED);
+  });
+
+  it('refuses to peek at a file a newer teamrig wrote, as a move does', async () => {
+    const store = new PeriodStore(new MemoryFiles({ [path]: '{"v":2,"start":1,"end":2,"kind":"week","lastPct":0,"lastAt":1}' }), path);
+    await assert.rejects(store.peekAt(UNSET, use(55, NOW), NOW), (error: unknown) => error instanceof NewerDataError && error.found === 2);
+  });
 });
