@@ -188,6 +188,8 @@ stateDiagram-v2
   `web`'s lead gets a copy line, as it sets its team's work order and may reorder or reassign it with `teamrig update`.
   A team outside the tree is refused. When the task is done or dropped, the asker gets one inbox line,
   `web/T1 done: <title> | evidence: ...`, as its own register holds no copy (its team's lead, once it left that team).
+  The lead of a team above `web` relays the human's order with `--source owner`, so the task in `web` stands as the
+  human's own order; any other session giving it is refused.
 - `teamrig list --tree`, `check --tree` and `plan --tree` give a lead its team's tasks and those of every team
   under it, with ids like `web/T4`. They only read the other teams' lists. With `--tree`, `--session` names the
   lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`. The teams of a tree number their tasks

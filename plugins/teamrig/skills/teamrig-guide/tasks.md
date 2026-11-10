@@ -148,7 +148,9 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   or name), else by that team's lead (who plans it in); when the owner is not the lead, the lead gets a copy line
   and may reorder or reassign it (`update --priority|--after|--owner`). The asker's own register is not touched;
   once the task is done or dropped, the asker gets one inbox line (`web/T1 done: <title> | evidence: ...`), or its
-  team's lead once the asker left that team. `--team` naming your own team is a plain add. Each lead sees the teams
+  team's lead once the asker left that team. `--team` naming your own team is a plain add. The lead of a team above
+  relays the human's order with `--source owner`: the task there is sourced `owner`, an order from the human, its
+  history naming the lead as the writer, and as it names no asker no done line goes back. Each lead sees the teams
   under it with `list`, `check` and `plan --tree`.
   The teams of a tree number their tasks from one count: an id names one task in the whole tree, whichever team
   holds it. A wait or an `after` may name another team's task (`--waits task:T9`): the task stays held while T9
