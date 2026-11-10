@@ -1,10 +1,11 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { nodeTreeKill } from '../delivery/tree-kill.ts';
 import { exitText, nodeProcesses, outcomeOfError } from './processes.ts';
 
 const NODE = process.execPath;
@@ -38,10 +39,17 @@ function descendantsOf(pid: number, listing: string): number[] {
   return found;
 }
 
-/** Kills a process with every process it started, as Claude Code ends a hook past its timeout. */
-function killTree(pid: number): void {
+/**
+ * Kills a process with every process it started, as Claude Code ends a hook past its timeout: on Windows through the
+ * start-checked sweep, which never ends a stranger behind a reused id as `taskkill /T` can (T2336).
+ */
+async function killTree(child: ChildProcess): Promise<void> {
+  const pid = child.pid;
   if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+    await nodeTreeKill('win32')(child);
+    return;
+  }
+  if (pid === undefined) {
     return;
   }
   const listing = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], { encoding: 'utf8' }).stdout;
@@ -101,7 +109,7 @@ describe('nodeProcesses', () => {
     const [first] = await Promise.race([once(hook.stdout, 'data'), once(hook, 'exit').then(() => [''])]);
     assert.equal(String(first).trim(), 'started');
     assert.ok(hook.pid !== undefined);
-    killTree(hook.pid);
+    await killTree(hook);
     await waitForFile(marker);
     assert.equal(readFileSync(marker, 'utf8'), 'alive');
   });
