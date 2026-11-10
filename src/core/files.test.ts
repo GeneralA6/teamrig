@@ -1,10 +1,11 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, open, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isTemporaryName, nodeFiles } from './files.ts';
 import { realSleep } from './lock.ts';
+import { TRANSIENT_RETRY_DELAYS_MS } from './retry.ts';
 
 describe('nodeFiles', () => {
   const files = nodeFiles(realSleep);
@@ -72,6 +73,34 @@ describe('nodeFiles', () => {
     assert.equal(await files.readTail(path, 12), 'second line\n');
     assert.equal(await files.readTail(path, 1000), 'first line\nsecond line\n');
     assert.equal(await files.readTail(join(root, 't', 'nope.jsonl'), 12), undefined);
+  });
+
+  it('replaces a file a reader holds open past the short retry budget, once the reader closes it', async () => {
+    const path = join(root, 'held', 'host.lock');
+    await files.write(path, 'old');
+    // Windows refuses the rename while this handle is open; the reader closes it only after more waits than the
+    // short budget has, as the host lock's pollers did under load (T1704). Elsewhere the rename succeeds at once.
+    const reader = await open(path, 'r');
+    const holdFor = TRANSIENT_RETRY_DELAYS_MS.length + 2;
+    let waits = 0;
+    const held = nodeFiles(async () => {
+      waits += 1;
+      if (waits === holdFor) {
+        await reader.close();
+      }
+    });
+    try {
+      await held.write(path, 'new');
+    } finally {
+      if (waits < holdFor) {
+        await reader.close();
+      }
+    }
+    assert.equal(await files.read(path), 'new');
+    assert.deepEqual(await readdir(join(root, 'held')), ['host.lock']);
+    if (process.platform === 'win32') {
+      assert.equal(waits, holdFor);
+    }
   });
 
   it('removes its temporary file and throws when the rename fails', async () => {

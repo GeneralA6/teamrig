@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { retryTransient, TRANSIENT_RETRY_DELAYS_MS } from './retry.ts';
+import { REPLACE_RETRY_DELAYS_MS, retryTransient, TRANSIENT_RETRY_DELAYS_MS } from './retry.ts';
 
 function fsError(code: string): Error {
   return Object.assign(new Error(`${code}: operation not permitted`), { code });
@@ -65,5 +65,15 @@ describe('retryTransient', () => {
     assert.deepEqual(flaky.slept, TRANSIENT_RETRY_DELAYS_MS);
     const total = TRANSIENT_RETRY_DELAYS_MS.reduce((sum, ms) => sum + ms, 0);
     assert.ok(total >= 500 && total <= 1_200, `total wait ${total} ms`);
+  });
+
+  it('waits about 10 s for a file to replace, through more holds than the short budget, short waits first', async () => {
+    const flaky = new Flaky(Array.from({ length: REPLACE_RETRY_DELAYS_MS.length }, () => 'EPERM'));
+    assert.equal(await retryTransient(flaky.operation, flaky.sleep, REPLACE_RETRY_DELAYS_MS), 'done');
+    assert.ok(REPLACE_RETRY_DELAYS_MS.length > TRANSIENT_RETRY_DELAYS_MS.length);
+    assert.deepEqual(flaky.slept, REPLACE_RETRY_DELAYS_MS);
+    assert.deepEqual(REPLACE_RETRY_DELAYS_MS.slice(0, TRANSIENT_RETRY_DELAYS_MS.length), TRANSIENT_RETRY_DELAYS_MS);
+    const total = REPLACE_RETRY_DELAYS_MS.reduce((sum, ms) => sum + ms, 0);
+    assert.ok(total >= 8_000 && total <= 12_000, `total wait ${total} ms`);
   });
 });
