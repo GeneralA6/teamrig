@@ -549,7 +549,7 @@ Refuses Claude Code's question picker (AskUserQuestion) in every session and hel
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `enabled` | boolean | `false` | Refuses the question picker in every session and helper of the team, and in the lead's own thread outside the owner's daily meeting. |
+| `enabled` | boolean | `true` | Refuses the question picker in every session and helper of the team, and in the lead's own thread outside the owner's daily meeting. On unless a team sets it false. |
 
 ## `turnLog`
 
