@@ -1255,12 +1255,6 @@
           "minimum": 0,
           "maximum": 50,
           "default": 5
-        },
-        "askWith": {
-          "description": "How the lead asks the owner each decision at the daily meeting: text reads the cards in plain text and the owner answers in their own words; picker asks the choices with Claude Code's question picker (AskUserQuestion), at most 4 a call. With pickerGuard on, the picker opens for the lead in the meeting only under picker.",
-          "type": "string",
-          "enum": ["text", "picker"],
-          "default": "text"
         }
       }
     },
@@ -1276,11 +1270,11 @@
       }
     },
     "pickerGuard": {
-      "description": "Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, and in the lead's own thread unless the owner's daily meeting is open: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed.",
+      "description": "Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed.",
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Refuses the question picker in every session and helper of the team, and in the lead's own thread outside the owner's daily meeting. On unless a team sets it false.",
+          "description": "Refuses the question picker in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too. On unless a team sets it false.",
           "type": "boolean",
           "default": true
         }

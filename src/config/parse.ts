@@ -58,7 +58,6 @@ import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   AD_HOC_RUNNERS,
-  ASK_WITH,
   PACKAGE_INSTALLS,
   BURST_POLICIES,
   CONFLICT_WINNERS,
@@ -66,7 +65,6 @@ import {
   GOALS_MODES,
   HIRING_POLICIES,
   isAdHocRunners,
-  isAskWith,
   isPackageInstalls,
   isBurstPolicy,
   isCommitGate,
@@ -102,7 +100,6 @@ import {
   SECRET_WRITES,
   SKIP_HOOKS,
   TERMINALS,
-  type AskWith,
   type AlertsConfig,
   type ContextFilesConfig,
   type ExecConfig,
@@ -431,6 +428,8 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
   const pickerGuard = read.section(raw, 'pickerGuard', '');
   const budget = parseBudget(read, read.section(raw, 'budget', ''), sessions, above);
   const decisions = read.section(raw, 'decisions', '');
+  // T2256: the question picker stopped the lead's session in the meeting too; the meeting asks only in plain text.
+  read.dropped(decisions, 'askWith', 'decisions', 'the daily meeting asks the owner each decision in plain text, the picker guard refusing the question picker to the lead too');
   reportRenamedKey(read, raw, '', 'coordinator', 'delivery');
 
   const config: KitConfig = {
@@ -513,7 +512,6 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     decisions: {
       batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
       batchAt: read.integer(decisions, 'batchAt', 'decisions', DEFAULT_DECISIONS.batchAt, CONFIG_LIMITS.decisionBatchAt),
-      askWith: parseAskWith(read, decisions),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
@@ -1418,12 +1416,6 @@ function focusValues(read: ConfigReader, raw: JsonRecord, key: string, path: str
     return fallback;
   }
   return values.length === given.length ? values : fallback;
-}
-
-function parseAskWith(read: ConfigReader, raw: JsonRecord): AskWith {
-  const fallback = DEFAULT_DECISIONS.askWith;
-  const value = read.string(raw, 'askWith', 'decisions', fallback, oneOf(ASK_WITH));
-  return isAskWith(value) ? value : fallback;
 }
 
 function parsePushToProtected(read: ConfigReader, raw: JsonRecord): PushToProtected {

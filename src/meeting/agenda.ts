@@ -1,4 +1,4 @@
-import type { AskWith, Weekday } from '../config/types.ts';
+import type { Weekday } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from '../register/card.ts';
 import type { RunFiles } from '../register/hand-step.ts';
@@ -64,8 +64,6 @@ export interface AgendaInput {
   /** The lead's session id, which records the decisions. */
   readonly lead: string;
   readonly command: string;
-  /** `decisions.askWith`: whether the lead asks the cards in plain text or with the question picker (T1278). */
-  readonly askWith: AskWith;
   /** The ranked goals' rows, best rank first (goalScores). */
   readonly board: readonly GoalScore[];
   /** The team's class names, handed in as a tree keeps its ranking to itself. */
@@ -142,12 +140,10 @@ function cardsOf(decisions: readonly Decision[], runFiles: RunFiles): string[] {
 
 /**
  * How the lead, or a session `meet` brings to the owner (src/meeting/meet.ts), asks the owner the cards it read: in
- * plain text, the owner answering in their own words, unless the team asks for the question picker (`decisions.askWith`, T1278).
+ * plain text, the owner answering in their own words (T1278); the picker guard refuses the question picker (T2256).
  */
-export function askLine(askWith: AskWith, ownerMarker: string): string {
-  return askWith === 'picker'
-    ? "  Ask the choices with the question picker (AskUserQuestion), at most 4 a call: each card's options as its choices, your recommendation first."
-    : `  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; ${ownerMarker} answers in their own words.`;
+export function askLine(ownerMarker: string): string {
+  return `  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; ${ownerMarker} answers in their own words.`;
 }
 
 /**
@@ -181,7 +177,7 @@ function decisionLines(input: AgendaInput): string[] {
     ...cardsOf(order.daily, input.runFiles),
     ...(batch.length === 0 ? [] : [`  Improvements batch ${batch.length}, weekly, after the daily cards:`, ...cardsOf(batch, input.runFiles)]),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
-    askLine(input.askWith, input.ownerMarker),
+    askLine(input.ownerMarker),
     `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
     `  Record each answer in the same turn: ${input.command} update <id>${labelled} --decided --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; the card leaves the agenda, and meeting end tells each task's owner.`,
     laterLine(input.command, input.ownerMarker, input.lead, 'it waits in LATER until then'),
