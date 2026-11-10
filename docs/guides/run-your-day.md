@@ -55,8 +55,7 @@ answer, and an appeal you leave unanswered keeps the decision it appeals.
 
 Each card says what the decision is and why it matters to you, the owner gate or business reason that makes it
 yours, the options with their numbers, the lead's pick and why, and the exact action. The lead reads the cards in
-plain text and you answer in your own words; a team that sets `decisions.askWith: picker` asks with Claude Code's
-question picker instead. The lead records each answer on its task in the same turn (`update <id> --decided`), which
+plain text and you answer in your own words. The lead records each answer on its task in the same turn (`update <id> --decided`), which
 takes the card off your next agenda at once, even when the session that asked has closed, and
 `teamrig meeting end --session lead` sends each session one inbox line with the decisions on its tasks, and none to a
 session with none.
@@ -71,12 +70,13 @@ once. A decision that frees only Improvements work waits for the weekly Improvem
 ## Never stuck on a question
 
 Claude Code's question picker stops a session until the person answers, and the owner may be away for hours, so a
-session waiting on one task's decision moves none of its other tasks. With `pickerGuard.enabled`, a hook refuses the
+session waiting on one task's decision moves none of its other tasks. With `pickerGuard.enabled`, on unless a team
+sets it false, a hook refuses the
 picker to every session and helper, and its reason says to decide it when it is the session's own, else record it on
 its task (a waiting status with its decision card and default, which the lead brings to the owner) and go on with the
 next task; only with none left does the turn end on the question. A helper ends its report with the decision instead.
-The lead's own thread keeps the picker only while the owner's daily meeting is open and the team asks with it
-(`decisions.askWith: picker`); by default the meeting asks the cards in plain text. Plan mode's `ExitPlanMode`
+The lead's own thread is refused too, in the owner's daily meeting as well, where it asks the cards in plain text.
+Plan mode's `ExitPlanMode`
 stays allowed
 ([the picker guard](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-question-the-picker-guard)).
 

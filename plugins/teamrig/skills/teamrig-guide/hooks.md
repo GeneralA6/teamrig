@@ -18,7 +18,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
-| `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, to the lead outside the owner's daily meeting and in it unless the team asks with the picker (`decisions.askWith`), and to a sub-team's lead always, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
+| `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, and to a sub-team's lead, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that runs a sanctioned route or provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
@@ -703,8 +703,8 @@ like the push bash runs. Like the guards, it reads only the line, so it cannot s
 
 Claude Code's question picker (`AskUserQuestion`) stops the session until the person answers, and the owner may be
 away for hours, so a session that asks the owner one task's decision moves none of its other tasks meanwhile. With
-`pickerGuard.enabled: true` in the team config, `hook picker-guard` refuses the picker in every session and helper of
-the team, and its reason says what to do instead:
+`pickerGuard.enabled` in the team config, on unless a team sets it false, `hook picker-guard` refuses the picker in
+every session and helper of the team, and its reason says what to do instead:
 
 1. decide it when it is the session's own to decide, and note it on its task;
 2. else record it on its task: `teamrig set <id> --status waiting --waits decision:owner` with a note and its
@@ -713,19 +713,18 @@ the team, and its reason says what to do instead:
 4. only when no task is left, end the turn with the question in plain text and a `Decision needed:` line (the
    decision circle with tab status on).
 
-The lead's own thread keeps the picker only while the owner's daily meeting is open (from `teamrig meeting start` to
-its end or lapse) and the team asks with it [decisions.askWith]: the owner is there then. By default the meeting asks
-in plain text, so the lead is refused in it too, and its reason says to read the card, its options numbered and its
-recommendation first, let the owner answer in their own words and record the answer. Outside the meeting the lead is
-refused too, and its card goes on the next meeting's agenda. In a tree of teams (`team.parent`), only the root team's lead keeps it: a
-sub-team's lead is refused even while a meeting is open, since the user talks only to the root lead, and its reason
-says to record the card, then tell its parent lead in one `teamrig inbox add --to <parent team>/<lead>` line, who
-carries the decision up; with no task left it ends its turn without asking the owner. A team whose `team.parent` has
+The lead's own thread is refused too, in the owner's daily meeting as well (from `teamrig meeting start` to its end or
+lapse): the meeting asks in plain text, so the lead's reason there says to read the card, its options numbered and its
+recommendation first, let the owner answer in their own words and record the answer. Outside the meeting the lead's
+card goes on the next meeting's agenda. In a tree of teams (`team.parent`), a sub-team's lead holds no meeting, since
+the user talks only to the root lead: its reason says to record the card, then tell its parent lead in one
+`teamrig inbox add --to <parent team>/<lead>` line, who carries the decision up; with no task left it ends its turn
+without asking the owner. A team whose `team.parent` has
 no config counts as a root. A helper is refused always, the lead's too, since its picker stops the
 session that started it: its reason says to decide it within its brief, else to end its report with the decision,
 for that session to record. `ExitPlanMode` stays allowed: plan mode starts only when the person chose it in that tab,
 and the tool is its only way out. A tab that is no session of the team (no `$TEAMRIG_SESSION` and no inbox read)
-keeps the picker too. With tab status on, a
+keeps the picker. With tab status on, a
 refused picker leaves the tab's circle as it was, since no question waits. The refusal is the hook's PreToolUse
 `deny`, not a permission rule; outside a team, with the guard off or on any error the hook prints nothing, so the
 picker opens.
@@ -1434,8 +1433,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   `dry-run`, `status`, `run`) instead of the one rule.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
   mode too; it never asks or refuses, so in a mode that already allows the line it changes nothing.
-- **The picker guard** (`pickerGuard.enabled`) refuses the question picker to every session and helper, and to the
-  lead outside the owner's daily meeting, on its own, whatever the mode.
+- **The picker guard** (`pickerGuard.enabled`, on by default) refuses the question picker to every session and helper,
+  the lead's own thread included, on its own, whatever the mode.
 - **The prompt refusal** (`prompts.hookAsks: refuse`) answers every permission prompt but the picker's and plan
   mode's exit, whatever raised it: a provably read-only line runs, a line with a rerun form is refused quoting it,
   anything else is refused.

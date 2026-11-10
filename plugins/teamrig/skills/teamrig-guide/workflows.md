@@ -161,8 +161,8 @@ teamrig set T4 --session api --status waiting --waits decision:owner --note "whi
 Name every reason, comma-separated: `decision:<who>` or `approval:<who>` (the lead, or `owner` for the human),
 `task:T<id>` (a task to finish first) or `time:<YYYY-MM-DD HH:MM>` (on the team's clock unless marked UTC). Then move to your next task. This is how a
 session asks the owner: with `pickerGuard.enabled`, the question picker, which would stop it until the answer, is
-refused to every session and helper, and to the lead outside the owner's daily meeting (in it too, unless the team
-asks with the picker [decisions.askWith]). It stays
+refused to every session and helper, and to the lead, in the owner's daily meeting too (it asks the cards in plain
+text). It stays
 waiting until every reason has cleared; `check` flags it `READY` once its tasks are done and its time has passed,
 and a decision or an approval clears when you set the next status (`set --status in-progress`); once the lead
 records the owner's answer (`update --decided`), the wait on the owner is gone and `check` flags the task `READY`
@@ -438,8 +438,8 @@ the meeting ends, the lead's own context refresh waits (no handover ask, no rest
 `refresh.compactCeilingTokens`; the turn that ends the meeting asks at once. Lead with the ship board: each open
 shippable slice and those planned 1 to 2 weeks ahead, one line each, shipped (its live proof seen), on date or
 slipping with why and its new date, from `ship-plan.md` in the lead's notes folder. Bring
-each decision as a card the human can decide from alone, asked in plain text unless the team asks with the question
-picker [decisions.askWith], record each answer in the same turn with
+each decision as a card the human can decide from alone, asked in plain text (the picker guard refuses the question
+picker), record each answer in the same turn with
 `teamrig update <id> --decided --note "owner decided: <decision>" --session lead`, which takes the card off the agenda
 at once and marks the task decided for its session (any new priority or date in a second `update`), then:
 
