@@ -516,7 +516,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
       askWith: parseAskWith(read, decisions),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
-    pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', false) },
+    pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
     turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
     readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
     permissions: parsePermissions(read, read.section(raw, 'permissions', '')),

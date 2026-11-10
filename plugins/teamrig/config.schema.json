@@ -1280,9 +1280,9 @@
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Refuses the question picker in every session and helper of the team, and in the lead's own thread outside the owner's daily meeting.",
+          "description": "Refuses the question picker in every session and helper of the team, and in the lead's own thread outside the owner's daily meeting. On unless a team sets it false.",
           "type": "boolean",
-          "default": false
+          "default": true
         }
       }
     },

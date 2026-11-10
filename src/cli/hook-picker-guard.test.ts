@@ -108,8 +108,15 @@ describe('hook picker-guard', () => {
     assert.deepEqual(await kit.run(HOOK, { stdin: call('AskUserQuestion', { hook_event_name: 'PostToolUse' }), env: ALPHA }), NOTHING);
   });
 
-  it('prints nothing with the guard off, by default, or with the config missing, broken or unreadable', async () => {
-    const off = [new CliHarness(), new CliHarness({ ...TEAM, pickerGuard: { enabled: false } }), new CliHarness(null), new CliHarness('{ not json')];
+  // T2256: a team that never names the key is guarded; only `enabled: false` turns the guard off.
+  it('refuses the picker in a team whose config names no pickerGuard key', async () => {
+    const result = await new CliHarness().run(HOOK, { stdin: call('AskUserQuestion'), env: ALPHA });
+    assert.equal(decisionOf(result), 'deny');
+    assert.match(reasonOf(result) ?? '', /^teamrig picker guard: the question picker stops this session/);
+  });
+
+  it('prints nothing with the guard off, or with the config missing, broken or unreadable', async () => {
+    const off = [new CliHarness({ ...TEAM, pickerGuard: { enabled: false } }), new CliHarness(null), new CliHarness('{ not json')];
     for (const kit of off) {
       assert.deepEqual(await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: ALPHA }), NOTHING);
     }
