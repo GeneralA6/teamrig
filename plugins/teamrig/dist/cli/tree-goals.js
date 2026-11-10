@@ -29,7 +29,7 @@ export class KitTreeGoals {
         const reads = await Promise.all(files.map(async (file) => readGoals(await this.runtime.files.read(file))));
         return new Map(reads.flatMap((read) => [...read.goals]));
     }
-    /** The goals files of the teams above this one; none for a root team, read without the tree. */
+    /** The goals files of the teams above this one, root first; none for a root team, read without the tree. */
     async aboveFiles() {
         if (this.config.team?.parent === undefined) {
             return [];

@@ -1,6 +1,7 @@
 import { MeterLog } from "../../budget/calibration.js";
 import { limitSpansOf } from "../../budget/extra.js";
 import { formatAddress } from "../../core/address.js";
+import { GOAL_STATES } from "../../register/goal-stats.js";
 import { registerHealth } from "../../register/stats-health.js";
 import { isStatsRange, registerStats, STATS_RANGE_DAYS, STATS_RANGES, WORK_SOURCES, } from "../../register/stats.js";
 import { WAIT_KINDS } from "../../register/waits.js";
@@ -11,7 +12,10 @@ import { sessionIdOf, teamZone } from "../kit.js";
 import { rollUp } from "../roll-up.js";
 import { EXIT } from "../runtime.js";
 import { useLines } from "../stats-use.js";
+import { KitTreeGoals } from "../tree-goals.js";
 import { ownRegister, warnDamage } from "./register.js";
+/** The goal states worth a look, so the `GOALS` line names their goals; the others it only counts. */
+const NAMED_GOAL_STATES = ['at risk', 'late'];
 /**
  * `teamrig stats [--tree] [--range 7d|30d|90d|180d|1y|all] [--session <id|name>]` (T1771): the register's numbers over a range
  * of the team's calendar days, as the pane's Stats tab folds them (register/stats.ts): the Health tiles with their
@@ -47,8 +51,14 @@ async function foldHistories(runtime, rolled, histories, range, scope) {
     const { config } = rolled.own;
     const now = runtime.clock.now();
     const limits = await limitsOf(runtime, rolled.own, now);
-    const stats = registerStats({ teams, range, now: new Date(now), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, limits, ...(scope === undefined ? {} : { session: scope }) });
+    const goals = await goalsOf(runtime, rolled);
+    const stats = registerStats({ teams, range, now: new Date(now), zone: teamZone(config, runtime), ownerMarker: config.register.ownerSource, limits, goals, ...(scope === undefined ? {} : { session: scope }) });
     return { stats, health: registerHealth(stats) };
+}
+/** The goals the rolled teams' tasks can serve: each team's own records and those of the teams above it. */
+async function goalsOf(runtime, { teams }) {
+    const reads = await Promise.all(teams.map((team) => new KitTreeGoals(runtime, team.paths, team.config).all()));
+    return new Map(reads.flatMap((goals) => [...goals]));
 }
 function rangeOf(value) {
     if (value === undefined) {
@@ -107,6 +117,7 @@ export function statsLines(folded, name, teams) {
         `WAITS ${waitsText(stats)}`,
         `BUGS ${stats.bugs.active} active, ${stats.bugs.opened} opened, ${stats.bugs.fixed} fixed`,
         `PEOPLE ${stats.people.length === 0 ? 'none done' : stats.people.map((person) => `${teams.length > 1 ? `${person.team}/` : ''}${person.session} ${person.done}`).join(', ')}`,
+        `GOALS ${goalsText(stats.goals)}`,
     ];
     if (teams.length > 1) {
         lines.push(`TEAMS ${stats.teams.map((team) => `${team.team} ${team.active} active, overdue ${team.overdue.count}`).join(' · ')}`);
@@ -150,6 +161,17 @@ function waitsText({ waits }) {
     const kinds = WAIT_KINDS.filter((kind) => waits.byKind[kind] > 0).map((kind) => `${kind} ${waits.byKind[kind]}`);
     const oldest = waits.ownerDecisions.oldestDays === null ? '' : `, oldest ${days(waits.ownerDecisions.oldestDays)}`;
     return `${waits.waiting} waiting${kinds.length === 0 ? '' : ` (${kinds.join(', ')})`}; on the owner ${waits.ownerDecisions.count}${oldest}`;
+}
+function goalsText(goals) {
+    const states = GOAL_STATES.flatMap((state) => {
+        const tags = goals.goals.filter((goal) => goal.state === state).map((goal) => goal.tag);
+        const named = NAMED_GOAL_STATES.includes(state) ? ` (${tags.join(', ')})` : '';
+        return tags.length === 0 ? [] : [`${tags.length} ${state}${named}`];
+    });
+    return `${states.length === 0 ? 'none' : states.join(', ')}; off goal: ${offGoalText(goals)}`;
+}
+function offGoalText({ offGoal, doneInRange }) {
+    return doneInRange === 0 ? 'no task done' : `${offGoal} of ${doneInRange} done tasks (${Math.round((offGoal / doneInRange) * 100)}%)`;
 }
 function bandsText(bands, what) {
     const counted = bands.filter((band) => band.count > 0);

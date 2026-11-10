@@ -1,5 +1,6 @@
 import { MS_PER_DAY } from "../core/time.js";
 import { foldEvents } from "./fold.js";
+import { goalStats } from "./goal-stats.js";
 import { GITHUB_SOURCE } from "./model.js";
 import { waitsOnOwner } from "./owner-waits.js";
 import { dueTime } from "./views.js";
@@ -99,6 +100,7 @@ export function registerStats(input) {
             overdueP1: overdue.filter((each) => each.task.priority === TOP_PRIORITY),
             ownerDecisions: onOwner,
         },
+        goals: goalStats({ goals: input.goals ?? new Map(), tasks: held, doneInRange: done, now: input.now, zone, scoped: session !== undefined }),
     };
 }
 /** A team's tasks in scope, from its events without those of the tasks that moved away. */

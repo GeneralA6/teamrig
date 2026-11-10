@@ -27,6 +27,8 @@ export { DONE_GROUP_KINDS, doneGroups, doneGroupTitle, URGENT_PRIORITY } from ".
 // The goal records (T1730): a team's goals with their planned window, target, every target move and rank (T2083),
 // read from the `goals.jsonl` text beside the event log.
 export { GOALS_FILE, NO_GOAL, NO_GOALS, readGoals } from "../register/goals.js";
+// A goal's progress (T1420): what `registerStats` folds per goal from the tasks that serve it, and the states it ends in.
+export { GOAL_PACE_DAYS, GOAL_STATES } from "../register/goal-stats.js";
 // Time: the team's zone (`config.timeZone`, else the machine's). A stored bare day is a day of it, a stored minute is
 // UTC, and every time prints in it, zone-marked (`01-31 11:05 IST`); a reader passes it to the calls that print one.
 export { showStored, storedText } from "../core/time.js";
