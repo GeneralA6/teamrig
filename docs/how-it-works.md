@@ -258,7 +258,8 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   writes it.
   On the way, each team's budget hooks keep its week in `usage/team.week.json` in its state folder (`state/` under
   the team's folder, unless `paths.state` moves it): the team's use of the
-  account's week so far, at the account's W per percent, and that plus its part of what the account has left to
+  account's week so far, at the week's used rate (everyone's W since the week began over the use the status line reads
+  now, so the parts of every team on the account add up to its use), and that plus its part of what the account has left to
   `budget.targetPct`, for a reader that shows each team's week, such as the pane's Teams tab (`parseTeamWeek`,
   from `src/read/index.ts`, reads it). The file names the Claude account it counts in (`budget.account`, else the
   config dir the team's sessions run in) and the stretches that account's week sat at its usage limit, for a reader
@@ -267,9 +268,10 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   reads it without opening the account's period on every tick. A child team keeps its own; a reader that shows it
   under its parent adds it when both name one account.
   Beside it, `usage/sessions.week.json` holds each session on the team's roster: its use of the week so far,
-  at the same rate, and its UTC hours with work this week, for a reader that shows each session's week, such as a
-  session's card on the pane's Teams tab (`parseSessionsWeek` reads it).
-  With them, `usage/tasks.week.json` holds what each task has cost in the days the meter keeps, at the same rate, for
+  at the same rate, so the sessions' parts add up to the team's, and its UTC hours with work this week, for a reader
+  that shows each session's week, such as a session's card on the pane's Teams tab (`parseSessionsWeek` reads it).
+  With them, `usage/tasks.week.json` holds what each task has cost in the days the meter keeps, at the account's W per
+  percent (a task's days can span weeks, so not at one week's used rate), for
   a reader that ranks tasks without metering them, such as the pane's lists (`parseTasksWeek` reads it). A task with a
   size base counts only from that base, as the ranking does, so a reader scores it as `teamrig list` does. The file
   also holds the median cost of each class and type of task done in the last 14 days, which `teamrig list` sizes an
