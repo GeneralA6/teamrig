@@ -425,6 +425,16 @@ describe('Register.addFromTeam', () => {
   });
 });
 
+describe('Register.relayFromTeam (T2314)', () => {
+  it("writes an owner's order as the relaying lead, on no roster here, sourced owner, and refuses an address source", async () => {
+    const { files, register } = setup();
+    const { task, event } = written(await register.relayFromTeam('app/lead', { title: 'Ship login', description: 'what and why', owner: 'bravo', source: 'owner', priority: 1 }));
+    assert.deepEqual([task.id, task.owner, task.source, task.createdBy, event.by], ['T1', 'bravo', 'owner', 'app/lead', 'app/lead']);
+    assert.equal(errorOf(await register.relayFromTeam('app/lead', { title: 'Other', description: 'what and why', owner: 'bravo', source: 'app/lead', priority: 1 })), "source app/lead is not owner: a relayed task is owner's order");
+    assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
+  });
+});
+
 describe('Register.noteFrom', () => {
   it('writes a note as the lead who asks the owner, on no roster here, and changes nothing else on the task', async () => {
     const { files, register } = setup();

@@ -143,9 +143,22 @@ export class Register {
    * A task asked by a session of another team, `asker` being its `<team>/<id>`. The tree's rules decide who
    * may ask, so this team's roster check is skipped; the event names the asker as its writer.
    */
-  async addFromTeam(asker: string, input: AddInput): Promise<Verdict<WriteResult>> {
+  addFromTeam(asker: string, input: AddInput): Promise<Verdict<WriteResult>> {
+    return this.fromTeam(asker, input, (state, elsewhere, goalTags) => this.deps.policy.addFromTeam(input, state, elsewhere, goalTags));
+  }
+
+  /**
+   * An owner's order relayed by a lead of a team above, `asker` being its `<team>/<id>` (T2314): the task's source is
+   * this team's register.ownerSource. As for addFromTeam, the tree's rules decide who may relay and the event names the
+   * asker as its writer.
+   */
+  relayFromTeam(asker: string, input: AddInput): Promise<Verdict<WriteResult>> {
+    return this.fromTeam(asker, input, (state, elsewhere, goalTags) => this.deps.policy.relayFromTeam(input, state, elsewhere, goalTags));
+  }
+
+  private async fromTeam(asker: string, input: AddInput, judge: (state: RegisterState, elsewhere: TasksElsewhere, goalTags: ReadonlySet<string>) => Verdict<TaskFields>): Promise<Verdict<WriteResult>> {
     const goalTags = await this.goalTagsFor(input.goals);
-    return this.writeNew(({ state }, id, elsewhere) => single(this.created(asker, id, this.deps.policy.addFromTeam(input, state, elsewhere, goalTags))));
+    return this.writeNew(({ state }, id, elsewhere) => single(this.created(asker, id, judge(state, elsewhere, goalTags))));
   }
 
   /**

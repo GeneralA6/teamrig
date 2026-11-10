@@ -1223,6 +1223,28 @@ describe('RegisterPolicy.addFromTeam', () => {
   });
 });
 
+describe('RegisterPolicy.relayFromTeam (T2314)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const RELAYED: AddInput = { ...INPUT, owner: 'lead', source: 'owner' };
+
+  it("takes an owner's order sourced as this team's owner, refusing any other source, which addFromTeam keeps refusing", () => {
+    const verdict = policy.relayFromTeam(RELAYED, EMPTY);
+    assert.deepEqual(verdict.ok && [verdict.value.owner, verdict.value.source], ['lead', 'owner']);
+    for (const source of ['app/lead', 'lead']) {
+      assert.equal(error(policy.relayFromTeam({ ...RELAYED, source }, EMPTY)), `source ${source} is not owner: a relayed task is owner's order`);
+    }
+    assert.equal(error(policy.addFromTeam(RELAYED, EMPTY)), "source owner is not the asking session's <team>/<id>");
+  });
+
+  it('names its goal under register.goals required, as an owner-asked add does, its tags held to the goal records', () => {
+    const required = new RegisterPolicy(testConfig({ register: { goals: 'required' } }));
+    assert.equal(error(required.relayFromTeam(RELAYED, EMPTY)), 'an owner-asked task names its goal: --goals <tag>, or --goals none (register.goals is required)');
+    assert.equal(error(required.relayFromTeam({ ...RELAYED, goals: ['A1'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), 'allowed');
+    assert.equal(error(required.relayFromTeam({ ...RELAYED, noGoal: true }, EMPTY)), 'allowed');
+    assert.equal(error(required.relayFromTeam({ ...RELAYED, goals: ['Z9'] }, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), UNKNOWN_Z9);
+  });
+});
+
 describe('RegisterPolicy, the GitHub import', () => {
   const policy = new RegisterPolicy(testConfig());
   const ISSUE: ImportInput = { title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
