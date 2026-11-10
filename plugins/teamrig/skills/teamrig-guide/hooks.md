@@ -666,7 +666,10 @@ so it cannot see, and lets through:
 - a script that writes through a client it gets from another module of its own (`import { db } from './db.ts'`): a
   team names such a script as an entrypoint;
 - a database tool that is no built-in client and not in `programs` (an import or restore tool, a migration command),
-  and Node code through a client module not in `nodeClients`.
+  and Node code through a client module not in `nodeClients`;
+- the line `npx -c '<line>'` or `--call` hands npm, which runs it in its script shell (cmd on Windows), the SQL file
+  `sqlite3` reads through `-init <file>` or a `.read <file>` command, and what a line pipes into a group or subshell
+  past its first command (`echo 'db.a.drop()' | (cd db && docsh)` hands docsh nothing the guard reads).
 
 ## Before a shell command: the exec guard
 
