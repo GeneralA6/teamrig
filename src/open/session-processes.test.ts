@@ -4,8 +4,10 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { StartedProcess, SweepHost } from '../delivery/tree-kill.ts';
 import type { ProgramRequest, ProgramResult } from '../github/credentials.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { FakeSweepHost } from '../testing/fake-sweep-host.ts';
 import {
   EXEC_STUB_MS,
   isClaudeProcess,
@@ -212,6 +214,9 @@ describe('parseWindowsListing, parsePosixListing and lineageOf', () => {
   });
 });
 
+/** One process as the Windows sweep lists it. */
+const swept = (pid: number, parent: number, startedMs: number): StartedProcess => ({ pid, parent, startedMs });
+
 describe('nodeSessionProcesses with a scripted system', () => {
   it("lists a process's starters from one full listing: PowerShell with each start on Windows, ps elsewhere", async () => {
     const windows = scripted(exited(0, `[${listingEntry(41, 7, 'claude.exe', 100)},${listingEntry(51, 41, 'bash.exe', 200)},${listingEntry(53, 51, 'node.exe', 300)}]`));
@@ -277,14 +282,29 @@ describe('nodeSessionProcesses with a scripted system', () => {
     assert.equal(system.asked.length, 0);
   });
 
-  it("ends a Windows process tree with taskkill, reading its 'not found' as gone", async () => {
-    const ended = scripted(exited(0));
-    assert.deepEqual(await nodeSessionProcesses({ platform: 'win32', run: ended.run }).end(41, 'ask'), { kind: 'ended' });
-    assert.deepEqual(ended.asked, [{ program: 'taskkill', args: ['/PID', '41', '/T', '/F'] }]);
-    assert.deepEqual(await nodeSessionProcesses({ platform: 'win32', run: scripted(exited(128)).run }).end(41, 'force'), { kind: 'gone' });
-    assert.deepEqual(await nodeSessionProcesses({ platform: 'win32', run: scripted(exited(1, '', 'ERROR: Access is denied.')).run }).end(41, 'force'), {
+  it('ends a Windows process tree through the start-checked sweep, never taskkill, and reads a root not listed as gone (T2336)', async () => {
+    const system = scripted(exited(0));
+    // 60 names 41 as its starter but started before it: an ended process once held id 41, so 60 is a stranger.
+    const host = new FakeSweepHost([[swept(7, 1, 10), swept(41, 7, 100), swept(51, 41, 200), swept(60, 41, 50)], []]);
+    assert.deepEqual(await nodeSessionProcesses({ platform: 'win32', run: system.run, sweepHost: host }).end(41, 'ask'), { kind: 'ended' });
+    assert.deepEqual(host.kills, [[41, 51]]);
+    assert.deepEqual(system.asked, [], 'no program runs but the sweep');
+    const gone = new FakeSweepHost([[swept(7, 1, 10)]]);
+    assert.deepEqual(await nodeSessionProcesses({ platform: 'win32', sweepHost: gone }).end(41, 'force'), { kind: 'gone' });
+    assert.deepEqual(gone.kills, []);
+  });
+
+  it('ends nothing on Windows when the host cannot be listed, and says why (T2336)', async () => {
+    const unlisted = new FakeSweepHost([undefined, undefined]);
+    assert.deepEqual(await nodeSessionProcesses({ platform: 'win32', sweepHost: unlisted }).end(41, 'force'), {
       kind: 'failed',
-      error: 'exited with code 1: ERROR: Access is denied.',
+      error: "the host's processes could not be listed, so nothing was ended",
+    });
+    assert.deepEqual(unlisted.kills, []);
+    const broken: SweepHost = { list: () => Promise.reject(new Error('no PowerShell')), kill: () => Promise.resolve(), now: () => 0 };
+    assert.deepEqual(await nodeSessionProcesses({ platform: 'win32', sweepHost: broken }).end(41, 'force'), {
+      kind: 'failed',
+      error: 'the sweep failed: no PowerShell',
     });
   });
 
@@ -367,7 +387,7 @@ describe('nodeSessionProcesses on this machine', () => {
 
   it(
     "ends a Windows tree but not a detached program whose starter has ended: the restart's waiter outlives the session it ends",
-    { skip: WINDOWS ? false : 'taskkill /T is Windows only' },
+    { skip: WINDOWS ? false : 'the sweep is Windows only' },
     async () => {
       // top: the session (claude); child: its MCP server; middle: a hook that starts the waiter and exits.
       writeFileSync(join(DIR, 'waiter.cjs'), 'setTimeout(() => {}, 30000);\n');
