@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_FOCUS } from '../config/defaults.ts';
-import type { AskWith } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
 import type { GoalScore } from '../register/goal-board.ts';
@@ -25,7 +24,7 @@ function rankedTreeOf(tasks: readonly Task[]): TaskTree {
 }
 
 /** NOW is a Tuesday, so the default here is a day the Improvements batch is not asked. */
-function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate = true, below: readonly AgendaTeam[] = [], askWith: AskWith = 'text'): AgendaInput {
+function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate = true, below: readonly AgendaTeam[] = []): AgendaInput {
   return {
     tasks,
     tree: treeOf(tasks),
@@ -36,7 +35,6 @@ function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate =
     below,
     lead: 'lead',
     command: 'teamrig',
-    askWith,
     board: [],
     focus: DEFAULT_FOCUS,
     improvementsDay: 'wed',
@@ -132,13 +130,6 @@ describe('the meeting agenda', () => {
     // T1295: a card the owner puts off is recorded with --later, in place of an answer.
     assert.equal(lines[18], '  A card owner puts off to a date: teamrig update <id> --later <date> --note "owner put it off: <why>" --session lead; it waits in LATER until then.');
     assert.equal(lines.length, 19);
-  });
-
-  // T1278: a team that asks for the picker (decisions.askWith: picker) gets it named instead of plain text.
-  it('tells the lead to ask the choices with the question picker when the team asks with it', () => {
-    const lines = section(agendaLines(inputOf([DECIDE], NOW - MS_PER_DAY, true, [], 'picker')), 'DECISIONS');
-    const asks = lines.filter((line) => line.startsWith('  Ask '));
-    assert.deepEqual(asks, ["  Ask the choices with the question picker (AskUserQuestion), at most 4 a call: each card's options as its choices, your recommendation first."]);
   });
 
   // T1018: a child team's waits on the owner go up to the lead at its tree's root, who reads them after its own.

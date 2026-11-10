@@ -232,7 +232,7 @@ export const DEFAULT_WORKTREE_FOLDER = '.claude/worktrees';
 /** A repository's docs folder when `docsFolder` is unset: `docs` at its root, where most projects keep theirs. */
 export const DEFAULT_DOCS_FOLDER = 'docs';
 
-export const DEFAULT_DECISIONS: DecisionsConfig = { batchTimesUtc: [], batchAt: 5, askWith: 'text' };
+export const DEFAULT_DECISIONS: DecisionsConfig = { batchTimesUtc: [], batchAt: 5 };
 
 export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 3 };
 export const DEFAULT_LEAD_BOUNDARY: LeadBoundaryConfig = { enabled: true, ownPaths: [], searchNudgeAt: 3 };

@@ -68,14 +68,15 @@ describe('hook tab-status', () => {
     assert.equal(titleOf(failed), `${TAB_CIRCLES.error} fix the build`);
   });
 
-  it('leaves the title for a question picker the picker guard refuses, and shows the lead asking in a meeting', async () => {
-    const kit = await teamWith({ ...ON_TEAM, pickerGuard: { enabled: true }, decisions: { askWith: 'picker' } });
+  // T2256: the picker guard refuses the lead's picker in the meeting too, so its title stays there as well.
+  it('leaves the title for a question picker the picker guard refuses, the lead in a meeting too', async () => {
+    const kit = await teamWith({ ...ON_TEAM, pickerGuard: { enabled: true } });
     const asking = payload('PreToolUse', { tool_name: 'AskUserQuestion', session_title: 'web' });
     const lead = { stdin: asking, env: { ...TITLE_OFF, TEAMRIG_SESSION: 'lead' } };
     assert.deepEqual((await kit.run(['hook', 'tab-status'], { stdin: asking, env: { ...TITLE_OFF, TEAMRIG_SESSION: 'alpha' } })).stdout, []);
     assert.deepEqual((await kit.run(['hook', 'tab-status'], lead)).stdout, [], 'no meeting is open');
     assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
-    assert.equal(titleOf(await kit.run(['hook', 'tab-status'], lead)), `${TAB_CIRCLES.waiting} web`);
+    assert.deepEqual((await kit.run(['hook', 'tab-status'], lead)).stdout, [], 'the meeting asks in plain text');
     const ended = payload('PostToolUseFailure', { tool_name: 'AskUserQuestion', session_title: 'web' });
     assert.equal(titleOf(await kit.run(['hook', 'tab-status'], { stdin: ended, env: { ...TITLE_OFF, TEAMRIG_SESSION: 'alpha' } })), `${TAB_CIRCLES.working} web`);
   });

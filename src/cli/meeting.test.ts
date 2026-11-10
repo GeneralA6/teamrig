@@ -65,16 +65,13 @@ describe('runCli: the daily meeting', () => {
     assert.match((await inboxOf(kit, 'lead'))[0] ?? '', /^READ lead: nothing new/);
   });
 
-  // T1278: the team's decisions.askWith sets how the lead asks the cards; plain text unless it asks for the picker.
-  it('tells the lead to ask in plain text, or with the picker when the team config asks for it', async () => {
-    const asks = async (config: typeof TEAM): Promise<string[]> => {
-      const { stdout } = await (await teamBeforeTheMeeting(config)).run(['meeting', 'start', '--session', 'lead']);
-      return stdout.filter((line) => line.startsWith('  Ask '));
-    };
-    assert.deepEqual(await asks(TEAM), ["  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; owner answers in their own words."]);
-    assert.deepEqual(await asks({ ...TEAM, decisions: { askWith: 'picker' } }), [
-      "  Ask the choices with the question picker (AskUserQuestion), at most 4 a call: each card's options as its choices, your recommendation first.",
-    ]);
+  // T1278, T2256: the lead asks the cards only in plain text.
+  it('tells the lead to ask in plain text', async () => {
+    const { stdout } = await (await teamBeforeTheMeeting(TEAM)).run(['meeting', 'start', '--session', 'lead']);
+    assert.deepEqual(
+      stdout.filter((line) => line.startsWith('  Ask ')),
+      ["  Ask in plain text, never with the question picker: each card's options numbered, your recommendation first; owner answers in their own words."],
+    );
   });
 
   it("prints the meeting's times on the team's clock, in its lines and its notices", async () => {

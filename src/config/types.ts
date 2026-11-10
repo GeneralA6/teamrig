@@ -976,19 +976,6 @@ export interface DecisionsConfig {
   readonly batchTimesUtc: readonly string[];
   /** A batch is due once this many waits on the owner are not yet asked; 0: never by count. */
   readonly batchAt: number;
-  /** How the lead asks the owner at the daily meeting: in plain text, or with Claude Code's question picker. */
-  readonly askWith: AskWith;
-}
-
-export const ASK_WITH = ['text', 'picker'] as const;
-/**
- * How the daily meeting asks the owner each decision: `text` reads the cards in plain text and the owner answers in
- * their own words; `picker` asks the choices with Claude Code's question picker (AskUserQuestion), at most 4 a call.
- */
-export type AskWith = (typeof ASK_WITH)[number];
-
-export function isAskWith(value: unknown): value is AskWith {
-  return ASK_WITH.some((way) => way === value);
 }
 
 /**
@@ -1399,7 +1386,7 @@ export interface KitConfig {
   readonly tabStatus: { readonly enabled: boolean };
   /**
    * Refuses Claude Code's question picker (AskUserQuestion), which would stop the session until the person answers,
-   * to every session and helper, and to the lead outside the owner's daily meeting; the reason says to decide it if it
+   * to every session and helper, the lead included, in the owner's daily meeting too; the reason says to decide it if it
    * is the session's own, else record it on its task and go on (hook-picker-guard.ts). On by default (T2256): a team
    * that never named the key had no guard, and one session's picker held its other tasks for hours.
    */

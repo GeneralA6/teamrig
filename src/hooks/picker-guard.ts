@@ -1,5 +1,4 @@
 import type { TreePlace } from '../config/tree.ts';
-import type { AskWith } from '../config/types.ts';
 import { formatAddress } from '../core/address.ts';
 import { stringField, type JsonRecord } from '../core/guards.ts';
 import { DECISION_MARKER } from '../tabs/status.ts';
@@ -11,10 +10,9 @@ import { DECISION_MARKER } from '../tabs/status.ts';
  * what to do instead: decide it when it is the session's own to decide, else record it on its task as a decision
  * card with its default, which reaches the owner through the lead, and go on with the next task.
  *
- * The lead's own thread keeps the picker only while the owner's daily meeting is open and the team asks with it
- * (`decisions.askWith: picker`): the owner is there then. By default the meeting asks in plain text, so the guard
- * refuses it there too, saying to ask the cards in plain text (T1278). A sub-team's lead never keeps it: the user talks only to the root team's lead, so its
- * decisions go up to its parent lead (T1019). A helper never keeps it, the lead's neither: its picker stops the
+ * The lead's own thread never keeps it either: the owner's daily meeting asks the cards in plain text, so in an open
+ * meeting the reason says to read the card and let the owner answer in their own words (T1278, T2256). A sub-team's
+ * lead never keeps it: the user talks only to the root team's lead, so its decisions go up to its parent lead (T1019). A helper never keeps it, the lead's neither: its picker stops the
  * session that started it, and its question belongs in its report. ExitPlanMode stays allowed: plan mode starts only
  * when the person chose it in that tab, and the tool is its only way out.
  */
@@ -54,19 +52,10 @@ export function askerOf(session: string | undefined, helper: boolean, lead: stri
 
 /**
  * The owner's daily meeting as the guard sees it: whether it is open, read for the root lead's own thread only, as no
- * other asker's picker opens in it, and how it asks the owner (`decisions.askWith`).
+ * other asker's reason names it.
  */
 export interface LeadMeeting {
   readonly open: boolean;
-  readonly askWith: AskWith;
-}
-
-/**
- * Whether the guard refuses the picker to `asker`: always, but to the root lead's own thread while the owner's daily
- * meeting is open and asks with the picker.
- */
-export function refusesAsker(asker: PickerAsker, meeting: LeadMeeting): boolean {
-  return asker.role !== 'lead' || !meeting.open || meeting.askWith !== 'picker';
 }
 
 /** The decision card's set command for `session`, run with `command`. */
@@ -83,7 +72,7 @@ export function pickerReason(command: string, asker: PickerAsker, meeting: LeadM
   const guard = `${command} picker guard:`;
   if (asker.role === 'lead' && meeting.open) {
     return (
-      `${guard} the owner's daily meeting asks in plain text (decisions.askWith: text). Read the card as it stands,` +
+      `${guard} the owner's daily meeting asks in plain text. Read the card as it stands,` +
       " its options numbered and your recommendation first, and let the owner answer in their own words; record the answer in the same turn:" +
       ` \`${command} update <id> --decided --note "owner decided: <decision>" --session ${asker.session}\`.`
     );
@@ -104,17 +93,10 @@ export function pickerReason(command: string, asker: PickerAsker, meeting: LeadM
     case 'session':
       return `${card}; the lead brings it to the owner.${ask}`;
     case 'lead':
-      return `${card}; the agenda of the owner's next daily meeting lists it, ${meetingAsk(command, meeting.askWith)}.${ask}`;
+      return `${card}; the agenda of the owner's next daily meeting lists it, and you ask it there in plain text (\`${command} meeting start\`).${ask}`;
     case 'subteam-lead':
       return `${card}${parentRoute(command, asker.session, asker.parentLead)}`;
   }
-}
-
-/** How the root lead asks the card at the owner's next daily meeting, per `askWith`. */
-function meetingAsk(command: string, askWith: AskWith): string {
-  return askWith === 'picker'
-    ? `and the picker opens for you only while that meeting is open (\`${command} meeting start\`)`
-    : `and you ask it there in plain text (\`${command} meeting start\`)`;
 }
 
 /** Where a sub-team's lead takes the card instead: one inbox line to its parent lead, who carries it up to the owner. */
