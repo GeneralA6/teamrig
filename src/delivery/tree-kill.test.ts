@@ -1,6 +1,33 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { LIST_TRIES, nodeTreeKill, parseStartedProcesses, stragglersOf, sweepTree, SWEEP_ROUNDS, windowsSweepHostOf, type HostRun, type StartedProcess, type SweepHost } from './tree-kill.ts';
+import {
+  LIST_TRIES,
+  nodeTreeKill,
+  parseStartedProcesses,
+  stragglersOf,
+  sweepTree,
+  SWEEP_ROUNDS,
+  windowsSweepHostOf,
+  type HeldProcess,
+  type HostRun,
+  type StartedProcess,
+  type SweepHost,
+} from './tree-kill.ts';
+
+/** A process the caller holds, as Node's ChildProcess: it records each signal sent through its handle. */
+class FakeHeld implements HeldProcess {
+  readonly pid: number | undefined;
+  readonly signals: NodeJS.Signals[] = [];
+
+  constructor(pid: number | undefined) {
+    this.pid = pid;
+  }
+
+  kill(signal: NodeJS.Signals): boolean {
+    this.signals.push(signal);
+    return true;
+  }
+}
 
 /** A host whose process lists are set by the test, one a call; it records each kill and keeps one clock. */
 class FakeHost implements SweepHost {
@@ -245,15 +272,43 @@ describe('parseStartedProcesses', () => {
 });
 
 describe('nodeTreeKill', () => {
-  it('sweeps through the host it is given on Windows', async () => {
+  it('sweeps through the host it is given on Windows, sending nothing through the held handle', async () => {
     const host = new FakeHost([STEP, []]);
-    await nodeTreeKill('win32', host)(10);
+    const held = new FakeHeld(10);
+    await nodeTreeKill('win32', host)(held);
     assert.deepEqual(host.kills, [[10, 11]]);
+    assert.deepEqual(held.signals, []);
+  });
+
+  it('ends the held process alone through its handle when the host cannot be listed (T2336)', async () => {
+    const host = new FakeHost(Array.from({ length: LIST_TRIES }, () => undefined));
+    const held = new FakeHeld(10);
+    await nodeTreeKill('win32', host)(held);
+    assert.deepEqual(host.kills, []);
+    assert.deepEqual(held.signals, ['SIGKILL']);
+  });
+
+  it('sends nothing to a held process the list no longer has', async () => {
+    const held = new FakeHeld(10);
+    await nodeTreeKill('win32', new FakeHost([[proc(1, 0, 0)]]))(held);
+    assert.deepEqual(held.signals, []);
+  });
+
+  it('ends nothing for a process that never started', async () => {
+    for (const platform of ['win32', 'linux'] as const) {
+      const host = new FakeHost([STEP, []]);
+      const held = new FakeHeld(undefined);
+      await nodeTreeKill(platform, host)(held);
+      assert.equal(host.listCalls, 0, platform);
+      assert.deepEqual(held.signals, [], platform);
+    }
   });
 
   it('settles at once on POSIX when the group has already ended', async () => {
     const host = new FakeHost([]);
-    await nodeTreeKill('linux', host)(2 ** 22 + 7);
+    const held = new FakeHeld(2 ** 22 + 7);
+    await nodeTreeKill('linux', host)(held);
     assert.equal(host.listCalls, 0);
+    assert.deepEqual(held.signals, []);
   });
 });

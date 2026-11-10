@@ -1,8 +1,20 @@
 import { execFile } from 'node:child_process';
 import { treeOf, wholeNumberTriples, type ProcessLink } from './processes.ts';
 
-/** Ends a process and every process it started; settles once they are ended or the kill gave up, and never rejects. */
-export type TreeKill = (pid: number) => Promise<void>;
+/**
+ * A process this one started and still holds, as Node's ChildProcess: no pid when it never started, and a kill sent
+ * through its own handle, which names that process alone even after Windows hands its id to another.
+ */
+export interface HeldProcess {
+  readonly pid?: number | undefined;
+  kill(signal: NodeJS.Signals): boolean;
+}
+
+/**
+ * Ends a held process and every process it started; settles once they are ended or the kill gave up, and never
+ * rejects. A process that never started has nothing to end.
+ */
+export type TreeKill = (held: HeldProcess) => Promise<void>;
 
 /** A kill begun on a run: why (its time limit, or its `stop` aborting) and the kill, settled once the tree is ended. */
 export interface RunKill {
@@ -175,20 +187,26 @@ export function windowsSweepHostOf(run: HostRun, now: () => number = () => Date.
 export const windowsSweepHost: SweepHost = windowsSweepHostOf(runOnHost);
 
 /**
- * On Windows the sweep ends the tree: killing only the shell would leave the command it started running. On POSIX the
- * step runs as its own process group, and the group is killed; an orphan stays in its group.
+ * On Windows the sweep ends the tree: killing only the shell would leave the command it started running. When the host
+ * cannot be listed, the held process alone is ended through its handle: what it started runs on, but no id walk can
+ * reach a stranger. On POSIX the step runs as its own process group, and the group is killed; an orphan stays in its
+ * group.
  */
 export function nodeTreeKill(platform: NodeJS.Platform, host: SweepHost = windowsSweepHost): TreeKill {
   if (platform === 'win32') {
-    return async (pid) => {
-      await sweepTree(pid, host);
+    return async (held) => {
+      if (held.pid !== undefined && (await sweepTree(held.pid, host)) === 'unlisted') {
+        held.kill('SIGKILL');
+      }
     };
   }
-  return (pid) => {
-    try {
-      process.kill(-pid, 'SIGKILL');
-    } catch {
-      // The group ended on its own between the timer and the kill.
+  return (held) => {
+    if (held.pid !== undefined) {
+      try {
+        process.kill(-held.pid, 'SIGKILL');
+      } catch {
+        // The group ended on its own between the timer and the kill.
+      }
     }
     return Promise.resolve();
   };

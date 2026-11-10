@@ -96,7 +96,7 @@ export function nodeExecSpawner(platform: NodeJS.Platform, kill: TreeKill = node
         child.stderr.on('data', (chunk: Buffer) => output.add(chunk));
         let killed: Promise<void> | undefined;
         const timer = setTimeout(() => {
-          killed = child.pid === undefined ? Promise.resolve() : kill(child.pid);
+          killed = kill(child);
         }, ask.timeoutMs);
         child.once('error', (error) => {
           clearTimeout(timer);

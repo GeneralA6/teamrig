@@ -10,10 +10,17 @@ class FakeSuiteChild extends EventEmitter implements SuiteChild {
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
   readonly pid: number | undefined;
+  /** Each signal sent through its handle: the tree kill's own fallback, never the watch's. */
+  readonly signals: NodeJS.Signals[] = [];
 
   constructor(pid: number | undefined) {
     super();
     this.pid = pid;
+  }
+
+  kill(signal: NodeJS.Signals): boolean {
+    this.signals.push(signal);
+    return true;
   }
 }
 
@@ -36,15 +43,15 @@ function echoes(): SuiteEcho & { readonly out: Collected; readonly err: Collecte
 }
 
 /** A tree kill that records each pid and settles only when the test releases it. */
-function heldKill(): { readonly kill: TreeKill; readonly pids: number[]; release(): void } {
-  const pids: number[] = [];
+function heldKill(): { readonly kill: TreeKill; readonly pids: (number | undefined)[]; release(): void } {
+  const pids: (number | undefined)[] = [];
   let release = (): void => {};
   const done = new Promise<void>((resolve) => {
     release = resolve;
   });
   return {
-    kill: (pid) => {
-      pids.push(pid);
+    kill: (held) => {
+      pids.push(held.pid);
       return done;
     },
     pids,
@@ -103,15 +110,14 @@ describe('watchSuite', () => {
     assert.deepEqual(await end, { kind: 'idle', idleMs: 1_000 });
   });
 
-  it('reports a silent suite that has no pid as idle without killing anything', async (t) => {
+  it('hands a silent suite that has no pid to the kill, which ends nothing, and reports it idle', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const child = new FakeSuiteChild(undefined);
-    const held = heldKill();
-    const end = watchSuite(child, 500, held.kill, echoes());
+    const end = watchSuite(child, 500, nodeTreeKill(process.platform), echoes());
     t.mock.timers.tick(500);
     child.emit('close', null);
     assert.deepEqual(await end, { kind: 'idle', idleMs: 500 });
-    assert.deepEqual(held.pids, []);
+    assert.deepEqual(child.signals, []);
   });
 
   it('rejects when the suite cannot start, and kills nothing later', async (t) => {
