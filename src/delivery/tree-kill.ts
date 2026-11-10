@@ -24,15 +24,22 @@ export interface SweepHost {
    * (the same start); settles once the kill is done.
    */
   kill(targets: readonly StartedProcess[]): Promise<void>;
-  /** Force-ends a process with its tree, as `taskkill /F /T` does: the fallback when the host cannot be listed. */
-  killTree(root: number): Promise<void>;
   now(): number;
 }
+
+/**
+ * How a sweep ended: `swept` when it listed the root and ended its tree, `gone` when the first list no longer had the
+ * root, `unlisted` when the host could not be listed, so nothing was ended.
+ */
+export type SweepOutcome = 'swept' | 'gone' | 'unlisted';
 
 /** The most list-and-kill rounds a sweep makes: each round ends one more generation, started before its parent ended. */
 export const SWEEP_ROUNDS = 5;
 
-/** Bounds a process list or a taskkill, so a hung one cannot hold a timed-out step forever. */
+/** How often a sweep tries its first list: a list can time out on a loaded host, and without one nothing is ended. */
+export const LIST_TRIES = 2;
+
+/** Bounds a process list or a kill, so a hung one cannot hold a timed-out step forever. */
 const HOST_CALL_TIMEOUT_MS = 30_000;
 
 /** Bytes a process list may print: a host with thousands of processes stays far under it. */
@@ -60,23 +67,37 @@ export function stragglersOf(rows: readonly StartedProcess[], members: ReadonlyM
   return [...found.values()];
 }
 
+/** The host's processes from the first list that works, of at most `LIST_TRIES`; undefined when none did. */
+async function firstList(host: SweepHost): Promise<readonly StartedProcess[] | undefined> {
+  for (let tries = 0; tries < LIST_TRIES; tries += 1) {
+    const rows = await host.list();
+    if (rows !== undefined) {
+      return rows;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Ends the tree of `root` on Windows. The sweep lists the host, ends exactly the tree's listed processes, then lists
- * again and ends the stragglers, until a list finds none or `rounds` run out. It never kills a listed tree with
- * `taskkill /T`: that walks parent links once and also ends processes the sweep never listed, so a process one of
- * those started during the walk would run on under a parent the sweep never knew. Ending only listed processes, every
- * ended process is a member, so an orphan always has a member parent and the next list finds it. With no first list
- * it falls back to one `taskkill /T` of the root. When a later list fails it stops: killing the last ids again
- * without a fresh list could end a stranger that took one of them.
+ * again and ends the stragglers, until a list finds none or `rounds` run out. It never runs `taskkill /T`: that walk
+ * links a process to any older one that held its parent's id, with no start check, so a root that reused the id of a
+ * long-ended process ends every program that one started; a Windows Terminal started so lost every tab (T2336). It
+ * also misses a process started during the walk. Ending only listed processes, every ended process is a member, so an
+ * orphan always has a member parent and the next list finds it. With no first list it ends nothing (`unlisted`): the
+ * caller that holds the root's process can end that alone. When a later list fails it stops: killing the last ids
+ * again without a fresh list could end a stranger that took one of them.
  */
-export async function sweepTree(root: number, host: SweepHost, rounds: number = SWEEP_ROUNDS): Promise<void> {
-  const first = await host.list();
+export async function sweepTree(root: number, host: SweepHost, rounds: number = SWEEP_ROUNDS): Promise<SweepOutcome> {
+  const first = await firstList(host);
   if (first === undefined) {
-    await host.killTree(root);
-    return;
+    return 'unlisted';
   }
   const members = new Map<number, number>();
   let targets = treeOf(root, first);
+  if (targets.length === 0) {
+    return 'gone';
+  }
   for (let round = 0; round < rounds && targets.length > 0; round += 1) {
     for (const target of targets) {
       members.set(target.pid, target.startedMs);
@@ -85,10 +106,11 @@ export async function sweepTree(root: number, host: SweepHost, rounds: number = 
     const killedAtMs = host.now();
     const rows = await host.list();
     if (rows === undefined) {
-      return;
+      return 'swept';
     }
     targets = stragglersOf(rows, members, killedAtMs);
   }
+  return 'swept';
 }
 
 /** Rows of `<pid>,<parent>,<startedMs>` lines; a line that is not three whole numbers is left out. */
@@ -108,9 +130,6 @@ const runOnHost: HostRun = (file, args) =>
   new Promise((resolve) => {
     execFile(file, args, { windowsHide: true, maxBuffer: LIST_MAX_BUFFER, timeout: HOST_CALL_TIMEOUT_MS }, (error, stdout) => resolve(error === null ? stdout : undefined));
   });
-
-/** `/PID <id>` for each process, as taskkill takes them. */
-const pidArgs = (pids: readonly number[]): string[] => pids.flatMap((pid) => ['/PID', String(pid)]);
 
 /**
  * Ends each target only while its id still names the process the list saw. Windows hands a freed id to the next new
@@ -134,8 +153,8 @@ export function killScript(targets: readonly StartedProcess[]): string {
 }
 
 /**
- * The Windows host over `run`: PowerShell lists the processes and ends listed ones by id and start (`killScript`);
- * `taskkill /F /T` is only the fallback with no list. A failed call ends nothing.
+ * The Windows host over `run`: PowerShell lists the processes and ends listed ones by id and start (`killScript`). A
+ * failed call ends nothing.
  */
 export function windowsSweepHostOf(run: HostRun, now: () => number = () => Date.now()): SweepHost {
   return {
@@ -148,9 +167,6 @@ export function windowsSweepHostOf(run: HostRun, now: () => number = () => Date.
         await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', killScript(targets)]);
       }
     },
-    killTree: async (root) => {
-      await run('taskkill', ['/F', '/T', ...pidArgs([root])]);
-    },
     now,
   };
 }
@@ -159,13 +175,14 @@ export function windowsSweepHostOf(run: HostRun, now: () => number = () => Date.
 export const windowsSweepHost: SweepHost = windowsSweepHostOf(runOnHost);
 
 /**
- * On Windows the sweep ends the tree: killing only the shell would leave the command it started running, and one
- * `taskkill /T` can miss a process started while it runs. On POSIX the step runs as its own process group, and the
- * group is killed; an orphan stays in its group.
+ * On Windows the sweep ends the tree: killing only the shell would leave the command it started running. On POSIX the
+ * step runs as its own process group, and the group is killed; an orphan stays in its group.
  */
 export function nodeTreeKill(platform: NodeJS.Platform, host: SweepHost = windowsSweepHost): TreeKill {
   if (platform === 'win32') {
-    return (pid) => sweepTree(pid, host);
+    return async (pid) => {
+      await sweepTree(pid, host);
+    };
   }
   return (pid) => {
     try {
