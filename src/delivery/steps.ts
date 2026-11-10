@@ -71,7 +71,7 @@ export function nodeStepRunner(platform: NodeJS.Platform, kill: TreeKill = nodeT
           if (killed !== undefined) {
             return;
           }
-          killed = { why, done: child.pid === undefined ? Promise.resolve() : kill(child.pid) };
+          killed = { why, done: kill(child) };
         };
         const timer = setTimeout(() => killAs('timedOut'), request.timeoutMs);
         const onStop = (): void => killAs('stopped');

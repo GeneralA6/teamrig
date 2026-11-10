@@ -1,13 +1,12 @@
 import { spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
-import { nodeTreeKill, type TreeKill } from '../../src/delivery/tree-kill.ts';
+import { nodeTreeKill, type HeldProcess, type TreeKill } from '../../src/delivery/tree-kill.ts';
 
 /** How the suite run ended: it exited with this status, or printed nothing for `idleMs` and was killed with its tree. */
 export type SuiteEnd = { readonly kind: 'exited'; readonly status: number | null } | { readonly kind: 'idle'; readonly idleMs: number };
 
-/** The running suite, as the watch reads it: Node's child process, or a fake in tests. */
-export interface SuiteChild {
-  readonly pid?: number | undefined;
+/** The running suite, as the watch reads and kills it: Node's child process, or a fake in tests. */
+export interface SuiteChild extends HeldProcess {
   readonly stdout: Readable;
   readonly stderr: Readable;
   once(event: 'close', listener: (code: number | null) => void): unknown;
@@ -37,7 +36,7 @@ export function watchSuite(child: SuiteChild, idleMs: number, kill: TreeKill, ec
   return new Promise((resolve, reject) => {
     let killed: Promise<void> | undefined;
     const onIdle = (): void => {
-      killed = child.pid === undefined ? Promise.resolve() : kill(child.pid);
+      killed = kill(child);
     };
     let timer = setTimeout(onIdle, idleMs);
     const heard = (): void => {

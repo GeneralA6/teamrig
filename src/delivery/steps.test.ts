@@ -15,11 +15,11 @@ import { livenessOf, parseWrittenProcess, WRITE_PROCESS_SCRIPT, type WrittenProc
  * had yet to start it under load (T645). Waits at most 10 s; settles once the kill is done.
  */
 function killOnceStarted(started: string, kill: TreeKill): TreeKill {
-  return async (pid) => {
+  return async (held) => {
     for (let tries = 0; tries < 200 && !existsSync(started); tries += 1) {
       await wait(50);
     }
-    await kill(pid);
+    await kill(held);
   };
 }
 
@@ -98,8 +98,8 @@ describe('nodeStepRunner', () => {
   it('reports a step killed at its limit only once its kill is done', async () => {
     const events: string[] = [];
     const treeKill = nodeTreeKill(process.platform);
-    const slowKill: TreeKill = async (pid) => {
-      await treeKill(pid);
+    const slowKill: TreeKill = async (held) => {
+      await treeKill(held);
       await wait(200);
       events.push('kill done');
     };
@@ -123,10 +123,10 @@ describe('nodeStepRunner', () => {
 
   it('kills a step at once whose stop aborted before it started', async () => {
     const treeKill = nodeTreeKill(process.platform);
-    const killed: number[] = [];
-    const recording = nodeStepRunner(process.platform, (pid) => {
-      killed.push(pid);
-      return treeKill(pid);
+    const killed: (number | undefined)[] = [];
+    const recording = nodeStepRunner(process.platform, (held) => {
+      killed.push(held.pid);
+      return treeKill(held);
     });
     const ranItsCourse = join(dir, 'aborted-step-ran-its-course');
     // A clock bound fails under load, where one tree kill can take 20 s (T990): the kill must begin while run starts
