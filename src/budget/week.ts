@@ -100,6 +100,13 @@ export interface WeekReading {
    * `wPerPct`.
    */
   readonly todayWPerPct: number | undefined;
+  /**
+   * W per percent of the week's use so far: everyone's W since the week's start over the use now on the status line's
+   * scale (`useNowOf`). A store's W since the start over this is its part of that use, so the parts of every team and
+   * session on the account add up to the account's use (T1778). The fit (`wPerPct`) misses it as the rate drifts in the
+   * period: it read the 81% line of 11-10 as 84.5%. `wPerPct` while that use is unread; undefined with it.
+   */
+  readonly usedWPerPct: number | undefined;
   /** Everyone's use today against the team's in-day pace (`hasRoom`); undefined with the allowance. */
   readonly teamDay: TeamDay | undefined;
   /** The extra-usage pool (budget/extra.ts); undefined while nothing was added or the week's use is unknown. */
@@ -164,21 +171,28 @@ function heldToStatus(readPct: number, statusUse: WeekUse, now: number): number 
 }
 
 /**
- * The week's use at the start of the span whose W is `sinceW` and now, on the status line's scale (T531): each read
- * between the period's meter readings (`useAtW`), so a rate only prices the part of a percent past the last reading,
- * and a rate that drifts through the week does not inflate the span; the use now held to the status line's
- * (`heldToStatus`). Undefined while the period has no reading or the stores do not reach its start.
+ * The week's use now on the status line's scale (T531): read between the period's meter readings (`useAtW`), so a rate
+ * only prices the part of a percent past the last reading, and held to the status line's (`heldToStatus`). Undefined
+ * while the period has no reading or the stores do not reach its start.
  */
-function statusRiseOf(sight: StatusSight, sinceW: number): StatusRise | undefined {
+function useNowOf(sight: StatusSight): number | undefined {
   const { readings, start, covered, statusUse, weekW, wPerPct, now } = sight;
   if (start === undefined || !covered || !readings.some((reading) => reading.start === start)) {
     return undefined;
   }
   const readPct = useAtW(readings, start, weekW, wPerPct);
-  return {
-    fromPct: useAtW(readings, start, weekW - sinceW, wPerPct),
-    nowPct: statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now),
-  };
+  return statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now);
+}
+
+/**
+ * The week's use at the start of the span whose W is `sinceW` and now (`useNowOf`), the start read between the
+ * period's meter readings too, so a rate that drifts through the week does not inflate the span. Undefined with the
+ * use now.
+ */
+function statusRiseOf(sight: StatusSight, sinceW: number): StatusRise | undefined {
+  const nowPct = useNowOf(sight);
+  const { readings, start, weekW, wPerPct } = sight;
+  return nowPct === undefined || start === undefined ? undefined : { fromPct: useAtW(readings, start, weekW - sinceW, wPerPct), nowPct };
 }
 
 /**
@@ -327,6 +341,8 @@ export function readWeek(input: WeekInput): WeekReading {
   const statusToday = sight === undefined ? undefined : statusTodayPct(sight, todayW);
   const todayPct = statusToday ?? (wPerPct === undefined ? undefined : todayW / wPerPct);
   const todayWPerPct = todayRateOf(todayW, statusToday, wPerPct);
+  const useNow = sight === undefined ? undefined : useNowOf(sight);
+  const usedWPerPct = useNow === undefined || useNow <= 0 || weekW <= 0 ? wPerPct : weekW / useNow;
   const profile = DailyProfile.ofQuietHours(budget.quietHours);
   const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
   const plannedPct =
@@ -364,6 +380,7 @@ export function readWeek(input: WeekInput): WeekReading {
     todayFrom,
     todayW,
     todayWPerPct,
+    usedWPerPct,
     teamDay,
     pool,
     forecast: sight === undefined || reset === undefined ? undefined : forecastOf(sight, reset, wSince(states, now - FORECAST_SPAN_MS, now)),

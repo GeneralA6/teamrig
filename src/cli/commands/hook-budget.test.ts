@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { MeterLog } from '../../budget/calibration.ts';
+import { ACCOUNT_SCOPE, MeterLog } from '../../budget/calibration.ts';
 import { OUTSIDE_ID, outsideUsageDir } from '../../budget/measure.ts';
 import { emptyPatterns } from '../../budget/patterns.ts';
 import { parseSessionsWeek, SESSIONS_WEEK_IN_STATE } from '../../budget/session-week-summary.ts';
@@ -41,6 +41,31 @@ describe('the budget hooks', () => {
       at: kit.clock.now(),
       limits: [],
     });
+  });
+
+  it("keep the team's and its sessions' week at the use now on the status line's scale, so every part on the account adds up to it (T1778)", async () => {
+    const kit = new CliHarness({ ...TEAM, budget: { ...HOLDING_BUDGET, account: 'work' } });
+    const usage = join(TEAM_HOME, 'state', 'usage');
+    const outside = new UsageStore(kit.files, outsideUsageDir(usage));
+    // The use outside on the week's first day, so the stores reach the week's start.
+    const outsideDay = { '2030-01-07': { w: 40_000_000, calls: 1, patterns: emptyPatterns() } };
+    assert.ok(await outside.save(OUTSIDE_ID, { ...EMPTY_USAGE, byDay: outsideDay }, (await outside.load(OUTSIDE_ID)).rev), 'outside use saved');
+    const start = Date.parse('2030-01-07T01:00:00Z');
+    const line = { at: Date.parse('2030-01-08T09:30:00Z'), usedPct: 30, start, end: Date.parse('2030-01-14T01:00:00Z'), w: 190_000_000, forecastPct: undefined, scope: ACCOUNT_SCOPE };
+    await new MeterLog(kit.files, join(usage, 'meter-log.jsonl')).append(line, kit.clock.now());
+    await meterToday(kit, [
+      { id: 'alpha', tab: ALPHA_TAB, w: 100_000_000 },
+      { id: 'lead', tab: LEAD_TAB, w: 50_000_000 },
+    ]);
+    // The account's 190M W are the status line's 30%, not the 19% the budget's 10M W per percent reads: the team's
+    // 150M W are 150 / 190 of it, and the 69.5% left to the 99.5% target is all its own.
+    const team = await kit.files.read(SUMMARY);
+    const week = team === undefined ? undefined : parseTeamWeek(team);
+    assert.deepEqual([week?.usedPct, week?.plannedPct, week?.accountUsedPct], [23.68, 93.18, 30]);
+    const sessions = await kit.files.read(SESSIONS);
+    const byId = sessions === undefined ? undefined : parseSessionsWeek(sessions)?.sessions;
+    // Rounded to two decimals in the files.
+    assert.deepEqual([byId?.['lead']?.usedPct, byId?.['alpha']?.usedPct, byId?.['bravo']?.usedPct], [7.89, 15.79, 0]);
   });
 
   it("keep the stretches the account's week sat at its usage limit in the team's week summary (T2050)", async () => {

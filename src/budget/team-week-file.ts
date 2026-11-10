@@ -14,7 +14,7 @@ export interface TeamWeekInput {
   readonly window: WeekWindow | undefined;
   /** The account's use of the week, in percent. */
   readonly usedPct: number | undefined;
-  /** The team's own W per percent of the week. */
+  /** W per percent of the week's use so far (src/budget/week.ts `WeekReading.usedWPerPct`), so the teams' parts add up to the account's use. */
   readonly wPerPct: number | undefined;
   readonly targetPct: number;
   /** The team's sessions' usage stores only, never the outside one. */
@@ -27,8 +27,8 @@ export interface TeamWeekInput {
 }
 
 /**
- * The team's week summary (src/budget/team-week-summary.ts): its sessions' W since the week began at its own rate,
- * and that plus its part of what the account has left to the target (the split as is, as a surplus reads it: no day's
+ * The team's week summary (src/budget/team-week-summary.ts): its sessions' W since the week began at the week's used
+ * rate (`wPerPct`), and that plus its part of what the account has left to the target (the split as is, as a surplus reads it: no day's
  * funding), on the team's account; undefined while the week, its use or the rate is unknown.
  */
 export function teamWeekSummaryOf(input: TeamWeekInput): NamedTeamWeek | undefined {
