@@ -86,9 +86,7 @@ Then what got done and what is late, in a few lines, and one card per decision, 
 - the exact action (a choice, a click path or a command) and what each result leads to.
 
 Ask in plain text: read each card, its options numbered and your recommendation first, and let the human answer in
-their own words; never the question picker. A team that asks with the picker [decisions.askWith] asks the choices
-with Claude Code's question picker (AskUserQuestion) instead, at most 4 questions a call: each card's options as its
-choices, your recommendation first, the card text above it. The agenda's `DECISIONS` says which.
+their own words; never the question picker (AskUserQuestion), which the picker guard refuses in the meeting too.
 
 Never point to a doc instead of a card: `teamrig show <id>` prints a task whole when the facts are thin; a fact the
 task does not hold is its owner's to find (step 3). Keep decisions apart from FYIs and from hands-on asks. An owner

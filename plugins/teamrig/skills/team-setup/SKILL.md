@@ -141,9 +141,8 @@ it the other way, so settle each one with the user now, and again whenever they 
      conflicting lines, each with its path:line, the rule and how they differ.
 2. Judge each candidate against the core rule it names. It conflicts when it tells a session to do otherwise: a
    push or deploy route the rule forbids, skipping the register, its own precedence ("our CLAUDE.md wins"). A line
-   that adds detail or agrees is no conflict: leave it out. A line that asks the opposite of a teamrig skill's step
-   ("plain text, never the picker" against a skill that asks with the picker), or more than the core rule asks, is
-   an override, a conflict too: never cut it as covered. Cut a local line as covered only when a core line of the
+   that adds detail or agrees is no conflict: leave it out. A line that asks the opposite of a teamrig skill's step,
+   or more than the core rule asks, is an override, a conflict too: never cut it as covered. Cut a local line as covered only when a core line of the
    same strength says the same. Then, before editing any file, record the rest as no
    conflict with the command the scan's last line names, `--except` listing each conflict:
    `teamrig rules clear --seen <digest> --except <path>:<line>,... --session lead --yes` (with the scan's
