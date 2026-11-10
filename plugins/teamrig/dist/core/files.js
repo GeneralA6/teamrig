@@ -1,7 +1,7 @@
 import { appendFile, link, lstat, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from "./guards.js";
-import { retryTransient } from "./retry.js";
+import { REPLACE_RETRY_DELAYS_MS, retryTransient } from "./retry.js";
 let temporaries = 0;
 /** A private sibling no other write shares: the process id parts processes, the counter parts writes in one process. */
 function temporaryOf(path) {
@@ -61,7 +61,7 @@ export async function writeAtomic(path, data, sleep) {
     const temporary = temporaryOf(path);
     await writeFile(temporary, data);
     try {
-        await retryTransient(() => rename(temporary, path), sleep);
+        await retryTransient(() => rename(temporary, path), sleep, REPLACE_RETRY_DELAYS_MS);
     }
     catch (error) {
         await removeFile(temporary, sleep);
