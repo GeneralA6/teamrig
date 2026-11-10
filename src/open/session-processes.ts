@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
 import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
+import { sweepTree, windowsSweepHost, type SweepHost } from '../delivery/tree-kill.ts';
 import { nodeProgramRunner, type ProgramRunner } from '../github/credentials.ts';
 import { exitText, outcomeOfError } from './processes.ts';
 
@@ -65,9 +66,10 @@ export interface SessionProcesses {
    */
   lineage(pid: number): Promise<readonly ProcessInfo[] | undefined>;
   /**
-   * Ends `pid`. On Windows, where a console program cannot be asked to close, it and every process it
-   * started end at once (`taskkill /T /F`), and a process whose starter has ended is no longer in that
-   * tree; elsewhere `ask` sends SIGTERM and `force` SIGKILL, to `pid` alone.
+   * Ends `pid`. On Windows, where a console program cannot be asked to close, it and every process it started end
+   * at once through the start-checked sweep (`sweepTree`): a process whose starter has ended is no longer in that
+   * tree, a later process holding an ended starter's id is never taken for its child, and when the host's processes
+   * cannot be listed nothing is ended (`failed`). Elsewhere `ask` sends SIGTERM and `force` SIGKILL, to `pid` alone.
    */
   end(pid: number, how: EndHow): Promise<EndOutcome>;
   /** Runs a program with `input` on stdin until it exits, for at most a time limit. */
@@ -86,8 +88,10 @@ export async function runsClaude(processes: Pick<SessionProcesses, 'alive' | 'de
 export interface SessionProcessesOptions {
   readonly platform?: NodeJS.Platform;
   readonly parentPid?: number;
-  /** Runs `ps`, PowerShell and taskkill. */
+  /** Runs `ps` and PowerShell. */
   readonly run?: ProgramRunner;
+  /** Lists and ends the Windows processes a tree end sweeps. */
+  readonly sweepHost?: SweepHost;
   /** `process.kill`: sends `signal`, or with 0 only checks that the process is there. */
   readonly signal?: (pid: number, signal: NodeJS.Signals | 0) => void;
   readonly feedTimeoutMs?: number;
@@ -97,8 +101,6 @@ export interface SessionProcessesOptions {
 export const LOOKUP_TIMEOUT_MS = 20_000;
 /** The stand-in for a SessionEnd hook gets as long as Claude Code gives its hooks by default. */
 export const FEED_TIMEOUT_MS = 60_000;
-/** taskkill's exit code when no process has the id. */
-const TASKKILL_NOT_FOUND = 128;
 
 /** `ps`'s arguments for every process: its id, its starter's and its command line. */
 const POSIX_LISTING: readonly string[] = ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='];
@@ -322,6 +324,7 @@ export function nodeSessionProcesses(options: SessionProcessesOptions = {}): Ses
     process.kill(pid, sent);
   });
   const feedTimeoutMs = options.feedTimeoutMs ?? FEED_TIMEOUT_MS;
+  const sweepHost = options.sweepHost ?? windowsSweepHost;
   return {
     parentPid: options.parentPid ?? process.ppid,
     alive(pid) {
@@ -389,16 +392,13 @@ export function nodeSessionProcesses(options: SessionProcessesOptions = {}): Ses
       }
       if (platform === 'win32') {
         try {
-          const result = await run({ program: 'taskkill', args: ['/PID', String(pid), '/T', '/F'] });
-          if (result.end.kind === 'exited' && result.end.code === 0) {
-            return { kind: 'ended' };
+          const swept = await sweepTree(pid, sweepHost);
+          if (swept === 'unlisted') {
+            return { kind: 'failed', error: "the host's processes could not be listed, so nothing was ended" };
           }
-          if (result.end.kind === 'exited' && result.end.code === TASKKILL_NOT_FOUND) {
-            return { kind: 'gone' };
-          }
-          return { kind: 'failed', error: exitText(result.end.kind === 'exited' ? result.end.code : null, result.stderr) };
+          return swept === 'gone' ? { kind: 'gone' } : { kind: 'ended' };
         } catch (error) {
-          return { kind: 'failed', error: `taskkill could not start: ${errorMessage(error)}` };
+          return { kind: 'failed', error: `the sweep failed: ${errorMessage(error)}` };
         }
       }
       try {

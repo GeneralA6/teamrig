@@ -2,7 +2,7 @@ import type { EndHow, EndOutcome, FeedOutcome, FeedRequest, ProcessInfo, Session
 
 /**
  * A process table in memory: only the processes added run, ending one also ends every process it started
- * (as `taskkill /T` does), and each look at a process, end and fed program is recorded. Feeding a program gives
+ * (as the start-checked sweep does), and each look at a process, end and fed program is recorded. Feeding a program gives
  * the outcome set for its command, by default `done`.
  */
 export class FakeSessionProcesses implements SessionProcesses {
