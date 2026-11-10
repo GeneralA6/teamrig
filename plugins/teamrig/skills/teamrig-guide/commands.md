@@ -64,8 +64,10 @@ Flags:
   default); any other name is refused. A task without one counts as `focus.defaultClass`.
 - `--team <team>`: asks another team of your tree for the work: the task lands in that team's register from you,
   owned by `--owner` (a session of that team, by id or name) or else that team's lead. The owner gets an inbox line
-  and the team's lead, when it is not the owner, a copy. A team of a separate tree is refused. It takes no
-  `--source`.
+  and the team's lead, when it is not the owner, a copy. A team of a separate tree is refused. Its one `--source`
+  is `owner` (`register.ownerSource`): the lead of a team above the asked one relays the human's order, and the task
+  there is sourced `owner`, its history naming the lead as the writer; from any other session it is refused, and
+  any other source is refused too.
 
 Example:
 

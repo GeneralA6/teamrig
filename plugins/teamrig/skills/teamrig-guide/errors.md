@@ -92,6 +92,7 @@ or take it to the lead.
 | `REFUSED no week plan tagged yet; pass --week <YYYY-MM-DD>` (from `plan`) | Tag tasks with `--week` first, or pass `--week`. |
 | `REFUSED team shop is not in app's team tree, so app/alpha may not add its tasks` (from `add --team`) | Only a team of your own tree takes your asks; ask a team of another tree through its people. |
 | `REFUSED team shop: front is not a session on this team (sessions: ...)` (from `add --team --owner`) | Name a session of that team, by id or name (`teamrig who`), or drop `--owner` to give the task to its lead. |
+| `REFUSED app/alpha may not relay owner's order into team web: only the lead of a team above it does; ...` (from `add --team --source owner`) | Ask without `--source owner`, so the task is from you, or ask your lead to relay the order. |
 | `REFUSED --tree is for the team's lead ...` | Run it without `--tree`, or as the lead. |
 
 ## Inbox
@@ -256,7 +257,7 @@ From `teamrig restore install` and `uninstall` ([commands.md](commands.md#teamri
 | `--text goes only with --ask <session>: it is the work asked for` | Add `--ask <session>`, or drop `--text` (a status note is `--note`). |
 | `--ask needs --text "<the work asked for>": the title of the task it creates` | Add `--text` naming the work. |
 | `--week "x" is not a YYYY-MM-DD date` | Write the week's first day as `2026-10-12`. |
-| `--team adds the task from you: it takes no --source, unless it names your own team` | Drop `--source` from `add --team`: the task is marked as from you. |
+| `--team adds the task from you: its one --source is owner, which a lead above the asked team gives to relay owner's order (...)` | Drop `--source` from `add --team`: the task is marked as from you. Give `--source owner` only to relay the human's order as the lead of a team above. |
 
 ## Requirements
 
