@@ -3,7 +3,7 @@ import { appendFile, link, lstat, mkdir, open, readdir, readFile, rename, stat, 
 import { dirname } from 'node:path';
 import { errorCode } from './guards.ts';
 import type { Sleep } from './lock.ts';
-import { retryTransient } from './retry.ts';
+import { REPLACE_RETRY_DELAYS_MS, retryTransient } from './retry.ts';
 
 let temporaries = 0;
 
@@ -68,7 +68,7 @@ export async function writeAtomic(path: string, data: string | Uint8Array, sleep
   const temporary = temporaryOf(path);
   await writeFile(temporary, data);
   try {
-    await retryTransient(() => rename(temporary, path), sleep);
+    await retryTransient(() => rename(temporary, path), sleep, REPLACE_RETRY_DELAYS_MS);
   } catch (error) {
     await removeFile(temporary, sleep);
     throw error;
