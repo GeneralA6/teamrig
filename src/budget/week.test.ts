@@ -76,6 +76,7 @@ describe('readWeek', () => {
       todayFrom: Date.parse('2026-10-15T00:00:00Z'),
       todayW: 500,
       todayWPerPct: undefined,
+      usedWPerPct: undefined,
       teamDay: undefined,
       pool: undefined,
       forecast: undefined,
@@ -210,6 +211,23 @@ describe('readWeek', () => {
     const readings = [...atOldLimit, meterReading(19, 500), meterReading(38, 1_000), meterReading(57, 1_500)];
     const week = readWeek({ readings, calibration: calibrationOf(readings), budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
     assert.deepEqual([round(week.wPerPct), round(week.todayWPerPct)], [round(500 / 19), round(500 / 19)]);
+  });
+
+  it("prices the week's used W at the use now on the status line's scale, so the stores' parts add up to it (T1778)", () => {
+    // The 1,500 W now are 20 W past 57% at 1,480 W: 58% at 20 W per percent, where the fit alone reads 75%.
+    const readings = [meterReading(40, 900), meterReading(45, 1_100), meterReading(57, 1_480)];
+    const week = readWeek({ readings, calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
+    assert.deepEqual([week.wPerPct, round(week.usedWPerPct)], [20, round(1_500 / 58)]);
+    const parts = COVERED.map((store) => wSince([store], PERIOD.start, NOW) / (week.usedWPerPct ?? Number.NaN));
+    assert.equal(round(parts.reduce((sum, part) => sum + part, 0)), 58);
+  });
+
+  it("prices the week's used W at the fit while the period has no reading or the stores miss its start", () => {
+    const older = meterReading(40, 900, PERIOD.start - MS_PER_WEEK);
+    const unread = readWeek({ readings: [older], calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
+    const readings = [meterReading(40, 900), meterReading(57, 1_480)];
+    const late = readWeek({ readings, calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: [state({ '2026-10-15': 500 })] });
+    assert.deepEqual([unread.usedWPerPct, late.usedWPerPct], [20, 20]);
   });
 
   it("counts today's W at the week's rate while the period has no reading or the stores miss its start", () => {

@@ -9,7 +9,7 @@ import { wSince } from './week.ts';
 /** What the sessions' week is read from: the week as the budget hooks read it, and each session's own store. */
 export interface SessionsWeekInput {
   readonly window: WeekWindow | undefined;
-  /** The team's own W per percent of the week. */
+  /** W per percent of the week's use so far (src/budget/week.ts `WeekReading.usedWPerPct`), so the sessions' parts add up to the team's. */
   readonly wPerPct: number | undefined;
   /** Each session on the team's roster and its usage store, in the roster's order. */
   readonly byId: ReadonlyMap<string, UsageState>;
@@ -27,8 +27,8 @@ export function workHoursSince(state: UsageState, from: number, now: number): nu
 }
 
 /**
- * The sessions' week (src/budget/session-week-summary.ts): each roster session's W since the week began at the team's
- * own rate, and its hours with work since then; undefined while the week or the rate is unknown.
+ * The sessions' week (src/budget/session-week-summary.ts): each roster session's W since the week began at the week's
+ * used rate (`wPerPct`), and its hours with work since then; undefined while the week or the rate is unknown.
  */
 export function sessionsWeekOf(input: SessionsWeekInput): SessionsWeekSummary | undefined {
   const { window, wPerPct, now } = input;

@@ -114,11 +114,11 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const split = budgetSplitOf({ team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, leads: config.leads, work: work.weights, pausable: pausableOf(config, kit.paths.team, roster.ids), lifts, now, usedPct: week.usedPct });
   const others = await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, now, week.usedPct);
   const teams = { split, others };
-  const summary = teamWeekSummaryOf({ account: account.account, window: week.window, usedPct: week.usedPct, wPerPct: week.wPerPct, targetPct: budget.targetPct, states: [...byId.values()], teams, limits: week.limits, now });
+  const summary = teamWeekSummaryOf({ account: account.account, window: week.window, usedPct: week.usedPct, wPerPct: week.usedWPerPct, targetPct: budget.targetPct, states: [...byId.values()], teams, limits: week.limits, now });
   if (summary !== undefined) {
     await keepTeamWeek(files, kit.paths.teamWeek, summary);
   }
-  const sessionsWeek = sessionsWeekOf({ window: week.window, wPerPct: week.wPerPct, byId, now });
+  const sessionsWeek = sessionsWeekOf({ window: week.window, wPerPct: week.usedWPerPct, byId, now });
   if (sessionsWeek !== undefined) {
     await keepSessionsWeek(files, kit.paths.sessionsWeek, sessionsWeek);
   }
