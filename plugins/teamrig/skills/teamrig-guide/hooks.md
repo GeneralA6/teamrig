@@ -598,7 +598,8 @@ shows results whole, the owner's call. It does not cover:
 
 A write to a database run by hand cannot be taken back the way a code change can, so it should follow counts or a
 preview the owner has seen. Before Claude runs a Bash or PowerShell call, `hook db-write-guard` reads the line (as the
-push guard does: chains, subshells, nested shells, `cd`, pipes and substitutions) and asks the human about one that
+push guard does: chains, subshells, nested shells, `cd`, pipes and substitutions; on Windows a Bash line also as bash
+receives it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and asks the human about one that
 writes:
 
 - **SQL through a built-in client**: `psql` (`-c`, a `-f` file, stdin), `mysql` and `mariadb` (`-e`, stdin) and
@@ -787,9 +788,9 @@ that prints or holds a secret ([the secret guard](#before-a-shell-command-or-a-r
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. On Windows, Claude Code's
 Bash tool halves each run of backslashes not followed by a double quote, rounded up, before bash reads the line, so
 a Bash line must only read both as written and halved: `ls a\\\; rm -f x` reads as one `ls`, but bash gets
-`ls a\\; rm -f x` and runs the `rm`, so that line gets the prompt. The push, package, secret and exec guards weigh
-both readings the same way and answer for the stricter one, so `echo a\\\; git push origin HEAD:main` is asked about
-like the push bash runs. Like the guards, it reads only the line, so it cannot see:
+`ls a\\; rm -f x` and runs the `rm`, so that line gets the prompt. The push, package, secret, exec and db-write
+guards weigh both readings the same way and answer for the stricter one, so `echo a\\\; git push origin HEAD:main`
+is asked about like the push bash runs. Like the guards, it reads only the line, so it cannot see:
 
 - git obeying the repository's own config, which can name a program to run (`core.fsmonitor`, `diff.external`): it
   trusts the repository as git does;

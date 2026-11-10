@@ -131,6 +131,7 @@ export function dbWriteGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payl
     home: runtime.userHome,
     files: runtime.files,
     hookAsks: hookAsksOf(guard.load),
+    platform: runtime.platform,
   });
 }
 

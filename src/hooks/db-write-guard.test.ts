@@ -6,6 +6,7 @@ import type { DbWriteGuardConfig } from '../config/types.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 import { testConfig } from '../testing/config.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import type { DbWrite } from '../db-write-guard/writes.ts';
 import { dbWriteGuardOf, dbWriteGuardOutput, dbWriteReason, type DbWriteGuardEnv } from './db-write-guard.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 
@@ -22,7 +23,7 @@ const TEAM: Pick<DbWriteGuardConfig, 'programs' | 'nodeClients'> = {
 };
 
 function env(overrides: Partial<DbWriteGuardEnv> = {}): DbWriteGuardEnv {
-  return { ...DEFAULT_DB_WRITE_GUARD, ...TEAM, cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), hookAsks: 'ask', ...overrides };
+  return { ...DEFAULT_DB_WRITE_GUARD, ...TEAM, cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), hookAsks: 'ask', platform: 'linux', ...overrides };
 }
 
 function payload(command: string, extra: Readonly<Record<string, string>> = {}): unknown {
@@ -112,6 +113,33 @@ describe('dbWriteGuardOutput', () => {
   it('prints nothing for a payload that is not a shell call', async () => {
     for (const input of [undefined, 'text', { tool_name: 'Read', tool_input: { file_path: join(APP, 'a.js') } }]) {
       assert.equal(await dbWriteGuardOutput(input, env()), '');
+    }
+  });
+});
+
+describe('dbWriteGuardOutput: a Bash line on Windows', () => {
+  /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
+  const bs = (n: number): string => '\\'.repeat(n);
+  const windows = (overrides: Partial<DbWriteGuardEnv> = {}): DbWriteGuardEnv => env({ platform: 'win32', ...overrides });
+  const hiddenSeparator = (command: string): string => `echo a${bs(3)}; ${command}`;
+  const hiddenBacktick = (command: string): string => `echo "p${bs(3)}\`${command}; echo ${bs(3)}\`q"`;
+  const write = (program: string, what: string): DbWrite => ({ program, writes: [what], entrypoint: false, elsewhere: false });
+
+  it('asks about a write that bash runs behind what the line as written escapes', async () => {
+    for (const line of [hiddenSeparator("psql -c 'DELETE FROM orders'"), hiddenBacktick('kvcli FLUSHALL')]) {
+      const verdict = verdictOf(await dbWriteGuardOutput(payload(line), windows()));
+      assert.equal(verdict?.decision, 'ask', line);
+      assert.match(verdict?.reason ?? '', /(psql runs DELETE|kvcli runs FLUSHALL)\. First/, line);
+      assert.equal(await dbWriteGuardOutput(payload(line), env()), '', `off Windows bash runs the line as written: ${line}`);
+    }
+  });
+
+  it('names a write both readings make once, and leaves a line whose readings write nothing', async () => {
+    const line = `kvcli FLUSHALL; ${hiddenSeparator("psql -c 'DELETE FROM orders'")}`;
+    const verdict = verdictOf(await dbWriteGuardOutput(payload(line), windows()));
+    assert.equal(verdict?.reason, dbWriteReason([write('kvcli', 'FLUSHALL'), write('psql', 'DELETE')]));
+    for (const benign of [`grep 'a${bs(4)}b' f`, hiddenSeparator('kvcli GET cache:x')]) {
+      assert.equal(await dbWriteGuardOutput(payload(benign), windows()), '', benign);
     }
   });
 });
