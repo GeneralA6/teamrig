@@ -104,6 +104,7 @@ describe('braceAlternatives', () => {
 
   it('keeps a brace inside a [...] set, or one that never closes, as a plain character', () => {
     assert.deepEqual(braceAlternatives('[{]a,b', 8), ['[{]a,b']);
+    assert.deepEqual(braceAlternatives('[]{a,b}]', 8), ['[]{a,b}]']);
     assert.deepEqual(braceAlternatives('a{b', 8), ['a{b']);
     assert.deepEqual(braceAlternatives('a{b{c,d}', 8), ['a{bc', 'a{bd']);
   });
@@ -129,6 +130,11 @@ describe('braceAlternatives', () => {
     assert.deepEqual(braceAlternatives('{a,b}{c,d}', 4), ['ac', 'ad', 'bc', 'bd']);
     assert.equal(braceAlternatives('{a,b}{c,d}{e,f}', 4), undefined);
     assert.equal(braceAlternatives('{a,b,c,d,e}', 4), undefined);
+  });
+
+  it('counts each plain glob against the limit, not only the groups', () => {
+    assert.deepEqual(braceAlternatives('{a{x,y},b}', 3), ['b', 'ax', 'ay']);
+    assert.equal(braceAlternatives('{a{x,y},b,c}', 3), undefined);
   });
 
   it('gives up on a group too wide to spread, without throwing', () => {
