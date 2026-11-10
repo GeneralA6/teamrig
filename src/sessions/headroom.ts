@@ -2,6 +2,7 @@ import type { HeadroomConfig, QueueConfig } from '../config/types.ts';
 import type { CommitCharge } from '../delivery/memory.ts';
 import { tabsText, type LoadingTab } from '../delivery/memory-gate.ts';
 import { KIT_NAME } from '../core/home.ts';
+import { median } from '../core/quantile.ts';
 
 export type { LoadingTab };
 
@@ -49,12 +50,10 @@ export function tabFloorOf(headroom: Pick<HeadroomConfig, 'floorMb'>, queue: Pic
   };
 }
 
-/** The middle size (the mean of the two middle ones for an even count), or undefined for none. */
+/** The median size in whole MB, or undefined for none. */
 function medianOf(values: readonly number[]): number | undefined {
-  const sorted = [...values].sort((a, b) => a - b);
-  const high = sorted[Math.floor(sorted.length / 2)];
-  const low = sorted[Math.ceil(sorted.length / 2) - 1];
-  return high === undefined || low === undefined ? undefined : Math.round((low + high) / 2);
+  const middle = median(values);
+  return middle === null ? undefined : Math.round(middle);
 }
 
 function sumOf(values: readonly number[]): number {
