@@ -11,8 +11,8 @@ import {
   type HeldProcess,
   type HostRun,
   type StartedProcess,
-  type SweepHost,
 } from './tree-kill.ts';
+import { FakeSweepHost } from '../testing/fake-sweep-host.ts';
 
 /** A process the caller holds, as Node's ChildProcess: it records each signal sent through its handle. */
 class FakeHeld implements HeldProcess {
@@ -26,31 +26,6 @@ class FakeHeld implements HeldProcess {
   kill(signal: NodeJS.Signals): boolean {
     this.signals.push(signal);
     return true;
-  }
-}
-
-/** A host whose process lists are set by the test, one a call; it records each kill and keeps one clock. */
-class FakeHost implements SweepHost {
-  readonly kills: (readonly number[])[] = [];
-  listCalls = 0;
-  private readonly lists: (readonly StartedProcess[] | undefined)[];
-
-  constructor(lists: (readonly StartedProcess[] | undefined)[]) {
-    this.lists = lists;
-  }
-
-  list(): Promise<readonly StartedProcess[] | undefined> {
-    this.listCalls += 1;
-    return Promise.resolve(this.lists.shift());
-  }
-
-  kill(targets: readonly StartedProcess[]): Promise<void> {
-    this.kills.push(targets.map((target) => target.pid));
-    return Promise.resolve();
-  }
-
-  now(): number {
-    return 1_000;
   }
 }
 
@@ -115,7 +90,7 @@ const STEP = [proc(1, 0, 0), proc(10, 1, 100), proc(11, 10, 200), proc(20, 1, 50
 
 describe('sweepTree', () => {
   it('kills the tree once when the next list finds nothing of it, and reports it swept', async () => {
-    const host = new FakeHost([STEP, [proc(1, 0, 0), proc(20, 1, 50)]]);
+    const host = new FakeSweepHost([STEP, [proc(1, 0, 0), proc(20, 1, 50)]]);
     assert.equal(await sweepTree(10, host), 'swept');
     assert.deepEqual(host.kills, [[10, 11]]);
     assert.equal(host.listCalls, 2);
@@ -123,45 +98,45 @@ describe('sweepTree', () => {
 
   it('kills a process the tree started while it was killed, with what that one started', async () => {
     const orphans = [proc(1, 0, 0), proc(20, 1, 50), proc(12, 11, 900), proc(13, 12, 950)];
-    const host = new FakeHost([STEP, orphans, [proc(1, 0, 0), proc(20, 1, 50)]]);
+    const host = new FakeSweepHost([STEP, orphans, [proc(1, 0, 0), proc(20, 1, 50)]]);
     await sweepTree(10, host);
     assert.deepEqual(host.kills, [[10, 11], [12, 13]]);
   });
 
   it('kills again a member that outlived its kill', async () => {
-    const host = new FakeHost([STEP, [proc(20, 1, 50), proc(11, 10, 200)], []]);
+    const host = new FakeSweepHost([STEP, [proc(20, 1, 50), proc(11, 10, 200)], []]);
     await sweepTree(10, host);
     assert.deepEqual(host.kills, [[10, 11], [11]]);
   });
 
   it('lists again when the first list fails, and sweeps from the second', async () => {
-    const host = new FakeHost([undefined, STEP, [proc(1, 0, 0), proc(20, 1, 50)]]);
+    const host = new FakeSweepHost([undefined, STEP, [proc(1, 0, 0), proc(20, 1, 50)]]);
     assert.equal(await sweepTree(10, host), 'swept');
     assert.deepEqual(host.kills, [[10, 11]]);
   });
 
   it('ends nothing and reports unlisted when no first list works: no blind walk of parent ids (T2336)', async () => {
-    const host = new FakeHost(Array.from({ length: LIST_TRIES + 1 }, () => undefined));
+    const host = new FakeSweepHost(Array.from({ length: LIST_TRIES + 1 }, () => undefined));
     assert.equal(await sweepTree(10, host), 'unlisted');
     assert.equal(host.listCalls, LIST_TRIES);
     assert.deepEqual(host.kills, []);
   });
 
   it('stops when the list after a kill fails, killing no old id again', async () => {
-    const host = new FakeHost([STEP, undefined]);
+    const host = new FakeSweepHost([STEP, undefined]);
     assert.equal(await sweepTree(10, host), 'swept');
     assert.deepEqual(host.kills, [[10, 11]]);
   });
 
   it('kills nothing and reports gone when the root is no longer listed', async () => {
-    const host = new FakeHost([[proc(1, 0, 0)]]);
+    const host = new FakeSweepHost([[proc(1, 0, 0)]]);
     assert.equal(await sweepTree(10, host), 'gone');
     assert.deepEqual(host.kills, []);
   });
 
   it('gives up after its rounds when every list shows a new straggler', async () => {
     const lists = [STEP, ...Array.from({ length: SWEEP_ROUNDS }, (_, round) => [proc(30 + round, round === 0 ? 11 : 29 + round, 500)])];
-    const host = new FakeHost(lists);
+    const host = new FakeSweepHost(lists);
     await sweepTree(10, host);
     assert.equal(host.kills.length, SWEEP_ROUNDS);
     assert.deepEqual(host.kills.at(-1), [30 + SWEEP_ROUNDS - 2]);
@@ -273,7 +248,7 @@ describe('parseStartedProcesses', () => {
 
 describe('nodeTreeKill', () => {
   it('sweeps through the host it is given on Windows, sending nothing through the held handle', async () => {
-    const host = new FakeHost([STEP, []]);
+    const host = new FakeSweepHost([STEP, []]);
     const held = new FakeHeld(10);
     await nodeTreeKill('win32', host)(held);
     assert.deepEqual(host.kills, [[10, 11]]);
@@ -281,7 +256,7 @@ describe('nodeTreeKill', () => {
   });
 
   it('ends the held process alone through its handle when the host cannot be listed (T2336)', async () => {
-    const host = new FakeHost(Array.from({ length: LIST_TRIES }, () => undefined));
+    const host = new FakeSweepHost(Array.from({ length: LIST_TRIES }, () => undefined));
     const held = new FakeHeld(10);
     await nodeTreeKill('win32', host)(held);
     assert.deepEqual(host.kills, []);
@@ -290,13 +265,13 @@ describe('nodeTreeKill', () => {
 
   it('sends nothing to a held process the list no longer has', async () => {
     const held = new FakeHeld(10);
-    await nodeTreeKill('win32', new FakeHost([[proc(1, 0, 0)]]))(held);
+    await nodeTreeKill('win32', new FakeSweepHost([[proc(1, 0, 0)]]))(held);
     assert.deepEqual(held.signals, []);
   });
 
   it('ends nothing for a process that never started', async () => {
     for (const platform of ['win32', 'linux'] as const) {
-      const host = new FakeHost([STEP, []]);
+      const host = new FakeSweepHost([STEP, []]);
       const held = new FakeHeld(undefined);
       await nodeTreeKill(platform, host)(held);
       assert.equal(host.listCalls, 0, platform);
@@ -305,7 +280,7 @@ describe('nodeTreeKill', () => {
   });
 
   it('settles at once on POSIX when the group has already ended', async () => {
-    const host = new FakeHost([]);
+    const host = new FakeSweepHost([]);
     const held = new FakeHeld(2 ** 22 + 7);
     await nodeTreeKill('linux', host)(held);
     assert.equal(host.listCalls, 0);
