@@ -3,8 +3,8 @@ import { keepSummaryFile, summaryMinute, summaryPct } from "./summary-file.js";
 import { formatTeamWeek, parseTeamWeek, TEAM_WEEK_FORMAT } from "./team-week-summary.js";
 import { wSince } from "./week.js";
 /**
- * The team's week summary (src/budget/team-week-summary.ts): its sessions' W since the week began at its own rate,
- * and that plus its part of what the account has left to the target (the split as is, as a surplus reads it: no day's
+ * The team's week summary (src/budget/team-week-summary.ts): its sessions' W since the week began at the week's used
+ * rate (`wPerPct`), and that plus its part of what the account has left to the target (the split as is, as a surplus reads it: no day's
  * funding), on the team's account; undefined while the week, its use or the rate is unknown.
  */
 export function teamWeekSummaryOf(input) {

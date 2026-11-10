@@ -11,8 +11,9 @@ import { parseObject, recordVersion, VERSION_FIELD } from "../core/jsonl.js";
  * - `account`: the Claude account whose week the percents are of, as teamrig tells accounts apart (src/budget/account.ts
  *   `accountsOf`): the `budget.account` the team names, else the config dir its sessions run in. A reader adds up only
  *   files that name one account: teams on two accounts each have a week of their own;
- * - `usedPct`: the team's use since the week began, in percent of the account's week: its sessions' W at the team's
- *   own W per percent (the use outside every team is no team's);
+ * - `usedPct`: the team's use since the week began, in percent of the account's week: its sessions' W at the week's
+ *   used rate (src/budget/week.ts `WeekReading.usedWPerPct`), so every team's on the account adds up to the account's
+ *   use with the use outside every team, which is no team's;
  * - `plannedPct`: the team's use by the week's end as planned: `usedPct` plus its part (src/budget/parts.ts
  *   `teamShareOf`) of what the account has left to `budget.targetPct`;
  * - `accountUsedPct`: the account's use of the week, in percent: every team's and the use outside them;

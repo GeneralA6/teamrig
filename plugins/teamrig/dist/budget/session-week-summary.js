@@ -12,7 +12,7 @@ import { parseObject, recordVersion, VERSION_FIELD } from "../core/jsonl.js";
  * - `at`: when it was read, epoch ms, to the minute;
  * - `sessions`: each session on the team's roster, by its id:
  *   - `usedPct`: its use since the week began, in percent of the account's week, the unit the status line counts in:
- *     its W at the team's own W per percent;
+ *     its W at the week's used rate, as the team's (src/budget/team-week-summary.ts), so they add up to it;
  *   - `workHours`: the UTC hours since the week began in which it used any W, the week's first hour counted whole.
  *
  * Percents are rounded to two decimals. A hook of any of the team's sessions rewrites it when that changes it.
