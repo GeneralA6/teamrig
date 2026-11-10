@@ -1,3 +1,4 @@
+import { quantile } from '../core/quantile.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { MovedEvent, RegisterEvent } from './events.ts';
@@ -613,14 +614,6 @@ function daysBetween(from: string, to: string): number {
 function spread(values: readonly number[]): Spread {
   const sorted = [...values].sort((a, b) => a - b);
   return { count: sorted.length, median: quantile(sorted, 0.5), p85: quantile(sorted, 0.85) };
-}
-
-/** The `q` quantile of sorted values, linearly interpolated between the two nearest; null with none. */
-export function quantile(sorted: readonly number[], q: number): number | null {
-  const position = q * (sorted.length - 1);
-  const below = sorted[Math.floor(position)];
-  const above = sorted[Math.ceil(position)];
-  return below === undefined || above === undefined ? null : below + (above - below) * (position - Math.floor(position));
 }
 
 function banded(values: readonly number[], bands: readonly BandLimit[]): Band[] {
