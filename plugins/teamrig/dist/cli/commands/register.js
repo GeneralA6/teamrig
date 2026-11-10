@@ -147,19 +147,23 @@ export function warnDamage(runtime, snapshot, path) {
 }
 /**
  * `add --team <team>`: a session asks another team of its tree for work (askTeam), owned by `--owner` (a session of
- * that team, by name or id), else by that team's lead. `--team` naming the caller's own team is a plain add.
+ * that team, by name or id), else by that team's lead. `--source <register.ownerSource>` relays an owner's order, which
+ * only the lead of a team above the asked one may (T2314); any other source is refused, as the task is from the
+ * caller. `--team` naming the caller's own team is a plain add.
  */
 async function addToTeam(args, runtime, caller, asked) {
     const { team } = await findTeam(runtime);
     if (asked === team) {
         return addHere(args, runtime, caller);
     }
-    if (args.flags.has('source')) {
-        throw new UsageError("--team adds the task from you: it takes no --source, unless it names your own team");
-    }
     const from = await treeCallerOf(runtime, team, caller, asked);
+    const source = args.flags.get('source');
+    const { ownerSource } = from.config.register;
+    if (source !== undefined && source !== ownerSource) {
+        throw new UsageError(`--team adds the task from you: its one --source is ${ownerSource}, which a lead above the asked team gives to relay ${ownerSource}'s order (any source goes when --team names your own team)`);
+    }
     const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(from.config, runtime))), ...criticalOf(args.switches) };
-    const { verdict, target } = await askTeam(runtime, from, { asked, owner: args.flags.get('owner') }, input);
+    const { verdict, target } = await askTeam(runtime, from, { asked, owner: args.flags.get('owner'), ownerRelay: source !== undefined }, input);
     return report(runtime, verdict, 'ADDED', target, asked);
 }
 export async function add(args, runtime) {

@@ -95,9 +95,7 @@ export class RegisterPolicy {
      * required; under required, an owner-asked or p0/p1 task also names its goal or says it serves none (T1730).
      */
     add(input, state, elsewhere = NO_TASKS_ELSEWHERE, goalTags = NO_GOAL_TAGS) {
-        const created = this.create(input, state, (source) => this.teamSourceProblem(source), elsewhere, goalTags);
-        const unnamed = created.ok ? this.unnamedGoalProblem(created.value) : undefined;
-        return unnamed === undefined ? created : refuse(unnamed);
+        return this.withNamedGoal(this.create(input, state, (source) => this.teamSourceProblem(source), elsewhere, goalTags));
     }
     /**
      * A task a session of another team in the tree asks of this team (T1141): its source is the asker's `<team>/<id>`,
@@ -106,6 +104,22 @@ export class RegisterPolicy {
      */
     addFromTeam(input, state, elsewhere = NO_TASKS_ELSEWHERE, goalTags = NO_GOAL_TAGS) {
         return this.create(input, state, (source) => (ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the asking session's <team>/<id>`), elsewhere, goalTags);
+    }
+    /**
+     * An owner's order that a lead of a team above relays into this team (T2314): its source is this team's
+     * register.ownerSource, so it stands here as the owner's own ask, and as one it names its goal under register.goals
+     * required, as on `add`. Who may relay is the tree's rule, which the caller checks; any other source is refused, so
+     * this never stands in for addFromTeam.
+     */
+    relayFromTeam(input, state, elsewhere = NO_TASKS_ELSEWHERE, goalTags = NO_GOAL_TAGS) {
+        const { ownerSource } = this.config.register;
+        const sourceRule = (source) => (source === ownerSource ? undefined : `source ${source} is not ${ownerSource}: a relayed task is ${ownerSource}'s order`);
+        return this.withNamedGoal(this.create(input, state, sourceRule, elsewhere, goalTags));
+    }
+    /** The created task, refused when register.goals required wants it to name its goal and it names none. */
+    withNamedGoal(created) {
+        const unnamed = created.ok ? this.unnamedGoalProblem(created.value) : undefined;
+        return unnamed === undefined ? created : refuse(unnamed);
     }
     create(input, state, sourceRule, elsewhere, goalTags) {
         const fields = {
