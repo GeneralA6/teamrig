@@ -185,7 +185,7 @@ class TranscriptFold {
 /**
  * Counts a session's API use from its transcripts since the last run, as weighted tokens per UTC day and
  * hour and per task, calls, loop patterns and rule misses, and saves the totals with each transcript's read position. A transcript
- * seen for the first time (or that shrank, so it was replaced) is read from today's first line, found
+ * seen for the first time (or that shrank, so it was replaced, its held turn ending) is read from today's first line, found
  * by a binary search. One run reads at most `maxBytes`; the rest waits for the next run. A subagent's W
  * is multiplied by `subagentWeight`.
  */
@@ -210,7 +210,13 @@ export async function runMeter(deps, run) {
             continue;
         }
         const stored = cursors[path];
-        const cursor = stored !== undefined && stored.offset <= size ? stored : newCursor(await findLineAtOrAfter(deps.bytes, path, size, todayStart), size, today);
+        const shrank = stored !== undefined && stored.offset > size;
+        if (shrank && transcript.own) {
+            // The new position starts with no turn, so the turn held on the replaced one would never meet its next
+            // prompt: it ends here and reaches its tasks once, as a dropped position's turn does in pruneUsage (T2052).
+            new TurnTasks(stored.turn, (day, task, w) => tally.chargeTask(day, task, w)).prompt();
+        }
+        const cursor = stored !== undefined && !shrank ? stored : newCursor(await findLineAtOrAfter(deps.bytes, path, size, todayStart), size, today);
         if (cursor.offset === size) {
             cursors[path] = { ...cursor, size };
             continue;
