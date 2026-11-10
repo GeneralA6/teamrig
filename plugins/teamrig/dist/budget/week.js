@@ -30,21 +30,27 @@ function heldToStatus(readPct, statusUse, now) {
     return fresh ? Math.min(atLeast, Math.floor(statusUse.usedPct) + 1) : atLeast;
 }
 /**
- * The week's use at the start of the span whose W is `sinceW` and now, on the status line's scale (T531): each read
- * between the period's meter readings (`useAtW`), so a rate only prices the part of a percent past the last reading,
- * and a rate that drifts through the week does not inflate the span; the use now held to the status line's
- * (`heldToStatus`). Undefined while the period has no reading or the stores do not reach its start.
+ * The week's use now on the status line's scale (T531): read between the period's meter readings (`useAtW`), so a rate
+ * only prices the part of a percent past the last reading, and held to the status line's (`heldToStatus`). Undefined
+ * while the period has no reading or the stores do not reach its start.
  */
-function statusRiseOf(sight, sinceW) {
+function useNowOf(sight) {
     const { readings, start, covered, statusUse, weekW, wPerPct, now } = sight;
     if (start === undefined || !covered || !readings.some((reading) => reading.start === start)) {
         return undefined;
     }
     const readPct = useAtW(readings, start, weekW, wPerPct);
-    return {
-        fromPct: useAtW(readings, start, weekW - sinceW, wPerPct),
-        nowPct: statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now),
-    };
+    return statusUse === undefined ? readPct : heldToStatus(readPct, statusUse, now);
+}
+/**
+ * The week's use at the start of the span whose W is `sinceW` and now (`useNowOf`), the start read between the
+ * period's meter readings too, so a rate that drifts through the week does not inflate the span. Undefined with the
+ * use now.
+ */
+function statusRiseOf(sight, sinceW) {
+    const nowPct = useNowOf(sight);
+    const { readings, start, weekW, wPerPct } = sight;
+    return nowPct === undefined || start === undefined ? undefined : { fromPct: useAtW(readings, start, weekW - sinceW, wPerPct), nowPct };
 }
 /**
  * Today's use from the status line, in percent of the week: the rise since today's start, whose W is `todayW`
@@ -178,6 +184,8 @@ export function readWeek(input) {
     const statusToday = sight === undefined ? undefined : statusTodayPct(sight, todayW);
     const todayPct = statusToday ?? (wPerPct === undefined ? undefined : todayW / wPerPct);
     const todayWPerPct = todayRateOf(todayW, statusToday, wPerPct);
+    const useNow = sight === undefined ? undefined : useNowOf(sight);
+    const usedWPerPct = useNow === undefined || useNow <= 0 || weekW <= 0 ? wPerPct : weekW / useNow;
     const profile = DailyProfile.ofQuietHours(budget.quietHours);
     const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
     const plannedPct = window === undefined ? undefined : paceLinePct(window, budget.targetPct, dayStart + MS_PER_DAY, profile) - paceLinePct(window, budget.targetPct, todayFrom, profile);
@@ -211,6 +219,7 @@ export function readWeek(input) {
         todayFrom,
         todayW,
         todayWPerPct,
+        usedWPerPct,
         teamDay,
         pool,
         forecast: sight === undefined || reset === undefined ? undefined : forecastOf(sight, reset, wSince(states, now - FORECAST_SPAN_MS, now)),

@@ -12,8 +12,8 @@ export function workHoursSince(state, from, now) {
     return Object.entries(state.byHour).filter(([hour, w]) => w > 0 && hour >= first && hour <= last).length;
 }
 /**
- * The sessions' week (src/budget/session-week-summary.ts): each roster session's W since the week began at the team's
- * own rate, and its hours with work since then; undefined while the week or the rate is unknown.
+ * The sessions' week (src/budget/session-week-summary.ts): each roster session's W since the week began at the week's
+ * used rate (`wPerPct`), and its hours with work since then; undefined while the week or the rate is unknown.
  */
 export function sessionsWeekOf(input) {
     const { window, wPerPct, now } = input;
