@@ -69,7 +69,7 @@ export function nodeHookRunner(platform, kill = nodeTreeKill(platform), prioriti
                 if (killed !== undefined) {
                     return;
                 }
-                killed = { why, done: child.pid === undefined ? Promise.resolve() : kill(child.pid) };
+                killed = { why, done: kill(child) };
             };
             const timer = setTimeout(() => killAs('timedOut'), request.timeoutMs);
             const onStop = () => killAs('stopped');

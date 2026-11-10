@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
 import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
+import { sweepTree, windowsSweepHost } from "../delivery/tree-kill.js";
 import { nodeProgramRunner } from "../github/credentials.js";
 import { exitText, outcomeOfError } from "./processes.js";
 const CLAUDE_PROGRAM = /^claude(\.exe)?$/i;
@@ -22,8 +23,6 @@ export async function runsClaude(processes, pid) {
 export const LOOKUP_TIMEOUT_MS = 20_000;
 /** The stand-in for a SessionEnd hook gets as long as Claude Code gives its hooks by default. */
 export const FEED_TIMEOUT_MS = 60_000;
-/** taskkill's exit code when no process has the id. */
-const TASKKILL_NOT_FOUND = 128;
 /** `ps`'s arguments for every process: its id, its starter's and its command line. */
 const POSIX_LISTING = ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='];
 /** A real process id; anything else never reaches a command line. */
@@ -219,6 +218,7 @@ export function nodeSessionProcesses(options = {}) {
         process.kill(pid, sent);
     });
     const feedTimeoutMs = options.feedTimeoutMs ?? FEED_TIMEOUT_MS;
+    const sweepHost = options.sweepHost ?? windowsSweepHost;
     return {
         parentPid: options.parentPid ?? process.ppid,
         alive(pid) {
@@ -290,17 +290,14 @@ export function nodeSessionProcesses(options = {}) {
             }
             if (platform === 'win32') {
                 try {
-                    const result = await run({ program: 'taskkill', args: ['/PID', String(pid), '/T', '/F'] });
-                    if (result.end.kind === 'exited' && result.end.code === 0) {
-                        return { kind: 'ended' };
+                    const swept = await sweepTree(pid, sweepHost);
+                    if (swept === 'unlisted') {
+                        return { kind: 'failed', error: "the host's processes could not be listed, so nothing was ended" };
                     }
-                    if (result.end.kind === 'exited' && result.end.code === TASKKILL_NOT_FOUND) {
-                        return { kind: 'gone' };
-                    }
-                    return { kind: 'failed', error: exitText(result.end.kind === 'exited' ? result.end.code : null, result.stderr) };
+                    return swept === 'gone' ? { kind: 'gone' } : { kind: 'ended' };
                 }
                 catch (error) {
-                    return { kind: 'failed', error: `taskkill could not start: ${errorMessage(error)}` };
+                    return { kind: 'failed', error: `the sweep failed: ${errorMessage(error)}` };
                 }
             }
             try {
