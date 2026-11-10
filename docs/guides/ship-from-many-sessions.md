@@ -41,7 +41,8 @@ priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, the
 `delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it.
 `delivery.queue.admission: serial` keeps the line in arrival order with no cap and one heavy step at a time. A step is refused once its line has not
 moved for `delivery.queue.waitMinutes` (60), and one that runs is killed, with every process it started, after
-`delivery.queue.maxRunMinutes` (45; `--max-minutes` for one step). A test run wrapped in `teamrig test`, as
+`delivery.queue.maxRunMinutes` (45; `--max-minutes` for one step); when the host's process list cannot be read, only
+the step's own process ends, so no process that merely reuses an old id is hit. A test run wrapped in `teamrig test`, as
 above, gets both the lock and the short summary. The lock is `host.lock` in the kit home, one for every team on the
 host, unless `delivery.queue.lockPath` names another; a lock past `lockTtlMinutes` (150), or whose process is
 gone, is taken over by the next step that takes the lock (a step that shares the host leaves it).
