@@ -6001,6 +6001,25 @@ teamrig hook restore-track < stop.json
 
 Output: nothing, and exit 0 even when it could not record.
 
+### teamrig hook effort-writeback
+
+Run by Claude Code when a team session's tab closes (SessionEnd): writes an `/effort` the user typed in the session,
+with no turn after it, to its `launch.<id>.effort` in the team config, as the Stop hook does at the end of a turn
+([a typed /effort becomes the launch effort](hooks.md#end-of-a-turn-a-typed-effort-becomes-the-launch-effort)). The
+old config is kept in `backups/config.effort-<id>.json`, the change logged in `state/effort-changes.jsonl` and told
+to the session's leader in its inbox. A config with a problem is not written, and the session's next turn tries
+again.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook effort-writeback < session-end.json
+```
+
+Output: nothing, as Claude Code shows nothing at a session's end, and exit 0 even when it could not write.
+
 ### teamrig hook refresh-wake
 
 Runs in the background after a `/clear` (`asyncRewake`) and wakes the session that `/clear` started from its
