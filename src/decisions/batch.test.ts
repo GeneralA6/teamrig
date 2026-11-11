@@ -40,7 +40,7 @@ function ownerWait(id: string, statusAt: string, overrides: Partial<Task> = {}):
  * `register.requireDecisionCard`, `focus` as its team's focus classes.
  */
 function registerOf(tasks: readonly Task[], team?: string, ownerMarker = 'owner', requireGate = true, focus: DecisionFocus = DEFAULT_FOCUS): BatchRegister {
-  return { team, tasks, tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC), ownerMarker, requireGate, focus };
+  return { team, tasks, tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC), ownerMarker, requireGate, focus, dedicatedOwners: [] };
 }
 
 /** The input of a batch whose Improvements day is a Wednesday, so NOW (a Tuesday) is not it. */
@@ -79,6 +79,17 @@ describe('the decision batch', () => {
     const tasks = [ownerWait('T1', '2030-01-08T09:00:00.000Z'), ownerWait('T2', '2030-01-08T09:00:00.000Z', { card: TEST_CARD })];
     assert.deepEqual(ids(decisionBatch(inputOf(tasks, undefined)).pending), ['T1']);
     assert.deepEqual(ids(decisionBatch({ ...inputOf([], undefined), registers: [registerOf(tasks, undefined, 'owner', false)] }).pending), ['T1', 'T2']);
+  });
+
+  // T868: the owner decides a core-business session's waits in its own meeting, never from a batch.
+  it("leaves out the waits of its register's dedicated sessions, from the batch and its triggers", () => {
+    const urgent = ownerWait('T2', '2030-01-08T09:00:00.000Z', { owner: 'pricing', due: '2030-01-08 12:00' });
+    const tasks = [ownerWait('T1', '2030-01-08T09:00:00.000Z'), urgent];
+    const batch = decisionBatch({ ...inputOf([], undefined), registers: [{ ...registerOf(tasks), dedicatedOwners: ['pricing'] }] });
+    assert.deepEqual([ids(batch.pending), batch.trigger], [['T1'], undefined]);
+    const undedicated = decisionBatch(inputOf(tasks, undefined));
+    const deadline = { kind: 'deadline', task: urgent, team: undefined, due: Date.parse('2030-01-08T12:00:00Z') };
+    assert.deepEqual([ids(undedicated.pending), undedicated.trigger], [['T2', 'T1'], deadline], 'while no session is dedicated, T2 is due first');
   });
 
   it('counts every wait not yet asked when no batch was ever asked', () => {

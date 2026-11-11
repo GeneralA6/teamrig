@@ -3,7 +3,7 @@ import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { isImprovementsDay, waitsForWeeklyBatch, type DecisionFocus } from '../meeting/decision-order.ts';
 import type { Task } from '../register/fold.ts';
-import { askableSince, asksOwner } from '../register/owner-waits.ts';
+import { askableSince, asksOwner, isDedicated } from '../register/owner-waits.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { taskLabel } from '../register/views.ts';
 
@@ -17,7 +17,8 @@ import { taskLabel } from '../register/views.ts';
  * stays out of the batch until its time passed, and then counts from that time (askableSince), so it is asked again.
  * A wait whose decision frees only Improvements work (waitsForWeeklyBatch, the agenda's rule) is asked only on
  * `focus.improvementsDay`: another day it is held, out of the batch and its triggers; on that day only an ask that day
- * asks it, so it is asked again each week while it waits, as the agenda shows it each one.
+ * asks it, so it is asked again each week while it waits, as the agenda shows it each one. A wait of a session in its
+ * register's `decisions.dedicatedOwners` (T868) is in no batch: the owner decides it in that session's own meeting.
  */
 
 /** Milliseconds after midnight UTC of a valid `HH:MM`. */
@@ -90,6 +91,8 @@ export interface BatchRegister {
   readonly requireGate: boolean;
   /** Its `focus` classes, which say whether a wait frees only Improvements work (waitsForWeeklyBatch). */
   readonly focus: DecisionFocus;
+  /** Its `decisions.dedicatedOwners`: their waits are left out, for their dedicated meetings (isDedicated, T868). */
+  readonly dedicatedOwners: readonly string[];
 }
 
 /** The keys of the team's `decisions` config that time a batch. */
@@ -148,9 +151,13 @@ export function waitsOfTeams(batch: DecisionBatch, teams: readonly string[]): De
   return { ...batch, pending: batch.pending.filter(held), overdue: batch.overdue.filter(held), weekly: batch.weekly.filter(held) };
 }
 
-/** A register's waits the lead asks the owner now (asksOwner), in its plan order, each with its {@link BatchRow} facts. */
-function rowsOf({ team, tasks, tree, ownerMarker, requireGate, focus }: BatchRegister, now: number, today: boolean): BatchRow[] {
-  return tree.inPlanOrder([...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))).map((task) => {
+/**
+ * A register's waits the lead asks the owner now (asksOwner) but those of its dedicated sessions, in its plan order,
+ * each with its {@link BatchRow} facts.
+ */
+function rowsOf({ team, tasks, tree, ownerMarker, requireGate, focus, dedicatedOwners }: BatchRegister, now: number, today: boolean): BatchRow[] {
+  const asked = [...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context) && !isDedicated(task, dedicatedOwners));
+  return tree.inPlanOrder(asked).map((task) => {
     const weekly = waitsForWeeklyBatch(task, tree, focus);
     const since = askableSince(task, tree.context);
     return { wait: { task, team, tree }, weekly, since: weekly && today ? Math.max(since, utcMidnightOf(now)) : since };

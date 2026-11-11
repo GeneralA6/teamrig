@@ -36,7 +36,7 @@ function tasksOf(...tasks: readonly Task[]): Map<string, Task> {
 
 /** The team's own register of `tasks`, its marker for the owner `owner`, on `zone`'s clock. */
 function own(tasks: ReadonlyMap<string, Task>, zone = TimeZone.UTC): DecisionRegister {
-  return { team: undefined, tasks, ownerMarker: 'owner', requireGate: true, zone, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking(), focus: DEFAULT_FOCUS };
+  return { team: undefined, tasks, ownerMarker: 'owner', requireGate: true, zone, elsewhere: NO_TASKS_ELSEWHERE, ranking: testRanking(), focus: DEFAULT_FOCUS, dedicatedOwners: [] };
 }
 
 const TASKS = tasksOf(ownerWait('T1', '2030-01-07T08:00:00.000Z'), ownerWait('T2', '2030-01-08T09:00:00.000Z'));
@@ -94,6 +94,16 @@ describe("a team's decision batch", () => {
       "the own register's first; a wait on another marker than its register's own is no wait on the owner",
     );
     assert.deepEqual(batch.trigger, { kind: 'deadline', task: urgent, team: 'ui', due: Date.parse('2030-01-08T12:00:00Z') }, "ui's 14:00 is on ui's clock");
+  });
+
+  it("leaves out the waits of each register's own dedicated sessions (T868)", async () => {
+    const webTasks = tasksOf(ownerWait('T1', '2030-01-08T09:00:00.000Z'), testTask({ ...ownerWait('T2', '2030-01-08T09:00:00.000Z'), owner: 'pricing' }));
+    const web: DecisionRegister = { ...own(webTasks), team: 'web', dedicatedOwners: ['pricing'] };
+    const batch = await teamDecisions(new MemoryFiles(), PATHS, CONFIG, [own(TASKS), web], NOW);
+    assert.deepEqual(
+      batch.pending.map((wait) => taskLabel(wait.task, wait.team)),
+      ['T1', 'T2', 'web/T1'],
+    );
   });
 
   // T2113: the team's focus.improvementsDay says when a wait that frees only Improvements work is asked.
