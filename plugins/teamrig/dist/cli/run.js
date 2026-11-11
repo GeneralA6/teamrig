@@ -227,7 +227,7 @@ const COMMANDS = {
     'worktree add': { effect: 'write', flags: ['repo'], load: async () => (await worktreeCommands()).add },
     'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
     test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
-    queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb'], switches: ['small', 'exclusive', 'pre-push'], rest: true, load: async () => (await queueCommand()).queue },
+    queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
     withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
     pipeline: { effect: 'read', flags: [], load: async () => (await pipelineCommand()).pipeline },
     merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
@@ -693,7 +693,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       origin/HEAD names, as teamrig merge leaves it. --delete-branch: deletes its branch too, once every
       commit of it is on --base (default the branch origin/HEAD names), even when git stops partway, as
       a rerun no longer knows the branch; --dry-run: prints the steps
-  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--memory-mb <MB>] [--small] [--exclusive] [--pre-push] -- <command ...>   runs one queued step
+  queue --what <label> [--session <id|name>] [--max-minutes <n>] [--kind <kind>] [--task <T id>] [--memory-mb <MB>] [--small] [--exclusive] [--pre-push] [--detach] -- <command ...>   runs one queued step
       (a build, a test run, a database script) in its turn under the host lock, so the host runs only what its memory allows, and at
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
@@ -721,7 +721,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       step sharing it to end, and a step waiting behind it is told which. --pre-push (a git pre-push hook's checks): on a clean tree
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
-      connection may have closed meanwhile: push again, it reuses the pass
+      connection may have closed meanwhile: push again, it reuses the pass. --detach (a step longer than a
+      Bash tool's wait): prints QUEUED <id> at once and runs the step hidden as queue --detached-run <id>
+      (set only by --detach), which outlives its shell, so no shell watch stops it, its output and lines in
+      <delivery dir>/detached/<id>.log; its session's inbox gets a line when it starts and a waking one
+      when it ends or is refused. Refused with --pre-push and under a live host lock
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
       host lock (queue, merge, deploy) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
