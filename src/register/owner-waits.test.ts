@@ -6,7 +6,7 @@ import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { Task } from './fold.ts';
-import { askableSince, asksOwner, deferredUntil, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, type OwnerCards } from './owner-waits.ts';
+import { askableSince, asksOwner, deferredUntil, isDedicated, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, type OwnerCards } from './owner-waits.ts';
 import { TaskTree, type TreeRanking } from './tree.ts';
 import { waitContext, type WaitReason } from './waits.ts';
 
@@ -26,6 +26,12 @@ describe('the waits on the owner', () => {
     assert.equal(waitsOnOwner(testTask({ status: 'waiting', waits: [{ kind: 'decision', who: 'alpha' }] }), 'owner'), false);
     assert.equal(waitsOnOwner(testTask({ status: 'waiting', waits: [{ kind: 'task', id: 'T1' }] }), 'owner'), false);
     assert.equal(waitsOnOwner(testTask({ status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }] }), 'owner'), true, "a verifying task's proof");
+  });
+
+  it('knows a task its owner decides with the owner in a dedicated meeting by its owning session alone (T868)', () => {
+    assert.equal(isDedicated(decide(), ['alpha']), true);
+    assert.equal(isDedicated(decide(), ['pricing']), false, 'another session');
+    assert.equal(isDedicated(decide(), []), false, 'no dedicated session');
   });
 
   it("knows a decision on the owner whose card names no gate, and leaves an approval and a missing card out", () => {
