@@ -536,6 +536,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
   hook meeting-due
       (run by the plugin's mod: the OS notification at a scheduled meeting's time)
+  hook update-check | hook update-dismiss | hook update-apply
+      (run by the plugin's mod: the band telling of a newer teamrig or teamrig-pane, its Update and Dismiss)
   hook refresh-mid | hook compact-check
       (run by the plugin's mod: asks for the handover within a long turn, and holds a compaction while it is due)
   hook slash-command
