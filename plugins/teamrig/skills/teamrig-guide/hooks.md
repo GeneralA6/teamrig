@@ -1310,8 +1310,9 @@ once per version; when that read fails, the record stays as it was and the next 
 
 The first failure of an expiry in a team's tab also pages the owner, once per expiry: one line naming the tab and the
 time on its team's clock, posted to the chat webhook of the tab's team or the first team above it that names one,
-read from the one-line file [alerts.pageWebhookFile] names (it wins) or the environment variable
-[alerts.pageWebhookEnv] names. The post goes out after the lock is let go, so a slow chat holds up no other tab, and
+read from the file [alerts.pageWebhookFile] names (it wins: its first non-empty line, or the value of the key
+[alerts.pageWebhookKey] names, so a secrets file of many keys is read in place) or the environment variable
+[alerts.pageWebhookEnv] names; a URL that is not https pages no one. The post goes out after the lock is let go, so a slow chat holds up no other tab, and
 logs `login: paged the owner through <team>'s alerts.<key>`; a failed one logs `login: the page to the owner failed
 (<problem>); the next failure pages` and gives the claim back, so the next tab to fail pages. The log never holds the
 URL or the file's path. With no team naming a webhook, nothing pages.
