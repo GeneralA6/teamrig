@@ -1746,26 +1746,34 @@ describe('parseConfig: the decision card', () => {
 });
 
 describe('parseConfig: the owner decision batches', () => {
-  it('reads no batch times and a batch at 5 by default', () => {
-    assert.deepEqual(parseConfig(ROSTER).config.decisions, { batchTimesUtc: [], batchAt: 5 });
+  it('reads no batch times, a batch at 5 and no dedicated owners by default', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.decisions, { batchTimesUtc: [], batchAt: 5, dedicatedOwners: [] });
   });
 
-  it('keeps valid batch times and count', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 0 } });
-    assert.deepEqual([issues, config.decisions], [[], { batchTimesUtc: ['13:03', '19:03'], batchAt: 0 }]);
+  it('keeps valid batch times, count and dedicated owners', () => {
+    const decisions = { batchTimesUtc: ['13:03', '19:03'], batchAt: 0, dedicatedOwners: ['ledger', 'pricing'] };
+    const { config, issues } = parseConfig({ ...ROSTER, decisions });
+    assert.deepEqual([issues, config.decisions], [[], decisions]);
   });
 
   it('drops a time that is no HH:MM and falls back on a count out of bounds', () => {
     const { config, issues } = parseConfig({ ...ROSTER, decisions: { batchTimesUtc: ['13:03', '25:00'], batchAt: 51 } });
     assert.deepEqual(paths(issues).sort(), ['decisions.batchAt', 'decisions.batchTimesUtc[1]']);
-    assert.deepEqual(config.decisions, { batchTimesUtc: ['13:03'], batchAt: 5 });
+    assert.deepEqual(config.decisions, { batchTimesUtc: ['13:03'], batchAt: 5, dedicatedOwners: [] });
+  });
+
+  it('drops a dedicated owner that is no session name, and refuses a list past its cap', () => {
+    const named = parseConfig({ ...ROSTER, decisions: { dedicatedOwners: ['ledger', 'Ledger Team'] } });
+    assert.deepEqual([paths(named.issues), named.config.decisions.dedicatedOwners], [['decisions.dedicatedOwners[1]'], ['ledger']]);
+    const many = parseConfig({ ...ROSTER, decisions: { dedicatedOwners: Array.from({ length: 33 }, (_, index) => `area${index}`) } });
+    assert.deepEqual([paths(many.issues), many.config.decisions.dedicatedOwners], [['decisions.dedicatedOwners'], []]);
   });
 
   // T2256: the meeting asks only in plain text, so a config still naming askWith is told to delete it.
   it('flags askWith as no longer read, whatever its value, and reads the rest', () => {
     for (const askWith of ['picker', 'text', 'cards', true]) {
       const { config, issues } = parseConfig({ ...ROSTER, decisions: { askWith, batchAt: 3 } });
-      assert.deepEqual([paths(issues), config.decisions], [['decisions.askWith'], { batchTimesUtc: [], batchAt: 3 }]);
+      assert.deepEqual([paths(issues), config.decisions], [['decisions.askWith'], { batchTimesUtc: [], batchAt: 3, dedicatedOwners: [] }]);
       assert.match(issues[0]?.message ?? '', /is no longer read: the daily meeting asks the owner each decision in plain text.*; delete it$/);
     }
   });

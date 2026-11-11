@@ -132,6 +132,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   maxOwnerDecisions: 'focus.maxOwnerDecisions',
   shareFloorPct: 'budget.shareFloorPct',
   decisionBatchTimes: 'decisions.batchTimesUtc',
+  dedicatedOwners: 'decisions.dedicatedOwners',
   decisionBatchAt: 'decisions.batchAt',
   chainNudgeAt: 'loops.chainNudgeAt',
   leadOwnPaths: 'leadBoundary.ownPaths',

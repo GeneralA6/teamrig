@@ -976,6 +976,11 @@ export interface DecisionsConfig {
   readonly batchTimesUtc: readonly string[];
   /** A batch is due once this many waits on the owner are not yet asked; 0: never by count. */
   readonly batchAt: number;
+  /**
+   * Sessions that own a team's core-business areas: the owner decides their waits in a dedicated meeting with the
+   * session and its full brief, never from a daily card or a batch (T868).
+   */
+  readonly dedicatedOwners: readonly string[];
 }
 
 /**
