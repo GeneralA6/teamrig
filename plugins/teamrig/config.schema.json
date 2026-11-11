@@ -1255,6 +1255,13 @@
           "minimum": 0,
           "maximum": 50,
           "default": 5
+        },
+        "dedicatedOwners": {
+          "description": "Sessions that own the team's core-business areas. The owner never decides their waits from a daily card or a batch: the meeting agenda lists them under DEDICATED, by owning session, with the line that books that session a dedicated meeting after the daily and asks it for a full brief by then.",
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/sessionName" },
+          "default": []
         }
       }
     },

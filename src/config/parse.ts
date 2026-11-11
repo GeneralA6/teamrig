@@ -512,6 +512,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     decisions: {
       batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
       batchAt: read.integer(decisions, 'batchAt', 'decisions', DEFAULT_DECISIONS.batchAt, CONFIG_LIMITS.decisionBatchAt),
+      dedicatedOwners: read.stringList(decisions, 'dedicatedOwners', 'decisions', DEFAULT_DECISIONS.dedicatedOwners, isSessionName, CONFIG_LIMITS.dedicatedOwners.maxItems),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
