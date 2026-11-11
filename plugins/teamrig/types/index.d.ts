@@ -22,11 +22,19 @@ export type TeamrigBand =
   | { readonly kind: 'waiting'; readonly by: 'activity' | 'button'; readonly secondsLeft: number }
   | { readonly kind: 'held'; readonly why: string }
 
+/**
+ * The update band above the prompt (src/mod/update-hand.ts UpdateNotice): the plugin a newer version is published
+ * of, its marketplace, the version installed and the newest one. The update hand writes it each time the update it
+ * shows changes, null when it shows none, and the band's drawing reads it.
+ */
+export type TeamrigUpdate = { readonly plugin: string; readonly marketplace: string; readonly installed: string; readonly newest: string }
+
 declare module 'claude-code' {
   interface PluginState {
     teamrig: {
       reload: TeamrigReload
       band: TeamrigBand | null
+      update: TeamrigUpdate | null
     }
   }
 }

@@ -293,3 +293,95 @@ describe("the band before a refresh's /clear", () => {
     expect(await band.drawn()).toMatchObject({ type: 'Text', children: [ENGINE_ROW] });
   });
 });
+
+/** The update hand's first check, a minute after the mod loads (src/mod/update-hand.ts UPDATE_FIRST_MS). */
+const FIRST_CHECK = 60_000;
+const TEAMRIG_UPDATE = { plugin: 'teamrig', marketplace: 'teamrig', installed: '0.332.0', newest: '0.333.0' };
+const PANE_UPDATE = { plugin: 'teamrig-pane', marketplace: 'teamrig-pane', installed: '0.40.0', newest: '0.41.0' };
+
+/** A tab with no refresh asked: the clock, each `hook update-*` run with its stdin, and the toasts shown. */
+interface UpdateTab {
+  readonly clock: MockClock;
+  readonly runs: CliRun[];
+  readonly toasts: string[];
+}
+
+/** An interactive tab whose CLI tells of a newer teamrig and teamrig-pane, and updates or dismisses either. */
+async function updateTab($: Engine, on: On): Promise<UpdateTab> {
+  const tab: UpdateTab = { clock: mock.clock(on, { now: 1_000_000 }), runs: [], toasts: [] };
+  on('session.id', () => ({ value: TAB }));
+  on('session.cwd', () => ({ value: '/work/app' }));
+  on('session.root', () => ({ value: '/work/app' }));
+  on('ui.log', () => ({ value: undefined }));
+  on('ui.toast', (_$, e) => {
+    tab.toasts.push(e.text);
+    return { value: undefined };
+  });
+  on('fs.exists', () => ({ value: false }));
+  on('process.run', (_$, e) => {
+    const command = e.argv.at(-1);
+    const stdin = e.init?.stdin;
+    const answers: Readonly<Record<string, unknown>> = {
+      'update-check': { kind: 'notices', notices: [TEAMRIG_UPDATE, PANE_UPDATE] },
+      'update-apply': { kind: 'applied', plugin: 'teamrig', version: '0.333.0' },
+      'update-dismiss': { kind: 'dismissed' },
+    };
+    const answer = command === undefined ? undefined : answers[command];
+    if (answer !== undefined) {
+      tab.runs.push({ command, stdin: JSON.parse(stdin ?? 'null') });
+    }
+    return {
+      value: {
+        exitCode: answer === undefined ? 1 : 0,
+        stdout: answer === undefined ? '' : `${JSON.stringify(answer)}\n`,
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return Text({ children: ENGINE_ROW });
+  });
+  on('session.start', (_$, e) => ({ cwd: e.cwd }));
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true });
+  return tab;
+}
+
+describe('the band telling of a newer plugin', () => {
+  test('shows nothing before the first check, then names the update with Update and Dismiss, no digits', async ($, on) => {
+    const tab = await updateTab($, on);
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    await tab.clock.advance(FIRST_CHECK - 1);
+    expect(tab.runs).toEqual([]);
+    expect(await band.drawn()).toMatchObject({ type: 'Text', children: [ENGINE_ROW] });
+    await tab.clock.advance(1);
+    expect(tab.runs).toEqual([{ command: 'update-check', stdin: {} }]);
+    expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: teamrig 0.333.0 is out (you run 0.332.0)');
+    expect(await buttonsOf(band)).toEqual([['update-plugin', undefined], ['dismiss-update', undefined]]);
+  });
+
+  test('Update installs the shown plugin, toasts it and shows the next update', async ($, on) => {
+    const tab = await updateTab($, on);
+    await tab.clock.advance(FIRST_CHECK);
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    await band.press({ key: 'update-plugin' });
+    await tab.clock.settle();
+    expect(tab.runs.at(-1)).toEqual({ command: 'update-apply', stdin: { plugin: 'teamrig' } });
+    expect(tab.toasts).toEqual(['teamrig 0.333.0 installed: the tab reloads it']);
+    expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: teamrig-pane 0.41.0 is out (you run 0.40.0)');
+  });
+
+  test('Dismiss hides the shown version, and the next check runs 10 minutes on', async ($, on) => {
+    const tab = await updateTab($, on);
+    await tab.clock.advance(FIRST_CHECK);
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    await band.press({ key: 'dismiss-update' });
+    await tab.clock.settle();
+    expect(tab.runs.at(-1)).toEqual({ command: 'update-dismiss', stdin: { plugin: 'teamrig', version: '0.333.0' } });
+    expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: teamrig-pane 0.41.0 is out (you run 0.40.0)');
+    await tab.clock.advance(10 * 60_000);
+    expect(tab.runs.filter((each) => each.command === 'update-check').length).toBe(2);
+  });
+});
