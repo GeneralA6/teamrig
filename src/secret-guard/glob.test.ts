@@ -106,6 +106,17 @@ describe('braceAlternatives', () => {
     assert.deepEqual(braceAlternatives('[{]a,b', 8), ['[{]a,b']);
     assert.deepEqual(braceAlternatives('[]{a,b}]', 8), ['[]{a,b}]']);
     assert.deepEqual(braceAlternatives('a{b', 8), ['a{b']);
+    assert.deepEqual(braceAlternatives('[a{b', 8), ['[a{b']);
+  });
+
+  it('reads a [...] set as ripgrep does: a / and a { in it are members, a ! or ^ negates, a ] may come first', () => {
+    assert.deepEqual(braceAlternatives('{[{/],*.pem}', 8), ['[{/]', '*.pem']);
+    assert.deepEqual(braceAlternatives('{[{/],.env*}', 8), ['[{/]', '.env*']);
+    assert.deepEqual(braceAlternatives('*.{[{/],pem}', 8), ['*.[{/]', '*.pem']);
+    assert.deepEqual(braceAlternatives('{[{/]x,*.key}', 8), ['[{/]x', '*.key']);
+    assert.deepEqual(braceAlternatives('{[!/{],*.pem}', 8), ['[!/{]', '*.pem']);
+    assert.deepEqual(braceAlternatives('{[^]{],*.pem}', 8), ['[^]{]', '*.pem']);
+    assert.deepEqual(braceAlternatives('{[!]{],*.pem}', 8), ['[!]{]', '*.pem']);
     assert.deepEqual(braceAlternatives('a{b{c,d}', 8), ['a{bc', 'a{bd']);
   });
 

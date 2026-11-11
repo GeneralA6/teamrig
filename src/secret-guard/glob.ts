@@ -117,13 +117,19 @@ function tokenEnd(glob: string, index: number): number {
   return glob[index] === '\\' ? index + 2 : (setEnd(glob, index) ?? index + 1);
 }
 
-/** The index after a `[...]` set that starts at `index`, read as {@link globPart} reads one; undefined for no set. */
+/**
+ * The index after a `[...]` set that starts at `index`, read as ripgrep reads one: a `!` or `^` after the `[` negates,
+ * the first member may be a `]`, and a `/` is a member like any other, so `{[{/],*.pem}` holds the set `[{/]` and the
+ * choice `*.pem`. Undefined for no set, or one that never closes: ripgrep refuses that glob, and reading its `[` as a
+ * plain character spells out more choices, the safe side.
+ */
 function setEnd(glob: string, index: number): number | undefined {
   if (glob[index] !== '[') {
     return undefined;
   }
-  const close = glob.indexOf(']', index + 2);
-  return close !== -1 && !glob.slice(index + 1, close).includes('/') ? close + 1 : undefined;
+  const first = glob[index + 1] === '!' || glob[index + 1] === '^' ? index + 2 : index + 1;
+  const close = glob.indexOf(']', first + 1);
+  return close === -1 ? undefined : close + 1;
 }
 
 /**
