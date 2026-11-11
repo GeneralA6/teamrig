@@ -144,6 +144,10 @@ export interface TeamPaths {
   readonly verifyNotices: string;
   /** The model notices each session's Stop hook already showed, `<id>.json` each. */
   readonly modelNotices: string;
+  /** How far each session's typed `/effort` lines were written back to its `launch` entry, `<id>.json` each (T2441). */
+  readonly effortWriteback: string;
+  /** One line per effort a typed `/effort` wrote back to the config: who, from, to, and the old config's copy. */
+  readonly effortChanges: string;
   /** The warnings no session owns the lead was told of, with when a start last saw each, so each is told once while it stands (T951). */
   readonly unownedNotices: string;
   /** Held while a start tells the lead of those warnings, so two starts never tell one twice. */
@@ -295,6 +299,8 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     notes: join(home, 'notes'),
     verifyNotices: join(state, 'verify-notices.jsonl'),
     modelNotices: join(state, 'model-notices'),
+    effortWriteback: join(state, 'effort-writeback'),
+    effortChanges: join(state, 'effort-changes.jsonl'),
     unownedNotices: join(state, 'unowned-notices.json'),
     unownedNoticesLock: join(state, 'unowned-notices.lock'),
     usage: join(state, 'usage'),
