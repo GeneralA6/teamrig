@@ -2283,6 +2283,11 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
   has a stored class other than Roadmap and Maintenance and none is an expedite; a task with no stored class stays
   daily. The batch comes after the daily cards on the UTC weekday `[focus.improvementsDay]` names, and no other day
   shows it;
+- `DEDICATED`: the waits on the owner of the core-business sessions `[decisions.dedicatedOwners]` names, left out of
+  `DECISIONS` and grouped by owning session, the lead's team's first, then each team's under it as `<team>/<session>`,
+  each on its own team's list: never a card. Each group ends with its `brief:` line, an `add` giving the session a p1
+  task to have a full brief ready by a slot after the daily, and its `book:` line, the `meeting schedule` that books
+  that session's own meeting at the slot (a team under the lead's books it from that team's lead); no block when none;
 - `INCIDENTS`: the active bugs and critical tasks of the Maintenance class, the lead's team's first, then those of
   each team under it; no block when none;
 - `LATER`: the cards the owner put off to a time still to come, each with its time, back in `DECISIONS` once it
@@ -2598,6 +2603,9 @@ batch, as on the agenda (since 0.320.0). Off `focus.improvementsDay` (a UTC week
 out of the batch and every trigger above, even when due, and named after the head on one line, `IMPROVEMENTS <n>
 held for the weekly Improvements batch on wed UTC (focus.improvementsDay): T5, web/T7`. On that day it is in the
 batch, and only an ask that day counts, so it is asked again each week while it waits.
+
+A wait of a session its team's `decisions.dedicatedOwners` names is in no batch and fires no trigger, even when due:
+the owner decides it in that session's own meeting (the agenda's `DEDICATED`).
 
 The lead's `start` and `check` print one `DECISIONS batch due (<why>)` line while a batch is due, and nothing
 otherwise; other sessions get no line. A new owner wait's inbox line to the lead ends with when the owner hears of
