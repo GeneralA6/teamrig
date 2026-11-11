@@ -214,21 +214,23 @@ function dedicatedGroups(register: AgendaRegister, team: string | undefined): De
 }
 
 /**
- * A group's rows, then the line that books its session the dedicated meeting: the owner's task asking it for the
- * full brief by the slot, and who opens the meeting then: `meet` reads its own team's register, so a team under the
- * lead's opens it from that team's lead.
+ * A group's rows, then its two lines: `brief:`, the owner's task asking the session for the full brief by the slot,
+ * and `book:`, the scheduled meeting at that slot (`meeting schedule`), which notifies at its time, lists on the
+ * agenda's MEETINGS and shows missed once past it, so no one has to remember the slot. `meeting schedule` books in its
+ * caller's own team, so a team under the lead's books it from that team's lead.
  */
 function dedicatedGroupLines(group: DedicatedGroup, input: AgendaInput): string[] {
   const { owner, team, tasks, tree } = group;
-  const ids = tasks.map((task) => task.id).join(', ');
+  const ids = tasks.map((task) => task.id);
   const into = team === undefined ? '' : ` --team ${team}`;
   const brief = `A full brief for ${input.ownerMarker}'s dedicated meeting, in this task's files: context, data, each option with its numbers and risks, your recommendation.`;
-  const opens = team === undefined ? `${input.command} meet ${owner}` : `team ${team}'s lead runs ${input.command} meet ${owner}`;
+  const booker = team === undefined ? input.lead : `<${team}'s lead>`;
+  const schedule = `${input.command} meeting schedule --meets ${owner} --at "<slot>" --about "${input.ownerMarker}'s core-business decisions" --tasks ${ids.join(',')} --session ${booker}`;
   return [
     `  ${team === undefined ? owner : `${team}/${owner}`}: ${tasks.length} decision(s)`,
     ...tasks.map((task) => `  ${rowOf(task, tree, team)}`),
-    `    book: ${input.command} add${into} --owner ${owner} --source ${input.ownerMarker} --priority p1 --due <slot date> --title "Dedicated meeting with ${input.ownerMarker} at <slot>: brief on ${ids}" --description "${brief}" --session ${input.lead}`,
-    `    at the slot: ${opens}`,
+    `    brief: ${input.command} add${into} --owner ${owner} --source ${input.ownerMarker} --priority p1 --due <slot date> --title "Dedicated meeting with ${input.ownerMarker} at <slot>: brief on ${ids.join(', ')}" --description "${brief}" --session ${input.lead}`,
+    `    book: ${team === undefined ? schedule : `team ${team}'s lead runs ${schedule}`}`,
   ];
 }
 
@@ -246,7 +248,7 @@ function dedicatedLines(input: AgendaInput): string[] {
   return [
     `DEDICATED ${count} waiting on ${input.ownerMarker} in core-business areas: never a card; each owning session's own meeting after the daily`,
     ...groups.flatMap((group) => dedicatedGroupLines(group, input)),
-    `  Agree a slot after the daily with ${input.ownerMarker} for each session and book it once with its line; at the slot the session brings its own cards with its brief and records each answer. Record none here.`,
+    `  Agree a slot after the daily with ${input.ownerMarker} for each session, then run its brief and book lines once; at the slot ${input.ownerMarker} starts the meeting in the session's tab (meeting start M<n>), and the session brings its own cards with its brief and records each answer. Record none here.`,
   ];
 }
 
