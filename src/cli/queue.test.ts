@@ -23,10 +23,10 @@ const LOCK = join(KIT, 'host.lock');
 const SHARED = `${LOCK}.shared`;
 const MINUTE = 60_000;
 
-/** The team config naming admission `serial`, the default, where a heavy step takes the lock file. */
+/** The team config naming admission `serial`, where a heavy step takes the lock file. */
 const SERIAL = { ...TEAM, delivery: { queue: { admission: 'serial' } } };
 
-/** The team config with admission `pipeline`, where a heavy step shares the host. */
+/** The team config naming admission `pipeline`, the default, where a heavy step shares the host. */
 const PIPELINE = { ...TEAM, delivery: { queue: { admission: 'pipeline' } } };
 
 /** The line of a heavy step admitted at `stamp` as the only heavy share, its 2048 MB held, with roomy free memory. */
@@ -92,8 +92,8 @@ function ranBefore(session: string, what: string, peakTreeMb: number, also: RanA
 }
 
 describe('teamrig queue', () => {
-  it('shares the host as a heavy step under delivery.queue.admission pipeline, its share marked heavy and the lock file free, recorded as not shared (T2210)', async () => {
-    const { kit, steps } = harness(PIPELINE);
+  it('shares the host as a heavy step under the default admission, pipeline, its share marked heavy and the lock file free, recorded as not shared (T2250)', async () => {
+    const { kit, steps } = harness();
     let whileRunning: unknown[] = [];
     steps.ends(0, 5 * MINUTE).whileRunning(async () => {
       whileRunning = [kit.files.get(LOCK), JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? '{}')];
@@ -108,8 +108,8 @@ describe('teamrig queue', () => {
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:02.000Z', exitCode: 0 }], 'a heavy share is not recorded as shared: that marks a small step');
   });
 
-  it('runs the command under the host lock with the default admission, serial, records its start and end, and prints DONE (T2250)', async () => {
-    const { kit, steps } = harness();
+  it('runs the command under the host lock with delivery.queue.admission serial, records its start and end, and prints DONE', async () => {
+    const { kit, steps } = harness(SERIAL);
     let lockWhileRunning: unknown;
     steps.ends(0, 5 * MINUTE).whileRunning(async () => {
       lockWhileRunning = JSON.parse(kit.files.get(LOCK) ?? '{}');
@@ -154,6 +154,7 @@ describe('teamrig queue', () => {
     assert.deepEqual(result, {
       code: 1,
       stdout: [
+        heavyShared('2030-01-08 10:00:02 UTC'),
         '2030-01-08 10:00:02 UTC running: build api (killed after 45m)',
         '2030-01-08 10:45:02 UTC timed out after 45m: killed its process tree',
         'TIMED OUT killed, recorded as exit 124',
@@ -180,7 +181,7 @@ describe('teamrig queue', () => {
   it('kills the step after --max-minutes', async () => {
     const { kit, steps } = harness();
     const result = await kit.run(['queue', '--session', 'alpha', '--what', 'replay', '--max-minutes', '90', '--', 'npm', 'run', 'replay'], { steps });
-    assert.equal(result.stdout[0], '2030-01-08 10:00:02 UTC running: replay (killed after 1h30m)');
+    assert.equal(result.stdout[1], '2030-01-08 10:00:02 UTC running: replay (killed after 1h30m)');
     assert.equal(steps.ran[0]?.timeoutMs, 90 * MINUTE);
   });
 
@@ -211,11 +212,11 @@ describe('teamrig queue', () => {
     const { kit, steps } = harness();
     steps.ends(0, MINUTE);
     const result = await kit.run(BUILD, { steps, timeZone: 'Asia/Jerusalem' });
-    assert.deepEqual(result.stdout, ['2030-01-08 12:00:02 IST running: build api (killed after 45m)', 'DONE exit 0']);
+    assert.deepEqual(result.stdout, [heavyShared('2030-01-08 12:00:02 IST'), '2030-01-08 12:00:02 IST running: build api (killed after 45m)', 'DONE exit 0']);
   });
 
-  it('waits for a held lock, and refuses when the wait ran past the cutoff, recording its refusal', async () => {
-    const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '10:30' } } });
+  it('waits for a held lock, and refuses when the wait ran past the cutoff, recording its refusal, with delivery.queue.admission serial', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '10:30' }, queue: { admission: 'serial' } } });
     await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     assert.deepEqual(result, {
@@ -302,8 +303,8 @@ describe('teamrig queue', () => {
     assert.deepEqual([steps.ran, kit.files.get(LOCK), ledgerOf(kit), starters.openWatches], [[], heldBy(), [refusal], 0]);
   });
 
-  it('kills a running step once the shell that started it ended, records exit 129 and frees the lock', async () => {
-    const { kit, steps } = harness();
+  it('kills a running step once the shell that started it ended, records exit 129 and frees the lock with delivery.queue.admission serial', async () => {
+    const { kit, steps } = harness(SERIAL);
     const starters = new FakeStarterWatch();
     steps.ends(0, MINUTE).whileRunning(async () => starters.end());
     const result = await kit.run(BUILD, { steps, starters });
@@ -340,6 +341,7 @@ describe('teamrig queue', () => {
     const result = await kit.run(BUILD, { steps, starters: new FakeStarterWatch([]) });
     assert.deepEqual(result.stdout, [
       '2030-01-08 10:00:00 UTC could not list the processes that started this one: the step runs on if its shell ends',
+      heavyShared('2030-01-08 10:00:02 UTC'),
       '2030-01-08 10:00:02 UTC running: build api (killed after 45m)',
       'DONE exit 0',
     ]);
@@ -754,7 +756,7 @@ describe('teamrig queue --pre-push', () => {
     const { kit, steps } = harness();
     const trees = new FakeTrees(cleanTree());
     steps.ends(0, MINUTE);
-    const ran = ['2030-01-08 10:00:02 UTC running: pre-push checks (killed after 45m)', 'DONE exit 0'];
+    const ran = [heavyShared('2030-01-08 10:00:02 UTC'), '2030-01-08 10:00:02 UTC running: pre-push checks (killed after 45m)', 'DONE exit 0'];
     assert.deepEqual(await kit.run(PRE_PUSH, { steps, trees }), { code: 0, stdout: ran, stderr: [] });
     assert.equal((await kit.files.list(PASSES)).length, 1);
     await kit.files.write(LOCK, heldBy());
@@ -781,8 +783,8 @@ describe('teamrig queue --pre-push', () => {
     assert.deepEqual([result.code, steps.ran.map((request) => request.command)], [0, ['npm run lint']]);
   });
 
-  it('declines the push when its checks waited over a minute for the lock, and records their pass for the next push', async () => {
-    const { kit, steps } = harness();
+  it('declines the push when its checks waited over a minute for the lock, and records their pass for the next push, with delivery.queue.admission serial', async () => {
+    const { kit, steps } = harness(SERIAL);
     const trees = new FakeTrees(cleanTree());
     steps.ends(0, MINUTE);
     await kit.files.write(LOCK, heldBy('2030-01-08T10:03:00.000Z'));

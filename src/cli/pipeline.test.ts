@@ -12,7 +12,7 @@ import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 const LOCK = join(KIT, 'host.lock');
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const MB = 2 ** 20;
-/** A team that lets its line in by `delivery.queue.admission` pipeline, not the default serial arrival order. */
+/** A team that names `delivery.queue.admission` pipeline, the default, so its line is let in by admission order. */
 const PIPELINE = { ...TEAM, delivery: { queue: { admission: 'pipeline' } } };
 const HOLDER = 9001;
 const SHARER = 9002;

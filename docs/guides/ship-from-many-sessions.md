@@ -39,7 +39,8 @@ Waiting steps go in admission order, each told its place in line: an incident's 
 work class whose turn it is, so each class gets its `focus.allocation` share of the host's run time, then the task's
 priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, then arrival. A session runs at most
 `delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it.
-`delivery.queue.admission: serial` keeps the line in arrival order with no cap and one heavy step at a time. A step is refused once its line has not
+That is the default `delivery.queue.admission: pipeline`; `serial` keeps the line in arrival order with no cap and one
+heavy step at a time. A step is refused once its line has not
 moved for `delivery.queue.waitMinutes` (60), and one that runs is killed, with every process it started, after
 `delivery.queue.maxRunMinutes` (45; `--max-minutes` for one step); when the host's process list cannot be read, only
 the step's own process ends, so no process that merely reuses an old id is hit. A test run wrapped in `teamrig test`, as
@@ -60,11 +61,12 @@ has a run.
 
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
 of taking the lock. A small step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step
-waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) takes the lock and waits
-for every step sharing the host to end, so it runs alone, as a merge and a deploy do. With `admission: pipeline` a
-heavy step shares the host too, at most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in
-memory no longer wait for each other, while a merge, a deploy and a step queued with `--exclusive` still take the
-lock. `serial` stays the default while a team's own deploy tool may take the lock file without reading the shares.
+waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) shares the host too, at
+most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in memory no longer wait for each other,
+while a merge, a deploy and a step queued with `--exclusive` take the lock and wait for every step sharing the host to
+end, so they run alone. With `admission: serial` a heavy step takes the lock that way too; a team whose own deploy
+tool takes the lock file without first waiting for the shares in `<lock>.shared` to end sets it, so no roll starts
+beside two builds.
 
 A repository's git hooks can wrap their checks in `teamrig queue`, so a plain `git commit` takes the host lock for
 its hook. A step started under the lock (a hook run by a merge's push, say) runs at once, as part of its
