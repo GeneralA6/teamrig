@@ -17,7 +17,7 @@ Every command is in [commands](../../plugins/teamrig/skills/teamrig-guide/comman
 A shutdown, a reboot or a crash kills every Claude Code tab at once. teamrig puts them back: the `hook restore-track`
 hook records every Claude Code session on the machine, in a team or not, and `teamrig restore run` reopens each one
 the shutdown interrupted, in its folder (the worktree it went into, where Claude Code files its transcript) and at
-its last effort.
+the effort its team config sets (`launch.<id>.effort`), else at the one its last turn ran at.
 
 ```sh
 teamrig restore          # what a restore would do now: RESTORE, KEEP or DISCARD for each session, and why
