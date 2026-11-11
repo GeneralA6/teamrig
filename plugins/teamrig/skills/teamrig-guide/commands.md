@@ -4350,7 +4350,10 @@ answering it too from 30 minutes on; a leader hold goes to that leader. Neither 
 lead's own change goes to security, and with no other reviewer it is REFUSED with what to set. The reviewer answers
 with `teamrig approve <task>`; `teamrig merge` again merges the change. A hold binds the base, the head and the tree
 they make: an approval given before the hold, or a branch that changed since (a new commit, or a rebase onto a moved
-default branch), makes a new hold. A decline names the change to make before the next hold.
+default branch), makes a new hold. One exception spares a second review of the same diff: when the approval still
+stands (no status set on the task since), a rebase that left every held file alone carries it. The moved change
+merges when it holds the same paths for the same reviewer, `reviewCheck` finds the same, and each held file is
+unchanged both on the default branch and on the branch. A decline names the change to make before the next hold.
 
 Gate holds (`pushGuard.pushToProtected: gated`): after the review gate, `teamrig merge` checks the self-merge gates
 in order. task: the branch names a live task of the session (`t<n>-…`). pass: a pass record proves the rebased
