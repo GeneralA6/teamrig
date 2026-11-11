@@ -122,6 +122,8 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         notes: join(home, 'notes'),
         verifyNotices: join(state, 'verify-notices.jsonl'),
         modelNotices: join(state, 'model-notices'),
+        effortWriteback: join(state, 'effort-writeback'),
+        effortChanges: join(state, 'effort-changes.jsonl'),
         unownedNotices: join(state, 'unowned-notices.json'),
         unownedNoticesLock: join(state, 'unowned-notices.lock'),
         usage: join(state, 'usage'),
