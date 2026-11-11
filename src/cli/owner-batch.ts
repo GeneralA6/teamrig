@@ -65,5 +65,6 @@ function registerOf(runtime: CliRuntime, { config, tasks, elsewhere, ranking }: 
     elsewhere,
     ranking,
     focus: config.focus,
+    dedicatedOwners: config.decisions.dedicatedOwners,
   };
 }

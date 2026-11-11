@@ -26,6 +26,8 @@ export interface DecisionRegister {
   readonly ranking: TreeRanking;
   /** The register team's `focus` classes, which say whether a wait frees only Improvements work. */
   readonly focus: DecisionFocus;
+  /** The register team's `decisions.dedicatedOwners`, whose waits no batch asks (T868). */
+  readonly dedicatedOwners: readonly string[];
 }
 
 /** The keys of the team's config its batch reads: its batch times and the weekday of its Improvements batch. */
@@ -59,6 +61,7 @@ export async function teamDecisions(
   });
 }
 
-function batchRegisterOf({ team, tasks, ownerMarker, requireGate, zone, elsewhere, ranking, focus }: DecisionRegister, now: number): BatchRegister {
-  return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere, ranking), ownerMarker, requireGate, focus };
+function batchRegisterOf(register: DecisionRegister, now: number): BatchRegister {
+  const { team, tasks, ownerMarker, requireGate, zone, elsewhere, ranking, focus, dedicatedOwners } = register;
+  return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere, ranking), ownerMarker, requireGate, focus, dedicatedOwners };
 }
