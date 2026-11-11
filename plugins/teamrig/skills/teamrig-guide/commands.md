@@ -6239,14 +6239,15 @@ Output: one JSON line, exit 0: `{"kind":"notices","notices"}`, each notice `{"pl
 ### teamrig hook update-dismiss
 
 Run by the plugin's mod when the person picks Dismiss on the update band: hides that plugin's notice until a version
-newer than the one dismissed is published. Stdin: `{"plugin", "version"}`.
+newer than the one dismissed is published. Stdin: `{"plugin", "version"}`, such as
+`{"plugin":"teamrig","version":"0.333.0"}`.
 
 Flags: none.
 
 Example:
 
 ```sh
-echo '{"plugin":"teamrig","version":"0.333.0"}' | teamrig hook update-dismiss
+teamrig hook update-dismiss < dismiss.json
 ```
 
 Output: one JSON line, exit 0: `{"kind":"dismissed"}`, or `{"kind":"failed","why"}` when stdin names no plugin and
@@ -6258,14 +6259,14 @@ Run by the plugin's mod when the person picks Update on the update band: runs Cl
 marketplace update <marketplace>`, then `claude plugin update <plugin>@<marketplace>`, each killed past 3 minutes. Only a
 plugin `hook update-check` tells of a newer version for is updated; any other is refused, running nothing. The tab runs
 the new version once it reloads its plugins ([the reload after an install](hooks.md#the-mod-the-reload-after-an-install)).
-Stdin: `{"plugin"}`.
+Stdin: `{"plugin"}`, such as `{"plugin":"teamrig"}`.
 
 Flags: none.
 
 Example:
 
 ```sh
-echo '{"plugin":"teamrig"}' | teamrig hook update-apply
+teamrig hook update-apply < apply.json
 ```
 
 Output: one JSON line, exit 0: `{"kind":"applied","plugin","version"}`, or `{"kind":"failed","why"}` naming the step
