@@ -70,9 +70,27 @@ export function readyCommand(command, session) {
 function finishedSoFar(state) {
     return state?.phase === 'boundary' || state?.phase === 'idle' ? state.finished : 0;
 }
-/** `set <id> --status done`: the boundary the Stop hook judges, counting this task. */
+/**
+ * The ask for the handover that `refresh --ready` answers: the one the session is in, or the one a task end since
+ * left standing on its boundary; null when none is pending.
+ */
+export function standingAsk(state) {
+    if (state?.phase === 'asked') {
+        return { task: state.task, at: state.at, tokens: state.tokens, handoverHash: state.handoverHash };
+    }
+    return state?.phase === 'boundary' ? state.ask : null;
+}
+/**
+ * `set <id> --status done`: the boundary the Stop hook judges, counting this task. A refresh pending then outlasts the
+ * task end (T1666): an ask not yet answered stands on the boundary, so `refresh --ready` still answers it, and a
+ * handover marked ready but not yet announced stays as it is, so the turn end announces it. The Stop hook judges the
+ * boundary as before, so a turn end that does not ask again drops the standing ask.
+ */
 export function boundaryOf(previous, task, at) {
-    return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1 };
+    if (previous?.phase === 'ready' && !previous.noticed) {
+        return previous;
+    }
+    return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1, ask: standingAsk(previous) };
 }
 /** The context size a turn end, or a tool result within a turn, asks at: the threshold, or after a refresh the session went on from, well past that ask. */
 function askAt(state, settings) {
@@ -258,12 +276,13 @@ export function decideMidTurn(state, context, facts) {
  */
 export function decideCompact(state, context, facts) {
     const { enabled, compactCeilingTokens: ceiling } = context.settings;
-    const pending = state?.phase === 'asked' || state?.phase === 'ready';
+    const written = state?.phase === 'ready';
+    const pending = written || standingAsk(state) !== null;
     const window = facts.window ?? SMALLEST_MODEL_WINDOW;
     if (!enabled || !pending || ceiling === 0 || ceiling >= window || facts.tokens >= ceiling) {
         return GO;
     }
-    const handover = state.phase === 'asked' ? 'asked for' : 'written';
+    const handover = written ? 'written' : 'asked for';
     return {
         kind: 'skip',
         reason: `${context.command}: the handover is ${handover} and the fresh start follows this turn, so compaction waits until ${thousands(ceiling)} (now ${thousands(facts.tokens)})`,
@@ -274,7 +293,8 @@ export function handoverHashOf(text) {
     return text === undefined ? null : lineHash(text);
 }
 /**
- * `refresh --ready`: only after the Stop hook asked for a handover, and only once the handover
+ * `refresh --ready`: only after a handover was asked for (the session is in the ask, or a task end since left it
+ * standing), and only once the handover
  * exists, is not blank and differs from the file that was there when it asked (the files port has
  * no modification times, so the fingerprint stands for "written since"), and is at most `maxBytes` long (0: no cap),
  * since the fresh start reads all of it.
@@ -283,7 +303,8 @@ export function decideReady(state, handover, handoverPath, now, maxBytes) {
     if (state?.phase === 'ready') {
         return { kind: 'already' };
     }
-    if (state?.phase !== 'asked') {
+    const ask = standingAsk(state);
+    if (ask === null) {
         return {
             kind: 'refused',
             reason: 'no refresh was asked of you: one is asked at a turn end with your context over the threshold, at a task end after enough tasks, ' +
@@ -293,7 +314,7 @@ export function decideReady(state, handover, handoverPath, now, maxBytes) {
     if (handover === undefined || handover.trim() === '') {
         return { kind: 'refused', reason: `write your handover to ${handoverPath} first` };
     }
-    if (handoverHashOf(handover) === state.handoverHash) {
+    if (handoverHashOf(handover) === ask.handoverHash) {
         return { kind: 'refused', reason: `${handoverPath} is the handover from before; write this refresh's handover there` };
     }
     const bytes = Buffer.byteLength(handover, 'utf8');
@@ -306,7 +327,8 @@ export function decideReady(state, handover, handoverPath, now, maxBytes) {
     }
     return {
         kind: 'ready',
-        state: { phase: 'ready', task: state.task, at: now, tokens: state.tokens, noticed: false, transcript: null, claudePid: null },
+        // A task end since the ask is the task the session refreshes after, as the notice and the fresh start say.
+        state: { phase: 'ready', task: state?.phase === 'boundary' ? state.task : ask.task, at: now, tokens: ask.tokens, noticed: false, transcript: null, claudePid: null },
     };
 }
 /** Starts that drop the old context; a `compact`, `resume` or `fork` start keeps it, so the handover waits. */

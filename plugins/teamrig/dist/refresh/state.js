@@ -1,4 +1,4 @@
-import { isNonNegativeInteger, stringField } from "../core/guards.js";
+import { isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 /** The format of the refresh files this code reads and writes; a file in another format reads as absent. */
 export const REFRESH_FORMAT = 1;
@@ -23,6 +23,20 @@ function hashOf(record) {
     const hash = record['handoverHash'];
     return hash === null || typeof hash === 'string' ? hash : undefined;
 }
+/** A boundary's standing ask: null for none, undefined when damaged. */
+function standingAskOf(value) {
+    if (value === null) {
+        return null;
+    }
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const task = nullableString(value, 'task');
+    const at = stringField(value, 'at');
+    const tokens = tokensOf(value);
+    const handoverHash = hashOf(value);
+    return task === undefined || at === undefined || tokens === undefined || handoverHash === undefined ? undefined : { task, at, tokens, handoverHash };
+}
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
 export function parseRefreshState(text) {
     const record = recordOf(text);
@@ -35,7 +49,9 @@ export function parseRefreshState(text) {
     switch (record['phase']) {
         case 'boundary': {
             const finished = finishedOf(record, 1);
-            return task === null || finished === undefined ? undefined : { phase: 'boundary', task, at, finished };
+            // A file from before an ask could stand on a boundary has none.
+            const ask = record['ask'] === undefined ? null : standingAskOf(record['ask']);
+            return task === null || finished === undefined || ask === undefined ? undefined : { phase: 'boundary', task, at, finished, ask };
         }
         case 'idle': {
             const tokens = tokensOf(record);
