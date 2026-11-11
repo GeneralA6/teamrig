@@ -4098,6 +4098,17 @@ human stopped it on purpose, or (a killed step) its part run changed stored data
 owner's. The re-run waits for memory and the lock like the first run, so a human's OK adds nothing, whatever
 Claude Code's own stop notice asks.
 
+A step that runs longer than a Bash tool's wait holds that tool's shell open the whole time, and the reaper may end it
+there. Give it `--detach`: the command checks its flags and the cutoff, starts the step hidden as `teamrig queue
+--detached-run <id>` with the same flags, prints `QUEUED <id>: <what> runs detached; log <path>; <session>'s inbox gets
+a line when it starts and when it ends` and returns at once (exit 0). The hidden run outlives the shell, so it watches
+no shell; it waits for memory and the lock like any step, and its output and the queue's own lines go to
+`<delivery dir>/detached/<id>.log`. Its session's inbox gets `queue <id> started: <what>; log <path>` when it takes its
+turn, and a line that wakes the session, `queue <id> ended: <what>: <last line>; log <path>`, when it ends (`DONE exit
+0`, `FAILED exit <n>`, `TIMED OUT ...`) or is refused (`REFUSED ...`). From the cutoff on, `--detach` is REFUSED at
+once, as a plain step is. It is refused (exit 64) with `--pre-push`, whose push waits on the checks' result, and under
+a live host lock, where the parent step waits for it. `--detached-run` is set by `--detach` only.
+
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig queue ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
@@ -4147,6 +4158,10 @@ Flags:
   itself (see above). With `--small`, refused (exit 64).
 - `--pre-push`: a git pre-push hook's checks: reuse or record their pass on this clean tree, and decline a push
   whose checks waited over a minute for the lock (see above).
+- `--detach`: return at once with `QUEUED <id>` and run the step hidden, its output in a log and its start and end in
+  the session's inbox (see above); refused with `--pre-push` and under a live host lock (exit 64).
+- `--detached-run <id>`: the hidden run `--detach` starts, `<id>` its `<UTC yyyymmdd-hhmmss>-<pid>`; set by `--detach`
+  only, so another value is refused (exit 64), as is `--detach` with it.
 
 Example:
 
