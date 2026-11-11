@@ -413,7 +413,7 @@ describe('the meeting agenda: DEDICATED (T868)', () => {
   const PRICED: Task = { ...DECIDE, id: 'T7', owner: 'pricing', title: 'Set the launch price' };
   const BRIEF = "A full brief for owner's dedicated meeting, in this task's files: context, data, each option with its numbers and risks, your recommendation.";
 
-  it("moves a dedicated session's decisions out of DECISIONS into one group, with the line booking its meeting and the one opening it", () => {
+  it("moves a dedicated session's decisions out of DECISIONS into one group, with the line asking its brief and the one booking its meeting", () => {
     const second: Task = { ...PRICED, id: 'T10', title: 'Set the renewal price' };
     const input: AgendaInput = { ...inputOf([DECIDE, PRICED, second]), dedicatedOwners: ['pricing'] };
     const order = input.tree.inPlanOrder([second, PRICED]).map((task) => task.id);
@@ -429,14 +429,17 @@ describe('the meeting agenda: DEDICATED (T868)', () => {
     );
     assert.equal(
       lines[4],
-      `    book: teamrig add --owner pricing --source owner --priority p1 --due <slot date> --title "Dedicated meeting with owner at <slot>: brief on ${order.join(', ')}" --description "${BRIEF}" --session lead`,
+      `    brief: teamrig add --owner pricing --source owner --priority p1 --due <slot date> --title "Dedicated meeting with owner at <slot>: brief on ${order.join(', ')}" --description "${BRIEF}" --session lead`,
     );
-    assert.equal(lines[5], '    at the slot: teamrig meet pricing');
-    assert.match(lines[6] ?? '', /^ {2}Agree a slot after the daily with owner for each session/);
+    assert.equal(
+      lines[5],
+      `    book: teamrig meeting schedule --meets pricing --at "<slot>" --about "owner's core-business decisions" --tasks ${order.join(',')} --session lead`,
+    );
+    assert.match(lines[6] ?? '', /^ {2}Agree a slot after the daily with owner for each session, then run its brief and book lines once/);
     assert.equal(lines.length, 7);
   });
 
-  it("groups a team under the lead's by <team>/<session> on that team's own sessions, booked in that team and opened by its lead", () => {
+  it("groups a team under the lead's by <team>/<session> on that team's own sessions, its brief asked in that team and its meeting booked by that team's lead", () => {
     const ledger: Task = { ...DECIDE, id: 'T8', owner: 'ledger' };
     const notDedicatedThere: Task = { ...PRICED, id: 'T9' };
     const web: AgendaTeam = { ...teamOf('web', [ledger, notDedicatedThere]), dedicatedOwners: ['ledger'] };
@@ -451,11 +454,16 @@ describe('the meeting agenda: DEDICATED (T868)', () => {
     assert.ok(lines.some((line) => /^ {4}web\/T8 waiting, p2, owner ledger \| /.test(line)), lines.join('\n'));
     assert.ok(
       lines.includes(
-        `    book: teamrig add --team web --owner ledger --source owner --priority p1 --due <slot date> --title "Dedicated meeting with owner at <slot>: brief on T8" --description "${BRIEF}" --session lead`,
+        `    brief: teamrig add --team web --owner ledger --source owner --priority p1 --due <slot date> --title "Dedicated meeting with owner at <slot>: brief on T8" --description "${BRIEF}" --session lead`,
       ),
       lines.join('\n'),
     );
-    assert.ok(lines.includes("    at the slot: team web's lead runs teamrig meet ledger"), lines.join('\n'));
+    assert.ok(
+      lines.includes(
+        `    book: team web's lead runs teamrig meeting schedule --meets ledger --at "<slot>" --about "owner's core-business decisions" --tasks T8 --session <web's lead>`,
+      ),
+      lines.join('\n'),
+    );
   });
 
   it('shows no block when no dedicated session waits on the owner', () => {
