@@ -4,7 +4,7 @@ import type { Clock } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { fallbackOpen, holdApproved, holdClassOf, needsCheck, REVIEW_FALLBACK_MS, reviewRoute, type CheckOutcome } from '../push-guard/review-gate.ts';
 import { GENERIC_REVIEW_PATHS, reviewHits, type ReviewHit } from '../push-guard/review-paths.ts';
-import type { Task } from '../register/fold.ts';
+import type { ApprovalAnswer, Task } from '../register/fold.ts';
 import type { MergeGit } from './git.ts';
 import { holdBinds, holdId, type HeldChange, type HoldHit, type ReviewHold, type ReviewHolds } from './review-holds.ts';
 
@@ -13,8 +13,12 @@ import { holdBinds, holdId, type HeldChange, type HoldHit, type ReviewHold, type
  * under the host lock after the rebase. It holds a change whose paths hit a review entry (the generic ones, then
  * `pushGuard.reviewPaths`) until its reviewer approves the branch's task; a `check` hit runs the repo's review check
  * first, and a clean check lets it go. A hold binds `base..head` and the tree they make: the same change lands once
- * its reviewer approved it after the hold was made (or its fallback leader did, from 30 minutes on); any other
- * change of the branch gets a new hold. A change it lets go says how it cleared, which the merges log keeps.
+ * its reviewer approved it after the hold was made (or its fallback leader did, from 30 minutes on). Any other change
+ * of the branch gets a new hold, unless the approval carries to it (T2368): a rebase onto a main that left the held
+ * files alone shows the reviewer the same diff of them, so an approved hold lets the moved change land when it holds
+ * the same paths for the same class and reviewer, the check found the same, and each held file is the same blob at
+ * the old and the new base and at the old and the new head. The approved hold stays on file, as the change a later
+ * rebase is compared with. A change it lets go says how it cleared, which the merges log keeps.
  */
 
 export interface ReviewGateSetup {
@@ -28,7 +32,7 @@ export interface ReviewGateSetup {
 export type GateTask = Pick<Task, 'owner' | 'answer'>;
 
 export interface ReviewGatePorts {
-  readonly git: Pick<MergeGit, 'changedPaths' | 'treeOf'>;
+  readonly git: Pick<MergeGit, 'changedPaths' | 'treeOf' | 'blobsAt'>;
   readonly holds: Pick<ReviewHolds, 'read' | 'write'>;
   readonly clock: Clock;
   /** The register's task by id; undefined when it has none. */
@@ -138,15 +142,63 @@ async function answeredVerdict(zone: TimeZone, ports: ReviewGatePorts, hold: Rev
   return held(holdRefusal(hold, zone, now, `it changes ${hitsText(hold.hits)}`));
 }
 
-/** Holds a change no hold binds yet, or lets it go when its check paths came out clean. */
-async function newHoldVerdict(setup: ReviewGateSetup, zone: TimeZone, ports: ReviewGatePorts, change: GatedChange, bound: HeldChange, hits: readonly ReviewHit[]): Promise<ReviewVerdict> {
-  const { session, repo, branch, base } = change;
+/** What a hold of a change holds it for: its task, class and reviewer, the held paths, and what the check found. */
+type HoldGrounds = Pick<ReviewHold, 'task' | 'holdClass' | 'reviewer' | 'hits' | 'findings'>;
+
+function sameHits(a: readonly HoldHit[], b: readonly HoldHit[]): boolean {
+  const sorted = (hits: readonly HoldHit[]): string => JSON.stringify(hits.map(({ path, glob }) => [path, glob]).sort());
+  return sorted(a) === sorted(b);
+}
+
+/** Whether each of `paths` is the same blob at `from` and at `to`, or a file at neither; false when git cannot tell. */
+function sameFiles(git: ReviewGatePorts['git'], dir: string, paths: readonly string[], from: string, to: string): boolean {
+  const before = git.blobsAt(dir, from, paths);
+  const after = git.blobsAt(dir, to, paths);
+  return before !== undefined && after !== undefined && paths.every((path) => before.get(path) === after.get(path));
+}
+
+/**
+ * The approval of the branch's earlier hold, when it carries to this change (see the module comment); undefined when
+ * the change needs a review of its own.
+ */
+function carriedApproval(ports: ReviewGatePorts, change: GatedChange, earlier: ReviewHold, grounds: HoldGrounds, answer: ApprovalAnswer | null): ApprovalAnswer | undefined {
+  const { reviewer } = grounds;
+  const same =
+    earlier.task === grounds.task &&
+    earlier.holdClass === grounds.holdClass &&
+    earlier.reviewer.who === reviewer.who &&
+    earlier.reviewer.fallback === reviewer.fallback &&
+    earlier.findings === grounds.findings &&
+    sameHits(earlier.hits, grounds.hits);
+  if (!same || answer === null || !holdApproved(reviewer, Date.parse(earlier.createdAt), answer)) {
+    return undefined;
+  }
+  const paths = grounds.hits.map(({ path }) => path);
+  const { top, base, head } = change;
+  return sameFiles(ports.git, top, paths, earlier.base, base) && sameFiles(ports.git, top, paths, earlier.head, head) ? answer : undefined;
+}
+
+/**
+ * Holds a change no hold binds yet, or lets it go when its check paths came out clean or the approval of the branch's
+ * `earlier` hold carries to it.
+ */
+async function newHoldVerdict(
+  setup: ReviewGateSetup,
+  zone: TimeZone,
+  ports: ReviewGatePorts,
+  change: GatedChange,
+  bound: HeldChange,
+  hits: readonly ReviewHit[],
+  earlier: ReviewHold | undefined,
+): Promise<ReviewVerdict> {
+  const { session, repo, branch, base, head } = change;
   const holdHits = hits.map(({ path, entry }) => ({ path, glob: entry.glob }));
   const task = taskOfBranch(branch);
   if (task === undefined) {
     return held(`${branch} changes ${hitsText(holdHits)}, which the review gate holds for a review of its task, but the branch names none: name it t<n>-… after your task`);
   }
-  const owner = (await ports.taskOf(task))?.owner;
+  const gateTask = await ports.taskOf(task);
+  const owner = gateTask?.owner;
   if (owner !== session) {
     const whose = owner === undefined ? 'is not in the register' : `is ${owner}'s`;
     return held(`${branch} changes review paths, so its reviewer approves its task ${task}, which ${whose}: merge a branch named after a task of ${session}`);
@@ -167,18 +219,22 @@ async function newHoldVerdict(setup: ReviewGateSetup, zone: TimeZone, ports: Rev
   if (route.kind === 'none') {
     return held(`${branch} changes ${hitsText(holdHits)}, which the review gate holds, but ${route.reason}`);
   }
-  const now = ports.clock.now();
-  const hold: ReviewHold = {
-    ...bound,
-    id: holdId(bound),
+  const grounds: HoldGrounds = {
     task,
-    session,
     holdClass,
     reviewer: { who: route.who, fallback: route.fallback },
     hits: holdHits,
     findings: check?.kind === 'flagged' ? check.findings : undefined,
-    createdAt: new Date(now).toISOString(),
   };
+  if (earlier !== undefined) {
+    const carried = carriedApproval(ports, change, earlier, grounds, gateTask?.answer ?? null);
+    if (carried !== undefined) {
+      ports.say(`review hold ${earlier.id} of ${branch}: ${carried.by} approved it; it carries to ${short(base)}..${short(head)}, whose held files and findings are unchanged`);
+      return clear('approved');
+    }
+  }
+  const now = ports.clock.now();
+  const hold: ReviewHold = { ...bound, ...grounds, id: holdId(bound), session, createdAt: new Date(now).toISOString() };
   await ports.holds.write(hold);
   ports.say(`review hold ${hold.id} of ${repo} ${branch}: waits on ${route.who} (${holdClass})`);
   return held(holdRefusal(hold, zone, now, causeOf(holdHits, check, checks && argv === undefined)));
@@ -210,5 +266,5 @@ export async function reviewGateVerdict(setup: ReviewGateSetup, zone: TimeZone, 
   if (hold !== undefined && holdBinds(hold, bound)) {
     return answeredVerdict(zone, ports, hold);
   }
-  return newHoldVerdict(setup, zone, ports, change, bound, hits);
+  return newHoldVerdict(setup, zone, ports, change, bound, hits, hold);
 }
