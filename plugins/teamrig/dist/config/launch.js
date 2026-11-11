@@ -28,12 +28,19 @@ export const isModel = (model) => MODEL_ALIASES.some((alias) => alias === model)
     : `expected a model alias (${MODEL_ALIASES.join(', ')}) or a model id starting claude-`;
 export const isEffort = (effort) => (isEffortLevel(effort) ? undefined : `expected one of ${EFFORT_LEVELS.join(', ')}`);
 /**
+ * What the team config itself sets for the session (`launch.<id>`), without the lead's defaults: the restore reopens a
+ * session on an effort set here, and on the level it last ran at otherwise (T2440).
+ */
+export function ownLaunchOf(config, id) {
+    // By its own keys only, so an id such as `constructor` never reads the object's prototype.
+    return Object.entries(config.launch).find(([key]) => key === id)?.[1] ?? {};
+}
+/**
  * The model and effort a session starts on: its own `launch` entry, and for the lead
  * `DEFAULT_LEAD_LAUNCH` under each key the entry leaves unset. Other sessions leave unset keys to Claude Code.
  */
 export function launchOf(config, id) {
-    // By its own keys only, so an id such as `constructor` never reads the object's prototype.
-    const own = Object.entries(config.launch).find(([key]) => key === id)?.[1] ?? {};
+    const own = ownLaunchOf(config, id);
     return config.roles.lead === id ? { ...DEFAULT_LEAD_LAUNCH, ...own } : own;
 }
 /** True when the settings leave the model to Claude Code. */

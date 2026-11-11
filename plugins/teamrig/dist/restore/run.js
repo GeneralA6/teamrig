@@ -11,6 +11,21 @@ import { KIND_TAIL_BYTES, transcriptKindOf } from "./transcript-kind.js";
 export const COUNTDOWN_SECONDS = 60;
 /** The pause after each reopened tab, so the terminal and Claude Code start it before the next. */
 export const TAB_STAGGER_MS = 4_000;
+/**
+ * The config's `launch.<id>.effort` wins once set, so a restore after a config change brings the session back on the
+ * new level, not the old one its transcript ran at (T2440); a session the config leaves unset comes back at its last.
+ */
+function reopenEffortOf(team, text) {
+    if (team?.effort !== undefined) {
+        return { level: team.effort, from: 'config' };
+    }
+    const last = lastRecordedEffort(text);
+    return last === undefined ? undefined : { level: last, from: 'last run' };
+}
+/** The effort in words for the preview and the log: `high (config)`, `max (last run)` or `default`. */
+function effortWords(effort) {
+    return effort === undefined ? 'default' : `${effort.level} (${effort.from})`;
+}
 /** What the machine says of each recorded session: still running, where its transcript is and what it says. */
 async function factsOf(deps, entries, since) {
     const running = new Set();
@@ -41,7 +56,7 @@ async function itemOf(deps, facts, judged) {
     const team = teamSessionOf(entry, deps.teams);
     const label = team?.name ?? customTitleOf(text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
     const resumeFolder = transcript === undefined ? undefined : resumeFolderOf(transcript, text, entry.projectDir, deps.projectsDir, deps.platform);
-    return { ...judged, transcript, resumeFolder, label, team, lost, effort: lastRecordedEffort(text), ...chooseMode(entry, lost, team?.isLead === true) };
+    return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(team, text), ...chooseMode(entry, lost, team?.isLead === true) };
 }
 /**
  * The folder a restored session reopens in: the one `claude --resume` finds its transcript from, since Claude Code
@@ -101,7 +116,7 @@ function printJudged(deps, verdict, list) {
 }
 function printItems(deps, verdict, items) {
     for (const item of items) {
-        deps.print(`${verdict.padEnd(8)} ${item.entry.claudeSession}  ${item.label}  ${item.reason}; ${modeWords(item)}; effort ${item.effort ?? 'default'}  ${item.entry.projectDir}`);
+        deps.print(`${verdict.padEnd(8)} ${item.entry.claudeSession}  ${item.label}  ${item.reason}; ${modeWords(item)}; effort ${effortWords(item.effort)}  ${item.entry.projectDir}`);
     }
 }
 /** `restore`: what a restore now would do with each recorded session, changing nothing. */
@@ -223,7 +238,7 @@ async function reopenItem(deps, facts, item, items) {
     await deps.registry.write({ ...current, transcriptPath: item.transcript ?? current.transcriptPath, restoreAttempts: current.restoreAttempts + 1, restoredAt: deps.clock.now() });
     let outcome;
     try {
-        outcome = await deps.reopen({ claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort, prompt });
+        outcome = await deps.reopen({ claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort?.level, prompt });
     }
     catch (error) {
         outcome = { kind: 'failed', why: errorMessage(error) };
@@ -238,6 +253,6 @@ async function reopenItem(deps, facts, item, items) {
         deps.print(`  (${note})`);
     }
     deps.print(`Opened ${item.label} (${modeWords(item)})`);
-    await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${item.effort ?? 'default'}; ${outcome.launch}`);
+    await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${effortWords(item.effort)}; ${outcome.launch}`);
     return 'opened';
 }

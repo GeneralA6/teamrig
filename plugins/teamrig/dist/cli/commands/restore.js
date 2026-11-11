@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { claudeProjectsDir } from "../../budget/discover.js";
+import { ownLaunchOf } from "../../config/launch.js";
 import { errorMessage } from "../../core/guards.js";
 import { ENV, resolveKitHome } from "../../core/home.js";
 import { PlainLogFile } from "../../core/log-file.js";
@@ -55,6 +56,10 @@ async function restoreTeamsOf(runtime) {
             terminal: config.open.terminal,
             teamWindow: config.open.teamWindow,
             areaBySession: indexMarks(marks).areaBySession,
+            efforts: new Map(roster.ids.flatMap((id) => {
+                const { effort } = ownLaunchOf(config, id);
+                return effort === undefined ? [] : [[id, effort]];
+            })),
         });
     }
     return found;
