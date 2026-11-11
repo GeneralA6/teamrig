@@ -74,6 +74,16 @@ class Tab {
   }
 }
 
+/** Adds a task owned by alpha and marks it done, the task end `set --status done` records; its id. */
+async function finishTask(kit: CliHarness): Promise<string> {
+  const added = await kit.run(['add', '--title', 'Ship it', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+  assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+  const id = /^ADDED (T\d+) /.exec(added.stdout[0] ?? '')?.[1] ?? '';
+  const done = await kit.run(['set', id, '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--followups', 'none', '--session', 'alpha']);
+  assert.equal(done.code, EXIT.ok, done.stdout.join('\n'));
+  return id;
+}
+
 /** The hook's one JSON line. */
 function answerOf(result: CliResult): unknown {
   assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
@@ -103,6 +113,31 @@ describe('runCli: hook refresh-mid', () => {
 
     await tab.kit.files.write(HANDOVER, '# In progress\n');
     assert.equal((await tab.kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+    assert.deepEqual(answerOf(await tab.run('stop', { transcript_path: TRANSCRIPT, stop_hook_active: true })), {
+      systemMessage: 'teamrig: app-alpha wrote its handover; type /clear for a fresh start',
+    });
+  });
+
+  it('takes the handover of a refresh asked within the turn after a task ended since, and announces it (T1666)', async () => {
+    const tab = new Tab();
+    await tab.transcript('{}\n');
+    assert.deepEqual(await tab.mid(130_000), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });
+    const id = await finishTask(tab.kit);
+    await tab.kit.files.write(HANDOVER, '# In progress\n');
+    const ready = await tab.kit.run(['refresh', '--ready', '--session', 'alpha']);
+    assert.equal(ready.code, EXIT.ok, ready.stdout.join('\n'));
+    assert.deepEqual(answerOf(await tab.run('stop', { transcript_path: TRANSCRIPT, stop_hook_active: true })), {
+      systemMessage: `teamrig: app-alpha finished ${id} and wrote its handover; type /clear for a fresh start`,
+    });
+  });
+
+  it('announces a handover marked ready before a task ended, at the turn end after it (T1666)', async () => {
+    const tab = new Tab();
+    await tab.transcript('{}\n');
+    await tab.mid(130_000);
+    await tab.kit.files.write(HANDOVER, '# In progress\n');
+    assert.equal((await tab.kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+    await finishTask(tab.kit);
     assert.deepEqual(answerOf(await tab.run('stop', { transcript_path: TRANSCRIPT, stop_hook_active: true })), {
       systemMessage: 'teamrig: app-alpha wrote its handover; type /clear for a fresh start',
     });

@@ -30,7 +30,7 @@ const NOW = '2030-01-08T10:00:00.000Z';
 const HANDOVER = '/team/handover/alpha.md';
 const CAP = DEFAULT_REFRESH.handoverMaxBytes;
 
-const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE, finished: 1 };
+const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE, finished: 1, ask: null };
 const ASKED: RefreshState = { phase: 'asked', task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null, midTurn: false };
 /** Asked at a tool result at 131k; the handover file had the fingerprint `old` then. */
 const MID_TURN: RefreshState = { phase: 'asked', task: null, at: BEFORE, tokens: 131_000, handoverHash: 'old', midTurn: true };
@@ -422,6 +422,13 @@ describe('decideCompact', () => {
     }
   });
 
+  it('skips it while an ask a task end left standing is pending (T1666)', () => {
+    assert.deepEqual(decideCompact(boundaryOf(MID_TURN, 'T13', NOW), askContext(), { tokens: 170_000, window }), {
+      kind: 'skip',
+      reason: 'teamrig: the handover is asked for and the fresh start follows this turn, so compaction waits until 185k (now 170k)',
+    });
+  });
+
   it('lets it go at the ceiling, a prompt too long for the window too', () => {
     assert.deepEqual(decideCompact(ASKED, askContext(), { tokens: 185_000, window }), { kind: 'go' });
     assert.deepEqual(decideCompact(ASKED, askContext(), { tokens: 230_000, window }), { kind: 'go' });
@@ -447,24 +454,43 @@ describe('decideCompact', () => {
 
 describe('boundaryOf', () => {
   it('counts the task on top of a boundary or a judged one', () => {
-    assert.deepEqual(boundaryOf({ ...BOUNDARY, finished: 2 }, 'T13', NOW), { phase: 'boundary', task: 'T13', at: NOW, finished: 3 });
+    assert.deepEqual(boundaryOf({ ...BOUNDARY, finished: 2 }, 'T13', NOW), { phase: 'boundary', task: 'T13', at: NOW, finished: 3, ask: null });
     assert.deepEqual(boundaryOf({ phase: 'idle', task: 'T12', at: BEFORE, tokens: 90_000, finished: 1 }, 'T13', NOW), {
       phase: 'boundary',
       task: 'T13',
       at: NOW,
       finished: 2,
+      ask: null,
     });
   });
 
-  it('counts from 1 with no state, or once a refresh was asked, written or done', () => {
-    for (const previous of [undefined, ASKED, READY, { phase: 'refreshed', task: 'T12', at: BEFORE }] satisfies (RefreshState | undefined)[]) {
-      assert.deepEqual(boundaryOf(previous, 'T13', NOW), { phase: 'boundary', task: 'T13', at: NOW, finished: 1 }, previous?.phase);
+  it('counts from 1 with no state, or once a refresh was asked, announced or done', () => {
+    const noticed: RefreshState = { ...READY, noticed: true };
+    for (const previous of [undefined, noticed, { phase: 'refreshed', task: 'T12', at: BEFORE }] satisfies (RefreshState | undefined)[]) {
+      assert.deepEqual(boundaryOf(previous, 'T13', NOW), { phase: 'boundary', task: 'T13', at: NOW, finished: 1, ask: null }, previous?.phase);
     }
+  });
+
+  it('leaves the ask a task end came after standing, so refresh --ready still answers it (T1666)', () => {
+    const standing = { task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null };
+    assert.deepEqual(boundaryOf(ASKED, 'T13', NOW), { phase: 'boundary', task: 'T13', at: NOW, finished: 1, ask: standing });
+    assert.deepEqual(boundaryOf(MID_TURN, 'T13', NOW), {
+      phase: 'boundary',
+      task: 'T13',
+      at: NOW,
+      finished: 1,
+      ask: { task: null, at: BEFORE, tokens: 131_000, handoverHash: 'old' },
+    });
+    assert.deepEqual(boundaryOf(boundaryOf(ASKED, 'T13', NOW), 'T14', NOW), { phase: 'boundary', task: 'T14', at: NOW, finished: 2, ask: standing }, 'across task ends');
+  });
+
+  it('keeps a handover marked ready but not yet announced, so the turn end announces it (T1666)', () => {
+    assert.equal(boundaryOf(READY, 'T13', NOW), READY);
   });
 });
 
 describe('decideReady', () => {
-  it('refuses unless the Stop hook asked for a handover', () => {
+  it('refuses unless a handover was asked for, a task end with no ask standing too', () => {
     for (const state of [undefined, BOUNDARY, { phase: 'idle', task: 'T12', at: BEFORE, tokens: 1, finished: 1 }, { phase: 'refreshed', task: 'T12', at: BEFORE }] satisfies (
       | RefreshState
       | undefined
@@ -512,6 +538,19 @@ describe('decideReady', () => {
       state: { phase: 'ready', task: 'T12', at: NOW, tokens: 262_144, noticed: false, transcript: null, claudePid: null },
     });
     assert.deepEqual(decideReady(READY, '# notes', HANDOVER, NOW, CAP), { kind: 'already' });
+  });
+
+  it('answers an ask a task end left standing, after that task, against the handover from before the ask (T1666)', () => {
+    const old = '# the last refresh\n';
+    const standing = boundaryOf({ ...MID_TURN, handoverHash: handoverHashOf(old) }, 'T13', NOW);
+    assert.deepEqual(decideReady(standing, old, HANDOVER, NOW, CAP), {
+      kind: 'refused',
+      reason: `${HANDOVER} is the handover from before; write this refresh's handover there`,
+    });
+    assert.deepEqual(decideReady(standing, '# this refresh\n', HANDOVER, NOW, CAP), {
+      kind: 'ready',
+      state: { phase: 'ready', task: 'T13', at: NOW, tokens: 131_000, noticed: false, transcript: null, claudePid: null },
+    });
   });
 
   it('keeps a refresh asked mid-task without a task, and the size it was asked at', () => {
