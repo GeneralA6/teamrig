@@ -109,6 +109,11 @@ describe('braceAlternatives', () => {
     assert.deepEqual(braceAlternatives('[a{b', 8), ['[a{b']);
   });
 
+  it('reads a [ that never closes as a plain character, so a group after it still spreads', () => {
+    assert.deepEqual(braceAlternatives('[a{b,c}', 8), ['[ab', '[ac']);
+    assert.deepEqual(braceAlternatives('[!{.env*,x}', 8), ['[!.env*', '[!x']);
+  });
+
   it('reads a [...] set as ripgrep does: a / and a { in it are members, a ! or ^ negates, a ] may come first', () => {
     assert.deepEqual(braceAlternatives('{[{/],*.pem}', 8), ['[{/]', '*.pem']);
     assert.deepEqual(braceAlternatives('{[{/],.env*}', 8), ['[{/]', '.env*']);
