@@ -386,11 +386,14 @@ function pendingAsk(state: Extract<RefreshState, { readonly phase: 'asked' }>, c
  * turn, so a long busy turn refreshes before Claude Code compacts it rather than after. Only the size asks here:
  * the lead's request and the task count stay with the turn's end. The open meeting the session is in holds the
  * ask (`meetingHolds`); background work still running does not, and the ask names it. `nextAt` tells the mod the
- * context to look again at, so it calls the CLI only then; a held ask it looks at again a while later.
+ * context to look again at, so it calls the CLI only then; a held ask it looks at again a while later. A handover
+ * marked ready and not yet announced stays as it is, as at a task end (`boundaryOf`): the tool result of the very
+ * `refresh --ready` call can be past `askAt`, and an ask written over it lost the turn end's notice and so the
+ * restart (T2425). The mod then looks again only at its recheck, once the notice is out.
  */
 export function decideMidTurn(state: RefreshState | undefined, context: AskContext, facts: MidTurnFacts): MidTurnDecision {
   const { settings } = context;
-  if (!settings.enabled) {
+  if (!settings.enabled || (state?.phase === 'ready' && !state.noticed)) {
     return { kind: 'none', nextAt: null };
   }
   const nextAt = askAt(state, settings);

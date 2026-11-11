@@ -65,7 +65,7 @@ export type MidTurnTick =
   | { readonly kind: 'overlap' }
   /** The context is under the size the CLI named, and no recheck is due. */
   | { readonly kind: 'quiet' }
-  /** The CLI asked for nothing now; `nextAt` is the size it asks to be asked again at, null when it is off. */
+  /** The CLI asked for nothing now; `nextAt` is the size it asks to be asked again at, null for only at the recheck. */
   | { readonly kind: 'waiting'; readonly nextAt: number | null }
   /** The ask to add after the tool's result. */
   | { readonly kind: 'asked'; readonly text: string }

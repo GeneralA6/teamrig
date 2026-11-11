@@ -131,6 +131,19 @@ describe('runCli: hook refresh-mid', () => {
     });
   });
 
+  it('keeps a handover marked ready when the tool result of the refresh --ready call is past the ask, and the turn end announces it (T2425)', async () => {
+    const tab = new Tab();
+    await tab.transcript('{}\n');
+    await tab.mid(130_000);
+    await tab.kit.files.write(HANDOVER, '# In progress\n');
+    assert.equal((await tab.kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+    assert.deepEqual(await tab.mid(160_000), OFF, 'past the re-ask size of 154k, yet no ask');
+    assert.match((await tab.state()) ?? '', /"phase":"ready",.*"noticed":false/);
+    assert.deepEqual(answerOf(await tab.run('stop', { transcript_path: TRANSCRIPT, stop_hook_active: true })), {
+      systemMessage: 'teamrig: app-alpha wrote its handover; type /clear for a fresh start',
+    });
+  });
+
   it('announces a handover marked ready before a task ended, at the turn end after it (T1666)', async () => {
     const tab = new Tab();
     await tab.transcript('{}\n');

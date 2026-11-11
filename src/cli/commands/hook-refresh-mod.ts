@@ -14,7 +14,8 @@ import { hookScopeOf, parseJson, type SessionScope } from './hook-input.ts';
 
 /**
  * What `hook refresh-mid` answers the plugin's mod, one JSON line: the ask to add after the tool's result, or
- * none; with the context size to check again at (`nextAt`; null: refresh is off, or the tab is no team session).
+ * none; with the context size to check again at (`nextAt`; null: only at the mod's recheck, as when refresh is off,
+ * the tab is no team session, or its handover is marked ready and not yet announced).
  */
 export type MidTurnAnswer =
   | { readonly kind: 'ask'; readonly text: string; readonly nextAt: number }
