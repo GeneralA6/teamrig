@@ -31,6 +31,7 @@ const helperStartCommand = () => import("./commands/hook-helper-start.js");
 const clearCommands = () => import("./commands/hook-clear.js");
 const wakeCommands = () => import("./commands/hook-wake.js");
 const meetingDueCommand = () => import("./commands/hook-meeting-due.js");
+const updateCommands = () => import("./commands/hook-update.js");
 const refreshModCommands = () => import("./commands/hook-refresh-mod.js");
 const teamCommands = () => import("./commands/team.js");
 const sessionsCommands = () => import("./commands/sessions.js");
@@ -270,6 +271,9 @@ const COMMANDS = {
     'hook wake-check': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeCheck },
     'hook wake-dropped': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeDropped },
     'hook meeting-due': { effect: 'internal', flags: [], load: async () => (await meetingDueCommand()).meetingDue },
+    'hook update-check': { effect: 'internal', flags: [], load: async () => (await updateCommands()).updateCheck },
+    'hook update-dismiss': { effect: 'internal', flags: [], load: async () => (await updateCommands()).updateDismiss },
+    'hook update-apply': { effect: 'internal', flags: [], load: async () => (await updateCommands()).updateApply },
     'hook refresh-mid': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).refreshMid },
     'hook compact-check': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).compactCheck },
     'hook pre-compact': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).preCompact },
@@ -814,6 +818,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
   hook meeting-due
       (run by the plugin's mod: the OS notification at a scheduled meeting's time)
+  hook update-check | hook update-dismiss | hook update-apply
+      (run by the plugin's mod: the band telling of a newer teamrig or teamrig-pane, its Update and Dismiss)
   hook refresh-mid | hook compact-check
       (run by the plugin's mod: asks for the handover within a long turn, and holds a compaction while it is due)
   hook slash-command
