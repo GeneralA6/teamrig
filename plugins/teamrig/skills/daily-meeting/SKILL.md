@@ -26,6 +26,9 @@ Then it prints the agenda:
   unblocks: an expedite first, then those that free Roadmap work, then by best score. A decision that frees only
   Improvements work waits for the weekly batch, after the daily cards on the `[focus.improvementsDay]` weekday and
   shown on no other day;
+- `DEDICATED`: the waits on the human in the team's core-business areas, the sessions `[decisions.dedicatedOwners]`
+  names, by owning session: never a card and never read out; each session gets its own meeting after the daily
+  (step 4);
 - `INCIDENTS`: the active Maintenance bugs and critical tasks, yours first, then each team's under you;
 - `LATER`: the cards the human put off to a time still to come (step 4): never read out before that time, then back
   in `DECISIONS`;
@@ -141,6 +144,13 @@ wakes that session's tab at once with an inbox line from the human (run again, i
 nothing more while that ask waits), or opens it fresh in a new tab; it then brings its own
 due cards, one at a time, and records each answer itself. It is refused when none of its cards waits on the human
 now, naming those put off and until when. Record nothing for those cards here: the session does.
+
+A `DEDICATED` session's decisions are core business: the human decides them in that session's own meeting after the
+daily, from a full brief, never from a card. Agree a slot with the human for each session, then run its two lines
+once: `brief:` gives the session a p1 task to have its brief ready by the slot, and `book:` books the meeting
+(`teamrig meeting schedule`; a team under yours books it from that team's lead), so it notifies at its time and lists
+under `MEETINGS`. At the slot the human starts it (`teamrig meeting start M<n>`); the session brings its own cards
+with its brief and records each answer: record nothing for them here.
 
 ## 5. End
 

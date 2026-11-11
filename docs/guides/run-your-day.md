@@ -26,6 +26,9 @@ decide from alone. At your first message of the day, or when you ask, the lead r
 - `DECISIONS`: each task waiting on your decision or approval, with its card facts, ranked by what it unblocks: an
   expedite first, then those that free Roadmap work, then by best score. A decision that frees only Improvements work
   waits for the weekly batch, after the daily cards on the `focus.improvementsDay` weekday and shown on no other day;
+- `DEDICATED`: the waits on you in your core-business areas, the sessions `decisions.dedicatedOwners` names, by
+  session: never a card; you and the lead agree a slot after the daily, and the lead books each session its own
+  meeting there (`meeting schedule`), to which it brings its decisions with a full brief;
 - `INCIDENTS`: the active Maintenance bugs and critical tasks, the lead's team first, then each team under it;
 - `UNGATED`: the waits on you whose card names no owner gate or business decision; the lead decides those itself,
   sends each owner its answer and never reads them out;
@@ -64,7 +67,8 @@ The start counts as asking you every decision it lists. Between meetings the lea
 `teamrig decisions` lists the waits not yet asked and the asked ones past due, and the lead's `start` and `check` say
 when a batch is due (`decisions.batchTimesUtc`, `decisions.batchAt`); a wait due before the next batch is asked at
 once. A decision that frees only Improvements work waits for the weekly Improvements batch on
-`focus.improvementsDay`, as on your agenda. In a tree of teams only the root team's lead holds the meeting, and its
+`focus.improvementsDay`, as on your agenda, and a dedicated session's is in no batch: it waits for its own meeting.
+In a tree of teams only the root team's lead holds the meeting, and its
 `DECISIONS` lists the waits of every team under it as `<team>/<id>`.
 
 ## Never stuck on a question

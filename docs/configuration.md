@@ -533,6 +533,7 @@ When the lead asks the owner the decisions waiting on them (tasks waiting on the
 | --- | --- | --- | --- |
 | `batchTimesUtc` | array (at most 8 items) of string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) | `[]` | The lead's batch times, HH:MM UTC (its budget checkpoints, say): a batch is due once one passed since the last was asked. A wait due before the next batch time is asked at once. With none, a batch comes only at the daily meeting or by batchAt, and a wait due within a day is asked at once. |
 | `batchAt` | integer (0 to 50) | `5` | A batch is due once this many waits on the owner are not yet asked; 0: never by count. |
+| `dedicatedOwners` | array (at most 32 items) of [session name](#shared-types) | `[]` | Sessions that own the team's core-business areas. The owner never decides their waits from a daily card or a batch: the meeting agenda lists them under DEDICATED, by owning session, with the lines that ask that session for a full brief and book its own meeting after the daily (meeting schedule). |
 
 ## `tabStatus`
 
