@@ -522,7 +522,8 @@ The alerting rule the core rules state, and where a page to the owner goes.
 | --- | --- | --- | --- |
 | `persistentFailureHours` | integer (1 to 720) | `24` | The same external failure for this long must page a human. |
 | `pageWebhookEnv` | string (matching `^[A-Za-z_][A-Za-z0-9_]{0,63}$`) |  | The name of the environment variable holding the chat webhook URL that a page to the owner (an expired Claude login) is posted to, never the URL itself. Unset, with pageWebhookFile unset too: nothing pages. |
-| `pageWebhookFile` | string (matching `^(?:[A-Za-z]:)?[\\/][^\r\n]*$`) |  | The absolute path of a one-line file holding that webhook URL, read at each page, so the URL never sits in an environment, a log or a session's read. Wins over pageWebhookEnv when both are set. |
+| `pageWebhookFile` | string (matching `^(?:[A-Za-z]:)?[\\/][^\r\n]*$`) |  | The absolute path of a file holding that webhook URL as its first non-empty line, or as the value of pageWebhookKey's key, read at each page, so the URL never sits in an environment, a log or a session's read. Wins over pageWebhookEnv when both are set. A URL that is not https pages no one. |
+| `pageWebhookKey` | string (matching `^[A-Za-z_][A-Za-z0-9_.-]{0,63}$`) |  | With pageWebhookFile: the key whose value in that file is the webhook URL, on a line `<key>: <value>` or `<key>=<value>` (a YAML map such as a Kubernetes secret's stringData, or a .env file), the value bare or in quotes. So a secrets file holding many keys is read in place, and the URL keeps one home. Unset: the file's first non-empty line is the URL. |
 
 ## `decisions`
 

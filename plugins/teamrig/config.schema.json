@@ -1227,9 +1227,14 @@
           "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
         },
         "pageWebhookFile": {
-          "description": "The absolute path of a one-line file holding that webhook URL, read at each page, so the URL never sits in an environment, a log or a session's read. Wins over pageWebhookEnv when both are set.",
+          "description": "The absolute path of a file holding that webhook URL as its first non-empty line, or as the value of pageWebhookKey's key, read at each page, so the URL never sits in an environment, a log or a session's read. Wins over pageWebhookEnv when both are set. A URL that is not https pages no one.",
           "type": "string",
           "pattern": "^(?:[A-Za-z]:)?[\\\\/][^\\r\\n]*$"
+        },
+        "pageWebhookKey": {
+          "description": "With pageWebhookFile: the key whose value in that file is the webhook URL, on a line `<key>: <value>` or `<key>=<value>` (a YAML map such as a Kubernetes secret's stringData, or a .env file), the value bare or in quotes. So a secrets file holding many keys is read in place, and the URL keeps one home. Unset: the file's first non-empty line is the URL.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"
         }
       }
     },
