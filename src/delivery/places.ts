@@ -13,6 +13,8 @@ export const REVIEW_HOLDS_DIR = 'review-holds';
 export const GATE_HOLDS_DIR = 'gate-holds';
 /** The merges log's file name in `delivery.dir`. */
 export const MERGES_FILE = 'merges.jsonl';
+/** The folder in `delivery.dir` of the logs of the steps `teamrig queue --detach` started, one per run. */
+export const DETACHED_DIR = 'detached';
 
 /** The files the delivery commands keep. */
 export interface DeliveryPlaces {
@@ -40,6 +42,11 @@ export function teamPlace(paths: Pick<TeamPaths, 'home'>, path: string): string 
 /** The delivery folder: `delivery.dir`, a relative one in the team's folder; unset, `<state>/deploys`. */
 export function deliveryDirOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>): string {
   return config.dir === undefined ? join(paths.state, 'deploys') : teamPlace(paths, config.dir);
+}
+
+/** The log of the detached queue run `id`: its step's output, and the queue's own lines, since no shell waits for them. */
+export function detachedLogOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>, id: string): string {
+  return join(deliveryDirOf(config, paths), DETACHED_DIR, `${id}.log`);
 }
 
 /**
