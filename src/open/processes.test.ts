@@ -23,6 +23,15 @@ async function waitForFile(path: string): Promise<void> {
   }
 }
 
+/** Waits up to 5 s for a file a background program writes to hold `text`, then gives what it holds. */
+async function waitForText(path: string, text: string): Promise<string> {
+  const read = (): string => (existsSync(path) ? readFileSync(path, 'utf8') : '');
+  for (let tries = 0; tries < 100 && !read().includes(text); tries += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return read();
+}
+
 /** The process ids under `pid` in a `ps -A -o pid= -o ppid=` listing, children before their own children. */
 function descendantsOf(pid: number, listing: string): number[] {
   const children = new Map<number, number[]>();
@@ -90,6 +99,29 @@ describe('nodeProcesses', () => {
     assert.deepEqual(outcome, { kind: 'started', end: 'spawned' });
     await waitForFile(marker);
     assert.equal(readFileSync(marker, 'utf8'), 'app');
+  });
+
+  it('appends a hidden program\'s output and errors to its log, made with its folder, after its launcher is gone', async () => {
+    const log = join(DIR, 'logs', 'hidden.log');
+    // Written after the launcher has exited (startHidden resolves only then), so through the program's own handle.
+    const first = 'setTimeout(() => { console.log("out line"); console.error("error line"); }, 300)';
+    assert.deepEqual(await processes.startHidden({ command: NODE, args: ['-e', first], cwd: TEMP, env: process.env, log }), { kind: 'started', end: 'spawned' });
+    assert.match(await waitForText(log, 'error line'), /^out line\r?\nerror line\r?\n$/);
+    const second = 'console.log("second run")';
+    assert.deepEqual(await processes.startHidden({ command: NODE, args: ['-e', second], cwd: TEMP, env: process.env, log }), { kind: 'started', end: 'spawned' });
+    assert.match(await waitForText(log, 'second run'), /^out line\r?\nerror line\r?\nsecond run\r?\n$/);
+  });
+
+  it('reports a hidden program whose log cannot be opened as failed, and starts nothing', async () => {
+    const marker = join(DIR, 'unlogged.txt');
+    const script = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`;
+    // A file where the log's folder should be (Windows opens a folder given as the log itself).
+    const notFolder = join(DIR, 'not-a-folder.txt');
+    writeFileSync(notFolder, 'text');
+    const outcome = await processes.startHidden({ command: NODE, args: ['-e', script], cwd: TEMP, env: process.env, log: join(notFolder, 'run.log') });
+    assert.equal(outcome.kind, 'failed');
+    assert.match(outcome.kind === 'failed' ? outcome.error : '', /^exited with code 1: E[A-Z]+/);
+    assert.equal(existsSync(marker), false);
   });
 
   it('starts a hidden program that outlives a kill of its starter with every process the starter started', async () => {

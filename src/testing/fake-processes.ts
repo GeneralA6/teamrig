@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type { PathKind, PathProbe } from '../core/path-probe.ts';
-import type { Processes, RunOutcome, RunRequest, StartOutcome, StartRequest } from '../open/processes.ts';
+import type { HiddenRequest, Processes, RunOutcome, RunRequest, StartOutcome, StartRequest } from '../open/processes.ts';
 
 /**
  * Processes that start nothing: each request is recorded, and the outcome is the one set for its
@@ -9,7 +9,7 @@ import type { Processes, RunOutcome, RunRequest, StartOutcome, StartRequest } fr
 export class FakeProcesses implements Processes {
   readonly started: StartRequest[] = [];
   readonly ran: RunRequest[] = [];
-  readonly hidden: RunRequest[] = [];
+  readonly hidden: HiddenRequest[] = [];
   private readonly startOutcomes = new Map<string, StartOutcome>();
   private readonly runOutcomes = new Map<string, RunOutcome>();
 
@@ -35,7 +35,7 @@ export class FakeProcesses implements Processes {
     return this.runOutcomes.get(request.command) ?? { kind: 'exited', code: 0 };
   }
 
-  async startHidden(request: RunRequest): Promise<StartOutcome> {
+  async startHidden(request: HiddenRequest): Promise<StartOutcome> {
     this.hidden.push(request);
     return this.startOutcomes.get(request.command) ?? { kind: 'started', end: 'spawned' };
   }
