@@ -37,6 +37,7 @@ const APP: RestoreTeam = {
   terminal: 'windows-terminal',
   teamWindow: true,
   areaBySession: new Map([[OTHER, 'alpha']]),
+  efforts: new Map([['alpha', 'medium']]),
 };
 
 const WEB: RestoreTeam = {
@@ -49,6 +50,7 @@ const WEB: RestoreTeam = {
     [SESSION, 'front'],
     [OTHER, 'gone'],
   ]),
+  efforts: new Map(),
 };
 
 describe('teamSessionOf', () => {
@@ -61,7 +63,13 @@ describe('teamSessionOf', () => {
       terminal: 'windows-terminal',
       teamWindow: true,
       launched: true,
+      effort: undefined,
     });
+  });
+
+  it('carries the effort its config sets, by either route, for the restore to reopen it on (T2440)', () => {
+    assert.equal(teamSessionOf(entry({ team: 'app', session: 'alpha' }), [APP, WEB])?.effort, 'medium');
+    assert.equal(teamSessionOf(entry({ claudeSession: OTHER }), [APP])?.effort, 'medium');
   });
 
   it('falls back to the inbox it last read when its variables name no current session', () => {
@@ -73,6 +81,7 @@ describe('teamSessionOf', () => {
       terminal: 'auto',
       teamWindow: false,
       launched: false,
+      effort: undefined,
     });
   });
 

@@ -88,9 +88,33 @@ export interface RestoreItem extends Judged {
   readonly label: string;
   readonly team: TeamSession | undefined;
   readonly lost: LostWork;
-  readonly effort: EffortLevel | undefined;
+  /** The level it reopens at and where that comes from; undefined leaves it to Claude Code's default. */
+  readonly effort: ReopenEffort | undefined;
   readonly mode: RestoreMode;
   readonly why: string;
+}
+
+/** A restored session's effort: the one its team config sets, else the level its last turn ran at. */
+export interface ReopenEffort {
+  readonly level: EffortLevel;
+  readonly from: 'config' | 'last run';
+}
+
+/**
+ * The config's `launch.<id>.effort` wins once set, so a restore after a config change brings the session back on the
+ * new level, not the old one its transcript ran at (T2440); a session the config leaves unset comes back at its last.
+ */
+function reopenEffortOf(team: TeamSession | undefined, text: string): ReopenEffort | undefined {
+  if (team?.effort !== undefined) {
+    return { level: team.effort, from: 'config' };
+  }
+  const last = lastRecordedEffort(text);
+  return last === undefined ? undefined : { level: last, from: 'last run' };
+}
+
+/** The effort in words for the preview and the log: `high (config)`, `max (last run)` or `default`. */
+function effortWords(effort: ReopenEffort | undefined): string {
+  return effort === undefined ? 'default' : `${effort.level} (${effort.from})`;
 }
 
 /** What the machine says of each recorded session: still running, where its transcript is and what it says. */
@@ -124,7 +148,7 @@ async function itemOf(deps: RestoreDeps, facts: JudgeFacts, judged: Judged): Pro
   const team = teamSessionOf(entry, deps.teams);
   const label = team?.name ?? customTitleOf(text) ?? `Claude ${entry.claudeSession.slice(0, 8)}`;
   const resumeFolder = transcript === undefined ? undefined : resumeFolderOf(transcript, text, entry.projectDir, deps.projectsDir, deps.platform);
-  return { ...judged, transcript, resumeFolder, label, team, lost, effort: lastRecordedEffort(text), ...chooseMode(entry, lost, team?.isLead === true) };
+  return { ...judged, transcript, resumeFolder, label, team, lost, effort: reopenEffortOf(team, text), ...chooseMode(entry, lost, team?.isLead === true) };
 }
 
 /** Where a restored session reopens, and why there when that is not the folder it started in. */
@@ -205,7 +229,7 @@ function printJudged(deps: RestoreDeps, verdict: string, list: readonly Judged[]
 
 function printItems(deps: RestoreDeps, verdict: string, items: readonly RestoreItem[]): void {
   for (const item of items) {
-    deps.print(`${verdict.padEnd(8)} ${item.entry.claudeSession}  ${item.label}  ${item.reason}; ${modeWords(item)}; effort ${item.effort ?? 'default'}  ${item.entry.projectDir}`);
+    deps.print(`${verdict.padEnd(8)} ${item.entry.claudeSession}  ${item.label}  ${item.reason}; ${modeWords(item)}; effort ${effortWords(item.effort)}  ${item.entry.projectDir}`);
   }
 }
 
@@ -357,7 +381,7 @@ async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreIte
   await deps.registry.write({ ...current, transcriptPath: item.transcript ?? current.transcriptPath, restoreAttempts: current.restoreAttempts + 1, restoredAt: deps.clock.now() });
   let outcome: ReopenOutcome;
   try {
-    outcome = await deps.reopen({ claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort, prompt });
+    outcome = await deps.reopen({ claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort?.level, prompt });
   } catch (error) {
     outcome = { kind: 'failed', why: errorMessage(error) };
   }
@@ -371,6 +395,6 @@ async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreIte
     deps.print(`  (${note})`);
   }
   deps.print(`Opened ${item.label} (${modeWords(item)})`);
-  await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${item.effort ?? 'default'}; ${outcome.launch}`);
+  await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${effortWords(item.effort)}; ${outcome.launch}`);
   return 'opened';
 }

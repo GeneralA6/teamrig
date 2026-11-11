@@ -101,7 +101,7 @@ describe('teamrig restore', () => {
     assert.deepEqual(result, {
       code: EXIT.ok,
       stdout: [
-        `RESTORE  ${ALPHA}  app-alpha  killed without exiting; idle; effort high  ${APP}`,
+        `RESTORE  ${ALPHA}  app-alpha  killed without exiting; idle; effort high (last run)  ${APP}`,
         `RESTORE  ${NOTES}  notes  killed without exiting; continue: mid-turn; effort default  ${APP}`,
         `KEEP     ${LIVE}  still running  ${APP}`,
       ],
@@ -109,6 +109,13 @@ describe('teamrig restore', () => {
     });
     assert.equal((await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).list()).length, 3);
     assert.equal(await logOf(kit), '');
+  });
+
+  it('shows a team session coming back on the effort its config sets, not the level it last ran at (T2440)', async () => {
+    const kit = await restoreKit(undefined, { ...TEAM, launch: { alpha: { effort: 'medium' } } });
+    const result = await kit.run(['restore'], machine(kit, new FakeProcesses()));
+    okResult(result);
+    assert.equal(result.stdout[0], `RESTORE  ${ALPHA}  app-alpha  killed without exiting; idle; effort medium (config)  ${APP}`);
   });
 });
 
@@ -168,8 +175,20 @@ describe('teamrig restore run', () => {
     assert.ok(result.stdout.includes('Opened app-alpha (idle)'));
     assert.ok(result.stdout.includes('Opened notes (continue: mid-turn)'));
     assert.equal((await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).read(ALPHA))?.restoreAttempts, 1);
-    assert.match(await logOf(kit), new RegExp(`run: opened ${ALPHA} \\(idle\\) at effort high; windows-terminal exited 0\n`));
+    assert.match(await logOf(kit), new RegExp(`run: opened ${ALPHA} \\(idle\\) at effort high \\(last run\\); windows-terminal exited 0\n`));
     assert.doesNotMatch(await logOf(kit), /tab opened/, 'a run by hand is not in its tab');
+  });
+
+  it('reopens a team session on the effort its config sets after a config change, so the restore never brings back the old level (T2440)', async () => {
+    const kit = await restoreKit(undefined, { ...TEAM, launch: { alpha: { effort: 'medium' } } });
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    okResult(await kit.run(['restore', 'run'], machine(kit, processes)));
+    const medium = ALPHA_LAUNCH.map((arg) => (arg === 'high' ? 'medium' : arg));
+    assert.deepEqual(
+      processes.started.map((request) => request.args),
+      [windowsTab('[app] alpha', APP, medium), windowsTab('notes', APP, NOTES_RESUME)],
+    );
+    assert.match(await logOf(kit), new RegExp(`run: opened ${ALPHA} \\(idle\\) at effort medium \\(config\\); windows-terminal exited 0\n`));
   });
 
   it("reopens a team's session in the team's own Windows Terminal window when open.teamWindow is on, and one outside any team as before (T1427)", async () => {
