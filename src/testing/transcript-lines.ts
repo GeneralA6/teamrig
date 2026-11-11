@@ -233,6 +233,34 @@ export function mcpInstructionsLine(added: readonly FixtureListing[], removed: r
   });
 }
 
+/** A `/effort` typed in a session. */
+export interface FixtureEffort {
+  readonly uuid: string;
+  readonly at: string;
+  readonly sessionId: string;
+  /** What was typed after the command; '' (the default) is a bare `/effort`, which opens the picker. */
+  readonly args?: string;
+  /** The level Claude Code's reply says it set; undefined writes no reply (a cancelled picker). */
+  readonly set?: string;
+  /** Fields over the command entry's own, such as an `origin` or `isMeta` that makes it no typing. */
+  readonly extra?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * The two user lines Claude Code 2.1.319 writes for a typed `/effort` (a real pair of 11-06, its ids, folder and
+ * session replaced): the command, then its reply as the command's child.
+ */
+export function effortLines(effort: FixtureEffort): readonly string[] {
+  const base = { isSidechain: false, promptId: 'p-1', type: 'user', timestamp: effort.at, userType: 'external', entrypoint: 'cli', cwd: 'D:\\work\\app', sessionId: effort.sessionId, version: '2.1.319' };
+  const content = `<command-name>/effort</command-name>\n            <command-message>effort</command-message>\n            <command-args>${effort.args ?? ''}</command-args>`;
+  const command = JSON.stringify({ parentUuid: null, ...base, message: { role: 'user', content }, uuid: effort.uuid, ...effort.extra });
+  if (effort.set === undefined) {
+    return [command];
+  }
+  const said = `<local-command-stdout>Set effort level to ${effort.set} (saved as your default for new sessions): Balanced approach</local-command-stdout>`;
+  return [command, JSON.stringify({ parentUuid: effort.uuid, ...base, message: { role: 'user', content: said }, uuid: `${effort.uuid}-reply` })];
+}
+
 /** Lines as a transcript file's text: each line ends in a line end. */
 export function transcript(lines: readonly string[]): string {
   return lines.map((line) => `${line}\n`).join('');
