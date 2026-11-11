@@ -120,6 +120,7 @@
     "dist/cli/commands/hook-tab-status.js": "a4ca6e2283a8a748d5f6b03c5ba6f4245dc06a7cb9cb8f35d1a516e296dcf8d4",
     "dist/cli/commands/hook-tool-end.js": "8a673de647076b0899e69935cb3af9a3b1e8d51666a15010f7fb77f838991908",
     "dist/cli/commands/hook-turn-log.js": "e957c492ec3632635e356a00131522fd4113089f0231c355c4032e4de5ede210",
+    "dist/cli/commands/hook-update.js": "bd694606c50e9398311a0776cb36d7475d88a6f0fd0f0bcab1b8de87ab59e64c",
     "dist/cli/commands/hook-wake.js": "0a9bb118a66bd0895fe081e6b3da85c07dab00f45fe15e5d14400181334fd12e",
     "dist/cli/commands/hook.js": "81d4380d3adc95b006bce3f537b40245cbaea32614dc35504f1028ed7c288149",
     "dist/cli/commands/idle-act.js": "1f03f9bc0e293d220d66a555c4ac9cf980bdc32cb9b9b0d38672377454d2bb14",
@@ -202,7 +203,7 @@
     "dist/cli/reports.js": "7e974f69520f3fc2b90887679b852bdd0862c00bb597d175fa1461ffc9aea354",
     "dist/cli/roll-up.js": "2e14e25bbb6db76db733b75edbd0e8ba342936cc44236d4dcb51fa1fc5fe3097",
     "dist/cli/rollup-start.js": "2f3a509f34ce663af733492c1327f49badf1a482e3a5f458366ccf1b1bd574ac",
-    "dist/cli/run.js": "a252f2421d1eb3909be889062d4690d8f5e9ea1e01e959f5fd7da0adf28c20af",
+    "dist/cli/run.js": "0c50168bbe9ed8353a4077cd77dff492a5450120f1f1475b3a7919f57fecd7a8",
     "dist/cli/runtime.js": "fd5b956f15bdadad9efcc77f3e838b3281c5d7f062982f873922343ae5dbf110",
     "dist/cli/secret-guard-off-check.js": "994ac9c9c44cd870f7038ef78bf0d830d96cb51f34ae3d991de7712ac0834072",
     "dist/cli/secret-hook-check.js": "10d0a90d05ba29326d2d0078792b94745950e699d671fb160d0ff469f1bba616",
@@ -271,7 +272,7 @@
     "dist/core/team.js": "e8930db0a595fc8a9ab01fc56e7843dcc49f766d4c9ac82b45e27a0ec9c4e5ba",
     "dist/core/time.js": "710d870deaacc4af734ba0c6bd9524d359ee254ce09f7db1354d942a06c3129c",
     "dist/core/unique-by.js": "6f5a8a643dcb59836439fbe8dedf274f21e366794452f743389988cb6e5c17ba",
-    "dist/core/version.js": "c4b7c35d9f1ed13b99a54f17cbe8d30a84865ed260ce7ed213de40065d4d88ba",
+    "dist/core/version.js": "ed95233917fe12c87cfd8cf328845db3e7e1316269f44f86c68c775f13305b38",
     "dist/core/webhook.js": "080e09a3491f3b74134ce10ec5f21ac2b049989d92e8f59264ac0d340ccc54ad",
     "dist/core/work-block.js": "423c998dbedaf76e94f04002e13454abf6980e032cf9a21cd12c6a6a7af4e6a7",
     "dist/core/zone.js": "083678f2f96d0004e522d04351f67f6c5420b2b6bff81f7930aadae8c841679e",
@@ -426,6 +427,7 @@
     "dist/mod/refresh-hand.js": "3047049089a78fd08b6d8c84440c06036ea0fba31edf7da13d252ecd0eb0d432",
     "dist/mod/reload-hand.js": "c9e8ca0d861ba4ff1a1f7c7115204dec0df6037d92429acc37e67d79364d3414",
     "dist/mod/slash-hand.js": "d5891af28872043de6ec54354a949d577ff91c31ead4476eaaf5c6b42dcbdfe7",
+    "dist/mod/update-hand.js": "83494f88046b01f8ba59f23c1eb930d3177a8bb613068057075a9e4d9903d68c",
     "dist/mod/wake-hand.js": "d1da3020c62f68508e31e7e73c38598f3326b74725ca311c37599ef0020042c5",
     "dist/names/detect.js": "dad167c09105ebd6be7a35ef764f56cedb8d0474e601c3806ca605307eff6e6e",
     "dist/names/log.js": "7d08e8cbb4e2d7aa2d31567190bb0a2711c7475ac0bb83485ea00b015974b11d",
@@ -654,6 +656,9 @@
     "dist/turn-log/entry.js": "0f9b10ed696386acd27b296ea98e8c9df1b280cf03238e0bae61585e0e95849f",
     "dist/turn-log/reply.js": "533ab5a95b8ef917151020aa465b12a70e070ab290f9dffd3eaba0cd131a726d",
     "dist/turn-log/store.js": "b624e186930dff2b9543de87ccb41cd788d07f63abc54cbb0196cda437778020",
+    "dist/update/check.js": "0c9cc04e7cd607d0de3a39ce06c988803f324ccdcda207e78fa9a390bdf0bea3",
+    "dist/update/runner.js": "202ec98150543b9ba20a4fe665c5678a485d4cc5e5df10ab0d9b2b57d93d580e",
+    "dist/update/sources.js": "6fa84b0e27fe7e34fd57a780de6fb781e5abae7214a51684acec3116a3bdbb75",
     "dist/wake/api-retry.js": "d53050117153baafe9e01bd10f5ea3a2e47b0c1f0e89d3a9bca70049f4a85ace",
     "dist/wake/asks.js": "d55252d59f71e272a9c65338512dad9f6a07711afa812e9aa8355492429d1d80",
     "dist/wake/day-start.js": "4c31f92481d2a2708048fb938d52e4fb9e0d1c8cf607dba54e811574e65ea8b5",
@@ -668,7 +673,7 @@
     "dist/worktree/owner.js": "dc6649c630375943b53661b6336bf7834940274718177a81cbb3ba0fb897f92e",
     "dist/worktree/remove.js": "762ed90ccfa8209399872a62b4f090b616275df174b08fce369db878f848751d",
     "hooks/hooks.json": "9c4f6975cd3f802391678d0df7a2db1b4fd963e29861fcfc5c492ffcf0ff422d",
-    "hooks/register.test.ts": "d96064b78b6447a8a0b65198b874e37536cccbc597c987a31b2af8980bb5a4dc",
-    "hooks/register.ts": "feb0cd73462447cae93b7fcba32f3a285b0b52666471cdd8c7c53a21c7154b6d"
+    "hooks/register.test.ts": "cbbd9fd4b72ec8ebdc4f984f414650a20c9ed8c34cb63d5207fb4616a2c65b9d",
+    "hooks/register.ts": "332bcdcf49c0c79158100b73d1ccfeb9aa9f13f07ff892e142a52b32188d7faa"
   }
 }
