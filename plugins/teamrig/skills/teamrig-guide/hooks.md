@@ -929,7 +929,8 @@ turn: finish the step you are on and start no other. Write your handover to ... 
 follows it.` The mod adds the ask to the tool result's context, which you read and the user does not see. Only the
 size asks within a turn: the lead's request and the task count wait for a turn's end. Background work still running
 does not hold the ask, which names it, as at a turn's end; an open owner meeting holds it, for each session in it (the lead in its daily meeting, the session met and those joining in a booked one). A turn that ends with no handover marked ready after a mid-turn ask is asked once
-more by the Stop hook.
+more by the Stop hook. A handover marked ready is never asked over before the turn's end announces it, even when the
+result of the `refresh --ready` call itself is past the size, so the restart still follows the turn.
 
 Before Claude Code compacts the main conversation on its own (its automatic compaction, or the summary it computes
 ahead), the mod runs `teamrig hook compact-check` with Claude Code's estimate of the context. While your handover
