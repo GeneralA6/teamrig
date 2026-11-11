@@ -73,6 +73,13 @@ class Gate {
     assert.ok(hold !== undefined, 'a hold was made');
     return hold;
   }
+
+  /** The commit `to` holds each of `paths` as `from` does, as a rebase that left them alone. */
+  keepFiles(from: string, to: string, paths: readonly string[]): void {
+    for (const path of paths) {
+      this.git.blobs.set(`${to}:${path}`, `blob-${from}:${path}`);
+    }
+  }
 }
 
 describe('taskOfBranch', () => {
@@ -231,6 +238,77 @@ describe('reviewGateVerdict: answering a hold', () => {
     assert.notEqual(second.id, first.id);
     assert.equal(second.tree, 'tree-rebased2');
     assert.ok(second.createdAt > first.createdAt);
+  });
+});
+
+describe('reviewGateVerdict: carrying an approval to a rebased change', () => {
+  const HELD = ['package-lock.json', 'src/auth/old.ts'];
+  const MOVED: Partial<GatedChange> = { base: 'base2', head: 'rebased2' };
+  const CHECKED: Partial<GatedChange> = { config: { reviewGate: true, reviewCheck: CHECK } };
+
+  /** A gate whose change bravo approved, then rebased from `base` onto `base2` as `rebased2`, leaving `paths` alone. */
+  async function approvedAndRebased(paths: readonly string[] = HELD, change: Partial<GatedChange> = {}, outcome?: CheckOutcome): Promise<{ gate: Gate; first: ReviewHold }> {
+    const gate = new Gate(paths);
+    gate.outcome = outcome ?? gate.outcome;
+    await gate.run(change);
+    const first = await gate.hold();
+    gate.clock.advance(MINUTE_MS);
+    gate.answer('approved', 'bravo');
+    gate.clock.advance(MINUTE_MS);
+    gate.keepFiles('base', 'base2', paths);
+    gate.keepFiles('rebased', 'rebased2', paths);
+    return { gate, first };
+  }
+
+  it('lands the rebased change on its approved hold when each held file is the same at both ends, a deleted one too', async () => {
+    const { gate, first } = await approvedAndRebased();
+    for (const head of ['rebased', 'rebased2']) {
+      gate.git.blobs.set(`${head}:src/auth/old.ts`, undefined);
+    }
+    assert.deepEqual(await gate.verdict(MOVED), { kind: 'clear', review: 'approved' });
+    assert.ok(gate.said.includes(`review hold ${first.id} of t9-gate: bravo approved it; it carries to base2..rebased2, whose held files and findings are unchanged`));
+    assert.deepEqual(await gate.hold(), first, 'the approved hold stays, as the change a later rebase is compared with');
+  });
+
+  it('holds it again where main or the branch changed a held file, or git cannot read the old commits', async () => {
+    for (const commit of ['base2', 'rebased2']) {
+      const { gate, first } = await approvedAndRebased();
+      gate.git.blobs.set(`${commit}:package-lock.json`, 'blob-changed');
+      assert.match((await gate.run(MOVED)) ?? '', /^review hold H\w+ keeps t9-gate \(base2\.\.rebased2\)/, commit);
+      assert.notEqual((await gate.hold()).id, first.id, commit);
+    }
+    const { gate } = await approvedAndRebased();
+    gate.git.unreadable.add('rebased');
+    assert.match((await gate.run(MOVED)) ?? '', /^review hold H\w+ keeps t9-gate \(base2\.\.rebased2\)/);
+  });
+
+  it('holds it again where it holds other paths, or for another reviewer', async () => {
+    const { gate } = await approvedAndRebased();
+    gate.git.paths = [...HELD, 'yarn.lock'];
+    gate.keepFiles('base', 'base2', ['yarn.lock']);
+    gate.keepFiles('rebased', 'rebased2', ['yarn.lock']);
+    assert.match((await gate.run(MOVED)) ?? '', /^review hold H\w+ keeps t9-gate \(base2\.\.rebased2\) off the default branch: it changes package-lock\.json, src\/auth\/old\.ts \(src\/auth\/\*\*\), yarn\.lock\./);
+    const moved = await approvedAndRebased();
+    assert.match((await moved.gate.run(MOVED, { ...SETUP, roles: { securityReviewer: 'charlie' } })) ?? '', /charlie answers it/);
+  });
+
+  it('carries a flagged hold only while the review check finds the same', async () => {
+    const { gate } = await approvedAndRebased(['src/auth/login.ts'], CHECKED, { kind: 'flagged', findings: 'token in login.ts' });
+    assert.deepEqual(await gate.verdict({ ...CHECKED, ...MOVED }), { kind: 'clear', review: 'approved' });
+    assert.deepEqual(gate.checks, ['node review.js @ base', 'node review.js @ base2']);
+    gate.outcome = { kind: 'flagged', findings: 'token in login.ts and session.ts' };
+    assert.match((await gate.run({ ...CHECKED, ...MOVED })) ?? '', /keeps t9-gate \(base2\.\.rebased2\) off the default branch: .*the review check flagged it/);
+  });
+
+  it('holds it again where its hold was never approved, or was declined after the approval', async () => {
+    const never = new Gate(HELD);
+    await never.run();
+    never.keepFiles('base', 'base2', HELD);
+    never.keepFiles('rebased', 'rebased2', HELD);
+    assert.match((await never.run(MOVED)) ?? '', /^review hold H\w+ keeps t9-gate \(base2\.\.rebased2\)/);
+    const { gate } = await approvedAndRebased();
+    gate.answer('declined', 'bravo', 'one more look');
+    assert.match((await gate.run(MOVED)) ?? '', /^review hold H\w+ keeps t9-gate \(base2\.\.rebased2\)/);
   });
 });
 
