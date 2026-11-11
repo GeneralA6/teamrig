@@ -6,7 +6,7 @@ import { doneGroups, doneGroupTitle } from '../register/done-groups.ts';
 import type { Task } from '../register/fold.ts';
 import { isLate, type GoalScore } from '../register/goal-board.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
-import { asksOwner, isUngated, ownerLater } from '../register/owner-waits.ts';
+import { asksOwner, isDedicated, isUngated, ownerLater } from '../register/owner-waits.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { cut, formatShortTask } from '../register/views.ts';
 import { decisionOrder, isImprovementsDay, type Decision, type DecisionFocus, type DecisionRead } from './decision-order.ts';
@@ -46,7 +46,12 @@ export interface AgendaTeam {
   readonly requireGate: boolean;
   /** Its own class names, which its decisions and incidents read. */
   readonly focus: DecisionFocus;
+  /** Its `decisions.dedicatedOwners`: their waits go to DEDICATED, not to the cards (T868). */
+  readonly dedicatedOwners: readonly string[];
 }
+
+/** A register the agenda reads the owner's waits of: the lead's own (AgendaInput) or one under it (AgendaTeam). */
+type AgendaRegister = Omit<AgendaTeam, 'team'>;
 
 export interface AgendaInput {
   readonly tasks: readonly Task[];
@@ -68,6 +73,8 @@ export interface AgendaInput {
   readonly board: readonly GoalScore[];
   /** The team's class names, handed in as a tree keeps its ranking to itself. */
   readonly focus: DecisionFocus;
+  /** `decisions.dedicatedOwners`: the sessions whose waits on the owner go to DEDICATED, not to the cards (T868). */
+  readonly dedicatedOwners: readonly string[];
   /** `focus.improvementsDay`: the UTC weekday the Improvements batch is asked. */
   readonly improvementsDay: Weekday;
   /** What the hand step file of each card asked, the lead's team's and those under it, hashes to now (T2312). */
@@ -128,10 +135,15 @@ export function cardFacts(task: Task, tree: TaskTree, runFiles: RunFiles, team?:
   ];
 }
 
-/** A register's tasks the lead asks the owner now, in its plan order; `team` labels a register under the lead's. */
-function decisionRead(register: Omit<AgendaTeam, 'team'>, team: string | undefined): DecisionRead {
-  const { tasks, tree, ownerMarker, requireGate, focus } = register;
-  return { tasks: tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))), tree, team, focus };
+/** A register's tasks the lead asks the owner now (asksOwner), in its plan order. */
+function ownerAsks({ tasks, tree, ownerMarker, requireGate }: AgendaRegister): Task[] {
+  return tree.inPlanOrder(tasks.filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context)));
+}
+
+/** A register's tasks the lead asks the owner now as cards: all but the dedicated ones; `team` labels a register under the lead's. */
+function decisionRead(register: AgendaRegister, team: string | undefined): DecisionRead {
+  const tasks = ownerAsks(register).filter((task) => !isDedicated(task, register.dedicatedOwners));
+  return { tasks, tree: register.tree, team, focus: register.focus };
 }
 
 function cardsOf(decisions: readonly Decision[], runFiles: RunFiles): string[] {
@@ -181,6 +193,60 @@ function decisionLines(input: AgendaInput): string[] {
     `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id>${handed} --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
     `  Record each answer in the same turn: ${input.command} update <id>${labelled} --decided --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; the card leaves the agenda, and meeting end tells each task's owner.`,
     laterLine(input.command, input.ownerMarker, input.lead, 'it waits in LATER until then'),
+  ];
+}
+
+/** One owning session's dedicated decisions (T868), in its register's plan order; `team` names a register under the lead's. */
+interface DedicatedGroup {
+  readonly owner: string;
+  readonly team: string | undefined;
+  readonly tasks: readonly Task[];
+  readonly tree: TaskTree;
+}
+
+/** A register's dedicated decisions by owning session, the session whose decision comes first in its plan order first. */
+function dedicatedGroups(register: AgendaRegister, team: string | undefined): DedicatedGroup[] {
+  const byOwner = new Map<string, Task[]>();
+  for (const task of ownerAsks(register).filter((task) => isDedicated(task, register.dedicatedOwners))) {
+    byOwner.set(task.owner, [...(byOwner.get(task.owner) ?? []), task]);
+  }
+  return [...byOwner].map(([owner, tasks]) => ({ owner, team, tasks, tree: register.tree }));
+}
+
+/**
+ * A group's rows, then the line that books its session the dedicated meeting: the owner's task asking it for the
+ * full brief by the slot, and who opens the meeting then: `meet` reads its own team's register, so a team under the
+ * lead's opens it from that team's lead.
+ */
+function dedicatedGroupLines(group: DedicatedGroup, input: AgendaInput): string[] {
+  const { owner, team, tasks, tree } = group;
+  const ids = tasks.map((task) => task.id).join(', ');
+  const into = team === undefined ? '' : ` --team ${team}`;
+  const brief = `A full brief for ${input.ownerMarker}'s dedicated meeting, in this task's files: context, data, each option with its numbers and risks, your recommendation.`;
+  const opens = team === undefined ? `${input.command} meet ${owner}` : `team ${team}'s lead runs ${input.command} meet ${owner}`;
+  return [
+    `  ${team === undefined ? owner : `${team}/${owner}`}: ${tasks.length} decision(s)`,
+    ...tasks.map((task) => `  ${rowOf(task, tree, team)}`),
+    `    book: ${input.command} add${into} --owner ${owner} --source ${input.ownerMarker} --priority p1 --due <slot date> --title "Dedicated meeting with ${input.ownerMarker} at <slot>: brief on ${ids}" --description "${brief}" --session ${input.lead}`,
+    `    at the slot: ${opens}`,
+  ];
+}
+
+/**
+ * DEDICATED: the waits on the owner in the team's core-business areas (`decisions.dedicatedOwners`, T868), the lead's
+ * team's first, then each team's under it, by owning session. The owner refused to decide these from a short card, so
+ * none is read out: each session gets its own meeting after the daily, with a full brief. No block when none waits.
+ */
+function dedicatedLines(input: AgendaInput): string[] {
+  const groups = [dedicatedGroups(input, undefined), ...input.below.map((team) => dedicatedGroups(team, team.team))].flat();
+  if (groups.length === 0) {
+    return [];
+  }
+  const count = groups.reduce((sum, group) => sum + group.tasks.length, 0);
+  return [
+    `DEDICATED ${count} waiting on ${input.ownerMarker} in core-business areas: never a card; each owning session's own meeting after the daily`,
+    ...groups.flatMap((group) => dedicatedGroupLines(group, input)),
+    `  Agree a slot after the daily with ${input.ownerMarker} for each session and book it once with its line; at the slot the session brings its own cards with its brief and records each answer. Record none here.`,
   ];
 }
 
@@ -305,9 +371,9 @@ function doneLines(input: AgendaInput): string[] {
 
 /**
  * The register's agenda: the goals, to read everything after them against, then the owner's decisions, which are what
- * the meeting is for, and the incidents, then those the owner put off and the ungated waits, which are not, then the
- * late tasks, then the finished ones.
+ * the meeting is for, and the core-business ones it books dedicated meetings for, and the incidents, then those the
+ * owner put off and the ungated waits, which are not, then the late tasks, then the finished ones.
  */
 export function agendaLines(input: AgendaInput): string[] {
-  return [...goalLines(input), ...decisionLines(input), ...incidentLines(input), ...laterLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
+  return [...goalLines(input), ...decisionLines(input), ...dedicatedLines(input), ...incidentLines(input), ...laterLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
 }

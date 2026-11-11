@@ -212,11 +212,13 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
         ownerMarker: rolled.config.register.ownerSource,
         requireGate: rolled.config.register.requireDecisionCard,
         focus: rolled.config.focus,
+        dedicatedOwners: rolled.config.decisions.dedicatedOwners,
       })),
     lead: mk.lead,
     command: KIT_NAME,
     board: await goalBoard(runtime, mk, rolled),
     focus: mk.config.focus,
+    dedicatedOwners: mk.config.decisions.dedicatedOwners,
     improvementsDay: mk.config.focus.improvementsDay,
     runFiles: await readRunFiles(
       runtime,

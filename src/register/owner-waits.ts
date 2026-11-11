@@ -64,6 +64,14 @@ export function asksOwner(task: Task, ownerMarker: string, requireGate: boolean,
   return onOwner(task, ownerMarker, requireGate) && deferredUntil(task, context) === undefined;
 }
 
+/**
+ * Whether the owner decides a task's wait in a dedicated meeting with its session (T868): its owner holds one of the
+ * team's core-business areas (`decisions.dedicatedOwners`), so no daily card or batch asks it.
+ */
+export function isDedicated(task: Pick<Task, 'owner'>, dedicatedOwners: readonly string[]): boolean {
+  return dedicatedOwners.includes(task.owner);
+}
+
 /** When the lead asks the owner a wait the owner put off (Later), as stored; undefined for any other task. */
 export function ownerLater(task: Task, ownerMarker: string, requireGate: boolean, context: WaitContext): string | undefined {
   return onOwner(task, ownerMarker, requireGate) ? deferredUntil(task, context) : undefined;

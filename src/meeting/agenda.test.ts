@@ -37,6 +37,7 @@ function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate =
     command: 'teamrig',
     board: [],
     focus: DEFAULT_FOCUS,
+    dedicatedOwners: [],
     improvementsDay: 'wed',
     runFiles: new Map(),
   };
@@ -47,7 +48,7 @@ function rankedInputOf(tasks: readonly Task[], below: readonly AgendaTeam[] = []
 }
 
 function teamOf(team: string, tasks: readonly Task[], tree = treeOf(tasks)): AgendaTeam {
-  return { team, tasks, tree, ownerMarker: 'owner', requireGate: true, focus: DEFAULT_FOCUS };
+  return { team, tasks, tree, ownerMarker: 'owner', requireGate: true, focus: DEFAULT_FOCUS, dedicatedOwners: [] };
 }
 
 /** The ids of a section's task rows, in order. */
@@ -404,5 +405,62 @@ describe('the meeting agenda: no task number stands alone', () => {
       lines.filter((line) => /^ {4}web\/T\d+: /.test(line)),
       ['    web/T2: Ship the basic tier', '    web/T9: not in the working set'],
     );
+  });
+});
+
+describe('the meeting agenda: DEDICATED (T868)', () => {
+  /** A decision in a core-business area: its owning session is one of `decisions.dedicatedOwners`. */
+  const PRICED: Task = { ...DECIDE, id: 'T7', owner: 'pricing', title: 'Set the launch price' };
+  const BRIEF = "A full brief for owner's dedicated meeting, in this task's files: context, data, each option with its numbers and risks, your recommendation.";
+
+  it("moves a dedicated session's decisions out of DECISIONS into one group, with the line booking its meeting and the one opening it", () => {
+    const second: Task = { ...PRICED, id: 'T10', title: 'Set the renewal price' };
+    const input: AgendaInput = { ...inputOf([DECIDE, PRICED, second]), dedicatedOwners: ['pricing'] };
+    const order = input.tree.inPlanOrder([second, PRICED]).map((task) => task.id);
+    const all = agendaLines(input);
+    assert.deepEqual(rowIds(section(all, 'DECISIONS')), ['T4']);
+    const lines = section(all, 'DEDICATED');
+    assert.equal(lines[0], "DEDICATED 2 waiting on owner in core-business areas: never a card; each owning session's own meeting after the daily");
+    assert.equal(lines[1], '  pricing: 2 decision(s)');
+    assert.deepEqual(
+      lines.slice(2, 4).map((line) => /^ {4}(T\d+) waiting, p2, owner pricing \| Set the /.exec(line)?.[1]),
+      order,
+      'its rows in the plan order',
+    );
+    assert.equal(
+      lines[4],
+      `    book: teamrig add --owner pricing --source owner --priority p1 --due <slot date> --title "Dedicated meeting with owner at <slot>: brief on ${order.join(', ')}" --description "${BRIEF}" --session lead`,
+    );
+    assert.equal(lines[5], '    at the slot: teamrig meet pricing');
+    assert.match(lines[6] ?? '', /^ {2}Agree a slot after the daily with owner for each session/);
+    assert.equal(lines.length, 7);
+  });
+
+  it("groups a team under the lead's by <team>/<session> on that team's own sessions, booked in that team and opened by its lead", () => {
+    const ledger: Task = { ...DECIDE, id: 'T8', owner: 'ledger' };
+    const notDedicatedThere: Task = { ...PRICED, id: 'T9' };
+    const web: AgendaTeam = { ...teamOf('web', [ledger, notDedicatedThere]), dedicatedOwners: ['ledger'] };
+    const all = agendaLines({ ...inputOf([PRICED], NOW - MS_PER_DAY, true, [web]), dedicatedOwners: ['pricing'] });
+    assert.deepEqual(rowIds(section(all, 'DECISIONS')), ['web/T9']);
+    const lines = section(all, 'DEDICATED');
+    assert.match(lines[0] ?? '', /^DEDICATED 2 waiting on owner /);
+    assert.deepEqual(
+      lines.filter((line) => /^ {2}\S+: \d+ decision/.test(line)),
+      ['  pricing: 1 decision(s)', '  web/ledger: 1 decision(s)'],
+    );
+    assert.ok(lines.some((line) => /^ {4}web\/T8 waiting, p2, owner ledger \| /.test(line)), lines.join('\n'));
+    assert.ok(
+      lines.includes(
+        `    book: teamrig add --team web --owner ledger --source owner --priority p1 --due <slot date> --title "Dedicated meeting with owner at <slot>: brief on T8" --description "${BRIEF}" --session lead`,
+      ),
+      lines.join('\n'),
+    );
+    assert.ok(lines.includes("    at the slot: team web's lead runs teamrig meet ledger"), lines.join('\n'));
+  });
+
+  it('shows no block when no dedicated session waits on the owner', () => {
+    const all = agendaLines({ ...inputOf([DECIDE]), dedicatedOwners: ['pricing'] });
+    assert.equal(all.some((line) => line.startsWith('DEDICATED')), false);
+    assert.deepEqual(rowIds(section(all, 'DECISIONS')), ['T4']);
   });
 });
