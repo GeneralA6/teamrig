@@ -14,6 +14,13 @@ import { holdBackOutput } from './permission.ts';
 /** The most `{a,b}` alternatives the guard spells out of one Grep glob; one with more counts as naming a secret file. */
 const MAX_GREP_ALTERNATIVES = 64;
 
+/**
+ * The longest Grep glob the guard reads; a longer one counts as naming a secret file. Reading a glob's groups and sets
+ * costs time cubic in its length (`{[` repeated 8,000 times took 4.2 s, 16,000 times 33 s, past the hook's 15 s), and
+ * a glob a person or a model writes for a search stays far shorter.
+ */
+const MAX_GREP_GLOB_LENGTH = 1024;
+
 export interface SecretGuardEnv {
   /** The folder to judge from when the payload names none. */
   readonly cwd: string;
@@ -112,9 +119,12 @@ function grepFindings(input: JsonRecord, dir: string, rules: SecretRules): Secre
     .map((glob): SecretFinding => ({ kind: 'file', path: glob }));
 }
 
-/** True when a Grep `glob` may pick a secret file in `target`: one of its `{a,b}` alternatives may, or it has too many to read. */
+/**
+ * True when a Grep `glob` may pick a secret file in `target`: one of its `{a,b}` alternatives may, or it is too long
+ * or has too many alternatives to read.
+ */
 function mayPick(rules: SecretRules, target: string, glob: string): boolean {
-  const globs = braceAlternatives(glob, MAX_GREP_ALTERNATIVES);
+  const globs = glob.length > MAX_GREP_GLOB_LENGTH ? undefined : braceAlternatives(glob, MAX_GREP_ALTERNATIVES);
   return globs === undefined || globs.some((one) => rules.paths.mayName(`${target}/${one}`, true));
 }
 

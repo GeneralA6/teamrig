@@ -125,6 +125,12 @@ describe('secretFindingsOf', () => {
     assert.deepEqual(grep('{[{/],*.ts}'), []);
   });
 
+  it('counts a Grep glob too long to read in time as naming a secret, one at the bound still read', () => {
+    const padded = (length: number): string => `*.ts${'x'.repeat(length - 4)}`;
+    assert.deepEqual(grep(padded(1024)), []);
+    assert.deepEqual(grep(padded(1025)), [padded(1025)]);
+  });
+
   it('reads no other tool', () => {
     assert.deepEqual(findings(call('Glob', { pattern: '**/.env' })), []);
   });
