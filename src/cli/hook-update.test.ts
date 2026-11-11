@@ -85,6 +85,15 @@ describe('runCli: hook update-dismiss', () => {
     const kit = await installed('local');
     assert.deepEqual(answerOf(await run(kit, 'update-dismiss', new FakeHooks(), '{"plugin": "teamrig"}')), { kind: 'failed', why: 'stdin names no plugin and version' });
   });
+
+  it('refuses stdin that is not a JSON object, keeping the update shown', async () => {
+    const kit = await installed('local');
+    const hooks = new FakeHooks();
+    for (const stdin of ['not json', '["teamrig", "0.333.0"]']) {
+      assert.deepEqual(answerOf(await run(kit, 'update-dismiss', hooks, stdin)), { kind: 'failed', why: 'stdin names no plugin and version' });
+    }
+    assert.deepEqual(answerOf(await run(kit, 'update-check', hooks)), { kind: 'notices', notices: [NOTICE] });
+  });
 });
 
 describe('runCli: hook update-apply', () => {
@@ -102,6 +111,25 @@ describe('runCli: hook update-apply', () => {
       kind: 'failed',
       why: 'claude plugin update teamrig@local failed: Plugin not found',
     });
+  });
+
+  it('names only the step when it failed printing nothing', async () => {
+    const kit = await installed('local');
+    const hooks = new FakeHooks().answer([...CLAUDE, 'plugin', 'marketplace', 'update', 'local'], { lines: [], end: 1 });
+    assert.deepEqual(answerOf(await run(kit, 'update-apply', hooks, '{"plugin": "teamrig"}')), {
+      kind: 'failed',
+      why: 'claude plugin marketplace update local failed',
+    });
+    assert.equal(hooks.ran.length, 1);
+  });
+
+  it('refuses stdin that names no plugin, running nothing', async () => {
+    const kit = await installed('local');
+    const hooks = new FakeHooks();
+    for (const stdin of ['not json', '{"version": "0.333.0"}']) {
+      assert.deepEqual(answerOf(await run(kit, 'update-apply', hooks, stdin)), { kind: 'failed', why: 'no newer plugin is published' });
+    }
+    assert.deepEqual(hooks.ran, []);
   });
 
   it('refuses a plugin it tells of no update for, running nothing', async () => {
