@@ -382,6 +382,44 @@ describe("hook restore-track: the owner's page", () => {
     assert.equal(log.includes(HOOK_FILE) || log.includes('chat.example'), false);
   });
 
+  it("pages through the URL alerts.pageWebhookKey's key holds in a secrets file of many keys (T2426)", async () => {
+    const kit = new CliHarness({ ...TEAM, alerts: { pageWebhookFile: HOOK_FILE, pageWebhookKey: 'PAGE_URL' } });
+    const secrets = (value: string): string => ['apiVersion: v1', 'kind: Secret', 'stringData:', '  OTHER_URL: "https://chat.example/other"', `  PAGE_URL: ${value}`, ''].join('\r\n');
+    await kit.files.write(HOOK_FILE, secrets(`"${HOOK_URL}"`));
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook);
+    assert.deepEqual(webhook.posts.map((post) => post.url), [HOOK_URL]);
+    assert.equal((await loginLines(kit)).at(-1), PAGED_BY_FILE);
+    const log = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+    assert.equal(log.includes(HOOK_FILE) || log.includes('chat.example'), false);
+  });
+
+  it('names the problem, never a value, when the key is missing, empty or no https URL, and pages nothing (T2426)', async () => {
+    const kit = new CliHarness({ ...TEAM, alerts: { pageWebhookFile: HOOK_FILE, pageWebhookKey: 'PAGE_URL' } });
+    const webhook = new FakeWebhook();
+    for (const [text, problem] of [
+      ['OTHER_URL: "https://chat.example/other"\n', 'the file alerts.pageWebhookFile names has no PAGE_URL line, or its quote is not closed'],
+      ['PAGE_URL: ""\n', 'the file alerts.pageWebhookFile names gives PAGE_URL no value'],
+      ['PAGE_URL: "http://chat.example/x"\n', 'the webhook URL alerts.pageWebhookFile gives is not an https URL'],
+    ] as const) {
+      await kit.files.write(HOOK_FILE, text);
+      await failTurn(kit, webhook);
+      assert.equal((await loginLines(kit)).at(-1), `login: the page to the owner failed (${problem}); the next failure pages`);
+      kit.clock.advance(MS_PER_HOUR);
+    }
+    assert.deepEqual(webhook.posts, []);
+    const log = (await kit.files.read(restoreLogPath(KIT))) ?? '';
+    assert.equal(log.includes('chat.example'), false);
+  });
+
+  it('pages no one through a first line or a variable that is no https URL', async () => {
+    const kit = new CliHarness({ ...TEAM, alerts: { pageWebhookEnv: 'CHAT_PAGE_URL' } });
+    const webhook = new FakeWebhook();
+    await failTurn(kit, webhook, { env: { ...LAUNCHED, CHAT_PAGE_URL: 'chat.example/env' } });
+    assert.deepEqual(webhook.posts, []);
+    assert.equal((await loginLines(kit)).at(-1), 'login: the page to the owner failed (the webhook URL alerts.pageWebhookEnv gives is not an https URL); the next failure pages');
+  });
+
   it('pages no one for a tab of no team, and claims no page for it', async () => {
     const kit = await pagedHarness();
     const webhook = new FakeWebhook();

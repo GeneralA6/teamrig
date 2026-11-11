@@ -959,6 +959,12 @@ export interface AlertsConfig {
    * a log or a session's read. Wins over `pageWebhookEnv` when both are set.
    */
   readonly pageWebhookFile?: string;
+  /**
+   * With `pageWebhookFile`: the key whose value in that file is the URL, so a secrets file holding many keys (a
+   * Kubernetes secret's YAML, a `.env` file) is read in place and the URL keeps one home (src/core/secret-key.ts).
+   * Absent: the file's first non-empty line is the URL.
+   */
+  readonly pageWebhookKey?: string;
 }
 
 /** When the lead asks the owner the decisions waiting on them, together in a batch (src/decisions/batch.ts). */

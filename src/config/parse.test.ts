@@ -251,6 +251,24 @@ describe('parseConfig', () => {
     }
   });
 
+  it("reads alerts.pageWebhookKey as the key of alerts.pageWebhookFile's file, refused without the file or as no key name (T2426)", () => {
+    for (const key of ['PAGE_WEBHOOK_URL', 'page-webhook.url', '_url']) {
+      const alerts = { pageWebhookFile: 'C:/secrets/secrets.yaml', pageWebhookKey: key };
+      assert.deepEqual(parseConfig({ ...ROSTER, alerts }).config.alerts, { persistentFailureHours: 24, ...alerts });
+    }
+    const alone = parseConfig({ ...ROSTER, alerts: { pageWebhookKey: 'PAGE_WEBHOOK_URL' } });
+    assert.deepEqual(alone.issues.map((issue) => [issue.path, issue.message]), [['alerts.pageWebhookKey', 'needs alerts.pageWebhookFile, the file it reads the key from']]);
+    assert.deepEqual(alone.config.alerts, { persistentFailureHours: 24 });
+    const badFile = parseConfig({ ...ROSTER, alerts: { pageWebhookFile: 'secrets.yaml', pageWebhookKey: 'PAGE_WEBHOOK_URL' } });
+    assert.deepEqual(paths(badFile.issues), ['alerts.pageWebhookFile'], 'only the bad file is reported');
+    assert.deepEqual(badFile.config.alerts, { persistentFailureHours: 24 });
+    for (const key of ['PAGE WEBHOOK', '1PAGE', 'PAGE:URL', 'x'.repeat(65)]) {
+      const { config, issues } = parseConfig({ ...ROSTER, alerts: { pageWebhookFile: 'C:/secrets/secrets.yaml', pageWebhookKey: key } });
+      assert.deepEqual(paths(issues), ['alerts.pageWebhookKey'], key);
+      assert.deepEqual(config.alerts, { persistentFailureHours: 24, pageWebhookFile: 'C:/secrets/secrets.yaml' }, key);
+    }
+  });
+
   it('reads turnLog, and refuses keeping entries under an hour or past a week', () => {
     const off = { enabled: false, keepHours: 168 };
     assert.deepEqual(parseConfig({ ...ROSTER, turnLog: off }).config.turnLog, off);

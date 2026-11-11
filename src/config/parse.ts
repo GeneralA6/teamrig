@@ -206,6 +206,10 @@ const EXEC_DIRECTORY: Check<string> = (folder) => {
 const ENV_VARIABLE: Check<string> = (name) =>
   /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) ? undefined : 'expected a variable name: a letter or _, then at most 63 letters, digits or _';
 
+/** A key in a secrets file of many, such as `PAGE_WEBHOOK_URL`: a Kubernetes secret's keys may also hold . and -. */
+const SECRET_KEY: Check<string> = (name) =>
+  /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/.test(name) ? undefined : 'expected a key name: a letter or _, then at most 63 letters, digits, _, . or -';
+
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey: Check<string> = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
 
@@ -1161,10 +1165,16 @@ function parseAlerts(read: ConfigReader, raw: JsonRecord): AlertsConfig {
   const path = 'alerts';
   const pageWebhookEnv = read.optionalString(raw, 'pageWebhookEnv', path, ENV_VARIABLE);
   const pageWebhookFile = read.optionalString(raw, 'pageWebhookFile', path, isAbsoluteFile);
+  const pageWebhookKey = read.optionalString(raw, 'pageWebhookKey', path, SECRET_KEY);
+  // A bad file is already reported; a key with no file at all is its own mistake.
+  if (pageWebhookKey !== undefined && raw['pageWebhookFile'] === undefined) {
+    read.report(`${path}.pageWebhookKey`, 'needs alerts.pageWebhookFile, the file it reads the key from');
+  }
   return {
     persistentFailureHours: read.integer(raw, 'persistentFailureHours', path, DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
     ...(pageWebhookEnv === undefined ? {} : { pageWebhookEnv }),
     ...(pageWebhookFile === undefined ? {} : { pageWebhookFile }),
+    ...(pageWebhookKey === undefined || pageWebhookFile === undefined ? {} : { pageWebhookKey }),
   };
 }
 
