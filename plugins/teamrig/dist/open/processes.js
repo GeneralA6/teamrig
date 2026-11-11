@@ -66,17 +66,24 @@ function startDetached(request) {
 /** The exit code of HIDDEN_LAUNCHER when the program it was given is not installed. */
 const LAUNCH_MISSING = 9;
 /**
- * A node script that starts the program after its `--` hidden and detached, then exits: 0 once the program runs,
- * LAUNCH_MISSING when it is not installed, 1 with the reason on stderr when it cannot start for another reason.
+ * A node script that starts the program after its `--` and log path hidden and detached, then exits: 0 once the
+ * program runs, LAUNCH_MISSING when it is not installed, 1 with the reason on stderr when it cannot start for another
+ * reason, its log unopenable among them. The log is opened here, not by the caller, so the program holds its own handle
+ * to it once this launcher is gone; an empty path drops the program's output.
  */
 const HIDDEN_LAUNCHER = `
-const [command, ...args] = process.argv.slice(1);
+const [log, command, ...args] = process.argv.slice(1);
 const fail = (error) => {
   process.stderr.write(String(error instanceof Error ? error.message : error));
   process.exit(error instanceof Error && 'code' in error && error.code === 'ENOENT' ? ${LAUNCH_MISSING} : 1);
 };
 try {
-  const child = require('node:child_process').spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
+  const fs = require('node:fs');
+  if (log !== '') {
+    fs.mkdirSync(require('node:path').dirname(log), { recursive: true });
+  }
+  const output = log === '' ? 'ignore' : fs.openSync(log, 'a');
+  const child = require('node:child_process').spawn(command, args, { detached: true, stdio: ['ignore', output, output], windowsHide: true });
   child.once('error', fail);
   child.once('spawn', () => {
     child.unref();
@@ -95,7 +102,7 @@ function startHiddenProgram(request) {
     return new Promise((resolve) => {
         let launcher;
         try {
-            launcher = spawn(process.execPath, ['-e', HIDDEN_LAUNCHER, '--', request.command, ...request.args], {
+            launcher = spawn(process.execPath, ['-e', HIDDEN_LAUNCHER, '--', request.log ?? '', request.command, ...request.args], {
                 cwd: request.cwd,
                 env: { ...request.env },
                 detached: true,
