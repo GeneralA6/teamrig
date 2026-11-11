@@ -1,18 +1,15 @@
 /**
  * The tab's side of the update notice (T2466). A person ran an old teamrig or teamrig-pane until they happened to
  * run `claude plugin update`, so the plugin's mod (`hooks/register.ts`) runs an `UpdateHand` in every interactive
- * tab. Every UPDATE_TICK_MS on Claude Code's clock, never on a turn's path, the hand looks whether its next ask is
- * due: UPDATE_FIRST_MS after the mod loaded, then every UPDATE_EVERY_MS. The ask runs the CLI's `hook update-check`,
- * which asks the network at most every 6 hours across the machine (src/update/check.ts) and else reads its kept
- * answer. The hand holds the updates it told of; the band above the prompt shows the first, with Update (`hook
+ * tab. On Claude Code's clock, never on a turn's path, the mod ticks the hand UPDATE_FIRST_MS after it loaded, then
+ * every UPDATE_EVERY_MS. A tick runs the CLI's `hook update-check`, which asks the network at most every 6 hours
+ * across the machine (src/update/check.ts) and else reads its kept answer. The hand holds the updates it told of; the band above the prompt shows the first, with Update (`hook
  * update-apply`: Claude Code's own `plugin update`, then the tab's reload hand loads it) and Dismiss (`hook
  * update-dismiss`: hidden until a newer version is out). Nothing is typed into the terminal.
  *
  * The mod runs inside Claude Code without Node, so this file imports nothing at run time.
  */
 
-/** How often the hand looks whether its next ask is due. */
-export const UPDATE_TICK_MS = 60_000;
 /** How long after the mod loads the hand asks first, so a tab's start is left alone. */
 export const UPDATE_FIRST_MS = 60_000;
 /** How long the hand goes between asks; the CLI asks the network far less often. */
@@ -57,15 +54,12 @@ export interface UpdateHandHost {
   cli(command: UpdateCommand, stdin: string): Promise<UpdateRun>;
   /** Shows the person a toast. */
   toast(text: string): void;
-  now(): number;
 }
 
 /** What one tick did. */
 export type UpdateTick =
   /** A check, an update or a dismissal still runs. */
   | { readonly kind: 'overlap' }
-  /** The next ask is not due yet. */
-  | { readonly kind: 'quiet' }
   /** The CLI told of these updates (none: the tab runs the newest). */
   | { readonly kind: 'checked'; readonly notices: readonly UpdateNotice[] }
   | { readonly kind: 'failed'; readonly error: string };
@@ -142,13 +136,11 @@ function messageOf(error: unknown): string {
 
 export class UpdateHand {
   private readonly host: UpdateHandHost;
-  private nextAskAt: number;
   private notices: readonly UpdateNotice[] = [];
   private busy = false;
 
   constructor(host: UpdateHandHost) {
     this.host = host;
-    this.nextAskAt = host.now() + UPDATE_FIRST_MS;
   }
 
   /** The update the band shows: the first the CLI told of and the person has not updated or dismissed. */
@@ -156,26 +148,20 @@ export class UpdateHand {
     return this.notices[0];
   }
 
-  /** One look; never rejects. */
+  /** One check; never rejects. A failed one keeps the updates shown, and the next tick asks again. */
   async tick(): Promise<UpdateTick> {
     if (this.busy) {
       return { kind: 'overlap' };
     }
-    if (this.host.now() < this.nextAskAt) {
-      return { kind: 'quiet' };
-    }
     this.busy = true;
     try {
       const answer = await this.ask('check', {});
-      // A failed check asks again at the next interval too, so a broken CLI costs one run per UPDATE_EVERY_MS.
-      this.nextAskAt = this.host.now() + UPDATE_EVERY_MS;
       if (answer.kind === 'notices') {
         this.notices = answer.notices;
         return { kind: 'checked', notices: answer.notices };
       }
       return { kind: 'failed', error: answer.kind === 'failed' ? answer.why : `hook update-check answered ${answer.kind}` };
     } catch (error) {
-      this.nextAskAt = this.host.now() + UPDATE_EVERY_MS;
       return { kind: 'failed', error: messageOf(error) };
     } finally {
       this.busy = false;
