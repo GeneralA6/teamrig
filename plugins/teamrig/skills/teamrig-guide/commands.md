@@ -6214,6 +6214,63 @@ Output: one JSON line, exit 0: `{"kind":"due","notices","watch","recheckAt"}` (`
 `{"id","title","text"}`, for the tab to show as well; ask again once the `watch` file changes or at `recheckAt`, null
 when no meeting waits for its time), or `{"kind":"off","why"}`.
 
+### teamrig hook update-check
+
+Run by the plugin's mod in each interactive tab, about every 10 minutes: the newer teamrig and teamrig-pane versions
+their marketplaces publish than the ones installed (Claude Code's `plugins/installed_plugins.json`, the user-scope
+install first). The network is asked at most every 6 hours across the machine; every other run reads the answer kept in
+`<kit home>/updates/check.json`. A cloned marketplace is asked through a bare repository teamrig keeps beside it
+(`<kit home>/updates/<marketplace>.git`), never Claude Code's own clone: `git ls-remote` names the newest commit, and
+only a commit not seen before is fetched, one commit deep and without file contents but the two files read. A
+directory marketplace is read in place. git never asks for a login; a marketplace that cannot be asked keeps what was
+known. Stdin: ignored.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook update-check
+```
+
+Output: one JSON line, exit 0: `{"kind":"notices","notices"}`, each notice `{"plugin","marketplace","installed","newest"}`
+(none when every install is the newest, or after its version was dismissed).
+
+### teamrig hook update-dismiss
+
+Run by the plugin's mod when the person picks Dismiss on the update band: hides that plugin's notice until a version
+newer than the one dismissed is published. Stdin: `{"plugin", "version"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+echo '{"plugin":"teamrig","version":"0.333.0"}' | teamrig hook update-dismiss
+```
+
+Output: one JSON line, exit 0: `{"kind":"dismissed"}`, or `{"kind":"failed","why"}` when stdin names no plugin and
+version.
+
+### teamrig hook update-apply
+
+Run by the plugin's mod when the person picks Update on the update band: runs Claude Code's own `claude plugin
+marketplace update <marketplace>`, then `claude plugin update <plugin>@<marketplace>`, each killed past 3 minutes. Only a
+plugin `hook update-check` tells of a newer version for is updated; any other is refused, running nothing. The tab runs
+the new version once it reloads its plugins ([the reload after an install](hooks.md#the-mod-the-reload-after-an-install)).
+Stdin: `{"plugin"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+echo '{"plugin":"teamrig"}' | teamrig hook update-apply
+```
+
+Output: one JSON line, exit 0: `{"kind":"applied","plugin","version"}`, or `{"kind":"failed","why"}` naming the step
+that failed and what it printed, or that no newer version is published or Claude Code is not on PATH.
+
 ### teamrig hook slash-command
 
 Run by the plugin's mod when a person types `/teamrig <command> [args]` in a Claude Code tab; the mod shows what it
