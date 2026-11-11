@@ -1,3 +1,4 @@
+import { secretValueOf } from "../core/secret-key.js";
 import { loginPageText } from "../restore/login.js";
 import { openKit, teamZone } from "./kit.js";
 /**
@@ -16,9 +17,10 @@ async function pageSourceOf(runtime, team) {
         const { config } = load;
         // The time is read on the tab's own team's clock, wherever the key sits.
         zone ??= teamZone(config, runtime);
-        const { pageWebhookFile, pageWebhookEnv } = config.alerts;
+        const { pageWebhookFile, pageWebhookKey, pageWebhookEnv } = config.alerts;
         if (pageWebhookFile !== undefined) {
-            return { source: { team: current, key: 'pageWebhookFile', value: pageWebhookFile }, zone };
+            const fileKey = pageWebhookKey === undefined ? {} : { fileKey: pageWebhookKey };
+            return { source: { team: current, key: 'pageWebhookFile', value: pageWebhookFile, ...fileKey }, zone };
         }
         if (pageWebhookEnv !== undefined) {
             return { source: { team: current, key: 'pageWebhookEnv', value: pageWebhookEnv }, zone };
@@ -42,6 +44,11 @@ export async function loginPageOf(runtime, team, session, at) {
 }
 /** The webhook URL a source names, else why there is none, in words that hold neither the URL nor the file's path. */
 async function pageUrlOf(source, runtime) {
+    const found = await namedUrlOf(source, runtime);
+    // An https URL only: a page posted in the clear would hand the webhook's token, half its URL, to the network.
+    return 'url' in found && !isHttpsUrl(found.url) ? { problem: `the webhook URL alerts.${source.key} gives is not an https URL` } : found;
+}
+async function namedUrlOf(source, runtime) {
     if (source.key === 'pageWebhookEnv') {
         const url = runtime.env[source.value]?.trim();
         return url === undefined || url === '' ? { problem: `alerts.pageWebhookEnv names ${source.value}, which is not set` } : { url };
@@ -53,11 +60,28 @@ async function pageUrlOf(source, runtime) {
     catch {
         return { problem: 'the file alerts.pageWebhookFile names cannot be read' };
     }
+    if (text === undefined) {
+        return { problem: 'the file alerts.pageWebhookFile names is missing or empty' };
+    }
+    return source.fileKey === undefined ? firstLineUrl(text) : keyedUrl(text, source.fileKey);
+}
+function firstLineUrl(text) {
     const url = text
-        ?.split('\n')
+        .split('\n')
         .map((line) => line.trim())
         .find((line) => line !== '');
     return url === undefined ? { problem: 'the file alerts.pageWebhookFile names is missing or empty' } : { url };
+}
+/** The URL `key` holds in a secrets file's text; the problem names the key, never a value. */
+function keyedUrl(text, key) {
+    const url = secretValueOf(text, key)?.trim();
+    if (url === undefined) {
+        return { problem: `the file alerts.pageWebhookFile names has no ${key} line, or its quote is not closed` };
+    }
+    return url === '' ? { problem: `the file alerts.pageWebhookFile names gives ${key} no value` } : { url };
+}
+function isHttpsUrl(text) {
+    return URL.canParse(text) && new URL(text).protocol === 'https:';
 }
 /** Posts the page; undefined once it is posted, else why not. It never throws, so a claim is never left held by one. */
 export async function sendLoginPage(page, runtime) {
