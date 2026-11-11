@@ -453,8 +453,9 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   a glob call or by starting a program, so `'*'` as a fallback or `'.*'` in a regex passes), the Read tool on one, or
   a Grep that shows content (`output_mode: content`) of one by its path or glob (each glob of the input apart, as
   ripgrep gets them, and each of its `{a,b}` alternatives, so `*.{ts,pem}` names `*.pem`; ripgrep reads away a `\`
-  and a `}` no `{` opened, so `*.\pem` and `*.pem}` name it too; a glob with over 64 alternatives counts as naming
-  one; a `!glob` skips files, so it names none).
+  and a `}` no `{` opened, so `*.\pem` and `*.pem}` name it too; a `[...]` set in a group is read as ripgrep reads
+  it, a `/` and a `{` in it members, so `{[{/],*.pem}` names `*.pem`; a glob over 1,024 characters or with over 64
+  alternatives counts as naming one; a `!glob` skips files, so it names none).
   The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
   `~/.aws/credentials`, `**/.kube/config`, `~/.docker/config.json`, `**/.git-credentials`, `~/.config/gh/hosts.yml`,
   `~/.claude/.credentials.json`, `~/.claude/history.jsonl` (the prompt history), `**/.claude/settings.local.json`
