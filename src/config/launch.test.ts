@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { DEFAULT_LEAD_LAUNCH } from './defaults.ts';
-import { describeLaunch, isDefaultModel, isEffort, isModel, launchOf, MODEL_ALIASES } from './launch.ts';
+import { describeLaunch, isDefaultModel, isEffort, isModel, launchOf, MODEL_ALIASES, ownLaunchOf } from './launch.ts';
 
 describe('isModel', () => {
   it('takes every documented alias', () => {
@@ -54,6 +54,16 @@ describe('launchOf', () => {
 
   it('never reads an id from the object prototype', () => {
     assert.deepEqual(launchOf(testConfig(), 'constructor'), {});
+  });
+});
+
+describe('ownLaunchOf', () => {
+  it("is what the config itself sets for the session, without the lead's defaults (T2440)", () => {
+    const config = testConfig({ launch: { lead: { effort: 'high' }, alpha: { model: 'sonnet' } } });
+    assert.deepEqual(ownLaunchOf(config, 'lead'), { effort: 'high' });
+    assert.deepEqual(ownLaunchOf(config, 'alpha'), { model: 'sonnet' });
+    assert.deepEqual(ownLaunchOf(testConfig(), 'lead'), {});
+    assert.deepEqual(ownLaunchOf(testConfig(), 'constructor'), {});
   });
 });
 

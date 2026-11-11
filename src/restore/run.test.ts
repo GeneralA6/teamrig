@@ -70,7 +70,10 @@ const APP: RestoreTeam = {
   terminal: 'auto',
   teamWindow: false,
   areaBySession: new Map(),
+  efforts: new Map(),
 };
+/** {@link APP} after a config change set alpha's effort, which last ran at max. */
+const APP_CONFIGURED: RestoreTeam = { ...APP, efforts: new Map([['alpha', 'medium']]) };
 
 type Reopen = (tab: ReopenTab, world: World) => Promise<ReopenOutcome>;
 
@@ -168,14 +171,23 @@ describe('previewRestore', () => {
     const { deps, printed, registry } = await world();
     await previewRestore(deps);
     assert.deepEqual(printed, [
-      `RESTORE  ${LEAD}  app-lead  killed without exiting; continue: lead; effort high  /work/app`,
-      `RESTORE  ${ALPHA}  app-alpha  killed without exiting; continue: mid-turn; effort max  /work/app`,
+      `RESTORE  ${LEAD}  app-lead  killed without exiting; continue: lead; effort high (last run)  /work/app`,
+      `RESTORE  ${ALPHA}  app-alpha  killed without exiting; continue: mid-turn; effort max (last run)  /work/app`,
       `RESTORE  ${LONE}  notes  killed without exiting; idle; effort default  /work/removed/wt`,
       `KEEP     ${LIVE}  still running  /work/app`,
       `DISCARD  ${SDK}  not a terminal session (sdk-cli)  /work/app`,
       'Lead app-lead hears: app-alpha continue (mid-turn)',
     ]);
     assert.equal((await registry.list()).length, 5);
+  });
+
+  it('shows the effort the config sets for a session over the one it last ran at, and where each comes from (T2440)', async () => {
+    const { deps, printed } = await world();
+    await previewRestore({ ...deps, teams: [APP_CONFIGURED] });
+    assert.deepEqual(printed.slice(0, 2), [
+      `RESTORE  ${LEAD}  app-lead  killed without exiting; continue: lead; effort high (last run)  /work/app`,
+      `RESTORE  ${ALPHA}  app-alpha  killed without exiting; continue: mid-turn; effort medium (config)  /work/app`,
+    ]);
   });
 
   it('says so when nothing is recorded', async () => {
@@ -237,7 +249,7 @@ describe('runRestore', () => {
         claudeSession: LEAD,
         title: 'app-lead',
         folder: '/work/app',
-        team: { team: 'app', session: 'lead', name: 'app-lead', isLead: true, terminal: 'auto', teamWindow: false, launched: true },
+        team: { team: 'app', session: 'lead', name: 'app-lead', isLead: true, terminal: 'auto', teamWindow: false, launched: true, effort: undefined },
         effort: 'high',
         prompt: continuePrompt(NOTHING_LOST, 'app-alpha continue (mid-turn)'),
       },
@@ -245,7 +257,7 @@ describe('runRestore', () => {
         claudeSession: ALPHA,
         title: 'app-alpha',
         folder: '/work/app',
-        team: { team: 'app', session: 'alpha', name: 'app-alpha', isLead: false, terminal: 'auto', teamWindow: false, launched: true },
+        team: { team: 'app', session: 'alpha', name: 'app-alpha', isLead: false, terminal: 'auto', teamWindow: false, launched: true, effort: undefined },
         effort: 'max',
         prompt: continuePrompt(NOTHING_LOST, undefined),
       },
@@ -257,6 +269,20 @@ describe('runRestore', () => {
     assert.equal(await registry.read(SDK), undefined);
     assert.ok(printed.includes('Opened app-lead (continue: lead)'));
     assert.ok(printed.includes('  (/work/removed/wt is gone; opened in /work)'));
+  });
+
+  it('reopens a session on the effort its config sets, not the old level it last ran at, and logs where it came from (T2440)', async () => {
+    const { deps, reopened, logged } = await world();
+    await runRestore({ ...deps, teams: [APP_CONFIGURED] }, LOGON);
+    assert.deepEqual(
+      reopened.map(({ claudeSession, effort }) => [claudeSession, effort]),
+      [
+        [LEAD, 'high'],
+        [ALPHA, 'medium'],
+        [LONE, undefined],
+      ],
+    );
+    assert.ok(logged.includes(`run: opened ${ALPHA} (continue: mid-turn) at effort medium (config); windows-terminal exited 0`), logged.join('\n'));
   });
 
   it('resumes a session that went into a worktree there, where Claude Code filed its transcript, not where it started (T1426)', async () => {
@@ -376,8 +402,8 @@ describe('runRestore', () => {
     assert.deepEqual(logged, [
       `archived ${SDK} (not a terminal session (sdk-cli))`,
       'run: started, 3 to reopen',
-      `run: opened ${LEAD} (continue: lead) at effort high; windows-terminal exited 0`,
-      `run: opened ${ALPHA} (continue: mid-turn) at effort max; windows-terminal exited 0`,
+      `run: opened ${LEAD} (continue: lead) at effort high (last run); windows-terminal exited 0`,
+      `run: opened ${ALPHA} (continue: mid-turn) at effort max (last run); windows-terminal exited 0`,
       `run: opened ${LONE} (idle) at effort default; windows-terminal exited 0`,
       'run: done, 3 opened, 0 skipped, 0 failed of 3',
     ]);
