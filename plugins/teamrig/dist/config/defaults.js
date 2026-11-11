@@ -277,11 +277,10 @@ export const DEFAULT_FOCUS = {
 export const QUEUE_TTL_MARGIN_MINUTES = 10;
 /**
  * A host lock lasts 150 minutes and a queued step at most 45 of them, a small step at most 10; a step waits up to an hour
- * for the lock, and its memory is sampled every 15 seconds while it runs. The line is in arrival order with one heavy step
- * at a time (`serial`); in `pipeline` order a waiting step's priority rises a level each 15 minutes, with at most 2 steps
- * of one session running. `serial` stays the default while a team's own deploy tool may take the lock file without
- * reading the shares: under `pipeline` heavy steps run as shares with the lock file free, so such a tool could start a
- * roll beside 2 heavy builds (stopgap T2250: back to `pipeline` once that tool waits for the shares).
+ * for the lock, and its memory is sampled every 15 seconds while it runs. The line is in `pipeline` order: a waiting
+ * step's priority rises a level each 15 minutes, at most 2 steps of one session run, and 2 heavy steps share the host
+ * with the lock file free. A team whose own deploy tool takes the lock file without first waiting for the shares in
+ * `<lock>.shared` to end sets `serial`, else that tool could start a roll beside 2 heavy builds.
  */
 export const DEFAULT_QUEUE = {
     lockTtlMinutes: 150,
@@ -292,7 +291,7 @@ export const DEFAULT_QUEUE = {
     memoryFloorMb: 4096,
     smallReserveMb: 2048,
     heavyReserveMb: 2048,
-    admission: 'serial',
+    admission: 'pipeline',
     agingMinutes: 15,
     perSessionRunning: 2,
     maxHeavyParallel: 2,
