@@ -58,6 +58,7 @@ import { closedSendHold } from './hook-closed-send.ts';
 import { coldSendHold } from './hook-cold-send.ts';
 import { blockStartOf, liveTasksNoteOf } from './live-tasks.ts';
 import { droppedEditReasonOf } from './hook-dropped-edit.ts';
+import { effortWritebackOf, type EffortWritebackOutcome } from './hook-effort-writeback.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { restartOrPark, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
@@ -776,13 +777,15 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
     return blockOutput(dropped);
   }
   const decision = await refreshDecisionOf(runtime, scope, payload).catch((): StopDecision => ({ kind: 'none' }));
-  const notices = await modelNoticesOf(runtime, scope, payload).catch((): readonly string[] => []);
+  // Before the model notices, which then read the level just written: no "runs at another effort" for a typed /effort.
+  const effort = await effortWritebackOf(runtime, scope, payload).catch((): EffortWritebackOutcome => ({ config: scope.config, lines: [] }));
+  const notices = await modelNoticesOf(runtime, { ...scope, config: effort.config }, payload).catch((): readonly string[] => []);
   const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
   const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id, teamZone(scope.config, runtime)).catch((): readonly string[] => []);
   await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
   const hookless = await checkHooklessTabs(runtime, scope.kit, scope.config).catch((): readonly string[] => []);
   const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
-  const lines = [...notices, ...budget, ...verify, ...lead, ...hookless];
+  const lines = [...effort.lines, ...notices, ...budget, ...verify, ...lead, ...hookless];
   const ask = await askBlockOf(runtime, scope, payload, decision).catch((): string | undefined => undefined);
   return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockOutput(ask, lines);
 }
@@ -791,7 +794,9 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
  * Stop, at the end of every turn: first sends the session back, once, to a skill edit of the turn that
  * Claude Code refused and it never redid (hook-dropped-edit.ts), leaving the rest to its next stop. It asks the session for its handover once when its context reached the
  * team's threshold or the lead asked, and at a task end (`set done`) also after enough tasks, then tells the user
- * once that it waits for /clear, or with `refresh.autoRestart` that it restarts by itself when idle (hook-restart.ts). It also tells the user, once each, when the session runs at another
+ * once that it waits for /clear, or with `refresh.autoRestart` that it restarts by itself when idle (hook-restart.ts). It
+ * writes an `/effort` the user typed in the session to its `launch` entry, logs it and tells its leader
+ * (hook-effort-writeback.ts). It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
  * day when the date to verify one of its verifying tasks by has come. Under `hiring.policy` `automatic` it asks a
  * hired session whose last open task closed, once, to write its handover and retire; after a `set` to waiting it sends the
