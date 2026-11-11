@@ -2904,7 +2904,8 @@ another Claude Code, as `open` does.
 What a restore after a reboot would do now. The `hook restore-track` hook records every Claude Code session on the
 machine, in a team or not, in `<home>/restore/sessions/`; after a shutdown or reboot killed them, `restore run`
 reopens each one the shutdown interrupted, in its folder (the worktree it went into, where Claude Code files its
-transcript), at its last effort. A session that ended on purpose (`/exit`, `/clear`, `teamrig close` or the idle
+transcript), at the effort its team config sets (`launch.<id>.effort`), else at the one its last turn ran at. A
+session that ended on purpose (`/exit`, `/clear`, `teamrig close` or the idle
 pass), still runs, was active since logon, was not a terminal session (`claude -p`, a background job
 Claude Code resumes itself), was continued in another session, has no transcript left, is too old or failed to resume
 too often is not reopened. A tab closed outside a shutdown, with no reason of its own, is restored when it closed
@@ -2912,7 +2913,7 @@ mid-turn or on an API error; any other is kept 48 hours as `CLOSED`, which `rest
 when asked, then discarded. A discarded entry is not deleted: `restore check` and `restore run` move it to
 `<home>/restore/archive/` (logged `archived <id> (<reason>)`) and delete it there 7 days later, so a session judged
 wrongly can still be found. This command prints each recorded session as `RESTORE` (how it comes back and at which
-effort), `CLOSED`, `KEEP` or `DISCARD`, with the reason, and what each lead's first prompt says of its team. It only
+effort, `(config)` or `(last run)`), `CLOSED`, `KEEP` or `DISCARD`, with the reason, and what each lead's first prompt says of its team. It only
 reads.
 
 Flags: none.
@@ -2926,8 +2927,8 @@ teamrig restore
 Output:
 
 ```text
-RESTORE  1f3c9a0e-...  shop-lead  killed without exiting; continue: lead; effort xhigh  /home/you/shop
-RESTORE  7b21d4c8-...  shop-web  killed without exiting; continue: mid-turn; effort high  /home/you/shop
+RESTORE  1f3c9a0e-...  shop-lead  killed without exiting; continue: lead; effort xhigh (config)  /home/you/shop
+RESTORE  7b21d4c8-...  shop-web  killed without exiting; continue: mid-turn; effort high (last run)  /home/you/shop
 CLOSED   9e04b7a1-...  notes  closed outside a shutdown; idle; effort default  /home/you/notes
 KEEP     c40e8f12-...  still running  /home/you/notes
 Lead shop-lead hears: shop-web continue (mid-turn)
