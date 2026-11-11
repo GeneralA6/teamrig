@@ -737,8 +737,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       The wait line says where a learned or declared need came from. --small (a spec run, a lint):
       shares the host with other small steps and is killed after delivery.queue.smallMaxRunMinutes
       (--max-minutes up to it). A step without --small shares the host as a heavy step under
-      delivery.queue.admission pipeline, at most delivery.queue.maxHeavyParallel at once; under serial
-      (the default), or with --exclusive (a step that must run alone; never with --small), it takes the whole host and waits for every
+      delivery.queue.admission pipeline (the default), at most delivery.queue.maxHeavyParallel at once;
+      under serial, or with --exclusive (a step that must run alone; never with --small), it takes the whole host and waits for every
       step sharing it to end, and a step waiting behind it is told which. --pre-push (a git pre-push hook's checks): on a clean tree
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
