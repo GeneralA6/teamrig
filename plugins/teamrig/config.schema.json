@@ -1505,7 +1505,7 @@
             ]
           },
           "effort": {
-            "description": "The effort level; a model that lacks it runs at the highest level it has below it.",
+            "description": "The effort level; a model that lacks it runs at the highest level it has below it. An /effort the user types in the session's tab is written here.",
             "enum": ["low", "medium", "high", "xhigh", "max"]
           },
           "project": {

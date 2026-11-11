@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers twenty-six Claude Code hooks, one row each below however many events a hook runs on, and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
+The plugin's `hooks/hooks.json` registers twenty-seven Claude Code hooks, one row each below however many events a hook runs on, and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` and `hook tool-end` 5); the `PreToolUse` guards that can refuse a call run `node <plugin>/dist/cli/guard-main.js hook <name>`, which blocks the call when the guard [cannot answer](#a-guard-that-cannot-answer). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent, but `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)) and `hook missing-cli` still answers a shell that [no longer finds the bare command](#after-a-shell-call-the-cli-by-its-path).
 
@@ -29,8 +29,9 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
 | The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's OS notification at its time, from one tab of the team, and shows it as a toast there ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
-| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SubagentStop` (a helper about to hand back) | `hook subagent-stop` | Sends the helper back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit) |
+| `SessionEnd` (a tab closes) | `hook effort-writeback` | Writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) with no turn after it to the session's `launch` entry |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
 | Every event but `Stop` and a tool call's end: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
 | Every tool call's end (`PostToolUse`, `PostToolUseFailure`), in a team or not | `hook tool-end` | Sets the tab's circle as `hook tab-status` does, and at most every 5 minutes records in [the restore tracker](#every-session-the-restore-tracker) that the session's hooks still run; in a team, shows a busy session its new inbox lines once an [urgent line](#urgent-lines) waits for it |
@@ -1150,6 +1151,30 @@ The Stop hook also tells the user, in a MODEL line shown once per Claude Code se
 
 The lines go to the user only, so they cost the session no context, and they come with `refresh.enabled` on or
 off. Which lines a session was shown is kept in `state/model-notices/<id>.json`.
+
+## End of a turn: a typed /effort becomes the launch effort
+
+When you type `/effort <level>` in a team session's tab, or pick a level in the `/effort` picker, the Stop hook at
+the end of its next turn writes that level to the session's `launch.<id>.effort` in the team config. A restore or a
+restart then opens the session at it, and no MODEL line asks you to type the old level back. A tab closed right
+after the `/effort`, with no turn after it, is written by `hook effort-writeback` at its SessionEnd. Each write:
+
+- changes only `launch.<id>.effort`, under the config lock, and keeps the old file in
+  `backups/config.effort-<id>.json`;
+- is logged in `state/effort-changes.jsonl`: when, the session, the old and new level, and the typed entry;
+- is told to the session's leader in its inbox, `shop-web effort high -> medium (a typed /effort at 14:50 IST),
+  written to its launch entry in the shop config`: the team's lead, and for the lead itself the lead of the team
+  above (a root team's lead is told itself);
+- is shown to you: `EFFORT shop-web: the typed /effort medium is now its launch effort in the shop config (was high);
+  a restore or restart opens it at medium`.
+
+Only an `/effort` you typed in the session counts: not a helper's, a message from another session or a command
+teamrig sent, and only one typed after teamrig first looked at the session, so an old `/effort` in a resumed
+transcript never applies. A change to the session's level in the config wins over an `/effort` typed before it, and
+a level the session no longer runs at (another `/effort` after it, the picker cancelled) is not written. A config
+with a problem (`teamrig config validate`) is not written; the first turn after its fix writes the level. A log line
+or an inbox line that fails is shown to you in its own line, and the written level stays. To undo a write, type the
+old `/effort`.
 
 ## End of a turn: verify-by notices
 

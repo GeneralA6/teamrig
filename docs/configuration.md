@@ -685,7 +685,7 @@ Each session's Claude Code model and effort, and the folder it works in, by id: 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `model` | one of `"default"`, `"best"`, `"fable"`, `"opus"`, `"sonnet"`, `"haiku"`, `"opusplan"`, `"fable[1m]"`, `"opus[1m]"`, `"sonnet[1m]"`, `"opusplan[1m]"` or string (at most 100 characters, matching `^claude-[a-z0-9]+(?:[.@-][a-z0-9]+)*(?:\[1m\])?$`) |  | A Claude Code model alias or a full model id such as claude-opus-5-5. best is Fable where the account has it, else Opus; default leaves the model to Claude Code. |
-| `effort` | one of `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` |  | The effort level; a model that lacks it runs at the highest level it has below it. |
+| `effort` | one of `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` |  | The effort level; a model that lacks it runs at the highest level it has below it. An /effort the user types in the session's tab is written here. |
 | `project` | string |  | The session's project folder, an absolute path: teamrig open starts it there, and close and hire look for its Claude Code sessions there. Unset, team.project, else the folder holding the team's .teamrig.json pointer; doctor flags a folder that does not exist. |
 
 ## `refresh`
