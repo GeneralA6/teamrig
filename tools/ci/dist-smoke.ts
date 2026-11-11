@@ -207,6 +207,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
     payload: { hook_event_name: 'Stop', session_id: SESSION_ID, cwd: 'smoke-project', stop_hook_active: false },
     check: quiet(),
   },
+  'hook effort-writeback': {
+    payload: { hook_event_name: 'SessionEnd', session_id: SESSION_ID, cwd: 'smoke-project', transcript_path: 'smoke-transcript.jsonl', reason: 'prompt_input_exit' },
+    check: quiet(),
+  },
   'hook tab-status': {
     payload: { hook_event_name: 'UserPromptSubmit', session_id: SESSION_ID, cwd: 'smoke-project', prompt: 'hello' },
     check: quiet(),
