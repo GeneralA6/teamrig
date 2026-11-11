@@ -14,7 +14,7 @@ import { isEffort, isModel } from "./launch.js";
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, GITHUB_LABEL_MAX_LENGTH, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from "./migrate.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, ASK_WITH, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, GOALS_MODES, HIRING_POLICIES, isAdHocRunners, isAskWith, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
+import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, GOALS_MODES, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 /** A role a team may leave to a team above it (ANCESTOR_ROLES): one of its sessions, or `<team>/<id>` (T1143). */
 const isRoleHolder = (holder) => SESSION_NAME.test(holder) || ADDRESS_PATTERN.test(holder) ? undefined : 'expected a session id of the team, or <team>/<id> of a team above it';
@@ -254,6 +254,8 @@ export function parseConfig(raw, above) {
     const pickerGuard = read.section(raw, 'pickerGuard', '');
     const budget = parseBudget(read, read.section(raw, 'budget', ''), sessions, above);
     const decisions = read.section(raw, 'decisions', '');
+    // T2256: the question picker stopped the lead's session in the meeting too; the meeting asks only in plain text.
+    read.dropped(decisions, 'askWith', 'decisions', 'the daily meeting asks the owner each decision in plain text, the picker guard refusing the question picker to the lead too');
     reportRenamedKey(read, raw, '', 'coordinator', 'delivery');
     const config = {
         configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
@@ -307,10 +309,9 @@ export function parseConfig(raw, above) {
         decisions: {
             batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
             batchAt: read.integer(decisions, 'batchAt', 'decisions', DEFAULT_DECISIONS.batchAt, CONFIG_LIMITS.decisionBatchAt),
-            askWith: parseAskWith(read, decisions),
         },
         tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
-        pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', false) },
+        pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
         turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
         readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
         permissions: parsePermissions(read, read.section(raw, 'permissions', '')),
@@ -1118,11 +1119,6 @@ function focusValues(read, raw, key, path, fallback) {
         return fallback;
     }
     return values.length === given.length ? values : fallback;
-}
-function parseAskWith(read, raw) {
-    const fallback = DEFAULT_DECISIONS.askWith;
-    const value = read.string(raw, 'askWith', 'decisions', fallback, oneOf(ASK_WITH));
-    return isAskWith(value) ? value : fallback;
 }
 function parsePushToProtected(read, raw) {
     const fallback = DEFAULT_PUSH_GUARD.pushToProtected;

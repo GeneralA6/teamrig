@@ -163,7 +163,6 @@ async function printAgenda(args, runtime, mk, phase) {
         })),
         lead: mk.lead,
         command: KIT_NAME,
-        askWith: mk.config.decisions.askWith,
         board: await goalBoard(runtime, mk, rolled),
         focus: mk.config.focus,
         improvementsDay: mk.config.focus.improvementsDay,
