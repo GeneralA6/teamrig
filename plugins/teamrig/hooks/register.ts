@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code';
 import type { Register, StateRef } from 'claude-code';
-import type { TeamrigBand } from '../types';
+import type { TeamrigBand, TeamrigUpdate } from '../types';
 import { INSTALLED_PLUGINS_FILE, pluginsFolderOf } from '../dist/core/installed-plugins.js';
 import { bandLine, ClearHand, liveAgentsOf, sameBand, TICK_MS } from '../dist/mod/clear-hand.js';
 import { REFRESH_TIMEOUT_MS, RefreshHand, refreshCliArgv } from '../dist/mod/refresh-hand.js';
@@ -16,9 +16,18 @@ import {
 } from '../dist/mod/slash-hand.js';
 import { MEETING_TICK_MS, MEETING_TIMEOUT_MS, MeetingHand, meetingCliArgv } from '../dist/mod/meeting-hand.js';
 import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mod/wake-hand.js';
+import {
+  UPDATE_APPLY_TIMEOUT_MS,
+  UPDATE_CHECK_TIMEOUT_MS,
+  UPDATE_EVERY_MS,
+  UPDATE_FIRST_MS,
+  UpdateHand,
+  updateCliArgv,
+  updateLine,
+} from '../dist/mod/update-hand.js';
 
 /**
- * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and five hands in every
+ * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and six hands in every
  * interactive tab.
  *
  * `/teamrig <command> [args]` (`slash-hand.ts`): runs the plugin's CLI as `hook slash-command` with the typed text,
@@ -64,6 +73,13 @@ import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mo
  * CLI marks each meeting due as notified under its lock, so one tab of the team sends it, and starts the OS
  * notification; the hand shows each one it sent as a toast in its tab too.
  *
+ * The update notice (`update-hand.ts`): a minute after the module loads, then every 10 minutes, the hand asks the
+ * CLI (`hook update-check`, which asks the network at most every 6 hours across the machine) whether a newer teamrig
+ * or teamrig-pane is published than the one installed. While one is, and no refresh band is up, the band above the
+ * prompt names it with Update (`hook update-apply`: Claude Code's own `plugin update`, which the reload hand then
+ * loads) and Dismiss (`hook update-dismiss`: hidden until a newer version is out), plain buttons with no digits. The
+ * band's value is the session's `update` (types/index.d.ts).
+ *
  * The refresh within a turn (`refresh-hand.ts`): the Stop hook asks for the handover only at a turn's end, so a long
  * turn reached Claude Code's compaction first. After a tool result of the main conversation, once the context Claude
  * Code reports reached the size the CLI named, the hand asks the CLI (`hook refresh-mid`) and adds its ask after the
@@ -79,9 +95,19 @@ const RELOAD_STATE: StateRef<'teamrig', 'reload'> = { plugin: 'teamrig', key: 'r
 /** The band above the prompt while a refresh's /clear is near; null, no band (types/index.d.ts). */
 const BAND = atom({ plugin: 'teamrig', key: 'band' } as const, null);
 
-/** The band's Buttons, by the key a press names. */
+/** The update band above the prompt while a newer plugin is published; null, no band (types/index.d.ts). */
+const UPDATE = atom({ plugin: 'teamrig', key: 'update' } as const, null);
+
+/** The bands' Buttons, by the key a press names. */
 const REFRESH_NOW_KEY = 'refresh-now';
 const HOLD_KEY = 'hold-refresh';
+const UPDATE_KEY = 'update-plugin';
+const DISMISS_KEY = 'dismiss-update';
+
+/** Whether two update bands draw the same. */
+function sameUpdate(a: TeamrigUpdate | null, b: TeamrigUpdate | null | undefined): boolean {
+  return a === null || b === null || b === undefined ? a === b : a.plugin === b.plugin && a.installed === b.installed && a.newest === b.newest;
+}
 
 /** A tick worth a debug line: an ask acted on (cleared, held, declined, left while busy) or a failure, not the quiet ones. */
 function worthLogging(result: { readonly kind: string }): boolean {
@@ -116,6 +142,9 @@ export const register: Register = (on) => {
   let wakeHand: WakeHand | undefined;
   let meetingHand: MeetingHand | undefined;
   let refreshHand: RefreshHand | undefined;
+  let updateHand: UpdateHand | undefined;
+  /** Writes the update band's value when the update hand's shown update changed; set with the hand. */
+  let showUpdate: (() => Promise<void>) | undefined;
 
   on('session.start', async ($, e, next) => {
     const started = await next(e);
@@ -276,6 +305,48 @@ export const register: Register = (on) => {
         now: () => Date.now(),
       });
     }
+    if (updateHand === undefined) {
+      const active = new UpdateHand({
+        cli: async (command, stdin) => {
+          const timeoutMs = command === 'apply' ? UPDATE_APPLY_TIMEOUT_MS : UPDATE_CHECK_TIMEOUT_MS;
+          const run = await $.process.run(updateCliArgv($.plugin.root, command), { stdin, timeoutMs });
+          return { exitCode: run.exitCode, stdout: run.stdout };
+        },
+        toast: (text) => {
+          $.ui.toast(text);
+        },
+      });
+      updateHand = active;
+      let shown: TeamrigUpdate | null | undefined;
+      const show = async (): Promise<void> => {
+        const view = active.notice() ?? null;
+        if (sameUpdate(view, shown)) {
+          return;
+        }
+        try {
+          await update($, UPDATE, () => view);
+          shown = view;
+        } catch (error) {
+          $.ui.log(`teamrig update band: ${String(error)}`, { to: 'debug' });
+        }
+      };
+      // A band the module loaded before this one left: this hand has checked nothing yet.
+      await show();
+      showUpdate = show;
+      const check = (): void => {
+        void active.tick().then(async (result) => {
+          if (result.kind === 'failed') {
+            $.ui.log(`teamrig update check: ${JSON.stringify(result)}`, { to: 'debug' });
+          }
+          await show();
+        });
+      };
+      // A minute in, so a tab's start is left alone; then every 10 minutes on Claude Code's clock.
+      $.clock.after(UPDATE_FIRST_MS, () => {
+        check();
+        $.clock.every(UPDATE_EVERY_MS, check);
+      });
+    }
     return started;
   });
 
@@ -323,12 +394,32 @@ export const register: Register = (on) => {
   });
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const view = await read($, BAND);
-    const hand = clearHand;
-    if (e.props.hasSurvey || view === null || hand === undefined) {
+    if (e.props.hasSurvey) {
       return next(e);
     }
+    const view = await read($, BAND);
+    const hand = clearHand;
     const { Box, Button, Text } = $.ui.resolve(e);
+    // A refresh near is the more pressing band; the update waits under it.
+    if (view === null || hand === undefined) {
+      const notice = await read($, UPDATE);
+      const updates = updateHand;
+      if (notice === null || updates === undefined) {
+        return next(e);
+      }
+      const press = (action: () => Promise<{ readonly kind: string }>): void => {
+        void action().then(async (result) => {
+          if (result.kind === 'failed') {
+            $.ui.log(`teamrig update band: ${JSON.stringify(result)}`, { to: 'debug' });
+          }
+          await showUpdate?.();
+        });
+      };
+      // Plain buttons with no digits: an update never needs a key the person may be typing.
+      const install = Button({ key: UPDATE_KEY, label: 'Update', plain: true, onPress: () => press(() => updates.apply()) });
+      const dismiss = Button({ key: DISMISS_KEY, label: 'Dismiss', plain: true, onPress: () => press(() => updates.dismiss()) });
+      return Box({ flexDirection: 'row', gap: 2, children: [Text({ children: `teamrig: ${updateLine(notice)}` }), install, dismiss] });
+    }
     // Only the count and its end arm the digits, once the person left the tab alone a while: while they work in
     // it, or a draft or a helper holds, a digit typed into the empty prompt box is theirs, and a click or the
     // band's focus presses the buttons.
