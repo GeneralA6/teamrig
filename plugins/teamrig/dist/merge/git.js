@@ -76,6 +76,29 @@ export const GIT_MERGE = {
         return text === undefined ? undefined : text.split('\0').filter((path) => path !== '');
     },
     fileAt: (dir, ref, path) => query(dir, ['cat-file', 'blob', `${ref}:${path}`]),
+    blobsAt(dir, ref, paths) {
+        const wanted = new Set(paths);
+        if (wanted.size === 0) {
+            return new Map();
+        }
+        // Literal pathspecs, so a `*` or `[` in a file's name matches only that file. A path that is a folder at `ref`
+        // lists its files instead, which are not asked for: such a path has no file there.
+        const text = query(dir, ['--literal-pathspecs', 'ls-tree', '-r', '-z', '--full-tree', '--end-of-options', ref, '--', ...wanted]);
+        if (text === undefined) {
+            return undefined;
+        }
+        const blobs = new Map();
+        for (const entry of text.split('\0')) {
+            // `<mode> <type> <id>\t<path>`
+            const tab = entry.indexOf('\t');
+            const id = entry.slice(0, tab).split(' ')[2];
+            const path = entry.slice(tab + 1);
+            if (tab > 0 && id !== undefined && wanted.has(path)) {
+                blobs.set(path, id);
+            }
+        }
+        return blobs;
+    },
     commits: (dir, from, to) => lines(query(dir, ['rev-list', '--reverse', '--end-of-options', `${from}..${to}`])),
     isAncestor: (dir, ancestor, descendant) => runGit(dir, ['merge-base', '--is-ancestor', '--end-of-options', ancestor, descendant]).status === 0,
     rebase(dir, onto) {

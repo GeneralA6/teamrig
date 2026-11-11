@@ -72,15 +72,48 @@ async function answeredVerdict(zone, ports, hold) {
     }
     return held(holdRefusal(hold, zone, now, `it changes ${hitsText(hold.hits)}`));
 }
-/** Holds a change no hold binds yet, or lets it go when its check paths came out clean. */
-async function newHoldVerdict(setup, zone, ports, change, bound, hits) {
-    const { session, repo, branch, base } = change;
+function sameHits(a, b) {
+    const sorted = (hits) => JSON.stringify(hits.map(({ path, glob }) => [path, glob]).sort());
+    return sorted(a) === sorted(b);
+}
+/** Whether each of `paths` is the same blob at `from` and at `to`, or a file at neither; false when git cannot tell. */
+function sameFiles(git, dir, paths, from, to) {
+    const before = git.blobsAt(dir, from, paths);
+    const after = git.blobsAt(dir, to, paths);
+    return before !== undefined && after !== undefined && paths.every((path) => before.get(path) === after.get(path));
+}
+/**
+ * The approval of the branch's earlier hold, when it carries to this change (see the module comment); undefined when
+ * the change needs a review of its own.
+ */
+function carriedApproval(ports, change, earlier, grounds, answer) {
+    const { reviewer } = grounds;
+    const same = earlier.task === grounds.task &&
+        earlier.holdClass === grounds.holdClass &&
+        earlier.reviewer.who === reviewer.who &&
+        earlier.reviewer.fallback === reviewer.fallback &&
+        earlier.findings === grounds.findings &&
+        sameHits(earlier.hits, grounds.hits);
+    if (!same || answer === null || !holdApproved(reviewer, Date.parse(earlier.createdAt), answer)) {
+        return undefined;
+    }
+    const paths = grounds.hits.map(({ path }) => path);
+    const { top, base, head } = change;
+    return sameFiles(ports.git, top, paths, earlier.base, base) && sameFiles(ports.git, top, paths, earlier.head, head) ? answer : undefined;
+}
+/**
+ * Holds a change no hold binds yet, or lets it go when its check paths came out clean or the approval of the branch's
+ * `earlier` hold carries to it.
+ */
+async function newHoldVerdict(setup, zone, ports, change, bound, hits, earlier) {
+    const { session, repo, branch, base, head } = change;
     const holdHits = hits.map(({ path, entry }) => ({ path, glob: entry.glob }));
     const task = taskOfBranch(branch);
     if (task === undefined) {
         return held(`${branch} changes ${hitsText(holdHits)}, which the review gate holds for a review of its task, but the branch names none: name it t<n>-… after your task`);
     }
-    const owner = (await ports.taskOf(task))?.owner;
+    const gateTask = await ports.taskOf(task);
+    const owner = gateTask?.owner;
     if (owner !== session) {
         const whose = owner === undefined ? 'is not in the register' : `is ${owner}'s`;
         return held(`${branch} changes review paths, so its reviewer approves its task ${task}, which ${whose}: merge a branch named after a task of ${session}`);
@@ -101,18 +134,22 @@ async function newHoldVerdict(setup, zone, ports, change, bound, hits) {
     if (route.kind === 'none') {
         return held(`${branch} changes ${hitsText(holdHits)}, which the review gate holds, but ${route.reason}`);
     }
-    const now = ports.clock.now();
-    const hold = {
-        ...bound,
-        id: holdId(bound),
+    const grounds = {
         task,
-        session,
         holdClass,
         reviewer: { who: route.who, fallback: route.fallback },
         hits: holdHits,
         findings: check?.kind === 'flagged' ? check.findings : undefined,
-        createdAt: new Date(now).toISOString(),
     };
+    if (earlier !== undefined) {
+        const carried = carriedApproval(ports, change, earlier, grounds, gateTask?.answer ?? null);
+        if (carried !== undefined) {
+            ports.say(`review hold ${earlier.id} of ${branch}: ${carried.by} approved it; it carries to ${short(base)}..${short(head)}, whose held files and findings are unchanged`);
+            return clear('approved');
+        }
+    }
+    const now = ports.clock.now();
+    const hold = { ...bound, ...grounds, id: holdId(bound), session, createdAt: new Date(now).toISOString() };
     await ports.holds.write(hold);
     ports.say(`review hold ${hold.id} of ${repo} ${branch}: waits on ${route.who} (${holdClass})`);
     return held(holdRefusal(hold, zone, now, causeOf(holdHits, check, checks && argv === undefined)));
@@ -143,5 +180,5 @@ export async function reviewGateVerdict(setup, zone, ports, change) {
     if (hold !== undefined && holdBinds(hold, bound)) {
         return answeredVerdict(zone, ports, hold);
     }
-    return newHoldVerdict(setup, zone, ports, change, bound, hits);
+    return newHoldVerdict(setup, zone, ports, change, bound, hits, hold);
 }
