@@ -1,12 +1,25 @@
-import { isNonNegativeInteger, stringField, type JsonRecord } from '../core/guards.ts';
+import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 
 /** The format of the refresh files this code reads and writes; a file in another format reads as absent. */
 export const REFRESH_FORMAT = 1;
 
 /**
+ * An ask for the handover that `refresh --ready` has not answered yet: the fields of the `asked` phase it was made in
+ * that the answer reads.
+ */
+export interface StandingAsk {
+  readonly task: string | null;
+  readonly at: string;
+  readonly tokens: number | null;
+  readonly handoverHash: string | null;
+}
+
+/**
  * Where a session is in the context-refresh flow, one small file per session:
- * - `boundary`: it finished `task` (`set <task> --status done`); its Stop hook has not judged it yet.
+ * - `boundary`: it finished `task` (`set <task> --status done`); its Stop hook has not judged it yet. `ask` is an
+ *   ask for the handover made before this task end, which `refresh --ready` still answers until the Stop hook judges
+ *   the boundary (T1666); null when none stood (a file from before it has none).
  * - `idle`: judged with no refresh due; `tokens` is its context then, null when the transcript had no usage.
  * - `boundary` and `idle` count in `finished` the tasks finished since the context was last fresh (a /clear,
  *   a new process or a compaction), this one included.
@@ -26,7 +39,7 @@ export const REFRESH_FORMAT = 1;
  * start is asked again only once its context grew well past it.
  */
 export type RefreshState =
-  | { readonly phase: 'boundary'; readonly task: string; readonly at: string; readonly finished: number }
+  | { readonly phase: 'boundary'; readonly task: string; readonly at: string; readonly finished: number; readonly ask: StandingAsk | null }
   | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly finished: number }
   | {
       readonly phase: 'asked';
@@ -113,6 +126,21 @@ function hashOf(record: JsonRecord): string | null | undefined {
   return hash === null || typeof hash === 'string' ? hash : undefined;
 }
 
+/** A boundary's standing ask: null for none, undefined when damaged. */
+function standingAskOf(value: unknown): StandingAsk | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const task = nullableString(value, 'task');
+  const at = stringField(value, 'at');
+  const tokens = tokensOf(value);
+  const handoverHash = hashOf(value);
+  return task === undefined || at === undefined || tokens === undefined || handoverHash === undefined ? undefined : { task, at, tokens, handoverHash };
+}
+
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
 export function parseRefreshState(text: string): RefreshState | undefined {
   const record = recordOf(text);
@@ -125,7 +153,9 @@ export function parseRefreshState(text: string): RefreshState | undefined {
   switch (record['phase']) {
     case 'boundary': {
       const finished = finishedOf(record, 1);
-      return task === null || finished === undefined ? undefined : { phase: 'boundary', task, at, finished };
+      // A file from before an ask could stand on a boundary has none.
+      const ask = record['ask'] === undefined ? null : standingAskOf(record['ask']);
+      return task === null || finished === undefined || ask === undefined ? undefined : { phase: 'boundary', task, at, finished, ask };
     }
     case 'idle': {
       const tokens = tokensOf(record);
