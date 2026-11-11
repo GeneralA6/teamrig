@@ -10,10 +10,12 @@ import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts
 import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
+import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
 import { lineRequests } from '../testing/line-tickets.ts';
 import { ROOMY_FREE_MB } from '../testing/quiet-world.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
@@ -849,5 +851,123 @@ describe('teamrig queue --pre-push', () => {
     const trees = new FakeTrees(cleanTree());
     assert.equal((await kit.run(BUILD, { steps, trees })).code, 0);
     assert.deepEqual([trees.looks, await kit.files.list(PASSES)], [[], []]);
+  });
+});
+
+/** The id `--detach` gives a run started at the harness clock's 10:00:00 UTC by the CLI's pid. */
+const DETACHED_ID = '20300108-100000-4242';
+const DETACHED_LOG = join(TEAM_HOME, 'state', 'deploys', 'detached', `${DETACHED_ID}.log`);
+const ALPHA_INBOX = join(TEAM_HOME, 'state', 'inbox', 'alpha.md');
+const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
+const DETACH_BUILD = ['queue', '--what', 'build api', '--max-minutes', '90', '--exclusive', '--detach', '--', 'npm', 'run', 'build'];
+const DETACHED_BUILD = ['queue', '--detached-run', DETACHED_ID, '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'];
+
+/** The texts of the lines in alpha's inbox, without their stamps and senders. */
+async function alphaLines(kit: CliHarness): Promise<string[]> {
+  return ((await kit.files.read(ALPHA_INBOX)) ?? '').split('\n').flatMap((line) => {
+    const text = /^- .+? alpha: (.*)$/.exec(line)?.[1];
+    return text === undefined ? [] : [text];
+  });
+}
+
+/** The texts of the wake asks waiting for alpha, each with its sender. */
+async function alphaWakes(kit: CliHarness): Promise<string[]> {
+  return (await new WakeAsks(kit.files, ASKS).read('alpha')).flatMap(({ ask }) => (ask === undefined ? [] : [`${ask.from}: ${ask.text}`]));
+}
+
+describe('teamrig queue --detach (T2227)', () => {
+  it('starts the step as a hidden queue --detached-run, its session resolved and its output in its log, and prints QUEUED at once', async () => {
+    const { kit, steps } = harness();
+    const processes = new FakeProcesses();
+    const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha', PROBE: 'yes' } });
+    assert.deepEqual(result, {
+      code: 0,
+      stdout: [`QUEUED ${DETACHED_ID}: build api runs detached; log ${DETACHED_LOG}; alpha's inbox gets a line when it starts and when it ends`],
+      stderr: [],
+    });
+    const [hidden] = processes.hidden;
+    const args = ['/opt/teamrig/dist/cli/main.js', 'queue', '--detached-run', DETACHED_ID, '--session', 'alpha', '--what', 'build api', '--max-minutes', '90', '--exclusive', '--', 'npm', 'run', 'build'];
+    assert.deepEqual([hidden?.command, hidden?.args, hidden?.cwd, hidden?.log, hidden?.env['PROBE']], ['/usr/bin/node', args, APP, DETACHED_LOG, 'yes']);
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), await alphaLines(kit)], [[], undefined, undefined, []], 'the caller waits for nothing and runs nothing');
+  });
+
+  it('refuses from the queue cutoff on, starting nothing', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { schedule: { queueCutoffUtc: '09:30' } } });
+    const processes = new FakeProcesses();
+    const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha' } });
+    assert.deepEqual(result, { code: 2, stdout: ['REFUSED queue cutoff 09:30-00:00 UTC (now 10:00 UTC)'], stderr: [] });
+    assert.deepEqual([processes.hidden, steps.ran], [[], []]);
+  });
+
+  for (const [label, outcome, why] of [
+    ['could not start it', { kind: 'failed', error: 'spawn EPERM' }, 'spawn EPERM'],
+    ['finds no Node.js', { kind: 'missing' }, '/usr/bin/node was not found'],
+  ] as const) {
+    it(`refuses, saying why, when it ${label}`, async () => {
+      const { kit, steps } = harness();
+      const processes = new FakeProcesses().onStart('/usr/bin/node', outcome);
+      const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha' } });
+      assert.deepEqual(result, { code: 2, stdout: [`REFUSED build api did not start detached: ${why}`], stderr: [] });
+      assert.deepEqual(steps.ran, []);
+    });
+  }
+
+  for (const [label, argv, message] of [
+    ['--pre-push, whose push waits for its result', ['queue', '--session', 'alpha', '--what', 'checks', '--pre-push', '--detach', '--', 'npm', 'test'], /--detach returns before the step runs and --pre-push decides a push/],
+    ['--detached-run, which only --detach sets', ['queue', '--session', 'alpha', '--what', 'checks', '--detached-run', DETACHED_ID, '--detach', '--', 'npm', 'test'], /--detached-run is set by --detach: give only --detach/],
+    ['a --detached-run id --detach did not make', ['queue', '--session', 'alpha', '--what', 'checks', '--detached-run', 'mine', '--', 'npm', 'test'], /--detached-run is set by --detach: run the step with --detach/],
+  ] as const) {
+    it(`prints the usage for ${label}, starting nothing`, async () => {
+      const { kit, steps } = harness();
+      const processes = new FakeProcesses();
+      const result = await kit.run(argv, { steps, processes });
+      assert.equal(result.code, EXIT.usage);
+      assert.match(result.stderr.join('\n'), message);
+      assert.deepEqual([processes.hidden, steps.ran], [[], []]);
+    });
+  }
+
+  it("prints the usage under a live parent lock, whose step waits for this one's result", async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(LOCK, heldBy());
+    const processes = new FakeProcesses();
+    const result = await kit.run(['queue', '--what', 'pre-commit checks', '--detach', '--', 'npm', 'test'], { steps, processes, sessionProcesses: otherRuns(), env: { TEAMRIG_HOST_LOCK: 'other' } });
+    assert.equal(result.code, EXIT.usage);
+    assert.match(result.stderr.join('\n'), /--detach under a live host lock/);
+    assert.deepEqual([processes.hidden, steps.ran, kit.files.get(LOCK)], [[], [], heldBy()]);
+  });
+});
+
+describe('teamrig queue --detached-run (T2227)', () => {
+  it('runs the step --detach started without watching a shell, telling its session when it starts and, waking it, when it ends', async () => {
+    const { kit, steps } = harness();
+    const processes = new FakeProcesses();
+    assert.equal((await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha' } })).code, 0);
+    const [, ...hiddenArgs] = processes.hidden[0]?.args ?? [];
+    const starters = new FakeStarterWatch();
+    steps.ends(0, MINUTE).whileRunning(async () => starters.end());
+    const result = await kit.run(hiddenArgs, { steps, starters });
+    assert.deepEqual(result, { code: 0, stdout: ['2030-01-08 10:00:02 UTC running: build api (killed after 1h30m)', 'DONE exit 0'], stderr: [] });
+    assert.deepEqual([steps.ran[0]?.stop?.aborted, starters.openWatches], [false, 0], 'the shell that ran --detach ended long ago: it stops nothing');
+    assert.deepEqual(await alphaLines(kit), [`queue ${DETACHED_ID} started: build api; log ${DETACHED_LOG}`, `queue ${DETACHED_ID} ended: build api: DONE exit 0; log ${DETACHED_LOG}`]);
+    assert.deepEqual(await alphaWakes(kit), [`alpha: queue ${DETACHED_ID} ended: build api: DONE exit 0; log ${DETACHED_LOG}`], 'only the end wakes it');
+    assert.equal(ledgerOf(kit).length, 2, "its start and end are recorded as any step's");
+  });
+
+  it('tells its session of a failed step with its exit code', async () => {
+    const { kit, steps } = harness();
+    const result = await kit.run(DETACHED_BUILD, { steps: steps.ends(3) });
+    assert.deepEqual([result.code, result.stdout.at(-1)], [1, 'FAILED exit 3']);
+    assert.deepEqual(await alphaWakes(kit), [`alpha: queue ${DETACHED_ID} ended: build api: FAILED exit 3; log ${DETACHED_LOG}`]);
+  });
+
+  it('tells its session, waking it, when its step is refused after its wait, with no start line', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    await kit.files.write(LOCK, heldBy());
+    const result = await kit.run(DETACHED_BUILD, { steps, sessionProcesses: otherRuns() });
+    const refusal = 'REFUSED host lock still held by po (heavy: build) since 2030-01-08 09:50 UTC';
+    assert.deepEqual([result.code, result.stdout.at(-1)], [2, refusal]);
+    const ended = `queue ${DETACHED_ID} ended: build api: ${refusal}; log ${DETACHED_LOG}`;
+    assert.deepEqual([await alphaLines(kit), await alphaWakes(kit), steps.ran], [[ended], [`alpha: ${ended}`], []]);
   });
 });
