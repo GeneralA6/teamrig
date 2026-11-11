@@ -174,6 +174,30 @@ describe('GIT_MERGE reading origin and a range', () => {
     }
   });
 
+  it('reads the blob of each asked path at a commit, leaving out a path it has no file at', () => {
+    const { repo } = repoWithOrigin('merge-blobs');
+    try {
+      const first = commit(repo, 'keys/a [1].pem', 'key one\n', 'key');
+      commit(repo, 'keys/b.pem', 'key two\n', 'second key');
+      const second = commit(repo, 'keys/a [1].pem', 'key one, changed\n', 'change the key');
+      const asked = ['keys/a [1].pem', 'keys/b.pem', 'keys', 'keys/*.pem', 'gone.pem'];
+      const blobOf = (ref: string, path: string): string => repo.git('rev-parse', `${ref}:${path}`).trim();
+      assert.deepEqual(git.blobsAt(repo.dir, first, asked), new Map([['keys/a [1].pem', blobOf(first, 'keys/a [1].pem')]]));
+      assert.deepEqual(
+        git.blobsAt(repo.dir, second, asked),
+        new Map([
+          ['keys/a [1].pem', blobOf(second, 'keys/a [1].pem')],
+          ['keys/b.pem', blobOf(second, 'keys/b.pem')],
+        ]),
+      );
+      assert.notEqual(blobOf(first, 'keys/a [1].pem'), blobOf(second, 'keys/a [1].pem'));
+      assert.deepEqual(git.blobsAt(repo.dir, second, []), new Map());
+      assert.equal(git.blobsAt(repo.dir, 'no-such-ref', asked), undefined);
+    } finally {
+      repo.remove();
+    }
+  });
+
   it('reads the tree a commit makes, the same for two commits of the same files', () => {
     const { repo } = repoWithOrigin('merge-tree');
     try {
