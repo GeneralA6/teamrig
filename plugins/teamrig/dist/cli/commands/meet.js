@@ -63,7 +63,7 @@ async function meetCards(args, runtime) {
     }
     const { id, name, cards, tree, config } = await meetFactsOf(runtime, callerOf(args.flags, runtime.env));
     const runFiles = await readRunFiles(runtime, cards.due);
-    const lines = meetCardLines({ id, name, cards, tree, ownerMarker: config.register.ownerSource, command: KIT_NAME, askWith: config.decisions.askWith, runFiles });
+    const lines = meetCardLines({ id, name, cards, tree, ownerMarker: config.register.ownerSource, command: KIT_NAME, runFiles });
     lines.forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }

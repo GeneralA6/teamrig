@@ -87,10 +87,6 @@ export function isEscalation(value) {
  * a tree read one week alike without a copy that drifts.
  */
 export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'];
-export const ASK_WITH = ['text', 'picker'];
-export function isAskWith(value) {
-    return ASK_WITH.some((way) => way === value);
-}
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
  * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead; `automatic` as
