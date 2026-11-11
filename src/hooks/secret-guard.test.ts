@@ -118,6 +118,13 @@ describe('secretFindingsOf', () => {
     assert.deepEqual(grep(alternatives(65)), [alternatives(65)]);
   });
 
+  it('reads a [...] set in a Grep glob group as ripgrep does, a / and a { in it too', () => {
+    for (const glob of ['{[{/],*.pem}', '{[{/],.env*}', '*.{[{/],pem}', '{[{/]x,*.key}', '{[!/{],*.pem}', '{[^]{],*.pem}']) {
+      assert.deepEqual(grep(glob), [glob]);
+    }
+    assert.deepEqual(grep('{[{/],*.ts}'), []);
+  });
+
   it('reads no other tool', () => {
     assert.deepEqual(findings(call('Glob', { pattern: '**/.env' })), []);
   });
