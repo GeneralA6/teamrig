@@ -363,6 +363,19 @@ describe('decideMidTurn', () => {
     assert.deepEqual(decideMidTurn(ASKED, askContext(), sizeOnly(300_000)), { kind: 'none', nextAt: 312_144 });
   });
 
+  it('never asks over a handover marked ready and not yet announced, so the turn end still announces it (T2425)', () => {
+    const ready: RefreshState = { ...READY, tokens: 262_144 };
+    assert.deepEqual(decideMidTurn(ready, askContext(), sizeOnly(400_000)), { kind: 'none', nextAt: null });
+    assert.deepEqual(decideMidTurn(ready, askContext(), midTurnFacts(400_000)), { kind: 'none', nextAt: null });
+    assert.deepEqual(decideMidTurn(READY, askContext(), midTurnFacts(400_000)), { kind: 'none', nextAt: null });
+  });
+
+  it('asks a session that went on from an announced handover again once its context grew well past the ask', () => {
+    const announced: RefreshState = { ...READY, tokens: 262_144, noticed: true };
+    assert.deepEqual(decideMidTurn(announced, askContext(), sizeOnly(312_143)), { kind: 'none', nextAt: 312_144 });
+    assert.equal(decideMidTurn(announced, askContext(), midTurnFacts(312_144)).kind, 'ask');
+  });
+
   it('reads the due facts only at the threshold, and asks while background work runs, naming it', () => {
     assert.deepEqual(decideMidTurn(undefined, askContext(), sizeOnly(250_000)), { kind: 'measure' });
     const decision = decideMidTurn(undefined, askContext(), midTurnFacts(250_000, { running: 2 }));
