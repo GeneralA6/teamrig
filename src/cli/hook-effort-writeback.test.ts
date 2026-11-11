@@ -14,6 +14,7 @@ const CHANGES = join(TEAM_HOME, 'state', 'effort-changes.jsonl');
 const LEAD_INBOX = teamInboxOf('app', 'lead');
 const ALPHA_HIGH: JsonRecord = { ...TEAM, launch: { alpha: { model: 'sonnet', effort: 'high' } } };
 const ALPHA_MEDIUM: JsonRecord = { ...TEAM, launch: { alpha: { model: 'sonnet', effort: 'medium' } } };
+const ALPHA_LOW: JsonRecord = { ...TEAM, launch: { alpha: { model: 'sonnet', effort: 'low' } } };
 const ALPHA_TO_MEDIUM = 'EFFORT app-alpha: the typed /effort medium is now its launch effort in the app config (was high); a restore or restart opens it at medium';
 const LEAD_XHIGH: JsonRecord = { launch: { lead: { model: 'opus', effort: 'xhigh' } } };
 const ROOT_TEAM: JsonRecord = { configVersion: 1, team: { id: 'root' }, sessions: ['lead', 'po'], roles: { lead: 'lead' } };
@@ -155,6 +156,21 @@ describe('the Stop hook writes a typed /effort back to the launch entry (T2441)'
     assert.equal(noticeOf(await stopAs(kit, 'alpha', 'medium')), ALPHA_TO_MEDIUM);
     assert.equal(kit.files.get(CONFIG_PATH), formatConfig(ALPHA_MEDIUM));
   });
+
+  it('passes over a level typed before the lead changed the config, and writes one typed after', async () => {
+    const kit = new CliHarness(ALPHA_HIGH);
+    await stopAs(kit, 'alpha', 'high');
+    await typeEffort(kit, 'medium');
+    await kit.files.write(CONFIG_PATH, formatConfig(ALPHA_LOW));
+    const passed = await stopAs(kit, 'alpha', 'medium');
+    assert.doesNotMatch(passed.stdout.join('\n'), /EFFORT/);
+    assert.equal(kit.files.get(CONFIG_PATH), formatConfig(ALPHA_LOW), 'the lead change is the newer decision');
+    assert.deepEqual(changesOf(kit), []);
+
+    await typeEffort(kit, 'high');
+    assert.match(noticeOf(await stopAs(kit, 'alpha', 'high')) ?? '', /^EFFORT app-alpha: the typed \/effort high is now its launch effort in the app config \(was low\)/);
+    assert.equal(kit.files.get(CONFIG_PATH), formatConfig(ALPHA_HIGH));
+  });
 });
 
 describe('hook effort-writeback, at SessionEnd (T2441)', () => {
@@ -188,5 +204,15 @@ describe('hook effort-writeback, at SessionEnd (T2441)', () => {
       assert.deepEqual(await endAs(kit, session, stdin), QUIET, `${session} ${stdin}`);
     }
     assert.equal(kit.files.get(CONFIG_PATH), formatConfig(ALPHA_HIGH));
+  });
+
+  it('writes nothing to a config with a problem, and still ends quietly', async () => {
+    const kit = new CliHarness({ ...ALPHA_HIGH, refresh: { enabled: 'yes' } });
+    const broken = kit.files.get(CONFIG_PATH);
+    await stopAs(kit, 'alpha', 'high');
+    await typeEffort(kit, 'medium');
+    assert.deepEqual(await endAs(kit, 'alpha'), QUIET);
+    assert.equal(kit.files.get(CONFIG_PATH), broken);
+    assert.deepEqual(changesOf(kit), []);
   });
 });
