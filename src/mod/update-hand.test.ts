@@ -16,7 +16,6 @@ import {
 
 const TEAMRIG: UpdateNotice = { plugin: 'teamrig', marketplace: 'teamrig', installed: '0.332.0', newest: '0.333.0' };
 const PANE: UpdateNotice = { plugin: 'teamrig-pane', marketplace: 'teamrig-pane', installed: '0.40.0', newest: '0.41.0' };
-const START = 1_000_000;
 
 function run(answer: UpdateAnswer): UpdateRun {
   return { exitCode: 0, stdout: `${JSON.stringify(answer)}\n` };
@@ -24,7 +23,6 @@ function run(answer: UpdateAnswer): UpdateRun {
 
 /** Claude Code as the mod sees it: the CLI's answer per command, and what each run was asked. */
 class FakeHost implements UpdateHandHost {
-  time = START;
   readonly answers: Record<UpdateCommand, UpdateRun> = {
     check: run({ kind: 'notices', notices: [TEAMRIG, PANE] }),
     dismiss: run({ kind: 'dismissed' }),
@@ -41,19 +39,21 @@ class FakeHost implements UpdateHandHost {
   toast(text: string): void {
     this.toasts.push(text);
   }
-
-  now(): number {
-    return this.time;
-  }
 }
 
 /** A hand past its first check, which told of both updates. */
 async function checked(host: FakeHost): Promise<UpdateHand> {
   const hand = new UpdateHand(host);
-  host.time = START + UPDATE_FIRST_MS;
   assert.deepEqual(await hand.tick(), { kind: 'checked', notices: [TEAMRIG, PANE] });
   return hand;
 }
+
+describe('update schedule', () => {
+  it('asks first a minute after the mod loads, then every 10 minutes', () => {
+    assert.equal(UPDATE_FIRST_MS, 60_000);
+    assert.equal(UPDATE_EVERY_MS, 600_000);
+  });
+});
 
 describe('updateCliArgv', () => {
   it("runs the plugin's CLI as hook update-<command>", () => {
@@ -90,22 +90,16 @@ describe('parseUpdateAnswer', () => {
 });
 
 describe('UpdateHand', () => {
-  it('asks first a minute after the mod loaded, then every 10 minutes', async () => {
+  it('shows the first update a check told of, and none once a check tells of none', async () => {
     const host = new FakeHost();
     const hand = new UpdateHand(host);
-    host.time = START + UPDATE_FIRST_MS - 1;
-    assert.deepEqual(await hand.tick(), { kind: 'quiet' });
     assert.equal(hand.notice(), undefined);
-    host.time = START + UPDATE_FIRST_MS;
     assert.deepEqual(await hand.tick(), { kind: 'checked', notices: [TEAMRIG, PANE] });
     assert.deepEqual(host.calls, [{ command: 'check', stdin: {} }]);
     assert.deepEqual(hand.notice(), TEAMRIG);
-    host.time += UPDATE_EVERY_MS - 1;
-    assert.deepEqual(await hand.tick(), { kind: 'quiet' });
-    host.time += 1;
     host.answers.check = run({ kind: 'notices', notices: [] });
     assert.deepEqual(await hand.tick(), { kind: 'checked', notices: [] });
-    assert.equal(hand.notice(), undefined, 'a check that tells of none hides the band');
+    assert.equal(hand.notice(), undefined);
   });
 
   it('updates the shown plugin, toasts it and shows the next update', async () => {
@@ -153,18 +147,16 @@ describe('UpdateHand', () => {
     assert.deepEqual(host.calls, []);
   });
 
-  it('reports a check that fails or cannot start, never rejects, and asks again at the next interval', async () => {
+  it('reports a check that fails or cannot start, never rejects, and keeps the updates it showed', async () => {
     const host = new FakeHost();
-    const hand = new UpdateHand(host);
-    host.time = START + UPDATE_FIRST_MS;
+    const hand = await checked(host);
     host.answers.check = { exitCode: 1, stdout: 'boom' };
     assert.deepEqual(await hand.tick(), { kind: 'failed', error: 'hook update-check exited 1: boom' });
-    assert.deepEqual(await hand.tick(), { kind: 'quiet' });
-    host.time += UPDATE_EVERY_MS;
     host.cli = async () => {
       throw new Error('node is missing');
     };
     assert.deepEqual(await hand.tick(), { kind: 'failed', error: 'node is missing' });
+    assert.deepEqual(hand.notice(), TEAMRIG);
   });
 
   it('runs one CLI call at a time: a tick or a press during an update waits it out', async () => {
@@ -176,7 +168,6 @@ describe('UpdateHand', () => {
         release = () => resolve(host.answers[command]);
       });
     const update = hand.apply();
-    host.time += UPDATE_EVERY_MS;
     assert.deepEqual(await hand.tick(), { kind: 'overlap' });
     assert.deepEqual(await hand.dismiss(), { kind: 'idle' });
     while (release === undefined) {
