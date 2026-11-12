@@ -160,11 +160,13 @@ async function printAgenda(args, runtime, mk, phase) {
             ownerMarker: rolled.config.register.ownerSource,
             requireGate: rolled.config.register.requireDecisionCard,
             focus: rolled.config.focus,
+            dedicatedOwners: rolled.config.decisions.dedicatedOwners,
         })),
         lead: mk.lead,
         command: KIT_NAME,
         board: await goalBoard(runtime, mk, rolled),
         focus: mk.config.focus,
+        dedicatedOwners: mk.config.decisions.dedicatedOwners,
         improvementsDay: mk.config.focus.improvementsDay,
         runFiles: await readRunFiles(runtime, teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()])),
     });

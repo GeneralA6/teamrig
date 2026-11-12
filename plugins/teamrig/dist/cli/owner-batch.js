@@ -32,5 +32,6 @@ function registerOf(runtime, { config, tasks, elsewhere, ranking }, label) {
         elsewhere,
         ranking,
         focus: config.focus,
+        dedicatedOwners: config.decisions.dedicatedOwners,
     };
 }

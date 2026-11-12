@@ -17,6 +17,7 @@ export async function teamDecisions(files, paths, config, registers, now) {
         improvementsDay: config.focus.improvementsDay,
     });
 }
-function batchRegisterOf({ team, tasks, ownerMarker, requireGate, zone, elsewhere, ranking, focus }, now) {
-    return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere, ranking), ownerMarker, requireGate, focus };
+function batchRegisterOf(register, now) {
+    const { team, tasks, ownerMarker, requireGate, zone, elsewhere, ranking, focus, dedicatedOwners } = register;
+    return { team, tasks: tasks.values(), tree: new TaskTree(tasks, new Date(now), zone, undefined, elsewhere, ranking), ownerMarker, requireGate, focus, dedicatedOwners };
 }
