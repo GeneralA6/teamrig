@@ -2968,7 +2968,11 @@ restore's own tab, and sessions outside a team, open in the most recent one. Eac
 `<home>/restore/restore.log`, between a `run: started, <n> to reopen` line and a `run: done, ... of <n>` line; each
 `run: opened <id>` line ends with how its terminal's launch ended (`windows-terminal exited 0`, `... still running
 after 10 s` or `... started`). A run its tab's closing or Ctrl+C stops writes `run: interrupted by <signal>` and how
-far it got instead. A tab that
+far it got instead. Each tab opens through the host's tab gate, as [teamrig open](#teamrig-open) does, counted
+against the team it belongs to (else the first team the kit home holds): the lead opens whatever the room; a tab the
+host has no room for waits, printing `Waiting up to <n> min for room to reopen <name>: <why>`, for up to
+`open.headroom.loadMinutes` (5), the tabs just opened loading meanwhile, then opens, or is held back: its entry is
+kept for the next run, the log gets `run: held <id> (no room on the host)` and it counts as failed. A tab that
 did not open is printed with the command to run, and the command exits 1.
 
 Flags:
