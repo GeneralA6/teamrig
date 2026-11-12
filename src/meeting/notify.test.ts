@@ -49,6 +49,7 @@ describe('noticeRequest', () => {
     assert.equal(request?.env[NOTICE_TEXT_VAR], NOTICE.text);
     assert.equal(request?.env['PATH'], '/usr/bin');
     assert.equal(request?.cwd, '/work');
+    assert.equal(request?.needsConsole, true, 'Windows PowerShell runs nothing without a console');
   });
 
   it('shows a macOS banner whose words are the script\'s run arguments', () => {
