@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { EffortLevel } from '../config/types.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { decodePrompt, refreshPrompt } from '../open/prompt.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
@@ -22,13 +23,13 @@ const SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', co
 const RESTART_ALPHA = ['restart', 'alpha', '--team', 'app', '--at', AT, '--project', APP];
 
 /** A team whose session alpha wrote its handover and asked for its restart, with its Claude Code running. */
-async function armed(supervised: boolean, config: JsonRecord = AUTO_RESTART_TEAM): Promise<{ kit: CliHarness; store: RefreshStore; processes: FakeSessionProcesses }> {
+async function armed(supervised: boolean, config: JsonRecord = AUTO_RESTART_TEAM, effort: EffortLevel | null = null): Promise<{ kit: CliHarness; store: RefreshStore; processes: FakeSessionProcesses }> {
   const kit = new CliHarness(config);
   // A finished turn: the restart waits while one still runs.
   await kit.files.write(TRANSCRIPT, '{"type":"user"}\n{"type":"system","subtype":"turn_duration"}\n');
   const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
   await store.setState('alpha', { phase: 'ready', task: 'T3', at: AT, tokens: null, noticed: true, transcript: null, claudePid: null });
-  await store.setRestart('alpha', { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised, effort: null });
+  await store.setRestart('alpha', { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised, effort });
   return { kit, store, processes: new FakeSessionProcesses().add(SHELL).add(CLAUDE) };
 }
 
@@ -61,6 +62,25 @@ describe('teamrig restart', () => {
     assert.deepEqual(processes.ends, []);
     assert.equal(await store.restart('alpha'), undefined);
     assert.equal(kit.files.get(INBOX), undefined);
+  });
+
+  it("ends a session that runs at another effort level than its config's, when the tab's mod claims the end ask (T2444)", async () => {
+    const { kit, store, processes } = await armed(true, { ...AUTO_RESTART_TEAM, launch: { alpha: { effort: 'medium' } } }, 'xhigh');
+    const asks = new ClearAsks(kit.files, clearAskDir(KIT));
+    const modes: string[] = [];
+    const sleep = async (ms: number): Promise<void> => {
+      await kit.clock.sleep(ms);
+      const ask = await asks.ask(CLAUDE_SESSION);
+      if (ask !== undefined && modes.length === 0) {
+        modes.push(ask.mode);
+        assert.equal(await asks.claimEnd(CLAUDE_SESSION), true);
+      }
+    };
+    const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32', sleep });
+    assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in the same tab'], stderr: [] });
+    assert.deepEqual(modes, ['end'], "the config's level, read by the command, differs from the running one");
+    assert.deepEqual(processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
+    assert.equal((await store.restart('alpha'))?.phase, 'ending', 'launch starts it again');
   });
 
   it('opens a new tab that launches the session, then closes the old tab', async () => {
