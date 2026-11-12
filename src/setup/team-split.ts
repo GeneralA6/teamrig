@@ -91,6 +91,7 @@ const CHILD_TAKES: Readonly<Record<Exclude<keyof KitConfig, keyof typeof REWORKE
   decisions: 'copy',
   tabStatus: 'copy',
   pickerGuard: 'copy',
+  meeting: 'copy',
   turnLog: 'copy',
   readonlyShell: 'copy',
   permissions: 'copy',

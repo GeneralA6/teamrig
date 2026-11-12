@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION, type AccountBudget, type BudgetConfig } from './types.ts';
@@ -292,6 +292,14 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, wake: { priority: 0, batchSeconds: 3601, minGapMinutes: 1441 } });
     assert.deepEqual(paths(issues), ['wake.priority', 'wake.batchSeconds', 'wake.minGapMinutes']);
     assert.deepEqual(config.wake, DEFAULT_WAKE);
+  });
+
+  it('reads meeting.panel.enabled, on by default, and refuses a value that is not a boolean (T2512)', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.meeting, DEFAULT_MEETING);
+    assert.equal(parseConfig({ ...ROSTER, meeting: { panel: { enabled: false } } }).config.meeting.panel.enabled, false);
+    const bad = parseConfig({ ...ROSTER, meeting: { panel: { enabled: 'no' } } });
+    assert.deepEqual([paths(bad.issues), bad.config.meeting], [['meeting.panel.enabled'], DEFAULT_MEETING]);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, meeting: { panel: true } }).issues), ['meeting.panel']);
   });
 
   it('reads timeZone, leaves it unset by default, and refuses a name the system does not know', () => {

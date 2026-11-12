@@ -50,6 +50,7 @@ import {
   DEFAULT_TESTS,
   DEFAULT_WAKE,
   DEFAULT_STABLE_PERIODS,
+  DEFAULT_MEETING,
   QUEUE_TTL_MARGIN_MINUTES,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
@@ -516,6 +517,9 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
+    meeting: {
+      panel: { enabled: read.boolean(read.section(read.section(raw, 'meeting', ''), 'panel', 'meeting'), 'enabled', 'meeting.panel', DEFAULT_MEETING.panel.enabled) },
+    },
     turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
     readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
     permissions: parsePermissions(read, read.section(raw, 'permissions', '')),

@@ -44,6 +44,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `decisions` | [object](#decisions) |  | When the lead asks the owner the decisions waiting on them (tasks waiting on the owner's decision or approval), together in one batch instead of one at a time. A batch holds the waits not yet asked and the asked ones now past their due date; `teamrig decisions` prints it and `teamrig decisions asked` records it asked, as a meeting's start does. The lead's check says when one is due. |
 | `tabStatus` | [object](#tabstatus) |  | A colored circle before each terminal tab's title for what its session is doing: green ready, yellow working (or a helper still running), orange waiting on the user, blue waiting on the user's decision (a turn whose last message has a `Decision needed:` line), red an API error, purple compacting. |
 | `pickerGuard` | [object](#pickerguard) |  | Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed. |
+| `meeting` | [object](#meeting) |  | The owner's daily meeting with the lead, in the lead's tab. |
 | `turnLog` | [object](#turnlog) |  | Each session's prompts and replies, kept in state/turn-log/\<session>/\<UTC hour>.jsonl for the task pane, so a /clear or a compaction never takes away what the person was reading in the tab. Secret shapes are redacted. |
 | `readonlyShell` | [object](#readonlyshell) |  | Lets a Bash or PowerShell line run without a permission prompt when every command in it provably only reads: known readers (grep, cat, Get-Content, Select-Object...), git and kubectl reading subcommands, and no write, file redirection, command that runs code, or variable a program reads. It only ever allows: any other line gets Claude Code's own permission check. |
 | `permissions` | [object](#permissions) |  | Which local allow rules stay. An allow rule in a Claude Code settings file approves a call before auto mode's classifier sees it, so a rule that approves a whole tool or a program with any arguments skips the one check that stops an injected or mistaken action. teamrig permissions trim removes the rules off keepAllow (the owner runs it with --yes); doctor flags the ones that approve a whole tool or program, or hold a credential (text in a secret's shape) that Claude Code saved with an approved command. |
@@ -550,6 +551,22 @@ Refuses Claude Code's question picker (AskUserQuestion) in every session and hel
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Refuses the question picker in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too. On unless a team sets it false. |
+
+## `meeting`
+
+The owner's daily meeting with the lead, in the lead's tab.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `panel` | [object](#meetingpanel) |  | The agenda panel beside the lead's chat while a meeting is open. |
+
+## `meeting.panel`
+
+The agenda panel beside the lead's chat while a meeting is open.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `enabled` | boolean | `true` | Shows the panel in the lead's tab while a meeting is open: the owner's cards in the agenda's order, the ones decided since the meeting started checked off with the decision, the card on the table now marked. No other tab shows it. On unless a team sets it false. |
 
 ## `turnLog`
 

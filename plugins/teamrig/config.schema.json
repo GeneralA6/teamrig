@@ -1287,6 +1287,23 @@
         }
       }
     },
+    "meeting": {
+      "description": "The owner's daily meeting with the lead, in the lead's tab.",
+      "type": "object",
+      "properties": {
+        "panel": {
+          "description": "The agenda panel beside the lead's chat while a meeting is open.",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Shows the panel in the lead's tab while a meeting is open: the owner's cards in the agenda's order, the ones decided since the meeting started checked off with the decision, the card on the table now marked. No other tab shows it. On unless a team sets it false.",
+              "type": "boolean",
+              "default": true
+            }
+          }
+        }
+      }
+    },
     "turnLog": {
       "description": "Each session's prompts and replies, kept in state/turn-log/<session>/<UTC hour>.jsonl for the task pane, so a /clear or a compaction never takes away what the person was reading in the tab. Secret shapes are redacted.",
       "type": "object",
