@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
+import { MS_PER_MINUTE } from '../core/time.ts';
+import { TOAST_MAX_MS } from '../mod/meeting-hand.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { MISSED_STAY_MS, NOTICE_TEXT_VAR, NOTICE_TITLE_VAR, noticeOf, noticeRequest, POWERSHELL_APP_ID, showNotice, WINDOWS_TOAST_SCRIPT } from './notify.ts';
 import type { ScheduledMeeting } from './schedule.ts';
@@ -46,7 +47,7 @@ describe('noticeOf', () => {
     assert.equal(noticeOf(MEETING, 'before', MEETING.at - MS_PER_MINUTE).stayMs, null);
   });
 
-  it('tells of a missed meeting, who meets, how to start it or move it, and stays until clicked', () => {
+  it('tells of a missed meeting, who meets, how to start it or move it, and stays the longest a tab toast can', () => {
     const missed = noticeOf({ ...MEETING, with: ['api', 'ops'] }, 'missed', MEETING.at + 5 * MS_PER_MINUTE);
     assert.deepEqual(missed, {
       id: 'M3',
@@ -55,7 +56,7 @@ describe('noticeOf', () => {
       text: `web with api, ops: ${MEETING.about} (20 min) has not started. Start: teamrig meeting start M3, or move or drop it`,
       stayMs: MISSED_STAY_MS,
     });
-    assert.equal(MISSED_STAY_MS, MS_PER_DAY);
+    assert.equal(MISSED_STAY_MS, TOAST_MAX_MS);
   });
 });
 

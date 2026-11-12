@@ -1374,7 +1374,7 @@
           "default": true
         },
         "tabToast": {
-          "description": "A toast in the open tab of the team that sends the notice; a missed alert's stays until it is clicked away.",
+          "description": "A toast in the open tab of the team that sends the notice; a missed alert's stays a minute, the longest Claude Code shows one.",
           "type": "boolean",
           "default": true
         },
