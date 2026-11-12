@@ -1733,7 +1733,7 @@ Prints each session: running, with the memory its Claude Code's process tree hol
 servers) and, on Windows, what it has committed (its private bytes, what it adds to the commit charge), closed (the
 Claude Code it last started in has ended) or with no start recorded. The SessionStart hook
 records that process at each start (`state/sessions/<id>.json`); a process id the host gave to a later process
-does not count. Then the host's free memory and commit charge (Windows and Linux). It only reads.
+does not count. Then the host's free memory and commit charge (Windows, and Linux under strict overcommit). It only reads.
 
 With `--pass` it prints, in the roster's order, what an idle pass would do, and changes nothing: `CLOSE` a running
 session [teamrig close](#teamrig-close) would close (quiet `open.headroom.closeIdleMinutes` or more, nothing it can
@@ -2706,7 +2706,7 @@ and list. A rehired session's first prompt reads the handover its retire left fi
 
 It refuses any session but the lead when the host has no room for one more: its free memory, less what the tabs
 still loading hold, must stay over the floor a new tab keeps free with the session counted, and its commit charge,
-with those tabs counted, within `open.headroom.commitMaxPct` (92%; Windows and Linux). The floor is
+with those tabs counted, within `open.headroom.commitMaxPct` (92%; Windows, and Linux under strict overcommit). The floor is
 `open.headroom.floorMb` when set, else `delivery.queue.memoryFloorMb` plus `delivery.queue.heavyReserveMb` (4096 +
 2048), so a tab opened at the floor still leaves a heavy queued step the room it starts at. A session is counted at
 the median running session's Claude Code process tree, else at `open.headroom.sessionMb` (1200 MB): what it holds
