@@ -1,3 +1,4 @@
+import { isEffortLevel, type EffortLevel } from '../config/types.ts';
 import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 
@@ -85,10 +86,16 @@ export interface RestartRequest {
   readonly cwd: string | null;
   /** `teamrig launch` runs the process and starts it again; otherwise the restart opens a new tab. */
   readonly supervised: boolean;
+  /**
+   * The effort level the turn that asked ran at, from the Stop hook's payload; null when Claude Code gave none or one
+   * teamrig does not know (a file from before it has none). A /clear keeps the running level, so a level other than
+   * the session's `launch` effort makes the restart end the process instead, and it starts again at the config's (T2444).
+   */
+  readonly effort: EffortLevel | null;
 }
 
 /** What a restart keeps of the tab it is for, from the Stop hook that asked for it. */
-export type RestartTab = Pick<RestartRequest, 'claudeSession' | 'transcript' | 'cwd' | 'supervised'>;
+export type RestartTab = Pick<RestartRequest, 'claudeSession' | 'transcript' | 'cwd' | 'supervised' | 'effort'>;
 
 /**
  * The automatic restart the Stop hook held back once the handover was written (T1383): the session had no work it
@@ -259,8 +266,17 @@ function restartTabOf(record: JsonRecord): RestartTab | undefined {
   const transcript = nullableString(record, 'transcript');
   const cwd = nullableString(record, 'cwd');
   const supervised = record['supervised'];
-  if (claudeSession === undefined || transcript === undefined || cwd === undefined || typeof supervised !== 'boolean') {
+  const effort = effortOf(record['effort']);
+  if (claudeSession === undefined || transcript === undefined || cwd === undefined || typeof supervised !== 'boolean' || effort === undefined) {
     return undefined;
   }
-  return { claudeSession, transcript, cwd, supervised };
+  return { claudeSession, transcript, cwd, supervised, effort };
+}
+
+/** A recorded effort level, null when absent (a file from before it) or null, undefined when damaged. */
+function effortOf(value: unknown): EffortLevel | null | undefined {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return isEffortLevel(value) ? value : undefined;
 }

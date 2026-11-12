@@ -337,7 +337,7 @@ describe('teamrig launch', () => {
   const LAUNCH = ['launch', 'alpha', '--team', 'app', '--project', APP];
   const ON_PATH = new FakePathProbe({ folders: [APP], files: [CLAUDE] });
   const SESSION_ENV = { TEAMRIG_HOME: KIT, PATH: '/usr/local/bin', TEAMRIG_SESSION: 'alpha', TEAMRIG_TEAM: 'app', TEAMRIG_LAUNCHED: 'alpha' };
-  const ENDING: RestartRequest = { phase: 'ending', at: '2030-01-08T10:00:00.000Z', pid: 4100, claudeSession: 'c1', transcript: null, cwd: null, supervised: true };
+  const ENDING: RestartRequest = { phase: 'ending', at: '2030-01-08T10:00:00.000Z', pid: 4100, claudeSession: 'c1', transcript: null, cwd: null, supervised: true, effort: null };
 
   /** Claude Code whose first run the automatic restart ends, leaving `request` as `restart` does, after `during` ran. */
   class RestartedOnce extends FakeProcesses {

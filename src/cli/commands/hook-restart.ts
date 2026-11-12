@@ -1,6 +1,7 @@
-import type { KitConfig, RefreshConfig } from '../../config/types.ts';
+import { isEffortLevel, type EffortLevel, type KitConfig, type RefreshConfig } from '../../config/types.ts';
 import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, type TeamPaths } from '../../core/home.ts';
+import { payloadEffortOf } from '../../hooks/model-check.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { noticeOf, type NoticeDecision, type StopContext } from '../../refresh/decide.ts';
 import { claudeProcessOf, restartMayAct } from '../../refresh/restart.ts';
@@ -19,6 +20,8 @@ export interface RestartTarget {
   readonly cwd: string | null;
   /** Where a new tab opens: Claude Code's project folder, else the session's working folder. */
   readonly project: string;
+  /** The effort level the turn ran at (`payloadEffortOf`); null when the payload names none teamrig knows. */
+  readonly effort: EffortLevel | null;
 }
 
 /** The restart's target; undefined when Claude Code did not give its session, its transcript or a folder. */
@@ -30,7 +33,8 @@ export function restartTargetOf(runtime: CliRuntime, payload: JsonRecord): Resta
   if (claudeSession === null || transcript === undefined || project === undefined) {
     return undefined;
   }
-  return { claudeSession, transcript, cwd: cwd ?? null, project };
+  const effort = payloadEffortOf(payload);
+  return { claudeSession, transcript, cwd: cwd ?? null, project, effort: isEffortLevel(effort) ? effort : null };
 }
 
 /** The session a restart is armed for. */
@@ -56,7 +60,7 @@ async function startRunner(runtime: CliRuntime, team: string, id: string, at: st
 
 /** What a restart keeps of the Stop hook's tab, the process it runs under aside. */
 function restartTabOf(runtime: CliRuntime, id: string, target: RestartTarget): RestartTab {
-  return { claudeSession: target.claudeSession, transcript: target.transcript, cwd: target.cwd, supervised: runtime.env[ENV.launched] === id };
+  return { claudeSession: target.claudeSession, transcript: target.transcript, cwd: target.cwd, supervised: runtime.env[ENV.launched] === id, effort: target.effort };
 }
 
 /**

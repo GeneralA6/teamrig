@@ -23,7 +23,7 @@ interface Asked {
 /** Alpha's restart is pending and the runner asked the tab to run /clear. */
 async function asked(kit: CliHarness, ask: Partial<ClearAsk> = {}): Promise<Asked> {
   const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
-  await store.setRestart('alpha', { phase: 'pending', at: AT, pid: 4100, claudeSession: CLAUDE_SESSION, transcript: null, cwd: null, supervised: false });
+  await store.setRestart('alpha', { phase: 'pending', at: AT, pid: 4100, claudeSession: CLAUDE_SESSION, transcript: null, cwd: null, supervised: false, effort: null });
   const asks = new ClearAsks(kit.files, ASK_DIR);
   await asks.post(CLAUDE_SESSION, { team: 'app', id: 'alpha', at: AT, askedAt: AT, hold: PERSON_HOLD, askEveryMs: 15_000, ...ask });
   return { store, asks };

@@ -161,6 +161,7 @@ class World {
       transcript: TRANSCRIPT,
       cwd: '/project/sub',
       supervised: true,
+      effort: null,
       ...overrides,
     });
     return this;
@@ -183,7 +184,7 @@ class TypedWhileLooking extends FakeSessionProcesses {
 }
 
 describe('restartMayAct', () => {
-  const request: RestartRequest = { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: SESSION, transcript: TRANSCRIPT, cwd: null, supervised: false };
+  const request: RestartRequest = { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: SESSION, transcript: TRANSCRIPT, cwd: null, supervised: false, effort: null };
   const asked = Date.parse(AT);
 
   it('holds for a request through the give-up and its last round, never for none or an older one', () => {
@@ -276,7 +277,7 @@ describe('runRestart', () => {
     assert.deepEqual(await runRestart(typed.deps, PLAN), { kind: 'cancelled', why: 'the restart was cancelled or replaced' });
     assert.deepEqual(typed.processes.ends, []);
     const replaced = await new World().arm();
-    const later = { phase: 'pending', at: '2030-01-08T10:00:05.000Z', pid: CLAUDE.pid, claudeSession: SESSION, transcript: TRANSCRIPT, cwd: null, supervised: true } as const;
+    const later = { phase: 'pending', at: '2030-01-08T10:00:05.000Z', pid: CLAUDE.pid, claudeSession: SESSION, transcript: TRANSCRIPT, cwd: null, supervised: true, effort: null } as const;
     replaced.onSleep(2, () => replaced.store.setRestart('alpha', later));
     assert.equal((await runRestart(replaced.deps, PLAN)).kind, 'cancelled');
     assert.deepEqual(replaced.processes.ends, []);
