@@ -22,19 +22,26 @@ export type TeamrigBand =
   | { readonly kind: 'waiting'; readonly by: 'activity' | 'button'; readonly secondsLeft: number }
   | { readonly kind: 'held'; readonly why: string }
 
+/** An update the band names (src/mod/update-hand.ts UpdateNotice): the plugin, its marketplace, installed and newest. */
+export type TeamrigUpdateNotice = { readonly plugin: string; readonly marketplace: string; readonly installed: string; readonly newest: string }
+
 /**
- * The update band above the prompt (src/mod/update-hand.ts UpdateNotice): the plugin a newer version is published
- * of, its marketplace, the version installed and the newest one. The update hand writes it each time the update it
+ * The update band above the prompt (src/mod/update-hand.ts UpdateView): an update out, one installing, one installed
+ * and reloading, or one whose install failed and may be tried again. The update hand writes it each time what it
  * shows changes, null when it shows none, and the band's drawing reads it.
  */
-export type TeamrigUpdate = { readonly plugin: string; readonly marketplace: string; readonly installed: string; readonly newest: string }
+export type TeamrigUpdate =
+  | { readonly kind: 'available'; readonly notice: TeamrigUpdateNotice }
+  | { readonly kind: 'updating'; readonly notice: TeamrigUpdateNotice }
+  | { readonly kind: 'updated'; readonly plugin: string; readonly version: string }
+  | { readonly kind: 'failed'; readonly notice: TeamrigUpdateNotice; readonly why: string }
 
 declare module 'claude-code' {
   interface PluginState {
     teamrig: {
       reload: TeamrigReload
       band: TeamrigBand | null
-      update: TeamrigUpdate | null
+      updateView: TeamrigUpdate | null
     }
   }
 }

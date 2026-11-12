@@ -21,9 +21,10 @@ import {
   UPDATE_CHECK_TIMEOUT_MS,
   UPDATE_EVERY_MS,
   UPDATE_FIRST_MS,
+  UPDATE_WATCH_MS,
   UpdateHand,
+  updateBandOf,
   updateCliArgv,
-  updateLine,
 } from '../dist/mod/update-hand.js';
 
 /**
@@ -77,8 +78,10 @@ import {
  * CLI (`hook update-check`, which asks the network at most every 6 hours across the machine) whether a newer teamrig
  * or teamrig-pane is published than the one installed. While one is, and no refresh band is up, the band above the
  * prompt names it with Update (`hook update-apply`: Claude Code's own `plugin update`, which the reload hand then
- * loads) and Dismiss (`hook update-dismiss`: hidden until a newer version is out), plain buttons with no digits. The
- * band's value is the session's `update` (types/index.d.ts).
+ * loads) and Dismiss (`hook update-dismiss`: hidden until a newer version is out), plain buttons with no digits, in
+ * green. A press shows "updating" at once, then "updated, reloading" for 30 s, or the failure in red with Update
+ * again. Every 5 s the hand dates installed_plugins.json, and a change checks at once, so an update made in any tab
+ * hides the band in every tab within seconds. The band's value is the session's `updateView` (types/index.d.ts).
  *
  * The refresh within a turn (`refresh-hand.ts`): the Stop hook asks for the handover only at a turn's end, so a long
  * turn reached Claude Code's compaction first. After a tool result of the main conversation, once the context Claude
@@ -95,8 +98,11 @@ const RELOAD_STATE: StateRef<'teamrig', 'reload'> = { plugin: 'teamrig', key: 'r
 /** The band above the prompt while a refresh's /clear is near; null, no band (types/index.d.ts). */
 const BAND = atom({ plugin: 'teamrig', key: 'band' } as const, null);
 
-/** The update band above the prompt while a newer plugin is published; null, no band (types/index.d.ts). */
-const UPDATE = atom({ plugin: 'teamrig', key: 'update' } as const, null);
+/**
+ * The update band above the prompt while a newer plugin is published, installs or was installed; null, no band
+ * (types/index.d.ts). A key of its own: a module from before T2514 left a value of another shape under `update`.
+ */
+const UPDATE = atom({ plugin: 'teamrig', key: 'updateView' } as const, null);
 
 /** The bands' Buttons, by the key a press names. */
 const REFRESH_NOW_KEY = 'refresh-now';
@@ -106,7 +112,11 @@ const DISMISS_KEY = 'dismiss-update';
 
 /** Whether two update bands draw the same. */
 function sameUpdate(a: TeamrigUpdate | null, b: TeamrigUpdate | null | undefined): boolean {
-  return a === null || b === null || b === undefined ? a === b : a.plugin === b.plugin && a.installed === b.installed && a.newest === b.newest;
+  if (a === null || b === null || b === undefined) {
+    return a === b;
+  }
+  const [left, right] = [updateBandOf(a), updateBandOf(b)];
+  return left.text === right.text && left.color === right.color && left.buttons.join() === right.buttons.join();
 }
 
 /** A tick worth a debug line: an ask acted on (cleared, ending, held, declined, left while busy) or a failure, not the quiet ones. */
@@ -315,11 +325,23 @@ export const register: Register = (on) => {
         toast: (text) => {
           $.ui.toast(text);
         },
+        changed: () => {
+          void showUpdate?.();
+        },
+        // A plugin run from outside Claude Code's cache has no installed_plugins.json to watch.
+        installedChangedAt: async () =>
+          pluginsFolder === undefined
+            ? undefined
+            : $.fs.stat(`${pluginsFolder}/${INSTALLED_PLUGINS_FILE}`).then(
+                (found) => found.mtimeMs,
+                () => undefined,
+              ),
+        now: async () => $.clock.now(),
       });
       updateHand = active;
       let shown: TeamrigUpdate | null | undefined;
       const show = async (): Promise<void> => {
-        const view = active.notice() ?? null;
+        const view = active.view(await $.clock.now()) ?? null;
         if (sameUpdate(view, shown)) {
           return;
         }
@@ -345,6 +367,15 @@ export const register: Register = (on) => {
       $.clock.after(UPDATE_FIRST_MS, () => {
         check();
         $.clock.every(UPDATE_EVERY_MS, check);
+      });
+      // An install made by any tab hides the band here within seconds; the redraw also ends "updated" after 30 s.
+      $.clock.every(UPDATE_WATCH_MS, () => {
+        void active.watch().then(async (result) => {
+          if (result.kind === 'changed' && result.tick.kind === 'failed') {
+            $.ui.log(`teamrig update watch: ${JSON.stringify(result)}`, { to: 'debug' });
+          }
+          await show();
+        });
       });
     }
     return started;
@@ -402,11 +433,12 @@ export const register: Register = (on) => {
     const { Box, Button, Text } = $.ui.resolve(e);
     // A refresh near is the more pressing band; the update waits under it.
     if (view === null || hand === undefined) {
-      const notice = await read($, UPDATE);
+      const shown = await read($, UPDATE);
       const updates = updateHand;
-      if (notice === null || updates === undefined) {
+      if (shown === null || updates === undefined) {
         return next(e);
       }
+      const drawn = updateBandOf(shown);
       const press = (action: () => Promise<{ readonly kind: string }>): void => {
         void action().then(async (result) => {
           if (result.kind === 'failed') {
@@ -416,9 +448,12 @@ export const register: Register = (on) => {
         });
       };
       // Plain buttons with no digits: an update never needs a key the person may be typing.
-      const install = Button({ key: UPDATE_KEY, label: 'Update', plain: true, onPress: () => press(() => updates.apply()) });
-      const dismiss = Button({ key: DISMISS_KEY, label: 'Dismiss', plain: true, onPress: () => press(() => updates.dismiss()) });
-      return Box({ flexDirection: 'row', gap: 2, children: [Text({ children: `teamrig: ${updateLine(notice)}` }), install, dismiss] });
+      const buttons = drawn.buttons.map((button) =>
+        button === 'update'
+          ? Button({ key: UPDATE_KEY, label: 'Update', plain: true, onPress: () => press(() => updates.apply()) })
+          : Button({ key: DISMISS_KEY, label: 'Dismiss', plain: true, onPress: () => press(() => updates.dismiss()) }),
+      );
+      return Box({ flexDirection: 'row', gap: 2, children: [Text({ color: drawn.color, children: drawn.text }), ...buttons] });
     }
     // Only the count and its end arm the digits, once the person left the tab alone a while: while they work in
     // it, or a draft or a helper holds, a digit typed into the empty prompt box is theirs, and a click or the
