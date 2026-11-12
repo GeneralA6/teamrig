@@ -37,6 +37,21 @@ export type TeamrigUpdate =
   | { readonly kind: 'failed'; readonly notice: TeamrigUpdateNotice; readonly why: string }
 
 /**
+ * The needs-you band above the prompt (src/mod/needs-you-hand.ts NeedsYouView): the newest ask of another tab of the
+ * team not dismissed here (its session, when the ask began, the tab's title and the ask's text), whether it offers
+ * Focus, and how many more tabs ask. The needs-you hand writes it each time what it shows changes, null when no tab
+ * asks, and the band's drawing reads it.
+ */
+export type TeamrigNeedsYou = {
+  readonly session: string
+  readonly since: string
+  readonly tab: string
+  readonly text: string
+  readonly focus: boolean
+  readonly more: number
+}
+
+/**
  * The meeting's agenda panel in the root team lead's tab (src/mod/meeting-panel-hand.ts MeetingPanelView): when the
  * meeting started, its cards in order (each one's id, title, whether it is decided and the decision, and a short
  * summary of what it asks), the card on the table and how many are left. The meeting panel hand writes it each time
@@ -61,6 +76,7 @@ declare module 'claude-code' {
       reload: TeamrigReload
       band: TeamrigBand | null
       updateView: TeamrigUpdate | null
+      needsYou: TeamrigNeedsYou | null
       meetingPanel: TeamrigMeetingPanel | null
     }
   }
