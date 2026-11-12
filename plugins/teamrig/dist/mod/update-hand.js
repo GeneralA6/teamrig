@@ -7,6 +7,11 @@
  * update-apply`: Claude Code's own `plugin update`, then the tab's reload hand loads it) and Dismiss (`hook
  * update-dismiss`: hidden until a newer version is out). Nothing is typed into the terminal.
  *
+ * The band answers a press at once (T2514): "updating" while the install runs, then "updated, reloading" for
+ * UPDATED_SHOW_MS, or the failure with Update to try again. Every UPDATE_WATCH_MS the hand dates Claude Code's
+ * installed_plugins.json, and a change runs a check at once, so an update made in any tab (or by `claude plugin
+ * update`) hides the band in every other tab within seconds, not at its next 10-minute check.
+ *
  * The mod runs inside Claude Code without Node, so this file imports nothing at run time.
  */
 /** How long after the mod loads the hand asks first, so a tab's start is left alone. */
@@ -17,6 +22,10 @@ export const UPDATE_EVERY_MS = 10 * 60_000;
 export const UPDATE_CHECK_TIMEOUT_MS = 90_000;
 /** How long an update may take: Claude Code's marketplace update, then its plugin update. */
 export const UPDATE_APPLY_TIMEOUT_MS = 400_000;
+/** How often the hand dates installed_plugins.json: a stat only, so a change made by any tab shows within seconds. */
+export const UPDATE_WATCH_MS = 5_000;
+/** How long the band says an update is installed, before it hides (the reload hand then loads the new version). */
+export const UPDATED_SHOW_MS = 30_000;
 /** The command line that runs the plugin's CLI as `hook update-<command>`, given the plugin's folder. */
 export function updateCliArgv(pluginRoot, command) {
     return ['node', `${pluginRoot}/dist/cli/main.js`, 'hook', `update-${command}`];
@@ -24,6 +33,23 @@ export function updateCliArgv(pluginRoot, command) {
 /** The band's line for an update. */
 export function updateLine(notice) {
     return `${notice.plugin} ${notice.newest} is out (you run ${notice.installed})`;
+}
+/** The most of a failure's reason the band shows; the toast and the debug log carry it whole. */
+const BAND_WHY_CHARS = 80;
+/** The band for a view: green while an update is out, installing or installed; red with Update again after a failure. */
+export function updateBandOf(view) {
+    switch (view.kind) {
+        case 'available':
+            return { text: `teamrig: ${updateLine(view.notice)}`, color: 'success', buttons: ['update', 'dismiss'] };
+        case 'updating':
+            return { text: `teamrig: updating ${view.notice.plugin} to ${view.notice.newest}...`, color: 'success', buttons: [] };
+        case 'updated':
+            return { text: `teamrig: updated to ${view.plugin} ${view.version}, reloading`, color: 'success', buttons: [] };
+        case 'failed': {
+            const why = view.why.length > BAND_WHY_CHARS ? `${view.why.slice(0, BAND_WHY_CHARS - 3)}...` : view.why;
+            return { text: `teamrig: ${view.notice.plugin} ${view.notice.newest} update failed: ${why}`, color: 'error', buttons: ['update', 'dismiss'] };
+        }
+    }
 }
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -81,46 +107,101 @@ function messageOf(error) {
 export class UpdateHand {
     host;
     notices = [];
-    busy = false;
+    checking = false;
+    acting = false;
+    /** Raised by each press, so a check that started before it drops its answer, read before the press changed things. */
+    presses = 0;
+    pending;
+    updated;
+    /** When installed_plugins.json changed as the last check after a look found it; undefined before the first look. */
+    seenChangedAt;
     constructor(host) {
         this.host = host;
     }
-    /** The update the band shows: the first the CLI told of and the person has not updated or dismissed. */
-    notice() {
-        return this.notices[0];
+    /** What the band shows at `now` (host.now()): an update just installed for UPDATED_SHOW_MS, else the first update the CLI told of. */
+    view(now) {
+        if (this.updated !== undefined && now - this.updated.at < UPDATED_SHOW_MS) {
+            return { kind: 'updated', plugin: this.updated.plugin, version: this.updated.version };
+        }
+        const notice = this.notices[0];
+        if (notice === undefined) {
+            return undefined;
+        }
+        const pending = this.pending?.plugin === notice.plugin ? this.pending : undefined;
+        if (pending?.kind === 'updating') {
+            return { kind: 'updating', notice };
+        }
+        return pending?.kind === 'failed' ? { kind: 'failed', notice, why: pending.why } : { kind: 'available', notice };
     }
     /** One check; never rejects. A failed one keeps the updates shown, and the next tick asks again. */
     async tick() {
-        if (this.busy) {
+        if (this.checking || this.acting) {
             return { kind: 'overlap' };
         }
-        this.busy = true;
+        this.checking = true;
+        const presses = this.presses;
         try {
             const answer = await this.ask('check', {});
-            if (answer.kind === 'notices') {
-                this.notices = answer.notices;
-                return { kind: 'checked', notices: answer.notices };
+            if (answer.kind !== 'notices') {
+                return { kind: 'failed', error: answer.kind === 'failed' ? answer.why : `hook update-check answered ${answer.kind}` };
             }
-            return { kind: 'failed', error: answer.kind === 'failed' ? answer.why : `hook update-check answered ${answer.kind}` };
+            if (presses !== this.presses) {
+                return { kind: 'overlap' };
+            }
+            this.notices = answer.notices;
+            if (this.pending !== undefined && !answer.notices.some((each) => each.plugin === this.pending?.plugin)) {
+                this.pending = undefined;
+            }
+            this.host.changed();
+            return { kind: 'checked', notices: answer.notices };
         }
         catch (error) {
             return { kind: 'failed', error: messageOf(error) };
         }
         finally {
-            this.busy = false;
+            this.checking = false;
         }
     }
-    /** The band's Update: installs the shown update and tells the person how it went; never rejects. */
+    /**
+     * One look at installed_plugins.json; never rejects. The first look only notes its date; a later date runs a check
+     * at once, so an update made anywhere hides the band here. A check that could not run leaves the date unseen, and
+     * the next look tries again.
+     */
+    async watch() {
+        let changedAt;
+        try {
+            changedAt = await this.host.installedChangedAt();
+        }
+        catch {
+            changedAt = undefined;
+        }
+        if (changedAt === undefined || changedAt === this.seenChangedAt) {
+            return { kind: 'unchanged' };
+        }
+        if (this.seenChangedAt === undefined) {
+            this.seenChangedAt = changedAt;
+            return { kind: 'unchanged' };
+        }
+        const tick = await this.tick();
+        if (tick.kind !== 'overlap') {
+            this.seenChangedAt = changedAt;
+        }
+        return { kind: 'changed', tick };
+    }
+    /** The band's Update: shows "updating" at once, installs the shown update and shows how it went; never rejects. */
     async apply() {
         return this.act(async (notice) => {
             const answer = await this.ask('apply', { plugin: notice.plugin });
             if (answer.kind !== 'applied') {
                 return { kind: 'failed', error: answer.kind === 'failed' ? answer.why : `hook update-apply answered ${answer.kind}` };
             }
+            // Dated before the drop, so no redraw between them shows the next update for a moment.
+            const at = await this.host.now();
             this.drop(notice.plugin);
+            this.updated = { plugin: answer.plugin, version: answer.version, at };
             this.host.toast(`${answer.plugin} ${answer.version} installed: the tab reloads it`);
             return answer;
-        }, 'update');
+        }, 'update', true);
     }
     /** The band's Dismiss: hides the shown update until a newer version is out; never rejects. */
     async dismiss() {
@@ -131,30 +212,45 @@ export class UpdateHand {
             }
             this.drop(notice.plugin);
             return { kind: 'dismissed', plugin: notice.plugin, version: notice.newest };
-        }, 'dismiss');
+        }, 'dismiss', false);
     }
-    /** Runs one press on the shown update, one at a time, toasting a failure. */
-    async act(press, what) {
-        const notice = this.notice();
-        if (this.busy || notice === undefined) {
+    /**
+     * Runs one press on the shown update, one at a time; a check still running does not hold it. An update shows as
+     * updating while it runs and as failed after a failure, which a toast names too.
+     */
+    async act(press, what, installs) {
+        const view = this.view(await this.host.now());
+        if (this.acting || view === undefined || (view.kind !== 'available' && view.kind !== 'failed')) {
             return { kind: 'idle' };
         }
-        this.busy = true;
+        const { notice } = view;
+        this.acting = true;
+        this.presses += 1;
+        if (installs) {
+            this.pending = { kind: 'updating', plugin: notice.plugin };
+            this.host.changed();
+        }
+        let done;
         try {
-            const done = await press(notice);
-            if (done.kind === 'failed') {
-                this.host.toast(`${notice.plugin} ${what} failed: ${done.error}`);
-            }
-            return done;
+            done = await press(notice);
         }
         catch (error) {
-            const failed = { kind: 'failed', error: messageOf(error) };
-            this.host.toast(`${notice.plugin} ${what} failed: ${failed.error}`);
-            return failed;
+            done = { kind: 'failed', error: messageOf(error) };
         }
         finally {
-            this.busy = false;
+            this.acting = false;
         }
+        if (done.kind === 'failed') {
+            this.host.toast(`${notice.plugin} ${what} failed: ${done.error}`);
+            if (installs) {
+                this.pending = { kind: 'failed', plugin: notice.plugin, why: done.error };
+            }
+        }
+        else if (this.pending?.plugin === notice.plugin) {
+            this.pending = undefined;
+        }
+        this.host.changed();
+        return done;
     }
     drop(plugin) {
         this.notices = this.notices.filter((each) => each.plugin !== plugin);
