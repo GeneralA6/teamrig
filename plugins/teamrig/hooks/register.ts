@@ -316,8 +316,12 @@ export const register: Register = (on) => {
           (found) => found.mtimeMs,
           () => undefined,
         ),
-        toast: (text) => {
-          $.ui.toast(text);
+        toast: (text, stayMs) => {
+          if (stayMs === null) {
+            $.ui.toast(text);
+          } else {
+            $.ui.toast(text, { timeoutMs: stayMs });
+          }
         },
         now: () => Date.now(),
       });

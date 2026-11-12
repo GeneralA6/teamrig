@@ -505,3 +505,52 @@ describe("the meeting's agenda pane", () => {
     await pane.unmount();
   });
 });
+
+/** The meeting hand's look (src/mod/meeting-hand.ts MEETING_TICK_MS). */
+const MEETING_TICK = 30_000;
+const MISSED_NOTICE = {
+  id: 'M2',
+  stage: 'missed',
+  title: 'teamrig meeting M2 missed',
+  text: 'alpha: the release plan has not started. Start: teamrig meeting start M2, or move or drop it',
+  stayMs: 86_400_000,
+};
+
+/** An interactive tab whose CLI answers `hook meeting-due` with a missed meeting; the toasts it shows, with their time. */
+async function meetingTab($: Engine, on: On): Promise<{ readonly clock: MockClock; readonly toasts: { readonly text: string; readonly timeoutMs: number | undefined }[] }> {
+  const tab = { clock: mock.clock(on, { now: 1_000_000 }), toasts: new Array<{ readonly text: string; readonly timeoutMs: number | undefined }>() };
+  on('session.id', () => ({ value: TAB }));
+  on('session.cwd', () => ({ value: '/work/app' }));
+  on('session.root', () => ({ value: '/work/app' }));
+  on('ui.log', () => ({ value: undefined }));
+  on('ui.toast', (_$, e) => {
+    tab.toasts.push({ text: e.text, timeoutMs: e.timeoutMs });
+    return { value: undefined };
+  });
+  on('fs.exists', () => ({ value: false }));
+  on('process.run', (_$, e) => {
+    const due = e.argv.at(-1) === 'meeting-due';
+    const answer = { kind: 'due', notices: [MISSED_NOTICE], watch: [], recheckAt: null };
+    return {
+      value: {
+        exitCode: due ? 0 : 1,
+        stdout: due ? `${JSON.stringify(answer)}\n` : '',
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on('session.start', (_$, e) => ({ cwd: e.cwd }));
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true });
+  return tab;
+}
+
+describe("a booked meeting's notice in the tab", () => {
+  test('a missed meeting toasts with the stay time the CLI named (T2405)', async ($, on) => {
+    const tab = await meetingTab($, on);
+    await tab.clock.advance(MEETING_TICK);
+    await tab.clock.settle();
+    expect(tab.toasts).toEqual([{ text: `${MISSED_NOTICE.title}: ${MISSED_NOTICE.text}`, timeoutMs: 60_000 }]);
+  });
+});
