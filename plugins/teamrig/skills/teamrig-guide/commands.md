@@ -1792,7 +1792,8 @@ PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 1 kept open, 0 cl
 
 Ends an idle session's Claude Code and its tab to free the host, and logs it in `state/session-log.jsonl`, so
 [teamrig open](#teamrig-open) goes on in that Claude Code session later (`teamrig close <id|name>`; the lead only).
-It refuses the lead, the delivery owner and a session listed in `open.idle.keepOpen`, a session not running, one
+It refuses the lead, the delivery owner and a session listed in `open.idle.keepOpen`, one in the owner's open booked
+meeting (started, under 4 hours, neither ended nor dropped: the owner talks to its tab), a session not running, one
 with work it can start or a time wait of its own ending within 30 minutes, one quiet under
 `open.headroom.closeIdleMinutes` (60) since its transcript's last entry of the person or the model (a slash command,
 an away summary or a file change with no entry is no activity), in a turn, at a tool call (running, or waiting on a permission or an answer), waiting on a decision it put to the
