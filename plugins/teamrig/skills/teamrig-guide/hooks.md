@@ -27,7 +27,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
-| The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's OS notification at its time, from one tab of the team, and shows it as a toast there ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
+| The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's notices before, at and past its time (OS notification, tab toast, a missed one to the lead), from one tab of the team ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
 | The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's meeting is open, shows its cards as a checklist in a pane beside the root team lead's chat, each decided card checked off with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
 | The mod, a minute after a tab starts and every 10 minutes, and when an install changes `installed_plugins.json` | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
@@ -1127,12 +1127,17 @@ for a tab that opened fresh). A line the inbox refused is logged with why, and n
 A meeting the owner booked with one session (`teamrig meeting schedule`) needs someone to look at its time. In each
 interactive tab, every 30 s whether or not a turn runs, the mod runs
 [`teamrig hook meeting-due`](commands.md#teamrig-hook-meeting-due) once the team's meetings file
-(`<team>/state/meetings.jsonl`) changed, the next meeting's time came or 10 minutes passed. At a meeting's time the
-CLI marks it notified under the meetings lock, so one tab of the team sends it, and starts the OS notification: a
-Windows toast, a macOS banner or `notify-send` on Linux, titled "teamrig meeting M3 now", naming the session met,
-the topic, the length and the start command. The tab that sent it shows the same as a toast. The notification starts
-nothing: the owner runs `teamrig meeting start M3` from any tab, which opens it in the session met's tab. While no tab
-of the team is open, nothing is sent; a meeting past its slot is never sent, and `meeting list` shows it as missed.
+(`<team>/state/meetings.jsonl`) changed, the next notice's time came or 10 minutes passed. A meeting tells of itself
+in three stages, each once, set by the team config's `meetingNotices` block: `beforeMinutes` before its slot ("teamrig meeting M3 in 10 min", default 10), at its slot ("teamrig meeting M3
+now", `atStart`), and `missedAfterMinutes` past its slot with no `meeting start` ("teamrig meeting M3 missed", default
+5, raised up to 12 hours late, so a tab opened later that day still raises it). The CLI marks each stage sent under
+the meetings lock, so one tab of the team sends it, and a tab that first looks late sends only the latest stage due.
+Each goes to the channels the block keeps on: the OS notification (`osToast`: a Windows toast, a macOS banner or
+`notify-send` on Linux) naming the session met, the topic, the length and the start command; the same as a toast in
+the tab that sent it (`tabToast`), a missed alert's staying a minute, the longest Claude Code shows a toast; and for a
+missed meeting one inbox line to the
+team's lead (`leadInbox`). A notice starts nothing: the owner runs `teamrig meeting start M3` from any tab, which opens
+it in the session met's tab. While no tab of the team is open, nothing is sent; a moved meeting sends its stages again.
 On Windows the toast runs in a hidden Windows PowerShell given a console of its own that never shows: without one,
 as before 0.342.0, Windows PowerShell exits at once having run nothing, so no toast showed.
 
