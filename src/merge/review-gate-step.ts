@@ -17,8 +17,10 @@ import { holdBinds, holdId, type HeldChange, type HoldHit, type ReviewHold, type
  * of the branch gets a new hold, unless the approval carries to it (T2368): a rebase onto a main that left the held
  * files alone shows the reviewer the same diff of them, so an approved hold lets the moved change land when it holds
  * the same paths for the same class and reviewer, the check found the same, and each held file is the same blob at
- * the old and the new base and at the old and the new head. The approved hold stays on file, as the change a later
- * rebase is compared with. A change it lets go says how it cleared, which the merges log keeps.
+ * the old and the new base and at the old and the new head. The check's findings are compared with the commit ids
+ * they name masked (T2459): a check report that names its range would differ after every rebase. The approved hold
+ * stays on file, as the change a later rebase is compared with. A change it lets go says how it cleared, which the
+ * merges log keeps.
  */
 
 export interface ReviewGateSetup {
@@ -157,6 +159,30 @@ function sameFiles(git: ReviewGatePorts['git'], dir: string, paths: readonly str
   return before !== undefined && after !== undefined && paths.every((path) => before.get(path) === after.get(path));
 }
 
+/** A word of a check's findings, as a commit id or a part of one would be written. */
+const FINDING_WORD = /[0-9A-Za-z]+/g;
+/** Git's shortest default abbreviation: a shorter word names a commit only when it is the whole id. */
+const SHORT_ID = 7;
+
+/** Whether `word` names the commit `id`: the id itself, or an abbreviation of it git would print. */
+function namesCommit(word: string, id: string): boolean {
+  return word.length >= Math.min(SHORT_ID, id.length) && id.startsWith(word);
+}
+
+/**
+ * A check's findings with each word naming `base` or `head` written `<base>` or `<head>`, so the same findings of a
+ * rebased change compare equal. Only the change's own commit ids are masked, not every hex word: a finding that names
+ * a leaked token or another commit still differs.
+ */
+export function findingsOfRange(findings: string | undefined, base: string, head: string): string | undefined {
+  return findings?.replace(FINDING_WORD, (word) => {
+    if (namesCommit(word, base)) {
+      return '<base>';
+    }
+    return namesCommit(word, head) ? '<head>' : word;
+  });
+}
+
 /**
  * The approval of the branch's earlier hold, when it carries to this change (see the module comment); undefined when
  * the change needs a review of its own.
@@ -168,7 +194,7 @@ function carriedApproval(ports: ReviewGatePorts, change: GatedChange, earlier: R
     earlier.holdClass === grounds.holdClass &&
     earlier.reviewer.who === reviewer.who &&
     earlier.reviewer.fallback === reviewer.fallback &&
-    earlier.findings === grounds.findings &&
+    findingsOfRange(earlier.findings, earlier.base, earlier.head) === findingsOfRange(grounds.findings, change.base, change.head) &&
     sameHits(earlier.hits, grounds.hits);
   if (!same || answer === null || !holdApproved(reviewer, Date.parse(earlier.createdAt), answer)) {
     return undefined;

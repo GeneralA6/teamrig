@@ -8,7 +8,7 @@ import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeMergeGit, WORKTREE } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { isReviewClearance, REVIEW_CLEARANCES, reviewGateVerdict, taskOfBranch, type GatedChange, type GateTask, type ReviewGateSetup, type ReviewVerdict } from './review-gate-step.ts';
+import { findingsOfRange, isReviewClearance, REVIEW_CLEARANCES, reviewGateVerdict, taskOfBranch, type GatedChange, type GateTask, type ReviewGateSetup, type ReviewVerdict } from './review-gate-step.ts';
 import { ReviewHolds, type ReviewHold } from './review-holds.ts';
 
 const MINUTE_MS = 60_000;
@@ -89,6 +89,28 @@ describe('taskOfBranch', () => {
     for (const branch of ['gate', 'at9-gate', 't0-gate', 't9']) {
       assert.equal(taskOfBranch(branch), undefined, branch);
     }
+  });
+});
+
+describe('findingsOfRange', () => {
+  const BASE = 'bdab1f29c0de4a5b6c7d8e9f0a1b2c3d4e5f6a7b';
+  const HEAD = 'a2589540ffee4a5b6c7d8e9f0a1b2c3d4e5f6a7b';
+
+  it('masks the base and head the findings name, in full or abbreviated to 7 characters or more', () => {
+    assert.equal(
+      findingsOfRange(`REVIEW app bdab1f29..a2589540: token at ${HEAD} line 3, since bdab1f2`, BASE, HEAD),
+      'REVIEW app <base>..<head>: token at <head> line 3, since <base>',
+    );
+  });
+
+  it('keeps a hex word that names neither commit: a leaked token, a shorter prefix, a longer word', () => {
+    const findings = 'key deadbeefcafe1234 in login.ts; bdab1f is short; bdab1f29zz is no id; A2589540 is upper case';
+    assert.equal(findingsOfRange(findings, BASE, HEAD), findings);
+  });
+
+  it('masks a commit id shorter than 7 characters only as a whole word, and leaves no findings as none', () => {
+    assert.equal(findingsOfRange('base..rebased, basement', 'base', 'rebased'), '<base>..<head>, basement');
+    assert.equal(findingsOfRange(undefined, BASE, HEAD), undefined);
   });
 });
 
@@ -297,6 +319,15 @@ describe('reviewGateVerdict: carrying an approval to a rebased change', () => {
     assert.deepEqual(await gate.verdict({ ...CHECKED, ...MOVED }), { kind: 'clear', review: 'approved' });
     assert.deepEqual(gate.checks, ['node review.js @ base', 'node review.js @ base2']);
     gate.outcome = { kind: 'flagged', findings: 'token in login.ts and session.ts' };
+    assert.match((await gate.run({ ...CHECKED, ...MOVED })) ?? '', /keeps t9-gate \(base2\.\.rebased2\) off the default branch: .*the review check flagged it/);
+  });
+
+  it('carries a flagged hold whose findings differ only in the commit range they name, and no other difference', async () => {
+    const flagged = (findings: string): CheckOutcome => ({ kind: 'flagged', findings });
+    const { gate } = await approvedAndRebased(['src/auth/login.ts'], CHECKED, flagged('REVIEW app base..rebased: token in login.ts at rebased'));
+    gate.outcome = flagged('REVIEW app base2..rebased2: token in login.ts at rebased2');
+    assert.deepEqual(await gate.verdict({ ...CHECKED, ...MOVED }), { kind: 'clear', review: 'approved' });
+    gate.outcome = flagged('REVIEW app base2..rebased2: token in login.ts and session.ts at rebased2');
     assert.match((await gate.run({ ...CHECKED, ...MOVED })) ?? '', /keeps t9-gate \(base2\.\.rebased2\) off the default branch: .*the review check flagged it/);
   });
 
