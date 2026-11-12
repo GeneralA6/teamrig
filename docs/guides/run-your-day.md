@@ -63,6 +63,11 @@ takes the card off your next agenda at once, even when the session that asked ha
 `teamrig meeting end --session lead` sends each session one inbox line with the decisions on its tasks, and none to a
 session with none.
 
+While the meeting is open, the lead's tab shows the agenda in a pane beside the chat: the cards in their order, each
+one you decided checked off with your answer, the one on the table marked, and how many are left. It closes at the
+meeting's end; `meeting.panel.enabled: false` turns it off
+([the meeting's agenda panel](../../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-meetings-agenda-panel)).
+
 The start counts as asking you every decision it lists. Between meetings the lead asks the new ones in batches:
 `teamrig decisions` lists the waits not yet asked and the asked ones past due, and the lead's `start` and `check` say
 when a batch is due (`decisions.batchTimesUtc`, `decisions.batchAt`); a wait due before the next batch is asked at

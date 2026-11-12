@@ -72,8 +72,8 @@ One task's trip, as you see it in your terminal:
 No more twelve-hour days steering agents by hand. With teamrig, your part takes about two hours:
 
 1. **A morning meeting.** Your lead tells you what got done and what's late, and brings each decision as a short card
-   with its recommendation. You answer, and the day is yours. While you meet, the team keeps working and leaves the
-   lead notes instead of messages, unless something is critical.
+   with its recommendation. You answer, and a pane beside the chat checks each card off; then the day is yours. While
+   you meet, the team keeps working and leaves the lead notes instead of messages, unless something is critical.
 2. **The team works.** Each member works its own task list, the most valuable work first, and an idle member wakes by itself when
    urgent work is handed to it, and once each morning at the day start you set. Whatever is late or stuck goes to the
    lead, not to you.
