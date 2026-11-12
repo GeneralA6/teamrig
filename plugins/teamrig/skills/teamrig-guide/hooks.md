@@ -9,7 +9,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are, and records the session's Claude Code process (`state/sessions/<id>.json`); while the session runs in another Claude Code it keeps that record and tells this second one, and the user, to stop |
 | `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
-| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
+| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; shows a leader the [register changes in its tree](#each-prompt-the-leader-digest) since its last prompt; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
@@ -206,6 +206,31 @@ INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is
 Read them there: each line is shown once per Claude Code session (recorded in `state/inbox-shown.jsonl`), and being
 shown does not mark it read. `teamrig inbox read --session web` then marks them read without printing them again. A
 first line over 1,500 characters is cut, and a note names the command that prints it whole.
+
+### Each prompt: the leader digest
+
+A leader (the lead, or a sub-lead listed in `leads`) is also shown, under its inbox lines, the register changes in its
+tree since its last prompt: the tasks it owns and those of every session under it, as other sessions changed them. A
+note that lands only in the register (a `set` or `update` that told no leader, which prints
+`NOTED in the register (the lead sees it at its next prompt)`) reaches the leader this way, never by a wake:
+
+```text
+teamrig: register changes in your tree since your last prompt (12 tasks):
+- T12 open -> in-progress: spec written; wave 1 of 3 running
+- T14 waiting: blocked on the staging key; need a call on whether to mock the pay...
+- T15 new -> open: Fix the login flake
+...(+9 more: teamrig list)
+```
+
+Each task gets one line, the newest change first: its status change since the last prompt (`new` for a task added
+since), or its status alone when that did not change, and the newest note another session wrote, else a new task's
+title, cut to 80 characters. At most 10 lines are shown, and one more counts the rest. Changes the leader wrote itself
+are left out. It reads only the leader's own register and its own group's tasks, so a task of another team or of another
+sub-lead's group never shows; a note or title that matches a secret shape (the shipped ones and
+`register.secretPatterns`, a pattern added after the note too) shows as `(note withheld: it matches a secret shape)`.
+How far each leader has read is kept in `state/leader-digest/<id>.json`, so each change shows once, across a `/clear`
+too; a leader's first prompt only sets it, so it is never shown the whole history. The digest posts no inbox line and
+asks no wake. Members and helpers get none.
 
 A tab started by hand, with no `$TEAMRIG_SESSION` and no `inbox read` yet, binds itself when its Claude Code title
 (`claude --name` or `/rename`) is a session's id or current name on this team and on no other team of the tree, in

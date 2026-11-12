@@ -87,7 +87,10 @@ A task with the same title (ignoring case and extra spaces) that is still open, 
 
 ### teamrig set
 
-Sets a task's status. Only the task's owner may.
+Sets a task's status. Only the task's owner may. A member's change with a `--note` that tells none of its leaders (no
+wait on the lead, say) also prints `NOTED in the register (the lead sees it at its next prompt)` on stderr: the lead
+sees it in its [prompt digest](hooks.md#each-prompt-the-leader-digest), so it is "noted in the register", not "reported to
+the lead".
 
 Flags:
 
@@ -283,6 +286,8 @@ pin of a task it does not own. A pin puts a task above every other task of its o
 leader above the owner sets or clears it (the lead on its own tasks too), never the owner itself; an owner has one
 pin, so a new pin clears the earlier one in the same write, and handing the task to another owner clears it. A sub-lead hands a task only to itself or a session it leads; the lead moves work between
 groups. A `--note` alone adds context to any task's history, from any session; one from the task's owner also becomes the note `show` and the waiting text print, as a note on `set` does, so a restated note shows at once.
+A member's `--note` that tells none of its leaders prints `NOTED in the register (the lead sees it at its next prompt)`
+on stderr, as `set` does.
 The status never changes here: use `set`.
 
 In a tree of teams, the lead at its root, who asks the owner every team's decisions, records an answer on a task of
