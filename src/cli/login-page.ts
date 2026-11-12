@@ -1,4 +1,5 @@
 import type { AlertsConfig } from '../config/types.ts';
+import { KIT_NAME } from '../core/home.ts';
 import { secretValueOf } from '../core/secret-key.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { loginPageText } from '../restore/login.ts';
@@ -84,6 +85,25 @@ export async function pageCheckOf(runtime: CliRuntime, team: string): Promise<Pa
   const { source } = found;
   const url = await pageUrlOf(source, runtime);
   return 'problem' in url ? { status: 'problem', source, problem: url.problem } : { status: 'ok', source };
+}
+
+/** The test page's line: marked TEST, so whoever reads the chat knows nothing is wrong. */
+export function testPageText(team: string, clock: string): string {
+  return `TEST page from ${KIT_NAME} page test, team ${team}, at ${clock}: an expired Claude login would page you here. Nothing to do.`;
+}
+
+/**
+ * Posts one test page through the page webhook `team`'s alerts name, the same way a login expiry's page goes:
+ * `ok` once it is posted, `problem` with why not, `none` when no team up the tree names one.
+ */
+export async function sendTestPage(runtime: CliRuntime, team: string): Promise<PageCheck> {
+  const found = await pageSourceOf(runtime, team);
+  if (found === undefined) {
+    return { status: 'none' };
+  }
+  const { source, zone } = found;
+  const problem = await sendLoginPage({ source, text: testPageText(team, zone.clock(new Date(runtime.clock.now()))) }, runtime);
+  return problem === undefined ? { status: 'ok', source } : { status: 'problem', source, problem };
 }
 
 type PageUrl = { readonly url: string } | { readonly problem: string };
