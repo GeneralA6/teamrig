@@ -66,7 +66,7 @@ export async function meetingDue(args: ParsedArgs, runtime: CliRuntime): Promise
     }
     throw error;
   }
-  const notices = marked.due.map(noticeOf);
+  const notices = marked.due.map((meeting) => noticeOf(meeting, 'start', now));
   for (const notice of notices) {
     await showNotice(runtime.processes, runtime.platform, notice, runtime.env, runtime.cwd);
   }

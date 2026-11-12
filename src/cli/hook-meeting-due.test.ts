@@ -14,7 +14,13 @@ const MEETINGS_PATH = join(TEAM_HOME, 'state', 'meetings.jsonl');
 const MEETINGS_LOCK = join(TEAM_HOME, 'state', 'meetings.lock');
 const AT = Date.parse('2030-01-08T14:00:00Z');
 const HOUR = 60 * MS_PER_MINUTE;
-const NOTICE = { id: 'M1', title: 'teamrig meeting M1 now', text: 'alpha: the release plan (30 min). Start: teamrig meeting start M1' };
+const NOTICE = {
+  id: 'M1',
+  stage: 'start',
+  title: 'teamrig meeting M1 now',
+  text: 'alpha: the release plan (30 min). Start: teamrig meeting start M1',
+  stayMs: null,
+};
 
 /** A team whose `alpha` read its inbox from ALPHA_TAB, so that tab is alpha, with M1 booked at 14:00 UTC. */
 async function booked(): Promise<CliHarness> {
