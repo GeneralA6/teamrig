@@ -1,6 +1,6 @@
 import { tmpdir } from 'node:os';
 import { launchOf } from "../../config/launch.js";
-import { autoRestartOf } from "../../config/refresh.js";
+import { sessionRefreshOf } from "../../config/refresh.js";
 import { LeadTree } from "../../config/lead-tree.js";
 import { Roster } from "../../config/roster.js";
 import { recordConfigDir } from "../../budget/config-dir.js";
@@ -245,7 +245,7 @@ export async function inboxReminder(args, runtime) {
     if (session !== undefined) {
         await logPrompt(runtime, { config, paths: kit.paths, id: session }, payload).catch(() => undefined);
     }
-    const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(config.refresh)).catch(() => undefined);
+    const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(sessionRefreshOf(config, session))).catch(() => undefined);
     const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
     // Read last, as reading marks the lines shown: a hook killed at its timeout before printing must leave them unshown.
     const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession, teamZone(config, runtime));
@@ -617,14 +617,15 @@ async function refreshDecisionOf(runtime, scope, payload) {
         await store.clearParked(id);
     }
     const target = restartTargetOf(runtime, payload);
+    const settings = sessionRefreshOf(config, id);
     const context = {
         stopHookActive: payload['stop_hook_active'] === true,
-        settings: config.refresh,
+        settings,
         now: new Date(runtime.clock.now()).toISOString(),
         session: { id, team: kit.paths.team, name: roster.nameOf(id) ?? id },
         handoverPath: store.handoverPath(id),
         command: KIT_NAME,
-        canRestart: autoRestartOf(config, id) && target !== undefined,
+        canRestart: settings.autoRestart && target !== undefined,
         transcript: stringField(payload, 'transcript_path') ?? null,
     };
     // The facts are read only as far as the decision needs them: most turn ends stop at the transcript's tail.

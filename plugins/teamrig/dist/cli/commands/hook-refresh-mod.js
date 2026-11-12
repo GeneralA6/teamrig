@@ -1,4 +1,5 @@
 import { claudeProjectsDir, findTranscript } from "../../budget/discover.js";
+import { sessionRefreshOf } from "../../config/refresh.js";
 import { isNonNegativeInteger, isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
@@ -58,7 +59,7 @@ async function transcriptOf(runtime, payload) {
 function askContextOf(runtime, scope, store) {
     const { config, roster, id } = scope;
     return {
-        settings: config.refresh,
+        settings: sessionRefreshOf(config, id),
         now: new Date(runtime.clock.now()).toISOString(),
         session: { id, team: scope.kit.paths.team, name: roster.nameOf(id) ?? id },
         handoverPath: store.handoverPath(id),
