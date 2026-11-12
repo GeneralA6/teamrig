@@ -306,8 +306,14 @@ interface UpdateTab {
   readonly toasts: string[];
 }
 
-/** An interactive tab whose CLI tells of a newer teamrig and teamrig-pane, and updates or dismisses either. */
-async function updateTab($: Engine, on: On): Promise<UpdateTab> {
+/** How long the band says an update is installed (src/mod/update-hand.ts UPDATED_SHOW_MS). */
+const UPDATED_SHOW = 30_000;
+
+/**
+ * An interactive tab whose CLI tells of a newer teamrig and teamrig-pane, and updates or dismisses either, unless
+ * `answers` gives a command another answer.
+ */
+async function updateTab($: Engine, on: On, answers: Readonly<Record<string, unknown>> = {}): Promise<UpdateTab> {
   const tab: UpdateTab = { clock: mock.clock(on, { now: 1_000_000 }), runs: [], toasts: [] };
   on('session.id', () => ({ value: TAB }));
   on('session.cwd', () => ({ value: '/work/app' }));
@@ -321,12 +327,13 @@ async function updateTab($: Engine, on: On): Promise<UpdateTab> {
   on('process.run', (_$, e) => {
     const command = e.argv.at(-1);
     const stdin = e.init?.stdin;
-    const answers: Readonly<Record<string, unknown>> = {
+    const given: Readonly<Record<string, unknown>> = {
       'update-check': { kind: 'notices', notices: [TEAMRIG_UPDATE, PANE_UPDATE] },
       'update-apply': { kind: 'applied', plugin: 'teamrig', version: '0.333.0' },
       'update-dismiss': { kind: 'dismissed' },
+      ...answers,
     };
-    const answer = command === undefined ? undefined : answers[command];
+    const answer = command === undefined ? undefined : given[command];
     if (answer !== undefined) {
       tab.runs.push({ command, stdin: JSON.parse(stdin ?? 'null') });
     }
@@ -362,7 +369,14 @@ describe('the band telling of a newer plugin', () => {
     expect(await buttonsOf(band)).toEqual([['update-plugin', undefined], ['dismiss-update', undefined]]);
   });
 
-  test('Update installs the shown plugin, toasts it and shows the next update', async ($, on) => {
+  test('draws the update in green', async ($, on) => {
+    const tab = await updateTab($, on);
+    await tab.clock.advance(FIRST_CHECK);
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    expect(await band.find({ type: 'Text' })).toMatchObject({ props: { color: 'success' } });
+  });
+
+  test('Update installs the shown plugin, says so with no buttons for 30 s, then shows the next update', async ($, on) => {
     const tab = await updateTab($, on);
     await tab.clock.advance(FIRST_CHECK);
     const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
@@ -370,7 +384,23 @@ describe('the band telling of a newer plugin', () => {
     await tab.clock.settle();
     expect(tab.runs.at(-1)).toEqual({ command: 'update-apply', stdin: { plugin: 'teamrig' } });
     expect(tab.toasts).toEqual(['teamrig 0.333.0 installed: the tab reloads it']);
+    expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: updated to teamrig 0.333.0, reloading');
+    expect(await band.find({ type: 'Button' })).toBeUndefined();
+    await tab.clock.advance(UPDATED_SHOW);
     expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: teamrig-pane 0.41.0 is out (you run 0.40.0)');
+  });
+
+  test('a failed Update shows why in red, with Update to try again', async ($, on) => {
+    const tab = await updateTab($, on, { 'update-apply': { kind: 'failed', why: 'plugin update failed: offline' } });
+    await tab.clock.advance(FIRST_CHECK);
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    await band.press({ key: 'update-plugin' });
+    await tab.clock.settle();
+    expect(await band.find({ type: 'Text' })).toMatchObject({
+      text: 'teamrig: teamrig 0.333.0 update failed: plugin update failed: offline',
+      props: { color: 'error' },
+    });
+    expect(await buttonsOf(band)).toEqual([['update-plugin', undefined], ['dismiss-update', undefined]]);
   });
 
   test('Dismiss hides the shown version, and the next check runs 10 minutes on', async ($, on) => {
