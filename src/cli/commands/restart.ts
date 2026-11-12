@@ -1,4 +1,5 @@
 import { launchOf } from '../../config/launch.ts';
+import { autoRestartOf } from '../../config/refresh.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -71,7 +72,7 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   const name = roster.nameOf(id) ?? id;
   const store = new RefreshStore(runtime.files, kit.paths);
   const log = new RestartLog(runtime.files, kit.paths);
-  if (!config.refresh.enabled || !config.refresh.autoRestart) {
+  if (!config.refresh.enabled || !autoRestartOf(config, id)) {
     await store.clearRestart(id);
     const off: RestartResult = { kind: 'cancelled', why: 'the automatic restart is off (refresh.autoRestart in the team config)' };
     await logRestart(runtime, log, { session: id, at, endedAt: new Date(runtime.clock.now()).toISOString(), result: off });

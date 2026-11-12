@@ -63,7 +63,7 @@ export const CLAUDE_SESSION = '0123abcd-0000-4000-8000-00000000000a';
 /** The pid of every run of the CLI. */
 export const CLI_PID = 4242;
 export const TEAM: JsonRecord = { sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' } };
-/** {@link TEAM} with the context refresh's automatic restart on (`refresh.autoRestart`, off by default). */
+/** {@link TEAM} with the context refresh's automatic restart on (`refresh.autoRestart`, on for the lead only by default). */
 export const AUTO_RESTART_TEAM: JsonRecord = { ...TEAM, refresh: { autoRestart: true } };
 const longestList = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
   Array.from({ length: limit.maxItems }, () => letter.repeat(limit.maxLength));

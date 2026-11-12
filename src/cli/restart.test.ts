@@ -23,13 +23,13 @@ const SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', co
 const RESTART_ALPHA = ['restart', 'alpha', '--team', 'app', '--at', AT, '--project', APP];
 
 /** A team whose session alpha wrote its handover and asked for its restart, with its Claude Code running. */
-async function armed(supervised: boolean, config: JsonRecord = AUTO_RESTART_TEAM, effort: EffortLevel | null = null): Promise<{ kit: CliHarness; store: RefreshStore; processes: FakeSessionProcesses }> {
+async function armed(supervised: boolean, config: JsonRecord = AUTO_RESTART_TEAM, effort: EffortLevel | null = null, session = 'alpha'): Promise<{ kit: CliHarness; store: RefreshStore; processes: FakeSessionProcesses }> {
   const kit = new CliHarness(config);
   // A finished turn: the restart waits while one still runs.
   await kit.files.write(TRANSCRIPT, '{"type":"user"}\n{"type":"system","subtype":"turn_duration"}\n');
   const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
-  await store.setState('alpha', { phase: 'ready', task: 'T3', at: AT, tokens: null, noticed: true, transcript: null, claudePid: null });
-  await store.setRestart('alpha', { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised, effort });
+  await store.setState(session, { phase: 'ready', task: 'T3', at: AT, tokens: null, noticed: true, transcript: null, claudePid: null });
+  await store.setRestart(session, { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised, effort });
   return { kit, store, processes: new FakeSessionProcesses().add(SHELL).add(CLAUDE) };
 }
 
@@ -121,6 +121,15 @@ describe('teamrig restart', () => {
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32' });
     assert.equal(result.code, EXIT.ok);
     assert.match(kit.files.get(INBOX) ?? '', /teamrig: you were restarted, but refresh\.endCommand failed \(exit code 1\)/);
+  });
+
+  it("restarts the lead by default and cancels a member's restart, the default automatic restart being on for the lead only", async () => {
+    const lead = await armed(true, TEAM, null, 'lead');
+    const restarted = await lead.kit.run(['restart', 'lead', '--team', 'app', '--at', AT, '--project', APP], { sessionProcesses: lead.processes, platform: 'win32' });
+    assert.deepEqual(restarted.stdout, ['RESTARTED app-lead in the same tab']);
+    const member = await armed(true, TEAM);
+    const cancelled = await member.kit.run(RESTART_ALPHA, { sessionProcesses: member.processes });
+    assert.match(cancelled.stdout[0] ?? '', /^CANCELLED the restart of app-alpha: the automatic restart is off/);
   });
 
   it('cancels, clearing the request, when the automatic restart is off', async () => {

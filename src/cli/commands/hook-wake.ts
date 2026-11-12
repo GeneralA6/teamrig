@@ -1,6 +1,7 @@
 import { activeBurst } from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { claudeProjectsDir, lastWriteOf } from '../../budget/discover.ts';
+import { autoRestartOf } from '../../config/refresh.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { isRecord, stringField } from '../../core/guards.ts';
@@ -413,7 +414,7 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     return answer(runtime, waitAnswer(scope, null));
   }
   const restarts = new RefreshStore(runtime.files, kit.paths);
-  const rearm: RearmScope = { team: kit.paths.team, id, tab, refresh: config.refresh, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
+  const rearm: RearmScope = { team: kit.paths.team, id, tab, refresh: { enabled: config.refresh.enabled, autoRestart: autoRestartOf(config, id) }, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
   if (await restartHoldsWake(runtime, restarts, rearm)) {
     return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
   }
