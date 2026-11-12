@@ -4,6 +4,7 @@ import { EXIT } from "../runtime.js";
 import { askedLinesOf } from "./hook-asked-lines.js";
 import { parseJson } from "./hook-input.js";
 import { trackRestore } from "./hook-restore-track.js";
+import { recordTabNeed } from "./hook-tab-need.js";
 import { tabSequenceOf } from "./hook-tab-status.js";
 /** The hook's one JSON object: the tab title's terminal sequence and the lines for the model, each when there is one. */
 function toolEndOutput(event, sequence, lines) {
@@ -29,6 +30,7 @@ export async function toolEnd(args, runtime) {
         tabSequenceOf(runtime, payload).catch(() => undefined),
         askedLinesOf(runtime, payload).catch(() => undefined),
         trackRestore(payload, runtime).catch(() => undefined),
+        recordTabNeed(runtime, payload).catch(() => undefined),
     ]);
     const output = toolEndOutput(stringField(payload, 'hook_event_name') ?? 'PostToolUse', sequence, lines);
     if (Object.keys(output).length > 0) {

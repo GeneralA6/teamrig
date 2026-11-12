@@ -31,6 +31,7 @@ const helperStartCommand = () => import("./commands/hook-helper-start.js");
 const clearCommands = () => import("./commands/hook-clear.js");
 const wakeCommands = () => import("./commands/hook-wake.js");
 const meetingDueCommand = () => import("./commands/hook-meeting-due.js");
+const needsYouCommands = () => import("./commands/hook-needs-you.js");
 const meetingPanelCommand = () => import("./commands/hook-meeting-panel.js");
 const updateCommands = () => import("./commands/hook-update.js");
 const refreshModCommands = () => import("./commands/hook-refresh-mod.js");
@@ -274,6 +275,8 @@ const COMMANDS = {
     'hook wake-check': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeCheck },
     'hook wake-dropped': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeDropped },
     'hook meeting-due': { effect: 'internal', flags: [], load: async () => (await meetingDueCommand()).meetingDue },
+    'hook needs-you': { effect: 'internal', flags: [], load: async () => (await needsYouCommands()).needsYou },
+    'hook needs-you-focus': { effect: 'internal', flags: [], load: async () => (await needsYouCommands()).needsYouFocus },
     'hook meeting-panel': { effect: 'internal', flags: [], load: async () => (await meetingPanelCommand()).meetingPanel },
     'hook update-check': { effect: 'internal', flags: [], load: async () => (await updateCommands()).updateCheck },
     'hook update-dismiss': { effect: 'internal', flags: [], load: async () => (await updateCommands()).updateDismiss },
@@ -825,6 +828,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
   hook meeting-due
       (run by the plugin's mod: a scheduled meeting's notices, before, at and past its time)
+  hook needs-you | hook needs-you-focus
+      (run by the plugin's mod: the band naming another tab that asks the user something, and its Focus)
   hook meeting-panel
       (run by the plugin's mod: the agenda panel beside the lead's chat while the owner's meeting is open)
   hook update-check | hook update-dismiss | hook update-apply
