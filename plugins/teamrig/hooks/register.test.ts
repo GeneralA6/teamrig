@@ -415,3 +415,93 @@ describe('the band telling of a newer plugin', () => {
     expect(tab.runs.filter((each) => each.command === 'update-check').length).toBe(2);
   });
 });
+
+/** The meeting panel hand's tick and its longest wait (src/mod/meeting-panel-hand.ts). */
+const PANEL_TICK = 15_000;
+const PANEL_RECHECK = 10 * 60_000;
+const MEETING_FILE = '/home/me/.teamrig/teams/app/state/meeting.json';
+const OPEN_PANEL = {
+  kind: 'open',
+  watch: [MEETING_FILE],
+  startedAt: '2030-01-08T10:00:00.000Z',
+  items: [
+    { id: 'T1', title: 'Pick the release day', settled: true, decision: 'Tuesday' },
+    { id: 'bravo/T2', title: 'Raise the budget', settled: false, decision: null },
+  ],
+  current: 'bravo/T2',
+  left: 1,
+};
+/** The agenda pane as a terminal lays it out. */
+const AGENDA_PANE = {
+  plugin: 'teamrig',
+  surface: 'terminal',
+  component: 'Pane',
+  requestId: 'meeting-agenda',
+  props: { title: 'Meeting agenda', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+} as const;
+
+/** The lead's tab: what `hook meeting-panel` answers now, and the panes opened and closed under the mod. */
+interface PanelTab {
+  readonly clock: MockClock;
+  answer: unknown;
+  readonly opened: string[];
+  readonly closed: string[];
+}
+
+async function panelTab($: Engine, on: On): Promise<PanelTab> {
+  const tab: PanelTab = { clock: mock.clock(on, { now: 1_000_000 }), answer: OPEN_PANEL, opened: [], closed: [] };
+  on('session.id', () => ({ value: TAB }));
+  on('session.cwd', () => ({ value: '/work/app' }));
+  on('session.root', () => ({ value: '/work/app' }));
+  on('ui.log', () => ({ value: undefined }));
+  on('fs.exists', () => ({ value: false }));
+  on('ui.open', (_$, e) => {
+    tab.opened.push(e.id);
+    return { value: { isPlaced: true } };
+  });
+  on('ui.close', (_$, e) => {
+    tab.closed.push(e.id);
+    return { value: undefined };
+  });
+  on('process.run', (_$, e) => {
+    const isPanel = e.argv.at(-1) === 'meeting-panel';
+    return {
+      value: {
+        exitCode: isPanel ? 0 : 1,
+        stdout: isPanel ? `${JSON.stringify(tab.answer)}\n` : '',
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on('session.start', (_$, e) => ({ cwd: e.cwd }));
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true });
+  return tab;
+}
+
+describe("the meeting's agenda pane", () => {
+  test('opens while a meeting is open and draws its cards, the decided one with its decision', async ($, on) => {
+    const tab = await panelTab($, on);
+    await tab.clock.advance(PANEL_TICK);
+    expect(tab.opened).toEqual(['meeting-agenda']);
+    const pane = await $.ui.mount(AGENDA_PANE);
+    expect((await pane.findAll({ type: 'Text' })).map((row) => row.text)).toEqual([
+      '1 to decide',
+      '✓ T1 Pick the release day: Tuesday',
+      '▶ bravo/T2 Raise the budget',
+    ]);
+    await pane.unmount();
+  });
+
+  test('closes once the meeting ends, and then draws no panel', async ($, on) => {
+    const tab = await panelTab($, on);
+    await tab.clock.advance(PANEL_TICK);
+    tab.answer = { kind: 'off', why: 'no meeting is open', watch: [MEETING_FILE] };
+    await tab.clock.advance(PANEL_RECHECK);
+    expect(tab.closed).toEqual(['meeting-agenda']);
+    const pane = await $.ui.mount(AGENDA_PANE);
+    expect((await pane.find({ type: 'Text' }))?.text).toBe('No meeting is open.');
+    await pane.unmount();
+  });
+});
