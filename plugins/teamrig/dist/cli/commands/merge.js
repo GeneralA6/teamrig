@@ -10,6 +10,7 @@ import { JsonlEventLog } from "../../register/store.js";
 import { hostLockOf, logLineOf, nextResetFrom } from "../delivery-ports.js";
 import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { refuseUnderParentLock } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
 /**
@@ -34,6 +35,8 @@ export async function merge(args, runtime) {
     const places = deliveryPlaces(delivery, kit.paths);
     const say = logLineOf(runtime, zone);
     const tree = new LeadTree(config);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+    await refuseUnderParentLock(runtime, lock, say, zone, 'teamrig merge');
     const watching = await watchStarters(runtime, say);
     try {
         const { stop } = watching;
@@ -61,7 +64,7 @@ export async function merge(args, runtime) {
             taskOf: async (id) => (await new JsonlEventLog(runtime.files, kit.paths.events).read()).state.tasks.get(id),
             clock: runtime.clock,
             sleep: stoppableSleep(runtime.sleep, stop),
-            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone), stop),
+            lock: stoppableLock(lock, stop),
             env: runtime.env,
             platform: runtime.platform,
             nextReset: nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths)),

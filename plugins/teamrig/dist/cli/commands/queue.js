@@ -21,6 +21,7 @@ import { requiredFlag, UsageError } from "../args.js";
 import { hostLockOf, logLineOf } from "../delivery-ports.js";
 import { commandWordsOf, sessionRef } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { parentLockOf } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
 import { postUrgentLine } from "../urgent-line.js";
@@ -242,21 +243,6 @@ async function startDetached(runtime, places, args, run) {
     }
     runtime.out.stdout(`QUEUED ${id}: ${what} runs detached; log ${places.log}; ${session}'s inbox gets a line when it starts and when it ends`);
     return EXIT.ok;
-}
-/**
- * The lock of the step that started this one, from `$TEAMRIG_HOST_LOCK`, while that step still holds it; undefined when
- * the variable is unset or names no live lock (a leftover in a shell), which is said, since the step then waits as usual.
- */
-async function parentLockOf(runtime, lock, say) {
-    const token = runtime.env[ENV.hostLock]?.trim();
-    if (token === undefined || token === '') {
-        return undefined;
-    }
-    const held = await lock.heldWith(token);
-    if (held === undefined) {
-        say(`$${ENV.hostLock} names no live host lock: taking the lock as usual`);
-    }
-    return held;
 }
 /**
  * The step's session: `--session`, else `$TEAMRIG_SESSION`, else the parent step's (a git hook's checks under

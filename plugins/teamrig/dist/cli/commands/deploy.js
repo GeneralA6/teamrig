@@ -7,6 +7,7 @@ import { requiredFlag, UsageError } from "../args.js";
 import { hostLockOf, logLineOf, nextResetFrom } from "../delivery-ports.js";
 import { callerOf, commandWordsOf, listOf } from "../inputs.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { refuseUnderParentLock } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
 /** The deploy `--targets` asks for, with its `--what` and the command after `--`; undefined for a plain deploy. */
@@ -42,6 +43,8 @@ export async function deploy(args, runtime) {
     const { delivery, budget } = config;
     const places = deliveryPlaces(delivery, kit.paths);
     const say = logLineOf(runtime, zone);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+    await refuseUnderParentLock(runtime, lock, say, zone, 'teamrig deploy');
     const watching = await watchStarters(runtime, say);
     try {
         const { stop } = watching;
@@ -54,7 +57,7 @@ export async function deploy(args, runtime) {
             pid: runtime.pid,
             clock: runtime.clock,
             sleep: stoppableSleep(runtime.sleep, stop),
-            lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone), stop),
+            lock: stoppableLock(lock, stop),
             env: runtime.env,
             platform: runtime.platform,
             scanner: new SecretScanner(config.register.secretPatterns),
