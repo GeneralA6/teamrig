@@ -51,6 +51,7 @@ const CHILD_TAKES = {
     decisions: 'copy',
     tabStatus: 'copy',
     pickerGuard: 'copy',
+    meeting: 'copy',
     turnLog: 'copy',
     readonlyShell: 'copy',
     permissions: 'copy',
