@@ -7,7 +7,7 @@
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "session-start"], "timeout": 15 },
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "restore-track"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       },
       {
@@ -63,7 +63,7 @@
       {
         "matcher": "AskUserQuestion|ExitPlanMode",
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       },
       {
@@ -76,7 +76,7 @@
     "PermissionRequest": [
       {
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 },
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "prompt-refuse"], "timeout": 15 }
         ]
       }
@@ -129,14 +129,14 @@
     "Elicitation": [
       {
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       }
     ],
     "ElicitationResult": [
       {
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       }
     ],
@@ -145,7 +145,7 @@
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "inbox-reminder"], "timeout": 15 },
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "restore-track"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       }
     ],
@@ -161,7 +161,7 @@
       {
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "restore-track"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       }
     ],
@@ -169,14 +169,14 @@
       {
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "pre-compact"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       }
     ],
     "PostCompact": [
       {
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       }
     ],
@@ -185,7 +185,7 @@
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "restore-track"], "timeout": 15 },
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "effort-writeback"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       }
     ],
@@ -193,7 +193,7 @@
       {
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "subagent-start"], "timeout": 15 },
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 15 }
         ]
       }
     ],
