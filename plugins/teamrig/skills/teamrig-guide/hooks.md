@@ -1133,12 +1133,15 @@ for a tab that opened fresh). A line the inbox refused is logged with why, and n
 A tab that asks the user something (a permission prompt, a question or plan, an MCP form, a `Decision needed:` line)
 is often not the tab the user is in. Each tab's hooks record what it asks in `<team>/state/tabs/<id>.json`, and in
 every other tab of the team the mod runs [`teamrig hook needs-you`](commands.md#teamrig-hook-needs-you) every 10 s.
-Each new ask shows once as a toast, `[team] name needs you: <text>`, and as a band above the prompt,
-`[team] name asks: <text>`, with Focus, which brings that tab to the front
-([`hook needs-you-focus`](commands.md#teamrig-hook-needs-you-focus)), and Dismiss. The band goes once the tab no
-longer asks. The team config's `needsYou` block sets it: `enabled` (default on), `kinds` (default every kind but
-`error`) and `osToast` (default off: one OS notification per ask, from one tab of the team). While the owner's
-meeting is open the toast and band still show, but Focus only for an ask about a p0 task.
+Each new ask shows once as a toast, `[team] name needs you: <text>`, and the newest one not dismissed shows as a band
+above the prompt, `[team] name asks: <text> (+N more)` (the text cut at 100 characters; the count only when more
+tabs ask), with Focus, which brings that tab to the front
+([`hook needs-you-focus`](commands.md#teamrig-hook-needs-you-focus)), and Dismiss, which shows the next ask: plain
+buttons with no digits, as the user may be typing. The band sits under a refresh's count-down and over a plugin
+update's band, and goes once no tab asks. The team config's `needsYou` block sets it: `enabled` (default on)
+[needsYou.enabled], `kinds` (default every kind but `error`) [needsYou.kinds] and `osToast` (default off: one OS
+notification per ask, from one tab of the team) [needsYou.osToast]. While the owner's meeting is open the toast and
+band still show, but Focus only for an ask about a p0 task.
 
 ## The mod: a scheduled meeting's notification
 
