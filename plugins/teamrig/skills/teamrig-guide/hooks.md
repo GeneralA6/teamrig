@@ -1480,7 +1480,7 @@ decisions, ends its turn on blue; an ordinary turn end stays green.
 `hook tab-status` sets it at every event but `Stop`, whose `hook stop` sets it with its own output, so each event
 has one writer. It works in any tab of the team, a tab that is no session of it too, and prints nothing outside a
 team, with either switch off, or on any error. It reads Claude Code's switch before any file, so with it off the
-hook costs only a Node start per event; its timeout is 5 seconds. A background command or a monitor still running
+hook costs only a Node start per event; its timeout is 15 seconds. A background command or a monitor still running
 leaves the tab green: only a helper keeps it yellow.
 
 ## Every turn: the turn log
