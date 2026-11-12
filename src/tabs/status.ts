@@ -103,15 +103,20 @@ export function tabChangeOf(payload: JsonRecord): TabChange {
  * with `DECISION_MARKER`. Claude Code gives the message to Stop as `last_assistant_message`, so no transcript is read.
  */
 export function asksDecision(message: string | undefined): boolean {
+  return decisionLineOf(message) !== undefined;
+}
+
+/** The first line of a message that puts a decision to the user, as `asksDecision` finds it; undefined when none does. */
+export function decisionLineOf(message: string | undefined): string | undefined {
   let fenced = false;
   for (const line of (message ?? '').split(/\r?\n/)) {
     if (FENCE.test(line)) {
       fenced = !fenced;
     } else if (!fenced && DECISION_LINE.test(line)) {
-      return true;
+      return line;
     }
   }
-  return false;
+  return undefined;
 }
 
 /**

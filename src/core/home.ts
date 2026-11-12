@@ -231,6 +231,8 @@ export interface TeamPaths {
   readonly turnLog: string;
   /** Where each session last started: its Claude Code process and session, `<id>.json` each (src/sessions/record.ts). */
   readonly sessions: string;
+  /** What each session's tab shows and what it asks the user, `<id>.json` each, for the needs-you band (src/tabs/need.ts). */
+  readonly tabs: string;
   /** Each session `teamrig close` ended and `teamrig open` started again, an append-only log (src/sessions/log.ts). */
   readonly sessionLog: string;
   /** Each kind of secret a tool's result held and the task that has it rotated, an append-only audit log nothing trims (src/secret-guard/incidents.ts). */
@@ -343,6 +345,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     promptAnswersLock: join(state, 'prompt-answers.lock'),
     turnLog: join(state, 'turn-log'),
     sessions: join(state, 'sessions'),
+    tabs: join(state, 'tabs'),
     sessionLog: join(state, 'session-log.jsonl'),
     secretIncidents: join(state, 'secret-incidents.jsonl'),
     secretIncidentsLock: join(state, 'secret-incidents.lock'),
