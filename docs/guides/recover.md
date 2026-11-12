@@ -44,7 +44,8 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   wakes no one while the login stays expired. A tab still listed under `stranded` with no such line (one that does
   not load teamrig's mod) needs a prompt by hand. So you hear of it away from the screen, set `alerts.pageWebhookFile` (the path of a one-line file holding a chat webhook
   URL, or of a secrets file with `alerts.pageWebhookKey` naming its key) or `alerts.pageWebhookEnv` (the name of a variable holding it) in the team's config, or a parent team's: the
-  first failure of each expiry posts one line to that chat, naming the tab and the time.
+  first failure of each expiry posts one line to that chat, naming the tab and the time. Check it with
+  `teamrig page test`, which posts one line marked TEST; `teamrig doctor` flags a webhook that gives no URL.
 - After a passing API error: a turn that ends on `server_error` or `overloaded` (once Claude Code's own retries within
   the turn failed) is sent on by itself, 1 minute later, then 5 and 15 minutes after that, each with an
   `api-error: retried` line in the same log. A good turn ends the retries; if the turn fails a fourth time,
