@@ -84,8 +84,8 @@ import {
  *
  * The meeting's agenda panel (`meeting-panel-hand.ts`): every 15 s, a turn running or not, the hand asks the CLI
  * (`hook meeting-panel`) once the meeting file or a register the meeting covers changed, or 10 minutes passed. While
- * the owner meets the root team's lead, the lead's tab opens the `meeting-agenda` pane: the meeting's cards as a
- * checklist, the decided ones dim with their decision, the one on the table bold. The pane closes once the meeting
+ * the owner meets the root team's lead, the lead's tab opens the `meeting-agenda` pane: a header with how many
+ * cards are left and decided, then On the table (boxed), Up next and Decided, each card with its summary. The pane closes once the meeting
  * ends; a person's close keeps it closed until another meeting starts. The panel's value is the session's
  * `meetingPanel` (types/index.d.ts).
  *
