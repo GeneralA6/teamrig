@@ -122,7 +122,8 @@ sequenceDiagram
 - A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, off by default: the user types `/clear` once done with the screen). A hidden
   `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
   then leaves an ask for its tab. A session with no work it can start waits for work first (its tab title reads
-  `waits for work`): the wake that brings it some starts the restart instead of waking the old context. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
+  `waits for work`): the wake that brings it some starts the restart instead of waking the old context. The lead, and a session with a live recurring scheduled job
+  (`CronCreate`), never waits: its next turn comes anyway, and a scheduled job's prompt does not cancel the restart. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
   the restart is still pending and runs `/clear` in the tab, so the tab and its process stay and Claude Code runs
   its own SessionEnd and SessionStart hooks. It holds the `/clear` for you first: while the prompt box holds a draft,
   for `refresh.holdAfterActivityMinutes` (30) after your last key or prompt, and 10 minutes after you press Hold; then
