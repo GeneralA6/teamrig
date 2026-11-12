@@ -39,6 +39,7 @@ import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } fr
 import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
+import { statusLineMeetingFor } from "../statusline-meeting.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { peerUsageOf } from "../stored-week.js";
 import { loadTree } from "../tree.js";
@@ -560,7 +561,7 @@ export async function extra(args, runtime) {
 }
 /** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
 async function statusLineSetup(runtime, cwd) {
-    const fallback = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, paceSource: undefined };
+    const fallback = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, paceSource: undefined, team: undefined };
     const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
     if (found.kind !== 'team') {
         return fallback;
@@ -569,8 +570,22 @@ async function statusLineSetup(runtime, cwd) {
     if (kit.load.status !== 'loaded') {
         return fallback;
     }
-    const { budget, statusLine } = kit.load.config;
-    return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, paceSource: { budget, teamWeekPath: kit.paths.teamWeek } };
+    const { config } = kit.load;
+    const { budget, statusLine } = config;
+    return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, paceSource: { budget, teamWeekPath: kit.paths.teamWeek }, team: { kit, config } };
+}
+/** The open meeting's mark for the tab of `claudeSession`; a failed read is told on stderr, never breaking the status bar. */
+async function meetingMarkOf(runtime, team, claudeSession) {
+    if (team === undefined) {
+        return undefined;
+    }
+    try {
+        return await statusLineMeetingFor(runtime, team, claudeSession);
+    }
+    catch (error) {
+        runtime.out.stderr(`teamrig statusline: the meeting was not read: ${errorMessage(error)}`);
+        return undefined;
+    }
 }
 /**
  * Where the team's hooks last said the week resetting at `resetsAt` counts from; undefined with no file, one of another
@@ -613,6 +628,7 @@ function statusLineView(git, dir, show, reading) {
         ...(branch === undefined ? {} : { branch }),
         ...(commit === undefined ? {} : { commit }),
         ...(reading.pacePct === undefined ? {} : { pacePct: reading.pacePct }),
+        ...(reading.meeting === undefined ? {} : { meeting: reading.meeting }),
     };
 }
 /**
@@ -668,7 +684,7 @@ export async function statusline(args, runtime) {
         runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
         return EXIT.ok;
     }
-    let shown = { show: DEFAULT_STATUS_LINE, paceSource: undefined };
+    let shown = { show: DEFAULT_STATUS_LINE, paceSource: undefined, team: undefined };
     try {
         const setup = await statusLineSetup(runtime, snapshot.cwd);
         shown = setup;
@@ -682,8 +698,16 @@ export async function statusline(args, runtime) {
     catch (error) {
         runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
     }
+    if (pass) {
+        runtime.out.stdout(passed);
+        return EXIT.ok;
+    }
     const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
-    const reading = { effort: effortOfStatus(input), pacePct: await pacePctOf(runtime, snapshot, shown) };
-    runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
+    const reading = {
+        effort: effortOfStatus(input),
+        pacePct: await pacePctOf(runtime, snapshot, shown),
+        meeting: await meetingMarkOf(runtime, shown.team, snapshot.sessionId),
+    };
+    runtime.out.stdout(statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
     return EXIT.ok;
 }

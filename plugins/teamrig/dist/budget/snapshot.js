@@ -4,6 +4,7 @@ import { parseObject } from "../core/jsonl.js";
 import { isTemporaryName } from "../core/files.js";
 import { MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
 import { CLAUDE_SESSION_ID } from "../inbox/marks.js";
+import { coloured } from "../meeting/status-line.js";
 const MS_PER_SECOND = 1000;
 function finite(value) {
     return typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -251,7 +252,12 @@ export function statusLineText(snapshot, view) {
     if (fiveHour !== null) {
         parts.push(`5h ${Math.round(fiveHour.usedPct)}%`);
     }
-    return parts.join(', ');
+    const meeting = view.meeting;
+    if (meeting?.kind === 'held') {
+        parts.push(meeting.text);
+    }
+    const text = parts.join(', ');
+    return meeting?.kind === 'tab' ? coloured(text, meeting.colour) : text;
 }
 async function readSnapshotFiles(files, dir) {
     const found = [];
