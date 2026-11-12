@@ -9,6 +9,8 @@ import {
   decideStart,
   decideStop,
   handoverHashOf,
+  HANDOVER_SECTIONS,
+  missingSections,
   noticeOf,
   REASK_SHARE,
   reaskGrowth,
@@ -17,6 +19,7 @@ import {
   type AskContext,
   type DueFacts,
   type MidTurnFacts,
+  type ReadyState,
   type RefreshSettings,
   type StopContext,
   type StopFacts,
@@ -60,9 +63,23 @@ type FlatFacts = Omit<StopFacts, 'due'> & DueFacts;
 
 /** Every fact read, the due ones too. */
 function facts(overrides: Partial<FlatFacts> = {}): StopFacts {
-  const flat: FlatFacts = { requestedBy: undefined, tokens: 120_000, meeting: false, handoverHash: null, running: 0, ...overrides };
-  return { requestedBy: flat.requestedBy, tokens: flat.tokens, meeting: flat.meeting, due: { handoverHash: flat.handoverHash, running: flat.running } };
+  const flat: FlatFacts = { requestedBy: undefined, tokens: 120_000, meeting: false, handoverHash: null, handover: undefined, running: 0, ...overrides };
+  return {
+    requestedBy: flat.requestedBy,
+    tokens: flat.tokens,
+    meeting: flat.meeting,
+    due: { handoverHash: flat.handoverHash, handover: flat.handover, running: flat.running },
+  };
 }
+
+/** What every ask for the handover says between its cause and its last sentence. */
+const ASK_BODY =
+  'Write your handover to /team/handover/alpha.md, replacing the whole file (your fresh start reads all of it), with what the register lacks, not task statuses, ' +
+  'which your fresh start reads live from the register: a `## State` section (where things are; the scratchpad files, plan file and scheduled jobs the next session ' +
+  'still needs; questions still open with the user) and a `## Next steps` section (the next step of each task in progress; what to check later, and when). ';
+/** The last sentence of an ask at a turn end, and of one within a turn. */
+const TURN_END_TAIL = 'Then end your turn: the turn end takes the handover as ready. Do not start new work.';
+const MID_TURN_TAIL = 'Then end your turn: the turn end takes the handover as ready and the fresh start follows it.';
 
 /** The facts every turn end reads, before the due ones. */
 function cheap(overrides: Partial<FlatFacts> = {}): StopFacts {
@@ -89,7 +106,6 @@ describe('decideStop', () => {
     for (const state of [
       undefined,
       { phase: 'idle', task: 'T12', at: BEFORE, tokens: 5, finished: 1 },
-      ASKED,
       { phase: 'refreshed', task: 'T12', at: BEFORE },
       { ...READY, noticed: true },
     ] satisfies (RefreshState | undefined)[]) {
@@ -98,12 +114,18 @@ describe('decideStop', () => {
     }
   });
 
+  it('reads the handover at every turn end an ask stands at, and says nothing while none was written since', () => {
+    assert.deepEqual(decideStop(ASKED, stopContext(), cheap({ tokens: 249_999 })), { kind: 'measure' });
+    assert.deepEqual(decideStop(ASKED, stopContext(), facts({ tokens: 249_999 })), { kind: 'none' });
+    assert.deepEqual(decideStop(ASKED, stopContext(), facts({ tokens: undefined })), { kind: 'none' }, 'size unknown');
+  });
+
   it('asks mid-task at any turn end at or over the threshold, naming no task', () => {
     const decision = decideStop(undefined, stopContext(), facts({ tokens: 262_144, handoverHash: 'abc' }));
     assert.deepEqual(decision, {
       kind: 'block',
       state: { phase: 'asked', task: null, at: NOW, tokens: 262_144, handoverHash: 'abc', midTurn: false },
-      reason: 'teamrig: your context is 262k (refresh at 250k), so refresh now rather than at a task end. ' + 'Write your handover to /team/handover/alpha.md, replacing the whole file (your fresh start reads all of it): what the register lacks (the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
+      reason: 'teamrig: your context is 262k (refresh at 250k), so refresh now rather than at a task end. ' + ASK_BODY + TURN_END_TAIL,
     });
     for (const state of [
       { phase: 'idle', task: 'T12', at: BEFORE, tokens: 120_000, finished: 1 },
@@ -127,8 +149,8 @@ describe('decideStop', () => {
     assert.equal(reaskGrowth(SIZE_ONLY), 50_000);
     const noticed: RefreshState = { ...READY, tokens: 262_144, noticed: true };
     for (const state of [ASKED, noticed]) {
-      assert.deepEqual(decideStop(state, stopContext(), cheap({ tokens: 312_143 })), { kind: 'none' }, state.phase);
-      assert.deepEqual(decideStop(state, stopContext(), cheap({ requestedBy: 'boss', tokens: 300_000 })), { kind: 'none' }, `${state.phase}: the lead's ask was asked`);
+      assert.deepEqual(decideStop(state, stopContext(), facts({ tokens: 312_143 })), { kind: 'none' }, state.phase);
+      assert.deepEqual(decideStop(state, stopContext(), facts({ requestedBy: 'boss', tokens: 300_000 })), { kind: 'none' }, `${state.phase}: the lead's ask was asked`);
       const again = decideStop(state, stopContext(), facts({ tokens: 312_144 }));
       assert.deepEqual(again.kind === 'block' ? again.state : undefined, { phase: 'asked', task: null, at: NOW, tokens: 312_144, handoverHash: null, midTurn: false }, state.phase);
     }
@@ -158,15 +180,12 @@ describe('decideStop', () => {
     assert.equal(decideStop(BOUNDARY, stopContext(), cheap({ tokens: 249_999 })).kind, 'write', 'without reading the due facts');
   });
 
-  it('asks for the handover at or over the threshold, naming the size, the path and the ready command', () => {
+  it('asks for the handover at or over the threshold, naming the size, the path and its two sections, with no ready call (T2533)', () => {
     const decision = decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, handoverHash: 'abc' }));
     assert.deepEqual(decision, {
       kind: 'block',
       state: { phase: 'asked', task: 'T12', at: NOW, tokens: 262_144, handoverHash: 'abc', midTurn: false },
-      reason:
-        'teamrig: your context is 262k (refresh at 250k) and you just finished T12. Write your handover to /team/handover/alpha.md, replacing the whole file (your fresh start reads all of it): what the register lacks ' +
-        '(the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), ' +
-        'not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
+      reason: 'teamrig: your context is 262k (refresh at 250k) and you just finished T12. ' + ASK_BODY + TURN_END_TAIL,
     });
     assert.equal(decideStop(BOUNDARY, stopContext(), facts({ tokens: 250_000 })).kind, 'block');
   });
@@ -183,14 +202,17 @@ describe('decideStop', () => {
   it('asks while background work runs, naming it, so a session busy with background steps refreshes before Claude Code compacts it', () => {
     const one = decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, running: 1 }));
     assert.deepEqual(one.kind === 'block' ? one.state : undefined, { phase: 'asked', task: 'T12', at: NOW, tokens: 262_144, handoverHash: null, midTurn: false });
-    assert.match(
+    assert.equal(
       one.kind === 'block' ? one.reason : '',
-      /from the register\. A background task you started still runs: say in the handover what its result still needs; the fresh start waits until it reports back\. Then run `teamrig refresh --ready --session alpha`\. Do not start new work\.$/,
+      'teamrig: your context is 262k (refresh at 250k) and you just finished T12. ' +
+        ASK_BODY +
+        'A background task you started still runs: say in the handover what its result still needs; the fresh start waits until it reports back. ' +
+        TURN_END_TAIL,
     );
     const two = decideStop(BOUNDARY, stopContext(), facts({ requestedBy: 'boss', running: 2 }));
-    assert.match(two.kind === 'block' ? two.reason : '', /\. 2 background tasks you started still run: say in the handover what each result still needs; the fresh start waits until they report back\. Then run /);
+    assert.match(two.kind === 'block' ? two.reason : '', /\. 2 background tasks you started still run: say in the handover what each result still needs; the fresh start waits until they report back\. Then end your turn/);
     const none = decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, running: 0 }));
-    assert.match(none.kind === 'block' ? none.reason : '', /from the register\. Then run `teamrig refresh --ready/, 'nothing running, no such line');
+    assert.match(none.kind === 'block' ? none.reason : '', /and when\)\. Then end your turn: /, 'nothing running, no such line');
   });
 
   it('records a boundary with no refresh due as judged even while background work runs', () => {
@@ -287,12 +309,12 @@ describe('decideStop', () => {
     assert.deepEqual(again.kind === 'block' ? again.state : undefined, { ...MID_TURN, midTurn: false });
     const reason = again.kind === 'block' ? again.reason : '';
     assert.match(reason, /^teamrig: the refresh asked within this turn at 131k is still due, so refresh now rather than at a task end\. /);
-    assert.match(reason, /Then run `teamrig refresh --ready --session alpha`\. Do not start new work\.$/);
+    assert.ok(reason.endsWith(TURN_END_TAIL), reason);
   });
 
   it('asks the second time while background work runs, and never in a turn a Stop hook continued', () => {
     const again = decideStop(MID_TURN, stopContext(), facts({ running: 1 }));
-    assert.match(again.kind === 'block' ? again.reason : '', /\. A background task you started still runs: .+ Then run /);
+    assert.match(again.kind === 'block' ? again.reason : '', /\. A background task you started still runs: .+ Then end your turn/);
     assert.deepEqual(decideStop(MID_TURN, stopContext({ stopHookActive: true }), facts()), { kind: 'none' });
   });
 
@@ -300,6 +322,97 @@ describe('decideStop', () => {
     const answered: RefreshState = { ...MID_TURN, midTurn: false };
     assert.deepEqual(decideStop(answered, stopContext(), facts({ tokens: 249_999 })), { kind: 'none' });
     assert.equal(decideStop(answered, stopContext(), facts({ tokens: 250_000 })).kind, 'block');
+  });
+
+  describe('takes a handover written since the ask as ready, with no ready call (T2533)', () => {
+    const written = '# api handover\n\n## State\n- T12 half done.\n\n### Next steps, in this order\n1. Finish T12.\n';
+    const noNext = '## State\n- T12 half done.\n';
+    const fixHint = ', or, if it is complete as it is, run `teamrig refresh --ready --session alpha`.';
+    const readyAfter = (task: string | null): ReadyState => ({ phase: 'ready', task, at: NOW, tokens: 262_144, noticed: true, transcript: null, claudePid: null });
+
+    it('at the stop of the turn that wrote it, the one the ask continued', () => {
+      assert.deepEqual(decideStop(ASKED, stopContext({ stopHookActive: true }), cheap({ handover: written })), { kind: 'measure' });
+      assert.deepEqual(decideStop(ASKED, stopContext({ stopHookActive: true }), facts({ handover: written })), {
+        kind: 'notice',
+        state: readyAfter('T12'),
+        message: 'teamrig: api finished T12 and wrote its handover; type /clear for a fresh start',
+        title: '[app] api: type /clear',
+        restart: false,
+      });
+      const restart = decideStop(ASKED, stopContext({ stopHookActive: true, canRestart: true }), facts({ handover: written }));
+      assert.equal(restart.kind === 'notice' ? restart.restart : undefined, true);
+    });
+
+    it('at a later turn end too, a mid-turn ask and one a task end left standing alike', () => {
+      assert.equal(decideStop(ASKED, stopContext(), facts({ handover: written })).kind, 'notice');
+      const midTurn = decideStop(MID_TURN, stopContext(), facts({ handover: written }));
+      assert.equal(midTurn.kind === 'notice' ? midTurn.message : '', 'teamrig: api wrote its handover; type /clear for a fresh start');
+      const boundary = decideStop(boundaryOf(ASKED, 'T13', NOW), stopContext({ stopHookActive: true }), facts({ handover: written }));
+      assert.deepEqual(boundary.kind === 'notice' ? boundary.state : undefined, readyAfter('T13'), 'the task the session refreshes after');
+    });
+
+    it('marks it ready with no notice while the open meeting or running work holds the restart', () => {
+      const unnoticed: ReadyState = { ...readyAfter('T12'), noticed: false };
+      const roomy = stopContext({ settings: ROOMY, stopHookActive: true });
+      assert.deepEqual(decideStop(ASKED, roomy, facts({ tokens: 260_000, meeting: true, handover: written })), { kind: 'write', state: unnoticed });
+      assert.deepEqual(decideStop(ASKED, stopContext({ stopHookActive: true }), facts({ running: 1, handover: written })), { kind: 'write', state: unnoticed });
+      assert.equal(decideStop(unnoticed, stopContext(), facts()).kind, 'notice', 'the stop after announces it');
+    });
+
+    it('leaves a handover not written since, or blank, to the ask', () => {
+      const same: RefreshState = { ...ASKED, handoverHash: handoverHashOf(written) };
+      assert.deepEqual(decideStop(same, stopContext({ stopHookActive: true }), facts({ handover: written })), { kind: 'none' });
+      assert.deepEqual(decideStop(ASKED, stopContext({ stopHookActive: true }), facts({ handover: ' \n' })), { kind: 'none' }, 'blank');
+      assert.deepEqual(decideStop(ASKED, stopContext({ stopHookActive: true }), facts()), { kind: 'none' }, 'no file');
+    });
+
+    it('asks once to add a missing section, naming it and the ready call that still answers the ask', () => {
+      const hash = handoverHashOf(noNext);
+      assert.notEqual(hash, null);
+      const fix = decideStop(ASKED, stopContext({ stopHookActive: true }), facts({ handover: noNext }));
+      assert.deepEqual(fix, {
+        kind: 'block',
+        state: { ...ASKED, fixHash: hash ?? '' },
+        reason:
+          'teamrig: your handover is not ready yet: /team/handover/alpha.md has no `## Next steps` section. It needs a `## State` and `## Next steps` section. ' +
+          `Fix it and end your turn${fixHint}`,
+      });
+      const asked = fix.kind === 'block' ? fix.state : ASKED;
+      assert.deepEqual(decideStop(asked, stopContext({ stopHookActive: true }), facts({ handover: noNext })), { kind: 'none' }, 'the same version again: no loop');
+      const both = decideStop(asked, stopContext({ stopHookActive: true }), facts({ handover: '- just notes\n' }));
+      assert.match(both.kind === 'block' ? both.reason : '', /has no `## State` and `## Next steps` section\./, 'an edited version is asked again');
+      assert.equal(decideStop(asked, stopContext({ stopHookActive: true }), facts({ handover: written })).kind, 'notice', 'the fixed one is taken');
+    });
+
+    it('records the fix asked on a mid-turn ask as the turn end ask, and on a standing ask', () => {
+      const hash = handoverHashOf(noNext) ?? '';
+      const midTurn = decideStop(MID_TURN, stopContext(), facts({ handover: noNext }));
+      assert.deepEqual(midTurn.kind === 'block' ? midTurn.state : undefined, { ...MID_TURN, midTurn: false, fixHash: hash });
+      const boundary = boundaryOf(ASKED, 'T13', NOW);
+      const standing = decideStop(boundary, stopContext({ stopHookActive: true }), facts({ handover: noNext }));
+      assert.deepEqual(standing.kind === 'block' ? standing.state : undefined, {
+        phase: 'boundary',
+        task: 'T13',
+        at: NOW,
+        finished: 1,
+        ask: { task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null, fixHash: hash },
+      });
+    });
+
+    it('asks to shorten one over refresh.handoverMaxBytes, with no ready call, since the call refuses it too', () => {
+      const settings: RefreshSettings = { ...SIZE_ONLY, handoverMaxBytes: 40 };
+      const fix = decideStop(ASKED, stopContext({ settings, stopHookActive: true }), facts({ handover: written }));
+      assert.equal(
+        fix.kind === 'block' ? fix.reason : '',
+        `teamrig: your handover is not ready yet: /team/handover/alpha.md is ${Buffer.byteLength(written)} bytes, over refresh.handoverMaxBytes (40): ` +
+          'your fresh start reads all of it. Rewrite it whole, short, with only what your next session needs. It needs a `## State` and `## Next steps` section. Fix it and end your turn.',
+      );
+    });
+
+    it('holds the fix in an open meeting, as it holds the ask', () => {
+      const roomy = stopContext({ settings: ROOMY });
+      assert.deepEqual(decideStop(ASKED, roomy, facts({ tokens: 260_000, meeting: true, handover: noNext })), { kind: 'none' });
+    });
   });
 
   describe('in an open meeting', () => {
@@ -318,7 +431,8 @@ describe('decideStop', () => {
     });
 
     it('holds the second ask of a turn a tool result asked in', () => {
-      assert.deepEqual(decideStop(MID_TURN, roomy, cheap({ tokens: 260_000, meeting: true })), { kind: 'none' });
+      assert.deepEqual(decideStop(MID_TURN, roomy, cheap({ tokens: 260_000, meeting: true })), { kind: 'measure' }, 'reads the handover, which the ask stands for');
+      assert.deepEqual(decideStop(MID_TURN, roomy, facts({ tokens: 260_000, meeting: true })), { kind: 'none' });
       assert.equal(decideStop(MID_TURN, roomy, facts({ tokens: 260_000 })).kind, 'block');
     });
 
@@ -345,7 +459,7 @@ function askContext(settings: RefreshSettings = SIZE_ONLY): AskContext {
 
 /** The context at a tool result, its due facts read too. */
 function midTurnFacts(tokens: number, due: Partial<DueFacts> = {}): MidTurnFacts {
-  return { tokens, meeting: false, due: { handoverHash: null, running: 0, ...due } };
+  return { tokens, meeting: false, due: { handoverHash: null, handover: undefined, running: 0, ...due } };
 }
 
 /** The context at a tool result, before the due facts are read; `meeting` when the session is in an open meeting. */
@@ -382,7 +496,7 @@ describe('decideMidTurn', () => {
     assert.equal(decision.kind, 'ask');
     assert.match(
       decision.kind === 'ask' ? decision.reason : '',
-      /\. 2 background tasks you started still run: say in the handover what each result still needs; the fresh start waits until they report back\. Then run `teamrig refresh --ready --session alpha` and end your turn: the fresh start follows it\.$/,
+      /\. 2 background tasks you started still run: say in the handover what each result still needs; the fresh start waits until they report back\. Then end your turn: the turn end takes the handover as ready and the fresh start follows it\.$/,
     );
   });
 
@@ -395,8 +509,7 @@ describe('decideMidTurn', () => {
     assert.deepEqual(decision.state, { phase: 'asked', task: null, at: NOW, tokens: 251_000, handoverHash: 'h', midTurn: true });
     assert.equal(decision.nextAt, 301_000);
     assert.match(decision.reason, /^teamrig: your context is 251k \(refresh at 250k\), so refresh within this turn: finish the step you are on and start no other\. /);
-    assert.match(decision.reason, /Write your handover to \/team\/handover\/alpha\.md, replacing the whole file \(your fresh start reads all of it\): what the register lacks/);
-    assert.match(decision.reason, /Then run `teamrig refresh --ready --session alpha` and end your turn: the fresh start follows it\.$/);
+    assert.ok(decision.reason.endsWith(`. ${ASK_BODY}${MID_TURN_TAIL}`), decision.reason);
   });
 
   it("keeps a finished task the Stop hook has not judged yet as the ask's task", () => {
@@ -412,6 +525,23 @@ describe('decideMidTurn', () => {
     assert.deepEqual(decideMidTurn(undefined, askContext(ROOMY), sizeOnly(260_000, true)), { kind: 'none', nextAt: 250_000 });
     assert.deepEqual(decideMidTurn(undefined, askContext(ROOMY), sizeOnly(300_000, true)), { kind: 'measure' });
     assert.deepEqual(decideMidTurn(undefined, askContext(ROOMY), sizeOnly(260_000)), { kind: 'measure' });
+  });
+});
+
+describe('missingSections', () => {
+  it('names the sections a handover has no heading for, in order', () => {
+    assert.deepEqual(HANDOVER_SECTIONS, ['State', 'Next steps']);
+    assert.deepEqual(missingSections('## State\n\n## Next steps\n'), []);
+    assert.deepEqual(missingSections('notes only'), ['State', 'Next steps']);
+    assert.deepEqual(missingSections('## Next steps\n'), ['State']);
+  });
+
+  it('takes a heading of any level and case, the name as a whole word at its start, CRLF lines too', () => {
+    assert.deepEqual(missingSections('# STATE\r\n### Next steps, in this order\r\n'), []);
+    assert.deepEqual(missingSections('  ## State (11-12)\n## Next Steps: first T12\n'), []);
+    assert.deepEqual(missingSections('## Statement\n## Next stepsize\n'), ['State', 'Next steps'], 'a longer word is no section');
+    assert.deepEqual(missingSections('##State\n- ## Next steps\n####### State\n'), ['State', 'Next steps'], 'no space, not at the start, past level 6');
+    assert.deepEqual(missingSections('## The State\n'), ['State', 'Next steps'], 'not at the start of the heading');
   });
 });
 
