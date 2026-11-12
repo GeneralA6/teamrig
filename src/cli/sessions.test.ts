@@ -203,6 +203,21 @@ describe('teamrig sessions --pass', () => {
     ]);
   });
 
+  it('reopens a closed session for p0 work alone in quiet hours that block, leaving its p1 work to the morning (T2504)', async () => {
+    const quietHours = { startUtc: '09:00', endUtc: '11:00', action: 'block' };
+    const kit = await closedTeam({ ...TEAM, budget: { enabled: true, quietHours } });
+    await hand(kit, 'alpha', 'p1');
+    await hand(kit, 'bravo', 'p0');
+    const result = await kit.run(['sessions', '--pass'], { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]) });
+    assertOk(result);
+    assert.deepEqual(result.stdout, [
+      'AWAY app-lead (session lead): not running, and teamrig did not close it',
+      'CLOSED app-alpha (session alpha): nothing it can start',
+      'REOPEN app-bravo (session bravo): work handed to it since its close: T2',
+      'PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 0 kept open, 1 closed, 1 away; nothing changed',
+    ]);
+  });
+
   it('reopens first a session urgent lines wait for, the oldest first, ahead of p1 work, reading no budget for it', async () => {
     const kit = await closedTeam(BUDGETED);
     await hand(kit, 'alpha', 'p1');
