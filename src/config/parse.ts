@@ -149,6 +149,7 @@ import {
   type FocusScoreConfig,
   isWipMode,
   WIP_MODES,
+  type MeetingConfig,
   type PriorityConfig,
   type TeamLink,
   type TurnLogConfig,
@@ -517,9 +518,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
-    meeting: {
-      panel: { enabled: read.boolean(read.section(read.section(raw, 'meeting', ''), 'panel', 'meeting'), 'enabled', 'meeting.panel', DEFAULT_MEETING.panel.enabled) },
-    },
+    meeting: parseMeeting(read, read.section(raw, 'meeting', '')),
     turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
     readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
     permissions: parsePermissions(read, read.section(raw, 'permissions', '')),
@@ -533,6 +532,18 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     paths: parsePaths(read, read.section(raw, 'paths', '')),
   };
   return { config, issues: read.issues };
+}
+
+/** `meeting`: the agenda panel's switch, and the spotlight's with its dim, bounded so the screen stays readable. */
+function parseMeeting(read: ConfigReader, raw: JsonRecord): MeetingConfig {
+  const spotlight = read.section(raw, 'spotlight', 'meeting');
+  return {
+    panel: { enabled: read.boolean(read.section(raw, 'panel', 'meeting'), 'enabled', 'meeting.panel', DEFAULT_MEETING.panel.enabled) },
+    spotlight: {
+      enabled: read.boolean(spotlight, 'enabled', 'meeting.spotlight', DEFAULT_MEETING.spotlight.enabled),
+      dim: read.number(spotlight, 'dim', 'meeting.spotlight', DEFAULT_MEETING.spotlight.dim, CONFIG_LIMITS.spotlightDim),
+    },
+  };
 }
 
 /** `turnLog`: kept from an hour to a week. */

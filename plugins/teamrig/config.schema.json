@@ -1301,6 +1301,24 @@
               "default": true
             }
           }
+        },
+        "spotlight": {
+          "description": "The spotlight while a meeting is open: every screen dimmed but the window holding the lead's tab. Windows Terminal on Windows only.",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Starts the spotlight when meeting start opens the owner's daily meeting; it lifts by itself within seconds of meeting end, or when the meeting lapses. The dimming lets every click through and never takes the focus. Off unless a team sets it true.",
+              "type": "boolean",
+              "default": false
+            },
+            "dim": {
+              "description": "How dark the rest of the screen goes, as the dimming layer's opacity: 0.1 barely shades it, 0.9 nearly hides it.",
+              "type": "number",
+              "default": 0.6,
+              "minimum": 0.1,
+              "maximum": 0.9
+            }
+          }
         }
       }
     },
