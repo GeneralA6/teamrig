@@ -3285,7 +3285,7 @@ It refuses when `claude` is not on the PATH.
 
 ### teamrig restart
 
-The automatic context refresh's restart, when `refresh.autoRestart` is on (off by default: the user types
+The automatic context refresh's restart, when `refresh.autoRestart` is on for the session (`true`, or `"lead"`, the default, for the lead only; otherwise the user types
 `/clear`). The Stop hook runs it hidden once your handover is written; you do not run it yourself. It waits
 until the session has been idle `refresh.restartDelaySeconds` with nothing
 running, then asks the session's tab to run `/clear`, which teamrig's mod does there. While Claude Code lists a helper of
@@ -3393,7 +3393,7 @@ or `FAILED to reopen shop-web (session web): <why>` (exit 1) when it could not w
 
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next
 `set ... --status done` it writes a handover, and the user types `/clear` for the fresh start once done with its
-screen (with `refresh.autoRestart` on, teamrig starts it fresh once it is idle, and one with no work it can start
+screen (with `refresh.autoRestart` on for it, teamrig starts it fresh once it is idle, and one with no work it can start
 once a wake brings it some). The turn end takes a handover written since the ask, with a `## State` and a
 `## Next steps` section, as ready by itself; `teamrig refresh --ready` is the fallback for one the turn end asked to
 fix that is complete without a section. Both refuse a handover over `refresh.handoverMaxBytes` (20,000 bytes;
@@ -3419,7 +3419,7 @@ REQUESTED a refresh of shop-web: at its next turn end it writes its handover to 
 ```
 
 `teamrig refresh --ready --session web` prints `Ready. Ask the user to type /clear; your next start reads
-<handover path>.` With `refresh.autoRestart: true` it says `End your turn now: teamrig starts you fresh once you
+<handover path>.` With `refresh.autoRestart` on for the session (the lead, by default) it says `End your turn now: teamrig starts you fresh once you
 are idle, or asks the user to type /clear` instead.
 
 ## Maintenance
