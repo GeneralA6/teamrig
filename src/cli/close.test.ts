@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { MeetingSchedule, type ScheduledMeeting } from '../meeting/schedule.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { SessionLog } from '../sessions/log.ts';
@@ -323,10 +324,17 @@ describe('teamrig close', () => {
 const PASS_LOG = join(TEAM_HOME, 'state', 'idle-pass.jsonl');
 const LEAD_INBOX = join(TEAM_HOME, 'state', 'inbox', 'lead.md');
 const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
+const MEETINGS = join(TEAM_HOME, 'state', 'meetings.jsonl');
 
 /** A team that wakes a session for p1 work only. */
 const WAKES_P1: JsonRecord = { ...TEAM, wake: { priority: 1 } };
 const CHARGE = { usedMb: 85_300, limitMb: 100_700 };
+
+/** Books the owner's meeting M1 with alpha into the team's schedule, as `meeting book` and `meeting start` leave it. */
+async function bookMeeting(alpha: Alpha, fields: Pick<ScheduledMeeting, 'status' | 'changedAt'> & Partial<Pick<ScheduledMeeting, 'session' | 'with'>>): Promise<void> {
+  const meeting: ScheduledMeeting = { id: 'M1', at: NOW - 70 * MINUTE_MS, minutes: 30, session: 'alpha', with: [], tasks: [], about: 'the release plan', brief: null, notifiedAt: null, by: 'lead', note: null, ...fields };
+  await new MeetingSchedule(alpha.kit.files, MEETINGS).write(meeting, NOW);
+}
 
 function idleClose(alpha: Alpha): Promise<CliResult> {
   return alpha.kit.run(['idle-close', 'alpha', '--team', 'app', '--project', APP], alpha.options);
@@ -435,6 +443,38 @@ describe('teamrig idle-close', () => {
     await damaged.kit.files.write(join(ASKS, 'alpha', `${NOW}-0.json`), '{"v":1,"from":');
     const preview = await close(damaged, ['alpha', '--session', 'lead']);
     assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min/, [...preview.stdout, ...preview.stderr].join('\n'));
+  });
+
+  it("keeps open a session in the owner's started booked meeting however long it is quiet, in close and the pass alike (T2542)", async () => {
+    const alpha = await runningAlpha(75, reply(40_000), undefined, WAKES_P1);
+    await bookMeeting(alpha, { status: 'started', changedAt: NOW - 60 * MINUTE_MS });
+    assertRefused(await close(alpha, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) is in the owner's open meeting M1: teamrig keeps it open until the meeting ends/);
+    const kept = await idleClose(alpha);
+    assert.equal(kept.code, 0, kept.stderr.join('\n'));
+    assert.match(kept.stdout.join('\n'), /^KEPT app-alpha \(session alpha\) is in the owner's open meeting M1/);
+    assert.deepEqual(alpha.processes.ends, []);
+    assert.equal(alpha.kit.files.get(LOG), undefined);
+
+    // One it only joins holds it as well.
+    const joined = await runningAlpha(75, reply(40_000), undefined, WAKES_P1);
+    await bookMeeting(joined, { status: 'started', changedAt: NOW - 60 * MINUTE_MS, session: 'bravo', with: ['alpha'] });
+    assert.match((await idleClose(joined)).stdout.join('\n'), /^KEPT app-alpha \(session alpha\) is in the owner's open meeting M1/);
+    assert.deepEqual(joined.processes.ends, []);
+  });
+
+  it('closes a session whose booked meeting lapsed, ended or has not started (T2542)', async () => {
+    for (const meeting of [
+      { status: 'started', changedAt: NOW - 5 * 60 * MINUTE_MS },
+      { status: 'done', changedAt: NOW - 10 * MINUTE_MS },
+      { status: 'scheduled', changedAt: NOW - 60 * MINUTE_MS },
+    ] as const) {
+      const alpha = await runningAlpha(75, reply(40_000), undefined, WAKES_P1);
+      await bookMeeting(alpha, meeting);
+      const closed = await idleClose(alpha);
+      assert.equal(closed.code, 0, closed.stderr.join('\n'));
+      assert.match(closed.stdout.join('\n'), /^CLOSED app-alpha \(session alpha\): quiet 75 min/, meeting.status);
+      assert.deepEqual(alpha.processes.ends, [{ pid: TAB.pid, how: 'ask' }], meeting.status);
+    }
   });
 
   it('fails, logged, when it cannot weigh the session or its tab outlives the end', async () => {
