@@ -69,6 +69,7 @@ import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
 import { envSession, hookScopeOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, turnLeadPathsOf, type SessionScope, type TeamScope } from './hook-input.ts';
+import { recordTabNeed } from './hook-tab-need.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
 import { keepWorkingReasonOf } from './keep-working.ts';
@@ -787,6 +788,10 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
   const lines = [...effort.lines, ...notices, ...budget, ...verify, ...lead, ...hookless];
   const ask = await askBlockOf(runtime, scope, payload, decision).catch((): string | undefined => undefined);
+  if (ask === undefined && decision.kind !== 'block') {
+    // Only a turn that ends: a block sends the session on working, which its next tool's end records.
+    await recordTabNeed(runtime, payload, scope).catch(() => undefined);
+  }
   return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockOutput(ask, lines);
 }
 

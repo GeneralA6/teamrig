@@ -4,6 +4,7 @@ import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { askedLinesOf } from './hook-asked-lines.ts';
 import { parseJson } from './hook-input.ts';
 import { trackRestore } from './hook-restore-track.ts';
+import { recordTabNeed } from './hook-tab-need.ts';
 import { tabSequenceOf } from './hook-tab-status.ts';
 
 /** The hook's one JSON object: the tab title's terminal sequence and the lines for the model, each when there is one. */
@@ -31,6 +32,7 @@ export async function toolEnd(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     tabSequenceOf(runtime, payload).catch(() => undefined),
     askedLinesOf(runtime, payload).catch(() => undefined),
     trackRestore(payload, runtime).catch(() => undefined),
+    recordTabNeed(runtime, payload).catch(() => undefined),
   ]);
   const output = toolEndOutput(stringField(payload, 'hook_event_name') ?? 'PostToolUse', sequence, lines);
   if (Object.keys(output).length > 0) {

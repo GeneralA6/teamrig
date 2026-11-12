@@ -11,6 +11,7 @@ import { openKit, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
 import { pickerRefusal } from './hook-picker-guard.ts';
+import { recordTabNeed } from './hook-tab-need.ts';
 
 /** The values Claude Code reads as on for a switch such as `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`. */
 const ON_VALUES: ReadonlySet<string> = new Set(['1', 'true', 'yes', 'on']);
@@ -88,12 +89,15 @@ export async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord
  * Every hook event but Stop (whose hook writes the title with its own output): with `tabStatus.enabled` and
  * Claude Code's own title off, sets the tab's title to a circle for what the session is doing (tabs/status.ts)
  * before its topic. Outside a team, with either off, for input that is not a hook payload or on any error, it
- * prints nothing.
+ * prints nothing. Either way it records a team session's tab in its tab file (hook-tab-need.ts).
  */
 export async function tabStatus(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
-  const output = isRecord(payload) ? await tabStatusOutputOf(runtime, payload).catch(() => '') : '';
+  if (!isRecord(payload)) {
+    return EXIT.ok;
+  }
+  const [output] = await Promise.all([tabStatusOutputOf(runtime, payload).catch(() => ''), recordTabNeed(runtime, payload).catch(() => undefined)]);
   if (output !== '') {
     runtime.out.stdout(output);
   }
