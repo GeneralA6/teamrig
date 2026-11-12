@@ -60,7 +60,7 @@ import { blockStartOf, liveTasksNoteOf } from './live-tasks.ts';
 import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { effortWritebackOf, type EffortWritebackOutcome } from './hook-effort-writeback.ts';
 import { meetingHold } from './hook-meeting.ts';
-import { restartOrPark, restartTargetOf } from './hook-restart.ts';
+import { restartOrPark, restartPidOf, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { promptSecretBlock } from './hook-prompt-secret.ts';
 import { guardLoadOf, hookTeam } from './hook-guard-load.ts';
@@ -698,7 +698,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
   const claude = decided.kind === 'notice' ? await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid) : undefined;
   const decision =
     decided.kind === 'notice' && decided.restart && target !== undefined
-      ? await restartOrPark(runtime, store, { team: kit.paths.team, id, context, target, claude }, decided, { paths: kit.paths, config })
+      ? await restartOrPark(runtime, store, { team: kit.paths.team, id, context, target, claude: await restartPidOf(runtime, kit.paths, roster.ids, id, claude) }, decided, { paths: kit.paths, config })
       : decided;
   switch (decision.kind) {
     case 'write':
