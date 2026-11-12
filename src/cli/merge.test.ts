@@ -127,6 +127,28 @@ describe('teamrig merge', () => {
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), starters.openWatches], [[], heldBy(), undefined, 0]);
   });
 
+  it('refuses at once under a live queued step, which it would wait on while the step waits for it, pushing nothing', async () => {
+    const { kit, git, steps } = world();
+    await kit.files.write(LOCK, heldBy());
+    const starters = new FakeStarterWatch();
+    const env = { ...IN_WORKTREE.env, TEAMRIG_HOST_LOCK: 'other' };
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, env, mergeGit: git, steps, starters, sessionProcesses: otherRuns() });
+    const refusal = result.stdout.at(-1) ?? '';
+    assert.equal(result.code, 2);
+    assert.ok(refusal.startsWith('REFUSED teamrig merge takes the whole host lock itself, so under the queued step of '), refusal);
+    assert.ok(refusal.endsWith('run teamrig merge without teamrig queue, as it waits in the host lock\'s line on its own'), refusal);
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), starters.openWatches], [[], heldBy(), undefined, 0]);
+  });
+
+  it('merges as usual when $TEAMRIG_HOST_LOCK names no live lock, a leftover in the shell, and says so', async () => {
+    const { kit, git, steps } = world();
+    const env = { ...IN_WORKTREE.env, TEAMRIG_HOST_LOCK: 'gone' };
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, env, mergeGit: git, steps });
+    assert.equal(result.code, EXIT.ok);
+    assert.ok(result.stdout.some((line) => line.endsWith('$TEAMRIG_HOST_LOCK names no live host lock: taking the lock as usual')), result.stdout.join('\n'));
+    assert.deepEqual([steps.ran.length, kit.files.get(LOCK)], [1, undefined]);
+  });
+
   it('prints WAITING with the merge command’s last line and exits 75 when the command waits, pushing nothing', async () => {
     const MERGE = ['node', 'merge.ts'];
     const { kit, git, steps } = world({ ...TEAM, delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, merge: { command: MERGE } } } } });
