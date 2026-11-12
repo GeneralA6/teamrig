@@ -1332,6 +1332,15 @@ export interface TeamLink {
   readonly project?: string;
 }
 
+/** The owner's daily meeting in the lead's tab (T2512). */
+export interface MeetingConfig {
+  /**
+   * The agenda panel beside the lead's chat while a meeting is open: the owner's cards in the agenda's order, the
+   * ones decided since the start checked off with the decision, the one on the table marked (src/meeting/panel.ts).
+   */
+  readonly panel: { readonly enabled: boolean };
+}
+
 export interface KitConfig {
   readonly configVersion: number;
   /** Unset in a config written before team trees: the team is then the root of its own tree. */
@@ -1396,6 +1405,7 @@ export interface KitConfig {
    * that never named the key had no guard, and one session's picker held its other tasks for hours.
    */
   readonly pickerGuard: { readonly enabled: boolean };
+  readonly meeting: MeetingConfig;
   readonly turnLog: TurnLogConfig;
   /** Lets a shell line that only reads run without a permission prompt; off by default. */
   readonly readonlyShell: ReadonlyShellConfig;

@@ -35,6 +35,7 @@ import type {
   TurnLogConfig,
   WakeConfig,
   StablePeriodsConfig,
+  MeetingConfig,
 } from './types.ts';
 
 /** Defaults for every key except the roster (`sessions`, `roles.lead`), which each team supplies. */
@@ -247,6 +248,9 @@ export const DEFAULT_TURN_LOG: TurnLogConfig = { enabled: true, keepHours: 24 };
  * 210k W each, so a team opts in with `wake.dayStartUtc`.
  */
 export const DEFAULT_WAKE: WakeConfig = { enabled: true, priority: 1, batchSeconds: 120, minGapMinutes: 15 };
+
+/** The agenda panel is on: it shows only in the lead's tab while a meeting is open, so it costs no other tab anything. */
+export const DEFAULT_MEETING: MeetingConfig = { panel: { enabled: true } };
 
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
