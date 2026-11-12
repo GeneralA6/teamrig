@@ -6253,12 +6253,14 @@ Output: nothing, exit 0.
 ### teamrig hook meeting-due
 
 Run by the plugin's mod in every open tab of the team, when the meetings file (`<team>/state/meetings.jsonl`) changed
-or the time it last named came. Each meeting booked with `meeting schedule` whose time came, its slot not over and no
-notice sent yet, is marked notified under the meetings lock, so one tab sends it, and its OS notification starts
-hidden: a toast from Windows PowerShell on Windows, a banner from `osascript` on macOS, `notify-send` on Linux. Its
-title reads "teamrig meeting M3 now" and its line names the session met, the topic, the length and `teamrig meeting start
-M3`. The meeting's words reach the notification as a variable or a run argument, never inside a script. One past its
-slot sends nothing (`meeting list` shows it as missed); a moved one is sent again at its new time. A notification
+or the time it last named came. Each meeting booked with `meeting schedule` with a notice stage due (`before` its slot,
+at its `start`, or `missed` past it with no `meeting start`, as the team config's `meetingNotices` sets them) is marked
+sent under the meetings lock, so one tab sends it; a tab that looks late sends only the latest stage due. With
+`osToast` on, its OS notification starts hidden: a toast from Windows PowerShell on Windows, a banner from `osascript`
+on macOS, `notify-send` on Linux. Its title reads "teamrig meeting M3 in 10 min", "... now" or "... missed", and its
+line names the session met, the topic, the length and `teamrig meeting start M3`. The meeting's words reach the
+notification as a variable or a run argument, never inside a script. A missed meeting with `leadInbox` on also posts
+the lead one inbox line (a refused line is told on stderr). A moved meeting sends its stages again. A notification
 starts nothing: the owner starts the meeting. Stdin: `{"session_id", "cwd"}`.
 
 Flags: none.
@@ -6270,7 +6272,8 @@ teamrig hook meeting-due < session.json
 ```
 
 Output: one JSON line, exit 0: `{"kind":"due","notices","watch","recheckAt"}` (`notices`: each sent now, as
-`{"id","title","text"}`, for the tab to show as well; ask again once the `watch` file changes or at `recheckAt`, null
+`{"id","stage","title","text","stayMs"}`, for the tab to show as well when `tabToast` is on, for `stayMs`, or the
+default time when null; ask again once the `watch` file changes or at `recheckAt`, null
 when no meeting waits for its time), or `{"kind":"off","why"}`.
 
 ### teamrig hook meeting-panel

@@ -538,7 +538,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   hook wake-check | hook wake-dropped
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
   hook meeting-due
-      (run by the plugin's mod: the OS notification at a scheduled meeting's time)
+      (run by the plugin's mod: a scheduled meeting's notices, before, at and past its time)
   hook meeting-panel
       (run by the plugin's mod: the agenda panel beside the lead's chat while the owner's meeting is open)
   hook update-check | hook update-dismiss | hook update-apply
