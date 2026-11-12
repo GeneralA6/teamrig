@@ -58,6 +58,7 @@ import { checkHooklessTabs } from "./hook-hookless.js";
 import { dueFactsAt, inMeetingNow } from "./hook-refresh-mod.js";
 import { recordSessionStart } from "./hook-session-record.js";
 import { envSession, hookScopeOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, turnLeadPathsOf } from "./hook-input.js";
+import { recordTabNeed } from "./hook-tab-need.js";
 import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
 import { logPrompt, logReply, logStart } from "./hook-turn-log.js";
 import { keepWorkingReasonOf } from "./keep-working.js";
@@ -720,6 +721,10 @@ async function stopOutputOf(runtime, payload) {
     const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
     const lines = [...effort.lines, ...notices, ...budget, ...verify, ...lead, ...hookless];
     const ask = await askBlockOf(runtime, scope, payload, decision).catch(() => undefined);
+    if (ask === undefined && decision.kind !== 'block') {
+        // Only a turn that ends: a block sends the session on working, which its next tool's end records.
+        await recordTabNeed(runtime, payload, scope).catch(() => undefined);
+    }
     return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope, scope.roster, payload, decision)) : blockOutput(ask, lines);
 }
 /**
