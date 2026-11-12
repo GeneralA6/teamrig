@@ -16,6 +16,7 @@ import {
   isWakeWorthy,
   NO_SETTLED_MOMENTS,
   openedWakeState,
+  quietPriorityOf,
   taskListText,
   WAKE_TITLE_MAX,
   wakeContext,
@@ -395,11 +396,21 @@ describe('wakeRestOf', () => {
 
 describe('effectivePriority', () => {
   it('keeps the configured priority unless the budget holds the session, then p0, or it is in quiet hours, then p1', () => {
-    assert.equal(effectivePriority(3, { held: false, quiet: false }), 3);
-    assert.equal(effectivePriority(3, { held: true, quiet: false }), 0, 'the budget stop lets only p0 go on');
-    assert.equal(effectivePriority(1, { held: true, quiet: false }), 0);
-    assert.equal(effectivePriority(3, { held: false, quiet: true }), 1);
-    assert.equal(effectivePriority(3, { held: true, quiet: true }), 0);
+    const asking = { startUtc: '22:00', endUtc: '06:00', action: 'ask' } as const;
+    assert.equal(effectivePriority(3, { held: false, quiet: false }, asking), 3);
+    assert.equal(effectivePriority(3, { held: true, quiet: false }, asking), 0, 'the budget stop lets only p0 go on');
+    assert.equal(effectivePriority(1, { held: true, quiet: false }, asking), 0);
+    assert.equal(effectivePriority(3, { held: false, quiet: true }, asking), 1);
+    assert.equal(effectivePriority(3, { held: true, quiet: true }, asking), 0);
+  });
+
+  it('wakes for p0 alone in quiet hours that block, and leaves the day outside them as configured (T2504)', () => {
+    const blocking = { startUtc: '22:00', endUtc: '06:00', action: 'block' } as const;
+    assert.equal(effectivePriority(3, { held: false, quiet: true }, blocking), 0, 'a p1 wake would run on through the blocked night');
+    assert.equal(effectivePriority(3, { held: false, quiet: false }, blocking), 3);
+    assert.equal(quietPriorityOf(blocking), 0);
+    assert.equal(quietPriorityOf({ ...blocking, action: 'warn' }), 1);
+    assert.equal(quietPriorityOf(undefined), 1);
   });
 });
 

@@ -166,7 +166,7 @@ async function restCappedDecision(runtime: CliRuntime, scope: Extract<WakeScope,
   const facts = await budgetFactsOf(runtime, { kit: scope.kit, config, roster: scope.roster, id: scope.id }, undefined);
   const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [scope.tab]);
   const rest = wakeRestOf(facts, config.budget.quietHours, input.now, wakeWOf(config, lastTurnAt, input.now));
-  const maxPriority = effectivePriority(input.maxPriority, rest);
+  const maxPriority = effectivePriority(input.maxPriority, rest, config.budget.quietHours);
   const cut = new Set(dueTasks.filter((task) => task.priority > maxPriority).map((task) => task.id));
   if (cut.size === 0) {
     return decision;
