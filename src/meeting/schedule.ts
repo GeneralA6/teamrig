@@ -55,7 +55,7 @@ export interface ScheduledMeeting {
   /** The brief's path, when it has one. */
   readonly brief: string | null;
   readonly status: MeetingStatus;
-  /** When its notification fired, epoch ms; null before, and again after a move. */
+  /** When its last notice went out (before, at or missed: src/meeting/notice-stage.ts), epoch ms; null before, and again after a move. */
   readonly notifiedAt: number | null;
   /** Who changed it last, when (epoch ms) and why (a move, an end or a drop). */
   readonly by: string;
@@ -185,17 +185,6 @@ export function endOf(meeting: ScheduledMeeting): number {
 /** A scheduled meeting whose slot is over with no start: shown as missed until it is moved, ended or dropped. */
 export function isMissed(meeting: ScheduledMeeting, now: number): boolean {
   return meeting.status === 'scheduled' && endOf(meeting) <= now;
-}
-
-/** A scheduled meeting whose time came and whose slot is not over, not yet notified: its notification is due. */
-export function isNotifyDue(meeting: ScheduledMeeting, now: number): boolean {
-  return meeting.status === 'scheduled' && meeting.notifiedAt === null && meeting.at <= now && now < endOf(meeting);
-}
-
-/** When the next notification falls due after `now`, epoch ms; null when none is scheduled. */
-export function nextNotifyAt(meetings: readonly ScheduledMeeting[], now: number): number | null {
-  const times = meetings.filter((meeting) => meeting.status === 'scheduled' && meeting.notifiedAt === null && meeting.at > now).map((meeting) => meeting.at);
-  return times.length === 0 ? null : Math.min(...times);
 }
 
 /** The meetings by time, earliest first; ids break a tie. */

@@ -8,11 +8,9 @@ import {
   inBookedMeeting,
   isMeetingId,
   isMissed,
-  isNotifyDue,
   keptMeetings,
   MeetingSchedule,
   nextMeetingId,
-  nextNotifyAt,
   readMeetings,
   type ScheduledMeeting,
 } from './schedule.ts';
@@ -100,20 +98,6 @@ describe('meeting views', () => {
     assert.equal(isMissed(meeting(), end - 1), false);
     assert.equal(isMissed(meeting(), end), true);
     assert.equal(isMissed(meeting({ status: 'started' }), end + MS_PER_DAY), false);
-  });
-
-  it('is due for its notification from its time to the end of its slot, once', () => {
-    assert.equal(isNotifyDue(meeting(), AT - 1), false);
-    assert.equal(isNotifyDue(meeting(), AT), true);
-    assert.equal(isNotifyDue(meeting({ notifiedAt: AT }), AT + 1), false);
-    assert.equal(isNotifyDue(meeting(), AT + 30 * MS_PER_MINUTE), false);
-    assert.equal(isNotifyDue(meeting({ status: 'dropped' }), AT), false);
-  });
-
-  it('names the next notification time, none when nothing is scheduled ahead', () => {
-    const meetings = [meeting({ id: 'M1', at: AT + 2000 }), meeting({ id: 'M2', at: AT + 1000 }), meeting({ id: 'M3', at: AT + 500, notifiedAt: AT }), meeting({ id: 'M4', at: AT - 1 })];
-    assert.equal(nextNotifyAt(meetings, AT), AT + 1000);
-    assert.equal(nextNotifyAt([meeting({ status: 'done' })], AT - 1), null);
   });
 
   it('sorts by time, ids breaking a tie', () => {
