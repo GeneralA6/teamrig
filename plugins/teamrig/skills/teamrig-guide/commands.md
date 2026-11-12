@@ -6273,6 +6273,28 @@ Output: one JSON line, exit 0: `{"kind":"due","notices","watch","recheckAt"}` (`
 `{"id","title","text"}`, for the tab to show as well; ask again once the `watch` file changes or at `recheckAt`, null
 when no meeting waits for its time), or `{"kind":"off","why"}`.
 
+### teamrig hook meeting-panel
+
+Run by the plugin's mod in a team session's tab, when the meeting file (`<team>/state/meeting.json`) or a register the
+meeting covers changed. It answers only in the tab of a root team's lead, while the owner's meeting it started is open
+and `meeting.panel.enabled` is on: the owner's cards of the lead's register and of every team under it, as the agenda
+asks them, the ones the lead recorded a decision on since the start (`update <id> --decided --note "..."`) checked off
+first in the order decided, with the decision; the first card still asked is the one on the table now. It writes
+nothing. Stdin: `{"session_id", "cwd"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook meeting-panel < session.json
+```
+
+Output: one JSON line, exit 0: `{"kind":"open","startedAt","items","current","left","watch"}` (`items`: each card as
+`{"id","title","settled","decision"}`, a team under the lead's naming its card `<team>/<id>`; `current`: the card on
+the table, null once every one is settled; `left`: how many are still to decide; ask again once a `watch` file
+changes), or `{"kind":"off","why","watch"}` (`watch` names the meeting file in the lead's tab, nothing in another).
+
 ### teamrig hook update-check
 
 Run by the plugin's mod in each interactive tab, about every 10 minutes: the newer teamrig and teamrig-pane versions
