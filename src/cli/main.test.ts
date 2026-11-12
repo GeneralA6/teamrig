@@ -10,6 +10,9 @@ import { KIT_VERSION } from '../core/version.ts';
 
 const MAIN = fileURLToPath(new URL('./main.ts', import.meta.url));
 
+/** The longest one CLI run here may take: far over a run on a loaded machine, far under the coverage gate's silence limit. */
+const CLI_TIMEOUT_MS = 120_000;
+
 interface CliResult {
   readonly status: number | null;
   readonly stdout: string;
@@ -23,6 +26,8 @@ function cliIn(home: string, args: readonly string[], input = ''): CliResult {
     // A fixed team keeps the run off any team pointer above the temp folder on the test machine.
     env: { ...process.env, TEAMRIG_HOME: home, TEAMRIG_TEAM: 'app' },
     cwd: home,
+    // A run that waits (on the host lock, or on the host's memory) fails the test instead of holding the suite (#599).
+    timeout: CLI_TIMEOUT_MS,
   });
   return { status: result.status, stdout: result.stdout };
 }
@@ -38,15 +43,16 @@ function inTempHome<T>(use: (home: string) => T): T {
 }
 
 /**
- * Lets the team's queued steps start whatever the host's free memory: the default floor waits for 4 GB, which a
- * 7 GB runner (GitHub's macOS one) rarely has free, and the step then waits out the whole hour.
+ * Lets the team's queued steps start whatever the host's memory: the default floor waits for 4 GB, which a 7 GB
+ * runner (GitHub's macOS one) rarely has free, and a busy host's commit charge can sit past the default 92% of its
+ * limit (#599); either way the step would wait out the whole hour.
  */
-function withoutMemoryFloor(home: string, team: string): void {
+function withoutMemoryWait(home: string, team: string): void {
   const path = join(home, 'teams', team, 'config.json');
   const config: unknown = JSON.parse(readFileSync(path, 'utf8'));
   assert.ok(isRecord(config), 'team create writes a config object');
   const queue = { memoryFloorMb: 0, smallReserveMb: 0, heavyReserveMb: 0 };
-  writeFileSync(path, JSON.stringify({ ...config, delivery: { queue } }, null, 2));
+  writeFileSync(path, JSON.stringify({ ...config, delivery: { queue }, open: { headroom: { commitMaxPct: 100 } } }, null, 2));
 }
 
 /** One command in a fresh kit home. */
@@ -76,7 +82,7 @@ describe('main', () => {
   it('runs a queued step under the host lock, releases it and ledgers the step under a fresh id', () => {
     inTempHome((home) => {
       assert.equal(cliIn(home, ['team', 'create', 'app', '--sessions', 'api', '--project', home]).status, 0);
-      withoutMemoryFloor(home, 'app');
+      withoutMemoryWait(home, 'app');
       const run = cliIn(home, ['queue', '--session', 'api', '--what', 'probe', '--', process.execPath, '-e', 'process.exit(0)']);
       assert.equal(run.status, 0);
       assert.match(run.stdout, /running: probe \(killed after 45m\)\nDONE exit 0\n$/);
