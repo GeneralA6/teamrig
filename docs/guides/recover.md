@@ -85,7 +85,7 @@ sequenceDiagram
   participant Y as You
   W->>H: teamrig set T2 --status done, then the turn ends
   H-->>W: Stop: your context is 132k (refresh at 120k), write your handover
-  W->>H: writes handover/web.md, runs teamrig refresh --ready
+  W->>H: writes handover/web.md (## State, ## Next steps), ends its turn
   H-->>Y: Stop: web finished T2 and wrote its handover, it restarts once idle (the tab title reads "[shop] web: restarting")
   H->>W: idle 15 s: teamrig's mod runs /clear in the tab
   H-->>W: SessionStart: you were refreshed after T2, read your handover first
@@ -115,7 +115,10 @@ sequenceDiagram
   runs (a turn stopped with Escape counts as ended). Both read that from the transcript (work started within
   the last 6 hours); with teamrig's mod on, the tab also asks Claude Code itself before each `/clear`, so a refresh
   waits while the session still runs a helper the transcript no longer shows.
-- `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
+- The turn end takes the handover as ready by itself once it is written since the hook asked, with a `## State`
+  and a `## Next steps` section; one that falls short (missing, blank, too long, or without a section) is asked to
+  be fixed, once per version. `teamrig refresh --ready` still answers the ask, for a handover complete without a
+  section.
 - A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, off by default: the user types `/clear` once done with the screen). A hidden
   `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
   then leaves an ask for its tab. A session with no work it can start waits for work first (its tab title reads

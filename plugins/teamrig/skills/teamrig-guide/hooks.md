@@ -885,11 +885,15 @@ At the end of every turn, the Stop hook measures your context from the transcrip
 `refresh.contextTokens` (120,000 by default), at a task end after every `refresh.everyTasks` finished tasks (3) with the context at
 `refresh.everyTasksMinTokens` (80,000) or more, or when the lead asked with `teamrig refresh <id>`, it keeps you going with one instruction: write your handover to
 `<home>/teams/<team>/handover/<id>.md`, replacing the whole file, with what the register lacks, not task statuses (the fresh start
-[lists them live](#session-start)), then run `teamrig refresh --ready --session <id>`, and start nothing new (mid-task it says
-`refresh now rather than at a task end`). `--ready` refuses a handover over `refresh.handoverMaxBytes` (20,000
-bytes): rewrite it whole and short, since your fresh start reads all of it. A task you mark done between the ask and
-the turn's end keeps the refresh pending: `--ready` still takes the handover, after or before that `set`.
-After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
+[lists them live](#session-start)), in a `## State` and a `## Next steps` section, then end your turn and start
+nothing new (mid-task it says `refresh now rather than at a task end`). The turn's end takes a handover written since
+the ask with both sections as ready, with no call. One that falls short is asked to be fixed once per version:
+`teamrig: your handover is not ready yet: <gap>. It needs a ## State and ## Next steps section. Fix it and end your
+turn`, and where only a section is missing, `or, if it is complete as it is, run teamrig refresh --ready --session
+<id>`, the call that still answers the ask. A handover over `refresh.handoverMaxBytes` (20,000 bytes) falls short:
+rewrite it whole and short, since your fresh start reads all of it. A task you mark done between the ask and the
+turn's end keeps the refresh pending: the turn's end still takes the handover, after or before that `set`.
+Once it is taken, the turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
 /clear for a fresh start` and sets the tab title to `[shop] web: type /clear`: the user clears once done with the
 screen, which a `/clear` wipes. With `refresh.autoRestart: true` it says `teamrig starts it fresh once it has been
 idle 15 s (type anything to keep this context)` instead, the title reads `[shop] web: restarting`, and a hidden
