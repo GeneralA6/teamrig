@@ -425,8 +425,8 @@ const OPEN_PANEL = {
   watch: [MEETING_FILE],
   startedAt: '2030-01-08T10:00:00.000Z',
   items: [
-    { id: 'T1', title: 'Pick the release day', settled: true, decision: 'Tuesday' },
-    { id: 'bravo/T2', title: 'Raise the budget', settled: false, decision: null },
+    { id: 'T1', title: 'Pick the release day', settled: true, decision: 'Tuesday', summary: 'Ship on Tuesday or Thursday?' },
+    { id: 'bravo/T2', title: 'Raise the budget', settled: false, decision: null, summary: 'Lift the week cap to 60%?' },
   ],
   current: 'bravo/T2',
   left: 1,
@@ -481,16 +481,27 @@ async function panelTab($: Engine, on: On): Promise<PanelTab> {
 }
 
 describe("the meeting's agenda pane", () => {
-  test('opens while a meeting is open and draws its cards, the decided one with its decision', async ($, on) => {
+  test('opens while a meeting is open and draws its cards in sections, each with its summary, the decided one with its decision (T2519)', async ($, on) => {
     const tab = await panelTab($, on);
     await tab.clock.advance(PANEL_TICK);
     expect(tab.opened).toEqual(['meeting-agenda']);
     const pane = await $.ui.mount(AGENDA_PANE);
     expect((await pane.findAll({ type: 'Text' })).map((row) => row.text)).toEqual([
-      '1 to decide',
-      '✓ T1 Pick the release day: Tuesday',
-      '▶ bravo/T2 Raise the budget',
+      '1 to decide · 1 decided',
+      'On the table',
+      '▶ Raise the budget',
+      'Lift the week cap to 60%?',
+      'bravo/T2',
+      'Decided',
+      '✓ Pick the release day',
+      'Ship on Tuesday or Thursday?',
+      'Decided: Tuesday',
+      'T1',
     ]);
+    // Only the card on the table sits in a box, and the pane keeps gaps between its parts.
+    const boxes = await pane.findAll({ type: 'Box' });
+    expect(boxes.filter((box) => box.props['borderStyle'] === 'round').length).toBe(1);
+    expect(boxes[0]?.props['gap']).toBe(1);
     await pane.unmount();
   });
 

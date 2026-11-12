@@ -20,7 +20,8 @@ import {
   MEETING_PANEL_TIMEOUT_MS,
   MeetingPanelHand,
   meetingPanelCliArgv,
-  panelRows,
+  panelLayout,
+  type MeetingPanelCard,
 } from '../dist/mod/meeting-panel-hand.js';
 import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mod/wake-hand.js';
 import {
@@ -124,6 +125,8 @@ const MEETING_PANEL = atom({ plugin: 'teamrig', key: 'meetingPanel' } as const, 
 /** The agenda pane's id and tab title. */
 const MEETING_PANE = 'meeting-agenda';
 const MEETING_PANE_TITLE = 'Meeting agenda';
+/** The mark before each card's title: on the table, still to come, decided. */
+const CARD_MARKS: Readonly<Record<MeetingPanelCard['mark'], string>> = { current: '▶', next: '·', done: '✓' };
 
 /** The bands' Buttons, by the key a press names. */
 const REFRESH_NOW_KEY = 'refresh-now';
@@ -556,8 +559,30 @@ export const register: Register = (on) => {
     if (view === null) {
       return Text({ dimColor: true, children: 'No meeting is open.' });
     }
-    const rows = panelRows(view).map((row) => Text({ dimColor: row.mark === 'done', bold: row.mark === 'current', children: row.text }));
-    return Box({ flexDirection: 'column', children: rows });
+    // T2519: sections with gaps between them, and each card's summary under its title, so a vague title still says
+    // what is to decide; the card on the table sits in a rounded box at the top.
+    const layout = panelLayout(view);
+    const cardOf = (card: MeetingPanelCard) => {
+      const lines = [Text({ bold: card.mark !== 'done', dimColor: card.mark === 'done', children: `${CARD_MARKS[card.mark]} ${card.title}` })];
+      if (card.summary !== null) {
+        lines.push(Text({ wrap: 'wrap', children: card.summary }));
+      }
+      if (card.decision !== null) {
+        lines.push(Text({ wrap: 'wrap', children: `Decided: ${card.decision}` }));
+      }
+      lines.push(Text({ dimColor: true, children: card.id }));
+      return card.mark === 'current'
+        ? Box({ flexDirection: 'column', borderStyle: 'round', paddingX: 1, children: lines })
+        : Box({ flexDirection: 'column', paddingLeft: 2, children: lines });
+    };
+    const sections = layout.sections.map((section) =>
+      Box({
+        flexDirection: 'column',
+        gap: 1,
+        children: [Text({ bold: true, dimColor: true, children: section.heading }), ...section.cards.map(cardOf)],
+      }),
+    );
+    return Box({ flexDirection: 'column', paddingX: 1, paddingY: 1, gap: 1, children: [Text({ bold: true, children: layout.header }), ...sections] });
   });
 
   // The person's close of the agenda pane keeps it closed until another meeting starts.
