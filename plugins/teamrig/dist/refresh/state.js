@@ -4,10 +4,13 @@ import { parseObject, recordVersion, toJsonlLine, VERSION_FIELD } from "../core/
 /** The format of the refresh files this code reads and writes; a file in another format reads as absent. */
 export const REFRESH_FORMAT = 1;
 /**
- * The format of the state file (`<id>.json`): 2 adds the `baseline` of a fresh start. A format 1 file reads as it
- * did, with no baseline; a file in a newer format reads as absent and is never overwritten (`RefreshStore.setState`).
+ * The format of the state file (`<id>.json`): 2 adds the `baseline` of a fresh start, 3 the `largeWindow` every phase
+ * carries. A format 1 or 2 file reads as it did, with neither field; a file in a newer format reads as absent and is
+ * never overwritten (`RefreshStore.setState`).
  */
-export const REFRESH_STATE_FORMAT = 2;
+export const REFRESH_STATE_FORMAT = 3;
+/** The format before `largeWindow`, still read. */
+const REFRESH_STATE_FORMAT_2 = 2;
 /** A file of this format as an object; undefined for a damaged file or one in another format. */
 function recordOf(text) {
     const record = parseObject(text.trim());
@@ -17,7 +20,7 @@ function recordOf(text) {
 function stateRecordOf(text) {
     const record = parseObject(text.trim());
     const version = record === undefined ? undefined : recordVersion(record);
-    return record !== undefined && (version === REFRESH_FORMAT || version === REFRESH_STATE_FORMAT) ? record : undefined;
+    return record !== undefined && (version === REFRESH_FORMAT || version === REFRESH_STATE_FORMAT_2 || version === REFRESH_STATE_FORMAT) ? record : undefined;
 }
 /** The baseline field as a spread: absent for none, null while a fresh start waits for it; undefined when damaged. */
 function baselineOf(record) {
@@ -68,6 +71,14 @@ function standingAskOf(value) {
         ? undefined
         : { task, at, tokens, handoverHash, ...fix };
 }
+/** The window field as a spread: absent while nothing told; undefined when damaged. */
+function windowFieldOf(record) {
+    const largeWindow = record['largeWindow'];
+    if (largeWindow === undefined) {
+        return {};
+    }
+    return typeof largeWindow === 'boolean' ? { largeWindow } : undefined;
+}
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
 export function parseRefreshState(text) {
     const record = stateRecordOf(text);
@@ -75,9 +86,15 @@ export function parseRefreshState(text) {
     const task = record === undefined ? undefined : nullableString(record, 'task');
     const at = record === undefined ? undefined : stringField(record, 'at');
     const base = record === undefined ? undefined : baselineOf(record);
-    if (record === undefined || task === undefined || at === undefined || base === undefined) {
+    const window = record === undefined ? undefined : windowFieldOf(record);
+    if (record === undefined || task === undefined || at === undefined || base === undefined || window === undefined) {
         return undefined;
     }
+    const phase = phaseOf(record, task, at, base);
+    return phase === undefined ? undefined : { ...phase, ...window };
+}
+/** The phase a refresh state file names, its window field aside; undefined when damaged or unknown. */
+function phaseOf(record, task, at, base) {
     switch (record['phase']) {
         case 'boundary': {
             const finished = finishedOf(record, 1);

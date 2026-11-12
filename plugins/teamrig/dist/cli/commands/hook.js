@@ -30,7 +30,7 @@ import { blockOutput, stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
-import { decideStart, decideStop, reaskGrowth, thousands, } from "../../refresh/decide.js";
+import { decideStart, decideStop, reaskGrowth, thousands, thresholdOf, } from "../../refresh/decide.js";
 import { carryLines, carryStartOf, readCarry } from "../../refresh/carry.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -178,7 +178,7 @@ async function titleOutcome(runtime, kit, config, payload, read) {
  * work (T1383), cancels it, so the session keeps its context; one line tells the model, with the context growth
  * (`growth` tokens) that asks again. None when no restart waits, or one is already ending the session.
  */
-async function cancelledRestartLine(runtime, kit, id, growth) {
+async function cancelledRestartLine(runtime, kit, id, refresh) {
     const store = new RefreshStore(runtime.files, kit.paths);
     const parked = (await store.parked(id)) !== undefined;
     const pending = (await store.restart(id))?.phase === 'pending';
@@ -188,9 +188,12 @@ async function cancelledRestartLine(runtime, kit, id, growth) {
     if (pending) {
         await store.clearRestart(id);
     }
-    return parked || pending
-        ? `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew ${thousands(growth)} more`
-        : undefined;
+    if (!parked && !pending) {
+        return undefined;
+    }
+    // The growth past its ask at the session's own threshold: the larger one on a large window.
+    const growth = reaskGrowth({ contextTokens: thresholdOf(await store.state(id), refresh) });
+    return `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew ${thousands(growth)} more`;
 }
 /**
  * UserPromptSubmit: first stops a prompt that holds a secret, in a team or under a broken pointer, and cleans it out
@@ -245,7 +248,7 @@ export async function inboxReminder(args, runtime) {
     if (session !== undefined) {
         await logPrompt(runtime, { config, paths: kit.paths, id: session }, payload).catch(() => undefined);
     }
-    const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(sessionRefreshOf(config, session))).catch(() => undefined);
+    const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, sessionRefreshOf(config, session)).catch(() => undefined);
     const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
     // Read last, as reading marks the lines shown: a hook killed at its timeout before printing must leave them unshown.
     const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession, teamZone(config, runtime));
