@@ -3157,7 +3157,8 @@ The automatic context refresh's restart, when `refresh.autoRestart` is on (off b
 until the session has been idle `refresh.restartDelaySeconds` with nothing
 running, then asks the session's tab to run `/clear`, which teamrig's mod does there. While Claude Code lists a helper of
 the session still running, the mod holds the ask instead: the restart ends nothing, waits for quiet and asks
-again, and gives up an hour after it started. When no mod claims the ask
+again, and gives up an hour after it started. A mod that held an ask of the run and then answers none (as one did
+after a `/reload-plugins`) counts as holding too: it ends nothing. When no mod claims the ask
 within 10 seconds, it ends the session's Claude Code instead: `launch` starts it again in the same tab, and a tab
 teamrig did not open gets a new tab first; then it runs `refresh.endCommand`, if set. It ends no Claude Code that
 still runs a background shell (a background command or a monitor), since the end would take that too; the session

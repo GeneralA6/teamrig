@@ -133,7 +133,9 @@ sequenceDiagram
   (`hook clear-claim --hold --why <reason>`) and runs nothing: the restart ends nothing, waits for quiet and asks
   again, and an hour after it started gives up as it does for a busy session. Each hold's reason goes in
   `<session>.held` beside the ask's outcome, which stays the one word `held` that an older restart reads, and the
-  give-up's why names the last one; a helper's hold names each live agent's type, status and task. When no mod claims the ask within 10 s (a Claude Code that does not
+  give-up's why names the last one; a helper's hold names each live agent's type, status and task. A mod that held
+  an ask of the run and then answers none (as one did after a `/reload-plugins`) counts as holding too: the restart
+  ends nothing, and its give-up says the mod went silent. When no mod claims the ask within 10 s (a Claude Code that does not
   load mods), the restart ends the session's Claude Code and starts it again: in the same tab when `teamrig open`
   started it (`launch` starts it again), else in a new tab; if a turn ran meanwhile, it waits for quiet and asks
   again first. It never ends a Claude Code that still runs a background shell (a background command or a monitor),
