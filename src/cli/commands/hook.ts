@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { launchOf } from '../../config/launch.ts';
+import { autoRestartOf } from '../../config/refresh.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
@@ -684,7 +685,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
     session: { id, team: kit.paths.team, name: roster.nameOf(id) ?? id },
     handoverPath: store.handoverPath(id),
     command: KIT_NAME,
-    canRestart: config.refresh.autoRestart && target !== undefined,
+    canRestart: autoRestartOf(config, id) && target !== undefined,
     transcript: stringField(payload, 'transcript_path') ?? null,
   };
   // The facts are read only as far as the decision needs them: most turn ends stop at the transcript's tail.

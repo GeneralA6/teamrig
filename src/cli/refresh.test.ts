@@ -122,6 +122,28 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT, 'the notice shows once');
   });
 
+  it("says the lead starts fresh on its own by default, a member waits for /clear, and refresh.autoRestart overrides either", async () => {
+    const ready = async (config: JsonRecord, session: string): Promise<string | undefined> => {
+      const kit = new CliHarness(config);
+      await kit.files.write(TRANSCRIPT, transcript(300_000));
+      await finishTask(kit, session);
+      stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: session }, stdin: stopPayload() }));
+      await kit.files.write(HANDOVER(session), '# In progress\n');
+      return (await kit.run(['refresh', '--ready', '--session', session])).stdout[0];
+    };
+    const own = (path: string): string => `; your next start reads ${path}.`;
+    const fresh = `Ready. End your turn now: teamrig starts you fresh once you are idle, or asks the user to type /clear${own(HANDOVER('lead'))}`;
+    assert.equal(await ready(TEAM, 'lead'), fresh);
+    assert.equal(await ready(TEAM, 'alpha'), `Ready. Ask the user to type /clear${own(HANDOVER('alpha'))}`);
+    assert.equal(await ready({ ...TEAM, refresh: { autoRestart: true } }, 'alpha'), fresh.replace(HANDOVER('lead'), HANDOVER('alpha')));
+    assert.equal(await ready({ ...TEAM, refresh: { autoRestart: false } }, 'lead'), `Ready. Ask the user to type /clear${own(HANDOVER('lead'))}`);
+
+    const requested = await new CliHarness(TEAM).run(['refresh', 'bravo', '--session', 'lead']);
+    assert.match(requested.stdout[0] ?? '', /; then type \/clear in its tab$/);
+    const lead = await new CliHarness(TEAM).run(['refresh', 'lead', '--session', 'lead']);
+    assert.match(lead.stdout[0] ?? '', /; then it starts fresh once idle$/);
+  });
+
   it('asks for the handover at a task boundary over the threshold, then points the cleared session at it', async () => {
     const kit = new CliHarness();
     await kit.files.write(TRANSCRIPT, transcript(300_000));

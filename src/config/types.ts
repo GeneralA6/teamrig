@@ -1025,6 +1025,10 @@ export interface DecisionsConfig {
  * asked for it, the session writes a handover; then the user types /clear, or teamrig starts it fresh on its own
  * (`autoRestart`).
  */
+/** `refresh.autoRestart`: on or off for every session, or on for the team's lead only. */
+export const AUTO_RESTART_LEAD = 'lead';
+export type AutoRestart = boolean | typeof AUTO_RESTART_LEAD;
+
 export interface RefreshConfig {
   readonly enabled: boolean;
   /** The context size, in tokens, that asks for a refresh. Absolute, since a hook cannot see the window size. */
@@ -1043,9 +1047,11 @@ export interface RefreshConfig {
    * the plugin's mod runs /clear in its tab; where no mod claims the ask, end its Claude Code process and start
    * it again, in the same tab when `teamrig open` started it, else in a new tab. A session with no work it can start
    * then waits for the wake that brings it some, which starts it fresh instead of waking it (T1383). A prompt typed
-   * before then keeps the context. Off (the default): the user types /clear once done with the screen, which a /clear wipes.
+   * before then keeps the context. Off: the user types /clear once done with the screen, which a /clear wipes.
+   * `lead` (the default): on for the team's lead (`roles.lead`), whose context otherwise grows unasked overnight,
+   * off for every other session; it needs a way to restart the tab, as with `true`.
    */
-  readonly autoRestart: boolean;
+  readonly autoRestart: AutoRestart;
   /** How long after the turn's end the automatic restart waits, so the user can still type to keep the context. */
   readonly restartDelaySeconds: number;
   /**

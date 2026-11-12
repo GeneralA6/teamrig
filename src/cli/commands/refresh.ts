@@ -1,3 +1,4 @@
+import { autoRestartOf } from '../../config/refresh.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
@@ -64,7 +65,7 @@ export async function refresh(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
       case 'already':
         break;
     }
-    const next = config.refresh.autoRestart
+    const next = autoRestartOf(config, by)
       ? `End your turn now: ${KIT_NAME} starts you fresh once you are idle, or asks the user to type /clear`
       : 'Ask the user to type /clear';
     runtime.out.stdout(`Ready. ${next}; your next start reads ${store.handoverPath(by)}.`);
@@ -76,7 +77,7 @@ export async function refresh(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   await store.setRequest(id, { by, at: now });
   runtime.out.stdout(
     `REQUESTED a refresh of ${roster.nameOf(id) ?? id}: at its next turn end it writes its handover to ` +
-      `${store.handoverPath(id)}; ${config.refresh.autoRestart ? 'then it starts fresh once idle' : 'then type /clear in its tab'}`,
+      `${store.handoverPath(id)}; ${autoRestartOf(config, id) ? 'then it starts fresh once idle' : 'then type /clear in its tab'}`,
   );
   return EXIT.ok;
 }

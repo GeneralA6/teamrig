@@ -69,6 +69,8 @@ import {
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
+  AUTO_RESTART_LEAD,
+  type AutoRestart,
   AD_HOC_RUNNERS,
   PACKAGE_INSTALLS,
   BURST_POLICIES,
@@ -1636,6 +1638,16 @@ const HANDOVER_MAX_BYTES = { min: 0, max: 1_000_000 } as const;
 /** A program and its arguments. */
 const END_COMMAND_MAX_ITEMS = 16;
 
+/** `refresh.autoRestart`: true, false or `lead`; anything else is an issue and takes the default. */
+function autoRestartIn(read: ConfigReader, raw: JsonRecord, path: string, fallback: AutoRestart): AutoRestart {
+  const value = raw['autoRestart'];
+  if (value === undefined || value === AUTO_RESTART_LEAD || typeof value === 'boolean') {
+    return value ?? fallback;
+  }
+  read.report(`${path}.autoRestart`, `expected true, false or "${AUTO_RESTART_LEAD}", got ${describe(value)}`);
+  return fallback;
+}
+
 function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
   const path = 'refresh';
   const defaults = DEFAULT_REFRESH;
@@ -1646,7 +1658,7 @@ function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
     everyTasks: read.integer(raw, 'everyTasks', path, defaults.everyTasks, REFRESH_TASKS),
     everyTasksMinTokens: read.integer(raw, 'everyTasksMinTokens', path, defaults.everyTasksMinTokens, REFRESH_TOKENS),
     tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
-    autoRestart: read.boolean(raw, 'autoRestart', path, defaults.autoRestart),
+    autoRestart: autoRestartIn(read, raw, path, defaults.autoRestart),
     restartDelaySeconds: read.integer(raw, 'restartDelaySeconds', path, defaults.restartDelaySeconds, RESTART_DELAY_SECONDS),
     holdAfterActivityMinutes: read.integer(raw, 'holdAfterActivityMinutes', path, defaults.holdAfterActivityMinutes, HOLD_AFTER_ACTIVITY_MINUTES),
     countdownSeconds: read.integer(raw, 'countdownSeconds', path, defaults.countdownSeconds, COUNTDOWN_SECONDS),
