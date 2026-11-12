@@ -1349,6 +1349,31 @@
               "maximum": 3600
             }
           }
+        },
+        "statusLine": {
+          "description": "The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text, so a glance at any tab tells the meeting is on.",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Marks the status lines while the owner's daily meeting is open; they go back as they were at meeting end, or when the meeting lapses. On unless a team sets it false.",
+              "type": "boolean",
+              "default": true
+            },
+            "colour": {
+              "description": "The lead's status line colour while a meeting is open, as #rrggbb; the terminal must show 24-bit colour.",
+              "type": "string",
+              "default": "#d75fd7",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "heldText": {
+              "description": "The words every other tab's status line adds while a meeting is open, on one line.",
+              "type": "string",
+              "default": "meeting on: held",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[^\\r\\n]+$"
+            }
+          }
         }
       }
     },

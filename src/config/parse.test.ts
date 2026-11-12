@@ -356,6 +356,24 @@ describe('parseConfig', () => {
     }
   });
 
+  it('reads meeting.statusLine, on in magenta with "meeting on: held" by default, and refuses a bad colour or held text (T2513)', () => {
+    const defaults = { enabled: true, colour: '#d75fd7', heldText: 'meeting on: held' };
+    assert.deepEqual(parseConfig(ROSTER).config.meeting.statusLine, defaults);
+    const set = { enabled: false, colour: '#FF8800', heldText: 'held for the meeting' };
+    assert.deepEqual(parseConfig({ ...ROSTER, meeting: { statusLine: set } }).config.meeting.statusLine, set);
+    for (const colour of ['red', '#fff', '#12345g', 'd75fd7', 7]) {
+      const bad = parseConfig({ ...ROSTER, meeting: { statusLine: { colour } } });
+      assert.deepEqual([paths(bad.issues), bad.config.meeting.statusLine.colour], [['meeting.statusLine.colour'], defaults.colour], String(colour));
+    }
+    for (const heldText of ['x'.repeat(41), 'two\nlines', '', 3]) {
+      const bad = parseConfig({ ...ROSTER, meeting: { statusLine: { heldText } } });
+      assert.deepEqual([paths(bad.issues), bad.config.meeting.statusLine.heldText], [['meeting.statusLine.heldText'], defaults.heldText], String(heldText));
+    }
+    const notBoolean = parseConfig({ ...ROSTER, meeting: { statusLine: { enabled: 'no' } } });
+    assert.deepEqual([paths(notBoolean.issues), notBoolean.config.meeting.statusLine.enabled], [['meeting.statusLine.enabled'], true]);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, meeting: { statusLine: 'on' } }).issues), ['meeting.statusLine']);
+  });
+
   it('reads timeZone, leaves it unset by default, and refuses a name the system does not know', () => {
     assert.equal(parseConfig({ ...ROSTER, timeZone: 'Asia/Jerusalem' }).config.timeZone, 'Asia/Jerusalem');
     assert.equal('timeZone' in parseConfig(ROSTER).config, false);
