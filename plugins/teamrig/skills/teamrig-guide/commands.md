@@ -4172,8 +4172,10 @@ parent's session, with no cutoff check or ledger record of its own: it is part o
 wait on its own parent. So a repository's git hooks can wrap their checks in `teamrig queue` (no `--session`
 needed): a plain `git commit` then takes the host lock for its hook, and a commit or push under `queue`,
 `merge` or `deploy` does not wait on itself. Prefer that to `teamrig queue ... -- git commit`, which Claude
-Code's worktree guard refuses in a worktree session. A token naming no live lock (a leftover exported in a
-shell) is said and ignored.
+Code's worktree guard refuses in a worktree session. `merge` and `deploy` themselves refuse under a live token:
+they take the whole host lock, so under a queued step they would wait for that step to end while it waits for
+them. They wait in the host lock's line on their own, so run them unwrapped. A token naming no live lock (a
+leftover exported in a shell) is said and ignored.
 
 A pre-push hook needs one more thing: git opens the push's connection before the hook runs, so checks waiting in the
 lock's line keep it idle, and a host such as GitHub drops it; the push then fails after its checks passed. Give such
