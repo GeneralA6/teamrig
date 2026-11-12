@@ -308,7 +308,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       also a variable that overrides every model or effort choice, and a launch with a model but no effort,
       and a page webhook that gives no https URL
   page test                    posts one page marked TEST through the team's page webhook, as an expired login's
-      page goes; prints which team's alerts key paged, or why none went (exit 1), never the URL
+      page goes; prints which team's alerts key paged, or why none went and fails, never the URL
   compact [--dry-run] [--from-history]   archives the task list's log and rewrites its snapshot, so reads
       stay small; finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference; also moves the hooks' shown, hint and
