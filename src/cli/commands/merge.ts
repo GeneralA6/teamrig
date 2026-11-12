@@ -11,6 +11,7 @@ import type { ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, nextResetFrom } from '../delivery-ports.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
+import { refuseUnderParentLock } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
 
@@ -36,6 +37,8 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const places = deliveryPlaces(delivery, kit.paths);
   const say = logLineOf(runtime, zone);
   const tree = new LeadTree(config);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+  await refuseUnderParentLock(runtime, lock, say, zone, 'teamrig merge');
   const watching = await watchStarters(runtime, say);
   try {
     const { stop } = watching;
@@ -67,7 +70,7 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
           taskOf: async (id) => (await new JsonlEventLog(runtime.files, kit.paths.events).read()).state.tasks.get(id),
           clock: runtime.clock,
           sleep: stoppableSleep(runtime.sleep, stop),
-          lock: stoppableLock(hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone), stop),
+          lock: stoppableLock(lock, stop),
           env: runtime.env,
           platform: runtime.platform,
           nextReset: nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths)),

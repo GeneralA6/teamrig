@@ -180,4 +180,17 @@ describe('teamrig deploy', () => {
     assert.equal(result.stdout.at(-2), '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more');
     assert.deepEqual([hooks.ran, kit.files.get(LOCK), starters.openWatches], [[], heldBy(), 0]);
   });
+
+  it('refuses at once under a live queued step, which it would wait on while the step waits for it, deploying nothing', async () => {
+    const { kit, git, hooks } = world();
+    await kit.files.write(LOCK, heldBy());
+    const starters = new FakeStarterWatch();
+    const env = { ...ELSEWHERE.env, TEAMRIG_HOST_LOCK: 'other' };
+    const result = await kit.run(DEPLOY, { ...ELSEWHERE, env, mergeGit: git, hooks, starters, sessionProcesses: otherRuns() });
+    const refusal = result.stdout.at(-1) ?? '';
+    assert.equal(result.code, 2);
+    assert.ok(refusal.startsWith('REFUSED teamrig deploy takes the whole host lock itself, so under the queued step of '), refusal);
+    assert.ok(refusal.endsWith('run teamrig deploy without teamrig queue, as it waits in the host lock\'s line on its own'), refusal);
+    assert.deepEqual([hooks.ran, kit.files.get(LOCK), ledgerOf(kit), starters.openWatches], [[], heldBy(), [], 0]);
+  });
 });
