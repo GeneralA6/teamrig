@@ -11,7 +11,7 @@ import type { EffortLevel } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import { askFileOf, holdWhyFileOf, outcomeFileOf, type ClearMode } from '../mod/clear-hand.ts';
 import { ClearAsks, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
-import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, LOOKUP_FAILED, NO_HOLD_REASON, personHoldOf, restartMayAct, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, LOOKUP_FAILED, NO_HOLD_REASON, personHoldOf, restartMayAct, runRestart, SILENT_MOD, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
@@ -635,10 +635,19 @@ describe('runRestart while the tab holds its ask (a helper still runs)', () => {
   it('counts a hold that lands just before its withdraw as the tab\'s: nothing is ended that round', async () => {
     const world = await new World().arm();
     const asks = new HeldAtFirstWithdraw(world.files, ASK_DIR);
-    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'restarted', where: 'same tab', endCommand: { kind: 'done' } });
-    assert.equal(asks.withdraws, 2, 'the held round asked again');
-    assert.equal(world.clock.now() - START, 2 * (DELAY_MS + CLAIM_WAIT_MS), 'ended only after the second, unanswered ask');
-    assert.deepEqual(world.processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'failed', why: `${BUSY_HOUR} (${SILENT_MOD})` });
+    assert.ok(asks.withdraws >= 2, 'the held round asked again');
+    assert.deepEqual(world.processes.ends, []);
+  });
+
+  it('never ends a tab whose mod held an ask and then fell silent, as after a /reload-plugins (T2544): it gives up at the hour', async () => {
+    const world = await new World().arm({ supervised: false });
+    // Wait 3 is the first look for the tab's answer: held for the person; every later ask goes unanswered.
+    world.onSleep(3, () => world.holdAsk());
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'failed', why: `${BUSY_HOUR} (${SILENT_MOD})` });
+    assert.deepEqual([world.processes.ends, world.opened, world.processes.fed], [[], [], []]);
+    assert.equal(await world.store.restart('alpha'), undefined);
+    assert.ok(world.asksClosed());
   });
 
   it('gives up after an hour of held asks the way it does for a busy session: nothing ended, the context kept', async () => {
