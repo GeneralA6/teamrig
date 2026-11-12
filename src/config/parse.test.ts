@@ -1602,6 +1602,7 @@ describe('parseConfig budget', () => {
         subagentWeight: 2.15,
         extraWPerUsd: 120_000,
         reset: { weekday: 'wed', timeUtc: '01:00' },
+        resets: [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', note: 'one week cleared' }],
         targetPct: 99,
         reservePct: 1,
         shareFloorPct: 20,
@@ -1628,6 +1629,7 @@ describe('parseConfig budget', () => {
       subagentWeight: 2.15,
       extraWPerUsd: 120_000,
       reset: { weekday: 'wed', timeUtc: '01:00' },
+      resets: [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: [], note: 'one week cleared' }],
       targetPct: 99,
       reservePct: 1,
       shareFloorPct: 20,
@@ -1656,6 +1658,7 @@ describe('parseConfig budget', () => {
       subagentWeight: 2.15,
       extraWPerUsd: 120_000,
       reset: { weekday: 'wed', timeUtc: '01:00' },
+      resets: [{ kind: 'fable', count: 3, expiresUtc: '2027-03-09 07:59', usedUtc: ['2026-11-12 10:00'] }],
     };
 
     it("takes the team above's keys of the account's week for those it leaves unset", () => {
@@ -1687,6 +1690,50 @@ describe('parseConfig budget', () => {
       assert.equal(parseConfig({ ...ROSTER, budget: { shareFloorPct: 0 } }, above).config.budget.shareFloorPct, 0);
       assert.equal(parseConfig({ ...ROSTER, budget: { accountLead: 'web' } }, above).config.budget.accountLead, 'web');
     });
+  });
+
+  it('holds no resets beside the weekly one when the team lists none (T2450)', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.budget.resets, []);
+  });
+
+  it('reads reset grants with their uses, and an empty list as none (T2450)', () => {
+    const grants = [
+      { kind: 'fable', count: 3, expiresUtc: '2027-03-09 07:59', usedUtc: ['2026-11-12 10:00'] },
+      { kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00' },
+    ];
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { resets: grants } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.budget.resets, [grants[0], { ...grants[1], usedUtc: [] }]);
+    assert.deepEqual(parseConfig({ ...ROSTER, budget: { resets: [] } }).config.budget.resets, []);
+  });
+
+  it('drops a reset grant it cannot read whole and keeps the others (T2450)', () => {
+    const good = { kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: [] };
+    for (const [grant, path, message] of [
+      [{ kind: 'opus', count: 1, expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].kind', 'expected one of fable, full (got "opus")'],
+      [{ kind: 'full', expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].count', 'is required'],
+      [{ kind: 'full', count: 0, expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].count', 'expected an integer from 1 to 20, got 0'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-02-30 10:00' }, 'budget.resets[0].expiresUtc', 'expected a UTC time as YYYY-MM-DD HH:MM'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-12-10' }, 'budget.resets[0].expiresUtc', 'expected a UTC time as YYYY-MM-DD HH:MM'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: ['11-12 10:00'] }, 'budget.resets[0].usedUtc[0]', 'expected a UTC time as YYYY-MM-DD HH:MM'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: ['2026-11-12 10:00', '2026-11-13 10:00'] }, 'budget.resets[0].usedUtc', 'lists 2 uses of a grant of 1'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', note: 'two\nlines' }, 'budget.resets[0].note', undefined],
+      ['full', 'budget.resets[0]', 'expected an object, got "full"'],
+    ] as const) {
+      const { config, issues } = parseConfig({ ...ROSTER, budget: { resets: [grant, good] } });
+      assert.deepEqual(paths(issues), [path], JSON.stringify(grant));
+      if (message !== undefined) {
+        assert.equal(issues[0]?.message.startsWith(message), true, `${JSON.stringify(grant)}: ${issues[0]?.message ?? ''}`);
+      }
+      assert.deepEqual(config.budget.resets, [good], JSON.stringify(grant));
+    }
+  });
+
+  it('refuses more than 20 reset grants and holds none (T2450)', () => {
+    const grant = { kind: 'fable', count: 1, expiresUtc: '2027-03-09 07:59' };
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { resets: Array.from({ length: 21 }, () => grant) } });
+    assert.deepEqual(paths(issues), ['budget.resets']);
+    assert.deepEqual(config.budget.resets, []);
   });
 
   it('reads no main lead and the default floor when the team sets neither (T2215)', () => {

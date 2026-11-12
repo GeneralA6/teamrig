@@ -656,6 +656,33 @@ export interface BudgetReset {
   readonly timeUtc: string;
 }
 
+/**
+ * The resets the account holds beside its weekly one: `fable` refills the Fable bar and gives back what Fable used of the
+ * weekly limit, `full` clears all of the week's usage.
+ */
+export const RESET_KINDS = ['fable', 'full'] as const;
+
+export type ResetKind = (typeof RESET_KINDS)[number];
+
+export function isResetKind(value: unknown): value is ResetKind {
+  return RESET_KINDS.some((kind) => kind === value);
+}
+
+/**
+ * One grant of resets the account holds, with the uses taken from it: what is left is `count` minus `usedUtc`, and
+ * none of it can be used past `expiresUtc`. Claude Code does not tell a session about these, so the team writes them
+ * down as they are granted and used.
+ */
+export interface ResetStock {
+  readonly kind: ResetKind;
+  readonly count: number;
+  /** YYYY-MM-DD HH:MM, UTC. */
+  readonly expiresUtc: string;
+  /** When each use was taken, YYYY-MM-DD HH:MM UTC; at most `count`. */
+  readonly usedUtc: readonly string[];
+  readonly note?: string;
+}
+
 /** UTC hours in which the live warning applies `action` on its own, while the team sleeps. */
 export interface QuietHours {
   readonly startUtc: string;
@@ -690,7 +717,7 @@ export interface BudgetLiftConfig {
  * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
  * a tree read one week alike without a copy that drifts.
  */
-export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'] as const satisfies readonly (keyof BudgetConfig)[];
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset', 'resets'] as const satisfies readonly (keyof BudgetConfig)[];
 
 /** The keys of ACCOUNT_BUDGET_KEYS as a team reads them, its own or the team above's. */
 export type AccountBudget = Pick<BudgetConfig, (typeof ACCOUNT_BUDGET_KEYS)[number]>;
@@ -730,6 +757,8 @@ export interface BudgetConfig {
   readonly extraWPerUsd?: number;
   /** Unset: the team above's (`AccountBudget`), else the reset time the status line reports. */
   readonly reset?: BudgetReset;
+  /** The account's resets in stock beside the weekly one. Unset: the team above's (`AccountBudget`), else none. */
+  readonly resets: readonly ResetStock[];
   /** Use the week up to this share of the weekly limit. */
   readonly targetPct: number;
   /** Kept back for incidents until shortly before the reset. */
