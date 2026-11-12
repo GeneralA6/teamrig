@@ -114,14 +114,19 @@ export function isOpenMeeting(meeting) {
     return meeting.status === 'scheduled' || meeting.status === 'started';
 }
 /**
- * Whether `session` is in a booked meeting now, which holds its context refresh as the daily meeting holds the lead's
- * (src/refresh/decide.ts `meetingHolds`, T2111): one started (`meeting start M<n>`) that it is met in or joins, neither
- * ended nor dropped, and under MEETING_LAPSE_MS since its start, so a forgotten `meeting end` holds nothing for good.
- * The hold follows the start, not the slot, since a meeting the owner runs past its minutes is still on. A started
- * meeting's `changedAt` is its start: a move takes only a scheduled one, and an end or a drop finishes it.
+ * The booked meeting `session` is in now, which holds its context refresh as the daily meeting holds the lead's
+ * (src/refresh/decide.ts `meetingHolds`, T2111) and keeps its tab open through the idle pass (T2542): one started
+ * (`meeting start M<n>`) that it is met in or joins, neither ended nor dropped, and under MEETING_LAPSE_MS since its
+ * start, so a forgotten `meeting end` holds nothing for good. The hold follows the start, not the slot, since a meeting
+ * the owner runs past its minutes is still on. A started meeting's `changedAt` is its start: a move takes only a
+ * scheduled one, and an end or a drop finishes it. Undefined when it is in none.
  */
+export function bookedMeetingOf(meetings, session, now) {
+    return meetings.find((meeting) => meeting.status === 'started' && (meeting.session === session || meeting.with.includes(session)) && now < meeting.changedAt + MEETING_LAPSE_MS);
+}
+/** Whether `session` is in a booked meeting now ({@link bookedMeetingOf}). */
 export function inBookedMeeting(meetings, session, now) {
-    return meetings.some((meeting) => meeting.status === 'started' && (meeting.session === session || meeting.with.includes(session)) && now < meeting.changedAt + MEETING_LAPSE_MS);
+    return bookedMeetingOf(meetings, session, now) !== undefined;
 }
 /** When a meeting's slot ends, epoch ms. */
 export function endOf(meeting) {

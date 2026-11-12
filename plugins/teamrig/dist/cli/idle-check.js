@@ -2,6 +2,7 @@ import { dirname } from 'node:path';
 import { claudeProjectsDir, findTranscript } from "../budget/discover.js";
 import { KIT_NAME } from "../core/home.js";
 import { resumeVerdict } from "../hiring/rehire.js";
+import { bookedMeetingOf, MeetingSchedule } from "../meeting/schedule.js";
 import { workCutOffBy } from "../open/end-tab.js";
 import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "../refresh/running.js";
@@ -46,7 +47,8 @@ export async function idleFactsOf(runtime, kit, config, roster) {
         // A timed ask counts from its time, and only while its line is unseen.
         asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
     }
-    return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, now, zone: teamZone(config, runtime) };
+    const { meetings } = await new MeetingSchedule(runtime.files, kit.paths.meetings).read();
+    return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, now, zone: teamZone(config, runtime) };
 }
 /**
  * The transcript of `record`'s Claude Code session, measured: the one its start recorded while a file is there, else
@@ -86,7 +88,8 @@ function measuredOf(last) {
     return changedAt === undefined ? undefined : { ...last, changedAt };
 }
 /**
- * Whether `id` closes, with the checks in the order they cost: a role or open.idle.keepOpen that keeps it, not running in the host's
+ * Whether `id` closes, with the checks in the order they cost: a role, open.idle.keepOpen or a started booked owner
+ * meeting it is in that keeps it, not running in the host's
  * process list, work it can start within `maxPriority`, an urgent line waiting to wake it (closed, it would reopen at
  * the next pass for it), a time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
  * transcript in a project folder no folder `open` could resume it in has (`resumeFolderOf`: the project, or a folder
@@ -106,6 +109,11 @@ export async function idleVerdictOf(runtime, config, roster, facts, id, options)
     }
     if (config.open.idle.keepOpen.includes(id)) {
         return keep(`is in open.idle.keepOpen: ${KIT_NAME} never closes it`);
+    }
+    // The owner talks to the tab, not to the session's transcript, so a meeting's idle minutes say nothing (T2542).
+    const meeting = bookedMeetingOf(facts.meetings, id, facts.now);
+    if (meeting !== undefined) {
+        return keep(`is in the owner's open meeting ${meeting.id}: ${KIT_NAME} keeps it open until the meeting ends`);
     }
     const record = facts.records.get(id);
     const place = facts.places.find((each) => each.id === id);
