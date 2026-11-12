@@ -248,11 +248,11 @@ so it never loses work to a compaction.
    `refresh.contextTokens` (120,000 by default), at a task end after every third finished task with the context at 80,000 or more
    (`refresh.everyTasks`, `refresh.everyTasksMinTokens`), or the lead asked for a refresh (`teamrig refresh <id>`), it
    keeps you going with this instruction. While background work you started (subagents, background commands,
-   monitors, workflows) still runs, it adds before `Then run` how many still run, asks the handover to say what
+   monitors, workflows) still runs, it adds before `Then end your turn` how many still run, asks the handover to say what
    their results still need, and the fresh start waits until they all reported back:
 
    ```text
-   teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md, replacing the whole file (your fresh start reads all of it): what the register lacks (the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session web`. Do not start new work.
+   teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md, replacing the whole file (your fresh start reads all of it), with what the register lacks, not task statuses, which your fresh start reads live from the register: a `## State` section (where things are; the scratchpad files, plan file and scheduled jobs the next session still needs; questions still open with the user) and a `## Next steps` section (the next step of each task in progress; what to check later, and when). Then end your turn: the turn end takes the handover as ready. Do not start new work.
    ```
 
    Mid-task it says `teamrig: your context is 132k (refresh at 120k), so refresh now rather than at a task end.`
@@ -262,13 +262,16 @@ so it never loses work to a compaction.
    no other`, ending `and end your turn: the fresh start follows it`), and until the fresh start Claude Code's own
    compaction waits, up to `refresh.compactCeilingTokens` (185,000).
 
-2. Write the handover at that path, with what the register lacks: the next step of each task in progress, what to
-   check later and when, questions still open with the user, the scratchpad files, plan file and scheduled jobs the
-   next session still needs, and where things are (branches, worktrees, files, ids). Leave out task statuses, waits
-   and due dates: the fresh start reads them live from the register (step 5), and a copy here could only go stale.
-   It must be new: the old file left as it was is refused.
-3. Run `teamrig refresh --ready --session web`. It prints `Ready. Ask the user to type /clear; your next start
-   reads <path>.`. At the end of that turn the tab title becomes `[shop] web: type /clear` (the session's team and name;
+2. Write the handover at that path, with what the register lacks, in two sections: `## State` (where things are:
+   branches, worktrees, files, ids; the scratchpad files, plan file and scheduled jobs the next session still needs;
+   questions still open with the user) and `## Next steps` (the next step of each task in progress; what to check
+   later and when). Leave out task statuses, waits and due dates: the fresh start reads them live from the register
+   (step 5), and a copy here could only go stale. It must be new: the old file left as it was is not taken.
+3. End your turn. Its end takes the handover as ready, with no call: one written since the ask, with both sections,
+   at most `refresh.handoverMaxBytes` (20,000 bytes). One that falls short keeps you going once per version with
+   `teamrig: your handover is not ready yet: <gap>`; fix it and end your turn again. Where only a section is
+   missing and the handover is complete as it is, `teamrig refresh --ready --session web` answers instead, printing
+   `Ready. Ask the user to type /clear; your next start reads <path>.`. At the end of that turn the tab title becomes `[shop] web: type /clear` (the session's team and name;
    `refresh.tabTitle: false` turns that off; with `tabStatus.enabled`, after the tab's state circle).
 4. End your turn and start nothing new. The user types `/clear` once done with your screen, which a `/clear`
    wipes. With `refresh.autoRestart: true` the title reads `[shop] web: restarting` instead: once the tab has been

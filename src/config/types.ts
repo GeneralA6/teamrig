@@ -1057,7 +1057,7 @@ export interface RefreshConfig {
    */
   readonly compactCeilingTokens: number;
   /**
-   * `teamrig refresh --ready` refuses a handover larger than this many bytes: the fresh start reads all of it, so a
+   * The turn end (and `teamrig refresh --ready`) takes no handover larger than this many bytes: the fresh start reads all of it, so a
    * handover that grows section by section fills the next session's context before its work begins. 0: no cap.
    */
   readonly handoverMaxBytes: number;

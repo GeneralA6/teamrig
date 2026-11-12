@@ -3259,8 +3259,9 @@ or `FAILED to reopen shop-web (session web): <why>` (exit 1) when it could not w
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next
 `set ... --status done` it writes a handover, and the user types `/clear` for the fresh start once done with its
 screen (with `refresh.autoRestart` on, teamrig starts it fresh once it is idle, and one with no work it can start
-once a wake brings it some). A session whose handover is
-written runs `teamrig refresh --ready`, which refuses a handover over `refresh.handoverMaxBytes` (20,000 bytes;
+once a wake brings it some). The turn end takes a handover written since the ask, with a `## State` and a
+`## Next steps` section, as ready by itself; `teamrig refresh --ready` is the fallback for one the turn end asked to
+fix that is complete without a section. Both refuse a handover over `refresh.handoverMaxBytes` (20,000 bytes;
 0: no cap), since the fresh start reads all of it. With the automatic restart, the Stop hook runs `teamrig restart` hidden
 for the fresh start; you never run it. See
 [workflows.md](workflows.md#handover-at-high-context).
@@ -3268,7 +3269,7 @@ for the fresh start; you never run it. See
 Flags:
 
 - `--session <id|name>`: the caller.
-- `--ready`: you wrote your handover; end your turn for the fresh start.
+- `--ready`: you wrote your handover and the turn end asked to fix it; end your turn for the fresh start.
 
 Example:
 
