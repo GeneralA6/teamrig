@@ -15,7 +15,7 @@ import { isEffort, isModel } from "./launch.js";
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, } from "./limits.js";
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from "./migrate.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, GOALS_MODES, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
+import { AUTO_RESTART_LEAD, AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, GOALS_MODES, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 /** A role a team may leave to a team above it (ANCESTOR_ROLES): one of its sessions, or `<team>/<id>` (T1143). */
 const isRoleHolder = (holder) => SESSION_NAME.test(holder) || ADDRESS_PATTERN.test(holder) ? undefined : 'expected a session id of the team, or <team>/<id> of a team above it';
@@ -1285,6 +1285,15 @@ const COMPACT_CEILING_TOKENS = { min: 0, max: 10_000_000 };
 const HANDOVER_MAX_BYTES = { min: 0, max: 1_000_000 };
 /** A program and its arguments. */
 const END_COMMAND_MAX_ITEMS = 16;
+/** `refresh.autoRestart`: true, false or `lead`; anything else is an issue and takes the default. */
+function autoRestartIn(read, raw, path, fallback) {
+    const value = raw['autoRestart'];
+    if (value === undefined || value === AUTO_RESTART_LEAD || typeof value === 'boolean') {
+        return value ?? fallback;
+    }
+    read.report(`${path}.autoRestart`, `expected true, false or "${AUTO_RESTART_LEAD}", got ${describe(value)}`);
+    return fallback;
+}
 function parseRefresh(read, raw) {
     const path = 'refresh';
     const defaults = DEFAULT_REFRESH;
@@ -1295,7 +1304,7 @@ function parseRefresh(read, raw) {
         everyTasks: read.integer(raw, 'everyTasks', path, defaults.everyTasks, REFRESH_TASKS),
         everyTasksMinTokens: read.integer(raw, 'everyTasksMinTokens', path, defaults.everyTasksMinTokens, REFRESH_TOKENS),
         tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
-        autoRestart: read.boolean(raw, 'autoRestart', path, defaults.autoRestart),
+        autoRestart: autoRestartIn(read, raw, path, defaults.autoRestart),
         restartDelaySeconds: read.integer(raw, 'restartDelaySeconds', path, defaults.restartDelaySeconds, RESTART_DELAY_SECONDS),
         holdAfterActivityMinutes: read.integer(raw, 'holdAfterActivityMinutes', path, defaults.holdAfterActivityMinutes, HOLD_AFTER_ACTIVITY_MINUTES),
         countdownSeconds: read.integer(raw, 'countdownSeconds', path, defaults.countdownSeconds, COUNTDOWN_SECONDS),

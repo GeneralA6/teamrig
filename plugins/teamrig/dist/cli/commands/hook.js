@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { launchOf } from "../../config/launch.js";
+import { autoRestartOf } from "../../config/refresh.js";
 import { LeadTree } from "../../config/lead-tree.js";
 import { Roster } from "../../config/roster.js";
 import { recordConfigDir } from "../../budget/config-dir.js";
@@ -623,7 +624,7 @@ async function refreshDecisionOf(runtime, scope, payload) {
         session: { id, team: kit.paths.team, name: roster.nameOf(id) ?? id },
         handoverPath: store.handoverPath(id),
         command: KIT_NAME,
-        canRestart: config.refresh.autoRestart && target !== undefined,
+        canRestart: autoRestartOf(config, id) && target !== undefined,
         transcript: stringField(payload, 'transcript_path') ?? null,
     };
     // The facts are read only as far as the decision needs them: most turn ends stop at the transcript's tail.

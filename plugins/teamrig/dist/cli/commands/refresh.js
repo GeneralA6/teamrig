@@ -1,3 +1,4 @@
+import { autoRestartOf } from "../../config/refresh.js";
 import { errorMessage } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { boundaryOf, decideReady } from "../../refresh/decide.js";
@@ -59,7 +60,7 @@ export async function refresh(args, runtime) {
             case 'already':
                 break;
         }
-        const next = config.refresh.autoRestart
+        const next = autoRestartOf(config, by)
             ? `End your turn now: ${KIT_NAME} starts you fresh once you are idle, or asks the user to type /clear`
             : 'Ask the user to type /clear';
         runtime.out.stdout(`Ready. ${next}; your next start reads ${store.handoverPath(by)}.`);
@@ -69,6 +70,6 @@ export async function refresh(args, runtime) {
     const id = sessionIdOf(roster, target);
     await store.setRequest(id, { by, at: now });
     runtime.out.stdout(`REQUESTED a refresh of ${roster.nameOf(id) ?? id}: at its next turn end it writes its handover to ` +
-        `${store.handoverPath(id)}; ${config.refresh.autoRestart ? 'then it starts fresh once idle' : 'then type /clear in its tab'}`);
+        `${store.handoverPath(id)}; ${autoRestartOf(config, id) ? 'then it starts fresh once idle' : 'then type /clear in its tab'}`);
     return EXIT.ok;
 }
