@@ -903,7 +903,7 @@ idle 15 s (type anything to keep this context)` instead, the title reads `[shop]
 this tab. Where no mod claims it within 10 s, the restart ends this Claude Code and starts it again: in the same tab
 when `teamrig open` started it, else in a new tab. It never does that while this Claude Code runs a background shell
 (a background command or a monitor), which the end would take too: your inbox then says to type `/clear`, which
-keeps it. teamrig's own wake for work handed meanwhile waits for it, and wakes the fresh session. When you have no
+keeps it. When the turn ended in a forked worker Claude Code runs outside the tab (a fork of this conversation), the restart is armed against the tab's own Claude Code, never the worker. teamrig's own wake for work handed meanwhile waits for it, and wakes the fresh session. When you have no
 work you can start then (no task you may start now, at any priority), the restart waits for work instead: the message
 ends `it has no work it can start now, so teamrig starts it fresh once a wake brings it some (type anything to keep
 this context)`, the title reads `[shop] web: waits for work`, and the wake check that finds work for you (a task
