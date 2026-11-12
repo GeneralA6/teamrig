@@ -14,6 +14,12 @@ export interface StandingAsk {
   readonly at: string;
   readonly tokens: number | null;
   readonly handoverHash: string | null;
+  /**
+   * The fingerprint of a handover written since the ask that the turn end could not take as ready, and so asked the
+   * session to fix once (T2533); absent before any such ask. That version is never asked about again, so a session
+   * that leaves it as it is cannot loop the Stop hook.
+   */
+  readonly fixHash?: string;
 }
 
 /**
@@ -49,6 +55,8 @@ export type RefreshState =
       readonly tokens: number | null;
       readonly handoverHash: string | null;
       readonly midTurn: boolean;
+      /** As in `StandingAsk`: the handover version the turn end asked to be fixed. */
+      readonly fixHash?: string;
     }
   | {
       readonly phase: 'ready';
@@ -133,6 +141,15 @@ function hashOf(record: JsonRecord): string | null | undefined {
   return hash === null || typeof hash === 'string' ? hash : undefined;
 }
 
+/** The ask's `fixHash` as fields to spread: none when absent (a file from before it, or no fix asked), false when damaged. */
+function fixHashOf(record: JsonRecord): { readonly fixHash?: string } | false {
+  const hash = record['fixHash'];
+  if (hash === undefined) {
+    return {};
+  }
+  return typeof hash === 'string' ? { fixHash: hash } : false;
+}
+
 /** A boundary's standing ask: null for none, undefined when damaged. */
 function standingAskOf(value: unknown): StandingAsk | null | undefined {
   if (value === null) {
@@ -145,7 +162,10 @@ function standingAskOf(value: unknown): StandingAsk | null | undefined {
   const at = stringField(value, 'at');
   const tokens = tokensOf(value);
   const handoverHash = hashOf(value);
-  return task === undefined || at === undefined || tokens === undefined || handoverHash === undefined ? undefined : { task, at, tokens, handoverHash };
+  const fix = fixHashOf(value);
+  return task === undefined || at === undefined || tokens === undefined || handoverHash === undefined || fix === false
+    ? undefined
+    : { task, at, tokens, handoverHash, ...fix };
 }
 
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
@@ -174,9 +194,10 @@ export function parseRefreshState(text: string): RefreshState | undefined {
       const handoverHash = hashOf(record);
       // A file from before the mod asked within a turn was always the Stop hook's.
       const midTurn = record['midTurn'] ?? false;
-      return tokens === undefined || handoverHash === undefined || typeof midTurn !== 'boolean'
+      const fix = fixHashOf(record);
+      return tokens === undefined || handoverHash === undefined || typeof midTurn !== 'boolean' || fix === false
         ? undefined
-        : { phase: 'asked', task, at, tokens, handoverHash, midTurn };
+        : { phase: 'asked', task, at, tokens, handoverHash, midTurn, ...fix };
     }
     case 'ready': {
       const noticed = record['noticed'];

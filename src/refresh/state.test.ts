@@ -13,6 +13,8 @@ const EVERY_PHASE: readonly RefreshState[] = [
   { phase: 'asked', task: 'T12', at: AT, tokens: 262_000, handoverHash: '0123456789abcdef', midTurn: false },
   { phase: 'asked', task: 'T12', at: AT, tokens: null, handoverHash: null, midTurn: false },
   { phase: 'asked', task: null, at: AT, tokens: 131_000, handoverHash: null, midTurn: true },
+  { phase: 'asked', task: 'T12', at: AT, tokens: 262_000, handoverHash: null, midTurn: false, fixHash: 'fedcba9876543210' },
+  { phase: 'boundary', task: 'T13', at: AT, finished: 1, ask: { task: 'T12', at: AT, tokens: 262_000, handoverHash: null, fixHash: 'fedcba9876543210' } },
   { phase: 'ready', task: 'T12', at: AT, tokens: null, noticed: false, transcript: null, claudePid: null },
   { phase: 'ready', task: 'T12', at: AT, tokens: null, noticed: true, transcript: '/claude/projects/p/s.jsonl', claudePid: 6900 },
   { phase: 'refreshed', task: 'T12', at: AT },
@@ -58,6 +60,9 @@ describe('refresh state files', () => {
       '{"v":1,"phase":"boundary","task":"T1","at":"x","finished":1,"ask":7}',
       '{"v":1,"phase":"boundary","task":"T1","at":"x","finished":1,"ask":{"at":"x"}}',
       '{"v":1,"phase":"boundary","task":"T1","at":"x","finished":1,"ask":{"task":null,"at":"x","tokens":-1,"handoverHash":null}}',
+      '{"v":1,"phase":"asked","task":"T1","at":"x","tokens":1,"handoverHash":null,"fixHash":7}',
+      '{"v":1,"phase":"asked","task":"T1","at":"x","tokens":1,"handoverHash":null,"fixHash":null}',
+      '{"v":1,"phase":"boundary","task":"T1","at":"x","finished":1,"ask":{"task":null,"at":"x","tokens":1,"handoverHash":null,"fixHash":false}}',
       '[1]',
     ]) {
       assert.equal(parseRefreshState(text), undefined, text);
@@ -77,6 +82,13 @@ describe('refresh state files', () => {
       handoverHash: null,
       midTurn: false,
     });
+  });
+
+  it('reads an ask from before a fix was asked as one with none asked (T2533)', () => {
+    const asked = parseRefreshState('{"v":1,"phase":"asked","task":"T1","at":"x","tokens":1,"handoverHash":null,"midTurn":false}');
+    assert.equal(asked !== undefined && 'fixHash' in asked, false);
+    const boundary = parseRefreshState('{"v":1,"phase":"boundary","task":"T2","at":"x","finished":1,"ask":{"task":"T1","at":"x","tokens":1,"handoverHash":null}}');
+    assert.deepEqual(boundary, { phase: 'boundary', task: 'T2', at: 'x', finished: 1, ask: { task: 'T1', at: 'x', tokens: 1, handoverHash: null } });
   });
 
   it('reads a boundary or a judged one from before the task count as its first task, or none counted', () => {
