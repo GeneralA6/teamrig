@@ -89,7 +89,7 @@ async function deadRestart(config: JsonRecord, request: Partial<RestartRequest> 
   const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
   await check(kit);
   const left = new Date(kit.clock.now() - 2 * GIVE_UP_MS).toISOString();
-  await store.setRestart('alpha', { phase: 'pending', at: left, pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true, ...request });
+  await store.setRestart('alpha', { phase: 'pending', at: left, pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true, effort: null, ...request });
   await store.setState('alpha', ready ? READY : { phase: 'refreshed', task: 'T1', at: left });
   await hand(kit, 'Fix the login', 'p1');
   return { kit, store };
@@ -111,7 +111,7 @@ async function parkedRestart(config: JsonRecord, tab = ALPHA_TAB, ready = true):
   const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
   await check(kit);
   const at = new Date(kit.clock.now()).toISOString();
-  await store.setParked('alpha', { at, claudeSession: tab, transcript: null, cwd: null, supervised: true });
+  await store.setParked('alpha', { at, claudeSession: tab, transcript: null, cwd: null, supervised: true, effort: null });
   await store.setState('alpha', ready ? READY : { phase: 'refreshed', task: 'T1', at });
   return { kit, store };
 }
@@ -282,7 +282,7 @@ describe('hook wake-check', () => {
   it('never wakes a session while its automatic restart may act, whose prompt would cancel it, and wakes it for the work after (T980)', async () => {
     const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 } });
     const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
-    const request: RestartRequest = { phase: 'pending', at: new Date(kit.clock.now()).toISOString(), pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: false };
+    const request: RestartRequest = { phase: 'pending', at: new Date(kit.clock.now()).toISOString(), pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: false, effort: null };
     await check(kit);
     await store.setRestart('alpha', request);
     await hand(kit, 'Fix the login', 'p1');
@@ -298,7 +298,7 @@ describe('hook wake-check', () => {
     const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
     await check(kit);
     const left = new Date(kit.clock.now() - 2 * GIVE_UP_MS).toISOString();
-    await store.setRestart('alpha', { phase: 'pending', at: left, pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: false });
+    await store.setRestart('alpha', { phase: 'pending', at: left, pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: false, effort: null });
     await store.setState('alpha', READY);
     await hand(kit, 'Fix the login', 'p1');
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
@@ -380,7 +380,7 @@ describe('hook wake-check', () => {
     const underClaude = UNDER_CLAUDE();
     assert.deepEqual(answerOf(await checkUnder(kit, processes, underClaude)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
     const at = new Date(kit.clock.now()).toISOString();
-    assert.deepEqual(await store.restart('alpha'), { phase: 'pending', at, pid: 6900, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true });
+    assert.deepEqual(await store.restart('alpha'), { phase: 'pending', at, pid: 6900, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true, effort: null });
     assert.deepEqual(underClaude.lineages, [7000], 'the Claude Code process looked up once');
     const runners = (): string[][] => processes.hidden.filter((run) => run.args[1] === 'restart').map((run) => [run.command, run.cwd, ...run.args]);
     // The request names no folder, so the new tab opens in the one the tab's check runs in.
@@ -427,7 +427,7 @@ describe('hook wake-check', () => {
     const underClaude = UNDER_CLAUDE();
     assert.deepEqual(answerOf(await checkUnder(kit, processes, underClaude)), { kind: 'wait', watch: watchOf(), recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
     const at = new Date(kit.clock.now()).toISOString();
-    assert.deepEqual(await store.restart('alpha'), { phase: 'pending', at, pid: 6900, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true });
+    assert.deepEqual(await store.restart('alpha'), { phase: 'pending', at, pid: 6900, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: true, effort: null });
     assert.deepEqual([await store.parked('alpha'), underClaude.lineages, await logLines(kit)], [undefined, [7000], []], 'armed once, no wake logged');
     const runners = processes.hidden.filter((run) => run.args[1] === 'restart').map((run) => [run.command, run.cwd, ...run.args]);
     assert.deepEqual(runners, [['/usr/bin/node', APP, '/opt/teamrig/dist/cli/main.js', 'restart', 'alpha', '--team', 'app', '--at', at, '--project', APP]]);

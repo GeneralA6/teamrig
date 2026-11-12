@@ -257,7 +257,7 @@ describe('runCli: context refresh', () => {
     });
     const request = await store.restart('alpha');
     assert.ok(request);
-    assert.deepEqual(request, { phase: 'pending', at: request.at, pid: 6900, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true });
+    assert.deepEqual(request, { phase: 'pending', at: request.at, pid: 6900, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true, effort: null });
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"claudePid":6900/);
     // Each look starts a PowerShell on Windows: a slow hook is killed at Claude Code's timeout.
     assert.deepEqual([underClaude.described, underClaude.lineages], [[], [7000]], 'the Claude Code process looked up once');
@@ -268,6 +268,18 @@ describe('runCli: context refresh', () => {
     );
     assert.deepEqual(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(), sessionProcesses: UNDER_CLAUDE(), processes }), SILENT, 'announced once');
     assert.equal(processes.hidden.filter((run) => run.args[1] === 'restart').length, 1);
+  });
+
+  it('records the level the turn ran at in the restart request, so the restart can tell a changed launch level (T2444)', async () => {
+    const kit = new CliHarness(AUTO_RESTART_TEAM);
+    const store = await handoverWritten(kit);
+    await openTask(kit, 'alpha');
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
+    const stdin = stopPayload(true, { effort: { level: 'xhigh' } });
+    await kit.run(['hook', 'stop'], { env, stdin, sessionProcesses: UNDER_CLAUDE(), processes: new FakeProcesses() });
+    const request = await store.restart('alpha');
+    assert.ok(request);
+    assert.equal(request.effort, 'xhigh');
   });
 
   it('asks for /clear instead, leaving nothing armed, when the restart cannot start or is off (the default)', async () => {
@@ -302,7 +314,7 @@ describe('runCli: context refresh', () => {
     });
     const parked = await store.parked('alpha');
     assert.ok(parked);
-    assert.deepEqual(parked, { at: parked.at, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true });
+    assert.deepEqual(parked, { at: parked.at, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true, effort: null });
     assert.deepEqual([await store.restart('alpha'), processes.hidden.filter((run) => run.args[1] === 'restart')], [undefined, []], 'no fresh start to sit idle');
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"noticed":true.*"claudePid":6900/);
   });
@@ -354,7 +366,7 @@ describe('runCli: context refresh', () => {
   it('leaves a restart that is already ending the session alone', async () => {
     const kit = new CliHarness();
     const store = await handoverWritten(kit);
-    const request: RestartRequest = { phase: 'ending', at: '2030-01-08T10:00:00.000Z', pid: 6900, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true };
+    const request: RestartRequest = { phase: 'ending', at: '2030-01-08T10:00:00.000Z', pid: 6900, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true, effort: null };
     await store.setRestart('alpha', request);
     const result = await kit.run(['hook', 'inbox-reminder'], { ...AS_ALPHA, stdin: JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'hi' }) });
     assert.ok(!result.stdout.some((line) => line.includes('restart')));

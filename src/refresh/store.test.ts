@@ -36,7 +36,7 @@ describe('RefreshStore', () => {
   it('keeps the automatic restart in a file of its own, and reads a damaged one as none', async () => {
     const files = new MemoryFiles();
     const store = new RefreshStore(files, PATHS);
-    const restart: RestartRequest = { phase: 'pending', at: AT, pid: 4242, claudeSession: 'c-1', transcript: '/t/c-1.jsonl', cwd: null, supervised: false };
+    const restart: RestartRequest = { phase: 'pending', at: AT, pid: 4242, claudeSession: 'c-1', transcript: '/t/c-1.jsonl', cwd: null, supervised: false, effort: null };
     await files.write(join(PATHS.refresh, 'alpha.restart.json'), JSON.stringify({ v: 1, ...restart }));
     assert.deepEqual(await store.restart('alpha'), restart, 'the hand-written good file reads, so the damaged ones below fail for their field');
     await store.clearRestart('alpha');
@@ -45,8 +45,13 @@ describe('RefreshStore', () => {
     assert.deepEqual(await store.restart('alpha'), restart);
     await store.setRestart('alpha', { ...restart, phase: 'ending', supervised: true });
     assert.deepEqual(await store.restart('alpha'), { ...restart, phase: 'ending', supervised: true });
+    await store.setRestart('alpha', { ...restart, effort: 'xhigh' });
+    assert.deepEqual(await store.restart('alpha'), { ...restart, effort: 'xhigh' }, 'the level the turn ran at (T2444)');
+    // JSON leaves an undefined field out, as a file written before the level has it.
+    await files.write(join(PATHS.refresh, 'alpha.restart.json'), JSON.stringify({ v: 1, ...restart, effort: undefined }));
+    assert.deepEqual(await store.restart('alpha'), restart, 'a file from before the level reads as none');
     assert.equal(await store.state('alpha'), undefined, 'the state is another file');
-    for (const bad of [{ phase: 'later' }, { pid: 0 }, { pid: 'x' }, { transcript: 3 }, { supervised: 'no' }]) {
+    for (const bad of [{ phase: 'later' }, { pid: 0 }, { pid: 'x' }, { transcript: 3 }, { supervised: 'no' }, { effort: 'turbo' }, { effort: 3 }]) {
       await files.write(join(PATHS.refresh, 'alpha.restart.json'), JSON.stringify({ v: 1, ...restart, ...bad }));
       assert.equal(await store.restart('alpha'), undefined, JSON.stringify(bad));
     }
@@ -58,7 +63,7 @@ describe('RefreshStore', () => {
   it('keeps the restart held back until work comes in a file of its own, and reads a damaged one as none (T1383)', async () => {
     const files = new MemoryFiles();
     const store = new RefreshStore(files, PATHS);
-    const parked: ParkedRestart = { at: AT, claudeSession: 'c-1', transcript: '/t/c-1.jsonl', cwd: null, supervised: false };
+    const parked: ParkedRestart = { at: AT, claudeSession: 'c-1', transcript: '/t/c-1.jsonl', cwd: null, supervised: false, effort: null };
     assert.equal(await store.parked('alpha'), undefined);
     await store.setParked('alpha', parked);
     assert.deepEqual(await store.parked('alpha'), parked);
