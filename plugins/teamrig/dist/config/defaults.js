@@ -175,6 +175,16 @@ export const DEFAULT_LOOPS = { chainNudgeAt: 3 };
 export const DEFAULT_LEAD_BOUNDARY = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
 /** On, for a day: what a tab showed stays readable through a night of refreshes. */
 export const DEFAULT_TURN_LOG = { enabled: true, keepHours: 24 };
+/** The owner's order (T2405): 10 minutes ahead and at the slot, and a missed alert 5 minutes in, on every channel. */
+export const DEFAULT_MEETING_NOTICES = {
+    enabled: true,
+    beforeMinutes: 10,
+    atStart: true,
+    missedAfterMinutes: 5,
+    osToast: true,
+    tabToast: true,
+    leadInbox: true,
+};
 /**
  * On, for p0 and p1 only. In one team of 12 sessions, others handed a session 3 to 6 p1 tasks a day once its register
  * settled, so even all of them waking a session cold (about 210k W each) costs about 1.3M W a day, under 0.2% of

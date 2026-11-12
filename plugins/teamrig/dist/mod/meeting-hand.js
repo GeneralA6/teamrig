@@ -3,8 +3,9 @@
  * looks, so the plugin's mod (`hooks/register.ts`) runs a `MeetingHand` in every interactive tab. Every
  * MEETING_TICK_MS, a turn running or not, the hand asks the CLI (`hook meeting-due`) when the meetings file the CLI
  * named changed, when the time the CLI named came, or MEETING_RECHECK_MS after its last ask. The CLI marks each
- * meeting due as notified under the meetings lock, so one tab of the team sends it, and starts its OS notification;
- * the hand shows each notice it sent in the tab as a toast as well. Nothing is typed into the terminal.
+ * meeting's notice stage due (before, at the slot, missed; T2405) as sent under the meetings lock, so one tab of the
+ * team sends it, and starts its OS notification; the hand shows each notice it sent in the tab as a toast as well, a
+ * missed one staying the longest the engine shows a toast. Nothing is typed into the terminal.
  *
  * The mod runs inside Claude Code without Node, so this file imports nothing at run time but look-schedule.ts.
  */
@@ -15,6 +16,8 @@ export const MEETING_TICK_MS = 30_000;
 export const MEETING_RECHECK_MS = 10 * 60_000;
 /** How long one CLI run may take before it is stopped. */
 export const MEETING_TIMEOUT_MS = 30_000;
+/** The longest Claude Code shows a toast: its `ui.toast` drops one whose timeoutMs is over this (the engine's host check). */
+export const TOAST_MAX_MS = 60_000;
 /** The command line that runs the plugin's CLI as `hook meeting-due`, given the plugin's folder. */
 export function meetingCliArgv(pluginRoot) {
     return ['node', `${pluginRoot}/dist/cli/main.js`, 'hook', 'meeting-due'];
@@ -30,7 +33,26 @@ function noticeOf(value) {
         return undefined;
     }
     const { id, title, text } = value;
-    return typeof id === 'string' && typeof title === 'string' && typeof text === 'string' ? { id, title, text } : undefined;
+    if (typeof id !== 'string' || typeof title !== 'string' || typeof text !== 'string') {
+        return undefined;
+    }
+    const stage = stageOf(value['stage']);
+    const stayMs = stayOf(value['stayMs']);
+    return stage === undefined || stayMs === undefined ? undefined : { id, stage, title, text, stayMs };
+}
+/** A notice's stage; a CLI older than the stages (T2405) sends none, and its only notice was the one at the slot. */
+function stageOf(value) {
+    if (value === undefined) {
+        return 'start';
+    }
+    return typeof value === 'string' ? value : undefined;
+}
+/** How long a toast stays; an older CLI sends none, so the toast keeps Claude Code's default. */
+function stayOf(value) {
+    if (value === undefined || value === null) {
+        return null;
+    }
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 function noticesOf(value) {
     if (!Array.isArray(value)) {
@@ -110,7 +132,8 @@ export class MeetingHand {
             return { kind: 'waiting', recheckAt: answer.recheckAt };
         }
         for (const notice of answer.notices) {
-            this.host.toast(`${notice.title}: ${notice.text}`);
+            // A CLI asking a longer stay than the engine allows still gets its toast, for the longest the engine shows one.
+            this.host.toast(`${notice.title}: ${notice.text}`, notice.stayMs === null ? null : Math.min(notice.stayMs, TOAST_MAX_MS));
         }
         return { kind: 'notified', ids: answer.notices.map((notice) => notice.id) };
     }
