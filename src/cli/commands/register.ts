@@ -235,15 +235,35 @@ function warnReviewGap(runtime: CliRuntime, team: Team, task: Task, status: Task
  * for work is one command; never to the caller, who gave it. A line that cannot be posted is named, never thrown:
  * the task is written either way.
  */
-async function tellNewOwner(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
+async function tellNewOwner(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<readonly string[]> {
   if (!verdict.ok) {
-    return;
+    return [];
   }
   const { task, before } = verdict.value;
   if (task.owner === by || task.owner === before?.owner) {
+    return [];
+  }
+  return (await tellAssigned(runtime, team, by, task)) ? [task.owner] : [];
+}
+
+/** What a write that told none of its writer's leaders prints: the change is in the register, and the lead's prompt digest shows it. */
+export const REGISTER_ONLY_LINE = 'NOTED in the register (the lead sees it at its next prompt)';
+
+/**
+ * After a `set` or `update` with a note that a member of the team wrote: {@link REGISTER_ONLY_LINE} on stderr, unless
+ * the write told the lead or one of the writer's leaders (`told`, the sessions it posted a line to), so the session never
+ * says it reported to the lead what only the register holds. The task line stays the one stdout line a script reads.
+ * A write with no note, the lead's own writes and those of anyone not on the team get none.
+ */
+function noteRegisterOnly(runtime: CliRuntime, team: Team, by: string, note: string | undefined, verdict: Verdict<WriteResult>, told: readonly string[]): void {
+  const { lead } = team.config.roles;
+  if (!verdict.ok || (note?.trim() ?? '') === '' || by === lead || !team.config.sessions.includes(by)) {
     return;
   }
-  await tellAssigned(runtime, team, by, task);
+  const leaders = new Set([lead, ...new LeadTree(team.config, team.above).chainOf(by)]);
+  if (!told.some((who) => leaders.has(who))) {
+    runtime.out.stderr(REGISTER_ONLY_LINE);
+  }
 }
 
 /**
@@ -257,9 +277,9 @@ async function tellNewOwner(runtime: CliRuntime, team: Team, by: string, verdict
  * at once when it is due before the next. At once, the lead who asks the owner is woken, or the setter told how to
  * reach it: the team's lead (atOnceNote), or, for a child team, the lead at its tree's root (atOnceAtRoot, T1277).
  */
-async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
+async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<readonly string[]> {
   if (!verdict.ok) {
-    return;
+    return [];
   }
   const { lead } = team.config.roles;
   const { ownerSource } = team.config.register;
@@ -274,6 +294,7 @@ async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, v
   const ownLeader = leaders.leaderOf(task.owner) ?? leaders.above ?? lead;
   const receiverOf = (reason: PersonWait) => (reason.who === ownerSource ? ownLeader : reason.who);
   const addressed = { ...task, id: `${team.paths.team}/${task.id}` };
+  const told: string[] = [];
   for (const receiver of new Set(added.map(receiverOf))) {
     if (receiver === by) {
       continue;
@@ -284,6 +305,9 @@ async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, v
     const crossing = receiver === leaders.above;
     const text = `${personWaitNotice(crossing ? addressed : task, waits, receiver)}${when}`;
     const posted = crossing ? await tellLeadAbove(runtime, team, by, receiver, text) : await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
+    if (posted) {
+      told.push(receiver);
+    }
     if (owner?.timing.kind !== 'at-once') {
       continue;
     }
@@ -294,9 +318,10 @@ async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, v
     }
     const lined = receiver === formatAddress(root.address);
     const rootText = lined ? text : `${personWaitNotice(addressed, waits.filter((reason) => reason.who === ownerSource), formatAddress(root.address))}${when}`;
-    const told = lined ? posted : await tellAcross(runtime, team, by, root, rootText);
-    runtime.out.stderr(await atOnceAtRoot(runtime, team, by, task.id, root, told ? rootText : undefined));
+    const toldRoot = lined ? posted : await tellAcross(runtime, team, by, root, rootText);
+    runtime.out.stderr(await atOnceAtRoot(runtime, team, by, task.id, root, toldRoot ? rootText : undefined));
   }
+  return told;
 }
 
 /** A session of another team of the tree, and its team as the tree loaded it. */
@@ -476,7 +501,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (verdict.ok && input.status === 'in-progress' && verdict.value.before?.status !== 'in-progress') {
     noteBugHint(runtime, team, verdict.value.task);
   }
-  await tellLeadersOfWaits(runtime, team, by, verdict);
+  const told = await tellLeadersOfWaits(runtime, team, by, verdict);
   await tellAskerOfEnd(runtime, team, by, verdict);
   if (held !== undefined && warned && verdict.ok && met === null) {
     runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
@@ -500,6 +525,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (verdict.ok && input.status === 'waiting') {
     await markKeepWorkingAsk(runtime, paths, verdict.value);
   }
+  noteRegisterOnly(runtime, team, by, input.note, verdict, told);
   return exit;
 }
 
@@ -515,10 +541,9 @@ async function setAsking(runtime: CliRuntime, team: Team, by: string, id: string
     runtime.out.stdout(`ADDED ${formatTask(asked, undefined, new TaskTree(state.tasks, new Date(runtime.clock.now()), team.zone, undefined, elsewhere))}`);
   }
   const exit = report(runtime, verdict, 'SET', team);
-  if (verdict.ok && verdict.value.asked.owner !== by) {
-    await tellAssigned(runtime, team, by, verdict.value.asked);
-  }
-  await tellLeadersOfWaits(runtime, team, by, verdict);
+  const assigned = verdict.ok && verdict.value.asked.owner !== by && (await tellAssigned(runtime, team, by, verdict.value.asked)) ? [verdict.value.asked.owner] : [];
+  const told = await tellLeadersOfWaits(runtime, team, by, verdict);
+  noteRegisterOnly(runtime, team, by, input.note, verdict, [...assigned, ...told]);
   if (verdict.ok) {
     await markKeepWorkingAsk(runtime, team.paths, verdict.value);
   }
@@ -689,7 +714,7 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const sizeBase = typeof changes.size === 'number' ? await readSizeBase(runtime, team.paths, team.config.sessions, id, runtime.clock.now()) : undefined;
   const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'), sizeBase);
   const code = report(runtime, verdict, 'UPDATED', team);
-  await tellNewOwner(runtime, team, by, verdict);
+  noteRegisterOnly(runtime, team, by, args.flags.get('note'), verdict, await tellNewOwner(runtime, team, by, verdict));
   return code;
 }
 
