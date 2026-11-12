@@ -37,12 +37,12 @@ function byReopenOrder(a, b) {
 /**
  * The session's rest and the least urgent priority up to `configured` that wakes it now, as `hook wake-check` weighs
  * them: a session its budget holds or a short day pauses wakes, and so stays open, for p0 only, one in the budget's
- * quiet hours for p1 and p0 (`effectivePriority`). The wake it weighs is counted cold: a closed session reopens cold,
+ * quiet hours for p1 and p0, p0 alone when they block (`effectivePriority`). The wake it weighs is counted cold: a closed session reopens cold,
  * and a running one the pass would close has been quiet `open.headroom.closeIdleMinutes`.
  */
 async function wakeWeightOf(runtime, kit, config, roster, id, configured) {
     const rest = config.budget.enabled ? wakeRestOf(await budgetFactsOf(runtime, { kit, config, roster, id }, undefined), config.budget.quietHours, runtime.clock.now(), COLD_WAKE_W) : AWAKE;
-    return { rest, maxPriority: effectivePriority(configured, rest) };
+    return { rest, maxPriority: effectivePriority(configured, rest, config.budget.quietHours) };
 }
 /**
  * True when the session has an unfinished task past p0 within `configured`: the only tasks a rest (which caps that
