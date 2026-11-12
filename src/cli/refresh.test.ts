@@ -453,6 +453,17 @@ describe('runCli: context refresh', () => {
     assert.match(JSON.stringify(stopJson(await stop(154_000))), /"decision":"block","reason":"teamrig: your context is 154k/, 'asked once it grew 24k');
   });
 
+  it('refreshes a session launched on a 1M window only at 250k, and the rest at 120k', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false }, launch: { alpha: { model: 'opus[1m]' } } });
+    const stop = async (session: string, tokens: number): Promise<CliResult> => {
+      await kit.files.write(TRANSCRIPT, transcript(tokens));
+      return kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: session }, stdin: stopPayload() });
+    };
+    assert.deepEqual(await stop('alpha', 200_000), SILENT, 'alpha runs a 1M window');
+    assert.match(JSON.stringify(stopJson(await stop('alpha', 250_000))), /"reason":"teamrig: your context is 250k \(refresh at 250k\)/);
+    assert.match(JSON.stringify(stopJson(await stop('bravo', 130_000))), /"reason":"teamrig: your context is 130k \(refresh at 120k\)/);
+  });
+
   it('asks for the handover at any turn end over the threshold, mid-task, and again only once the context grew', async () => {
     const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
     const stop = async (tokens: number): Promise<CliResult> => {

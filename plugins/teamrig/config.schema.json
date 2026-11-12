@@ -1670,6 +1670,13 @@
           "maximum": 10000000,
           "default": 120000
         },
+        "largeWindowContextTokens": {
+          "description": "The context size, in tokens, that asks for a refresh of a session launched on a 1M-token window (its launch model ends in [1m]), when larger than contextTokens: a fresh session on it starts at over 120k (its system prompt, rules and handover), and the window has room far past it. 0: contextTokens for every window.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000,
+          "default": 250000
+        },
         "everyTasks": {
           "description": "Also refresh once this many tasks were finished since the context was last fresh (a /clear, a new process or a compaction); 0 turns it off.",
           "type": "integer",

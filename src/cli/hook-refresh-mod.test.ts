@@ -104,6 +104,15 @@ describe('runCli: hook refresh-mid', () => {
     assert.equal(((await tab.mid(154_000)) as { kind: string }).kind, 'ask');
   });
 
+  it('refreshes a session launched on a 1M window at largeWindowContextTokens', async () => {
+    const tab = new Tab({ ...TEAM, refresh: { tabTitle: false }, launch: { alpha: { model: 'opus[1m]' } } });
+    await tab.transcript('{}\n');
+    assert.deepEqual(await tab.mid(200_000), { kind: 'wait', nextAt: 250_000 });
+    const off = new Tab({ ...TEAM, refresh: { tabTitle: false, largeWindowContextTokens: 0 }, launch: { alpha: { model: 'opus[1m]' } } });
+    await off.transcript('{}\n');
+    assert.deepEqual(await off.mid(100_000), { kind: 'wait', nextAt: 120_000 }, '0: the one threshold');
+  });
+
   it('asks within the turn once the context reaches the threshold, and the turn end asks once more until the handover is written', async () => {
     const tab = new Tab();
     await tab.transcript('{}\n');
