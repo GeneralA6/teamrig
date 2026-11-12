@@ -245,7 +245,7 @@ teamrig refreshes a long-running session at a turn end once its context is large
 so it never loses work to a compaction.
 
 1. At the end of every turn, the Stop hook measures your context. When it is at or over
-   `refresh.contextTokens` (120,000 by default; `refresh.largeWindowContextTokens`, 250,000, for a session launched on a 1M window, a `[1m]` model), at a task end after every third finished task with the context at 80,000 or more
+   `refresh.contextTokens` (120,000 by default; `refresh.largeWindowContextTokens`, 250,000, for a session on a 1M window: a `[1m]` model, or one whose window teamrig infers from the window the mod reports, a context past 200k or a fresh start measured over `refresh.contextTokens`), at a task end after every third finished task with the context at 80,000 or more
    (`refresh.everyTasks`, `refresh.everyTasksMinTokens`), or the lead asked for a refresh (`teamrig refresh <id>`), it
    keeps you going with this instruction. While background work you started (subagents, background commands,
    monitors, workflows) still runs, it adds before `Then end your turn` how many still run, asks the handover to say what
