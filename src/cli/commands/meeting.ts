@@ -9,7 +9,7 @@ import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
-import { mergeDigestLines, type MergeDigestInput } from '../../meeting/merges.ts';
+import { mergeDigestLines, type MergeDigestInput, type MergeLogAt } from '../../meeting/merges.ts';
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
@@ -154,11 +154,30 @@ function phaseLine(phase: MeetingPhase, mk: MeetingKit): string {
   }
 }
 
-/** The self-merges digest's input: the team's merges log, read once, from the agenda's start. */
-async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number): Promise<MergeDigestInput> {
-  const { merges } = deliveryPlaces(mk.config.delivery, mk.kit.paths);
-  const gated = mk.config.pushGuard.pushToProtected === 'gated';
-  return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
+/**
+ * The self-merges digest's input, from the agenda's start: the lead's team's merges log, then each other log of a team
+ * under it (T2457), each path read once, as teams sharing a `delivery.dir` share its log.
+ */
+async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number, { own, teams }: RollUp): Promise<MergeDigestInput> {
+  const pathOf = (rolled: RolledTeam): string => deliveryPlaces(rolled.config.delivery, rolled.paths).merges;
+  const readAt = async (path: string): Promise<MergeLogAt> => ({ log: await new MergeLog(runtime.files, path).read(), path });
+  const ownPath = pathOf(own);
+  const seen = new Set([ownPath]);
+  const below: RolledTeam[] = [];
+  for (const rolled of teams) {
+    const path = pathOf(rolled);
+    if (!seen.has(path)) {
+      seen.add(path);
+      below.push(rolled);
+    }
+  }
+  return {
+    own: await readAt(ownPath),
+    below: await Promise.all(below.map(async (rolled) => ({ team: rolled.team, ...(await readAt(pathOf(rolled))) }))),
+    since,
+    zone: mk.zone,
+    gated: teams.some((rolled) => rolled.config.pushGuard.pushToProtected === 'gated'),
+  };
 }
 
 /** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
@@ -219,7 +238,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   runtime.out.stdout(`  each other section: ${KIT_NAME} stats --tree --session ${mk.lead} (new work, speed, delays, waits, bugs, people, goals, areas)`);
   const scheduled = await new MeetingSchedule(runtime.files, mk.kit.paths.meetings).read();
   agendaMeetingLines(scheduled.meetings, mk.zone, mk.now).forEach((line) => runtime.out.stdout(line));
-  mergeDigestLines(await mergeDigestOf(runtime, mk, since)).forEach((line) => runtime.out.stdout(line));
+  mergeDigestLines(await mergeDigestOf(runtime, mk, since, rolled)).forEach((line) => runtime.out.stdout(line));
   await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
   runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
   const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);

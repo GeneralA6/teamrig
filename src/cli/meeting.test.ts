@@ -8,6 +8,8 @@ import { MergeLog, type SelfMerge } from '../merge/merge-log.ts';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
+import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
+import { formatConfig } from '../config/load.ts';
 import { EXIT } from './runtime.ts';
 
 const MINUTE = 60_000;
@@ -389,5 +391,40 @@ describe('runCli: the daily meeting', () => {
     assert.ok(stdout.indexOf('DONE 0 done, 0 dropped since Mon 01-07 10:00 UTC') < merges, stdout.join('\n'));
     const plain = await teamBeforeTheMeeting();
     assert.ok(!(await plain.run(['meeting', 'agenda', '--session', 'lead'])).stdout.some((line) => line.startsWith('MERGES ')));
+  });
+
+  // T2457: a child team's self-merges reach the root lead's meeting; a log teams share is read once.
+  it("lists the self-merges of each team under the lead after its own, by <team>/<session>, reading a shared log once", async () => {
+    const landed = (session: string, branch: string): SelfMerge => ({
+      at: '2030-01-08T09:00:00.000Z',
+      session,
+      repo: 'app',
+      branch,
+      task: 'T1',
+      base: 'b'.repeat(40),
+      head: 'h'.repeat(40),
+      tree: 'e'.repeat(40),
+      files: 1,
+      lines: 6,
+      checks: ['unit'],
+      review: 'untouched',
+      route: 'self',
+    });
+    const kit = await treeHarness({ pushGuard: { pushToProtected: 'gated' } });
+    const rootDeploys = join(TEAM_HOME, 'state', 'deploys');
+    await kit.files.write(teamConfigOf('ops'), formatConfig({ ...SUB_TEAMS['ops'], delivery: { dir: rootDeploys } }));
+    const rootLog = new MergeLog(kit.files, join(rootDeploys, 'merges.jsonl'));
+    await rootLog.append(landed('alpha', 't1-root'));
+    await rootLog.append(landed('run', 't2-shared'));
+    await new MergeLog(kit.files, join(teamHomeOf('web'), 'state', 'deploys', 'merges.jsonl')).append(landed('front', 't3-web'));
+    const { stdout } = await kit.run(['meeting', 'agenda', '--session', 'lead']);
+    const merges = stdout.findIndex((line) => line.startsWith('MERGES '));
+    assert.deepEqual(stdout.slice(merges, merges + 4), [
+      'MERGES 3 merged with no approval since Mon 01-07 10:00 UTC, 0 CHECK-CLEAN (security samples those weekly)',
+      '  Tue 01-08 09:00 UTC alpha app t1-root bbbbbbbb..hhhhhhhh: 1 files, 6 lines, checks unit',
+      '  Tue 01-08 09:00 UTC run app t2-shared bbbbbbbb..hhhhhhhh: 1 files, 6 lines, checks unit',
+      '  Tue 01-08 09:00 UTC web/front app t3-web bbbbbbbb..hhhhhhhh: 1 files, 6 lines, checks unit',
+    ]);
+    assert.equal(stdout.filter((line) => line.includes(' t2-shared ')).length, 1, stdout.join('\n'));
   });
 });
