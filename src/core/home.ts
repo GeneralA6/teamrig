@@ -233,6 +233,10 @@ export interface TeamPaths {
   readonly sessions: string;
   /** What each session's tab shows and what it asks the user, `<id>.json` each, for the needs-you band (src/tabs/need.ts). */
   readonly tabs: string;
+  /** Each asking tab's ask the OS notification told of, so one tab of the team sends it (src/tabs/needs-you.ts). */
+  readonly needsYouSent: string;
+  /** Held while a tab marks the asks it sends the OS notification of. */
+  readonly needsYouLock: string;
   /** Each session `teamrig close` ended and `teamrig open` started again, an append-only log (src/sessions/log.ts). */
   readonly sessionLog: string;
   /** Each kind of secret a tool's result held and the task that has it rotated, an append-only audit log nothing trims (src/secret-guard/incidents.ts). */
@@ -346,6 +350,8 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     turnLog: join(state, 'turn-log'),
     sessions: join(state, 'sessions'),
     tabs: join(state, 'tabs'),
+    needsYouSent: join(state, 'needs-you-sent.json'),
+    needsYouLock: join(state, 'needs-you.lock'),
     sessionLog: join(state, 'session-log.jsonl'),
     secretIncidents: join(state, 'secret-incidents.jsonl'),
     secretIncidentsLock: join(state, 'secret-incidents.lock'),

@@ -6289,6 +6289,46 @@ Output: one JSON line, exit 0: `{"kind":"due","notices","watch","recheckAt"}` (`
 default time when null; ask again once the `watch` file changes or at `recheckAt`, null
 when no meeting waits for its time), or `{"kind":"off","why"}`.
 
+### teamrig hook needs-you
+
+Run by the plugin's mod in every open tab of the team, every 10 s, with `needsYou.enabled` on. It reads each session's
+tab file (`<team>/state/tabs/<id>.json`, which the tab-status, tool-end and stop hooks keep) and answers the asks of
+the team's other tabs now, of a kind `needsYou.kinds` names: a permission prompt, a question or plan, an MCP form, a
+`Decision needed:` line or an API error. A file whose Claude Code process no longer runs asks nobody. During the
+owner's open meeting each ask still shows, but offers Focus only when its task is a p0 one. With `needsYou.osToast`
+on, it also starts one OS notification per ask across the team, marked sent under a lock so one tab sends it. It
+writes nothing else. Stdin: `{"session_id", "cwd"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook needs-you < session.json
+```
+
+Output: one JSON line, exit 0: `{"kind":"asks","asks"}` (`asks`: newest first, each as
+`{"session","tab","kind","text","task","since","focus"}`, `tab` the asking tab's title and `focus` whether its band
+offers Focus), or `{"kind":"off","why"}`.
+
+### teamrig hook needs-you-focus
+
+Run by the plugin's mod when the person clicks Focus on the needs-you band: brings the asking tab of `session` to the
+front, as `meeting start` does (Windows Terminal or tmux, by `open.terminal`). Refused when that tab asks nothing
+now, or the owner's meeting is open and its ask is no p0 task's, so a stale band moves nothing. Stdin:
+`{"session_id", "cwd", "session"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook needs-you-focus < focus.json
+```
+
+Output: one JSON line, exit 0: `{"kind":"focused"|"behind"|"none","text"}` (`behind`: selected in its window while
+Windows kept another app's window in front), `{"kind":"refused","why"}` or `{"kind":"off","why"}`.
+
 ### teamrig hook meeting-panel
 
 Run by the plugin's mod in a team session's tab, when the meeting file (`<team>/state/meeting.json`) or a register the
