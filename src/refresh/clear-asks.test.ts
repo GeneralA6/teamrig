@@ -8,7 +8,8 @@ import { ClearAsks, clearAskDir, HOLD_WHY_MAX_CHARS, type ClearAsk, type PostedC
 const DIR = '/kit/clear-asks';
 const SESSION = '0123abcd-0000-4000-8000-00000000000a';
 const OTHER = '0123abcd-0000-4000-8000-00000000000b';
-const ASK: ClearAsk = { team: 'app', id: 'alpha', at: '2030-01-08T09:59:59.000Z', askedAt: '2030-01-08T10:00:15.000Z' };
+const OLD_ASK = { team: 'app', id: 'alpha', at: '2030-01-08T09:59:59.000Z', askedAt: '2030-01-08T10:00:15.000Z' };
+const ASK: ClearAsk = { ...OLD_ASK, mode: 'clear' };
 const POSTED: PostedClearAsk = { ...ASK, hold: { countdownMs: 20_000, afterActivityMs: 300_000 }, askEveryMs: 15_000 };
 const ASK_PATH = askFileOf(DIR, SESSION) ?? '';
 const OUTCOME_PATH = outcomeFileOf(DIR, SESSION) ?? '';
@@ -28,8 +29,31 @@ describe('ClearAsks', () => {
     assert.deepEqual(JSON.parse(files.get(ASK_PATH) ?? ''), POSTED, 'the file carries the hold');
     assert.deepEqual(await asks.ask(SESSION), ASK, 'a claim reads the ask without it');
     assert.equal(await asks.ask(OTHER), undefined);
-    await files.write(ASK_PATH, JSON.stringify(ASK));
-    assert.deepEqual(await asks.ask(SESSION), ASK, "an older restart's ask, with no hold");
+    await files.write(ASK_PATH, JSON.stringify(OLD_ASK));
+    assert.deepEqual(await asks.ask(SESSION), ASK, "an older restart's ask, with no hold and no mode, is a /clear");
+  });
+
+  it('reads an end ask as one, and any other mode as a /clear (T2444)', async () => {
+    const files = new MemoryFiles();
+    const asks = new ClearAsks(files, DIR);
+    await asks.post(SESSION, { ...POSTED, mode: 'end' });
+    assert.equal((await asks.ask(SESSION))?.mode, 'end');
+    for (const mode of ['restart', 3, null]) {
+      await files.write(ASK_PATH, JSON.stringify({ ...OLD_ASK, mode }));
+      assert.equal((await asks.ask(SESSION))?.mode, 'clear', String(mode));
+    }
+  });
+
+  it('lets the first of an end claim, a claim and a withdraw win (T2444)', async () => {
+    const asks = new ClearAsks(new MemoryFiles(), DIR);
+    await asks.post(SESSION, { ...POSTED, mode: 'end' });
+    assert.equal(await asks.claimEnd(SESSION), true);
+    assert.equal(await asks.claim(SESSION), false);
+    assert.equal(await asks.withdraw(SESSION), false);
+    assert.equal(await asks.outcome(SESSION), 'end');
+    await asks.post(OTHER, { ...POSTED, mode: 'end' });
+    assert.equal(await asks.withdraw(OTHER), true);
+    assert.equal(await asks.claimEnd(OTHER), false);
   });
 
   it('reads no ask from a damaged file, or one whose team or id would leave its folder', async () => {

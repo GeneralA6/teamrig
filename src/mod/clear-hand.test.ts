@@ -38,6 +38,8 @@ function askOf(n: number, hold: PersonHold = NO_HOLD, at: string = AT, askEveryM
 
 const ASK = askOf(1);
 const NEXT_ASK = askOf(2);
+/** An ask to end the session (its launch level changed), which the hand claims with --end and runs no /clear for. */
+const END_ASK = `${JSON.stringify({ ...JSON.parse(ASK), mode: 'end' })}\n`;
 
 /** A helper that handed its report back yet is still listed, and one at work. */
 const READER: ListedAgent = { type: 'code-reader', status: 'idle', description: 'Map the market-data pages' };
@@ -60,6 +62,7 @@ class FakeHost implements ClearHandHost {
   dirRun: CliRun | Error = { exitCode: 0, stdout: `${DIR}\n` };
   claimRun: CliRun = { exitCode: 0, stdout: 'taken\n' };
   holdRun: CliRun = { exitCode: 0, stdout: 'held\n' };
+  endRun: CliRun = { exitCode: 0, stdout: 'end\n' };
   /** The session's live agents as Claude Code lists them, or why the list failed. */
   live: readonly ListedAgent[] | Error = [];
   agentLists = 0;
@@ -88,7 +91,10 @@ class FakeHost implements ClearHandHost {
   async cli(args: readonly string[], stdin: string): Promise<CliRun> {
     this.calls.push({ args, stdin });
     if (args[1] !== 'clear-dir') {
-      return args.includes('--hold') ? this.holdRun : this.claimRun;
+      if (args.includes('--hold')) {
+        return this.holdRun;
+      }
+      return args.includes('--end') ? this.endRun : this.claimRun;
     }
     if (this.dirRun instanceof Error) {
       throw this.dirRun;
@@ -144,6 +150,35 @@ describe('ClearHand', () => {
     ]);
     assert.deepEqual(await hand.tick(), { kind: 'no ask' }, 'the same ask again');
     assert.equal(host.clears, 1);
+  });
+
+  it('claims an end ask with --end and runs no /clear, so the runner ends the session at its new level (T2444)', async () => {
+    const host = new FakeHost();
+    const hand = new ClearHand(host);
+    host.ask(END_ASK);
+    assert.deepEqual(await hand.tick(), { kind: 'ending' });
+    assert.equal(host.clears, 0);
+    assert.deepEqual(
+      host.claims().map((call) => call.args),
+      [['hook', 'clear-claim', '--end']],
+    );
+    assert.equal(hand.band(), undefined, 'no band once the ask is claimed');
+  });
+
+  it('holds an end ask as it holds a /clear, and runs no /clear when the end claim is declined (T2444)', async () => {
+    const host = new FakeHost();
+    const hand = new ClearHand(host);
+    host.live = [READER];
+    host.ask(END_ASK);
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: READER_HOLD });
+    host.live = [];
+    host.endRun = { exitCode: 0, stdout: 'declined: the restart took its ask back\n' };
+    host.ask(`${JSON.stringify({ ...JSON.parse(NEXT_ASK), mode: 'end' })}\n`);
+    assert.deepEqual(await hand.tick(), { kind: 'declined', why: 'declined: the restart took its ask back' });
+    host.endRun = { exitCode: 0, stdout: 'taken\n' };
+    host.ask(`${JSON.stringify({ ...JSON.parse(askOf(3)), mode: 'end' })}\n`);
+    assert.deepEqual(await hand.tick(), { kind: 'declined', why: 'taken' }, 'only `end` lets an end ask go on');
+    assert.equal(host.clears, 0);
   });
 
   it('leaves an ask that comes during a turn, and acts on the next one', async () => {
@@ -558,8 +593,15 @@ describe('the band', () => {
 
 describe('parseHandAsk', () => {
   it("reads the ask's request, the hold it carries and the restart's quiet delay", () => {
-    assert.deepEqual(parseHandAsk(askOf(1, HOLD)), { request: AT, hold: HOLD, askEveryMs: 15_000 });
-    assert.deepEqual(parseHandAsk(askOf(1, NO_HOLD, AT, 600_000)), { request: AT, hold: NO_HOLD, askEveryMs: 600_000 });
+    assert.deepEqual(parseHandAsk(askOf(1, HOLD)), { request: AT, hold: HOLD, askEveryMs: 15_000, mode: 'clear' });
+    assert.deepEqual(parseHandAsk(askOf(1, NO_HOLD, AT, 600_000)), { request: AT, hold: NO_HOLD, askEveryMs: 600_000, mode: 'clear' });
+  });
+
+  it("reads an end ask's mode, and any other mode or none as a /clear (T2444)", () => {
+    assert.equal(parseHandAsk(END_ASK).mode, 'end');
+    for (const mode of [undefined, null, 'restart', 1]) {
+      assert.equal(parseHandAsk(JSON.stringify({ at: AT, mode })).mode, 'clear', String(mode));
+    }
   });
 
   it("holds the config's defaults when the ask carries no hold or delay, or a damaged one", () => {
@@ -572,7 +614,7 @@ describe('parseHandAsk', () => {
       assert.equal(parseHandAsk(JSON.stringify({ at: AT, askEveryMs })).askEveryMs, DEFAULT_ASK_EVERY_MS, String(askEveryMs));
     }
     for (const text of ['not json', '[]', '{"at":3}']) {
-      assert.deepEqual(parseHandAsk(text), { request: undefined, hold: DEFAULT_PERSON_HOLD, askEveryMs: DEFAULT_ASK_EVERY_MS }, text);
+      assert.deepEqual(parseHandAsk(text), { request: undefined, hold: DEFAULT_PERSON_HOLD, askEveryMs: DEFAULT_ASK_EVERY_MS, mode: 'clear' }, text);
     }
   });
 });

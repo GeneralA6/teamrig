@@ -419,7 +419,7 @@ describe("runRestart through the tab's mod", () => {
     const world = await new World().arm();
     world.onSleep(3, () => world.claimAsk());
     assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cleared' });
-    assert.deepEqual(world.claimed, { team: 'app', id: 'alpha', at: AT, askedAt: new Date(START + DELAY_MS).toISOString() });
+    assert.deepEqual(world.claimed, { team: 'app', id: 'alpha', at: AT, askedAt: new Date(START + DELAY_MS).toISOString(), mode: 'clear' });
     assert.deepEqual(world.posted, { ...world.claimed, hold: PLAN.hold, askEveryMs: DELAY_MS }, "the file carries the plan's hold and delay, for the tab's mod");
     assert.deepEqual([world.processes.ends, world.opened, world.processes.fed], [[], [], []]);
     assert.equal(await world.store.restart('alpha'), undefined);
