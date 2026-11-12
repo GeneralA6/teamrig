@@ -1155,14 +1155,15 @@ closed until the next meeting starts. `meeting.panel.enabled: false` turns it of
 
 ## Meeting start: the spotlight
 
-With `meeting.spotlight.enabled: true` (off unless a team sets it), `meeting start` of the owner's daily meeting
-dims every screen but the Windows Terminal window holding the lead's tab, so the owner's eye stays on the meeting.
+Unless a team sets `meeting.spotlight.enabled: false` (it is on by default), `meeting start` of the owner's daily
+meeting dims every screen but the Windows Terminal window holding the lead's tab, so the owner's eye stays on it.
 A hidden Windows PowerShell draws a black overlay at `meeting.spotlight.dim` opacity (0.1 to 0.9, 0.6 by default)
 over the whole virtual screen, with a hole where that window is; every click goes through it and it never takes
 the focus. It follows the window within a quarter second as it moves, and every 2 s reads the meeting file: it lifts
 by itself at `meeting end`, when another meeting starts, or when the meeting lapses. `meeting start` prints one
 `SPOTLIGHT` line naming the window and the log its errors go to (`<team>/state/logs/meeting-spotlight.log`), or a
-`NOT SPOTLIT` line saying why: it needs Windows and Windows Terminal (`open.terminal`). Nothing is typed into a
+`NOT SPOTLIT` line when PowerShell is missing or will not start. Off Windows, or when `open.terminal` rules out
+Windows Terminal, it prints nothing, as the spotlight cannot run there. Nothing is typed into a
 terminal; the tab's title and the meeting file's path reach the script as variables.
 
 ## The mod: the update notice
