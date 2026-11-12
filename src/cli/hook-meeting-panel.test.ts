@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
+import { TEST_CARD, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { teamEventsOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
@@ -43,8 +43,10 @@ function answerOf(result: CliResult): unknown {
   return JSON.parse(result.stdout[0] ?? '');
 }
 
-const T1 = { id: 'T1', title: 'Pick the pricing tier', settled: false, decision: null };
-const T2 = { id: 'T2', title: 'Pick the launch day', settled: false, decision: null };
+/** Each card's summary: the test card's question. */
+const SUMMARY = TEST_CARD.question;
+const T1 = { id: 'T1', title: 'Pick the pricing tier', summary: SUMMARY, settled: false, decision: null };
+const T2 = { id: 'T2', title: 'Pick the launch day', summary: SUMMARY, settled: false, decision: null };
 
 describe('runCli: hook meeting-panel', () => {
   it("shows nothing in the lead's tab before the meeting starts, and watches the meeting file", async () => {
@@ -113,7 +115,7 @@ describe('runCli: hook meeting-panel', () => {
     ok(await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two providers', ...TEST_OWNER_CARD_FLAGS, '--session', 'front'], AS_WEB));
     ok(await kit.run(['meeting', 'start', '--session', 'lead']));
     const watch = [MEETING_PATH, EVENTS_PATH, teamEventsOf('ops'), teamEventsOf('web'), teamEventsOf('ui')];
-    const card = { id: 'web/T1', title: 'Pick the login provider', settled: false, decision: null };
+    const card = { id: 'web/T1', title: 'Pick the login provider', summary: SUMMARY, settled: false, decision: null };
     assert.deepEqual(answerOf(await panel(kit)), { kind: 'open', startedAt: STARTED, items: [card], current: 'web/T1', left: 1, watch });
     kit.clock.advance(60_000);
     ok(await kit.run(['update', 'web/T1', '--decided', '--note', 'owner decided: the first one', '--session', 'lead']));
