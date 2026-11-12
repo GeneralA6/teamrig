@@ -24,6 +24,14 @@ function hashOf(record) {
     const hash = record['handoverHash'];
     return hash === null || typeof hash === 'string' ? hash : undefined;
 }
+/** The ask's `fixHash` as fields to spread: none when absent (a file from before it, or no fix asked), false when damaged. */
+function fixHashOf(record) {
+    const hash = record['fixHash'];
+    if (hash === undefined) {
+        return {};
+    }
+    return typeof hash === 'string' ? { fixHash: hash } : false;
+}
 /** A boundary's standing ask: null for none, undefined when damaged. */
 function standingAskOf(value) {
     if (value === null) {
@@ -36,7 +44,10 @@ function standingAskOf(value) {
     const at = stringField(value, 'at');
     const tokens = tokensOf(value);
     const handoverHash = hashOf(value);
-    return task === undefined || at === undefined || tokens === undefined || handoverHash === undefined ? undefined : { task, at, tokens, handoverHash };
+    const fix = fixHashOf(value);
+    return task === undefined || at === undefined || tokens === undefined || handoverHash === undefined || fix === false
+        ? undefined
+        : { task, at, tokens, handoverHash, ...fix };
 }
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
 export function parseRefreshState(text) {
@@ -64,9 +75,10 @@ export function parseRefreshState(text) {
             const handoverHash = hashOf(record);
             // A file from before the mod asked within a turn was always the Stop hook's.
             const midTurn = record['midTurn'] ?? false;
-            return tokens === undefined || handoverHash === undefined || typeof midTurn !== 'boolean'
+            const fix = fixHashOf(record);
+            return tokens === undefined || handoverHash === undefined || typeof midTurn !== 'boolean' || fix === false
                 ? undefined
-                : { phase: 'asked', task, at, tokens, handoverHash, midTurn };
+                : { phase: 'asked', task, at, tokens, handoverHash, midTurn, ...fix };
         }
         case 'ready': {
             const noticed = record['noticed'];

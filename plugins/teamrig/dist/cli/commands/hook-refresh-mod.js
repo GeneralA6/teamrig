@@ -22,12 +22,15 @@ function countOf(payload, key) {
     return isNonNegativeInteger(value) ? value : undefined;
 }
 /**
- * The facts a due refresh or notice reads: the handover as it is now (so `refresh --ready` can tell a new one
- * from it), and the background work still running in `transcript`, which a fresh start must wait for.
+ * The facts a due refresh or notice reads: the handover as it is now (so a turn end or `refresh --ready` can tell
+ * a new one from it, and the turn end can take a new one as ready), and the background work still running in
+ * `transcript`, which a fresh start must wait for.
  */
 export async function dueFactsAt(runtime, store, id, transcript) {
+    const handover = await store.handover(id);
     return {
-        handoverHash: handoverHashOf(await store.handover(id)),
+        handoverHash: handoverHashOf(handover),
+        handover,
         running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
     };
 }
