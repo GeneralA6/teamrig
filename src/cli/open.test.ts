@@ -13,7 +13,7 @@ import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
-import { APP, CLAUDE_SESSION, CliHarness, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { CLOSE_LOG_WAIT_MS } from './commands/open.ts';
 import { EXIT } from './runtime.ts';
@@ -463,6 +463,24 @@ describe('teamrig launch', () => {
       ['Build it', refreshPrompt('app', 'alpha', processes.store.handoverPath('alpha'))],
     );
     assert.equal(await processes.store.restart('alpha'), undefined);
+  });
+
+  it("starts again at the config's effort level as it is at the restart, not at --effort's (T2444)", async () => {
+    const kit = new CliHarness({ ...TEAM, launch: { alpha: { effort: 'high' } } });
+    const typed = () => kit.files.write(CONFIG_PATH, formatConfig({ ...TEAM, launch: { alpha: { effort: 'medium' } } }));
+    const processes = new RestartedOnce(kit, ENDING, typed);
+    const result = await kit.run([...LAUNCH, '--effort', 'max', '--no-prompt'], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual(processes.ran.map((run) => run.args.slice(0, 2)), [['--effort', 'max'], ['--effort', 'medium']]);
+  });
+
+  it('starts again at the level it was launched on when the config cannot be read at the restart', async () => {
+    const kit = new CliHarness({ ...TEAM, launch: { alpha: { effort: 'high' } } });
+    const broken = () => kit.files.write(CONFIG_PATH, '{ not json');
+    const processes = new RestartedOnce(kit, ENDING, broken);
+    const result = await kit.run([...LAUNCH, '--no-prompt'], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual(processes.ran.map((run) => run.args.slice(0, 2)), [['--effort', 'high'], ['--effort', 'high']]);
   });
 
   it('resumes the Claude Code session it is given on the first start only: the restart starts fresh', async () => {
