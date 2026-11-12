@@ -26,6 +26,7 @@ import {
   DEFAULT_LOCK,
   DEFAULT_LEAD_BOUNDARY,
   DEFAULT_TURN_LOG,
+  DEFAULT_MEETING_NOTICES,
   DEFAULT_LOOPS,
   DEFAULT_MERGE_REMOTE,
   DEFAULT_MESSAGES,
@@ -153,6 +154,7 @@ import {
   type PriorityConfig,
   type TeamLink,
   type TurnLogConfig,
+  type MeetingNoticesConfig,
   type WakeConfig,
   type StablePeriodsConfig,
 } from './types.ts';
@@ -520,6 +522,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
     meeting: parseMeeting(read, read.section(raw, 'meeting', '')),
     turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
+    meetingNotices: parseMeetingNotices(read, read.section(raw, 'meetingNotices', '')),
     readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
     permissions: parsePermissions(read, read.section(raw, 'permissions', '')),
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
@@ -551,6 +554,20 @@ function parseTurnLog(read: ConfigReader, raw: JsonRecord): TurnLogConfig {
   return {
     enabled: read.boolean(raw, 'enabled', 'turnLog', DEFAULT_TURN_LOG.enabled),
     keepHours: read.integer(raw, 'keepHours', 'turnLog', DEFAULT_TURN_LOG.keepHours, CONFIG_LIMITS.turnLogKeepHours),
+  };
+}
+
+/** `meetingNotices`: each lead time up to two hours, 0 turning its notice off. */
+function parseMeetingNotices(read: ConfigReader, raw: JsonRecord): MeetingNoticesConfig {
+  const d = DEFAULT_MEETING_NOTICES;
+  return {
+    enabled: read.boolean(raw, 'enabled', 'meetingNotices', d.enabled),
+    beforeMinutes: read.integer(raw, 'beforeMinutes', 'meetingNotices', d.beforeMinutes, CONFIG_LIMITS.meetingBeforeMinutes),
+    atStart: read.boolean(raw, 'atStart', 'meetingNotices', d.atStart),
+    missedAfterMinutes: read.integer(raw, 'missedAfterMinutes', 'meetingNotices', d.missedAfterMinutes, CONFIG_LIMITS.meetingMissedMinutes),
+    osToast: read.boolean(raw, 'osToast', 'meetingNotices', d.osToast),
+    tabToast: read.boolean(raw, 'tabToast', 'meetingNotices', d.tabToast),
+    leadInbox: read.boolean(raw, 'leadInbox', 'meetingNotices', d.leadInbox),
   };
 }
 

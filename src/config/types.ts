@@ -487,6 +487,28 @@ export interface TurnLogConfig {
   readonly keepHours: number;
 }
 
+/**
+ * What a booked meeting (`meeting schedule`) tells the person, and when (src/meeting/notify.ts, T2405): a notice
+ * some minutes before its slot, one at the slot, and an alert once it is some minutes past its slot with no start.
+ * Each notice goes out once, by whichever tab of the team looks first, on each channel left on.
+ */
+export interface MeetingNoticesConfig {
+  /** Off: no meeting notice of any kind. */
+  readonly enabled: boolean;
+  /** The early notice, in minutes before the slot; 0: none. */
+  readonly beforeMinutes: number;
+  /** The notice at the slot's time. */
+  readonly atStart: boolean;
+  /** The missed alert, in minutes past the slot's time with no `meeting start`; 0: none. */
+  readonly missedAfterMinutes: number;
+  /** The operating system's notification (a toast on Windows, a banner on macOS, notify-send on Linux). */
+  readonly osToast: boolean;
+  /** A toast in the open tab of the team that sends the notice; a missed alert's stays until it is clicked away. */
+  readonly tabToast: boolean;
+  /** One inbox line to the team's lead for a missed meeting. */
+  readonly leadInbox: boolean;
+}
+
 /** How teamrig keeps the lead leading (T320): its own edits, tests and code searches are nudged and shown, never blocked. */
 export interface LeadBoundaryConfig {
   /** Off: the lead's own work is neither nudged nor shown. */
@@ -1412,6 +1434,7 @@ export interface KitConfig {
   readonly pickerGuard: { readonly enabled: boolean };
   readonly meeting: MeetingConfig;
   readonly turnLog: TurnLogConfig;
+  readonly meetingNotices: MeetingNoticesConfig;
   /** Lets a shell line that only reads run without a permission prompt; off by default. */
   readonly readonlyShell: ReadonlyShellConfig;
   /** Which local allow rules stay when `permissions trim` removes the rest. */

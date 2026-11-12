@@ -24,6 +24,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.loops, { chainNudgeAt: 3 });
     assert.deepEqual(config.leadBoundary, { enabled: true, ownPaths: [], searchNudgeAt: 3 });
     assert.deepEqual(config.turnLog, { enabled: true, keepHours: 24 });
+    assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
     assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig' });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
@@ -276,6 +277,16 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(issues), ['turnLog.keepHours']);
     assert.equal(config.turnLog.keepHours, 24);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, turnLog: { keepHours: 169 } }).issues), ['turnLog.keepHours']);
+  });
+
+  it('reads meetingNotices, and refuses a lead time under 0 or past two hours', () => {
+    const set = { enabled: false, beforeMinutes: 0, atStart: false, missedAfterMinutes: 120, osToast: false, tabToast: false, leadInbox: false };
+    assert.deepEqual(parseConfig({ ...ROSTER, meetingNotices: set }).config.meetingNotices, set);
+    const { config, issues } = parseConfig({ ...ROSTER, meetingNotices: { beforeMinutes: -1, missedAfterMinutes: 121 } });
+    assert.deepEqual(paths(issues), ['meetingNotices.beforeMinutes', 'meetingNotices.missedAfterMinutes']);
+    assert.equal(config.meetingNotices.beforeMinutes, 10);
+    assert.equal(config.meetingNotices.missedAfterMinutes, 5);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, meetingNotices: { osToast: 'yes' } }).issues), ['meetingNotices.osToast']);
   });
 
   it('reads loops.chainNudgeAt, where 0 turns the nudge off, and refuses a value past 50', () => {
