@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   holdersText,
   linuxCommitOf,
+  linuxProgramLines,
   nodeHostMemory,
   nodeMemoryProbe,
   parseHolders,
@@ -252,6 +253,14 @@ describe('nodeMemoryProbe', () => {
     }
     assert.ok(charge !== undefined, 'the host gives its commit charge');
     assert.ok(charge.usedMb > 0 && charge.limitMb > 0, `${charge.usedMb} of ${charge.limitMb} MB`);
+  });
+});
+
+describe('linuxProgramLines', () => {
+  it('names each process by its command line\'s first word, not the thread name a program may set', () => {
+    const text = '  204800 /usr/bin/node /srv/app/server.js --port 1\n 102400 /usr/lib/firefox/firefox -contentproc\n      0 [kworker/0:1]\n   512 bash\n    64\n';
+    assert.equal(linuxProgramLines(text), '204800 /usr/bin/node\n102400 /usr/lib/firefox/firefox\n0 kworker/0:1\n512 bash');
+    assert.deepEqual(parseHolders(linuxProgramLines(text), 1024).map((holder) => holder.name), ['node', 'firefox', 'bash', 'kworker/0:1']);
   });
 });
 
