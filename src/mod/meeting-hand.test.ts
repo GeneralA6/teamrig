@@ -4,6 +4,7 @@ import {
   MEETING_RECHECK_MS,
   MEETING_TICK_MS,
   MeetingHand,
+  TOAST_MAX_MS,
   meetingCliArgv,
   parseMeetingDueAnswer,
   type MeetingDueAnswer,
@@ -14,7 +15,8 @@ import {
 const TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const MEETINGS = '/kit/teams/app/state/meetings.jsonl';
 const AT = 1_060_000;
-const NOTICE = { id: 'M1', title: 'teamrig meeting M1 now', text: 'alpha: the release plan (30 min). Start: teamrig meeting start M1' };
+const NOTICE = { id: 'M1', stage: 'start', title: 'teamrig meeting M1 now', text: 'alpha: the release plan (30 min). Start: teamrig meeting start M1', stayMs: null };
+const MISSED = { id: 'M2', stage: 'missed', title: 'teamrig meeting M2 missed', text: 'alpha: the release plan has not started. Start: teamrig meeting start M2, or move or drop it', stayMs: 86_400_000 };
 const WAIT: MeetingDueAnswer = { kind: 'due', notices: [], watch: [MEETINGS], recheckAt: AT };
 const SENT: MeetingDueAnswer = { kind: 'due', notices: [NOTICE], watch: [MEETINGS], recheckAt: null };
 
@@ -28,7 +30,7 @@ class FakeHost implements MeetingHandHost {
   answers: MeetingRun[] = [run(WAIT)];
   changed: number | undefined = 5;
   readonly calls: { readonly stdin: unknown; readonly env: Readonly<Record<string, string>>; readonly cwd: string }[] = [];
-  readonly toasts: string[] = [];
+  readonly toasts: { readonly text: string; readonly stayMs: number | null }[] = [];
 
   async sessionId(): Promise<string> {
     return TAB;
@@ -54,8 +56,8 @@ class FakeHost implements MeetingHandHost {
     return this.changed;
   }
 
-  toast(text: string): void {
-    this.toasts.push(text);
+  toast(text: string, stayMs: number | null): void {
+    this.toasts.push({ text, stayMs });
   }
 
   now(): number {
@@ -89,6 +91,14 @@ describe('parseMeetingDueAnswer', () => {
     assert.equal(parseMeetingDueAnswer('{"kind":"due","notices":[{"id":"M1"}],"watch":[],"recheckAt":null}'), undefined);
     assert.equal(parseMeetingDueAnswer('{"kind":"due","notices":[],"watch":[],"recheckAt":"soon"}'), undefined);
     assert.equal(parseMeetingDueAnswer('[]'), undefined);
+    assert.equal(parseMeetingDueAnswer(JSON.stringify({ ...SENT, notices: [{ ...NOTICE, stayMs: 'long' }] })), undefined);
+    assert.equal(parseMeetingDueAnswer(JSON.stringify({ ...SENT, notices: [{ ...NOTICE, stayMs: 0 }] })), undefined);
+    assert.equal(parseMeetingDueAnswer(JSON.stringify({ ...SENT, notices: [{ ...NOTICE, stage: 3 }] })), undefined);
+  });
+
+  it("reads an older CLI's notice, with no stage or stay, as one at the slot that keeps the default time", () => {
+    const old = { kind: 'due', notices: [{ id: 'M1', title: NOTICE.title, text: NOTICE.text }], watch: [], recheckAt: null };
+    assert.deepEqual(parseMeetingDueAnswer(JSON.stringify(old)), { ...old, notices: [NOTICE] });
   });
 });
 
@@ -110,10 +120,21 @@ describe('MeetingHand', () => {
     assert.deepEqual(await hand.tick(), { kind: 'quiet' });
     host.time = AT;
     assert.deepEqual(await hand.tick(), { kind: 'notified', ids: ['M1'] });
-    assert.deepEqual(host.toasts, [`${NOTICE.title}: ${NOTICE.text}`]);
+    assert.deepEqual(host.toasts, [{ text: `${NOTICE.title}: ${NOTICE.text}`, stayMs: null }]);
     assert.deepEqual(await hand.tick(), { kind: 'quiet' }, 'with no time named, it waits for a change');
     host.time = AT + MEETING_RECHECK_MS;
     assert.deepEqual(await hand.tick(), { kind: 'notified', ids: ['M1'] }, 'or MEETING_RECHECK_MS on');
+  });
+
+  it("keeps a missed meeting's toast up for the time the CLI named, at most the engine's longest", async () => {
+    const host = new FakeHost();
+    const shortStay = { ...MISSED, id: 'M3', stayMs: 30_000 };
+    host.answers = [run({ kind: 'due', notices: [MISSED, shortStay], watch: [MEETINGS], recheckAt: null })];
+    const hand = new MeetingHand(host);
+    assert.deepEqual(await hand.tick(), { kind: 'notified', ids: ['M2', 'M3'] });
+    const text = `${MISSED.title}: ${MISSED.text}`;
+    assert.deepEqual(host.toasts, [{ text, stayMs: TOAST_MAX_MS }, { text, stayMs: 30_000 }]);
+    assert.equal(TOAST_MAX_MS, 60_000);
   });
 
   it('looks every 30 s, and goes on while a turn runs: it tracks no turns', () => {
