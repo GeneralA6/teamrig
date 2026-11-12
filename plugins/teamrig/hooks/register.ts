@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code';
 import type { Register, StateRef } from 'claude-code';
-import type { TeamrigBand, TeamrigMeetingPanel, TeamrigUpdate } from '../types';
+import type { TeamrigBand, TeamrigMeetingPanel, TeamrigNeedsYou, TeamrigUpdate } from '../types';
 import { INSTALLED_PLUGINS_FILE, pluginsFolderOf } from '../dist/core/installed-plugins.js';
 import { bandLine, ClearHand, liveAgentsOf, sameBand, TICK_MS } from '../dist/mod/clear-hand.js';
 import { REFRESH_TIMEOUT_MS, RefreshHand, refreshCliArgv } from '../dist/mod/refresh-hand.js';
@@ -34,9 +34,17 @@ import {
   updateBandOf,
   updateCliArgv,
 } from '../dist/mod/update-hand.js';
+import {
+  NEEDS_YOU_TICK_MS,
+  NEEDS_YOU_TIMEOUT_MS,
+  NeedsYouHand,
+  needsYouCliArgv,
+  needsYouLine,
+  sameNeedsYou,
+} from '../dist/mod/needs-you-hand.js';
 
 /**
- * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and seven hands in every
+ * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and eight hands in every
  * interactive tab.
  *
  * `/teamrig <command> [args]` (`slash-hand.ts`): runs the plugin's CLI as `hook slash-command` with the typed text,
@@ -98,6 +106,12 @@ import {
  * again. Every 5 s the hand dates installed_plugins.json, and a change checks at once, so an update made in any tab
  * hides the band in every tab within seconds. The band's value is the session's `updateView` (types/index.d.ts).
  *
+ * The needs-you band (`needs-you-hand.ts`): every 10 s, a turn running or not, the hand asks the CLI (`hook
+ * needs-you`) which other tabs of the team ask the person something now. Each new ask toasts once; the band above
+ * the prompt names the newest one not dismissed, with Focus (`hook needs-you-focus`: brings that tab to the front,
+ * offered only when the CLI says so) and Dismiss, plain buttons with no digits. It shows under a refresh's band and
+ * over an update's, and goes once no tab asks. The band's value is the session's `needsYou` (types/index.d.ts).
+ *
  * The refresh within a turn (`refresh-hand.ts`): the Stop hook asks for the handover only at a turn's end, so a long
  * turn reached Claude Code's compaction first. After a tool result of the main conversation, once the context Claude
  * Code reports reached the size the CLI named, the hand asks the CLI (`hook refresh-mid`) and adds its ask after the
@@ -119,6 +133,9 @@ const BAND = atom({ plugin: 'teamrig', key: 'band' } as const, null);
  */
 const UPDATE = atom({ plugin: 'teamrig', key: 'updateView' } as const, null);
 
+/** The needs-you band above the prompt while another tab of the team asks the person; null, no band (types/index.d.ts). */
+const NEEDS_YOU = atom({ plugin: 'teamrig', key: 'needsYou' } as const, null);
+
 /** The meeting's agenda panel the pane draws; null, none (types/index.d.ts). */
 const MEETING_PANEL = atom({ plugin: 'teamrig', key: 'meetingPanel' } as const, null);
 
@@ -133,6 +150,8 @@ const REFRESH_NOW_KEY = 'refresh-now';
 const HOLD_KEY = 'hold-refresh';
 const UPDATE_KEY = 'update-plugin';
 const DISMISS_KEY = 'dismiss-update';
+const FOCUS_ASK_KEY = 'focus-asking-tab';
+const DISMISS_ASK_KEY = 'dismiss-ask';
 
 /** Whether two update bands draw the same. */
 function sameUpdate(a: TeamrigUpdate | null, b: TeamrigUpdate | null | undefined): boolean {
@@ -185,6 +204,9 @@ export const register: Register = (on) => {
   let updateHand: UpdateHand | undefined;
   /** Writes the update band's value when the update hand's shown update changed; set with the hand. */
   let showUpdate: (() => Promise<void>) | undefined;
+  let needsYouHand: NeedsYouHand | undefined;
+  /** Writes the needs-you band's value when the needs-you hand's shown ask changed; set with the hand. */
+  let showNeedsYou: (() => Promise<void>) | undefined;
 
   on('session.start', async ($, e, next) => {
     const started = await next(e);
@@ -446,6 +468,47 @@ export const register: Register = (on) => {
         });
       });
     }
+    if (needsYouHand === undefined) {
+      const active = new NeedsYouHand({
+        sessionId: () => $.session.id(),
+        cwd: () => $.session.cwd(),
+        root: () => $.session.root(),
+        cli: async (command, stdin, env, cwd) => {
+          const run = await $.process.run(needsYouCliArgv($.plugin.root, command), { cwd, env: { ...env }, stdin, timeoutMs: NEEDS_YOU_TIMEOUT_MS });
+          return { exitCode: run.exitCode, stdout: run.stdout };
+        },
+        toast: (text, stayMs) => {
+          $.ui.toast(text, { timeoutMs: stayMs });
+        },
+        changed: () => {
+          void showNeedsYou?.();
+        },
+      });
+      needsYouHand = active;
+      let shown: TeamrigNeedsYou | null | undefined;
+      const show = async (): Promise<void> => {
+        const view = active.view() ?? null;
+        if (sameNeedsYou(view, shown)) {
+          return;
+        }
+        try {
+          await update($, NEEDS_YOU, () => view);
+          shown = view;
+        } catch (error) {
+          $.ui.log(`teamrig needs-you band: ${String(error)}`, { to: 'debug' });
+        }
+      };
+      // A band the module loaded before this one left: this hand has asked nothing yet.
+      await show();
+      showNeedsYou = show;
+      $.clock.every(NEEDS_YOU_TICK_MS, () => {
+        void active.tick().then((result) => {
+          if (result.kind === 'failed') {
+            $.ui.log(`teamrig needs-you: ${JSON.stringify(result)}`, { to: 'debug' });
+          }
+        });
+      });
+    }
     return started;
   });
 
@@ -499,8 +562,31 @@ export const register: Register = (on) => {
     const view = await read($, BAND);
     const hand = clearHand;
     const { Box, Button, Text } = $.ui.resolve(e);
-    // A refresh near is the more pressing band; the update waits under it.
+    // A refresh near is the more pressing band, then another tab's ask; the update waits under both.
     if (view === null || hand === undefined) {
+      const asking = await read($, NEEDS_YOU);
+      const needs = needsYouHand;
+      if (asking !== null && needs !== undefined) {
+        const focus = Button({
+          key: FOCUS_ASK_KEY,
+          label: 'Focus',
+          plain: true,
+          onPress: () => {
+            void needs.focus().then((result) => {
+              if (result.kind === 'failed') {
+                $.ui.log(`teamrig needs-you focus: ${JSON.stringify(result)}`, { to: 'debug' });
+              }
+            });
+          },
+        });
+        // Plain buttons with no digits: the person may be typing in this tab.
+        const dismiss = Button({ key: DISMISS_ASK_KEY, label: 'Dismiss', plain: true, onPress: () => needs.dismiss() });
+        return Box({
+          flexDirection: 'row',
+          gap: 2,
+          children: [Text({ color: 'warning', children: needsYouLine(asking) }), ...(asking.focus ? [focus, dismiss] : [dismiss])],
+        });
+      }
       const shown = await read($, UPDATE);
       const updates = updateHand;
       if (shown === null || updates === undefined) {

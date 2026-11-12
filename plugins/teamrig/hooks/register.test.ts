@@ -170,9 +170,10 @@ function askOf(n: number): string {
 
 /**
  * An interactive tab the restart runner asked to /clear, its prompt box empty and no helper live: starts the
- * session, which builds the clear hand, whose CLI holds each ask the hand holds and hands it each one it claims.
+ * session, which builds the clear hand, whose CLI holds each ask the hand holds and hands it each one it claims, and
+ * answers `hook needs-you` with `asks`, the other tabs' asks.
  */
-async function askedTab($: Engine, on: On): Promise<AskedTab> {
+async function askedTab($: Engine, on: On, asks: readonly object[] = []): Promise<AskedTab> {
   const tab: AskedTab = { clock: mock.clock(on, { now: 1_000_000 }), claims: [], clears: 0, ask: askOf(1), draft: '' };
   on('session.id', () => ({ value: TAB }));
   on('session.cwd', () => ({ value: '/work/app' }));
@@ -192,7 +193,12 @@ async function askedTab($: Engine, on: On): Promise<AskedTab> {
     if (command === 'clear-claim') {
       tab.claims.push(flags);
     }
-    const answer = command === 'clear-dir' ? ASK_DIR : command === 'clear-claim' ? (flags.length === 0 ? 'taken' : 'held') : undefined;
+    const answers: Readonly<Record<string, string>> = {
+      'clear-dir': ASK_DIR,
+      'clear-claim': flags.length === 0 ? 'taken' : 'held',
+      'needs-you': JSON.stringify({ kind: 'asks', asks }),
+    };
+    const answer = command === undefined ? undefined : answers[command];
     return {
       value: {
         exitCode: answer === undefined ? 1 : 0,
@@ -563,5 +569,138 @@ describe("a booked meeting's notice in the tab", () => {
     await tab.clock.advance(MEETING_TICK);
     await tab.clock.settle();
     expect(tab.toasts).toEqual([{ text: `${MISSED_NOTICE.title}: ${MISSED_NOTICE.text}`, timeoutMs: 60_000 }]);
+  });
+});
+
+/** The needs-you hand's tick (src/mod/needs-you-hand.ts NEEDS_YOU_TICK_MS). */
+const NEEDS_YOU_TICK = 10_000;
+const BRAVO_ASK = { session: 'bravo', tab: '[app] bravo', kind: 'permission', text: 'Allow Bash: npm test?', task: null, since: '2030-01-08T09:58:00.000Z', focus: true };
+const ALPHA_ASK = { session: 'alpha', tab: '[app] alpha', kind: 'decision', text: 'Decision needed: ship T5 today?', task: 'T5', since: '2030-01-08T09:57:00.000Z', focus: true };
+
+/** A tab whose CLI answers `hook needs-you` with `asks`, each run's command and stdin, and the toasts it shows. */
+interface NeedsYouTab {
+  readonly clock: MockClock;
+  readonly runs: CliRun[];
+  readonly toasts: { readonly text: string; readonly timeoutMs: number | undefined }[];
+  asks: readonly (typeof BRAVO_ASK)[];
+}
+
+/**
+ * An interactive tab another tab of the team asks the person through: its CLI answers `hook needs-you` with the
+ * tab's asks, `hook needs-you-focus` with a focus, and, when `update` is set, `hook update-check` with a newer teamrig.
+ */
+async function needsYouTab($: Engine, on: On, options: { readonly update?: boolean } = {}): Promise<NeedsYouTab> {
+  const tab: NeedsYouTab = { clock: mock.clock(on, { now: 1_000_000 }), runs: [], toasts: [], asks: [BRAVO_ASK, ALPHA_ASK] };
+  on('session.id', () => ({ value: TAB }));
+  on('session.cwd', () => ({ value: '/work/app/src' }));
+  on('session.root', () => ({ value: '/work/app' }));
+  on('ui.log', () => ({ value: undefined }));
+  on('ui.toast', (_$, e) => {
+    tab.toasts.push({ text: e.text, timeoutMs: e.timeoutMs });
+    return { value: undefined };
+  });
+  on('fs.exists', () => ({ value: false }));
+  on('process.run', (_$, e) => {
+    const command = e.argv.at(-1);
+    const given: Readonly<Record<string, unknown>> = {
+      'needs-you': { kind: 'asks', asks: tab.asks },
+      'needs-you-focus': { kind: 'focused', text: '[app] bravo is in front' },
+      ...(options.update === true ? { 'update-check': { kind: 'notices', notices: [TEAMRIG_UPDATE] } } : {}),
+    };
+    const answer = command === undefined ? undefined : given[command];
+    if (command === 'needs-you' || command === 'needs-you-focus') {
+      tab.runs.push({ command, stdin: JSON.parse(e.init?.stdin ?? 'null') });
+    }
+    return {
+      value: {
+        exitCode: answer === undefined ? 1 : 0,
+        stdout: answer === undefined ? '' : `${JSON.stringify(answer)}\n`,
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return Text({ children: ENGINE_ROW });
+  });
+  on('session.start', (_$, e) => ({ cwd: e.cwd }));
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true });
+  return tab;
+}
+
+describe("the band naming another tab's ask (T2511)", () => {
+  test('toasts each new ask once, then names the newest with Focus and Dismiss, no digits, in the warning colour', async ($, on) => {
+    const tab = await needsYouTab($, on);
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    expect(await band.drawn()).toMatchObject({ type: 'Text', children: [ENGINE_ROW] });
+    await tab.clock.advance(NEEDS_YOU_TICK);
+    await tab.clock.settle();
+    expect(tab.runs).toEqual([{ command: 'needs-you', stdin: { session_id: TAB, cwd: '/work/app/src' } }]);
+    expect(tab.toasts).toEqual([
+      { text: '[app] bravo needs you: Allow Bash: npm test?', timeoutMs: 60_000 },
+      { text: '[app] alpha needs you: Decision needed: ship T5 today?', timeoutMs: 60_000 },
+    ]);
+    expect(await band.find({ type: 'Text' })).toMatchObject({ text: '[app] bravo asks: Allow Bash: npm test? (+1 more)', props: { color: 'warning' } });
+    expect(await buttonsOf(band)).toEqual([['focus-asking-tab', undefined], ['dismiss-ask', undefined]]);
+    await tab.clock.advance(NEEDS_YOU_TICK);
+    await tab.clock.settle();
+    expect(tab.toasts.length).toBe(2);
+  });
+
+  test("Focus runs hook needs-you-focus for the shown ask's session", async ($, on) => {
+    const tab = await needsYouTab($, on);
+    await tab.clock.advance(NEEDS_YOU_TICK);
+    await tab.clock.settle();
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    await band.press({ key: 'focus-asking-tab' });
+    await tab.clock.settle();
+    expect(tab.runs.at(-1)).toEqual({ command: 'needs-you-focus', stdin: { session_id: TAB, cwd: '/work/app/src', session: 'bravo' } });
+    expect(tab.toasts.length).toBe(2);
+  });
+
+  test('Dismiss shows the next ask, and the band goes once no ask is left', async ($, on) => {
+    const tab = await needsYouTab($, on);
+    await tab.clock.advance(NEEDS_YOU_TICK);
+    await tab.clock.settle();
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    await band.press({ key: 'dismiss-ask' });
+    await tab.clock.settle();
+    expect((await band.find({ type: 'Text' }))?.text).toBe('[app] alpha asks: Decision needed: ship T5 today?');
+    tab.asks = [];
+    await tab.clock.advance(NEEDS_YOU_TICK);
+    await tab.clock.settle();
+    expect(await band.drawn()).toMatchObject({ type: 'Text', children: [ENGINE_ROW] });
+  });
+
+  test('offers Dismiss alone when the CLI holds Focus back', async ($, on) => {
+    const tab = await needsYouTab($, on);
+    tab.asks = [{ ...BRAVO_ASK, focus: false }];
+    await tab.clock.advance(NEEDS_YOU_TICK);
+    await tab.clock.settle();
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    expect(await buttonsOf(band)).toEqual([['dismiss-ask', undefined]]);
+  });
+
+  test("sits over an update's band, which shows once the ask is dismissed", async ($, on) => {
+    const tab = await needsYouTab($, on, { update: true });
+    tab.asks = [BRAVO_ASK];
+    await tab.clock.advance(FIRST_CHECK);
+    await tab.clock.settle();
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    expect((await band.find({ type: 'Text' }))?.text).toBe('[app] bravo asks: Allow Bash: npm test?');
+    await band.press({ key: 'dismiss-ask' });
+    await tab.clock.settle();
+    expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: teamrig 0.333.0 is out (you run 0.332.0)');
+  });
+
+  test("sits under a refresh's count-down", async ($, on) => {
+    const tab = await askedTab($, on, [BRAVO_ASK]);
+    await tab.clock.advance(NEEDS_YOU_TICK);
+    await tab.clock.settle();
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+    expect(await buttonsOf(band)).toEqual([['refresh-now', '1'], ['hold-refresh', '2']]);
+    expect(await band.find({ type: 'Text' })).not.toMatchObject({ text: '[app] bravo asks: Allow Bash: npm test?' });
   });
 });
