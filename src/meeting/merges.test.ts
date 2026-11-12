@@ -2,8 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import type { ApprovedMerge, MergeRecord, SelfMerge } from '../merge/merge-log.ts';
-import { AGENDA_ROWS } from './agenda.ts';
-import { mergeDigestLines, type MergeDigestInput } from './merges.ts';
+import { AGENDA_ROWS, TEAM_ROWS } from './agenda.ts';
+import { mergeDigestLines, type MergeDigestInput, type TeamMergeLog } from './merges.ts';
 
 const SINCE = Date.parse('2030-01-07T10:00:00Z');
 const PATH = '/team/deploys/merges.jsonl';
@@ -28,7 +28,13 @@ const CHECKED: SelfMerge = { ...SELF, at: '2030-01-07T13:00:00.000Z', session: '
 const APPROVED: ApprovedMerge = { ...SELF, review: 'approved', route: 'approved', missed: ['pass'], approvedBy: 'lead' };
 
 function inputOf(records: readonly MergeRecord[], options: Partial<MergeDigestInput> = {}): MergeDigestInput {
-  return { log: { records, skipped: 0 }, since: SINCE, zone: TimeZone.UTC, gated: true, path: PATH, ...options };
+  return { own: { log: { records, skipped: 0 }, path: PATH }, below: [], since: SINCE, zone: TimeZone.UTC, gated: true, ...options };
+}
+
+const WEB_PATH = '/web/deploys/merges.jsonl';
+
+function webLog(records: readonly MergeRecord[], skipped = 0): TeamMergeLog {
+  return { team: 'web', log: { records, skipped }, path: WEB_PATH };
 }
 
 describe('mergeDigestLines', () => {
@@ -57,10 +63,36 @@ describe('mergeDigestLines', () => {
   });
 
   it('names the lines of the log it could not read', () => {
-    assert.deepEqual(mergeDigestLines(inputOf([SELF], { log: { records: [SELF], skipped: 2 } })), [`${HEAD}; 2 unreadable line(s) skipped in ${PATH}`, ROW]);
+    assert.deepEqual(mergeDigestLines(inputOf([SELF], { own: { log: { records: [SELF], skipped: 2 }, path: PATH } })), [`${HEAD}; 2 unreadable line(s) skipped in ${PATH}`, ROW]);
   });
 
   it('says a self-merge no check proved has no checks', () => {
     assert.match(mergeDigestLines(inputOf([{ ...SELF, checks: [] }]))[1] ?? '', /32 lines, no checks$/);
+  });
+});
+
+describe('mergeDigestLines: the teams under the lead (T2457)', () => {
+  it("lists each team's self-merges after the lead's own by <team>/<session>, check-clean first, and counts them all in the head", () => {
+    assert.deepEqual(mergeDigestLines(inputOf([SELF], { below: [webLog([SELF, CHECKED, APPROVED])] })), [
+      'MERGES 3 merged with no approval since Mon 01-07 10:00 UTC, 1 CHECK-CLEAN (security samples those weekly)',
+      ROW,
+      '  Mon 01-07 13:00 UTC web/bravo app t7-auth bbbbbbbb..hhhhhhhh: 2 files, 32 lines, checks unit, lint, CHECK-CLEAN',
+      '  Mon 01-07 12:00 UTC web/alpha app t9-feat bbbbbbbb..hhhhhhhh: 2 files, 32 lines, checks unit, lint',
+    ]);
+  });
+
+  it('collapses a team past the cap to one count line naming its log, with its check-clean count', () => {
+    const many = Array.from({ length: TEAM_ROWS }, (_, index) => ({ ...SELF, at: new Date(Date.parse(SELF.at) + index * 60_000).toISOString() }));
+    assert.deepEqual(mergeDigestLines(inputOf([], { below: [webLog([...many, CHECKED])] })), [
+      `MERGES ${TEAM_ROWS + 1} merged with no approval since Mon 01-07 10:00 UTC, 1 CHECK-CLEAN (security samples those weekly)`,
+      `  web: ${TEAM_ROWS + 1} merged with no approval, 1 CHECK-CLEAN: ${WEB_PATH}`,
+    ]);
+  });
+
+  it("shows a team's merges off gated, and names a team log's unreadable lines", () => {
+    assert.deepEqual(mergeDigestLines(inputOf([], { gated: false, below: [webLog([SELF], 1)] })), [
+      `${HEAD}; 1 unreadable line(s) skipped in ${WEB_PATH}`,
+      '  Mon 01-07 12:00 UTC web/alpha app t9-feat bbbbbbbb..hhhhhhhh: 2 files, 32 lines, checks unit, lint',
+    ]);
   });
 });
