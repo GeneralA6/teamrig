@@ -264,9 +264,13 @@ export const DEFAULT_WAKE: WakeConfig = { enabled: true, priority: 1, batchSecon
  * The agenda panel is on: it shows only in the lead's tab while a meeting is open, so it costs no other tab anything.
  * The spotlight is on too, by the owner's call (T2523): it keeps the owner's eye on the meeting, lets every click
  * through and lifts when the meeting ends; a team sets it false to stop it. At 0.6 the rest of the screen stays
- * readable behind it.
+ * readable behind it. A break-through lifts it for two minutes: long enough to read the message and answer it, short
+ * enough that the meeting gets its focus back on its own (T2524).
  */
-export const DEFAULT_MEETING: MeetingConfig = { panel: { enabled: true }, spotlight: { enabled: true, dim: 0.6 } };
+export const DEFAULT_MEETING: MeetingConfig = {
+  panel: { enabled: true },
+  spotlight: { enabled: true, dim: 0.6, breakthroughSeconds: 120 },
+};
 
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };

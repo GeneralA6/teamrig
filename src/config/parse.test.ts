@@ -314,8 +314,12 @@ describe('parseConfig', () => {
   });
 
   it('reads meeting.spotlight, on at 0.6 by default, and refuses a dim outside 0.1 to 0.9 or a non-boolean enabled (T2517, T2523)', () => {
-    assert.deepEqual(parseConfig(ROSTER).config.meeting.spotlight, { enabled: true, dim: 0.6 });
-    assert.deepEqual(parseConfig({ ...ROSTER, meeting: { spotlight: { enabled: false, dim: 0.3 } } }).config.meeting.spotlight, { enabled: false, dim: 0.3 });
+    assert.deepEqual(parseConfig(ROSTER).config.meeting.spotlight, { enabled: true, dim: 0.6, breakthroughSeconds: 120 });
+    assert.deepEqual(parseConfig({ ...ROSTER, meeting: { spotlight: { enabled: false, dim: 0.3 } } }).config.meeting.spotlight, {
+      enabled: false,
+      dim: 0.3,
+      breakthroughSeconds: 120,
+    });
     for (const dim of [0.05, 0.95, 'dark']) {
       const bad = parseConfig({ ...ROSTER, meeting: { spotlight: { dim } } });
       assert.deepEqual([paths(bad.issues), bad.config.meeting.spotlight.dim], [['meeting.spotlight.dim'], 0.6], String(dim));
@@ -323,6 +327,19 @@ describe('parseConfig', () => {
     const notBoolean = parseConfig({ ...ROSTER, meeting: { spotlight: { enabled: 'yes' } } });
     assert.deepEqual([paths(notBoolean.issues), notBoolean.config.meeting.spotlight.enabled], [['meeting.spotlight.enabled'], true]);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, meeting: { spotlight: 1 } }).issues), ['meeting.spotlight']);
+  });
+
+  it('reads meeting.spotlight.breakthroughSeconds, 120 by default, and refuses one outside 10 to 3600 or not whole (T2524)', () => {
+    const set = parseConfig({ ...ROSTER, meeting: { spotlight: { breakthroughSeconds: 30 } } });
+    assert.deepEqual([set.issues, set.config.meeting.spotlight.breakthroughSeconds], [[], 30]);
+    for (const breakthroughSeconds of [9, 3601, 12.5, 'soon']) {
+      const bad = parseConfig({ ...ROSTER, meeting: { spotlight: { breakthroughSeconds } } });
+      assert.deepEqual(
+        [paths(bad.issues), bad.config.meeting.spotlight.breakthroughSeconds],
+        [['meeting.spotlight.breakthroughSeconds'], 120],
+        String(breakthroughSeconds),
+      );
+    }
   });
 
   it('reads timeZone, leaves it unset by default, and refuses a name the system does not know', () => {
