@@ -28,6 +28,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
 | The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's notices before, at and past its time (OS notification, tab toast, a missed one to the lead), from one tab of the team ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
+| The mod, every 10 s in each tab | `hook needs-you`, `hook needs-you-focus` | Names another tab of the team that asks the user something (a permission prompt, a question, a decision line) in a toast and a band above the prompt, whose Focus brings that tab to the front ([the needs-you band](#the-mod-the-needs-you-band)) |
 | The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's meeting is open, shows its cards in a pane beside the root team lead's chat, in sections (on the table, up next, decided), each with a one-line summary and a decided one with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
 | The mod, a minute after a tab starts and every 10 minutes, and when an install changes `installed_plugins.json` | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
@@ -1126,6 +1127,18 @@ tells the lead with an [urgent line](#urgent-lines) (the delivery owner for the 
 inbox, guards or tab status: /exit that tab and run claude --resume <id> in its terminal` (`run teamrig open alpha`
 for a tab that opened fresh). A line the inbox refused is logged with why, and not tried again;
 `state/idle-pass.json` keeps each told reopen's time.
+
+## The mod: the needs-you band
+
+A tab that asks the user something (a permission prompt, a question or plan, an MCP form, a `Decision needed:` line)
+is often not the tab the user is in. Each tab's hooks record what it asks in `<team>/state/tabs/<id>.json`, and in
+every other tab of the team the mod runs [`teamrig hook needs-you`](commands.md#teamrig-hook-needs-you) every 10 s.
+Each new ask shows once as a toast, `[team] name needs you: <text>`, and as a band above the prompt,
+`[team] name asks: <text>`, with Focus, which brings that tab to the front
+([`hook needs-you-focus`](commands.md#teamrig-hook-needs-you-focus)), and Dismiss. The band goes once the tab no
+longer asks. The team config's `needsYou` block sets it: `enabled` (default on), `kinds` (default every kind but
+`error`) and `osToast` (default off: one OS notification per ask, from one tab of the team). While the owner's
+meeting is open the toast and band still show, but Focus only for an ask about a p0 task.
 
 ## The mod: a scheduled meeting's notification
 

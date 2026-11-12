@@ -154,6 +154,8 @@ const EXPECTED = {
   'hook wake-check': 'internal',
   'hook wake-dropped': 'internal',
   'hook meeting-due': 'internal',
+  'hook needs-you': 'internal',
+  'hook needs-you-focus': 'internal',
   'hook meeting-panel': 'internal',
   'hook update-check': 'internal',
   'hook update-dismiss': 'internal',
