@@ -2306,10 +2306,10 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
   out of `DECISIONS` while cards are required (`register.requireDecisionCard`): its session's or the lead's to
   decide, never read to the owner (`check` flags each one `UNGATED`);
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
-  (`due 10-14 (from T9)`);
+  (`due 10-14 (from T9)`); the head counts every team's;
 - `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most), in the groups of
   `teamrig report done`: each group's rows, at most 10 each, then Other work and the dropped tasks as one count
-  line each with the command that lists them;
+  line each with the command that lists them; the head counts every team's;
 - `STATS`, `HEALTH`, `FLOW` and `LIMIT`: the top lines of `teamrig stats --tree` over the last 7 days, from the same
   fold (see `### teamrig stats`), then the command that prints the other sections;
 - `MEETINGS`: today's scheduled meetings and the missed ones, as `meeting list` shows them, and how the owner starts
@@ -2331,7 +2331,14 @@ owner: the owner's daily meeting is app/lead's, whose agenda lists web's waits o
 the teams depth first, named `<team>/<id>` (`web/T2`), each carded by its own team's rule; its hints add `--team
 <team>` to ask a question of a team under it and `<team>/<id>` to record an answer there. `GOALS` counts every team's
 tasks on the root's goals, `INCIDENTS` and `LATER` list every team's, and the stats lines cover every team under it
-too (`(tree: app, web)`); `UNGATED`, `LATE` and `DONE` stay the root team's own.
+too (`(tree: app, web)`). `LATE`, `DONE` and `MERGES` list the root team's rows, then each team's under it, depth
+first: a team's rows while it has 5 at most (`web/T2`, a merge's session `web/front`), else one count line naming the
+command that lists them (`  web: 7 late: teamrig check --tree`, `  web: 7 done, 1 dropped: teamrig list --tree
+--status done`, `  web: 6 merged with no approval, 1 CHECK-CLEAN: <its merges.jsonl>`); `DONE` gives each team's
+count line before its rows, which leave out its Other work. `MERGES` reads each `merges.jsonl` once, so a team whose
+`delivery.dir` is the root's shares the root's rows, unlabelled; it shows when any team of the tree is gated. `GOALS`
+stays the root's ranked goals: a team's own goals are its lead's to steer, never the owner's scoreboard. `UNGATED`
+stays the root team's own.
 
 With a meeting id, `meeting start M3` starts a scheduled meeting instead, one booked with `meeting schedule`: any
 session runs it, as the owner starts it from whichever tab is at hand. The session met gets the opening prompt (the
