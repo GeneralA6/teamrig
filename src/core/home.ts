@@ -149,6 +149,8 @@ export interface TeamPaths {
   readonly verifyNotices: string;
   /** The model notices each session's Stop hook already showed, `<id>.json` each. */
   readonly modelNotices: string;
+  /** How far each leader's prompt digest has read the register (hooks/leader-digest.ts), `<id>.json` each. */
+  readonly leaderDigest: string;
   /** How far each session's typed `/effort` lines were written back to its `launch` entry, `<id>.json` each (T2441). */
   readonly effortWriteback: string;
   /** One line per effort a typed `/effort` wrote back to the config: who, from, to, and the old config's copy. */
@@ -311,6 +313,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     notes: join(home, 'notes'),
     verifyNotices: join(state, 'verify-notices.jsonl'),
     modelNotices: join(state, 'model-notices'),
+    leaderDigest: join(state, 'leader-digest'),
     effortWriteback: join(state, 'effort-writeback'),
     effortChanges: join(state, 'effort-changes.jsonl'),
     unownedNotices: join(state, 'unowned-notices.json'),
