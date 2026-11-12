@@ -5,7 +5,7 @@ import {
   MEETING_PANEL_TICK_MS,
   MeetingPanelHand,
   meetingPanelCliArgv,
-  panelRows,
+  panelLayout,
   parseMeetingPanelAnswer,
   type MeetingPanelAnswer,
   type MeetingPanelHost,
@@ -20,9 +20,9 @@ const STARTED = '2026-11-12T10:00:00.000Z';
 const VIEW: MeetingPanelView = {
   startedAt: STARTED,
   items: [
-    { id: 'T1', title: 'Pick the release day', settled: true, decision: 'Tuesday' },
-    { id: 'bravo/T2', title: 'Raise the budget', settled: false, decision: null },
-    { id: 'T3', title: 'Name the product', settled: false, decision: null },
+    { id: 'T1', title: 'Pick the release day', settled: true, decision: 'Tuesday', summary: 'Ship on Tuesday or Thursday?' },
+    { id: 'bravo/T2', title: 'Raise the budget', settled: false, decision: null, summary: 'Lift the week cap to 60%?' },
+    { id: 'T3', title: 'Name the product', settled: false, decision: null, summary: null },
   ],
   current: 'bravo/T2',
   left: 2,
@@ -114,7 +114,9 @@ describe('parseMeetingPanelAnswer', () => {
     assert.equal(parseMeetingPanelAnswer('[]'), undefined);
     assert.equal(parseMeetingPanelAnswer('{"kind":"off","why":"x"}'), undefined, 'no watch list');
     assert.equal(parseMeetingPanelAnswer(JSON.stringify({ ...OPEN, items: [{ id: 'T1', title: 'x', settled: 'yes', decision: null }] })), undefined);
-    assert.equal(parseMeetingPanelAnswer(JSON.stringify({ ...OPEN, items: [{ id: 'T1', title: 'x', settled: true, decision: 3 }] })), undefined);
+    assert.equal(parseMeetingPanelAnswer(JSON.stringify({ ...OPEN, items: [{ id: 'T1', title: 'x', settled: true, decision: 3, summary: null }] })), undefined);
+    assert.equal(parseMeetingPanelAnswer(JSON.stringify({ ...OPEN, items: [{ id: 'T1', title: 'x', settled: true, decision: null, summary: 3 }] })), undefined);
+    assert.equal(parseMeetingPanelAnswer(JSON.stringify({ ...OPEN, items: [{ id: 'T1', title: 'x', settled: true, decision: null }] })), undefined, 'no summary');
     assert.equal(parseMeetingPanelAnswer(JSON.stringify({ ...OPEN, items: [7] })), undefined);
     assert.equal(parseMeetingPanelAnswer(JSON.stringify({ ...OPEN, items: 'none' })), undefined);
     assert.equal(parseMeetingPanelAnswer(JSON.stringify({ ...OPEN, left: -1 })), undefined);
@@ -124,22 +126,51 @@ describe('parseMeetingPanelAnswer', () => {
   });
 });
 
-describe('panelRows', () => {
-  it('checks off each decided card with its decision, marks the one on the table, then lists the rest', () => {
-    assert.deepEqual(panelRows(VIEW), [
-      { text: '2 to decide', mark: 'asked' },
-      { text: '✓ T1 Pick the release day: Tuesday', mark: 'done' },
-      { text: '▶ bravo/T2 Raise the budget', mark: 'current' },
-      { text: '· T3 Name the product', mark: 'asked' },
-    ]);
+describe('panelLayout', () => {
+  it('puts the card on the table first, then the ones to come, then the decided ones, each under its heading (T2519)', () => {
+    assert.deepEqual(panelLayout(VIEW), {
+      header: '2 to decide · 1 decided',
+      sections: [
+        { heading: 'On the table', cards: [{ mark: 'current', id: 'bravo/T2', title: 'Raise the budget', summary: 'Lift the week cap to 60%?', decision: null }] },
+        { heading: 'Up next', cards: [{ mark: 'next', id: 'T3', title: 'Name the product', summary: null, decision: null }] },
+        { heading: 'Decided', cards: [{ mark: 'done', id: 'T1', title: 'Pick the release day', summary: 'Ship on Tuesday or Thursday?', decision: 'Tuesday' }] },
+      ],
+    });
   });
 
-  it('draws a card decided with no note, and says when every card is decided', () => {
-    const done: MeetingPanelView = { startedAt: STARTED, items: [{ id: 'T1', title: 'Pick the release day', settled: true, decision: null }], current: null, left: 0 };
-    assert.deepEqual(panelRows(done), [
-      { text: 'Every card decided', mark: 'asked' },
-      { text: '✓ T1 Pick the release day', mark: 'done' },
-    ]);
+  it('keeps the agenda order within a section, leaves an empty one out, and says when every card is decided', () => {
+    const done: MeetingPanelView = {
+      startedAt: STARTED,
+      items: [
+        { id: 'T1', title: 'Pick the release day', settled: true, decision: null, summary: null },
+        { id: 'T2', title: 'Name the product', settled: true, decision: 'Rig', summary: null },
+      ],
+      current: null,
+      left: 0,
+    };
+    assert.deepEqual(panelLayout(done), {
+      header: 'Every card decided',
+      sections: [
+        {
+          heading: 'Decided',
+          cards: [
+            { mark: 'done', id: 'T1', title: 'Pick the release day', summary: null, decision: null },
+            { mark: 'done', id: 'T2', title: 'Name the product', summary: null, decision: 'Rig' },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('lists every asked card up next while none is on the table', () => {
+    const layout = panelLayout({ ...VIEW, current: null });
+    assert.deepEqual(
+      layout.sections.map((section) => [section.heading, section.cards.map((card) => card.id)]),
+      [
+        ['Up next', ['bravo/T2', 'T3']],
+        ['Decided', ['T1']],
+      ],
+    );
   });
 });
 

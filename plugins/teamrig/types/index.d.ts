@@ -38,13 +38,19 @@ export type TeamrigUpdate =
 
 /**
  * The meeting's agenda panel in the root team lead's tab (src/mod/meeting-panel-hand.ts MeetingPanelView): when the
- * meeting started, its cards in order (each one's id, title, whether it is decided and the decision), the card on
- * the table and how many are left. The meeting panel hand writes it each time it asks the CLI, null once no meeting
- * is open, and the pane's drawing reads it.
+ * meeting started, its cards in order (each one's id, title, whether it is decided and the decision, and a short
+ * summary of what it asks), the card on the table and how many are left. The meeting panel hand writes it each time
+ * it asks the CLI, null once no meeting is open, and the pane's drawing reads it.
  */
 export type TeamrigMeetingPanel = {
   readonly startedAt: string
-  readonly items: readonly { readonly id: string; readonly title: string; readonly settled: boolean; readonly decision: string | null }[]
+  readonly items: readonly {
+    readonly id: string
+    readonly title: string
+    readonly settled: boolean
+    readonly decision: string | null
+    readonly summary: string | null
+  }[]
   readonly current: string | null
   readonly left: number
 }
