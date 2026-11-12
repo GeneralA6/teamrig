@@ -183,8 +183,12 @@ export const DEFAULT_TURN_LOG = { enabled: true, keepHours: 24 };
  * 210k W each, so a team opts in with `wake.dayStartUtc`.
  */
 export const DEFAULT_WAKE = { enabled: true, priority: 1, batchSeconds: 120, minGapMinutes: 15 };
-/** The agenda panel is on: it shows only in the lead's tab while a meeting is open, so it costs no other tab anything. */
-export const DEFAULT_MEETING = { panel: { enabled: true } };
+/**
+ * The agenda panel is on: it shows only in the lead's tab while a meeting is open, so it costs no other tab anything.
+ * The spotlight is off until a team turns it on, as it dims the owner's whole screen (T2517); at 0.6 the rest of the
+ * screen stays readable behind it.
+ */
+export const DEFAULT_MEETING = { panel: { enabled: true }, spotlight: { enabled: false, dim: 0.6 } };
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS = { maxFailureChars: 4000 };
 /**
