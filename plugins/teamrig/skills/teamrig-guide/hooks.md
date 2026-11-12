@@ -28,7 +28,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
 | The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's notices before, at and past its time (OS notification, tab toast, a missed one to the lead), from one tab of the team ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
-| The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's meeting is open, shows its cards as a checklist in a pane beside the root team lead's chat, each decided card checked off with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
+| The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's meeting is open, shows its cards in a pane beside the root team lead's chat, in sections (on the table, up next, decided), each with a one-line summary and a decided one with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
 | The mod, a minute after a tab starts and every 10 minutes, and when an install changes `installed_plugins.json` | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
@@ -1147,9 +1147,11 @@ In the owner's daily meeting the cards went by in the chat, and the owner kept c
 left. In each interactive tab, every 15 s whether or not a turn runs, the mod runs
 [`teamrig hook meeting-panel`](commands.md#teamrig-hook-meeting-panel) once the meeting file or a register the
 meeting covers changed, or 10 minutes passed. While a meeting is open, the root team lead's tab opens the
-"Meeting agenda" pane beside the chat: the cards `meeting start` asked, in the agenda's order, each one decided since
-the meeting started (`update <id> --decided`) checked off with its decision, the first one still asked marked as on
-the table, and how many are left. In a tree of teams it covers every team under the root, as `<team>/<id>`. At
+"Meeting agenda" pane beside the chat. A header says how many cards are left and how many are decided; then, with a
+gap between each part, come On the table (the first card still asked, in a rounded box), Up next (the rest still
+asked, in the agenda's order) and Decided (each card decided since the meeting started, `update <id> --decided`,
+with its decision). Each card gives its title, a one-line summary under it (its card's question, else the task's
+description), and its id, dim, last; a section with no card is left out. In a tree of teams it covers every team under the root, as `<team>/<id>`. At
 `meeting end` the pane closes. Every other tab, and a sub-team's lead, shows none. Closing the pane by hand keeps it
 closed until the next meeting starts. `meeting.panel.enabled: false` turns it off.
 

@@ -63,8 +63,9 @@ takes the card off your next agenda at once, even when the session that asked ha
 `teamrig meeting end --session lead` sends each session one inbox line with the decisions on its tasks, and none to a
 session with none.
 
-While the meeting is open, the lead's tab shows the agenda in a pane beside the chat: the cards in their order, each
-one you decided checked off with your answer, the one on the table marked, and how many are left. It closes at the
+While the meeting is open, the lead's tab shows the agenda in a pane beside the chat: how many cards are left and
+decided, then the card on the table in a box, the ones up next and the ones you decided with your answer, each with a
+one-line summary of what it asks. It closes at the
 meeting's end; `meeting.panel.enabled: false` turns it off
 ([the meeting's agenda panel](../../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-meetings-agenda-panel)).
 On Windows Terminal, the meeting also dims every screen but the lead's window until it ends; clicks go through the
