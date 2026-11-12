@@ -37,6 +37,8 @@ import { KIND_TAIL_BYTES, transcriptKindOf, type TranscriptKind } from './transc
 export const COUNTDOWN_SECONDS = 60;
 /** The pause after each reopened tab, so the terminal and Claude Code start it before the next. */
 export const TAB_STAGGER_MS = 4_000;
+/** How long a tab the host has no room for waits between looks at the room. */
+export const ROOM_POLL_MS = 15_000;
 
 /** A tab to reopen for a restored session. */
 export interface ReopenTab {
@@ -50,8 +52,14 @@ export interface ReopenTab {
   readonly prompt: string | undefined;
 }
 
-/** A tab opened, with how its launch ended in words for the log (`windows-terminal exited 0`), or why it did not. */
-export type ReopenOutcome = { readonly kind: 'opened'; readonly launch: string } | { readonly kind: 'failed'; readonly why: string };
+/**
+ * A tab opened, with how its launch ended in words for the log (`windows-terminal exited 0`), why it did not, or
+ * `no-room`: the host's tab gate (open.headroom) keeps it shut for now, with the room it lacks.
+ */
+export type ReopenOutcome =
+  | { readonly kind: 'opened'; readonly launch: string }
+  | { readonly kind: 'failed'; readonly why: string }
+  | { readonly kind: 'no-room'; readonly why: string };
 
 /** What the restore reads and changes outside itself. */
 export interface RestoreDeps {
@@ -70,6 +78,11 @@ export interface RestoreDeps {
   /** Claude Code's folder of project transcripts, whose subfolder holding a transcript names the folder it resumes from. */
   readonly projectsDir: string;
   readonly platform: NodeJS.Platform;
+  /**
+   * How long a tab the host has no room for waits for it: a tab still loading holds its room for
+   * open.headroom.loadMinutes, so after that long the room read is the memory the open tabs really use.
+   */
+  readonly roomWaitMs: number;
   /** Whether the session's recorded process still runs Claude Code. */
   stillRunning(entry: RestoreEntry): Promise<boolean>;
   /** Where the session's transcript is now; undefined when none is left. */
@@ -379,11 +392,12 @@ async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreIte
   const { folder, note } = await reopenFolderOf(deps, item);
   const prompt = item.mode === 'idle' ? undefined : continuePrompt(item.lost, item.team?.isLead === true ? leadSummaryOf(item, items) : undefined);
   await deps.registry.write({ ...current, transcriptPath: item.transcript ?? current.transcriptPath, restoreAttempts: current.restoreAttempts + 1, restoredAt: deps.clock.now() });
-  let outcome: ReopenOutcome;
-  try {
-    outcome = await deps.reopen({ claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort?.level, prompt });
-  } catch (error) {
-    outcome = { kind: 'failed', why: errorMessage(error) };
+  const outcome = await reopenWithRoom(deps, item, { claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort?.level, prompt });
+  if (outcome.kind === 'no-room') {
+    await deps.registry.write(current);
+    deps.print(`HELD ${item.label}: ${outcome.why}. Run "teamrig restore run" to reopen it once the host has room.`);
+    await deps.log(`run: held ${id} (no room on the host)`);
+    return 'failed';
   }
   if (outcome.kind === 'failed') {
     await deps.registry.write(current);
@@ -397,4 +411,34 @@ async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreIte
   deps.print(`Opened ${item.label} (${modeWords(item)})`);
   await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${effortWords(item.effort)}; ${outcome.launch}`);
   return 'opened';
+}
+
+/** One reopen; a throw is a tab that did not open. */
+async function reopenOnce(deps: RestoreDeps, tab: ReopenTab): Promise<ReopenOutcome> {
+  try {
+    return await deps.reopen(tab);
+  } catch (error) {
+    return { kind: 'failed', why: errorMessage(error) };
+  }
+}
+
+/**
+ * Reopens the tab, waiting while the host has no room for it (T2283): a restore brings back every session the
+ * shutdown killed at once, and tabs opened past the host's memory get Claude Code processes killed by its low-memory
+ * reaper. It looks again every ROOM_POLL_MS for `roomWaitMs`, by when the tabs opened before it no longer hold the
+ * room they were counted at; with no room even then it gives this tab up and the run goes on with the next.
+ */
+async function reopenWithRoom(deps: RestoreDeps, item: RestoreItem, tab: ReopenTab): Promise<ReopenOutcome> {
+  const deadline = deps.clock.now() + deps.roomWaitMs;
+  let outcome = await reopenOnce(deps, tab);
+  if (outcome.kind !== 'no-room') {
+    return outcome;
+  }
+  deps.print(`Waiting up to ${Math.ceil(deps.roomWaitMs / 60_000)} min for room to reopen ${item.label}: ${outcome.why}`);
+  await deps.log(`run: waiting for room for ${item.entry.claudeSession}`);
+  while (outcome.kind === 'no-room' && deps.clock.now() < deadline) {
+    await deps.sleep(ROOM_POLL_MS);
+    outcome = await reopenOnce(deps, tab);
+  }
+  return outcome;
 }
