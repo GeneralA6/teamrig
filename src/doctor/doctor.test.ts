@@ -43,6 +43,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     launches: [],
     projects: [],
     shellHistory: { history: undefined, profiles: [], gated: false },
+    page: undefined,
     budget: { enabled: true },
     now: NOW,
     zone: TimeZone.UTC,
@@ -404,6 +405,19 @@ describe('doctorFindings of the PowerShell history', () => {
   it('is quiet when a profile gates the history, or there is no history file', () => {
     assert.deepEqual(lines(input({ shellHistory: { history, profiles: ['/u/profile.ps1'], gated: true } })), []);
     assert.deepEqual(lines(input({ shellHistory: { history: undefined, profiles: [], gated: false } })), []);
+  });
+});
+
+describe('doctorFindings of the page webhook', () => {
+  it("flags a page webhook that gives no URL, naming the team, its key and the problem, and the test page to run after the fix", () => {
+    const page = { team: 'bravo', key: 'pageWebhookFile', problem: 'the file alerts.pageWebhookFile names has no PAGE_URL line, or its quote is not closed' };
+    assert.deepEqual(lines(input({ page })), [
+      `WARN page-webhook team bravo's alerts.pageWebhookFile gives no page URL (${page.problem}), so an expired Claude login pages nobody: fix alerts.pageWebhookFile or what it names, then run teamrig page test`,
+    ]);
+  });
+
+  it('is quiet when the page URL resolves or no team names one', () => {
+    assert.deepEqual(lines(input({ page: undefined })), []);
   });
 });
 
