@@ -9,7 +9,7 @@ import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_ST
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
-import { isNeedKind, NEED_KINDS, type NeedKind } from '../tabs/need.ts';
+import { isNeedKind, NEED_KINDS, type NeedKind } from '../tabs/need-kind.ts';
 import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,

@@ -1,7 +1,7 @@
 import type { TaskStatus } from '../register/model.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 import type { AdmissionMode } from '../delivery/admission.ts';
-import type { NeedKind } from '../tabs/need.ts';
+import type { NeedKind } from '../tabs/need-kind.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
 export const CONFIG_VERSION = 8;

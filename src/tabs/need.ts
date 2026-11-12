@@ -3,6 +3,7 @@ import type { Files } from '../core/files.ts';
 import { isNonNegativeInteger, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import { isNeedKind, type NeedKind } from './need-kind.ts';
 import { DECISION_MARKER, decisionLineOf, TAB_CIRCLES, type TabState } from './status.ts';
 
 /**
@@ -13,11 +14,6 @@ import { DECISION_MARKER, decisionLineOf, TAB_CIRCLES, type TabState } from './s
 
 /** The format of the tab files this code reads and writes; a file in another format reads as absent. */
 export const TAB_NEED_FORMAT = 1;
-
-/** The kinds of ask a tab waits on: a permission prompt, a question or plan, an MCP form, a decision line, an API error. */
-export const NEED_KINDS = ['permission', 'question', 'elicitation', 'decision', 'error'] as const;
-
-export type NeedKind = (typeof NEED_KINDS)[number];
 
 /** The most characters (code points) an ask's text keeps: enough for a band line, small enough for every tab to read. */
 export const NEED_TEXT_MAX_CHARS = 200;
@@ -56,14 +52,8 @@ const CONTROLS = /[\u0000-\u001f\u007f-\u009f]/g;
 const TASK_ID = /\bT\d+\b/;
 
 const STATES: ReadonlySet<string> = new Set(Object.keys(TAB_CIRCLES));
-const KINDS: ReadonlySet<string> = new Set(NEED_KINDS);
-
 function isTabState(value: string): value is TabState {
   return STATES.has(value);
-}
-
-export function isNeedKind(value: string): value is NeedKind {
-  return KINDS.has(value);
 }
 
 /** Text fit for another tab's band: controls as spaces, white space runs as one, at most `NEED_TEXT_MAX_CHARS`. */

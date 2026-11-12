@@ -5,7 +5,7 @@ import { showNotice } from '../../meeting/notify.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { focusTab, type FocusOutcome } from '../../open/focus.ts';
 import { runsClaude } from '../../open/session-processes.ts';
-import type { NeedKind } from '../../tabs/need.ts';
+import type { NeedKind } from '../../tabs/need-kind.ts';
 import { TabNeedStore } from '../../tabs/need.ts';
 import { asksFor, NeedsYouSent, offersFocus, type AskingTab } from '../../tabs/needs-you.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
