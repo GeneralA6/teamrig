@@ -119,7 +119,7 @@ sequenceDiagram
   and a `## Next steps` section; one that falls short (missing, blank, too long, or without a section) is asked to
   be fixed, once per version. `teamrig refresh --ready` still answers the ask, for a handover complete without a
   section.
-- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, off by default: the user types `/clear` once done with the screen). A hidden
+- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, on for the lead by default: the user types `/clear` for any other session once done with the screen). A hidden
   `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
   then leaves an ask for its tab. A session with no work it can start waits for work first (its tab title reads
   `waits for work`): the wake that brings it some starts the restart instead of waking the old context. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
