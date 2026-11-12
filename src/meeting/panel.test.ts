@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
+import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import type { Decision } from './decision-order.ts';
-import { decisionOf, meetingPanelOf, type PanelInput, type PanelRegister } from './panel.ts';
+import { decisionOf, meetingPanelOf, SUMMARY_CHARS, summaryOf, type PanelInput, type PanelRegister } from './panel.ts';
 import type { Meeting } from './state.ts';
 
 const STARTED = '2030-01-08T10:00:00.000Z';
@@ -51,10 +52,10 @@ describe('the meeting agenda panel (T2512)', () => {
     const below: PanelRegister = { team: 'web', tasks: [decidedTask('T1', '2030-01-08T10:10:00.000Z', 'keep it', 'app/lead')], decidedBy: 'app/lead' };
     const panel = meetingPanelOf(inputOf([own([later, earlier]), below], [asked(testTask({ id: 'T8' }))]));
     assert.deepEqual(panel.items, [
-      { id: 'T5', title: 'Card T5', settled: true, decision: null },
-      { id: 'web/T1', title: 'Card T1', settled: true, decision: 'keep it' },
-      { id: 'T3', title: 'Card T3', settled: true, decision: 'ship tier B first' },
-      { id: 'T8', title: 'Add a health check', settled: false, decision: null },
+      { id: 'T5', title: 'Card T5', summary: null, settled: true, decision: null },
+      { id: 'web/T1', title: 'Card T1', summary: null, settled: true, decision: 'keep it' },
+      { id: 'T3', title: 'Card T3', summary: null, settled: true, decision: 'ship tier B first' },
+      { id: 'T8', title: 'Add a health check', summary: null, settled: false, decision: null },
     ]);
     assert.equal(panel.current, 'T8');
     assert.equal(panel.left, 1);
@@ -75,6 +76,23 @@ describe('the meeting agenda panel (T2512)', () => {
     );
     assert.equal(panel.current, null);
     assert.equal(panel.left, 0);
+  });
+
+  it("sums each card up by its card's question, else the task's description, on one line (T2519)", () => {
+    const carded = testTask({ id: 'T2', description: 'The tiers differ in price.', card: { ...TEST_CARD, question: 'Which tier ships\nfirst?' } });
+    const described = testTask({ id: 'T4', description: '  Entry sheet v2,\n redrafted on four questions.  ' });
+    const blank = testTask({ id: 'T6', description: ' \n ' });
+    const panel = meetingPanelOf(inputOf([own([])], [asked(carded), asked(described), asked(blank)]));
+    assert.deepEqual(
+      panel.items.map((item) => item.summary),
+      ['Which tier ships first?', 'Entry sheet v2, redrafted on four questions.', null],
+    );
+  });
+
+  it('cuts a long summary to SUMMARY_CHARS, ending it with an ellipsis', () => {
+    const summary = summaryOf(testTask({ description: 'word '.repeat(60) }));
+    assert.equal(summary !== null && [...summary].length <= SUMMARY_CHARS, true);
+    assert.equal(summary?.endsWith('…'), true);
   });
 
   it('reads the decision from the note, the lead-in dropped, a blank one as none', () => {
