@@ -1,6 +1,6 @@
 import { MS_PER_DAY } from "../core/time.js";
 import { isImprovementsDay, waitsForWeeklyBatch } from "../meeting/decision-order.js";
-import { askableSince, asksOwner } from "../register/owner-waits.js";
+import { askableSince, asksOwner, isDedicated } from "../register/owner-waits.js";
 import { taskLabel } from "../register/views.js";
 /**
  * The owner's decisions, asked in batches: a session that needs one sets its task waiting on the owner's decision or
@@ -12,7 +12,8 @@ import { taskLabel } from "../register/views.js";
  * stays out of the batch until its time passed, and then counts from that time (askableSince), so it is asked again.
  * A wait whose decision frees only Improvements work (waitsForWeeklyBatch, the agenda's rule) is asked only on
  * `focus.improvementsDay`: another day it is held, out of the batch and its triggers; on that day only an ask that day
- * asks it, so it is asked again each week while it waits, as the agenda shows it each one.
+ * asks it, so it is asked again each week while it waits, as the agenda shows it each one. A wait of a session in its
+ * register's `decisions.dedicatedOwners` (T868) is in no batch: the owner decides it in that session's own meeting.
  */
 /** Milliseconds after midnight UTC of a valid `HH:MM`. */
 function offsetOf(time) {
@@ -67,9 +68,13 @@ export function waitsOfTeams(batch, teams) {
     const held = (wait) => wait.team !== undefined && teams.includes(wait.team);
     return { ...batch, pending: batch.pending.filter(held), overdue: batch.overdue.filter(held), weekly: batch.weekly.filter(held) };
 }
-/** A register's waits the lead asks the owner now (asksOwner), in its plan order, each with its {@link BatchRow} facts. */
-function rowsOf({ team, tasks, tree, ownerMarker, requireGate, focus }, now, today) {
-    return tree.inPlanOrder([...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context))).map((task) => {
+/**
+ * A register's waits the lead asks the owner now (asksOwner) but those of its dedicated sessions, in its plan order,
+ * each with its {@link BatchRow} facts.
+ */
+function rowsOf({ team, tasks, tree, ownerMarker, requireGate, focus, dedicatedOwners }, now, today) {
+    const asked = [...tasks].filter((task) => asksOwner(task, ownerMarker, requireGate, tree.context) && !isDedicated(task, dedicatedOwners));
+    return tree.inPlanOrder(asked).map((task) => {
         const weekly = waitsForWeeklyBatch(task, tree, focus);
         const since = askableSince(task, tree.context);
         return { wait: { task, team, tree }, weekly, since: weekly && today ? Math.max(since, utcMidnightOf(now)) : since };
