@@ -72,6 +72,9 @@ On Windows Terminal, the meeting also dims every screen but the lead's window un
 dimming, a CRITICAL message that breaks through to the lead lifts it for two minutes
 (`meeting.spotlight.breakthroughSeconds`), and `meeting.spotlight.enabled: false` turns it off
 ([the spotlight](../../plugins/teamrig/skills/teamrig-guide/hooks.md#meeting-start-the-spotlight)).
+Under `teamrig statusline`, the lead's status line takes the meeting colour and every other tab's ends in
+`meeting on: held`, so a glance at any tab tells the team waits; `meeting.statusLine` sets the colour and the text
+([teamrig statusline](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline)).
 
 The start counts as asking you every decision it lists. Between meetings the lead asks the new ones in batches:
 `teamrig decisions` lists the waits not yet asked and the asked ones past due, and the lead's `start` and `check` say
