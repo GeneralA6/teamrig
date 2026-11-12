@@ -91,7 +91,9 @@ unless you turn on its auto-update in `/plugin`, under Marketplaces.
 
 teamrig's mod tells you instead: once a newer teamrig or teamrig-pane is published, a band above the prompt names it
 (`teamrig: teamrig 0.334.0 is out (you run 0.333.0)`) with an Update button, which runs the two commands above for
-that plugin, and a Dismiss button, which hides that version until a newer one is out. The network is asked at most
+that plugin and shows "updating", then "updated, reloading" (or the failure in red, with Update again), and a
+Dismiss button, which hides that version until a newer one is out. An update made in any tab hides the band in every
+other tab within seconds. The network is asked at most
 every 6 hours across the machine, and a failed check shows nothing (the guide's
 [update notice](../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-update-notice) has the details).
 
