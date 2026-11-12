@@ -52,6 +52,8 @@ export const CONFIG_LIMITS = {
   packageCooldownDays: { min: 0, max: 365 },
   searchNudgeAt: { min: 0, max: 50 },
   turnLogKeepHours: { min: 1, max: 168 },
+  meetingBeforeMinutes: { min: 0, max: 120 },
+  meetingMissedMinutes: { min: 0, max: 120 },
   wakePriority: { min: 1, max: 99 },
   wakeBatchSeconds: { min: 0, max: 3600 },
   wakeMinGapMinutes: { min: 0, max: 1440 },

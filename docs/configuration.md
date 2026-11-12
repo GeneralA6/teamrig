@@ -46,6 +46,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `pickerGuard` | [object](#pickerguard) |  | Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed. |
 | `meeting` | [object](#meeting) |  | The owner's daily meeting with the lead, in the lead's tab. |
 | `turnLog` | [object](#turnlog) |  | Each session's prompts and replies, kept in state/turn-log/\<session>/\<UTC hour>.jsonl for the task pane, so a /clear or a compaction never takes away what the person was reading in the tab. Secret shapes are redacted. |
+| `meetingNotices` | [object](#meetingnotices) |  | What a booked meeting (teamrig meeting schedule) tells the person, and when: a notice some minutes before its slot, one at the slot, and an alert once it is some minutes past its slot with no meeting start. Each notice goes out once, by whichever tab of the team looks first, on each channel left on. |
 | `readonlyShell` | [object](#readonlyshell) |  | Lets a Bash or PowerShell line run without a permission prompt when every command in it provably only reads: known readers (grep, cat, Get-Content, Select-Object...), git and kubectl reading subcommands, and no write, file redirection, command that runs code, or variable a program reads. It only ever allows: any other line gets Claude Code's own permission check. |
 | `permissions` | [object](#permissions) |  | Which local allow rules stay. An allow rule in a Claude Code settings file approves a call before auto mode's classifier sees it, so a rule that approves a whole tool or a program with any arguments skips the one check that stops an injected or mistaken action. teamrig permissions trim removes the rules off keepAllow (the owner runs it with --yes); doctor flags the ones that approve a whole tool or program, or hold a credential (text in a secret's shape) that Claude Code saved with an approved command. |
 | `open` | [object](#open) |  | How teamrig open starts a session in a new terminal tab. |
@@ -586,6 +587,20 @@ Each session's prompts and replies, kept in state/turn-log/\<session>/\<UTC hour
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Off: nothing is written. |
 | `keepHours` | integer (1 to 168) | `24` | How long each entry is kept, in hours; whole hours past it are removed at a session start. |
+
+## `meetingNotices`
+
+What a booked meeting (teamrig meeting schedule) tells the person, and when: a notice some minutes before its slot, one at the slot, and an alert once it is some minutes past its slot with no meeting start. Each notice goes out once, by whichever tab of the team looks first, on each channel left on.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `enabled` | boolean | `true` | Off: no meeting notice of any kind. |
+| `beforeMinutes` | integer (0 to 120) | `10` | The early notice, in minutes before the slot; 0: none. |
+| `atStart` | boolean | `true` | The notice at the slot's time. |
+| `missedAfterMinutes` | integer (0 to 120) | `5` | The missed alert, in minutes past the slot's time with no meeting start; 0: none. |
+| `osToast` | boolean | `true` | The operating system's notification: a toast on Windows, a banner on macOS, notify-send on Linux. |
+| `tabToast` | boolean | `true` | A toast in the open tab of the team that sends the notice; a missed alert's stays until it is clicked away. |
+| `leadInbox` | boolean | `true` | One inbox line to the team's lead for a missed meeting. |
 
 ## `readonlyShell`
 

@@ -33,6 +33,7 @@ import type {
   StatusLineConfig,
   TestsConfig,
   TurnLogConfig,
+  MeetingNoticesConfig,
   WakeConfig,
   StablePeriodsConfig,
   MeetingConfig,
@@ -239,6 +240,16 @@ export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 3 };
 export const DEFAULT_LEAD_BOUNDARY: LeadBoundaryConfig = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
 /** On, for a day: what a tab showed stays readable through a night of refreshes. */
 export const DEFAULT_TURN_LOG: TurnLogConfig = { enabled: true, keepHours: 24 };
+/** The owner's order (T2405): 10 minutes ahead and at the slot, and a missed alert 5 minutes in, on every channel. */
+export const DEFAULT_MEETING_NOTICES: MeetingNoticesConfig = {
+  enabled: true,
+  beforeMinutes: 10,
+  atStart: true,
+  missedAfterMinutes: 5,
+  osToast: true,
+  tabToast: true,
+  leadInbox: true,
+};
 
 /**
  * On, for p0 and p1 only. In one team of 12 sessions, others handed a session 3 to 6 p1 tasks a day once its register
