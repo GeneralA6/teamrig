@@ -29,11 +29,17 @@ function itemOf(value) {
     if (!isRecord(value)) {
         return undefined;
     }
-    const { id, title, settled, decision } = value;
+    const { id, title, settled, decision, summary } = value;
     if (typeof id !== 'string' || typeof title !== 'string' || typeof settled !== 'boolean') {
         return undefined;
     }
-    return decision === null || typeof decision === 'string' ? { id, title, settled, decision } : undefined;
+    if (!isTextOrNull(decision) || !isTextOrNull(summary)) {
+        return undefined;
+    }
+    return { id, title, settled, decision, summary };
+}
+function isTextOrNull(value) {
+    return value === null || typeof value === 'string';
 }
 function itemsOf(value) {
     if (!Array.isArray(value)) {
@@ -71,16 +77,31 @@ export function parseMeetingPanelAnswer(stdout) {
     }
     return undefined;
 }
-/** The pane's rows, header first: each card checked off with its decision, on the table, or still to come. */
-export function panelRows(view) {
-    const header = { text: view.left === 0 ? 'Every card decided' : `${view.left} to decide`, mark: 'asked' };
-    const rows = view.items.map((item) => {
-        if (item.settled) {
-            return { text: `✓ ${item.id} ${item.title}${item.decision === null ? '' : `: ${item.decision}`}`, mark: 'done' };
-        }
-        return item.id === view.current ? { text: `▶ ${item.id} ${item.title}`, mark: 'current' } : { text: `· ${item.id} ${item.title}`, mark: 'asked' };
+/**
+ * The pane's layout (T2519): a header with how many cards are left and decided, then the card on the table, the ones
+ * still to come and the decided ones, each group under its heading, in the agenda's order within it. The decided ones
+ * go last, so the card on the table stays at the top as the meeting goes on; a group with no card is left out.
+ */
+export function panelLayout(view) {
+    const cards = view.items.map((item) => ({
+        mark: item.settled ? 'done' : item.id === view.current ? 'current' : 'next',
+        id: item.id,
+        title: item.title,
+        summary: item.summary,
+        decision: item.decision,
+    }));
+    const decided = cards.filter((card) => card.mark === 'done').length;
+    const header = view.left === 0 ? 'Every card decided' : `${view.left} to decide · ${decided} decided`;
+    const groups = [
+        ['On the table', 'current'],
+        ['Up next', 'next'],
+        ['Decided', 'done'],
+    ];
+    const sections = groups.flatMap(([heading, mark]) => {
+        const held = cards.filter((card) => card.mark === mark);
+        return held.length === 0 ? [] : [{ heading, cards: held }];
     });
-    return [header, ...rows];
+    return { header, sections };
 }
 function messageOf(error) {
     return error instanceof Error ? error.message : String(error);

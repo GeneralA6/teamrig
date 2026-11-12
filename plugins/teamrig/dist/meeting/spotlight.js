@@ -187,13 +187,15 @@ export async function startSpotlight(deps, config, terminal, target, cwd) {
     }
     return { kind: 'start', outcome: await deps.processes.startHidden(spotlightRequest({ ...target, dim: config.dim }, deps.env, cwd)) };
 }
-/** What `meeting start` prints of the spotlight; nothing when the team keeps it off. */
+/**
+ * What `meeting start` prints of the spotlight; nothing when the team keeps it off, nor where it cannot run (off
+ * Windows or Windows Terminal): it is on by default (T2523), so a line there would only repeat at every meeting.
+ */
 export function spotlightLine(outcome, target, dim) {
     switch (outcome.kind) {
         case 'off':
-            return undefined;
         case 'unsupported':
-            return `NOT SPOTLIT: ${outcome.why}`;
+            return undefined;
         case 'start':
             switch (outcome.outcome.kind) {
                 case 'started':
