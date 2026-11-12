@@ -407,12 +407,13 @@ The weekly token budget: the pace line the team is measured against and each ses
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `false` | Turns on the live warning and the core rules' pacing sentence; teamrig budget shows usage either way. Unset in a team under another on its account: the team above's. |
-| `account` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the one account the teams on its Claude config dir name (the dir its sessions last started in), else that dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, accountLead, weeklyLimitW, subagentWeight, extraWPerUsd, reset). |
+| `account` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the one account the teams on its Claude config dir name (the dir its sessions last started in), else that dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, accountLead, weeklyLimitW, subagentWeight, extraWPerUsd, reset, resets). |
 | `accountLead` | [session name](#shared-types) |  | The root team whose lead is the account's main lead: after each reset it splits the week among the account's root teams, each lead then splits its part among its own team and its child teams, and the main lead reports the split at the owner's first meeting after the reset. Unset: the team above's, in a team under another on its account; else the root team's own lead, which holds while the account has one root team. Set it in every root team's config once a second root team joins the account. |
 | `weeklyLimitW` | integer (1000000 to 1000000000000) |  | The weekly limit in weighted tokens. Unset: the team above's, in a team under another on its account; else derived from the status line's weekly %. |
 | `subagentWeight` | number (0.1 to 10) | `1` | What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike. Unset in a team under another on its account: the team above's. |
 | `extraWPerUsd` | integer (1000 to 1000000000) |  | W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the team above's, in a team under another on its account; else the extra-usage pool shows in dollars only until then, with no allowance. |
 | `reset` | [object](#budgetreset) |  | When the weekly limit resets, for a team without a status line. Unset: the team above's, in a team under another on its account; else the reset time the status line reports. |
+| `resets` | array (at most 20 items) of [object](#budgetresets) | `[]` | The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none. |
 | `targetPct` | number (1 to 100) | `99.5` | Use the week up to this share of the weekly limit. |
 | `reservePct` | number (0 to 50) | `0.5` | Kept back for incidents until shortly before the reset; targetPct plus reservePct is at most 100. |
 | `shareFloorPct` | integer (0 to 50) | `10` | The least share of each weekly split a team with planned work gets, in % of the part being split; when the floors do not fit, each team gets an equal part. 0: no floor. The team's own, never taken from the team above. The lead's rules print it while the budget is enabled. |
@@ -437,6 +438,18 @@ When the weekly limit resets, for a team without a status line. Unset: the team 
 | --- | --- | --- | --- |
 | `weekday` (required) | one of `"sun"`, `"mon"`, `"tue"`, `"wed"`, `"thu"`, `"fri"`, `"sat"` |  | The day the weekly limit resets. |
 | `timeUtc` (required) | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | The time it resets, HH:MM UTC. |
+
+## `budget.resets[]`
+
+The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `kind` (required) | one of `"fable"`, `"full"` |  | fable refills the Fable bar and gives back what Fable used of the weekly limit; full clears all of the week's usage. |
+| `count` (required) | integer (1 to 20) |  | How many resets the grant holds. |
+| `expiresUtc` (required) | string (matching `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`) |  | When the grant's unused resets expire, YYYY-MM-DD HH:MM UTC. |
+| `usedUtc` | array (at most 20 items) of string (matching `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`) |  | When each use was taken, YYYY-MM-DD HH:MM UTC; at most count. Unset: none used. |
+| `note` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | One short line about the grant, such as where it came from. |
 
 ## `budget.sessions.*`
 
