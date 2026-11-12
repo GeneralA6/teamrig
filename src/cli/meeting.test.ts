@@ -111,7 +111,7 @@ describe('runCli: the daily meeting', () => {
   });
 
   // T2517: the spotlight dims every screen but the lead's window while the meeting is open.
-  const SPOTLIT_TEAM = { ...TEAM, meeting: { spotlight: { enabled: true, dim: 0.5 } } };
+  const SPOTLIT_TEAM = { ...TEAM, meeting: { spotlight: { enabled: true, dim: 0.5, breakthroughSeconds: 45 } } };
 
   it('starts the spotlight on Windows when the team turns it on, once, and says so under the start line', async () => {
     const kit = await teamBeforeTheMeeting(SPOTLIT_TEAM);
@@ -126,6 +126,9 @@ describe('runCli: the daily meeting', () => {
     assert.equal(env[SPOTLIGHT_VARS.title], '[app] lead');
     assert.equal(env[SPOTLIGHT_VARS.startedAt], '2030-01-08T10:00:00.000Z');
     assert.equal(env[SPOTLIGHT_VARS.dim], '0.5');
+    // The file the cold-send hook records a break-through in, and how long one lifts the dimming (T2524).
+    assert.match(env[SPOTLIGHT_VARS.breakthrough] ?? '', /meeting-breakthrough\.json$/);
+    assert.equal(env[SPOTLIGHT_VARS.liftMs], '45000');
 
     kit.clock.advance(10 * MINUTE);
     const again = await kit.run(['meeting', 'start', '--session', 'lead'], { platform: 'win32', processes });

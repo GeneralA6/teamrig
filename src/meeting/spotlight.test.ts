@@ -2,10 +2,16 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { MEETING_LAPSE_MS, type Meeting } from './state.ts';
-import { SPOTLIGHT_VARS, WINDOWS_SPOTLIGHT_SCRIPT, spotlightLine, spotlightRequest, startSpotlight, type SpotlightTarget } from './spotlight.ts';
+import { SPOTLIGHT_VARS, WINDOWS_SPOTLIGHT_SCRIPT, spotlightLine, spotlightRequest, startSpotlight, type SpotlightPlace } from './spotlight.ts';
 
 const MEETING: Meeting = { startedAt: '2030-01-08T10:00:00.000Z', by: 'lead', endedAt: null, since: null };
-const TARGET: Omit<SpotlightTarget, 'dim'> = { title: 'app-lead', meetingFile: 'state/meeting.json', meeting: MEETING, log: 'state/logs/meeting-spotlight.log' };
+const TARGET: SpotlightPlace = {
+  title: 'app-lead',
+  meetingFile: 'state/meeting.json',
+  meeting: MEETING,
+  breakthroughFile: 'state/meeting-breakthrough.json',
+  log: 'state/logs/meeting-spotlight.log',
+};
 const ON = { enabled: true, dim: 0.6, breakthroughSeconds: 120 };
 
 /** Windows' limit on a whole command line, in characters. */
@@ -16,8 +22,8 @@ function depsOn(platform: NodeJS.Platform, processes = new FakeProcesses()): { p
 }
 
 describe('spotlightRequest', () => {
-  it("passes the title, the meeting file, its start, its lapse and the dim as variables beside the caller's", () => {
-    const request = spotlightRequest({ ...TARGET, dim: 0.4 }, { PATH: 'bin' }, 'work');
+  it("passes the title, the meeting file, its start, its lapse, the dim, the break-through file and its lift as variables beside the caller's", () => {
+    const request = spotlightRequest({ ...TARGET, dim: 0.4, liftMs: 30_000 }, { PATH: 'bin' }, 'work');
     assert.equal(request.command, 'powershell.exe');
     assert.equal(request.cwd, 'work');
     assert.equal(request.log, TARGET.log);
@@ -29,11 +35,13 @@ describe('spotlightRequest', () => {
       [SPOTLIGHT_VARS.startedAt]: MEETING.startedAt,
       [SPOTLIGHT_VARS.until]: String(Date.parse(MEETING.startedAt) + MEETING_LAPSE_MS),
       [SPOTLIGHT_VARS.dim]: '0.4',
+      [SPOTLIGHT_VARS.breakthrough]: 'state/meeting-breakthrough.json',
+      [SPOTLIGHT_VARS.liftMs]: '30000',
     });
   });
 
   it('runs one fixed script, which holds none of the values, encoded within the command line limit', () => {
-    const request = spotlightRequest({ ...TARGET, title: 'a title "quoted" $(here)', dim: 0.6 }, {}, 'work');
+    const request = spotlightRequest({ ...TARGET, title: 'a title "quoted" $(here)', dim: 0.6, liftMs: 120_000 }, {}, 'work');
     const encoded = request.args.at(-1) ?? '';
     assert.equal(Buffer.from(encoded, 'base64').toString('utf16le'), WINDOWS_SPOTLIGHT_SCRIPT);
     assert.ok(!WINDOWS_SPOTLIGHT_SCRIPT.includes('quoted'));
@@ -46,6 +54,14 @@ describe('spotlightRequest', () => {
     assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /\$meeting\.startedAt -ceq \$startedAt\) -and \(\$null -eq \$meeting\.endedAt\)/);
     assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /ToUnixTimeMilliseconds\(\) -ge \$until\) \{ return \$false \}/);
     assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /if \(\$unreadable -ge 3\) \{ exit 0 \}/);
+  });
+
+  it("hides the dimming for liftMs after a break-through of its own meeting, checked with the meeting file (T2524)", () => {
+    assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /\$at = \[long\]\$breakthrough\.atMs \} catch \{ return \$false \}/);
+    assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /\(\$breakthrough\.startedAt -ceq \$startedAt\) -and \(\[DateTimeOffset\]::UtcNow\.ToUnixTimeMilliseconds\(\) -lt \$at \+ \$liftMs\)/);
+    const check = WINDOWS_SPOTLIGHT_SCRIPT.indexOf('$open = Test-MeetingOpen');
+    assert.ok(check >= 0 && WINDOWS_SPOTLIGHT_SCRIPT.indexOf('$lifted = Test-Lifted') > check, 'read at each 2 s check');
+    assert.match(WINDOWS_SPOTLIGHT_SCRIPT, /if \(\$hole\.IsEmpty -or \$lifted\) \{\n\s*if \(\$overlay\.Visible\) \{ \$overlay\.Hide\(\) \}/);
   });
 });
 
@@ -76,6 +92,7 @@ describe('startSpotlight', () => {
       assert.deepEqual(await startSpotlight(deps, { ...ON, dim: 0.3 }, terminal, TARGET, 'work'), { kind: 'start', outcome: { kind: 'started', end: 'spawned' } });
       assert.equal(deps.processes.hidden.length, 1);
       assert.equal(deps.processes.hidden[0]?.env?.[SPOTLIGHT_VARS.dim], '0.3');
+      assert.equal(deps.processes.hidden[0]?.env?.[SPOTLIGHT_VARS.liftMs], '120000', "the team's breakthroughSeconds in ms");
     });
   }
 });
