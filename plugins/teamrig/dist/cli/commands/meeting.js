@@ -109,11 +109,30 @@ function phaseLine(phase, mk) {
             return `MEETING none open, the last ended ${mk.zone.weekdayMinute(new Date(phase.until))}; the agenda for the next (${KIT_NAME} meeting start opens it)`;
     }
 }
-/** The self-merges digest's input: the team's merges log, read once, from the agenda's start. */
-async function mergeDigestOf(runtime, mk, since) {
-    const { merges } = deliveryPlaces(mk.config.delivery, mk.kit.paths);
-    const gated = mk.config.pushGuard.pushToProtected === 'gated';
-    return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
+/**
+ * The self-merges digest's input, from the agenda's start: the lead's team's merges log, then each other log of a team
+ * under it (T2457), each path read once, as teams sharing a `delivery.dir` share its log.
+ */
+async function mergeDigestOf(runtime, mk, since, { own, teams }) {
+    const pathOf = (rolled) => deliveryPlaces(rolled.config.delivery, rolled.paths).merges;
+    const readAt = async (path) => ({ log: await new MergeLog(runtime.files, path).read(), path });
+    const ownPath = pathOf(own);
+    const seen = new Set([ownPath]);
+    const below = [];
+    for (const rolled of teams) {
+        const path = pathOf(rolled);
+        if (!seen.has(path)) {
+            seen.add(path);
+            below.push(rolled);
+        }
+    }
+    return {
+        own: await readAt(ownPath),
+        below: await Promise.all(below.map(async (rolled) => ({ team: rolled.team, ...(await readAt(pathOf(rolled))) }))),
+        since,
+        zone: mk.zone,
+        gated: teams.some((rolled) => rolled.config.pushGuard.pushToProtected === 'gated'),
+    };
 }
 /** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
 export const SPOTLIGHT_LOG = 'meeting-spotlight.log';
@@ -163,7 +182,7 @@ async function printAgenda(args, runtime, mk, phase) {
     runtime.out.stdout(`  each other section: ${KIT_NAME} stats --tree --session ${mk.lead} (new work, speed, delays, waits, bugs, people, goals, areas)`);
     const scheduled = await new MeetingSchedule(runtime.files, mk.kit.paths.meetings).read();
     agendaMeetingLines(scheduled.meetings, mk.zone, mk.now).forEach((line) => runtime.out.stdout(line));
-    mergeDigestLines(await mergeDigestOf(runtime, mk, since)).forEach((line) => runtime.out.stdout(line));
+    mergeDigestLines(await mergeDigestOf(runtime, mk, since, rolled)).forEach((line) => runtime.out.stdout(line));
     await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
     runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
     const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);
