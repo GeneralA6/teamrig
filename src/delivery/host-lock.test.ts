@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import type { Sleep } from '../core/lock.ts';
+import { SecretShapes } from '../core/secret-shapes.ts';
+import { EnvAssignments } from '../secret-guard/env-assignments.ts';
+import { DEFAULT_SECRET_ENV_NAMES, SecretNames } from '../secret-guard/names.ts';
+import { ToolOutputRedactor } from '../secret-guard/redactor.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
@@ -37,13 +42,15 @@ const PATH = '/kit/host.lock';
 const QUEUE = `${PATH}.queue`;
 const SHARED = `${PATH}.shared`;
 const TTL_MS = 150 * 60_000;
+/** The secret redactor a tool's result passes through, with its default shapes and names, as the redact hook builds it. */
+const REDACTOR = new ToolOutputRedactor([new SecretShapes(), new EnvAssignments(new SecretNames(DEFAULT_SECRET_ENV_NAMES))]);
 const ME = 4242;
 const OTHER = 9001;
 
-/** `record` as this teamrig stores it: its id under `token`, the name every reader takes until a later release (T1544). */
-function onDisk<T extends { readonly id: string }>(record: T): { readonly token: string } & Omit<T, 'id'> {
+/** `record` as this teamrig stores it: its id under `id`, first (T1561). */
+function onDisk<T extends { readonly id: string }>(record: T): { readonly id: string } & Omit<T, 'id'> {
   const { id, ...rest } = record;
-  return { token: id, ...rest };
+  return { id, ...rest };
 }
 
 /** The text of {@link onDisk}. */
@@ -248,7 +255,7 @@ describe('HostLock.tryTake', () => {
   });
 
   it("reads a lock file with only the six fields the delivery owner's coordinator writes as its holder, and writes all six itself (T2209)", async () => {
-    const coordinator = { token: 'coord-1', pid: OTHER, session: 'po', purpose: 'deploy api', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+    const coordinator = { id: 'coord-1', pid: OTHER, session: 'po', purpose: 'deploy api', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
     const busy = await world({ [PATH]: JSON.stringify(coordinator) }).lock.tryTake('alpha', 'heavy: test');
     const holder = busy.kind === 'busy' && busy.holder.kind === 'held' ? busy.holder.info : undefined;
     assert.deepEqual(holder === undefined ? undefined : [holder.id, holder.pid, holder.session, holder.purpose, holder.acquiredAt, holder.expiresAt], ['coord-1', OTHER, 'po', 'deploy api', '2030-01-08T09:50:00.000Z', '2030-01-08T12:20:00.000Z']);
@@ -256,7 +263,7 @@ describe('HostLock.tryTake', () => {
     await lock.tryTake('alpha', 'heavy: build api');
     const written = fileOf(files);
     const kept = Object.keys(coordinator).filter((key) => typeof written === 'object' && written !== null && key in written);
-    assert.deepEqual(kept, ['token', 'pid', 'session', 'purpose', 'acquiredAt', 'expiresAt']);
+    assert.deepEqual(kept, ['id', 'pid', 'session', 'purpose', 'acquiredAt', 'expiresAt']);
   });
 
   it('takes over a lock that has expired', async () => {
@@ -442,7 +449,7 @@ describe('HostLock.acquire in arrival order', () => {
     ]);
     assert.deepEqual(clock.sleeps, [30_000, 30_000, FIRST_IN_LINE_POLL_MS], 'behind a waiter it looks every poll, first in line every 2 s');
     assert.deepEqual([fileOf(files), taking.kind === 'taken' ? taking.lock.id : ''], [
-      { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: test', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:01:02.000Z', expiresAt: '2030-01-08T12:31:02.000Z' },
+      { id: 't1', pid: ME, session: 'alpha', purpose: 'heavy: test', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:01:02.000Z', expiresAt: '2030-01-08T12:31:02.000Z' },
       't1',
     ], "the lock carries its ticket's id: one step, one id, from joining the line to releasing");
     assert.deepEqual(await lineOf(files), []);
@@ -941,11 +948,11 @@ describe('HostLock memory gate (T2192)', () => {
   });
 });
 
-describe('HostLock ids, stored as token until every reader takes id (T1544)', () => {
-  /** `record` as a newer teamrig stores it: its id under `id`. */
+describe('HostLock ids, stored under id and read under token too (T1544, T1561)', () => {
+  /** `record` as a team's own deploy tool stores it: its id under `id`. */
   const newer = (record: { readonly id: string }): string => JSON.stringify(record);
 
-  it("respects a newer teamrig's lock, share and ticket stored under id: busy, named, none removed", async () => {
+  it("respects a lock, share and ticket another writer stored under id: busy, named, none removed", async () => {
     const held = world({ [PATH]: newer(infoOf()) });
     const taking = await held.lock.tryTake('alpha', 'heavy: test');
     assert.deepEqual([taking, held.files.get(PATH)], [{ kind: 'busy', holder: { kind: 'held', info: infoOf() } }, newer(infoOf())]);
@@ -962,7 +969,7 @@ describe('HostLock ids, stored as token until every reader takes id (T1544)', ()
     assert.deepEqual([behind.kind === 'busy' && behind.holder.kind === 'queued' ? behind.holder.first : undefined, queued.files.get(early)], [waiter, ticketText]);
   });
 
-  it("stores the id of each lock, ticket and share it writes under token alone, first, as an older teamrig and a team's own deploy tool read it", async () => {
+  it('stores the id of each lock, ticket and share it writes under id alone, first, which the secret redactor leaves alone', async () => {
     const tickets: string[] = [];
     const { files, lock } = world({ [PATH]: heldBy() }, (time, store) => async (ms) => {
       for (const name of await store.list(QUEUE)) {
@@ -974,19 +981,25 @@ describe('HostLock ids, stored as token until every reader takes id (T1544)', ()
     assert.equal((await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined)).kind, 'taken');
     const sharing = world();
     assert.equal((await sharing.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL })).kind, 'taken');
-    const texts = [tickets[0], files.get(PATH), sharing.files.get(`${SHARED}/t1.json`)];
+    const texts = [tickets[0], files.get(PATH), sharing.files.get(`${SHARED}/t1.json`)].map((text) => text ?? '{}');
     assert.deepEqual(
-      texts.map((text) => Object.keys(JSON.parse(text ?? '{}'))).map((keys) => [keys[0], keys.includes('id')]),
+      texts.map((text) => Object.keys(JSON.parse(text))).map((keys) => [keys[0], keys.includes('token')]),
       [
-        ['token', false],
-        ['token', false],
-        ['token', false],
+        ['id', false],
+        ['id', false],
+        ['id', false],
       ],
+    );
+    // The test ids are short; a real one is a UUID, which the redactor flags when it is given to `token`.
+    const real = texts.map((text) => text.replaceAll(/"t\d+"/g, `"${randomUUID()}"`));
+    assert.deepEqual(
+      real.map((text) => REDACTOR.redact({ stdout: text }).classes),
+      [[], [], []],
     );
   });
 
   it('reads the id under id alone when a file holds both names, keeping no token to write back', async () => {
-    const { lock } = world({ [PATH]: JSON.stringify({ ...onDisk(infoOf({ id: 'older-name' })), id: 'other' }) });
+    const { lock } = world({ [PATH]: JSON.stringify({ token: 'older-name', ...infoOf() }) });
     const state = await lock.state();
     assert.deepEqual(state.kind === 'held' ? state.info : undefined, infoOf());
   });

@@ -36,7 +36,7 @@ function nameOf(waiter: LockWaiter): string {
   return `${String(Date.parse(waiter.arrivedAt)).padStart(15, '0')}-${waiter.id}.json`;
 }
 
-/** Writes each waiter's ticket as teamrig, and an older one, stores it: the id under `token` (T1544). */
+/** Writes each waiter's ticket as an older teamrig stored it: the id under `token`, which a reader still takes (T1544). */
 async function queued(kit: CliHarness, ...waiters: readonly LockWaiter[]): Promise<void> {
   for (const waiter of waiters) {
     const { id, ...rest } = waiter;

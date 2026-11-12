@@ -17,7 +17,7 @@ import { causeOfLockWait, WAIT_CAUSES, type WaitCause } from './wait-log.ts';
  * lock while a team moves its callers to teamrig; a field either adds is ignored.
  */
 export interface HostLockInfo {
-  /** Unique to one taking: only the step that took the lock releases it. Stored as `token` for now ({@link STORED_ID}). */
+  /** Unique to one taking: only the step that took the lock releases it. Stored as `id` ({@link STORED_ID}). */
   readonly id: string;
   /** The process holding it; once that process is gone, the lock is stale. */
   readonly pid: number;
@@ -325,17 +325,17 @@ function withoutForeignKit(value: unknown): unknown {
 }
 
 /**
- * The name a lock's, a share's and a ticket's id is stored under: `token` until every reader takes `id` (T1544). The
- * secret redactor reads a quoted literal given to `token` as a secret, so a session that shows the lock files a
- * rotation task; but an older teamrig, and a team's own deploy tool, read a lock without `token` as damaged and remove
- * it once it is old enough, and two steps would run at once. So the stored name changes only in a later release, and a
- * reader takes either.
+ * The name a lock's, a share's and a ticket's id is stored under: `id` (T1544, T1561). It was `token`, and the secret
+ * redactor reads a long quoted literal given to `token` as a secret, so a session that showed the lock filed a rotation
+ * task. The name changed only once a team's own deploy tool read `id` too, since a reader that misses its id takes the
+ * lock for damaged and removes it, and two steps would run at once.
  */
-const STORED_ID = 'token';
+const STORED_ID = 'id';
 
 /**
- * `value` with its id under `id` alone, whichever name its writer stored it under ({@link STORED_ID}); `id` wins in a
- * file holding both. No `token` stays, so a record read and written back (a renewed ticket) stores its id once.
+ * `value` with its id under `id` alone, whichever name its writer stored it under: `token` from an older teamrig or deploy
+ * tool still holding a lock; `id` wins in a file holding both. No `token` stays, so a record read and written back (a
+ * renewed ticket) stores its id once.
  */
 function withId(value: unknown): unknown {
   if (!isRecord(value) || !('token' in value)) {
