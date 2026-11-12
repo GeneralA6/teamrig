@@ -67,7 +67,8 @@ export interface UpdateHandHost {
   changed(): void;
   /** When installed_plugins.json last changed, in milliseconds since the epoch; undefined when it cannot be dated. */
   installedChangedAt(): Promise<number | undefined>;
-  now(): number;
+  /** Claude Code's clock ($.clock.now()), so a test's fake clock moves the band's "updated" window too. */
+  now(): Promise<number>;
 }
 
 /**
@@ -210,9 +211,9 @@ export class UpdateHand {
     this.host = host;
   }
 
-  /** What the band shows: an update just installed for UPDATED_SHOW_MS, else the first update the CLI told of. */
-  view(): UpdateView | undefined {
-    if (this.updated !== undefined && this.host.now() - this.updated.at < UPDATED_SHOW_MS) {
+  /** What the band shows at `now` (host.now()): an update just installed for UPDATED_SHOW_MS, else the first update the CLI told of. */
+  view(now: number): UpdateView | undefined {
+    if (this.updated !== undefined && now - this.updated.at < UPDATED_SHOW_MS) {
       return { kind: 'updated', plugin: this.updated.plugin, version: this.updated.version };
     }
     const notice = this.notices[0];
@@ -288,8 +289,10 @@ export class UpdateHand {
         if (answer.kind !== 'applied') {
           return { kind: 'failed', error: answer.kind === 'failed' ? answer.why : `hook update-apply answered ${answer.kind}` };
         }
+        // Dated before the drop, so no redraw between them shows the next update for a moment.
+        const at = await this.host.now();
         this.drop(notice.plugin);
-        this.updated = { plugin: answer.plugin, version: answer.version, at: this.host.now() };
+        this.updated = { plugin: answer.plugin, version: answer.version, at };
         this.host.toast(`${answer.plugin} ${answer.version} installed: the tab reloads it`);
         return answer;
       },
@@ -319,7 +322,7 @@ export class UpdateHand {
    * updating while it runs and as failed after a failure, which a toast names too.
    */
   private async act(press: (notice: UpdateNotice) => Promise<UpdateAction>, what: string, installs: boolean): Promise<UpdateAction> {
-    const view = this.view();
+    const view = this.view(await this.host.now());
     if (this.acting || view === undefined || (view.kind !== 'available' && view.kind !== 'failed')) {
       return { kind: 'idle' };
     }
