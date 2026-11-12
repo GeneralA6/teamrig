@@ -73,7 +73,7 @@ class FakeHost implements UpdateHandHost {
     return this.installedAt();
   }
 
-  now(): number {
+  async now(): Promise<number> {
     return this.clock;
   }
 }
@@ -165,14 +165,14 @@ describe('UpdateHand', () => {
   it('shows the first update a check told of, and none once a check tells of none', async () => {
     const host = new FakeHost();
     const hand = new UpdateHand(host);
-    assert.equal(hand.view(), undefined);
+    assert.equal(hand.view(host.clock), undefined);
     assert.deepEqual(await hand.tick(), { kind: 'checked', notices: [TEAMRIG, PANE] });
     assert.deepEqual(host.calls, [{ command: 'check', stdin: {} }]);
-    assert.deepEqual(hand.view(), { kind: 'available', notice: TEAMRIG });
+    assert.deepEqual(hand.view(host.clock), { kind: 'available', notice: TEAMRIG });
     assert.equal(host.changes, 1);
     host.answers.check = run({ kind: 'notices', notices: [] });
     assert.deepEqual(await hand.tick(), { kind: 'checked', notices: [] });
-    assert.equal(hand.view(), undefined);
+    assert.equal(hand.view(host.clock), undefined);
   });
 
   it('shows updating at once on a press, then updated for 30 seconds, then the next update', async () => {
@@ -183,18 +183,18 @@ describe('UpdateHand', () => {
     const changesBefore = host.changes;
     const update = hand.apply();
     await settle();
-    assert.deepEqual(hand.view(), { kind: 'updating', notice: TEAMRIG });
+    assert.deepEqual(hand.view(host.clock), { kind: 'updating', notice: TEAMRIG });
     assert.equal(host.changes, changesBefore + 1);
     held.open();
     assert.deepEqual(await update, { kind: 'applied', plugin: 'teamrig', version: '0.333.0' });
     assert.deepEqual(host.calls.at(-1), { command: 'apply', stdin: { plugin: 'teamrig' } });
     assert.deepEqual(host.toasts, ['teamrig 0.333.0 installed: the tab reloads it']);
     assert.equal(host.changes, changesBefore + 2);
-    assert.deepEqual(hand.view(), { kind: 'updated', plugin: 'teamrig', version: '0.333.0' });
+    assert.deepEqual(hand.view(host.clock), { kind: 'updated', plugin: 'teamrig', version: '0.333.0' });
     host.clock += UPDATED_SHOW_MS - 1;
-    assert.deepEqual(hand.view(), { kind: 'updated', plugin: 'teamrig', version: '0.333.0' });
+    assert.deepEqual(hand.view(host.clock), { kind: 'updated', plugin: 'teamrig', version: '0.333.0' });
     host.clock += 1;
-    assert.deepEqual(hand.view(), { kind: 'available', notice: PANE });
+    assert.deepEqual(hand.view(host.clock), { kind: 'available', notice: PANE });
   });
 
   it('takes no press while it shows an update installing or installed', async () => {
@@ -213,7 +213,7 @@ describe('UpdateHand', () => {
     assert.deepEqual(await hand.dismiss(), { kind: 'dismissed', plugin: 'teamrig', version: '0.333.0' });
     assert.deepEqual(host.calls.at(-1), { command: 'dismiss', stdin: { plugin: 'teamrig', version: '0.333.0' } });
     assert.deepEqual(host.toasts, []);
-    assert.deepEqual(hand.view(), { kind: 'available', notice: PANE });
+    assert.deepEqual(hand.view(host.clock), { kind: 'available', notice: PANE });
   });
 
   it('shows a failed update with its reason, and a second Update tries again', async () => {
@@ -221,11 +221,11 @@ describe('UpdateHand', () => {
     const hand = await checked(host);
     host.answers.apply = run({ kind: 'failed', why: 'plugin update failed: offline' });
     assert.deepEqual(await hand.apply(), { kind: 'failed', error: 'plugin update failed: offline' });
-    assert.deepEqual(hand.view(), { kind: 'failed', notice: TEAMRIG, why: 'plugin update failed: offline' });
+    assert.deepEqual(hand.view(host.clock), { kind: 'failed', notice: TEAMRIG, why: 'plugin update failed: offline' });
     assert.deepEqual(host.toasts, ['teamrig update failed: plugin update failed: offline']);
     host.answers.apply = run({ kind: 'applied', plugin: 'teamrig', version: '0.333.0' });
     assert.equal((await hand.apply()).kind, 'applied');
-    assert.deepEqual(hand.view(), { kind: 'updated', plugin: 'teamrig', version: '0.333.0' });
+    assert.deepEqual(hand.view(host.clock), { kind: 'updated', plugin: 'teamrig', version: '0.333.0' });
   });
 
   it('keeps the update shown and toasts why when a dismissal fails or the CLI cannot start', async () => {
@@ -233,7 +233,7 @@ describe('UpdateHand', () => {
     const hand = await checked(host);
     host.answers.dismiss = { exitCode: 1, stdout: 'boom' };
     assert.deepEqual(await hand.dismiss(), { kind: 'failed', error: 'hook update-dismiss exited 1: boom' });
-    assert.deepEqual(hand.view(), { kind: 'available', notice: TEAMRIG });
+    assert.deepEqual(hand.view(host.clock), { kind: 'available', notice: TEAMRIG });
     host.answers.dismiss = run({ kind: 'applied', plugin: 'teamrig', version: '0.333.0' });
     assert.deepEqual(await hand.dismiss(), { kind: 'failed', error: 'hook update-dismiss answered applied' });
     host.answers.apply = run({ kind: 'dismissed' });
@@ -248,7 +248,7 @@ describe('UpdateHand', () => {
       'teamrig update failed: hook update-apply answered dismissed',
       'teamrig update failed: node is missing',
     ]);
-    assert.deepEqual(hand.view(), { kind: 'failed', notice: TEAMRIG, why: 'node is missing' });
+    assert.deepEqual(hand.view(host.clock), { kind: 'failed', notice: TEAMRIG, why: 'node is missing' });
   });
 
   it('forgets a failed update once a check no longer tells of its plugin', async () => {
@@ -258,10 +258,10 @@ describe('UpdateHand', () => {
     await hand.apply();
     host.answers.check = run({ kind: 'notices', notices: [PANE] });
     await hand.tick();
-    assert.deepEqual(hand.view(), { kind: 'available', notice: PANE });
+    assert.deepEqual(hand.view(host.clock), { kind: 'available', notice: PANE });
     host.answers.check = run({ kind: 'notices', notices: [TEAMRIG, PANE] });
     await hand.tick();
-    assert.deepEqual(hand.view(), { kind: 'available', notice: TEAMRIG });
+    assert.deepEqual(hand.view(host.clock), { kind: 'available', notice: TEAMRIG });
   });
 
   it('keeps a failed update shown while a check still tells of its plugin', async () => {
@@ -270,7 +270,7 @@ describe('UpdateHand', () => {
     host.answers.apply = run({ kind: 'failed', why: 'offline' });
     await hand.apply();
     await hand.tick();
-    assert.deepEqual(hand.view(), { kind: 'failed', notice: TEAMRIG, why: 'offline' });
+    assert.deepEqual(hand.view(host.clock), { kind: 'failed', notice: TEAMRIG, why: 'offline' });
   });
 
   it('does nothing on a press while no update is shown', async () => {
@@ -294,7 +294,7 @@ describe('UpdateHand', () => {
       throw new Error('node is missing');
     };
     assert.deepEqual(await hand.tick(), { kind: 'failed', error: 'node is missing' });
-    assert.deepEqual(hand.view(), { kind: 'available', notice: TEAMRIG });
+    assert.deepEqual(hand.view(host.clock), { kind: 'available', notice: TEAMRIG });
   });
 
   it('runs one press at a time: a tick or a press during an update waits it out', async () => {
@@ -319,7 +319,7 @@ describe('UpdateHand', () => {
     assert.deepEqual(await hand.dismiss(), { kind: 'dismissed', plugin: 'teamrig', version: '0.333.0' });
     held.open();
     assert.deepEqual(await check, { kind: 'overlap' });
-    assert.deepEqual(hand.view(), { kind: 'available', notice: PANE });
+    assert.deepEqual(hand.view(host.clock), { kind: 'available', notice: PANE });
   });
 });
 
@@ -342,7 +342,7 @@ describe('UpdateHand.watch', () => {
     date = 900;
     host.answers.check = run({ kind: 'notices', notices: [] });
     assert.deepEqual(await hand.watch(), { kind: 'changed', tick: { kind: 'checked', notices: [] } });
-    assert.equal(hand.view(), undefined);
+    assert.equal(hand.view(host.clock), undefined);
     assert.deepEqual(await hand.watch(), { kind: 'unchanged' });
     assert.equal(host.calls.filter((each) => each.command === 'check').length, 2);
   });
