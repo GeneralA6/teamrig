@@ -1,5 +1,7 @@
+import { join } from 'node:path';
 import { deliveryPlaces } from "../../delivery/places.js";
 import { formatAddress } from "../../core/address.js";
+import { sessionDisplay } from "../../core/ids.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
@@ -7,6 +9,7 @@ import { agendaLines, agendaSince } from "../../meeting/agenda.js";
 import { mergeDigestLines } from "../../meeting/merges.js";
 import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
 import { MeetingSchedule } from "../../meeting/schedule.js";
+import { spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
 import { MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
 import { MergeLog } from "../../merge/merge-log.js";
 import { goalScores } from "../../register/goal-board.js";
@@ -112,6 +115,8 @@ async function mergeDigestOf(runtime, mk, since) {
     const gated = mk.config.pushGuard.pushToProtected === 'gated';
     return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
 }
+/** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
+export const SPOTLIGHT_LOG = 'meeting-spotlight.log';
 /** The range of the stats the agenda opens with: the last week, as `stats` reads by default. */
 export const AGENDA_STATS_RANGE = '7d';
 /**
@@ -186,6 +191,12 @@ export async function meetingStart(args, runtime) {
     const meeting = { startedAt: new Date(mk.now).toISOString(), by: mk.lead, endedAt: null, since: before === undefined ? null : new Date(before).toISOString() };
     await mk.store.write(meeting);
     runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
+    const spotlit = { title: sessionDisplay(mk.kit.paths.team, mk.leadName), meetingFile: mk.kit.paths.meeting, meeting, log: join(mk.kit.paths.logs, SPOTLIGHT_LOG) };
+    const { spotlight } = mk.config.meeting;
+    const line = spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, spotlit, runtime.cwd), spotlit, spotlight.dim);
+    if (line !== undefined) {
+        runtime.out.stdout(line);
+    }
     await printAgenda(args, runtime, mk, { kind: 'open', meeting });
     runtime.out.stdout(`END ${KIT_NAME} meeting end --session ${mk.lead}: tells each session the decisions recorded on its tasks`);
     return EXIT.ok;

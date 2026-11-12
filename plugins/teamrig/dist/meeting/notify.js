@@ -31,7 +31,8 @@ export function noticeRequest(platform, notice, env, cwd) {
     switch (platform) {
         case 'win32': {
             const { program, args } = powerShellRequest(WINDOWS_TOAST_SCRIPT);
-            return { command: program, args, cwd, env: { ...env, [NOTICE_TITLE_VAR]: notice.title, [NOTICE_TEXT_VAR]: notice.text } };
+            // Windows PowerShell started with no console runs nothing (T2517).
+            return { command: program, args, cwd, env: { ...env, [NOTICE_TITLE_VAR]: notice.title, [NOTICE_TEXT_VAR]: notice.text }, needsConsole: true };
         }
         case 'darwin':
             return { command: 'osascript', args: [...MAC_NOTICE_SCRIPT.flatMap((line) => ['-e', line]), notice.title, notice.text], cwd, env };
