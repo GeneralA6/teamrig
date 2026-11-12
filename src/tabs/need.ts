@@ -62,7 +62,7 @@ function isTabState(value: string): value is TabState {
   return STATES.has(value);
 }
 
-function isNeedKind(value: string): value is NeedKind {
+export function isNeedKind(value: string): value is NeedKind {
   return KINDS.has(value);
 }
 

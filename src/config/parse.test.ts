@@ -24,6 +24,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.loops, { chainNudgeAt: 3 });
     assert.deepEqual(config.leadBoundary, { enabled: true, ownPaths: [], searchNudgeAt: 3 });
     assert.deepEqual(config.turnLog, { enabled: true, keepHours: 24 });
+    assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
     assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig' });
@@ -277,6 +278,19 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(issues), ['turnLog.keepHours']);
     assert.equal(config.turnLog.keepHours, 24);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, turnLog: { keepHours: 169 } }).issues), ['turnLog.keepHours']);
+  });
+
+  it('reads needsYou, leaves out an unknown kind, and refuses a list that is no list or names more kinds than there are', () => {
+    const own = { enabled: false, kinds: ['error'], osToast: true };
+    assert.deepEqual(parseConfig({ ...ROSTER, needsYou: own }).config.needsYou, own);
+    const unknown = parseConfig({ ...ROSTER, needsYou: { kinds: ['question', 'nag', 7] } });
+    assert.deepEqual(paths(unknown.issues), ['needsYou.kinds[1]', 'needsYou.kinds[2]']);
+    assert.match(unknown.issues[0]?.message ?? '', /expected one of permission, question, elicitation, decision, error/);
+    assert.deepEqual(unknown.config.needsYou.kinds, ['question']);
+    const notList = parseConfig({ ...ROSTER, needsYou: { kinds: 'question', osToast: 'yes' } });
+    assert.deepEqual(paths(notList.issues), ['needsYou.kinds', 'needsYou.osToast']);
+    assert.deepEqual(notList.config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, needsYou: { kinds: ['error', 'error', 'error', 'error', 'error', 'error'] } }).issues), ['needsYou.kinds']);
   });
 
   it('reads meetingNotices, and refuses a lead time under 0 or past two hours', () => {

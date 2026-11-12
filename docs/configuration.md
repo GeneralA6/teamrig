@@ -43,6 +43,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `alerts` | [object](#alerts) |  | The alerting rule the core rules state, and where a page to the owner goes. |
 | `decisions` | [object](#decisions) |  | When the lead asks the owner the decisions waiting on them (tasks waiting on the owner's decision or approval), together in one batch instead of one at a time. A batch holds the waits not yet asked and the asked ones now past their due date; `teamrig decisions` prints it and `teamrig decisions asked` records it asked, as a meeting's start does. The lead's check says when one is due. |
 | `tabStatus` | [object](#tabstatus) |  | A colored circle before each terminal tab's title for what its session is doing: green ready, yellow working (or a helper still running), orange waiting on the user, blue waiting on the user's decision (a turn whose last message has a `Decision needed:` line), red an API error, purple compacting. |
+| `needsYou` | [object](#needsyou) |  | The needs-you band: every tab of the team shows which other tab asks the user something (a permission prompt, a question, a `Decision needed:` line), read from the tab files under state/tabs/, with a Focus button that brings that tab to the front. During an open meeting only a p0 task's ask gets the Focus button. |
 | `pickerGuard` | [object](#pickerguard) |  | Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed. |
 | `meeting` | [object](#meeting) |  | The owner's daily meeting with the lead, in the lead's tab. |
 | `turnLog` | [object](#turnlog) |  | Each session's prompts and replies, kept in state/turn-log/\<session>/\<UTC hour>.jsonl for the task pane, so a /clear or a compaction never takes away what the person was reading in the tab. Secret shapes are redacted. |
@@ -544,6 +545,16 @@ A colored circle before each terminal tab's title for what its session is doing:
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `false` | Shows the circle in every tab of the team; team create turns it on in a new team's config. It also needs CLAUDE\_CODE\_DISABLE\_TERMINAL\_TITLE=1 in Claude Code's environment, else Claude Code writes its own title over it. |
+
+## `needsYou`
+
+The needs-you band: every tab of the team shows which other tab asks the user something (a permission prompt, a question, a `Decision needed:` line), read from the tab files under state/tabs/, with a Focus button that brings that tab to the front. During an open meeting only a p0 task's ask gets the Focus button.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `enabled` | boolean | `true` | Off: no tab shows another's asks. The tab files are still written, for smart focus. |
+| `kinds` | array (at most 5 items) of one of `"permission"`, `"question"`, `"elicitation"`, `"decision"`, `"error"` | `["permission","question","elicitation","decision"]` | The kinds of ask that raise the band and its toast: permission (a permission prompt), question (AskUserQuestion or a plan to approve), elicitation (an MCP server's form), decision (a turn ending on a `Decision needed:` line), error (an API error). |
+| `osToast` | boolean | `false` | Also one OS notification per ask across the team, besides the toast in each tab; it has no click action. |
 
 ## `pickerGuard`
 

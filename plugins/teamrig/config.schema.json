@@ -1276,6 +1276,29 @@
         }
       }
     },
+    "needsYou": {
+      "description": "The needs-you band: every tab of the team shows which other tab asks the user something (a permission prompt, a question, a `Decision needed:` line), read from the tab files under state/tabs/, with a Focus button that brings that tab to the front. During an open meeting only a p0 task's ask gets the Focus button.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Off: no tab shows another's asks. The tab files are still written, for smart focus.",
+          "type": "boolean",
+          "default": true
+        },
+        "kinds": {
+          "description": "The kinds of ask that raise the band and its toast: permission (a permission prompt), question (AskUserQuestion or a plan to approve), elicitation (an MCP server's form), decision (a turn ending on a `Decision needed:` line), error (an API error).",
+          "type": "array",
+          "maxItems": 5,
+          "items": { "enum": ["permission", "question", "elicitation", "decision", "error"] },
+          "default": ["permission", "question", "elicitation", "decision"]
+        },
+        "osToast": {
+          "description": "Also one OS notification per ask across the team, besides the toast in each tab; it has no click action.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
     "pickerGuard": {
       "description": "Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed.",
       "type": "object",
