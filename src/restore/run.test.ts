@@ -9,7 +9,7 @@ import type { RestoreChoice } from './countdown.ts';
 import type { RestoreEntry } from './entry.ts';
 import { continuePrompt, type LostWork } from './plan.ts';
 import { RestoreRegistry, restoreSessionsDir } from './registry.ts';
-import { checkRestore, previewRestore, runRestore, TAB_STAGGER_MS, type ReopenOutcome, type ReopenTab, type RestoreDeps } from './run.ts';
+import { checkRestore, previewRestore, ROOM_POLL_MS, runRestore, TAB_STAGGER_MS, type ReopenOutcome, type ReopenTab, type RestoreDeps } from './run.ts';
 import type { RestoreTeam } from './teams.ts';
 
 const LOGON = Date.parse('2030-01-08T09:00:00Z');
@@ -90,6 +90,8 @@ interface World {
 }
 
 const OPENED: ReopenOutcome = { kind: 'opened', launch: 'windows-terminal exited 0' };
+const NO_ROOM: ReopenOutcome = { kind: 'no-room', why: 'no room on the host to reopen app-alpha: 5000 MB free' };
+const ROOM_WAIT_MS = 300_000;
 
 async function world(
   choice: RestoreChoice = 'go',
@@ -146,6 +148,7 @@ async function world(
       home: '/home/me',
       projectsDir: PROJECTS,
       platform: 'linux',
+      roomWaitMs: ROOM_WAIT_MS,
       stillRunning: async (recorded) => recorded.claudeSession === LIVE,
       transcriptOf: async ({ transcriptPath }) => (transcriptPath !== undefined && (await probe.kind(transcriptPath)) === 'file' ? transcriptPath : undefined),
       readTail: (path, maxBytes) => files.readTail(path, maxBytes),
@@ -344,6 +347,32 @@ describe('runRestore', () => {
     assert.deepEqual(clock.sleeps, []);
     assert.ok(printed.includes('FAILED to reopen app-lead: no terminal'));
     assert.ok(printed.includes('FAILED to reopen app-alpha: spawn EACCES'));
+  });
+
+  it('waits for room on the host before it reopens a tab the gate keeps shut, then opens it (T2283)', async () => {
+    const outcomes: ReopenOutcome[] = [NO_ROOM, NO_ROOM];
+    const { deps, reopened, clock, printed, logged } = await world('go', async (tab) => (tab.claudeSession === ALPHA ? (outcomes.shift() ?? OPENED) : OPENED));
+    assert.deepEqual(await runRestore(deps, LOGON), { opened: 3, failed: 0 });
+    assert.deepEqual(
+      reopened.map(({ claudeSession }) => claudeSession),
+      [LEAD, ALPHA, ALPHA, ALPHA, LONE],
+    );
+    assert.deepEqual(clock.sleeps, [TAB_STAGGER_MS, ROOM_POLL_MS, ROOM_POLL_MS, TAB_STAGGER_MS]);
+    assert.ok(printed.includes(`Waiting up to 5 min for room to reopen app-alpha: ${NO_ROOM.why}`), printed.join('\n'));
+    assert.ok(printed.includes('Opened app-alpha (continue: mid-turn)'));
+    assert.ok(logged.includes(`run: waiting for room for ${ALPHA}`), logged.join('\n'));
+  });
+
+  it('holds back a tab the host has no room for all of the wait, its attempt taken back, and goes on with the next (T2283)', async () => {
+    const { deps, reopened, registry, clock, printed, logged } = await world('go', async (tab) => (tab.claudeSession === ALPHA ? NO_ROOM : OPENED));
+    assert.deepEqual(await runRestore(deps, LOGON), { opened: 2, failed: 1 });
+    const looks = ROOM_WAIT_MS / ROOM_POLL_MS;
+    assert.equal(reopened.filter(({ claudeSession }) => claudeSession === ALPHA).length, 1 + looks);
+    assert.deepEqual(clock.sleeps, [TAB_STAGGER_MS, ...Array<number>(looks).fill(ROOM_POLL_MS)]);
+    assert.deepEqual(await registry.read(ALPHA), ALPHA_ENTRY);
+    assert.ok(printed.includes(`HELD app-alpha: ${NO_ROOM.why}. Run "teamrig restore run" to reopen it once the host has room.`), printed.join('\n'));
+    assert.ok(logged.includes(`run: held ${ALPHA} (no room on the host)`), logged.join('\n'));
+    assert.equal(reopened.at(-1)?.claudeSession, LONE);
   });
 
   it('skips a session reopened or forgotten since the plan', async () => {
