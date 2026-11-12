@@ -136,6 +136,9 @@ async function idleAt(deps: RestartDeps, transcript: string): Promise<boolean> {
 /** What a held answer's give-up says when the tab's mod gave no reason: one older than the reason. */
 export const NO_HOLD_REASON = 'its mod gave no reason';
 
+/** What a give-up says when the tab's mod held an earlier ask of the run and answered none since. */
+export const SILENT_MOD = 'its mod held an earlier ask and has answered none since';
+
 /** What a give-up says, before the pid, when the last look at the session's running process failed. */
 export const LOOKUP_FAILED = 'the system would not describe its process';
 
@@ -242,10 +245,10 @@ async function modeOf(deps: RestartDeps, request: RestartRequest, claude: Proces
  * its answer. `cleared` when the mod claimed it and ran /clear; `end` when it claimed an `end` ask, for the
  * restart to end the session; `held` when the mod held it: Claude Code still runs a helper of the session (or
  * would not list them), which neither a /clear nor an end may cut off, or a draft, the person or the band's
- * count holds the /clear; `unclaimed` when no mod answered: the tab has none (an older Claude Code, mods off)
- * or a turn ran. An older mod takes an `end` ask as a /clear (`cleared`). The ask, its outcome and the hold's
- * reason are gone when this returns, so the next round asks afresh; an earlier run's are removed with the new
- * ask's posting.
+ * count holds the /clear; `unclaimed` when no mod answered: the tab has none (an older Claude Code, mods off),
+ * a turn ran, or its mod stopped answering. An older mod takes an `end` ask as a /clear (`cleared`). The ask,
+ * its outcome and the hold's reason are gone when this returns, so the next round asks afresh; an earlier run's
+ * are removed with the new ask's posting.
  */
 async function handToTab(deps: RestartDeps, plan: RestartPlan, claudeSession: string, mode: ClearMode): Promise<TabAnswer> {
   await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold, askEveryMs: plan.delayMs, mode });
@@ -321,6 +324,9 @@ async function endSession(deps: RestartDeps, plan: RestartPlan, request: Restart
  * - when the mod holds the ask (Claude Code says a helper of the session is still live, or would not list
  *   them; or a draft, the person or the band's count holds the /clear), counts the session as busy: it ends
  *   nothing, waits for quiet and asks again, until GIVE_UP_MS, whose why then names the mod's last reason;
+ * - when no mod answers an ask after the tab's mod held an earlier one of this run, counts the session as held
+ *   too: the silence says nothing of the person (it held for them before), so it ends nothing and asks again
+ *   until GIVE_UP_MS, whose why then says the mod went silent;
  * - when no mod claims the ask and the session is still idle, ends the process, unless it still runs a
  *   background shell, which the end would take too: then the session is told to type /clear. Under `teamrig launch`
  *   (supervised) it marks the request `ending`, and launch starts Claude Code again in the same tab once
@@ -340,6 +346,8 @@ export async function runRestart(deps: RestartDeps, plan: RestartPlan): Promise<
   }
   const transcript = armed.transcript;
   const started = deps.clock.now();
+  /** The tab's mod held an ask of this run: the tab has a mod, so a later silence is no leave to end it. */
+  let modHeld = false;
   for (;;) {
     const quiet = await waitForQuiet(deps, plan, transcript, started);
     if ('kind' in quiet) {
@@ -385,14 +393,25 @@ export async function runRestart(deps: RestartDeps, plan: RestartPlan): Promise<
         return CANCELLED;
       case 'held': {
         // A helper may still run, which the transcript may not show: busy, never ended, however idle the transcript looks.
+        modHeld = true;
         const given = await gaveUp(deps, plan, started, `its tab last held the /clear: ${answer.why}`);
         if (given !== undefined) {
           return given;
         }
         continue;
       }
-      case 'unclaimed':
-        break;
+      case 'unclaimed': {
+        if (!modHeld) {
+          break;
+        }
+        // A mod that held for the person and then fell silent (as one after a /reload-plugins did, T2544) no longer
+        // sees their draft or keys: an end now could land under their typing.
+        const given = await gaveUp(deps, plan, started, SILENT_MOD);
+        if (given !== undefined) {
+          return given;
+        }
+        continue;
+      }
     }
     if (!(await idleAt(deps, transcript))) {
       continue;
