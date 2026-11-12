@@ -1,7 +1,7 @@
 import { QUEUE_TTL_MARGIN_MINUTES } from '../../config/defaults.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { QueueConfig } from '../../config/types.ts';
-import { busyText, holderText, isHeavyShare, underLock, waitText, type HostLock, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
+import { busyText, holderText, isHeavyShare, underLock, waitText, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
 import { deliveryPlaces, detachedLogOf } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
@@ -25,6 +25,7 @@ import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, type Say } from '../delivery-ports.ts';
 import { commandWordsOf, sessionRef } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
+import { parentLockOf } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
 import { postUrgentLine } from '../urgent-line.ts';
@@ -290,22 +291,6 @@ async function startDetached(runtime: CliRuntime, places: { readonly log: string
   }
   runtime.out.stdout(`QUEUED ${id}: ${what} runs detached; log ${places.log}; ${session}'s inbox gets a line when it starts and when it ends`);
   return EXIT.ok;
-}
-
-/**
- * The lock of the step that started this one, from `$TEAMRIG_HOST_LOCK`, while that step still holds it; undefined when
- * the variable is unset or names no live lock (a leftover in a shell), which is said, since the step then waits as usual.
- */
-async function parentLockOf(runtime: CliRuntime, lock: HostLock, say: Say): Promise<HostLockInfo | undefined> {
-  const token = runtime.env[ENV.hostLock]?.trim();
-  if (token === undefined || token === '') {
-    return undefined;
-  }
-  const held = await lock.heldWith(token);
-  if (held === undefined) {
-    say(`$${ENV.hostLock} names no live host lock: taking the lock as usual`);
-  }
-  return held;
 }
 
 /**
