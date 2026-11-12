@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
-import { NOTICE_TEXT_VAR, NOTICE_TITLE_VAR, noticeOf, noticeRequest, POWERSHELL_APP_ID, showNotice, WINDOWS_TOAST_SCRIPT } from './notify.ts';
+import { MISSED_STAY_MS, NOTICE_TEXT_VAR, NOTICE_TITLE_VAR, noticeOf, noticeRequest, POWERSHELL_APP_ID, showNotice, WINDOWS_TOAST_SCRIPT } from './notify.ts';
 import type { ScheduledMeeting } from './schedule.ts';
 
 const MEETING: ScheduledMeeting = {
@@ -19,7 +20,7 @@ const MEETING: ScheduledMeeting = {
   changedAt: 0,
   note: null,
 };
-const NOTICE = noticeOf(MEETING);
+const NOTICE = noticeOf(MEETING, 'start', MEETING.at);
 const ENV = { PATH: '/usr/bin' };
 
 function decoded(args: readonly string[]): string {
@@ -30,9 +31,31 @@ describe('noticeOf', () => {
   it('names the meeting, the session met, its length and the command that starts it', () => {
     assert.deepEqual(NOTICE, {
       id: 'M3',
+      stage: 'start',
       title: 'teamrig meeting M3 now',
       text: `web: ${MEETING.about} (20 min). Start: teamrig meeting start M3`,
+      stayMs: null,
     });
+  });
+
+  it('counts the minutes left before the slot, rounded up and never below one', () => {
+    assert.equal(noticeOf(MEETING, 'before', MEETING.at - 10 * MS_PER_MINUTE).title, 'teamrig meeting M3 in 10 min');
+    assert.equal(noticeOf(MEETING, 'before', MEETING.at - 9 * MS_PER_MINUTE - 1).title, 'teamrig meeting M3 in 10 min');
+    assert.equal(noticeOf(MEETING, 'before', MEETING.at - 1).title, 'teamrig meeting M3 in 1 min');
+    assert.equal(noticeOf(MEETING, 'before', MEETING.at).title, 'teamrig meeting M3 in 1 min');
+    assert.equal(noticeOf(MEETING, 'before', MEETING.at - MS_PER_MINUTE).stayMs, null);
+  });
+
+  it('tells of a missed meeting, who meets, how to start it or move it, and stays until clicked', () => {
+    const missed = noticeOf({ ...MEETING, with: ['api', 'ops'] }, 'missed', MEETING.at + 5 * MS_PER_MINUTE);
+    assert.deepEqual(missed, {
+      id: 'M3',
+      stage: 'missed',
+      title: 'teamrig meeting M3 missed',
+      text: `web with api, ops: ${MEETING.about} (20 min) has not started. Start: teamrig meeting start M3, or move or drop it`,
+      stayMs: MISSED_STAY_MS,
+    });
+    assert.equal(MISSED_STAY_MS, MS_PER_DAY);
   });
 });
 

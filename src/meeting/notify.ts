@@ -1,6 +1,8 @@
 import { KIT_NAME, type Env } from '../core/home.ts';
 import { powerShellRequest } from '../core/powershell.ts';
+import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
 import type { HiddenRequest, Processes, StartOutcome } from '../open/processes.ts';
+import type { NoticeStage } from './notice-stage.ts';
 import type { ScheduledMeeting } from './schedule.ts';
 
 /**
@@ -9,19 +11,47 @@ import type { ScheduledMeeting } from './schedule.ts';
  * a script, so no word of a meeting runs as code.
  */
 
-/** What the owner sees: the meeting's title and one line. */
+/**
+ * What the owner sees: the meeting's title and one line, the stage it tells of, and how long a tab's toast of it stays
+ * up, ms (null: the tab's own default). A missed meeting's toast stays until clicked, since the person was away when
+ * it was due; the Windows toast has no such mode without an action button, so the tab's toast is the one that stays.
+ */
 export interface MeetingNotice {
   readonly id: string;
+  readonly stage: NoticeStage;
   readonly title: string;
   readonly text: string;
+  readonly stayMs: number | null;
 }
 
-export function noticeOf(meeting: ScheduledMeeting): MeetingNotice {
-  return {
-    id: meeting.id,
-    title: `${KIT_NAME} meeting ${meeting.id} now`,
-    text: `${meeting.session}: ${meeting.about} (${meeting.minutes} min). Start: ${KIT_NAME} meeting start ${meeting.id}`,
-  };
+/** A missed meeting's toast stays a day: in practice until the person clicks it. */
+export const MISSED_STAY_MS = MS_PER_DAY;
+
+/** Who meets: the session, then any others it meets with. */
+function whoOf(meeting: ScheduledMeeting): string {
+  return meeting.with.length === 0 ? meeting.session : `${meeting.session} with ${meeting.with.join(', ')}`;
+}
+
+/** The notice of `meeting` at `stage`, worded as of `now` (a `before` notice counts the minutes left, rounded up). */
+export function noticeOf(meeting: ScheduledMeeting, stage: NoticeStage, now: number): MeetingNotice {
+  const start = `${KIT_NAME} meeting start ${meeting.id}`;
+  const line = `${whoOf(meeting)}: ${meeting.about} (${meeting.minutes} min)`;
+  switch (stage) {
+    case 'before': {
+      const minutes = Math.max(1, Math.ceil((meeting.at - now) / MS_PER_MINUTE));
+      return { id: meeting.id, stage, title: `${KIT_NAME} meeting ${meeting.id} in ${minutes} min`, text: `${line}. Start: ${start}`, stayMs: null };
+    }
+    case 'start':
+      return { id: meeting.id, stage, title: `${KIT_NAME} meeting ${meeting.id} now`, text: `${line}. Start: ${start}`, stayMs: null };
+    case 'missed':
+      return {
+        id: meeting.id,
+        stage,
+        title: `${KIT_NAME} meeting ${meeting.id} missed`,
+        text: `${line} has not started. Start: ${start}, or move or drop it`,
+        stayMs: MISSED_STAY_MS,
+      };
+  }
 }
 
 /** The variables the Windows toast script reads its words from. */
