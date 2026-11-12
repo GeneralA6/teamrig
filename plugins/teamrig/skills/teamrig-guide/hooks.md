@@ -292,10 +292,19 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
   line with more than one reading or
   `bash -c "$CMD"`, ask only when the line names a push in a word of its own (`push`, `--push`, `git-push`), never in
   a path such as `src/push-guard`.
+- **Judges an interpreter script by its text**: what a python, node, deno, bun, perl, ruby or php run takes as its
+  program (its arguments, a heredoc or here-string it is fed, and any argument naming a readable file, the first 256
+  KiB) is a script, not shell words. Its words never count as a push named in a word of the line, so a python heredoc
+  that posts a message saying "push" turns no other doubt on. A script that names a push **and** can reach git (a
+  process call such as `subprocess`, `os.system`, `child_process` or `Deno.Command`, a backtick in perl, ruby or php,
+  or a git library such as GitPython or simple-git) asks: "it runs a <language> script that may run git push, whose
+  push the guard cannot read; run the push as a plain git command on the line instead". A script that only talks about
+  a push, or only runs `git status`, passes. This is a text rule against an accidental push, not a sandbox: a script
+  that builds `'gi' + 't'` or decodes its command passes.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,
-wrappers and git aliases, but it does not see a push inside a script or program the command runs, `gh pr merge`,
+wrappers and git aliases, but it does not see a push inside a program the command runs (a script of the interpreters above is judged by its text), `gh pr merge`,
 git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
 branch on your git host too.
 
