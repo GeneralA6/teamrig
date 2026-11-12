@@ -1,6 +1,6 @@
 import { atom, read, update } from 'claude-code';
 import type { Register, StateRef } from 'claude-code';
-import type { TeamrigBand, TeamrigUpdate } from '../types';
+import type { TeamrigBand, TeamrigMeetingPanel, TeamrigUpdate } from '../types';
 import { INSTALLED_PLUGINS_FILE, pluginsFolderOf } from '../dist/core/installed-plugins.js';
 import { bandLine, ClearHand, liveAgentsOf, sameBand, TICK_MS } from '../dist/mod/clear-hand.js';
 import { REFRESH_TIMEOUT_MS, RefreshHand, refreshCliArgv } from '../dist/mod/refresh-hand.js';
@@ -15,6 +15,13 @@ import {
   TIMEOUT_MS,
 } from '../dist/mod/slash-hand.js';
 import { MEETING_TICK_MS, MEETING_TIMEOUT_MS, MeetingHand, meetingCliArgv } from '../dist/mod/meeting-hand.js';
+import {
+  MEETING_PANEL_TICK_MS,
+  MEETING_PANEL_TIMEOUT_MS,
+  MeetingPanelHand,
+  meetingPanelCliArgv,
+  panelRows,
+} from '../dist/mod/meeting-panel-hand.js';
 import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mod/wake-hand.js';
 import {
   UPDATE_APPLY_TIMEOUT_MS,
@@ -28,7 +35,7 @@ import {
 } from '../dist/mod/update-hand.js';
 
 /**
- * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and six hands in every
+ * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and seven hands in every
  * interactive tab.
  *
  * `/teamrig <command> [args]` (`slash-hand.ts`): runs the plugin's CLI as `hook slash-command` with the typed text,
@@ -74,6 +81,13 @@ import {
  * CLI marks each meeting due as notified under its lock, so one tab of the team sends it, and starts the OS
  * notification; the hand shows each one it sent as a toast in its tab too.
  *
+ * The meeting's agenda panel (`meeting-panel-hand.ts`): every 15 s, a turn running or not, the hand asks the CLI
+ * (`hook meeting-panel`) once the meeting file or a register the meeting covers changed, or 10 minutes passed. While
+ * the owner meets the root team's lead, the lead's tab opens the `meeting-agenda` pane: the meeting's cards as a
+ * checklist, the decided ones dim with their decision, the one on the table bold. The pane closes once the meeting
+ * ends; a person's close keeps it closed until another meeting starts. The panel's value is the session's
+ * `meetingPanel` (types/index.d.ts).
+ *
  * The update notice (`update-hand.ts`): a minute after the module loads, then every 10 minutes, the hand asks the
  * CLI (`hook update-check`, which asks the network at most every 6 hours across the machine) whether a newer teamrig
  * or teamrig-pane is published than the one installed. While one is, and no refresh band is up, the band above the
@@ -103,6 +117,13 @@ const BAND = atom({ plugin: 'teamrig', key: 'band' } as const, null);
  * (types/index.d.ts). A key of its own: a module from before T2514 left a value of another shape under `update`.
  */
 const UPDATE = atom({ plugin: 'teamrig', key: 'updateView' } as const, null);
+
+/** The meeting's agenda panel the pane draws; null, none (types/index.d.ts). */
+const MEETING_PANEL = atom({ plugin: 'teamrig', key: 'meetingPanel' } as const, null);
+
+/** The agenda pane's id and tab title. */
+const MEETING_PANE = 'meeting-agenda';
+const MEETING_PANE_TITLE = 'Meeting agenda';
 
 /** The bands' Buttons, by the key a press names. */
 const REFRESH_NOW_KEY = 'refresh-now';
@@ -134,6 +155,11 @@ function meetingWorthLogging(result: { readonly kind: string }): boolean {
   return result.kind === 'notified' || result.kind === 'failed';
 }
 
+/** A panel look worth a debug line: the pane shown, closed or a failure, not the quiet ones. */
+function meetingPanelWorthLogging(result: { readonly kind: string }): boolean {
+  return result.kind === 'shown' || result.kind === 'off' || result.kind === 'failed';
+}
+
 /** A check worth a debug line: a reload run, refused, failed or held for an install still written. */
 function reloadWorthLogging(result: { readonly kind: string }): boolean {
   return result.kind === 'reloaded' || result.kind === 'refused' || result.kind === 'failed' || result.kind === 'installing';
@@ -151,6 +177,7 @@ export const register: Register = (on) => {
   let reloadHand: ReloadHand | undefined;
   let wakeHand: WakeHand | undefined;
   let meetingHand: MeetingHand | undefined;
+  let meetingPanelHand: MeetingPanelHand | undefined;
   let refreshHand: RefreshHand | undefined;
   let updateHand: UpdateHand | undefined;
   /** Writes the update band's value when the update hand's shown update changed; set with the hand. */
@@ -299,6 +326,40 @@ export const register: Register = (on) => {
         void active.tick().then((result) => {
           if (meetingWorthLogging(result)) {
             $.ui.log(`teamrig meeting: ${JSON.stringify(result)}`, { to: 'debug' });
+          }
+        });
+      });
+    }
+    if (meetingPanelHand === undefined) {
+      const active = new MeetingPanelHand({
+        sessionId: () => $.session.id(),
+        cwd: () => $.session.cwd(),
+        root: () => $.session.root(),
+        cli: async (stdin, env, cwd) => {
+          const run = await $.process.run(meetingPanelCliArgv($.plugin.root), { cwd, env: { ...env }, stdin, timeoutMs: MEETING_PANEL_TIMEOUT_MS });
+          return { exitCode: run.exitCode, stdout: run.stdout };
+        },
+        changedAt: (path) => $.fs.stat(path).then(
+          (found) => found.mtimeMs,
+          () => undefined,
+        ),
+        open: async () => {
+          const opened = await $.ui.open({ id: MEETING_PANE, title: MEETING_PANE_TITLE });
+          if (!opened.isPlaced) {
+            $.ui.log(`teamrig meeting panel waits undrawn: ${opened.reason}`, { to: 'debug' });
+          }
+        },
+        close: () => $.ui.close({ id: MEETING_PANE }),
+        show: async (view) => {
+          await update($, MEETING_PANEL, () => view);
+        },
+        now: () => Date.now(),
+      });
+      meetingPanelHand = active;
+      $.clock.every(MEETING_PANEL_TICK_MS, () => {
+        void active.tick().then((result) => {
+          if (meetingPanelWorthLogging(result)) {
+            $.ui.log(`teamrig meeting panel: ${JSON.stringify(result)}`, { to: 'debug' });
           }
         });
       });
@@ -483,6 +544,24 @@ export const register: Register = (on) => {
     // the /clear comes with the next ask, which Hold alone still stops.
     const buttons = view.kind === 'counting' || view.kind === 'waiting' ? [refreshNow, hold] : [hold];
     return Box({ flexDirection: 'row', gap: 2, children: [Text({ children: bandLine(view) }), ...buttons] });
+  });
+
+  on('ui.render', { component: 'Pane', requestId: MEETING_PANE }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e);
+    const view: TeamrigMeetingPanel | null = await read($, MEETING_PANEL);
+    if (view === null) {
+      return Text({ dimColor: true, children: 'No meeting is open.' });
+    }
+    const rows = panelRows(view).map((row) => Text({ dimColor: row.mark === 'done', bold: row.mark === 'current', children: row.text }));
+    return Box({ flexDirection: 'column', children: rows });
+  });
+
+  // The person's close of the agenda pane keeps it closed until another meeting starts.
+  on('ui.close', async (_$, e, next) => {
+    if (e.id === MEETING_PANE && e.origin.kind === 'person') {
+      meetingPanelHand?.personClosed();
+    }
+    return next(e);
   });
 
   on('tool.call', async ($, e, next) => {

@@ -36,12 +36,26 @@ export type TeamrigUpdate =
   | { readonly kind: 'updated'; readonly plugin: string; readonly version: string }
   | { readonly kind: 'failed'; readonly notice: TeamrigUpdateNotice; readonly why: string }
 
+/**
+ * The meeting's agenda panel in the root team lead's tab (src/mod/meeting-panel-hand.ts MeetingPanelView): when the
+ * meeting started, its cards in order (each one's id, title, whether it is decided and the decision), the card on
+ * the table and how many are left. The meeting panel hand writes it each time it asks the CLI, null once no meeting
+ * is open, and the pane's drawing reads it.
+ */
+export type TeamrigMeetingPanel = {
+  readonly startedAt: string
+  readonly items: readonly { readonly id: string; readonly title: string; readonly settled: boolean; readonly decision: string | null }[]
+  readonly current: string | null
+  readonly left: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     teamrig: {
       reload: TeamrigReload
       band: TeamrigBand | null
       updateView: TeamrigUpdate | null
+      meetingPanel: TeamrigMeetingPanel | null
     }
   }
 }
