@@ -11,16 +11,20 @@ import type { ScheduledMeeting } from './schedule.ts';
  * a script, so no word of a meeting runs as code.
  */
 
+/** What an OS notification shows: a title and one line. A meeting's notice is one; a tab's ask (T2511) another. */
+export interface OsNotice {
+  readonly title: string;
+  readonly text: string;
+}
+
 /**
  * What the owner sees: the meeting's title and one line, the stage it tells of, and how long a tab's toast of it stays
  * up, ms (null: the tab's own default). A missed meeting's toast stays as long as a tab's toast can, since the person
  * was away when it was due; what lasts past it is the lead's inbox line.
  */
-export interface MeetingNotice {
+export interface MeetingNotice extends OsNotice {
   readonly id: string;
   readonly stage: NoticeStage;
-  readonly title: string;
-  readonly text: string;
   readonly stayMs: number | null;
 }
 
@@ -81,7 +85,7 @@ export const WINDOWS_TOAST_SCRIPT = [
 const MAC_NOTICE_SCRIPT = ['on run argv', 'display notification (item 2 of argv) with title (item 1 of argv)', 'end run'];
 
 /** The program that shows `notice` on `platform`, run hidden in `cwd`; undefined where teamrig knows none. */
-export function noticeRequest(platform: NodeJS.Platform, notice: MeetingNotice, env: Env, cwd: string): HiddenRequest | undefined {
+export function noticeRequest(platform: NodeJS.Platform, notice: OsNotice, env: Env, cwd: string): HiddenRequest | undefined {
   switch (platform) {
     case 'win32': {
       const { program, args } = powerShellRequest(WINDOWS_TOAST_SCRIPT);
@@ -101,7 +105,7 @@ export function noticeRequest(platform: NodeJS.Platform, notice: MeetingNotice, 
 export type NoticeOutcome = StartOutcome | { readonly kind: 'unsupported' };
 
 /** Starts the OS notification of `notice`, hidden; never waits for it to show. */
-export async function showNotice(processes: Processes, platform: NodeJS.Platform, notice: MeetingNotice, env: Env, cwd: string): Promise<NoticeOutcome> {
+export async function showNotice(processes: Processes, platform: NodeJS.Platform, notice: OsNotice, env: Env, cwd: string): Promise<NoticeOutcome> {
   const request = noticeRequest(platform, notice, env, cwd);
   return request === undefined ? { kind: 'unsupported' } : processes.startHidden(request);
 }
