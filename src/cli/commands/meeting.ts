@@ -27,6 +27,7 @@ import { KitTreeGoals } from '../tree-goals.ts';
 import { loadTree, type KitTree } from '../tree.ts';
 import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
+import { decidedByOf, decisionAgendaOf } from './meeting-registers.ts';
 import { agendaMeetingLines, meetingEndScheduled, meetingStartScheduled } from './meetings.ts';
 import { taskTreeOf, weekFitOf } from './register.ts';
 import { foldStats, statsTopLines } from './stats.ts';
@@ -197,29 +198,11 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   const { snapshot } = own;
   const since = agendaSince(previousEnd(phase), mk.now);
   const lines = agendaLines({
-    tasks: [...snapshot.state.tasks.values()],
-    tree: taskTreeOf(own, runtime),
-    now: mk.now,
+    ...decisionAgendaOf(rolled, runtime, mk.now),
     since,
-    ownerMarker: mk.config.register.ownerSource,
-    requireGate: mk.config.register.requireDecisionCard,
-    below: teams
-      .filter((rolled) => rolled.team !== own.team)
-      .map((rolled) => ({
-        team: rolled.team,
-        tasks: [...rolled.snapshot.state.tasks.values()],
-        tree: taskTreeOf(rolled, runtime),
-        ownerMarker: rolled.config.register.ownerSource,
-        requireGate: rolled.config.register.requireDecisionCard,
-        focus: rolled.config.focus,
-        dedicatedOwners: rolled.config.decisions.dedicatedOwners,
-      })),
     lead: mk.lead,
     command: KIT_NAME,
     board: await goalBoard(runtime, mk, rolled),
-    focus: mk.config.focus,
-    dedicatedOwners: mk.config.decisions.dedicatedOwners,
-    improvementsDay: mk.config.focus.improvementsDay,
     runFiles: await readRunFiles(
       runtime,
       teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()]),
@@ -294,11 +277,10 @@ export async function meetingEnd(args: ParsedArgs, runtime: CliRuntime): Promise
   await mk.store.write({ ...meeting, endedAt: new Date(mk.now).toISOString() });
   const { own, teams } = await meetingRegisters(runtime, mk);
   const startedAt = Date.parse(meeting.startedAt);
-  const address = formatAddress({ team: own.team, id: mk.lead });
   const decided: Decided[] = teams.map((rolled) => {
     const below = rolled.team === own.team ? undefined : rolled.team;
     const { events } = rolled.snapshot.read;
-    return { rolled, below, byOwner: decisionsByOwner(events, rolled.snapshot.state.tasks, below === undefined ? mk.lead : address, startedAt) };
+    return { rolled, below, byOwner: decisionsByOwner(events, rolled.snapshot.state.tasks, decidedByOf(rolled, own, mk.lead), startedAt) };
   });
   let told = 0;
   for (const register of decided) {
