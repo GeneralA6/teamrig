@@ -1,6 +1,6 @@
+import { quantile } from "../core/quantile.js";
 import { MS_PER_DAY } from "../core/time.js";
 import { classOf, servedGoalOf } from "./focus.js";
-import { quantile } from "./stats.js";
 /** How long a finished task measures its like tasks. The contract holds no config key for it (T2076 design section 3). */
 const LIKE_WINDOW_DAYS = 14;
 /** The class of a row, which may not carry one. */

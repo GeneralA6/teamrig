@@ -1,5 +1,6 @@
 import { tabsText } from "../delivery/memory-gate.js";
 import { KIT_NAME } from "../core/home.js";
+import { median } from "../core/quantile.js";
 /**
  * The floor a new tab leaves free: `open.headroom.floorMb` when set, else what queued steps keep free plus one heavy
  * step's reserve, so a tab opened at the floor still leaves a heavy step the room the host lock admits it at.
@@ -13,12 +14,10 @@ export function tabFloorOf(headroom, queue) {
         key: 'delivery.queue.memoryFloorMb + heavyReserveMb, while open.headroom.floorMb is unset',
     };
 }
-/** The middle size (the mean of the two middle ones for an even count), or undefined for none. */
+/** The median size in whole MB, or undefined for none. */
 function medianOf(values) {
-    const sorted = [...values].sort((a, b) => a - b);
-    const high = sorted[Math.floor(sorted.length / 2)];
-    const low = sorted[Math.ceil(sorted.length / 2) - 1];
-    return high === undefined || low === undefined ? undefined : Math.round((low + high) / 2);
+    const middle = median(values);
+    return middle === null ? undefined : Math.round(middle);
 }
 function sumOf(values) {
     return values.reduce((sum, value) => sum + value, 0);

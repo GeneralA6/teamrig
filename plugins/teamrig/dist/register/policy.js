@@ -10,7 +10,7 @@ import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptC
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256 } from "./hand-step.js";
 import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { isRepark, taskNumber } from "./fold.js";
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
 import { ITEM_TYPE_TRAITS, traitsOf } from "./item-types.js";
 import { waitsOnOwner } from "./owner-waits.js";
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
@@ -834,7 +834,7 @@ export class RegisterPolicy {
         if (goals !== 'required' || fields.goals.length > 0 || fields.noGoal) {
             return undefined;
         }
-        const asked = fields.source === ownerSource ? 'an owner-asked' : fields.priority <= 1 ? `a ${priorityText(fields.priority)}` : undefined;
+        const asked = fields.source === ownerSource ? 'an owner-asked' : isTopPriority(fields.priority) ? `a ${priorityText(fields.priority)}` : undefined;
         return asked === undefined ? undefined : `${asked} task names its goal: --goals <tag>, or --goals none (register.goals is required)`;
     }
     /**

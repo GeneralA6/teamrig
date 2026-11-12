@@ -38,6 +38,8 @@ export { allReady, isReady, unfinishedAfter, WAIT_KINDS, waitContext, waitsText,
 // the owner put off (Later) until a time, and each session's cards grouped as `teamrig meet` asks them (T1295). The
 // owner marker is the config's `register.ownerSource`, `requireGate` its `register.requireDecisionCard`.
 export { asksOwner, deferredUntil, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, } from "../register/owner-waits.js";
+// Each team and session against the others and its own usual (T1866), as `teamrig stats` and the pane's Bottlenecks read it.
+export { AREA_MEASURE_LABELS, AREA_MEASURES, AREA_THRESHOLDS, standingOut, } from "../register/area-stats.js";
 // The register's numbers over time (T1771): each day's flow, new work by source, lead and cycle times, due-date hits,
 // waits, bugs and done per session for a team tree and a range, the tasks behind the Health counts (T1864), and the
 // Health tiles over them with their levels, as `teamrig stats` prints them. The owner marker is the config's

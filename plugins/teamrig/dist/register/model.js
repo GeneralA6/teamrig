@@ -43,5 +43,9 @@ export function priorityText(priority) {
  * `-`. Kept here so the register's parse and the config's `focus.classes` share it.
  */
 export const WORK_CLASS_NAME = /^[A-Za-z][A-Za-z0-9 _-]{0,31}$/;
+/** Whether a priority is at the top: `p1`, or a `p0` above it, so an urgent task never falls out of a top count. */
+export function isTopPriority(priority) {
+    return priority <= 1;
+}
 /** Task ids are `T` and a positive integer, allocated in order by the register. */
 export const TASK_ID = /^T[1-9]\d*$/;

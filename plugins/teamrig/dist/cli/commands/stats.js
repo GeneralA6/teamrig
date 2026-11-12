@@ -1,6 +1,7 @@
 import { MeterLog } from "../../budget/calibration.js";
 import { limitSpansOf } from "../../budget/extra.js";
 import { formatAddress } from "../../core/address.js";
+import { AREA_MEASURE_LABELS, AREA_MEASURES, standingOut } from "../../register/area-stats.js";
 import { GOAL_STATES } from "../../register/goal-stats.js";
 import { registerHealth } from "../../register/stats-health.js";
 import { isStatsRange, registerStats, STATS_RANGE_DAYS, STATS_RANGES, WORK_SOURCES, } from "../../register/stats.js";
@@ -16,6 +17,8 @@ import { KitTreeGoals } from "../tree-goals.js";
 import { ownRegister, warnDamage } from "./register.js";
 /** The goal states worth a look, so the `GOALS` line names their goals; the others it only counts. */
 const NAMED_GOAL_STATES = ['at risk', 'late'];
+/** The most areas the AREAS line names: the rows of the tab's Bottlenecks section. */
+const AREAS_SHOWN = 6;
 /**
  * `teamrig stats [--tree] [--range 7d|30d|90d|180d|1y|all] [--session <id|name>]` (T1771): the register's numbers over a range
  * of the team's calendar days, as the pane's Stats tab folds them (register/stats.ts): the Health tiles with their
@@ -118,6 +121,7 @@ export function statsLines(folded, name, teams) {
         `BUGS ${stats.bugs.active} active, ${stats.bugs.opened} opened, ${stats.bugs.fixed} fixed`,
         `PEOPLE ${stats.people.length === 0 ? 'none done' : stats.people.map((person) => `${teams.length > 1 ? `${person.team}/` : ''}${person.session} ${person.done}`).join(', ')}`,
         `GOALS ${goalsText(stats.goals)}`,
+        `AREAS ${areasText(stats.areas, teams.length > 1)}`,
     ];
     if (teams.length > 1) {
         lines.push(`TEAMS ${stats.teams.map((team) => `${team.team} ${team.active} active, overdue ${team.overdue.count}`).join(' · ')}`);
@@ -151,6 +155,29 @@ function healthText(health) {
 }
 function levelText(level) {
     return `[${level}]`;
+}
+/** The whole teams that stand out, then the sessions, held to the rows the tab's section shows. */
+function areasText({ teams, sessions }, tree) {
+    const areas = [...standingOut(teams), ...standingOut(sessions)];
+    if (areas.length === 0) {
+        return 'none stand out';
+    }
+    const named = areas.slice(0, AREAS_SHOWN).map((area) => areaText(area, tree));
+    const more = areas.length > AREAS_SHOWN ? [`${areas.length - AREAS_SHOWN} more`] : [];
+    return `${areas.length} ${areas.length === 1 ? 'stands' : 'stand'} out: ${[...named, ...more].join('; ')}`;
+}
+function areaText(area, tree) {
+    const cells = AREA_MEASURES.filter((measure) => area.cells[measure].level !== 'good').map((measure) => `${AREA_MEASURE_LABELS[measure]} ${cellValue(measure, area.cells[measure].value)} ${levelText(area.cells[measure].level)}`);
+    return `${areaName(area, tree)} ${cells.join(', ')}`;
+}
+function areaName({ team, session }, tree) {
+    if (session === null) {
+        return team;
+    }
+    return tree ? `${team}/${session}` : session;
+}
+function cellValue(measure, value) {
+    return measure === 'low' ? `${value}%` : `${value}`;
 }
 function newWorkText({ newWork }) {
     const sources = WORK_SOURCES.map((source) => `${source} ${newWork.bySource[source]}`).join(', ');
