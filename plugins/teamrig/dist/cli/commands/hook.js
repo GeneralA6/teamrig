@@ -32,6 +32,7 @@ import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { decideStart, decideStop, reaskGrowth, thousands, } from "../../refresh/decide.js";
 import { carryLines, carryStartOf, readCarry } from "../../refresh/carry.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
+import { firedBySchedule } from "../../refresh/scheduled-prompt.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
 import { noPositionals } from "../args.js";
@@ -244,7 +245,9 @@ export async function inboxReminder(args, runtime) {
     if (session !== undefined) {
         await logPrompt(runtime, { config, paths: kit.paths, id: session }, payload).catch(() => undefined);
     }
-    const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(config.refresh)).catch(() => undefined);
+    // A scheduled job's prompt is no one typing: it leaves the restart armed, which waits for the turn it starts to end.
+    const scheduled = session !== undefined && (await firedBySchedule(runtime.files, isRecord(payload) ? stringField(payload, 'transcript_path') : undefined));
+    const cancelled = session === undefined || scheduled ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(config.refresh)).catch(() => undefined);
     const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
     // Read last, as reading marks the lines shown: a hook killed at its timeout before printing must leave them unshown.
     const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession, teamZone(config, runtime));
