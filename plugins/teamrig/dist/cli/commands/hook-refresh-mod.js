@@ -98,6 +98,10 @@ export async function refreshMid(args, runtime) {
             await store.setState(scope.id, decision.state);
             return answer(runtime, { kind: 'ask', text: decision.reason, nextAt: decision.nextAt });
         case 'none':
+            if (decision.state !== undefined) {
+                // A fresh start's first measure: its baseline.
+                await store.setState(scope.id, decision.state);
+            }
             return answer(runtime, { kind: 'wait', nextAt: decision.nextAt });
         case 'measure':
             // Asked only without the due facts, which the second decision has.
