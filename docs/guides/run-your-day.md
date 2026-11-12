@@ -67,8 +67,8 @@ While the meeting is open, the lead's tab shows the agenda in a pane beside the 
 one you decided checked off with your answer, the one on the table marked, and how many are left. It closes at the
 meeting's end; `meeting.panel.enabled: false` turns it off
 ([the meeting's agenda panel](../../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-meetings-agenda-panel)).
-On Windows Terminal, `meeting.spotlight.enabled: true` also dims every screen but the lead's window until the
-meeting ends; clicks go through the dimming
+On Windows Terminal, the meeting also dims every screen but the lead's window until it ends; clicks go through the
+dimming, and `meeting.spotlight.enabled: false` turns it off
 ([the spotlight](../../plugins/teamrig/skills/teamrig-guide/hooks.md#meeting-start-the-spotlight)).
 
 The start counts as asking you every decision it lists. Between meetings the lead asks the new ones in batches:

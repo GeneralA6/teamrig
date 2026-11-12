@@ -313,15 +313,15 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, meeting: { panel: true } }).issues), ['meeting.panel']);
   });
 
-  it('reads meeting.spotlight, off at 0.6 by default, and refuses a dim outside 0.1 to 0.9 or a non-boolean enabled (T2517)', () => {
-    assert.deepEqual(parseConfig(ROSTER).config.meeting.spotlight, { enabled: false, dim: 0.6 });
-    assert.deepEqual(parseConfig({ ...ROSTER, meeting: { spotlight: { enabled: true, dim: 0.3 } } }).config.meeting.spotlight, { enabled: true, dim: 0.3 });
+  it('reads meeting.spotlight, on at 0.6 by default, and refuses a dim outside 0.1 to 0.9 or a non-boolean enabled (T2517, T2523)', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.meeting.spotlight, { enabled: true, dim: 0.6 });
+    assert.deepEqual(parseConfig({ ...ROSTER, meeting: { spotlight: { enabled: false, dim: 0.3 } } }).config.meeting.spotlight, { enabled: false, dim: 0.3 });
     for (const dim of [0.05, 0.95, 'dark']) {
       const bad = parseConfig({ ...ROSTER, meeting: { spotlight: { dim } } });
       assert.deepEqual([paths(bad.issues), bad.config.meeting.spotlight.dim], [['meeting.spotlight.dim'], 0.6], String(dim));
     }
     const notBoolean = parseConfig({ ...ROSTER, meeting: { spotlight: { enabled: 'yes' } } });
-    assert.deepEqual([paths(notBoolean.issues), notBoolean.config.meeting.spotlight.enabled], [['meeting.spotlight.enabled'], false]);
+    assert.deepEqual([paths(notBoolean.issues), notBoolean.config.meeting.spotlight.enabled], [['meeting.spotlight.enabled'], true]);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, meeting: { spotlight: 1 } }).issues), ['meeting.spotlight']);
   });
 

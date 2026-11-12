@@ -81,9 +81,9 @@ describe('startSpotlight', () => {
 });
 
 describe('spotlightLine', () => {
-  it('prints nothing when off, and each other outcome in one line', () => {
+  it('prints nothing when off or where it cannot run, and each start outcome in one line (T2523)', () => {
     assert.equal(spotlightLine({ kind: 'off' }, TARGET, 0.6), undefined);
-    assert.equal(spotlightLine({ kind: 'unsupported', why: 'it needs Windows, and this is linux' }, TARGET, 0.6), 'NOT SPOTLIT: it needs Windows, and this is linux');
+    assert.equal(spotlightLine({ kind: 'unsupported', why: 'it needs Windows, and this is linux' }, TARGET, 0.6), undefined);
     assert.equal(
       spotlightLine({ kind: 'start', outcome: { kind: 'started', end: 'spawned' } }, TARGET, 0.6),
       'SPOTLIGHT every screen dimmed (0.6) but the window of app-lead, until the meeting ends; its errors go to state/logs/meeting-spotlight.log',

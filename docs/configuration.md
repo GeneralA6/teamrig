@@ -576,7 +576,7 @@ The spotlight while a meeting is open: every screen dimmed but the window holdin
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `enabled` | boolean | `false` | Starts the spotlight when meeting start opens the owner's daily meeting; it lifts by itself within seconds of meeting end, or when the meeting lapses. The dimming lets every click through and never takes the focus. Off unless a team sets it true. |
+| `enabled` | boolean | `true` | Starts the spotlight when meeting start opens the owner's daily meeting; it lifts by itself within seconds of meeting end, or when the meeting lapses. The dimming lets every click through and never takes the focus. On unless a team sets it false. |
 | `dim` | number (0.1 to 0.9) | `0.6` | How dark the rest of the screen goes, as the dimming layer's opacity: 0.1 barely shades it, 0.9 nearly hides it. |
 
 ## `turnLog`

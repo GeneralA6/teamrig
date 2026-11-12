@@ -133,15 +133,22 @@ describe('runCli: the daily meeting', () => {
     assert.equal(processes.hidden.length, 1);
   });
 
-  it('starts no spotlight while the team keeps it off, and says why it cannot off Windows', async () => {
+  it('starts the spotlight for a team that never set meeting.spotlight, as it is on by default (T2523)', async () => {
+    const processes = new FakeProcesses();
+    const started = await (await teamBeforeTheMeeting()).run(['meeting', 'start', '--session', 'lead'], { platform: 'win32', processes });
+    assert.match(started.stdout[1] ?? '', /^SPOTLIGHT every screen dimmed \(0\.6\) but the window of \[app\] lead/);
+    assert.equal(processes.hidden.length, 1);
+  });
+
+  it('starts no spotlight while the team turns it off, and says nothing off Windows, where it cannot run', async () => {
     const off = new FakeProcesses();
-    const quiet = await (await teamBeforeTheMeeting()).run(['meeting', 'start', '--session', 'lead'], { platform: 'win32', processes: off });
+    const quiet = await (await teamBeforeTheMeeting({ ...TEAM, meeting: { spotlight: { enabled: false } } })).run(['meeting', 'start', '--session', 'lead'], { platform: 'win32', processes: off });
     assert.ok(!quiet.stdout.some((line) => line.includes('SPOTLI')), quiet.stdout.join('\n'));
     assert.deepEqual(off.hidden, []);
 
     const linux = new FakeProcesses();
     const refused = await (await teamBeforeTheMeeting(SPOTLIT_TEAM)).run(['meeting', 'start', '--session', 'lead'], { processes: linux });
-    assert.equal(refused.stdout[1], 'NOT SPOTLIT: it needs Windows, and this is linux');
+    assert.ok(!refused.stdout.some((line) => line.includes('SPOTLI')), refused.stdout.join('\n'));
     assert.deepEqual(linux.hidden, []);
   });
 
