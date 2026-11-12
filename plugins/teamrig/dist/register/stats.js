@@ -1,7 +1,9 @@
+import { quantile } from "../core/quantile.js";
 import { MS_PER_DAY } from "../core/time.js";
+import { AREA_THRESHOLDS, areaStats } from "./area-stats.js";
 import { foldEvents } from "./fold.js";
 import { goalStats } from "./goal-stats.js";
-import { GITHUB_SOURCE } from "./model.js";
+import { GITHUB_SOURCE, isTopPriority } from "./model.js";
 import { waitsOnOwner } from "./owner-waits.js";
 import { dueTime } from "./views.js";
 /**
@@ -35,7 +37,6 @@ export function isActive(status) {
  * session; checked in that order.
  */
 export const WORK_SOURCES = ['self', 'owner', 'lead', 'github', 'session'];
-const TOP_PRIORITY = 1;
 const AGE_BANDS = [
     { label: '<2 d', below: 2 },
     { label: '2-7 d', below: 7 },
@@ -67,6 +68,7 @@ export function registerStats(input) {
     const overdue = overdueOf(held, clock);
     const onOwner = ownerWaitsOf(activeHeld, ownerMarker);
     const recent = dayWindow(today - (RECENT_DAYS - 1) * MS_PER_DAY, today, zone);
+    const scoped = teams.filter((team) => session === undefined || team.team === session.team);
     return {
         range: input.range,
         days,
@@ -78,7 +80,7 @@ export function registerStats(input) {
         recent: { days: RECENT_DAYS, net: tasks.filter((task) => within(recent, task.createdAt)).length - tasks.filter((task) => closedIn(task, recent)).length },
         active: activeRecord((status) => active.filter((task) => task.status === status).length),
         all: teamPart(held, clock, overdue),
-        teams: teams.filter((team) => session === undefined || team.team === session.team).map((team) => ({ team: team.team, ...teamPart(team.held, clock) })),
+        teams: scoped.map((team) => ({ team: team.team, ...teamPart(team.held, clock) })),
         newWork: newWork(created, ownerMarker),
         activeByAge: banded(active.map((task) => (now - Date.parse(task.createdAt)) / MS_PER_DAY), AGE_BANDS),
         neverStarted: done.filter((each) => each.task.startedAt === null).length,
@@ -97,11 +99,17 @@ export function registerStats(input) {
             opened: created,
             closed: closedHeld,
             overdue,
-            overdueP1: overdue.filter((each) => each.task.priority === TOP_PRIORITY),
+            overdueP1: overdue.filter((each) => isTopPriority(each.task.priority)),
             ownerDecisions: onOwner,
         },
         goals: goalStats({ goals: input.goals ?? new Map(), tasks: held, doneInRange: done, now: input.now, zone, scoped: session !== undefined }),
+        areas: areasOf(scoped, clock, today),
     };
+}
+/** The areas of the teams in scope, their usual read at each day-end before `today`. */
+function areasOf(teams, { now, zone }, today) {
+    const dayEnds = daySpans(today - AREA_THRESHOLDS.usualDays * MS_PER_DAY, today - MS_PER_DAY, zone).map((span) => span.end);
+    return areaStats({ teams: teams.map(({ team, kept, held }) => ({ team, kept, active: held.filter((each) => isActive(each.task.status)) })), now, zone, dayEnds });
 }
 /** A team's tasks in scope, from its events without those of the tasks that moved away. */
 function foldTeam(team, scope) {
@@ -232,7 +240,7 @@ function teamPart(held, clock, overdue = overdueOf(held, clock)) {
         active: tasks.filter((task) => isActive(task.status)).length,
         leadTime: spread(done.map((task) => daysBetween(task.createdAt, task.statusAt))),
         cycleTime: spread(done.flatMap((task) => (task.startedAt === null ? [] : [daysBetween(task.startedAt, task.statusAt)]))),
-        overdue: { count: overdue.length, p1: overdue.filter((each) => each.task.priority === TOP_PRIORITY).length },
+        overdue: { count: overdue.length, p1: overdue.filter((each) => isTopPriority(each.task.priority)).length },
         due: { total: withDue.length, onTime: withDue.filter(({ closedAt, due }) => closedAt <= due).length },
     };
 }
@@ -336,13 +344,6 @@ function daysBetween(from, to) {
 function spread(values) {
     const sorted = [...values].sort((a, b) => a - b);
     return { count: sorted.length, median: quantile(sorted, 0.5), p85: quantile(sorted, 0.85) };
-}
-/** The `q` quantile of sorted values, linearly interpolated between the two nearest; null with none. */
-export function quantile(sorted, q) {
-    const position = q * (sorted.length - 1);
-    const below = sorted[Math.floor(position)];
-    const above = sorted[Math.ceil(position)];
-    return below === undefined || above === undefined ? null : below + (above - below) * (position - Math.floor(position));
 }
 function banded(values, bands) {
     const bandOf = (value) => bands.findIndex((band) => value < band.below);

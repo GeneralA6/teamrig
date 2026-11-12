@@ -172,7 +172,7 @@ async function printAgenda(args, runtime, mk, phase) {
     });
     lines.forEach((line) => runtime.out.stdout(line));
     statsTopLines(await foldStats(runtime, rolled, AGENDA_STATS_RANGE), own.team, teams.map((team) => team.team)).forEach((line) => runtime.out.stdout(line));
-    runtime.out.stdout(`  each other section: ${KIT_NAME} stats --tree --session ${mk.lead} (new work, speed, delays, waits, bugs, people, goals)`);
+    runtime.out.stdout(`  each other section: ${KIT_NAME} stats --tree --session ${mk.lead} (new work, speed, delays, waits, bugs, people, goals, areas)`);
     const scheduled = await new MeetingSchedule(runtime.files, mk.kit.paths.meetings).read();
     agendaMeetingLines(scheduled.meetings, mk.zone, mk.now).forEach((line) => runtime.out.stdout(line));
     mergeDigestLines(await mergeDigestOf(runtime, mk, since)).forEach((line) => runtime.out.stdout(line));
