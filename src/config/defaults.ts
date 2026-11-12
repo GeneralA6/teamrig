@@ -33,6 +33,7 @@ import type {
   StatusLineConfig,
   TestsConfig,
   TurnLogConfig,
+  NeedsYouConfig,
   MeetingNoticesConfig,
   WakeConfig,
   StablePeriodsConfig,
@@ -240,6 +241,8 @@ export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 3 };
 export const DEFAULT_LEAD_BOUNDARY: LeadBoundaryConfig = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
 /** On, for a day: what a tab showed stays readable through a night of refreshes. */
 export const DEFAULT_TURN_LOG: TurnLogConfig = { enabled: true, keepHours: 24 };
+/** On for every ask but an API error, which needs no answer; no OS notification (the owner's order, T2511). */
+export const DEFAULT_NEEDS_YOU: NeedsYouConfig = { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false };
 /** The owner's order (T2405): 10 minutes ahead and at the slot, and a missed alert 5 minutes in, on every channel. */
 export const DEFAULT_MEETING_NOTICES: MeetingNoticesConfig = {
   enabled: true,

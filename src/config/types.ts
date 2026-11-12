@@ -1,6 +1,7 @@
 import type { TaskStatus } from '../register/model.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 import type { AdmissionMode } from '../delivery/admission.ts';
+import type { NeedKind } from '../tabs/need.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
 export const CONFIG_VERSION = 8;
@@ -485,6 +486,19 @@ export interface TurnLogConfig {
   readonly enabled: boolean;
   /** How long each entry is kept, in hours; whole hours past it are removed at a session start. */
   readonly keepHours: number;
+}
+
+/**
+ * The needs-you band (T2511): every tab of the team shows which other tab asks the user something (a permission
+ * prompt, a question, a decision line), read from the tab files (src/tabs/need.ts), with a button that focuses it.
+ */
+export interface NeedsYouConfig {
+  /** Off: no tab shows another's asks (the tab files are still written, for smart focus). */
+  readonly enabled: boolean;
+  /** The kinds of ask that raise the band and its toast. */
+  readonly kinds: readonly NeedKind[];
+  /** Also one OS notification per ask across the team, besides the toast in each tab. */
+  readonly osToast: boolean;
 }
 
 /**
@@ -1427,6 +1441,7 @@ export interface KitConfig {
    * needs Claude Code's own title off (`CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`), else Claude Code writes over it.
    */
   readonly tabStatus: { readonly enabled: boolean };
+  readonly needsYou: NeedsYouConfig;
   /**
    * Refuses Claude Code's question picker (AskUserQuestion), which would stop the session until the person answers,
    * to every session and helper, the lead included, in the owner's daily meeting too; the reason says to decide it if it

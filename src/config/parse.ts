@@ -9,6 +9,7 @@ import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_ST
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
+import { isNeedKind, NEED_KINDS, type NeedKind } from '../tabs/need.ts';
 import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,
@@ -26,6 +27,7 @@ import {
   DEFAULT_LOCK,
   DEFAULT_LEAD_BOUNDARY,
   DEFAULT_TURN_LOG,
+  DEFAULT_NEEDS_YOU,
   DEFAULT_MEETING_NOTICES,
   DEFAULT_LOOPS,
   DEFAULT_MERGE_REMOTE,
@@ -154,6 +156,7 @@ import {
   type PriorityConfig,
   type TeamLink,
   type TurnLogConfig,
+  type NeedsYouConfig,
   type MeetingNoticesConfig,
   type WakeConfig,
   type StablePeriodsConfig,
@@ -519,6 +522,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
       dedicatedOwners: read.stringList(decisions, 'dedicatedOwners', 'decisions', DEFAULT_DECISIONS.dedicatedOwners, isSessionName, CONFIG_LIMITS.dedicatedOwners.maxItems),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
+    needsYou: parseNeedsYou(read, read.section(raw, 'needsYou', '')),
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', true) },
     meeting: parseMeeting(read, read.section(raw, 'meeting', '')),
     turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
@@ -564,6 +568,19 @@ function parseTurnLog(read: ConfigReader, raw: JsonRecord): TurnLogConfig {
   return {
     enabled: read.boolean(raw, 'enabled', 'turnLog', DEFAULT_TURN_LOG.enabled),
     keepHours: read.integer(raw, 'keepHours', 'turnLog', DEFAULT_TURN_LOG.keepHours, CONFIG_LIMITS.turnLogKeepHours),
+  };
+}
+
+/** `needsYou`: each kind one of `NEED_KINDS`; an unknown one is an issue and left out. */
+function parseNeedsYou(read: ConfigReader, raw: JsonRecord): NeedsYouConfig {
+  const kind = (value: unknown, itemPath: string): NeedKind | undefined => {
+    const text = read.stringItem(value, itemPath, oneOf(NEED_KINDS));
+    return text !== undefined && isNeedKind(text) ? text : undefined;
+  };
+  return {
+    enabled: read.boolean(raw, 'enabled', 'needsYou', DEFAULT_NEEDS_YOU.enabled),
+    kinds: read.list(raw, 'kinds', 'needsYou', DEFAULT_NEEDS_YOU.kinds, kind, NEED_KINDS.length),
+    osToast: read.boolean(raw, 'osToast', 'needsYou', DEFAULT_NEEDS_YOU.osToast),
   };
 }
 
