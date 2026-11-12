@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { claudeProjectsDir } from "../../budget/discover.js";
+import { DEFAULT_HEADROOM } from "../../config/defaults.js";
 import { ownLaunchOf } from "../../config/launch.js";
 import { errorMessage } from "../../core/guards.js";
 import { ENV, resolveKitHome } from "../../core/home.js";
@@ -16,8 +17,10 @@ import { RestoreArchive, restoreArchiveDir } from "../../restore/archive.js";
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from "../../restore/registry.js";
 import { checkRestore, previewRestore, runRestore } from "../../restore/run.js";
 import { TranscriptFinder } from "../../restore/transcripts.js";
+import { noRoomText } from "../../sessions/headroom.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { admitBusyText, admitTab, dropTabHold } from "../headroom.js";
 import { loadTree } from "../tree.js";
 import { claudeExit, claudeProgramOf, claudeSessionArg, effortFlag, encodedPromptFlag, homeArgs, openSessionTab, TERMINAL_LABELS, terminalFlag } from "./open.js";
 /** The title of the tab `restore check` opens for the restore. */
@@ -44,8 +47,7 @@ function homeRuntimeOf(args, runtime) {
     return home === undefined ? runtime : { ...runtime, env: { ...runtime.env, [ENV.home]: resolve(runtime.cwd, home) } };
 }
 /** Every team of the kit home as the restore sees it; a team whose config does not load is left out. */
-async function restoreTeamsOf(runtime) {
-    const { teams } = await loadTree(runtime);
+async function restoreTeamsOf(runtime, teams) {
     const found = [];
     for (const [team, { kit, config, roster }] of teams) {
         const { marks } = await new JsonlMarkLog(new PlainLogFile(runtime.files, kit.paths.inboxMarks)).read();
@@ -71,10 +73,46 @@ function reopenOutcomeOf(runtime, outcome, folder, argv) {
     return { kind: 'failed', why: `no terminal opened (${outcome.reasons.join('; ')}); run: ${shellCommand(runtime.platform, folder, argv)}` };
 }
 /**
+ * The team whose tab gate a restored tab passes: its own team's, else the first team loaded, since the room and the
+ * holds of tabs still loading are the host's, kept beside the host lock every team shares; undefined with no team.
+ */
+function gateTeamOf(teams, tab) {
+    const own = tab.team === undefined ? undefined : teams.get(tab.team.team);
+    return own ?? [...teams.values()][0];
+}
+/**
+ * Opens the tab of one restored session through the host's tab gate, as `open` does (T2283): `no-room` while the host
+ * lacks the room for it, except a team's lead, which opens whatever the room; its tab is held while it loads, and the
+ * hold dropped when the tab does not open.
+ */
+async function reopen(runtime, teams, tab, terminal) {
+    const gate = gateTeamOf(teams, tab);
+    if (gate === undefined) {
+        return openRestoredTab(runtime, tab, terminal);
+    }
+    const { kit, config, roster } = gate;
+    const what = `reopen ${tab.title}`;
+    const admission = await admitTab(runtime, kit.paths, config, roster.ids, { session: tab.team?.session ?? tab.title, anyRoom: tab.team?.isLead === true });
+    if (admission.kind === 'no-room') {
+        return { kind: 'no-room', why: noRoomText(what, admission.headroom) };
+    }
+    if (admission.kind === 'busy') {
+        return { kind: 'no-room', why: admitBusyText(what) };
+    }
+    const outcome = await openRestoredTab(runtime, tab, terminal).catch(async (error) => {
+        await dropTabHold(runtime, kit.paths, config, admission.holdId);
+        throw error;
+    });
+    if (outcome.kind !== 'opened') {
+        await dropTabHold(runtime, kit.paths, config, admission.holdId);
+    }
+    return outcome;
+}
+/**
  * Opens the tab of one restored session. A session `launch` ran comes back through `launch` again, as its team
  * session, on its effort; any other resumes through `restore resume`, outside any team, as it ran before.
  */
-async function reopen(runtime, tab, terminal) {
+async function openRestoredTab(runtime, tab, terminal) {
     const { team } = tab;
     if (team?.launched === true) {
         const { outcome, argv } = await openSessionTab(runtime, {
@@ -106,11 +144,20 @@ async function reopen(runtime, tab, terminal) {
     const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv, window });
     return reopenOutcomeOf(runtime, outcome, tab.folder, argv);
 }
+/**
+ * How long a restored tab waits for room: the longest open.headroom.loadMinutes of the teams, since a tab of any
+ * team still loading holds the room it was counted at that long.
+ */
+function roomWaitMsOf(teams) {
+    const minutes = [...teams.values()].map(({ config }) => config.open.headroom.loadMinutes);
+    return Math.max(DEFAULT_HEADROOM.loadMinutes, ...minutes) * 60_000;
+}
 /** The restore over this machine: the kit home's sessions folder, every team on it, its processes and terminals. */
 async function restoreDepsOf(runtime, terminal) {
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
     const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
     const finder = new TranscriptFinder(runtime.files, runtime.probe, projectsDir);
+    const { teams } = await loadTree(runtime);
     return {
         registry: new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome)),
         archive: new RestoreArchive(runtime.files, restoreArchiveDir(kitHome)),
@@ -120,14 +167,15 @@ async function restoreDepsOf(runtime, terminal) {
         shutdowns: runtime.restore.shutdowns,
         countdown: runtime.restore.countdown,
         stops: runtime.restore.stops,
-        teams: await restoreTeamsOf(runtime),
+        teams: await restoreTeamsOf(runtime, teams),
         home: runtime.userHome,
         projectsDir,
         platform: runtime.platform,
+        roomWaitMs: roomWaitMsOf(teams),
         stillRunning: (entry) => runsClaude(runtime.sessionProcesses, entry.pid),
         transcriptOf: (entry) => finder.find(entry),
         readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
-        reopen: (tab) => reopen(runtime, tab, terminal),
+        reopen: (tab) => reopen(runtime, teams, tab, terminal),
         print: (line) => runtime.out.stdout(line),
         log: restoreLogOf(runtime),
     };

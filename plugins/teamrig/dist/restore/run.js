@@ -11,6 +11,8 @@ import { KIND_TAIL_BYTES, transcriptKindOf } from "./transcript-kind.js";
 export const COUNTDOWN_SECONDS = 60;
 /** The pause after each reopened tab, so the terminal and Claude Code start it before the next. */
 export const TAB_STAGGER_MS = 4_000;
+/** How long a tab the host has no room for waits between looks at the room. */
+export const ROOM_POLL_MS = 15_000;
 /**
  * The config's `launch.<id>.effort` wins once set, so a restore after a config change brings the session back on the
  * new level, not the old one its transcript ran at (T2440); a session the config leaves unset comes back at its last.
@@ -236,12 +238,12 @@ async function reopenItem(deps, facts, item, items) {
     const { folder, note } = await reopenFolderOf(deps, item);
     const prompt = item.mode === 'idle' ? undefined : continuePrompt(item.lost, item.team?.isLead === true ? leadSummaryOf(item, items) : undefined);
     await deps.registry.write({ ...current, transcriptPath: item.transcript ?? current.transcriptPath, restoreAttempts: current.restoreAttempts + 1, restoredAt: deps.clock.now() });
-    let outcome;
-    try {
-        outcome = await deps.reopen({ claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort?.level, prompt });
-    }
-    catch (error) {
-        outcome = { kind: 'failed', why: errorMessage(error) };
+    const outcome = await reopenWithRoom(deps, item, { claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort?.level, prompt });
+    if (outcome.kind === 'no-room') {
+        await deps.registry.write(current);
+        deps.print(`HELD ${item.label}: ${outcome.why}. Run "teamrig restore run" to reopen it once the host has room.`);
+        await deps.log(`run: held ${id} (no room on the host)`);
+        return 'failed';
     }
     if (outcome.kind === 'failed') {
         await deps.registry.write(current);
@@ -255,4 +257,33 @@ async function reopenItem(deps, facts, item, items) {
     deps.print(`Opened ${item.label} (${modeWords(item)})`);
     await deps.log(`run: opened ${id} (${modeWords(item)}) at effort ${effortWords(item.effort)}; ${outcome.launch}`);
     return 'opened';
+}
+/** One reopen; a throw is a tab that did not open. */
+async function reopenOnce(deps, tab) {
+    try {
+        return await deps.reopen(tab);
+    }
+    catch (error) {
+        return { kind: 'failed', why: errorMessage(error) };
+    }
+}
+/**
+ * Reopens the tab, waiting while the host has no room for it (T2283): a restore brings back every session the
+ * shutdown killed at once, and tabs opened past the host's memory get Claude Code processes killed by its low-memory
+ * reaper. It looks again every ROOM_POLL_MS for `roomWaitMs`, by when the tabs opened before it no longer hold the
+ * room they were counted at; with no room even then it gives this tab up and the run goes on with the next.
+ */
+async function reopenWithRoom(deps, item, tab) {
+    const deadline = deps.clock.now() + deps.roomWaitMs;
+    let outcome = await reopenOnce(deps, tab);
+    if (outcome.kind !== 'no-room') {
+        return outcome;
+    }
+    deps.print(`Waiting up to ${Math.ceil(deps.roomWaitMs / 60_000)} min for room to reopen ${item.label}: ${outcome.why}`);
+    await deps.log(`run: waiting for room for ${item.entry.claudeSession}`);
+    while (outcome.kind === 'no-room' && deps.clock.now() < deadline) {
+        await deps.sleep(ROOM_POLL_MS);
+        outcome = await reopenOnce(deps, tab);
+    }
+    return outcome;
 }
