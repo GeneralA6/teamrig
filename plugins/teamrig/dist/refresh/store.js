@@ -21,6 +21,10 @@ export class RefreshStore {
     handoverPath(id) {
         return join(this.paths.handover, `${id}.md`);
     }
+    /** Where a fresh start finds what the owner typed in the session its refresh replaced (owner-turns.ts). */
+    ownerTurnsPath(id) {
+        return join(this.paths.handover, `${id}.owner.md`);
+    }
     /** The handover's text; undefined when the session has not written one. */
     handover(id) {
         return this.files.read(this.handoverPath(id));
