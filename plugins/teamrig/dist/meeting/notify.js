@@ -1,11 +1,35 @@
 import { KIT_NAME } from "../core/home.js";
 import { powerShellRequest } from "../core/powershell.js";
-export function noticeOf(meeting) {
-    return {
-        id: meeting.id,
-        title: `${KIT_NAME} meeting ${meeting.id} now`,
-        text: `${meeting.session}: ${meeting.about} (${meeting.minutes} min). Start: ${KIT_NAME} meeting start ${meeting.id}`,
-    };
+import { MS_PER_MINUTE } from "../core/time.js";
+/**
+ * A missed meeting's toast stays a minute, the longest Claude Code shows one: its `ui.toast` drops a toast whose
+ * timeoutMs is over 60 000 ms (the engine's host check), so a longer stay would show nothing.
+ */
+export const MISSED_STAY_MS = 60_000;
+/** Who meets: the session, then any others it meets with. */
+function whoOf(meeting) {
+    return meeting.with.length === 0 ? meeting.session : `${meeting.session} with ${meeting.with.join(', ')}`;
+}
+/** The notice of `meeting` at `stage`, worded as of `now` (a `before` notice counts the minutes left, rounded up). */
+export function noticeOf(meeting, stage, now) {
+    const start = `${KIT_NAME} meeting start ${meeting.id}`;
+    const line = `${whoOf(meeting)}: ${meeting.about} (${meeting.minutes} min)`;
+    switch (stage) {
+        case 'before': {
+            const minutes = Math.max(1, Math.ceil((meeting.at - now) / MS_PER_MINUTE));
+            return { id: meeting.id, stage, title: `${KIT_NAME} meeting ${meeting.id} in ${minutes} min`, text: `${line}. Start: ${start}`, stayMs: null };
+        }
+        case 'start':
+            return { id: meeting.id, stage, title: `${KIT_NAME} meeting ${meeting.id} now`, text: `${line}. Start: ${start}`, stayMs: null };
+        case 'missed':
+            return {
+                id: meeting.id,
+                stage,
+                title: `${KIT_NAME} meeting ${meeting.id} missed`,
+                text: `${line} has not started. Start: ${start}, or move or drop it`,
+                stayMs: MISSED_STAY_MS,
+            };
+    }
 }
 /** The variables the Windows toast script reads its words from. */
 export const NOTICE_TITLE_VAR = 'TEAMRIG_NOTICE_TITLE';

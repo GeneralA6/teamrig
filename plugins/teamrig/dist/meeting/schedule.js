@@ -131,15 +131,6 @@ export function endOf(meeting) {
 export function isMissed(meeting, now) {
     return meeting.status === 'scheduled' && endOf(meeting) <= now;
 }
-/** A scheduled meeting whose time came and whose slot is not over, not yet notified: its notification is due. */
-export function isNotifyDue(meeting, now) {
-    return meeting.status === 'scheduled' && meeting.notifiedAt === null && meeting.at <= now && now < endOf(meeting);
-}
-/** When the next notification falls due after `now`, epoch ms; null when none is scheduled. */
-export function nextNotifyAt(meetings, now) {
-    const times = meetings.filter((meeting) => meeting.status === 'scheduled' && meeting.notifiedAt === null && meeting.at > now).map((meeting) => meeting.at);
-    return times.length === 0 ? null : Math.min(...times);
-}
 /** The meetings by time, earliest first; ids break a tie. */
 export function byTime(meetings) {
     return [...meetings].sort((a, b) => a.at - b.at || idNumber(a.id) - idNumber(b.id));
