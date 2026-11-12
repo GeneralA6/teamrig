@@ -28,7 +28,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
 | The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's OS notification at its time, from one tab of the team, and shows it as a toast there ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
-| The mod, a minute after a tab starts and every 10 minutes | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
+| The mod, a minute after a tab starts and every 10 minutes, and when an install changes `installed_plugins.json` | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SubagentStop` (a helper about to hand back) | `hook subagent-stop` | Sends the helper back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit) |
@@ -1145,7 +1145,7 @@ before is fetched, one commit deep and without file contents, into a bare reposi
 read in place. The answer is kept in `~/.teamrig/updates/check.json`, and every other look reads that file only. A
 marketplace that cannot be asked (offline, no access) keeps what was known, and nothing shows.
 
-While a newer version than the installed one is published, the band above the prompt reads
+While a newer version than the installed one is published, the band above the prompt reads, in green,
 `teamrig: teamrig 0.334.0 is out (you run 0.333.0)`, with two buttons, plain and without digits, so a key typed at
 the prompt never presses one:
 
@@ -1156,7 +1156,11 @@ the prompt never presses one:
 - **Dismiss** runs [`teamrig hook update-dismiss`](commands.md#teamrig-hook-update-dismiss): that version stays hidden
   in every tab until a newer one is out.
 
-A failed press shows a toast saying why, and the band stays. The band waits while [the refresh's band](#the-mod-the-refreshs-clear)
+The band answers a press at once: `teamrig: updating teamrig to 0.334.0...` with no buttons while the install runs,
+then `teamrig: updated to teamrig 0.334.0, reloading` for 30 s. A failed Update turns the band red with the reason and
+Update to try again, and a toast says why too; a failed Dismiss shows a toast, and the band stays. Every 5 s the mod
+dates Claude Code's `installed_plugins.json` (a file stat, no network): a change runs a check at once, so an update
+made in another tab or by `claude plugin update` hides the band in every tab within seconds. The band waits while [the refresh's band](#the-mod-the-refreshs-clear)
 is up, and nothing is typed into the terminal. A failed check goes to Claude Code's debug log only.
 
 ## The mod: the /teamrig command
