@@ -166,6 +166,18 @@ export function laterLine(command: string, ownerMarker: string, lead: string, un
   return `  A card ${ownerMarker} puts off to a date: ${command} update <id> --later <date> --note "${ownerMarker} put it off: <why>" --session ${lead}; ${until}.`;
 }
 
+/** What the agenda reads the owner's decisions from: the lead's register, those under it, and the day for the batch. */
+export type DecisionAgenda = AgendaRegister & Pick<AgendaInput, 'below' | 'now' | 'improvementsDay'>;
+
+/**
+ * The cards the agenda asks today, in its order: the daily ones, then the Improvements batch on its weekday (empty on
+ * the others). The meeting's agenda panel lists the same cards in the same order (src/meeting/panel.ts).
+ */
+export function askedDecisions(input: DecisionAgenda): { readonly daily: readonly Decision[]; readonly batch: readonly Decision[] } {
+  const order = decisionOrder([decisionRead(input, undefined), ...input.below.map((team) => decisionRead(team, team.team))]);
+  return { daily: order.daily, batch: isImprovementsDay(input.now, input.improvementsDay) ? order.improvements : [] };
+}
+
 /**
  * DECISIONS: the tasks waiting on the owner, the lead's team's and those of each team under it (T1018) in one list
  * ranked by what they unblock (decisionOrder), a tie keeping the lead's team first, each with its card facts, then how
@@ -174,9 +186,8 @@ export function laterLine(command: string, ownerMarker: string, lead: string, un
  * decide by and one exact action.
  */
 function decisionLines(input: AgendaInput): string[] {
-  const order = decisionOrder([decisionRead(input, undefined), ...input.below.map((team) => decisionRead(team, team.team))]);
-  const batch = isImprovementsDay(input.now, input.improvementsDay) ? order.improvements : [];
-  const asked = [...order.daily, ...batch];
+  const { daily, batch } = askedDecisions(input);
+  const asked = [...daily, ...batch];
   const head = `DECISIONS ${asked.length} waiting on ${input.ownerMarker} (decision or approval)`;
   if (asked.length === 0) {
     return [head];
@@ -186,7 +197,7 @@ function decisionLines(input: AgendaInput): string[] {
   const handed = below ? ' (and --team <team> for a team under yours)' : '';
   return [
     head,
-    ...cardsOf(order.daily, input.runFiles),
+    ...cardsOf(daily, input.runFiles),
     ...(batch.length === 0 ? [] : [`  Improvements batch ${batch.length}, weekly, after the daily cards:`, ...cardsOf(batch, input.runFiles)]),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
     askLine(input.ownerMarker),
