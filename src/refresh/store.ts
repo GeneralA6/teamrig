@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
+import { writableObject } from '../core/jsonl.ts';
 import { formatCarriedJobs, parseCarriedJobs, type CarriedJobs } from './carry.ts';
 import {
   formatParkedRestart,
@@ -11,6 +12,7 @@ import {
   parseRefreshRequest,
   parseRefreshState,
   parseRestartRequest,
+  REFRESH_STATE_FORMAT,
   type ParkedRestart,
   type RefreshRequest,
   type RefreshState,
@@ -51,8 +53,11 @@ export class RefreshStore {
     return text === undefined ? undefined : parseRefreshState(text);
   }
 
-  setState(id: string, state: RefreshState): Promise<void> {
-    return this.files.write(this.statePath(id), formatRefreshState(state));
+  /** Throws NewerDataError when a newer teamrig wrote the file: an older one never overwrites what it cannot read. */
+  async setState(id: string, state: RefreshState): Promise<void> {
+    const path = this.statePath(id);
+    writableObject(path, await this.files.read(path), REFRESH_STATE_FORMAT);
+    await this.files.write(path, formatRefreshState(state));
   }
 
   async request(id: string): Promise<RefreshRequest | undefined> {

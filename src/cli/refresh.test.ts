@@ -207,6 +207,9 @@ describe('runCli: context refresh', () => {
     const remake = '- cron "3 13 * * *"';
     /** The next refresh asked and its handover written, from the session whose transcript is `path`. */
     const refreshFrom = async (path: string, handover: string): Promise<void> => {
+      // The fresh start's first turn end measures its baseline; the refresh comes once the context grew past it.
+      await kit.files.write(path, transcript(100_000));
+      await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(false, { transcript_path: path }) });
       await kit.files.write(path, transcript(300_000));
       await finishTask(kit, 'alpha');
       stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(false, { transcript_path: path }) }));
@@ -429,6 +432,25 @@ describe('runCli: context refresh', () => {
     await kit.files.write(HANDOVER('alpha'), '# In progress\n');
     assert.deepEqual((await kit.run(['refresh', '--ready', '--session', 'alpha'])).stdout, [`Ready. Ask the user to type /clear; your next start reads ${HANDOVER('alpha')}.`]);
     assert.match((await kit.run(['refresh', 'bravo', '--session', 'lead'])).stdout.join('\n'), /; then type \/clear in its tab$/);
+  });
+
+  it('never asks a fresh start to refresh again before its context grew: 130k against 120k', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    await handoverWritten(kit);
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    assert.ok(contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') })).includes('You were refreshed after T1'));
+    const stop = async (tokens: number): Promise<CliResult> => {
+      await kit.files.write(TRANSCRIPT, transcript(tokens));
+      return kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() });
+    };
+    assert.deepEqual(await stop(130_000), SILENT, 'the first turn end only measures');
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed".*"baseline":130000/);
+    assert.deepEqual(await stop(130_000), SILENT, 'no clear loop');
+    for (let task = 0; task < 3; task += 1) {
+      await finishTask(kit, 'alpha');
+      assert.deepEqual(await stop(140_000), SILENT, 'nor after tasks with no growth');
+    }
+    assert.match(JSON.stringify(stopJson(await stop(154_000))), /"decision":"block","reason":"teamrig: your context is 154k/, 'asked once it grew 24k');
   });
 
   it('asks for the handover at any turn end over the threshold, mid-task, and again only once the context grew', async () => {
