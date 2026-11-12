@@ -11,6 +11,7 @@ const CLOCK = /^(\d{2}):(\d{2})$/;
 /** An ISO time with its zone; one without would be read in the host's local time. */
 const ZONED_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
+export const MS_PER_SECOND = 1_000;
 export const MS_PER_MINUTE = 60_000;
 export const MS_PER_HOUR = 3_600_000;
 export const MS_PER_DAY = 86_400_000;

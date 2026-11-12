@@ -12,7 +12,7 @@ import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
 import { mergeDigestLines, type MergeDigestInput } from '../../meeting/merges.ts';
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
-import { spotlightLine, startSpotlight } from '../../meeting/spotlight.ts';
+import { spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { MergeLog } from '../../merge/merge-log.ts';
 import { goalScores, type BoardTeam, type GoalScore } from '../../register/goal-board.ts';
@@ -248,7 +248,13 @@ export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const meeting: Meeting = { startedAt: new Date(mk.now).toISOString(), by: mk.lead, endedAt: null, since: before === undefined ? null : new Date(before).toISOString() };
   await mk.store.write(meeting);
   runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
-  const spotlit = { title: sessionDisplay(mk.kit.paths.team, mk.leadName), meetingFile: mk.kit.paths.meeting, meeting, log: join(mk.kit.paths.logs, SPOTLIGHT_LOG) };
+  const spotlit: SpotlightPlace = {
+    title: sessionDisplay(mk.kit.paths.team, mk.leadName),
+    meetingFile: mk.kit.paths.meeting,
+    meeting,
+    breakthroughFile: mk.kit.paths.meetingBreakthrough,
+    log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
+  };
   const { spotlight } = mk.config.meeting;
   const line = spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, spotlit, runtime.cwd), spotlit, spotlight.dim);
   if (line !== undefined) {
