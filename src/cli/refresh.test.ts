@@ -409,6 +409,41 @@ describe('runCli: context refresh', () => {
     assert.match((await kit.run(['refresh', 'bravo', '--session', 'lead'])).stdout.join('\n'), /; then type \/clear in its tab$/);
   });
 
+  it('carries what the owner typed in the old session to the fresh start, the prompts after the handover marked', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    await handoverWritten(kit);
+    const line = (entry: object): string => `${JSON.stringify(entry)}\n`;
+    await kit.files.append(
+      TRANSCRIPT,
+      line({ type: 'user', message: { role: 'user', content: 'Decision: approve the release after the photos' } }) +
+        line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'toolu_w', name: 'Write', input: { file_path: HANDOVER('alpha'), content: '# x' } }] } }) +
+        line({ type: 'user', message: { role: 'user', content: 'Hold the migration until Monday' } }) +
+        line({ type: 'user', message: { role: 'user', content: '<task-notification>done</task-notification>' } }),
+    );
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    const owner = join(TEAM_HOME, 'handover', 'alpha.owner.md');
+    await kit.files.write(owner, 'left from an earlier refresh');
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') }));
+    assert.ok(fresh.includes(`The owner typed 3 prompt(s) in your old session, 1 of them after your handover was written: read ${owner}`), fresh);
+    const file = (await kit.files.read(owner)) ?? '';
+    assert.match(file, /## 1\n\ngo\n/);
+    assert.match(file, /## 2\n\nDecision: approve the release after the photos\n/);
+    assert.match(file, /## 3 \(after your handover was written: it does not hold this\)\n\nHold the migration until Monday\n/);
+    assert.ok(!file.includes('task-notification'));
+  });
+
+  it('removes the owner file of an earlier refresh when the old session had nothing from the owner', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    await handoverWritten(kit);
+    await kit.files.write(TRANSCRIPT, `${JSON.stringify({ type: 'assistant', isSidechain: false, message: { usage: { input_tokens: 2, cache_read_input_tokens: 299_998, output_tokens: 9 } } })}\n`);
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    const owner = join(TEAM_HOME, 'handover', 'alpha.owner.md');
+    await kit.files.write(owner, 'left from an earlier refresh');
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') }));
+    assert.ok(!fresh.includes('The owner typed'), fresh);
+    assert.equal(await kit.files.read(owner), undefined);
+  });
+
   it('asks for the handover at any turn end over the threshold, mid-task, and again only once the context grew', async () => {
     const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
     const stop = async (tokens: number): Promise<CliResult> => {

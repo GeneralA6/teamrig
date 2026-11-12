@@ -41,6 +41,7 @@ import {
   type StopDecision,
   type StopFacts,
 } from '../../refresh/decide.ts';
+import { ownerTurnsLine, ownerTurnsText, type OwnerTurn } from '../../refresh/owner-turns.ts';
 import { carryLines, carryStartOf, readCarry, type CarriedCron, type Carry, type CarryPlaces, type CarryStart } from '../../refresh/carry.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
@@ -508,7 +509,7 @@ interface CarryRead {
 async function carryFrom(runtime: CliRuntime, store: RefreshStore, id: string, transcript: string, now: number): Promise<CarryRead> {
   const record = await store.carried(id);
   const inherited = record?.transcript === transcript ? record.crons : [];
-  return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited), inherited };
+  return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited, store.handoverPath(id)), inherited };
 }
 
 /**
@@ -538,12 +539,32 @@ async function carriedLinesOf(runtime: CliRuntime, store: RefreshStore, id: stri
   } catch (error) {
     return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
   }
-  const lines = read.carry === undefined ? [] : carryLines(read.carry, now, start, zone);
+  const lines = read.carry === undefined ? [] : [...carryLines(read.carry, now, start, zone), ...(await ownerTurnsNoteOf(runtime, store, id, read.carry.ownerTurns ?? []))];
   try {
     await keepCarried(store, id, read.carry?.crons ?? read.inherited, start, startTranscriptOf(payload));
     return lines;
   } catch (error) {
     return [...lines, carryRecordFailed(error)];
+  }
+}
+
+/**
+ * What the owner typed in the old session, written beside the handover for the fresh start to read, and the note's
+ * line that points at it; a file from an earlier refresh is removed when there is nothing to carry. Says, never
+ * throws, when it cannot write it.
+ */
+async function ownerTurnsNoteOf(runtime: CliRuntime, store: RefreshStore, id: string, turns: readonly OwnerTurn[]): Promise<readonly string[]> {
+  const path = store.ownerTurnsPath(id);
+  try {
+    const line = ownerTurnsLine(turns, path);
+    if (line === undefined) {
+      await runtime.files.remove(path);
+      return [];
+    }
+    await runtime.files.write(path, ownerTurnsText(turns));
+    return [line];
+  } catch (error) {
+    return [`${KIT_NAME} could not keep what the owner typed in your old session (${errorMessage(error)}): read its transcript's last prompts before you go on.`];
   }
 }
 
