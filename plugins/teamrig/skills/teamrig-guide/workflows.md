@@ -184,6 +184,61 @@ T5.
 A task reason is only for a task you already started. One not started that needs another first is not waiting:
 it stays `open`, planned after it (`teamrig update T4 --after T5`), and its line shows `after T5`.
 
+## Write a decision card
+
+A wait on the owner carries a card (`--question`, `--options`, `--recommend`, `--default`, and `--gate`), which the
+lead reads out at the daily meeting and the pane shows. The owner reads it cold, between other cards, so they can
+decide from it alone in about a minute:
+
+```sh
+teamrig set T4 --session api --status waiting --waits decision:owner --gate "product and design decisions" \
+  --question "Should new users sign up with an e-mail link instead of a password?" \
+  --options "1. E-mail link: no password to forget or leak; about 0.3% of a week | 2. Keep passwords: nothing to build, reset mails stay the top support ask" \
+  --recommend "1: it removes the reset mails, half of last week's support asks" \
+  --default "Passwords stay; asked again at the next meeting"
+```
+
+- One decision per card. A question with two answers in it (whether, then how) is two cards: the second only once
+  the first is yes.
+- The question is one sentence of about 25 words or fewer, about what the owner gets or risks, in their words: what
+  they see, pay or allow. No task ids, session names, file paths, script names, setting keys or tool jargon. Say
+  what a thing does instead of its name.
+- Two to four options, each about 30 words or fewer: what happens, then its cost (share of the week, time, risk)
+  and what it gives up. Number them. Leave out what you already ruled out, or name it in one line in the
+  recommendation.
+- Give only the numbers that change the choice, each with what it means ("903 tasks unchanged", not "903/1033").
+- The recommendation is the pick and the one reason the owner cares about most. The default says what happens with
+  no answer, and by when.
+- Before you set it, read it as someone who missed the last week would: if a word needs the task list, the code or
+  last week's talk to make sense, rewrite it.
+
+Real cards, as the owner got them (names made generic). Good:
+
+- *"Should the task pane's Changes view expand a file to show its colored edits, or is Claude Code's own /diff view
+  enough?"* Options: *"Build it: a press on a file row expands its diff inline, capped at 40 lines with a pointer to
+  /diff; about half a day of pane work"* and *"Skip it: Changes keeps the +N -N per file and /diff shows the
+  edits"*. The question names what the owner sees; each option is a result and its cost. The owner decided it at the
+  first meeting (build it, against the recommendation, which is what a clear card makes easy).
+- *"Rebuild the task snapshot from its full archive? Dry run: 1 repair (a card regains its lost text), 903 tasks
+  unchanged, 129 old done tasks retired as usual (still readable), nothing deleted."* Options: *"Run it now"* and
+  *"Hold to the next meeting"*; recommendation: *"Run it now: only the lost field comes back"*. A destructive-data
+  gate with its counts in the question, so the options can be three words each. Decided at the meeting that read
+  it.
+
+Bad:
+
+- *"May the rules session merge its tested branches through the ship.ts merge route, which the auto-mode classifier
+  now denies as Merge Without Review?"* Options: *"Paste an autoMode environment line granting it"* and *"Keep the
+  denial and merge them yourself"*; default: *"The tested branches stay unmerged past the Wed 01:00 T683
+  deadline"*. A session name, a script, a classifier label and a bare task id, and no word on what the owner allows
+  or risks. Better: *"Let teamrig merge its own tested changes without you? 1. Paste one audited settings line:
+  each merge still needs green tests and is logged. 2. You merge each one by hand in GitHub."*
+- A notifications card that put six options in one list: four tools to build or adopt (one already rejected), each
+  with its service count, runtime and upstream activity, then two places for the code to live. Two decisions in one
+  list, a rejected option kept, and detail the owner cannot weigh. The owner answered *"not now"*: none of the six.
+  Better: first *"Build phone notifications now, for about 3% of a week?"*, and the tool and its place as a second
+  card only after a yes.
+
 ## Handover at high context
 
 teamrig refreshes a long-running session at a turn end once its context is large, before Claude Code compacts it,
