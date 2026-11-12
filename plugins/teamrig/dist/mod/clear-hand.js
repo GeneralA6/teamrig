@@ -9,7 +9,10 @@
  * process, which would take the helper with it; the runner names the last reason if it gives up. Else it
  * claims the ask through the CLI (`hook clear-claim`; both check that the restart is still pending) and on
  * a claim runs /clear the way the person would. Claude Code then
- * runs the SessionStart `clear` hooks that read the handover and wake the session.
+ * runs the SessionStart `clear` hooks that read the handover and wake the session. An ask in `end` mode
+ * (the session must start again at a changed effort level, which a /clear keeps) goes through the same holds,
+ * then is claimed with `hook clear-claim --end`; on `end` the hand runs no /clear and the runner ends the
+ * session and starts it again in its tab.
  *
  * The hand also holds the /clear for the person (the ask's `PersonHold`, from the team's config): while the
  * prompt holds an unsent draft, within `afterActivityMs` of the person's last key or prompt in the tab, and
@@ -33,8 +36,12 @@ export const CLAIM_TAKEN = 'taken';
 export const CLAIM_HELD = 'held';
 /** What the runner writes when it takes its ask back unclaimed. */
 export const CLAIM_WITHDRAWN = 'withdrawn';
+/** What `hook clear-claim --end` prints when this tab claimed an end ask: the runner ends the session, the hand runs no /clear. */
+export const CLAIM_END = 'end';
 /** The switch that makes `hook clear-claim` hold the ask instead of claiming it. */
 export const HOLD_SWITCH = 'hold';
+/** The switch with which the hand claims an ask in `end` mode, so an older hand, which never passes it, cannot take one by it. */
+export const END_SWITCH = 'end';
 /** The flag that gives a hold the hand's reason, which the restart names when it gives up. */
 export const WHY_FLAG = 'why';
 /** The hold of an ask that carries none (a restart older than the hold): the config's defaults, 20 s and 30 min. */
@@ -127,9 +134,14 @@ function holdOf(value) {
     const { countdownMs, afterActivityMs } = value;
     return isDuration(countdownMs) && isDuration(afterActivityMs) ? { countdownMs, afterActivityMs } : DEFAULT_PERSON_HOLD;
 }
+/** An ask's mode: `end` only when it says so, so an ask a restart older than the mode posted stays a /clear. */
+export function clearModeOf(value) {
+    return value === 'end' ? 'end' : 'clear';
+}
+const DAMAGED_ASK = { request: undefined, hold: DEFAULT_PERSON_HOLD, askEveryMs: DEFAULT_ASK_EVERY_MS, mode: 'clear' };
 /**
- * The ask file's request, hold and delay; DEFAULT_PERSON_HOLD when it carries no hold or a damaged one,
- * DEFAULT_ASK_EVERY_MS when it carries no delay or a damaged one.
+ * The ask file's request, hold, delay and mode; DEFAULT_PERSON_HOLD when it carries no hold or a damaged one,
+ * DEFAULT_ASK_EVERY_MS when it carries no delay or a damaged one, `clear` when it names no `end` mode.
  */
 export function parseHandAsk(text) {
     let value;
@@ -137,16 +149,17 @@ export function parseHandAsk(text) {
         value = JSON.parse(text);
     }
     catch {
-        return { request: undefined, hold: DEFAULT_PERSON_HOLD, askEveryMs: DEFAULT_ASK_EVERY_MS };
+        return DAMAGED_ASK;
     }
     if (!isRecord(value)) {
-        return { request: undefined, hold: DEFAULT_PERSON_HOLD, askEveryMs: DEFAULT_ASK_EVERY_MS };
+        return DAMAGED_ASK;
     }
-    const { at, hold, askEveryMs } = value;
+    const { at, hold, askEveryMs, mode } = value;
     return {
         request: typeof at === 'string' ? at : undefined,
         hold: holdOf(hold),
         askEveryMs: isDuration(askEveryMs) ? askEveryMs : DEFAULT_ASK_EVERY_MS,
+        mode: clearModeOf(mode),
     };
 }
 function messageOf(error) {
@@ -294,11 +307,16 @@ export class ClearHand {
             this.release();
             return declined(hold);
         }
-        const claim = await this.host.cli(['hook', 'clear-claim'], stdin);
-        // Cleared, or the restart is no longer pending: either way the count is over.
+        const ending = handAsk.mode === 'end';
+        const claim = await this.host.cli(ending ? ['hook', 'clear-claim', `--${END_SWITCH}`] : ['hook', 'clear-claim'], stdin);
+        // Cleared, ending, or the restart is no longer pending: either way the count is over.
         this.release();
-        if (!answered(claim, CLAIM_TAKEN)) {
+        if (!answered(claim, ending ? CLAIM_END : CLAIM_TAKEN)) {
             return declined(claim);
+        }
+        if (ending) {
+            // A /clear here would keep the level the session must leave; the runner ends it instead.
+            return { kind: 'ending' };
         }
         await this.host.clear();
         return { kind: 'cleared' };

@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { stringField } from "../core/guards.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { parseObject } from "../core/jsonl.js";
-import { askFileOf, CLAIM_HELD, CLAIM_TAKEN, CLAIM_WITHDRAWN, holdWhyFileOf, outcomeFileOf } from "../mod/clear-hand.js";
+import { askFileOf, CLAIM_END, CLAIM_HELD, CLAIM_TAKEN, CLAIM_WITHDRAWN, clearModeOf, holdWhyFileOf, outcomeFileOf, } from "../mod/clear-hand.js";
 /**
  * The asks folder, under the kit home and not a team's: the mod knows only its Claude Code session, so
  * an ask is found by that id alone and names its team itself.
@@ -23,9 +23,9 @@ function parseClearAsk(text) {
     if (team === undefined || id === undefined || at === undefined || askedAt === undefined || !ID_PATTERN.test(team) || !ID_PATTERN.test(id)) {
         return undefined;
     }
-    return { team, id, at, askedAt };
+    return { team, id, at, askedAt, mode: clearModeOf(record['mode']) };
 }
-const OUTCOMES = [CLAIM_TAKEN, CLAIM_HELD, CLAIM_WITHDRAWN];
+const OUTCOMES = [CLAIM_TAKEN, CLAIM_HELD, CLAIM_WITHDRAWN, CLAIM_END];
 function outcomeOf(text) {
     return OUTCOMES.find((outcome) => outcome === text.trim());
 }
@@ -64,6 +64,10 @@ export class ClearAsks {
     /** True when this claim won the ask; false when it was answered first (the restart withdrew it). */
     async claim(claudeSession) {
         return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_TAKEN);
+    }
+    /** True when this claim won an ask in `end` mode, so the restart ends the session and the tab runs no /clear; false when it was answered first. */
+    async claimEnd(claudeSession) {
+        return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_END);
     }
     /**
      * True when this hold won the ask, so the restart neither clears nor ends the session; false when it was

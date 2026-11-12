@@ -1,3 +1,4 @@
+import { isEffortLevel } from "../config/types.js";
 import { isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 /** The format of the refresh files this code reads and writes; a file in another format reads as absent. */
@@ -145,8 +146,16 @@ function restartTabOf(record) {
     const transcript = nullableString(record, 'transcript');
     const cwd = nullableString(record, 'cwd');
     const supervised = record['supervised'];
-    if (claudeSession === undefined || transcript === undefined || cwd === undefined || typeof supervised !== 'boolean') {
+    const effort = effortOf(record['effort']);
+    if (claudeSession === undefined || transcript === undefined || cwd === undefined || typeof supervised !== 'boolean' || effort === undefined) {
         return undefined;
     }
-    return { claudeSession, transcript, cwd, supervised };
+    return { claudeSession, transcript, cwd, supervised, effort };
+}
+/** A recorded effort level, null when absent (a file from before it) or null, undefined when damaged. */
+function effortOf(value) {
+    if (value === undefined || value === null) {
+        return null;
+    }
+    return isEffortLevel(value) ? value : undefined;
 }
