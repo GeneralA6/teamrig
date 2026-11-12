@@ -39,6 +39,7 @@ const closeCommands = () => import("./commands/close.js");
 const commitsCommands = () => import("./commands/commits.js");
 const secretsCommands = () => import("./commands/secrets.js");
 const doctorCommands = () => import("./commands/doctor.js");
+const pageCommands = () => import("./commands/page.js");
 const filesCommands = () => import("./commands/files.js");
 const worktreeCommands = () => import("./commands/worktree.js");
 const refreshCommands = () => import("./commands/refresh.js");
@@ -185,6 +186,7 @@ const COMMANDS = {
     demote: { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await promoteCommands()).demote },
     refresh: { effect: 'write', flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
     doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
+    'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
     compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
     'gh sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
     budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
@@ -587,7 +589,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; the user's /clear starts it fresh (autoRestart: once idle, or once work comes)
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
-      also a variable that overrides every model or effort choice, and a launch with a model but no effort
+      also a variable that overrides every model or effort choice, and a launch with a model but no effort,
+      and a page webhook that gives no https URL
+  page test                    posts one page marked TEST through the team's page webhook, as an expired login's
+      page goes; prints which team's alerts key paged, or why none went and fails, never the URL
   compact [--dry-run] [--from-history]   archives the task list's log and rewrites its snapshot, so reads
       stay small; finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference; also moves the hooks' shown, hint and
