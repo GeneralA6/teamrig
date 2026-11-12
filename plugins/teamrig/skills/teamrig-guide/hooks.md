@@ -1133,6 +1133,8 @@ Windows toast, a macOS banner or `notify-send` on Linux, titled "teamrig meeting
 the topic, the length and the start command. The tab that sent it shows the same as a toast. The notification starts
 nothing: the owner runs `teamrig meeting start M3` from any tab, which opens it in the session met's tab. While no tab
 of the team is open, nothing is sent; a meeting past its slot is never sent, and `meeting list` shows it as missed.
+On Windows the toast runs in a hidden Windows PowerShell given a console of its own that never shows: without one,
+as before 0.342.0, Windows PowerShell exits at once having run nothing, so no toast showed.
 
 ## The mod: the meeting's agenda panel
 
@@ -1145,6 +1147,18 @@ the meeting started (`update <id> --decided`) checked off with its decision, the
 the table, and how many are left. In a tree of teams it covers every team under the root, as `<team>/<id>`. At
 `meeting end` the pane closes. Every other tab, and a sub-team's lead, shows none. Closing the pane by hand keeps it
 closed until the next meeting starts. `meeting.panel.enabled: false` turns it off.
+
+## Meeting start: the spotlight
+
+With `meeting.spotlight.enabled: true` (off unless a team sets it), `meeting start` of the owner's daily meeting
+dims every screen but the Windows Terminal window holding the lead's tab, so the owner's eye stays on the meeting.
+A hidden Windows PowerShell draws a black overlay at `meeting.spotlight.dim` opacity (0.1 to 0.9, 0.6 by default)
+over the whole virtual screen, with a hole where that window is; every click goes through it and it never takes
+the focus. It follows the window within a quarter second as it moves, and every 2 s reads the meeting file: it lifts
+by itself at `meeting end`, when another meeting starts, or when the meeting lapses. `meeting start` prints one
+`SPOTLIGHT` line naming the window and the log its errors go to (`<team>/state/logs/meeting-spotlight.log`), or a
+`NOT SPOTLIT` line saying why: it needs Windows and Windows Terminal (`open.terminal`). Nothing is typed into a
+terminal; the tab's title and the meeting file's path reach the script as variables.
 
 ## The mod: the update notice
 
