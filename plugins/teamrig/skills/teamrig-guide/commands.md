@@ -4166,15 +4166,15 @@ a live host lock, where the parent step waits for it. `--detached-run` is set by
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig queue ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
-A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `merge`'s push, `deploy`'s
-afterPull hooks and command, and a `deploy --targets` run's command. A `teamrig queue` started under a lock that token still names runs at once, in the
+A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's id, and so do `merge`'s push, `deploy`'s
+afterPull hooks and command, and a `deploy --targets` run's command. A `teamrig queue` started under a lock that id still names runs at once, in the
 parent's session, with no cutoff check or ledger record of its own: it is part of its parent, and waiting would
 wait on its own parent. So a repository's git hooks can wrap their checks in `teamrig queue` (no `--session`
 needed): a plain `git commit` then takes the host lock for its hook, and a commit or push under `queue`,
 `merge` or `deploy` does not wait on itself. Prefer that to `teamrig queue ... -- git commit`, which Claude
-Code's worktree guard refuses in a worktree session. `merge` and `deploy` themselves refuse under a live token:
+Code's worktree guard refuses in a worktree session. `merge` and `deploy` themselves refuse under a live lock id:
 they take the whole host lock, so under a queued step they would wait for that step to end while it waits for
-them. They wait in the host lock's line on their own, so run them unwrapped. A token naming no live lock (a
+them. They wait in the host lock's line on their own, so run them unwrapped. An id naming no live lock (a
 leftover exported in a shell) is said and ignored.
 
 A pre-push hook needs one more thing: git opens the push's connection before the hook runs, so checks waiting in the
