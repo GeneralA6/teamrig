@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   holdersText,
+  linuxCommitOf,
   nodeHostMemory,
   nodeMemoryProbe,
   parseHolders,
@@ -161,6 +163,14 @@ describe('parseWindowsCommit and parseMeminfoCommit', () => {
     assert.deepEqual(parseMeminfoCommit(meminfo), { usedMb: 25_000, limitMb: 20_000 }, 'Linux may commit past its limit');
   });
 
+  it('read the Linux commit charge only under strict overcommit, where the kernel holds to the limit (#599)', () => {
+    const meminfo = 'CommitLimit:    20480000 kB\nCommitted_AS:   25600000 kB\n';
+    assert.deepEqual(linuxCommitOf('2\n', meminfo), { usedMb: 25_000, limitMb: 20_000 });
+    for (const mode of ['0\n', '1\n', '']) {
+      assert.equal(linuxCommitOf(mode, meminfo), undefined, `mode ${JSON.stringify(mode)}`);
+    }
+  });
+
   it('read nothing from damaged output', () => {
     for (const text of ['', '100', '100,x', '100,200', '0,0', '1,2,3']) {
       assert.equal(parseWindowsCommit(text), undefined, text);
@@ -233,9 +243,10 @@ describe('nodeMemoryProbe', () => {
     assert.ok(probe.totalMb() >= probe.freeMb() && probe.totalMb() > 0, `${probe.freeMb()} of ${probe.totalMb()} MB free`);
   });
 
-  it('reads the commit charge on Windows and Linux, and nothing elsewhere', async () => {
+  it('reads the commit charge on Windows and on Linux under strict overcommit, and nothing elsewhere', async () => {
     const charge = await nodeMemoryProbe(process.platform).commit();
-    if (process.platform !== 'win32' && process.platform !== 'linux') {
+    const strict = process.platform === 'linux' && readFileSync('/proc/sys/vm/overcommit_memory', 'utf8').trim() === '2';
+    if (process.platform !== 'win32' && !strict) {
       assert.equal(charge, undefined);
       return;
     }
