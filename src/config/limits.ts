@@ -111,6 +111,8 @@ export const CONFIG_LIMITS = {
   stablePeriodMinMinutes: { min: 1, max: 1440 },
   resetBlackoutHours: { min: 1, max: 48 },
   execPath: { maxItems: 16, maxLength: 260 },
+  /** Under 0.1 the dimming goes unseen; past 0.9 the rest of the screen can no longer be read behind it (T2517). */
+  spotlightDim: { min: 0.1, max: 0.9 },
 } as const;
 
 /**

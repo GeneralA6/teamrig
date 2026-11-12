@@ -1339,6 +1339,11 @@ export interface MeetingConfig {
    * ones decided since the start checked off with the decision, the one on the table marked (src/meeting/panel.ts).
    */
   readonly panel: { readonly enabled: boolean };
+  /**
+   * The spotlight while a meeting is open, Windows Terminal on Windows only: every screen dimmed by `dim` (the overlay's
+   * opacity) but the window holding the lead's tab, click-through and never taking the focus (src/meeting/spotlight.ts).
+   */
+  readonly spotlight: { readonly enabled: boolean; readonly dim: number };
 }
 
 export interface KitConfig {

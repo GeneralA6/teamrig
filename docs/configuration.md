@@ -559,6 +559,7 @@ The owner's daily meeting with the lead, in the lead's tab.
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `panel` | [object](#meetingpanel) |  | The agenda panel beside the lead's chat while a meeting is open. |
+| `spotlight` | [object](#meetingspotlight) |  | The spotlight while a meeting is open: every screen dimmed but the window holding the lead's tab. Windows Terminal on Windows only. |
 
 ## `meeting.panel`
 
@@ -567,6 +568,15 @@ The agenda panel beside the lead's chat while a meeting is open.
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Shows the panel in the lead's tab while a meeting is open: the owner's cards in the agenda's order, the ones decided since the meeting started checked off with the decision, the card on the table now marked. No other tab shows it. On unless a team sets it false. |
+
+## `meeting.spotlight`
+
+The spotlight while a meeting is open: every screen dimmed but the window holding the lead's tab. Windows Terminal on Windows only.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `enabled` | boolean | `false` | Starts the spotlight when meeting start opens the owner's daily meeting; it lifts by itself within seconds of meeting end, or when the meeting lapses. The dimming lets every click through and never takes the focus. Off unless a team sets it true. |
+| `dim` | number (0.1 to 0.9) | `0.6` | How dark the rest of the screen goes, as the dimming layer's opacity: 0.1 barely shades it, 0.9 nearly hides it. |
 
 ## `turnLog`
 

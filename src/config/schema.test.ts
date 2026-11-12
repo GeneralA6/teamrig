@@ -200,6 +200,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   stablePeriodMinMinutes: 'delivery.stablePeriods.minMinutes',
   resetBlackoutHours: 'delivery.schedule.resetBlackoutHours',
   execPath: 'exec.path',
+  spotlightDim: 'meeting.spotlight.dim',
 };
 
 function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {
