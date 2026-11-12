@@ -101,7 +101,7 @@ describe('teamrig queue', () => {
     const result = await kit.run(BUILD, { steps });
     assert.deepEqual(result, { code: 0, stdout: [heavyShared('2030-01-08 10:00:02 UTC'), '2030-01-08 10:00:02 UTC running: build api (killed after 45m)', 'DONE exit 0'], stderr: [] });
     const request = { kind: 'build', class: 'Improvements', classPct: 15, needMb: 2048, heavy: true, exclusive: false };
-    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048, heavy: true, request };
+    const share = { id: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048, heavy: true, request };
     assert.deepEqual(whileRunning, [undefined, share]);
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
     const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
@@ -117,7 +117,7 @@ describe('teamrig queue', () => {
     const result = await kit.run(BUILD, { steps });
     assert.deepEqual(result, { code: 0, stdout: ['2030-01-08 10:00:02 UTC running: build api (killed after 45m)', 'DONE exit 0'], stderr: [] });
     assert.deepEqual(lockWhileRunning, {
-      token: 'id-1',
+      id: 'id-1',
       pid: 4242,
       session: 'alpha',
       purpose: 'heavy: build api',
@@ -537,7 +537,7 @@ describe('teamrig queue --small', () => {
     const lines = [`2030-01-08 10:00:02 UTC sharing the host: 2048 MB held for it (${ROOMY_FREE_MB} MB free, 0 other small steps)`, '2030-01-08 10:00:02 UTC running: specs (killed after 10m)', 'DONE exit 0'];
     assert.deepEqual(result, { code: 0, stdout: lines, stderr: [] });
     const request = { kind: 'test', class: 'Improvements', classPct: 15, needMb: 2048, heavy: false, exclusive: false };
-    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048, request };
+    const share = { id: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z', reserveMb: 2048, request };
     assert.deepEqual(whileRunning, [undefined, share], 'a step whose label names no task asks at the default class, with no priority');
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
     const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kind: 'test', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, shared: true, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
@@ -714,7 +714,7 @@ describe('teamrig queue --exclusive', () => {
     });
     const result = await kit.run(EXCLUSIVE, { steps });
     assert.deepEqual(result, { code: 0, stdout: ['2030-01-08 10:00:02 UTC running: build api (killed after 45m)', 'DONE exit 0'], stderr: [] });
-    const lock = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z' };
+    const lock = { id: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:02.000Z', expiresAt: '2030-01-08T12:30:02.000Z' };
     assert.deepEqual(whileRunning, [lock, undefined]);
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
     const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kind: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', queueFreeMb: ROOMY_FREE_MB, startedAt: '2030-01-08T10:00:02.000Z', endedAt: null, exitCode: null };
