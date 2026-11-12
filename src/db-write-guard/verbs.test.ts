@@ -163,6 +163,17 @@ describe('clientWritesIn', () => {
   it('names none for code that only reads through a client', () => {
     assert.deepEqual(clientWritesIn("import Kv from 'kvstore'; await client.get(k); await client.scan(0); await client.ttl(k); await client.xlen(s)", KEY_VALUE), []);
   });
+
+  it('reads a receiver that starts with a $ whole', () => {
+    assert.deepEqual(clientWritesIn("import Kv from 'kvstore'; await $client.set(k, 1); a.b$.rename(x, y)", KEY_VALUE), ['set']);
+  });
+
+  it('reads past a 64 KiB run of name characters with $ in it, which calls nothing, within two seconds', () => {
+    const code = "import Kv from 'kvstore'; " + 'a$'.repeat(32768) + '; await client.del(k)';
+    const started = performance.now();
+    assert.deepEqual(clientWritesIn(code, KEY_VALUE), ['del']);
+    assert.ok(performance.now() - started < 2000, `took ${Math.round(performance.now() - started)} ms`);
+  });
 });
 
 describe('keyValueCommandWritesIn', () => {

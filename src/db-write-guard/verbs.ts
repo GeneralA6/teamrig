@@ -47,9 +47,11 @@ export const SHARED_METHOD_NAMES: ReadonlySet<string> = new Set(['APPEND', 'COPY
 
 /**
  * A method call in Node code, with the name it is called on: `cache` in `this.cache.del(`, none in `.multi().del(`.
- * Only a JSON module's methods (`client.json.set(`) take a dotted name.
+ * Only a JSON module's methods (`client.json.set(`) take a dotted name. The receiver starts after no name character,
+ * `$` included: a `\b` start lets each `$` of a long `a$a$...` run start a new try, which takes time quadratic in the
+ * run's length.
  */
-const METHOD_CALL = /(?:\b([A-Za-z_$][\w$]*)\s*)?\.\s*((?:json\.)?[A-Za-z]+)\s*\(/g;
+const METHOD_CALL = /(?:(?<![\w$])([A-Za-z_$][\w$]*)\s*)?\.\s*((?:json\.)?[A-Za-z]+)\s*\(/g;
 
 /** The word that marks a key-value client in a receiver's name whatever the team adds: `client`, `cacheClient`. */
 const BUILT_IN_RECEIVER = 'client';
