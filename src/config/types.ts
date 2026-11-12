@@ -503,7 +503,7 @@ export interface MeetingNoticesConfig {
   readonly missedAfterMinutes: number;
   /** The operating system's notification (a toast on Windows, a banner on macOS, notify-send on Linux). */
   readonly osToast: boolean;
-  /** A toast in the open tab of the team that sends the notice; a missed alert's stays until it is clicked away. */
+  /** A toast in the open tab of the team that sends the notice; a missed alert's stays a minute, the longest Claude Code shows one. */
   readonly tabToast: boolean;
   /** One inbox line to the team's lead for a missed meeting. */
   readonly leadInbox: boolean;

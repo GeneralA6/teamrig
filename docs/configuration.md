@@ -599,7 +599,7 @@ What a booked meeting (teamrig meeting schedule) tells the person, and when: a n
 | `atStart` | boolean | `true` | The notice at the slot's time. |
 | `missedAfterMinutes` | integer (0 to 120) | `5` | The missed alert, in minutes past the slot's time with no meeting start; 0: none. |
 | `osToast` | boolean | `true` | The operating system's notification: a toast on Windows, a banner on macOS, notify-send on Linux. |
-| `tabToast` | boolean | `true` | A toast in the open tab of the team that sends the notice; a missed alert's stays until it is clicked away. |
+| `tabToast` | boolean | `true` | A toast in the open tab of the team that sends the notice; a missed alert's stays a minute, the longest Claude Code shows one. |
 | `leadInbox` | boolean | `true` | One inbox line to the team's lead for a missed meeting. |
 
 ## `readonlyShell`

@@ -1,6 +1,6 @@
 import { KIT_NAME, type Env } from '../core/home.ts';
 import { powerShellRequest } from '../core/powershell.ts';
-import { MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
+import { MS_PER_MINUTE } from '../core/time.ts';
 import type { HiddenRequest, Processes, StartOutcome } from '../open/processes.ts';
 import type { NoticeStage } from './notice-stage.ts';
 import type { ScheduledMeeting } from './schedule.ts';
@@ -13,8 +13,8 @@ import type { ScheduledMeeting } from './schedule.ts';
 
 /**
  * What the owner sees: the meeting's title and one line, the stage it tells of, and how long a tab's toast of it stays
- * up, ms (null: the tab's own default). A missed meeting's toast stays until clicked, since the person was away when
- * it was due; the Windows toast has no such mode without an action button, so the tab's toast is the one that stays.
+ * up, ms (null: the tab's own default). A missed meeting's toast stays as long as a tab's toast can, since the person
+ * was away when it was due; what lasts past it is the lead's inbox line.
  */
 export interface MeetingNotice {
   readonly id: string;
@@ -24,8 +24,11 @@ export interface MeetingNotice {
   readonly stayMs: number | null;
 }
 
-/** A missed meeting's toast stays a day: in practice until the person clicks it. */
-export const MISSED_STAY_MS = MS_PER_DAY;
+/**
+ * A missed meeting's toast stays a minute, the longest Claude Code shows one: its `ui.toast` drops a toast whose
+ * timeoutMs is over 60 000 ms (the engine's host check), so a longer stay would show nothing.
+ */
+export const MISSED_STAY_MS = 60_000;
 
 /** Who meets: the session, then any others it meets with. */
 function whoOf(meeting: ScheduledMeeting): string {
