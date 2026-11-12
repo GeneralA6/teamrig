@@ -120,6 +120,11 @@ export interface TeamPaths {
   readonly coldSends: string;
   /** The owner's latest daily meeting with the lead (src/meeting/state.ts); the cold-send hook holds messages to the lead while it is open. */
   readonly meeting: string;
+  /**
+   * The last CRITICAL message the meeting hold let through to the lead (src/meeting/breakthrough.ts); the spotlight
+   * lifts for a while after it.
+   */
+  readonly meetingBreakthrough: string;
   /** The owner's scheduled meetings with one session each (src/meeting/schedule.ts), rewritten under meetingsLock. */
   readonly meetings: string;
   readonly meetingsLock: string;
@@ -286,6 +291,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     archive: join(state, 'archive'),
     coldSends: join(state, 'cold-sends.jsonl'),
     meeting: join(state, 'meeting.json'),
+    meetingBreakthrough: join(state, 'meeting-breakthrough.json'),
     meetings: join(state, 'meetings.jsonl'),
     meetingsLock: join(state, 'meetings.lock'),
     decisionsAsked: join(state, 'decisions-asked.json'),

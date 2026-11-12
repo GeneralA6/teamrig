@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { isCritical, quietHoldReason, type QuietFacts } from './quiet.ts';
+import { isBreakthrough, isCritical, quietHoldReason, type QuietFacts } from './quiet.ts';
 
 const FACTS: QuietFacts = {
   meeting: { startedAt: '2030-01-08T09:00:00.000Z', by: 'lead', endedAt: null, since: null },
@@ -42,5 +42,15 @@ describe('the meeting quiet window', () => {
     assert.equal(quietHoldReason({ ...FACTS, from: 'lead' }), undefined);
     assert.equal(quietHoldReason({ ...FACTS, to: 'bravo' }), undefined);
     assert.equal(quietHoldReason({ ...FACTS, meeting: undefined }), undefined);
+  });
+
+  it("knows a break-through: a CRITICAL message to the lead in the meeting from anyone but the lead, an unknown sender too (T2524)", () => {
+    const critical = { ...FACTS, text: 'CRITICAL: the site is down' };
+    assert.equal(isBreakthrough(critical), true);
+    assert.equal(isBreakthrough({ ...critical, from: undefined }), true);
+    assert.equal(isBreakthrough(FACTS), false, 'a held message');
+    assert.equal(isBreakthrough({ ...critical, from: 'lead' }), false);
+    assert.equal(isBreakthrough({ ...critical, to: 'bravo' }), false);
+    assert.equal(isBreakthrough({ ...critical, meeting: undefined }), false);
   });
 });

@@ -32,6 +32,14 @@ export interface QuietFacts {
   readonly zone: TimeZone;
 }
 
+/**
+ * Whether the message breaks through the meeting: a CRITICAL one to the lead, from another session or an unknown one,
+ * while the meeting is open. Only these lift the spotlight (T2524); the lead's own sends never do.
+ */
+export function isBreakthrough(facts: QuietFacts): boolean {
+  return facts.meeting !== undefined && facts.to === facts.lead && facts.from !== facts.lead && isCritical(facts.text);
+}
+
 /** The hold's reason, or undefined to let the message go: no open meeting, another receiver, the lead's own send, an empty or CRITICAL message. */
 export function quietHoldReason(facts: QuietFacts): string | undefined {
   const { meeting } = facts;
