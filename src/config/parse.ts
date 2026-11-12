@@ -537,7 +537,10 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
   return { config, issues: read.issues };
 }
 
-/** `meeting`: the agenda panel's switch, and the spotlight's with its dim, bounded so the screen stays readable. */
+/**
+ * `meeting`: the agenda panel's switch, and the spotlight's with its dim, bounded so the screen stays readable, and how
+ * long a break-through lifts it.
+ */
 function parseMeeting(read: ConfigReader, raw: JsonRecord): MeetingConfig {
   const spotlight = read.section(raw, 'spotlight', 'meeting');
   return {
@@ -545,6 +548,13 @@ function parseMeeting(read: ConfigReader, raw: JsonRecord): MeetingConfig {
     spotlight: {
       enabled: read.boolean(spotlight, 'enabled', 'meeting.spotlight', DEFAULT_MEETING.spotlight.enabled),
       dim: read.number(spotlight, 'dim', 'meeting.spotlight', DEFAULT_MEETING.spotlight.dim, CONFIG_LIMITS.spotlightDim),
+      breakthroughSeconds: read.integer(
+        spotlight,
+        'breakthroughSeconds',
+        'meeting.spotlight',
+        DEFAULT_MEETING.spotlight.breakthroughSeconds,
+        CONFIG_LIMITS.spotlightBreakthroughSeconds,
+      ),
     },
   };
 }

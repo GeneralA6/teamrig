@@ -6,7 +6,7 @@ import { SPOTLIGHT_VARS, WINDOWS_SPOTLIGHT_SCRIPT, spotlightLine, spotlightReque
 
 const MEETING: Meeting = { startedAt: '2030-01-08T10:00:00.000Z', by: 'lead', endedAt: null, since: null };
 const TARGET: Omit<SpotlightTarget, 'dim'> = { title: 'app-lead', meetingFile: 'state/meeting.json', meeting: MEETING, log: 'state/logs/meeting-spotlight.log' };
-const ON = { enabled: true, dim: 0.6 };
+const ON = { enabled: true, dim: 0.6, breakthroughSeconds: 120 };
 
 /** Windows' limit on a whole command line, in characters. */
 const COMMAND_LINE_LIMIT = 32_767;
@@ -52,7 +52,7 @@ describe('spotlightRequest', () => {
 describe('startSpotlight', () => {
   it('starts nothing while the team keeps it off', async () => {
     const deps = depsOn('win32');
-    assert.deepEqual(await startSpotlight(deps, { enabled: false, dim: 0.6 }, 'auto', TARGET, 'work'), { kind: 'off' });
+    assert.deepEqual(await startSpotlight(deps, { ...ON, enabled: false }, 'auto', TARGET, 'work'), { kind: 'off' });
     assert.deepEqual(deps.processes.hidden, []);
   });
 
@@ -73,7 +73,7 @@ describe('startSpotlight', () => {
   for (const terminal of ['auto', 'windows-terminal'] as const) {
     it(`starts the hidden overlay at the team's dim with open.terminal ${terminal}`, async () => {
       const deps = depsOn('win32');
-      assert.deepEqual(await startSpotlight(deps, { enabled: true, dim: 0.3 }, terminal, TARGET, 'work'), { kind: 'start', outcome: { kind: 'started', end: 'spawned' } });
+      assert.deepEqual(await startSpotlight(deps, { ...ON, dim: 0.3 }, terminal, TARGET, 'work'), { kind: 'start', outcome: { kind: 'started', end: 'spawned' } });
       assert.equal(deps.processes.hidden.length, 1);
       assert.equal(deps.processes.hidden[0]?.env?.[SPOTLIGHT_VARS.dim], '0.3');
     });

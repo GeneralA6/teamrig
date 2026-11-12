@@ -1364,8 +1364,10 @@ export interface MeetingConfig {
   /**
    * The spotlight while a meeting is open, Windows Terminal on Windows only: every screen dimmed by `dim` (the overlay's
    * opacity) but the window holding the lead's tab, click-through and never taking the focus (src/meeting/spotlight.ts).
+   * A CRITICAL message the meeting hold lets through to the lead lifts the dimming for `breakthroughSeconds`, so the
+   * owner sees the break-through at once; it comes back by itself after that (T2524).
    */
-  readonly spotlight: { readonly enabled: boolean; readonly dim: number };
+  readonly spotlight: { readonly enabled: boolean; readonly dim: number; readonly breakthroughSeconds: number };
 }
 
 export interface KitConfig {

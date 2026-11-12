@@ -1317,6 +1317,13 @@
               "default": 0.6,
               "minimum": 0.1,
               "maximum": 0.9
+            },
+            "breakthroughSeconds": {
+              "description": "How long the dimming lifts when a CRITICAL message from another session breaks through the meeting hold to the lead, so the owner sees it at once; the dimming comes back by itself after that.",
+              "type": "integer",
+              "default": 120,
+              "minimum": 10,
+              "maximum": 3600
             }
           }
         }
