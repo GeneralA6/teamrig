@@ -97,6 +97,17 @@ export function listed(head: string, rows: readonly string[], all: string): stri
 }
 
 /**
+ * A team under the lead's shows at most this many rows in LATE, DONE and MERGES (T2457): past it, the team is one
+ * count line naming the command that lists them all, so a tree of busy teams keeps the agenda short.
+ */
+export const TEAM_ROWS = 5;
+
+/** A team under the lead's part of a list: its rows while at most TEAM_ROWS, else its one count line. */
+export function teamPart(rows: readonly string[], countLine: string): readonly string[] {
+  return rows.length > TEAM_ROWS ? [countLine] : rows;
+}
+
+/**
  * Each other task a decision's texts name, by its title, so no number stands alone: `T5: <title>` (`web/T5` for
  * another team's), or `T5: not in the working set` for one a compaction retired (`show T5` still finds it in the archive).
  */
@@ -341,33 +352,40 @@ function ungatedLines(input: AgendaInput): string[] {
   ];
 }
 
-/** LATE: the active tasks past their effective due date (their own, or an earlier one of a task that needs them), in plan order. */
+function lateRows(tasks: readonly Task[], tree: TaskTree, now: number, team?: string): string[] {
+  return tree.inPlanOrder(tasks.filter((task) => isLate(task, tree, now))).map((task) => rowOf(task, tree, team));
+}
+
+/**
+ * LATE: the active tasks past their effective due date (their own, or an earlier one of a task that needs them), in
+ * plan order, the lead's team's then each team's under it by `<team>/<id>`, a team past TEAM_ROWS as its count line.
+ */
 function lateLines(input: AgendaInput): string[] {
-  const { tree } = input;
-  const late = tree.inPlanOrder(input.tasks.filter((task) => isLate(task, tree, input.now)));
-  return listed(
-    `LATE ${late.length} past their due date`,
-    late.map((task) => rowOf(task, tree)),
-    `${input.command} check`,
-  );
+  const own = lateRows(input.tasks, input.tree, input.now);
+  const below = input.below.map((team) => ({ team: team.team, rows: lateRows(team.tasks, team.tree, input.now, team.team) }));
+  const total = below.reduce((sum, team) => sum + team.rows.length, own.length);
+  return [
+    ...listed(`LATE ${total} past their due date`, own, `${input.command} check`),
+    ...below.flatMap(({ team, rows }) => teamPart(rows, `  ${team}: ${rows.length} late: ${input.command} check --tree`)),
+  ];
 }
 
 /**
  * DONE: the tasks done since the agenda's start in the done groups (doneGroups, T1729): each group's heading and its
  * rows, at most AGENDA_ROWS of them, then Other work and the dropped tasks as one count line each with the command
- * that lists them, so the owner reads the work that matters and one line for the rest. The span has no end: nothing
- * finished before the read is left out.
+ * that lists them, so the owner reads the work that matters and one line for the rest. Each team under the lead's
+ * follows as its count line and, while at most TEAM_ROWS, its grouped rows by `<team>/<id>`. The span has no end:
+ * nothing finished before the read is left out.
  */
 function doneLines(input: AgendaInput): string[] {
-  const { groups, done, dropped } = doneGroups({
-    tasks: input.tasks,
-    ownerMarker: input.ownerMarker,
-    zone: input.tree.zone,
-    from: input.since,
-    to: Number.POSITIVE_INFINITY,
-  });
+  const finished = (register: AgendaRegister) =>
+    doneGroups({ tasks: register.tasks, ownerMarker: register.ownerMarker, zone: register.tree.zone, from: input.since, to: Number.POSITIVE_INFINITY });
+  const { groups, done, dropped } = finished(input);
+  const below = input.below.map((team) => ({ team, ...finished(team) }));
   const listDone = `${input.command} list --status done`;
-  const lines = [`DONE ${done} done, ${dropped.length} dropped since ${input.tree.zone.weekdayMinute(new Date(input.since))}`];
+  const allDone = below.reduce((sum, team) => sum + team.done, done);
+  const allDropped = below.reduce((sum, team) => sum + team.dropped.length, dropped.length);
+  const lines = [`DONE ${allDone} done, ${allDropped} dropped since ${input.tree.zone.weekdayMinute(new Date(input.since))}`];
   for (const group of groups) {
     if (group.kind === 'other') {
       lines.push(`  ${doneGroupTitle(group)} ${group.tasks.length}: ${listDone}`);
@@ -378,6 +396,14 @@ function doneLines(input: AgendaInput): string[] {
   }
   if (dropped.length > 0) {
     lines.push(`  Dropped ${dropped.length}: ${input.command} list --status dropped`);
+  }
+  for (const { team, groups: teamGroups, done: teamDone, dropped: teamDropped } of below) {
+    if (teamDone === 0 && teamDropped.length === 0) {
+      continue;
+    }
+    const rows = teamGroups.filter((group) => group.kind !== 'other').flatMap((group) => group.tasks.map((task) => `  ${rowOf(task, team.tree, team.team)}`));
+    const countLine = `  ${team.team}: ${teamDone} done, ${teamDropped.length} dropped: ${input.command} list --tree --status done`;
+    lines.push(...(rows.length > TEAM_ROWS ? [countLine] : [countLine, ...rows]));
   }
   return lines;
 }

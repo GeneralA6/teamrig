@@ -8,7 +8,7 @@ import { ownSizing, treeRanking } from '../register/ranking.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import { AGENDA_ROWS, agendaLines, askedDecisions, agendaSince, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, type AgendaInput, type AgendaTeam } from './agenda.ts';
+import { AGENDA_ROWS, agendaLines, askedDecisions, agendaSince, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, TEAM_ROWS, type AgendaInput, type AgendaTeam } from './agenda.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -281,6 +281,50 @@ describe('the meeting agenda', () => {
     assert.equal(lines[1], `  Urgent p1 (${AGENDA_ROWS + 2})`);
     assert.equal(lines.length, 2 + AGENDA_ROWS + 1);
     assert.equal(lines.at(-1), '    +2 more: teamrig list --status done');
+  });
+});
+
+describe('the meeting agenda: LATE and DONE over the teams under the lead (T2457)', () => {
+  const lateOf = (count: number): Task[] => Array.from({ length: count }, (_, index) => testTask({ id: `T${index + 1}`, due: '2030-01-07' }));
+  const doneOf = (count: number): Task[] =>
+    Array.from({ length: count }, (_, index) => testTask({ id: `T${index + 1}`, status: 'done', priority: 1, statusAt: '2030-01-08T09:00:00.000Z' }));
+
+  it("lists each team's late tasks after the lead's own by <team>/<id>, and counts them all in the head", () => {
+    const lines = section(agendaLines(inputOf(lateOf(1), NOW - MS_PER_DAY, true, [teamOf('web', lateOf(2))])), 'LATE');
+    assert.equal(lines[0], 'LATE 3 past their due date');
+    assert.deepEqual(rowIds(lines), ['T1', 'web/T1', 'web/T2']);
+  });
+
+  it('collapses a team past the cap to one count line naming the command for all, and leaves out a team with none late', () => {
+    const below = [teamOf('web', lateOf(TEAM_ROWS + 1)), teamOf('ledger', [testTask({ id: 'T1' })]), teamOf('pricing', lateOf(TEAM_ROWS))];
+    const lines = section(agendaLines(inputOf([], NOW - MS_PER_DAY, true, below)), 'LATE');
+    assert.equal(lines[0], `LATE ${2 * TEAM_ROWS + 1} past their due date`);
+    assert.equal(lines[1], `  web: ${TEAM_ROWS + 1} late: teamrig check --tree`);
+    assert.deepEqual(rowIds(lines.slice(2)), lateOf(TEAM_ROWS).map((task) => `pricing/${task.id}`));
+    assert.equal(lines.length, 2 + TEAM_ROWS);
+  });
+
+  it("lists each team's finished work after the lead's own: its counts, then its grouped rows by <team>/<id>, with other work only counted", () => {
+    const other = testTask({ id: 'T9', status: 'done', statusAt: '2030-01-08T08:00:00.000Z' });
+    const dropped = testTask({ id: 'T8', status: 'dropped', statusAt: '2030-01-08T08:00:00.000Z' });
+    const lines = section(agendaLines(inputOf(doneOf(1), NOW - MS_PER_DAY, true, [teamOf('web', [...doneOf(2), other, dropped])])), 'DONE');
+    assert.deepEqual(
+      lines.map((line) => line.replace(/^( {4}\S+) .*/, '$1')),
+      [
+        'DONE 4 done, 1 dropped since Mon 01-07 10:00 UTC',
+        '  Urgent p1 (1)',
+        '    T1',
+        '  web: 3 done, 1 dropped: teamrig list --tree --status done',
+        '    web/T1',
+        '    web/T2',
+      ],
+    );
+  });
+
+  it('shows a team past the cap as its count line alone, and no line for a team that finished nothing', () => {
+    const below = [teamOf('web', doneOf(TEAM_ROWS + 1)), teamOf('ledger', [testTask({ id: 'T1' })])];
+    const lines = section(agendaLines(inputOf([], NOW - MS_PER_DAY, true, below)), 'DONE');
+    assert.deepEqual(lines, [`DONE ${TEAM_ROWS + 1} done, 0 dropped since Mon 01-07 10:00 UTC`, `  web: ${TEAM_ROWS + 1} done, 0 dropped: teamrig list --tree --status done`]);
   });
 });
 
