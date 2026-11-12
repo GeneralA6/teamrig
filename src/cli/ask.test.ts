@@ -4,6 +4,7 @@ import { EVENT_VERSION } from '../register/events.ts';
 import { TEST_CARD, TEST_CARD_FLAGS, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { CliHarness, EVENTS_PATH } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
+import { REGISTER_ONLY_LINE } from './commands/register.ts';
 
 async function inboxOf(kit: CliHarness, session: string): Promise<string[]> {
   const read = await kit.run(['inbox', 'read', '--session', session]);
@@ -89,7 +90,8 @@ describe('runCli: a wait on the lead or the owner tells the lead', () => {
     assert.deepEqual(approval.stderr, ['NOTE lead has an inbox line: T1 waits on your approval: pick the backup window']);
 
     const again = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'the window is Sunday', '--session', 'alpha']);
-    assert.deepEqual([again.code, again.stderr], [EXIT.ok, []]);
+    // The lead already has the wait: the new note lands in the register alone, and the session is told so.
+    assert.deepEqual([again.code, again.stderr], [EXIT.ok, [REGISTER_ONLY_LINE]]);
     const owner = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead,decision:owner', '--note', 'and the cost', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
     assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`]);
     assert.deepEqual(await inboxOf(kit, 'lead'), [
@@ -128,7 +130,7 @@ describe('runCli: a wait on the lead or the owner tells the lead', () => {
     await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
     const approval = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'the window', '--session', 'alpha']);
     assert.equal(approval.code, EXIT.ok);
-    assert.deepEqual(approval.stderr.map((line) => line.split(':')[0]), ['WARN lead was not told that T1 waits on it']);
+    assert.deepEqual(approval.stderr.map((line) => line.split(':')[0]), ['WARN lead was not told that T1 waits on it', REGISTER_ONLY_LINE]);
   });
 });
 

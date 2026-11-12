@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
+import { REGISTER_ONLY_LINE } from './commands/register.ts';
 
 const TOLD = 'NOTE bravo has an inbox line: T1 is yours (p2, due 2030-01-10): Ship the docs';
 
@@ -44,7 +45,7 @@ describe('runCli: giving a task to another session posts it an inbox line', () =
     const noted = await kit.run(['update', 'T1', '--note', 'the ask came with 72 of 75 cold wakes', '--session', 'bravo']);
     assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
     assert.match(noted.stdout[0] ?? '', /^UPDATED T1 /);
-    assert.deepEqual(noted.stderr, []);
+    assert.deepEqual(noted.stderr, [REGISTER_ONLY_LINE]);
     assert.deepEqual(await inboxOf(kit, 'alpha'), []);
 
     const empty = await kit.run(['update', 'T1', '--session', 'bravo']);
