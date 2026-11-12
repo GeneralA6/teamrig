@@ -167,7 +167,8 @@ sequenceDiagram
   wait cleared, as `teamrig check` flags READY, an approval it waits on answered either way (a decline sends it back
   to work); a task never started also has every task it comes `--after` finished. At `wake.priority` or more
   urgent (p1 by default). Held by its budget (past its daily budget
-  while the team has no room today), or in the budget's quiet hours unless a lift of the session exempts it (a group's lift does not), only p0 and p1 wake it, whatever `wake.priority` says. While the owner's
+  while the team has no room today), or in the budget's quiet hours unless a lift of the session exempts it (a group's lift does not), only p0 and p1 wake it (p0 alone in quiet hours that block, since a woken
+  p1 turn chain would run on until the morning), whatever `wake.priority` says. While the owner's
   daily meeting is open the lead is not woken; the work waits for the first check after the meeting.
 - How often: each task wakes a session once. The first new task starts a batch of `wake.batchSeconds` (120 s), and
   one wake names every task handed meanwhile; wakes of one session are at least `wake.minGapMinutes` (15) apart.
