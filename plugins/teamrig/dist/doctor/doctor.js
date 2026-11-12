@@ -296,6 +296,15 @@ function shellHistoryFindings({ shellHistory: { history, profiles, gated } }) {
         "add the history handler from the teamrig guide (workflows: Use a secret by reference) to your profile ($PROFILE) yourself; Claude Code refuses an agent's write to it";
     return [{ kind: 'shell-history', detail }];
 }
+/** A page webhook that resolves to no URL: the page goes out only on a login expiry, so a broken one shows nowhere else. */
+function pageFindings({ page, command }) {
+    if (page === undefined) {
+        return [];
+    }
+    const detail = `team ${page.team}'s alerts.${page.key} gives no page URL (${page.problem}), so an expired Claude login pages nobody: ` +
+        `fix alerts.${page.key} or what it names, then run ${command} page test`;
+    return [{ kind: 'page-webhook', detail }];
+}
 /**
  * Quiet hours whose action is `ask`: in them a helper launch raises a permission prompt (`helperGate`), which nobody
  * at the host answers at night, so the tab waits until someone does (T1983: 222 minutes on 11-04). `block` refuses
@@ -322,7 +331,7 @@ function quietHoursFindings({ budget, now, zone }) {
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
  * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential,
- * quiet hours that ask before a helper launch nobody answers at night, secret deny lines no settings file holds, a configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
+ * quiet hours that ask before a helper launch nobody answers at night, secret deny lines no settings file holds, a configured project folder that is no folder here, a PowerShell history no profile keeps credentials out of, and a page webhook that gives no URL.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input) {
@@ -342,6 +351,7 @@ export function doctorFindings(input) {
         ...denyFindings(input.settingsDeny),
         ...projectFindings(input),
         ...shellHistoryFindings(input),
+        ...pageFindings(input),
     ];
 }
 export function formatFinding(finding) {
