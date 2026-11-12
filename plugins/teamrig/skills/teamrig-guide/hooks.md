@@ -1374,7 +1374,8 @@ read from the file [alerts.pageWebhookFile] names (it wins: its first non-empty 
 [alerts.pageWebhookEnv] names; a URL that is not https pages no one. The post goes out after the lock is let go, so a slow chat holds up no other tab, and
 logs `login: paged the owner through <team>'s alerts.<key>`; a failed one logs `login: the page to the owner failed
 (<problem>); the next failure pages` and gives the claim back, so the next tab to fail pages. The log never holds the
-URL or the file's path. With no team naming a webhook, nothing pages.
+URL or the file's path. With no team naming a webhook, nothing pages. Check it with `teamrig page test`, which posts
+one line marked TEST; `teamrig doctor` flags a webhook that gives no URL (`page-webhook`).
 
 ## Every event: tab status
 

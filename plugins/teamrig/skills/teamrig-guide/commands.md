@@ -3306,7 +3306,7 @@ Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `n
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `tree-role` (a
 `roles.securityReviewer` or `roles.deliveryOwner` of `<team>/<id>` whose team is not above this one, or whose
 session does not hold that role there), `name-two-teams`, `effort-env`, `model-env`, `settings-json`, `launch-effort`,
-`allow-wide`, `quiet-ask`, `deny-missing`, `project-missing`, `shell-history`.
+`allow-wide`, `quiet-ask`, `deny-missing`, `project-missing`, `shell-history`, `page-webhook`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
@@ -3383,6 +3383,41 @@ since Claude Code refuses an agent's write there.
 ```text
 WARN shell-history PowerShell keeps each line typed in its console in C:\Users\you\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt, a credential in a URL too, and no profile sets -AddToHistoryHandler or -HistorySaveStyle SaveNothing (none of the usual profile paths exists): add the history handler from the teamrig guide (workflows: Use a secret by reference) to your profile ($PROFILE) yourself; Claude Code refuses an agent's write to it
 ```
+
+`page-webhook` is a page webhook the team's alerts, or the first team above that names one, name but that gives no
+https URL: [alerts.pageWebhookFile] is missing, empty or lacks the key [alerts.pageWebhookKey] names, the variable
+[alerts.pageWebhookEnv] names is not set, or the value is not an https URL. An expired Claude login then pages nobody.
+Doctor resolves the URL as the page does and never prints it or the file's path; it posts nothing, so after the fix
+run [teamrig page test](#teamrig-page-test) to see a page arrive.
+
+```text
+WARN page-webhook team shop's alerts.pageWebhookFile gives no page URL (the webhook URL alerts.pageWebhookFile gives is not an https URL), so an expired Claude login pages nobody: fix alerts.pageWebhookFile or what it names, then run teamrig page test
+```
+
+### teamrig page test
+
+Posts one page marked TEST through the page webhook the team's alerts, or the first team above that names one, name,
+the same way an expired Claude login's page goes, so a silent pager shows before the day it is needed. The chat gets
+one line: `TEST page from teamrig page test, team <team>, at <time>: an expired Claude login would page you here.
+Nothing to do.` It prints which team's key paged and never the URL or the file's path.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig page test
+```
+
+Output:
+
+```text
+PAGED a test page through shop's alerts.pageWebhookFile
+```
+
+When no page went, it prints why and exits 1: `NO PAGE <team>'s alerts.<key>: <problem>` (the problems of the
+`login: the page to the owner failed` line in [errors](errors.md)), or `NO PAGE no team from <team> up names
+alerts.pageWebhookFile or alerts.pageWebhookEnv, so an expired Claude login pages nobody`.
 
 ### teamrig compact
 
