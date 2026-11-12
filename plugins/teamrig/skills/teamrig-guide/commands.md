@@ -147,7 +147,8 @@ Flags:
 - `--question "<what is decided>"`: the decision card's question. The card (this flag, `--options`, `--recommend`
   and `--default`) is required on a wait on the owner's decision or approval (`register.requireDecisionCard`),
   allowed on any decision or approval wait, refused otherwise. Each part says at least 3 plain words besides task
-  ids. Setting `waiting` again keeps the card; a flag given then changes only its part.
+  ids. Setting `waiting` again keeps the card; a flag given then changes only its part. How to write one the
+  owner reads at once, with real examples: [Write a decision card](workflows.md#write-a-decision-card).
 - `--options "<a choice> | <another>"`: the choices with their numbers, separated by `|`: at least two for a
   decision, none or as many for an approval.
 - `--recommend "<which, and why>"`: the card's recommendation.
