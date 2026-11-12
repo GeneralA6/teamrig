@@ -8,7 +8,7 @@ import { ownSizing, treeRanking } from '../register/ranking.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import { AGENDA_ROWS, agendaLines, agendaSince, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, type AgendaInput, type AgendaTeam } from './agenda.ts';
+import { AGENDA_ROWS, agendaLines, askedDecisions, agendaSince, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, type AgendaInput, type AgendaTeam } from './agenda.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -340,6 +340,18 @@ describe('the meeting agenda: decisions by what they unblock (T2092)', () => {
 
   it('prints no how-to lines when the batch was all there was to ask', () => {
     assert.deepEqual(section(agendaLines(inputOf([IMPROVEMENT])), 'DECISIONS'), ['DECISIONS 0 waiting on owner (decision or approval)']);
+  });
+
+  it('hands the asked cards out in the agenda order, the batch apart and only on its day (T2512)', () => {
+    const own = { ...DECIDE, id: 'T1', workClass: 'Maintenance' };
+    const roadmap = { ...DECIDE, id: 'T7', workClass: 'Roadmap' };
+    const below = [teamOf('web', [roadmap], rankedTreeOf([roadmap]))];
+    const ids = (cards: readonly { readonly task: Task; readonly team: string | undefined }[]): string[] =>
+      cards.map((card) => (card.team === undefined ? card.task.id : `${card.team}/${card.task.id}`));
+    const tuesday = askedDecisions({ ...rankedInputOf([own, IMPROVEMENT], below), improvementsDay: 'tue' });
+    assert.deepEqual(ids(tuesday.daily), ['web/T7', 'T1']);
+    assert.deepEqual(ids(tuesday.batch), ['T9']);
+    assert.deepEqual(askedDecisions(rankedInputOf([own, IMPROVEMENT], below)).batch, []);
   });
 
   it("names no team in the how-to lines when a team's only decision waits for the batch", () => {
