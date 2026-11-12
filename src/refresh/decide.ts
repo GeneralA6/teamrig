@@ -1,7 +1,7 @@
 import type { RefreshConfig } from '../config/types.ts';
 import { sessionDisplay } from '../core/ids.ts';
 import { lineHash } from '../inbox/line-hash.ts';
-import type { RefreshState, StandingAsk } from './state.ts';
+import type { RefreshState, StandingAsk, WindowField } from './state.ts';
 
 /**
  * The context-refresh rules, as pure functions of the session's state, what was measured, the
@@ -10,7 +10,7 @@ import type { RefreshState, StandingAsk } from './state.ts';
 
 export type RefreshSettings = Pick<
   RefreshConfig,
-  'enabled' | 'contextTokens' | 'everyTasks' | 'everyTasksMinTokens' | 'tabTitle' | 'restartDelaySeconds' | 'compactCeilingTokens' | 'handoverMaxBytes'
+  'enabled' | 'contextTokens' | 'largeWindowContextTokens' | 'everyTasks' | 'everyTasksMinTokens' | 'tabTitle' | 'restartDelaySeconds' | 'compactCeilingTokens' | 'handoverMaxBytes'
 >;
 
 /** A session whose handover is written, waiting for its fresh start. */
@@ -82,6 +82,8 @@ export type NoticeNext = 'restart' | 'park' | 'clear';
 /** What the plugin's mod gives at a tool result of the main conversation, the context Claude Code last reported, and the due facts once a refresh is due. */
 export interface MidTurnFacts {
   readonly tokens: number;
+  /** The context window Claude Code reports, which tells a large window apart (`windowOf`); undefined when not told. */
+  readonly window: number | undefined;
   /** The session is in an open owner meeting, as at a turn end. */
   readonly meeting: boolean;
   readonly due: DueFacts | undefined;
@@ -90,7 +92,7 @@ export interface MidTurnFacts {
 export type MidTurnDecision =
   /**
    * No ask now; `nextAt` is the context the mod asks again at, null when it need not (the refresh is off). `state`,
-   * when given, is recorded: the baseline a fresh start's first measure took.
+   * when given, is recorded: the baseline a fresh start's first measure took, or the window the session showed.
    */
   | { readonly kind: 'none'; readonly nextAt: number | null; readonly state?: RefreshState }
   /** Read the due facts and decide again with them. */
@@ -211,7 +213,7 @@ export function boundaryOf(previous: RefreshState | undefined, task: string, at:
   if (previous?.phase === 'ready' && !previous.noticed) {
     return previous;
   }
-  return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1, ask: standingAsk(previous), ...keepBaseline(previous) };
+  return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1, ask: standingAsk(previous), ...keepBaseline(previous), ...keepWindow(previous) };
 }
 
 /**
@@ -254,6 +256,90 @@ function askAt(state: RefreshState | undefined, settings: RefreshSettings): numb
   const asked = state?.phase === 'asked' || state?.phase === 'ready' ? state.tokens : null;
   const floor = Math.max(settings.contextTokens, growthFloor(state, settings));
   return asked === null ? floor : Math.max(floor, asked + reaskGrowth(settings));
+}
+
+/**
+ * Whether the session runs on a window larger than 200k, as `state` keeps it: its `largeWindow`, or in a file
+ * from before that field a fresh start measured over the threshold, which a 200k window cannot start past and keep
+ * working.
+ */
+function largeWindowOf(state: RefreshState | undefined, settings: Pick<RefreshSettings, 'contextTokens'>): boolean {
+  const known = state?.largeWindow;
+  if (known !== undefined) {
+    return known;
+  }
+  const baseline = baselineOf(state);
+  return typeof baseline === 'number' && baseline > settings.contextTokens;
+}
+
+/**
+ * The window `state` keeps once the context measured `tokens`, with the `window` the plugin's mod reports when it does
+ *. A hook is never told the window, and a model can run a 1M-token one without the `[1m]` suffix (the lead's
+ * plain `opus`), so the evidence decides: the mod's window first; else a context past `SMALLEST_MODEL_WINDOW`, which
+ * no 200k window holds; else a fresh start's first measure judges it anew by its size over the threshold, so a later
+ * start on a smaller window drops what an earlier one showed; else what the state kept. Undefined: nothing tells.
+ * Where the larger threshold would raise nothing (`largeWindowContextTokens` 0, or not over `contextTokens`, as on a
+ * `[1m]` launch already raised), the state keeps what it has.
+ */
+export function windowOf(
+  state: RefreshState | undefined,
+  settings: Pick<RefreshSettings, 'contextTokens' | 'largeWindowContextTokens'>,
+  tokens: number | undefined,
+  window: number | undefined,
+): boolean | undefined {
+  if (settings.largeWindowContextTokens <= settings.contextTokens) {
+    return state?.largeWindow;
+  }
+  if (window !== undefined) {
+    return window > SMALLEST_MODEL_WINDOW;
+  }
+  if (tokens !== undefined && tokens > SMALLEST_MODEL_WINDOW) {
+    return true;
+  }
+  if (tokens !== undefined && unmeasured(state)) {
+    return tokens > settings.contextTokens ? true : undefined;
+  }
+  return state?.largeWindow ?? (largeWindowOf(state, settings) ? true : undefined);
+}
+
+/** The threshold of a session whose window is `large`: `largeWindowContextTokens` on a large one, when that is larger. */
+function thresholdFor(large: boolean | undefined, settings: Pick<RefreshSettings, 'contextTokens' | 'largeWindowContextTokens'>): number {
+  return large === true ? Math.max(settings.contextTokens, settings.largeWindowContextTokens) : settings.contextTokens;
+}
+
+/** `settings` with the threshold of a session whose window is `large` (`thresholdFor`). */
+function sizedFor(large: boolean | undefined, settings: RefreshSettings): RefreshSettings {
+  const contextTokens = thresholdFor(large, settings);
+  return contextTokens === settings.contextTokens ? settings : { ...settings, contextTokens };
+}
+
+/**
+ * The context size a session with `state` is asked to refresh at, before the growth floor: `contextTokens`, or on a
+ * window `state` shows to be large `largeWindowContextTokens` when that is larger.
+ */
+export function thresholdOf(state: RefreshState | undefined, settings: Pick<RefreshSettings, 'contextTokens' | 'largeWindowContextTokens'>): number {
+  return thresholdFor(largeWindowOf(state, settings), settings);
+}
+
+/** `state` keeping the window `large`; the same state when it kept that already, undefined for none. */
+function recorded(state: RefreshState | undefined, large: boolean | undefined): RefreshState | undefined {
+  if (state === undefined || state.largeWindow === large) {
+    return state;
+  }
+  if (large === undefined) {
+    const { largeWindow: _dropped, ...rest } = state;
+    return rest;
+  }
+  return { ...state, largeWindow: large };
+}
+
+/** The window field a state carries on to the next one: absent while nothing told. */
+function keepWindow(state: WindowField | undefined): WindowField {
+  return windowField(state?.largeWindow);
+}
+
+function windowField(large: boolean | undefined): WindowField {
+  return large === undefined ? {} : { largeWindow: large };
 }
 
 /** `state` with the baseline its fresh start's first measure took. */
@@ -481,14 +567,18 @@ export function decideStop(state: RefreshState | undefined, context: StopContext
   if (facts === undefined) {
     return MEASURE;
   }
+  // The window this measure shows sets the threshold: `largeWindowContextTokens` on a large one.
+  const large = windowOf(state, context.settings, facts.tokens, undefined);
+  const known = recorded(state, large);
+  const sized: StopContext = { ...context, settings: sizedFor(large, context.settings) };
   const held = meetingHolds(context.settings, facts.meeting, facts.tokens);
-  if (state?.phase === 'asked' && state.midTurn) {
-    return held ? NONE : pendingAsk(state, context, facts.due);
+  if (known?.phase === 'asked' && known.midTurn) {
+    return held ? NONE : pendingAsk(known, sized, facts.due);
   }
   const tokens = facts.tokens ?? null;
-  const cause = causeOf(state, facts, context.settings);
+  const cause = causeOf(known, facts, sized.settings);
   if (cause === undefined) {
-    return judged(state, context.now, tokens);
+    return judged(state, known, context.now, tokens);
   }
   // The open meeting holds the ask: a boundary stays unjudged, so the turn end after the meeting asks.
   if (held) {
@@ -497,22 +587,26 @@ export function decideStop(state: RefreshState | undefined, context: StopContext
   if (facts.due === undefined) {
     return MEASURE;
   }
-  const task = state?.phase === 'boundary' ? state.task : null;
+  const task = known?.phase === 'boundary' ? known.task : null;
   return {
     kind: 'block',
-    state: { phase: 'asked', task, at: context.now, tokens, handoverHash: facts.due.handoverHash, midTurn: false },
-    reason: handoverAsk({ kind: 'turnEnd', task }, cause, context, facts.due.running),
+    state: { phase: 'asked', task, at: context.now, tokens, handoverHash: facts.due.handoverHash, midTurn: false, ...windowField(large) },
+    reason: handoverAsk({ kind: 'turnEnd', task }, cause, sized, facts.due.running),
   };
 }
 
 /**
  * A turn end that asks nothing: a task end is recorded as judged, and a fresh start's first measure records its
- * baseline, so the size it started at never asks for another refresh. Else nothing is written.
+ * baseline, so the size it started at never asks for another refresh. `known` is `state` with the window this
+ * measure showed, recorded when it changed. Else nothing is written.
  */
-function judged(state: RefreshState | undefined, now: string, tokens: number | null): StopDecision {
-  const measured = state !== undefined && tokens !== null && unmeasured(state) ? measuredState(state, tokens) : state;
+function judged(state: RefreshState | undefined, known: RefreshState | undefined, now: string, tokens: number | null): StopDecision {
+  const measured = known !== undefined && tokens !== null && unmeasured(known) ? measuredState(known, tokens) : known;
   if (measured?.phase === 'boundary') {
-    return { kind: 'write', state: { phase: 'idle', task: measured.task, at: now, tokens, finished: measured.finished, ...keepBaseline(measured) } };
+    return {
+      kind: 'write',
+      state: { phase: 'idle', task: measured.task, at: now, tokens, finished: measured.finished, ...keepBaseline(measured), ...keepWindow(measured) },
+    };
   }
   return measured === state || measured === undefined ? NONE : { kind: 'write', state: measured };
 }
@@ -544,25 +638,28 @@ function pendingAsk(state: Extract<RefreshState, { readonly phase: 'asked' }>, c
  * restart (T2425). The mod then looks again only at its recheck, once the notice is out.
  */
 export function decideMidTurn(state: RefreshState | undefined, context: AskContext, facts: MidTurnFacts): MidTurnDecision {
-  const { settings } = context;
-  if (!settings.enabled || (state?.phase === 'ready' && !state.noticed)) {
+  if (!context.settings.enabled || (state?.phase === 'ready' && !state.noticed)) {
     return { kind: 'none', nextAt: null };
   }
-  if (state !== undefined && unmeasured(state)) {
+  // The window the mod reports, or this measure shows, sets the threshold: `largeWindowContextTokens` on a large one.
+  const large = windowOf(state, context.settings, facts.tokens, facts.window);
+  const known = recorded(state, large);
+  const settings = sizedFor(large, context.settings);
+  if (known !== undefined && unmeasured(known)) {
     // A fresh start's first measure, within its first turn: recorded as its baseline, no ask.
-    const measured = measuredState(state, facts.tokens);
+    const measured = measuredState(known, facts.tokens);
     return { kind: 'none', nextAt: askAt(measured, settings), state: measured };
   }
-  const nextAt = askAt(state, settings);
+  const nextAt = askAt(known, settings);
   if (facts.tokens < nextAt || meetingHolds(settings, facts.meeting, facts.tokens)) {
-    return { kind: 'none', nextAt };
+    return known === undefined || known === state ? { kind: 'none', nextAt } : { kind: 'none', nextAt, state: known };
   }
   if (facts.due === undefined) {
     return { kind: 'measure' };
   }
-  const task = state?.phase === 'boundary' ? state.task : null;
-  const asked: RefreshState = { phase: 'asked', task, at: context.now, tokens: facts.tokens, handoverHash: facts.due.handoverHash, midTurn: true };
-  const reason = handoverAsk({ kind: 'midTurn' }, { kind: 'size', tokens: facts.tokens }, context, facts.due.running);
+  const task = known?.phase === 'boundary' ? known.task : null;
+  const asked: RefreshState = { phase: 'asked', task, at: context.now, tokens: facts.tokens, handoverHash: facts.due.handoverHash, midTurn: true, ...windowField(large) };
+  const reason = handoverAsk({ kind: 'midTurn' }, { kind: 'size', tokens: facts.tokens }, { ...context, settings }, facts.due.running);
   return { kind: 'ask', state: asked, reason, nextAt: askAt(asked, settings) };
 }
 
@@ -644,7 +741,16 @@ export function decideReady(
   return {
     kind: 'ready',
     // A task end since the ask is the task the session refreshes after, as the notice and the fresh start say.
-    state: { phase: 'ready', task: state?.phase === 'boundary' ? state.task : ask.task, at: now, tokens: ask.tokens, noticed: false, transcript: null, claudePid: null },
+    state: {
+      phase: 'ready',
+      task: state?.phase === 'boundary' ? state.task : ask.task,
+      at: now,
+      tokens: ask.tokens,
+      noticed: false,
+      transcript: null,
+      claudePid: null,
+      ...keepWindow(state),
+    },
   };
 }
 
@@ -704,7 +810,7 @@ export function decideStart(
       note:
         `You were refreshed ${after}; read your handover first: ${handoverPath}. Then carry on with its next steps. ` +
         'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.',
-      state: { phase: 'refreshed', task: state.task, at: now, baseline: null },
+      state: { phase: 'refreshed', task: state.task, at: now, baseline: null, ...keepWindow(state) },
     };
   }
   if ((state.phase === 'asked' || state.phase === 'ready') && state.tokens !== null && SMALL_SOURCES.has(source)) {
