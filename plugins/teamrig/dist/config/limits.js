@@ -115,6 +115,11 @@ export const CONFIG_LIMITS = {
     execPath: { maxItems: 16, maxLength: 260 },
     /** Under 0.1 the dimming goes unseen; past 0.9 the rest of the screen can no longer be read behind it (T2517). */
     spotlightDim: { min: 0.1, max: 0.9 },
+    /**
+     * Under 10 s the dimming is back before the owner has read the break-through (the overlay checks every 2 s); past an
+     * hour the meeting has lost its spotlight for good (T2524).
+     */
+    spotlightBreakthroughSeconds: { min: 10, max: 3600 },
 };
 /**
  * Bounds on the fields of one recorded rule conflict (`ruleConflicts`). A line longer than `textMaxLength` is

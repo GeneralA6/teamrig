@@ -1,11 +1,14 @@
 import { powerShellRequest } from "../core/powershell.js";
+import { MS_PER_SECOND } from "../core/time.js";
 import { candidatesOf } from "../open/open-tab.js";
 import { MEETING_LAPSE_MS } from "./state.js";
 /**
  * The meeting's spotlight (T2517): while the owner's daily meeting is open, every screen is dimmed but the Windows
  * Terminal window holding the lead's tab. A hidden Windows PowerShell runs a borderless black overlay over the whole
  * virtual screen, click-through and never activated, with a hole cut where that window is; it follows the window as it
- * moves and lifts itself once the meeting file says the meeting ended, another one started, or it lapsed. Nothing is
+ * moves and lifts itself once the meeting file says the meeting ended, another one started, or it lapsed. A CRITICAL
+ * message that broke through the meeting to the lead (src/meeting/breakthrough.ts) hides it for a while, so the owner
+ * sees that message at once; it dims again by itself after `meeting.spotlight.breakthroughSeconds` (T2524). Nothing is
  * typed into a terminal, and the tab's title, the meeting file's path and the times reach the script as variables,
  * never inside it.
  */
@@ -16,10 +19,15 @@ export const SPOTLIGHT_VARS = {
     startedAt: 'TEAMRIG_SPOTLIGHT_STARTED',
     until: 'TEAMRIG_SPOTLIGHT_UNTIL',
     dim: 'TEAMRIG_SPOTLIGHT_DIM',
+    breakthrough: 'TEAMRIG_SPOTLIGHT_BREAKTHROUGH',
+    liftMs: 'TEAMRIG_SPOTLIGHT_LIFT_MS',
 };
 /** How often the overlay follows the window, in ms: a moved window's hole catches up within a quarter second. */
 const TICK_MS = 250;
-/** Every this many ticks (2 s) the script reads the meeting file and looks the window up again if it closed. */
+/**
+ * Every this many ticks (2 s) the script reads the meeting and break-through files and looks the window up again if
+ * it closed, so a break-through lifts the dimming within 2 s.
+ */
 const CHECK_TICKS = 8;
 /** A meeting file unreadable this many checks in a row lifts the spotlight: one read beside a write is no end. */
 const UNREADABLE_CHECKS = 3;
@@ -84,8 +92,8 @@ const SPOTLIGHT_TYPES = [
 /**
  * Windows PowerShell 5.1: finds the Windows Terminal window with a tab whose name is the title or ends with a space and
  * the title (as focus.ts does), dims every screen but that window, and follows it; while no such window shows (closed,
- * minimized, not found), nothing is dimmed. It exits 0 once the meeting it was started for is no longer open, 1 with
- * the reason on stderr when it cannot run.
+ * minimized, not found), nothing is dimmed, nor while a break-through of this meeting lifts it. It exits 0 once the
+ * meeting it was started for is no longer open, 1 with the reason on stderr when it cannot run.
  */
 export const WINDOWS_SPOTLIGHT_SCRIPT = [
     "$ErrorActionPreference = 'Stop'",
@@ -101,6 +109,8 @@ export const WINDOWS_SPOTLIGHT_SCRIPT = [
     `  $startedAt = $env:${SPOTLIGHT_VARS.startedAt}`,
     `  $until = [long]$env:${SPOTLIGHT_VARS.until}`,
     `  $dim = [double]::Parse($env:${SPOTLIGHT_VARS.dim}, [Globalization.CultureInfo]::InvariantCulture)`,
+    `  $breakthroughFile = $env:${SPOTLIGHT_VARS.breakthrough}`,
+    `  $liftMs = [long]$env:${SPOTLIGHT_VARS.liftMs}`,
     '  $element = [System.Windows.Automation.AutomationElement]',
     '  $scope = [System.Windows.Automation.TreeScope]',
     "  $terminalWindow = [System.Windows.Automation.PropertyCondition]::new($element::ClassNameProperty, 'CASCADIA_HOSTING_WINDOW_CLASS')",
@@ -121,21 +131,29 @@ export const WINDOWS_SPOTLIGHT_SCRIPT = [
     '    try { $meeting = Get-Content -LiteralPath $meetingFile -Raw | ConvertFrom-Json } catch { return }',
     '    return ($meeting.startedAt -ceq $startedAt) -and ($null -eq $meeting.endedAt)',
     '  }',
+    // True for liftMs after a break-through of this meeting; an unreadable or half-written file lifts nothing.
+    '  function Test-Lifted {',
+    '    if (-not (Test-Path -LiteralPath $breakthroughFile)) { return $false }',
+    '    try { $breakthrough = Get-Content -LiteralPath $breakthroughFile -Raw | ConvertFrom-Json; $at = [long]$breakthrough.atMs } catch { return $false }',
+    '    return ($breakthrough.startedAt -ceq $startedAt) -and ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -lt $at + $liftMs)',
+    '  }',
     '  $overlay = New-Object TeamrigSpotlightForm -ArgumentList $dim',
     '  $window = [IntPtr]::Zero',
     '  $framed = [System.Drawing.Rectangle]::Empty',
     '  $unreadable = 0',
+    '  $lifted = $false',
     '  $tick = 0',
     '  while ($true) {',
     `    if ($tick % ${CHECK_TICKS} -eq 0) {`,
     '      $open = Test-MeetingOpen',
     '      if ($null -eq $open) { $unreadable++ } elseif (-not $open) { exit 0 } else { $unreadable = 0 }',
     `      if ($unreadable -ge ${UNREADABLE_CHECKS}) { exit 0 }`,
+    '      $lifted = Test-Lifted',
     '      if (-not [TeamrigSpotlightNative]::IsWindow($window)) { $window = Find-LeadWindow }',
     '    }',
     '    $hole = [System.Drawing.Rectangle]::Empty',
     '    if ([TeamrigSpotlightNative]::IsWindowVisible($window) -and -not [TeamrigSpotlightNative]::IsIconic($window)) { $hole = [TeamrigSpotlightNative]::FrameOf($window) }',
-    '    if ($hole.IsEmpty) {',
+    '    if ($hole.IsEmpty -or $lifted) {',
     '      if ($overlay.Visible) { $overlay.Hide() }',
     '    } else {',
     '      if ($hole -ne $framed) { $overlay.Frame($hole); $framed = $hole }',
@@ -168,6 +186,8 @@ export function spotlightRequest(target, env, cwd) {
             [SPOTLIGHT_VARS.startedAt]: target.meeting.startedAt,
             [SPOTLIGHT_VARS.until]: String(until),
             [SPOTLIGHT_VARS.dim]: String(target.dim),
+            [SPOTLIGHT_VARS.breakthrough]: target.breakthroughFile,
+            [SPOTLIGHT_VARS.liftMs]: String(target.liftMs),
         },
     };
 }
@@ -185,7 +205,7 @@ export async function startSpotlight(deps, config, terminal, target, cwd) {
     if (!candidatesOf(terminal, deps).includes('windows-terminal')) {
         return { kind: 'unsupported', why: `it needs Windows Terminal, and open.terminal is ${terminal}` };
     }
-    return { kind: 'start', outcome: await deps.processes.startHidden(spotlightRequest({ ...target, dim: config.dim }, deps.env, cwd)) };
+    return { kind: 'start', outcome: await deps.processes.startHidden(spotlightRequest({ ...target, dim: config.dim, liftMs: config.breakthroughSeconds * MS_PER_SECOND }, deps.env, cwd)) };
 }
 /**
  * What `meeting start` prints of the spotlight; nothing when the team keeps it off, nor where it cannot run (off
