@@ -95,7 +95,10 @@ sequenceDiagram
   long task refreshes before Claude Code compacts it; at a task end (`set <id> --status done`) it names the task.
   A session that goes on without its fresh start (you typed, or never typed `/clear`) is asked again at its next
   task end, or once its context grew a fifth of `refresh.contextTokens` more; a compaction or a `/clear` brings
-  the ask back to the threshold.
+  the ask back to the threshold. A fresh start (a `/clear`, a new process) only measures its context at its first
+  turn end, asking nothing, and a size or task-count ask then waits until the context grew that fifth past the
+  measure: a session whose fresh start already sits over the threshold (its system prompt, rules and handover) is
+  not asked to refresh again before it did any work.
 - A session busy in one long turn is asked within it: after each tool result teamrig's mod checks the context, and
   past the threshold it adds the ask to the result (finish the step, write the handover, end the turn). Until the
   fresh start, Claude Code's own compaction waits, up to `refresh.compactCeilingTokens` (185,000 by default, 15k

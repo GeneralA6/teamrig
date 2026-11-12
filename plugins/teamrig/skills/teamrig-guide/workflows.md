@@ -257,7 +257,10 @@ so it never loses work to a compaction.
 
    Mid-task it says `teamrig: your context is 132k (refresh at 120k), so refresh now rather than at a task end.`
    If you go on without the fresh start (the user typed), it asks again at your next task end, or once your
-   context grew a fifth of `refresh.contextTokens` more. Within a long turn teamrig's mod asks as soon as a tool
+   context grew a fifth of `refresh.contextTokens` more. A fresh start (a `/clear`, a new process) only measures its
+   context at its first turn end, or at the first tool result the mod reports, and asks nothing; a size or task-count
+   refresh then needs the context to have grown that fifth past the measure, so a session that starts over the
+   threshold is never asked again before it did any work. Within a long turn teamrig's mod asks as soon as a tool
    result shows the context past the threshold (`so refresh within this turn: finish the step you are on and start
    no other`, ending `and end your turn: the fresh start follows it`), and until the fresh start Claude Code's own
    compaction waits, up to `refresh.compactCeilingTokens` (185,000).
