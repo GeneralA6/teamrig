@@ -175,6 +175,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   liftMaxStopPct: 'budget.lift.maxStopPct',
   liftReserveStopPct: 'budget.lift.reserveStopPct',
   maxBytesPerHook: 'budget.maxBytesPerHook',
+  budgetResets: 'budget.resets',
+  budgetResetCount: 'budget.resets[].count',
   hiringReviewDays: 'hiring.reviewDays',
   hiringResumeMaxTokens: 'hiring.resumeMaxTokens',
   hiringResumeMaxIdleDays: 'hiring.resumeMaxIdleDays',
@@ -218,11 +220,17 @@ function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {
   return name in CONFIG_LIMITS;
 }
 
-/** The schema node at a dotted config path such as `skills.maxPerArea`; `*` stands for any key of a map. */
+/**
+ * The schema node at a dotted config path such as `skills.maxPerArea`; `*` stands for any key of a map, and a key
+ * ending in `[]` for the items of its list.
+ */
 function nodeAt(schema: JsonRecord, path: string): JsonRecord {
   const node = path.split('.').reduce<JsonRecord | undefined>((parent, key) => {
-    const child = parent === undefined ? undefined : key === '*' ? anyProperty(parent) : properties(parent)[key];
-    return isRecord(child) ? child : undefined;
+    const list = key.endsWith('[]');
+    const name = list ? key.slice(0, -2) : key;
+    const child = parent === undefined ? undefined : name === '*' ? anyProperty(parent) : properties(parent)[name];
+    const found = list && isRecord(child) ? child['items'] : child;
+    return isRecord(found) ? found : undefined;
   }, schema);
   assert.ok(node !== undefined, `${path} is not in the schema`);
   return node;

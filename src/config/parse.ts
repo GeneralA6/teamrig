@@ -3,7 +3,7 @@ import { deployTargetsOf } from '../delivery/targets.ts';
 import { ADDRESS_PATTERN, splitAddress } from '../core/address.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from '../core/ids.ts';
-import { isMinuteInSpan, utcMinuteOf } from '../core/time.ts';
+import { isMinuteInSpan, parseUtcDeadline, utcMinuteOf } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, REVIEW_STATUSES, SESSION_NAME, TASK_STATUSES, WORK_CLASS_NAME, type TaskStatus } from '../register/model.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
@@ -97,9 +97,12 @@ import {
   isSecretWrites,
   isSkipHooks,
   isTerminalChoice,
+  isResetKind,
   isReviewMode,
   isVerifyGate,
   isWeekday,
+  RESET_KINDS,
+  type ResetStock,
   HOOK_ASKS,
   IDLE_MODES,
   OTHER_AREA_LISTINGS,
@@ -975,6 +978,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW) ?? inherited?.weeklyLimitW;
   const extraWPerUsd = read.optionalInteger(raw, 'extraWPerUsd', path, CONFIG_LIMITS.extraWPerUsd) ?? inherited?.extraWPerUsd;
   const reset = parseBudgetReset(read, raw) ?? inherited?.reset;
+  const resets = raw['resets'] === undefined ? (inherited?.resets ?? defaults.resets) : parseResetStocks(read, raw, defaults.resets);
   const why = "the team's daily budget is the pace, recomputed at every reading from what is left of the week";
   read.dropped(raw, 'dailyPct', path, why);
   read.dropped(raw, 'maxDailyPct', path, why);
@@ -990,6 +994,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     subagentWeight: read.number(raw, 'subagentWeight', path, inherited?.subagentWeight ?? defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
     ...(extraWPerUsd === undefined ? {} : { extraWPerUsd }),
     ...(reset === undefined ? {} : { reset }),
+    resets,
     targetPct,
     reservePct,
     shareFloorPct: read.integer(raw, 'shareFloorPct', path, defaults.shareFloorPct, CONFIG_LIMITS.shareFloorPct),
@@ -1028,6 +1033,41 @@ function parseBudgetReset(read: ConfigReader, raw: JsonRecord): BudgetReset | un
   const weekday = read.requiredString(section, 'weekday', path, oneOf(WEEKDAYS));
   const timeUtc = read.requiredString(section, 'timeUtc', path, isUtcTime);
   return isWeekday(weekday) && timeUtc !== '' ? { weekday, timeUtc } : undefined;
+}
+
+/** A reset grant's note: one short line, such as where it came from. */
+const RESET_NOTE_MAX_LENGTH = 100;
+
+/** A UTC minute as YYYY-MM-DD HH:MM, a real day and time. */
+const isUtcMinute: Check<string> = (text) =>
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text) && parseUtcDeadline(text) !== undefined ? undefined : 'expected a UTC time as YYYY-MM-DD HH:MM';
+
+/** `budget.resets`: each grant read whole, or dropped with its issues; more uses than the grant holds is an issue. */
+function parseResetStocks(read: ConfigReader, raw: JsonRecord, fallback: readonly ResetStock[]): readonly ResetStock[] {
+  return read.list(raw, 'resets', 'budget', fallback, (value, itemPath) => parseResetStock(read, value, itemPath), CONFIG_LIMITS.budgetResets.maxItems);
+}
+
+function parseResetStock(read: ConfigReader, value: unknown, path: string): ResetStock | undefined {
+  const section = read.objectItem(value, path);
+  if (section === undefined) {
+    return undefined;
+  }
+  const issues = read.issues.length;
+  const kind = read.requiredString(section, 'kind', path, oneOf(RESET_KINDS));
+  const count = read.optionalInteger(section, 'count', path, CONFIG_LIMITS.budgetResetCount);
+  if (section['count'] === undefined) {
+    read.report(`${path}.count`, 'is required');
+  }
+  const expiresUtc = read.requiredString(section, 'expiresUtc', path, isUtcMinute);
+  const usedUtc = read.stringList(section, 'usedUtc', path, [], isUtcMinute, CONFIG_LIMITS.budgetResetCount.max);
+  const note = read.optionalString(section, 'note', path, shortLine(RESET_NOTE_MAX_LENGTH));
+  if (count !== undefined && usedUtc.length > count) {
+    read.report(`${path}.usedUtc`, `lists ${usedUtc.length} uses of a grant of ${count}`);
+  }
+  if (read.issues.length > issues || !isResetKind(kind) || count === undefined) {
+    return undefined;
+  }
+  return { kind, count, expiresUtc, usedUtc, ...(note === undefined ? {} : { note }) };
 }
 
 /** `budget.quietHours`: a start, an end and the action, or nothing. */
