@@ -191,7 +191,13 @@ export async function meetingStart(args, runtime) {
     const meeting = { startedAt: new Date(mk.now).toISOString(), by: mk.lead, endedAt: null, since: before === undefined ? null : new Date(before).toISOString() };
     await mk.store.write(meeting);
     runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
-    const spotlit = { title: sessionDisplay(mk.kit.paths.team, mk.leadName), meetingFile: mk.kit.paths.meeting, meeting, log: join(mk.kit.paths.logs, SPOTLIGHT_LOG) };
+    const spotlit = {
+        title: sessionDisplay(mk.kit.paths.team, mk.leadName),
+        meetingFile: mk.kit.paths.meeting,
+        meeting,
+        breakthroughFile: mk.kit.paths.meetingBreakthrough,
+        log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
+    };
     const { spotlight } = mk.config.meeting;
     const line = spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, spotlit, runtime.cwd), spotlit, spotlight.dim);
     if (line !== undefined) {

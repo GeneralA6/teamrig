@@ -9,6 +9,13 @@ export const CRITICAL_WORD = 'CRITICAL';
 export function isCritical(text) {
     return new RegExp(`^\\s*${CRITICAL_WORD}\\b`, 'i').test(text);
 }
+/**
+ * Whether the message breaks through the meeting: a CRITICAL one to the lead, from another session or an unknown one,
+ * while the meeting is open. Only these lift the spotlight (T2524); the lead's own sends never do.
+ */
+export function isBreakthrough(facts) {
+    return facts.meeting !== undefined && facts.to === facts.lead && facts.from !== facts.lead && isCritical(facts.text);
+}
 /** The hold's reason, or undefined to let the message go: no open meeting, another receiver, the lead's own send, an empty or CRITICAL message. */
 export function quietHoldReason(facts) {
     const { meeting } = facts;

@@ -329,7 +329,10 @@ export function parseConfig(raw, above) {
     };
     return { config, issues: read.issues };
 }
-/** `meeting`: the agenda panel's switch, and the spotlight's with its dim, bounded so the screen stays readable. */
+/**
+ * `meeting`: the agenda panel's switch, and the spotlight's with its dim, bounded so the screen stays readable, and how
+ * long a break-through lifts it.
+ */
 function parseMeeting(read, raw) {
     const spotlight = read.section(raw, 'spotlight', 'meeting');
     return {
@@ -337,6 +340,7 @@ function parseMeeting(read, raw) {
         spotlight: {
             enabled: read.boolean(spotlight, 'enabled', 'meeting.spotlight', DEFAULT_MEETING.spotlight.enabled),
             dim: read.number(spotlight, 'dim', 'meeting.spotlight', DEFAULT_MEETING.spotlight.dim, CONFIG_LIMITS.spotlightDim),
+            breakthroughSeconds: read.integer(spotlight, 'breakthroughSeconds', 'meeting.spotlight', DEFAULT_MEETING.spotlight.breakthroughSeconds, CONFIG_LIMITS.spotlightBreakthroughSeconds),
         },
     };
 }
