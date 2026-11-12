@@ -1,6 +1,7 @@
 import type { Files } from '../core/files.ts';
 import { parseObject } from '../core/jsonl.ts';
-import type { NeedKind, TabNeed } from './need.ts';
+import type { NeedKind } from './need-kind.ts';
+import type { TabNeed } from './need.ts';
 
 /**
  * Which tabs of the team ask the user something now, as another tab's needs-you band shows them (T2511): each tab file
