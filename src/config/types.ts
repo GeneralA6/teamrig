@@ -1382,6 +1382,11 @@ export interface MeetingConfig {
    * owner sees the break-through at once; it comes back by itself after that (T2524).
    */
   readonly spotlight: { readonly enabled: boolean; readonly dim: number; readonly breakthroughSeconds: number };
+  /**
+   * The status line while a meeting is open (T2513): the lead's tab prints its whole line in `colour` (`#rrggbb`), and
+   * every other tab appends `heldText`, so a glance at any tab says the team is held for the meeting.
+   */
+  readonly statusLine: { readonly enabled: boolean; readonly colour: string; readonly heldText: string };
 }
 
 export interface KitConfig {

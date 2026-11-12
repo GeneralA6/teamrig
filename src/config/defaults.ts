@@ -268,11 +268,14 @@ export const DEFAULT_WAKE: WakeConfig = { enabled: true, priority: 1, batchSecon
  * The spotlight is on too, by the owner's call (T2523): it keeps the owner's eye on the meeting, lets every click
  * through and lifts when the meeting ends; a team sets it false to stop it. At 0.6 the rest of the screen stays
  * readable behind it. A break-through lifts it for two minutes: long enough to read the message and answer it, short
- * enough that the meeting gets its focus back on its own (T2524).
+ * enough that the meeting gets its focus back on its own (T2524). The status line marks are on: they only colour the
+ * lead's line and add a few words to the others' while a meeting is open (T2513); the magenta reads on dark and light
+ * terminal themes alike.
  */
 export const DEFAULT_MEETING: MeetingConfig = {
   panel: { enabled: true },
   spotlight: { enabled: true, dim: 0.6, breakthroughSeconds: 120 },
+  statusLine: { enabled: true, colour: '#d75fd7', heldText: 'meeting on: held' },
 };
 
 /** About a screenful: two or three failing tests with their errors and first stack frames. */

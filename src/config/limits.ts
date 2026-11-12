@@ -132,6 +132,12 @@ export const RULE_CONFLICT_LIMITS = {
   reasonMaxLength: 200,
 } as const;
 
+/** The longest `meeting.statusLine.heldText`: it is appended to every other tab's status line, which must stay one row. */
+export const MEETING_HELD_TEXT_MAX_LENGTH = 40;
+
+/** `meeting.statusLine.colour`: a 24-bit `#rrggbb` colour, the form the status line's ANSI foreground code takes. */
+export const MEETING_COLOUR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
 /** The longest `budget.account` name, on one line. */
 export const BUDGET_ACCOUNT_MAX_LENGTH = 100;
 

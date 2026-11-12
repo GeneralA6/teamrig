@@ -4,7 +4,15 @@ import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, RESERVED_NAMES } from '../core/ids.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
-import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, GITHUB_LABEL_MAX_LENGTH, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
+import {
+  BUDGET_ACCOUNT_MAX_LENGTH,
+  CONFIG_LIMITS,
+  GITHUB_LABEL_MAX_LENGTH,
+  MEETING_COLOUR_PATTERN,
+  MEETING_HELD_TEXT_MAX_LENGTH,
+  REVIEW_PATH_LIMITS,
+  RULE_CONFLICT_LIMITS,
+} from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
@@ -408,6 +416,16 @@ describe('config.schema.json', () => {
   it('takes the budget account names the parser takes', async () => {
     const account = nodeAt(await loadSchema(), 'budget.account');
     assert.deepEqual([account['maxLength'], account['pattern']], [BUDGET_ACCOUNT_MAX_LENGTH, '^[^\\r\\n]+$']);
+  });
+
+  it('takes the meeting status line colours and held texts the parser takes (T2513)', async () => {
+    const schema = await loadSchema();
+    const colour = nodeAt(schema, 'meeting.statusLine.colour');
+    const heldText = nodeAt(schema, 'meeting.statusLine.heldText');
+    assert.deepEqual(
+      [colour['pattern'], heldText['minLength'], heldText['maxLength'], heldText['pattern']],
+      [MEETING_COLOUR_PATTERN.source, 1, MEETING_HELD_TEXT_MAX_LENGTH, '^[^\\r\\n]+$'],
+    );
   });
 
   it('takes the github accept labels the parser takes', async () => {

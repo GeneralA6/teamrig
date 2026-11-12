@@ -57,7 +57,15 @@ import {
   QUEUE_TTL_MARGIN_MINUTES,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
-import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, GITHUB_LABEL_MAX_LENGTH, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
+import {
+  BUDGET_ACCOUNT_MAX_LENGTH,
+  CONFIG_LIMITS,
+  GITHUB_LABEL_MAX_LENGTH,
+  MEETING_COLOUR_PATTERN,
+  MEETING_HELD_TEXT_MAX_LENGTH,
+  REVIEW_PATH_LIMITS,
+  RULE_CONFLICT_LIMITS,
+} from './limits.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
@@ -542,12 +550,20 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
 }
 
 /**
- * `meeting`: the agenda panel's switch, and the spotlight's with its dim, bounded so the screen stays readable, and how
- * long a break-through lifts it.
+ * `meeting`: the agenda panel's switch, the spotlight's with its dim, bounded so the screen stays readable, and how
+ * long a break-through lifts it, and the status line's marks, with a colour the ANSI code can take and a held text
+ * that keeps the line one row.
  */
 function parseMeeting(read: ConfigReader, raw: JsonRecord): MeetingConfig {
   const spotlight = read.section(raw, 'spotlight', 'meeting');
+  const statusLine = read.section(raw, 'statusLine', 'meeting');
+  const defaults = DEFAULT_MEETING.statusLine;
   return {
+    statusLine: {
+      enabled: read.boolean(statusLine, 'enabled', 'meeting.statusLine', defaults.enabled),
+      colour: read.string(statusLine, 'colour', 'meeting.statusLine', defaults.colour, (value) => (MEETING_COLOUR_PATTERN.test(value) ? undefined : 'expected a #rrggbb colour')),
+      heldText: read.string(statusLine, 'heldText', 'meeting.statusLine', defaults.heldText, shortLine(MEETING_HELD_TEXT_MAX_LENGTH)),
+    },
     panel: { enabled: read.boolean(read.section(raw, 'panel', 'meeting'), 'enabled', 'meeting.panel', DEFAULT_MEETING.panel.enabled) },
     spotlight: {
       enabled: read.boolean(spotlight, 'enabled', 'meeting.spotlight', DEFAULT_MEETING.spotlight.enabled),
