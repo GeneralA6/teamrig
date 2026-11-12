@@ -329,6 +329,18 @@ describe('statusLineText', () => {
     assert.equal(statusLineText(both, { effort: 'high', folder: 'app', branch: 'main', pacePct: 53.4 }), 'Opus 5.5 (high), app on main, week 57% (pace 53%), 5h 6%');
     assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), { effort: 'xhigh' }), 'Claude (xhigh)');
   });
+
+  it("colours the meeting tab's whole line and adds the held text last on every other tab", () => {
+    const view = { folder: 'app', branch: 'main' };
+    assert.equal(
+      statusLineText(both, { ...view, meeting: { kind: 'tab', colour: '#d75fd7' } }),
+      '\x1b[38;2;215;95;215mOpus 5.5, app on main, week 57%, 5h 6%\x1b[0m',
+    );
+    assert.equal(
+      statusLineText(both, { ...view, meeting: { kind: 'held', text: 'meeting on: held' } }),
+      'Opus 5.5, app on main, week 57%, 5h 6%, meeting on: held',
+    );
+  });
 });
 
 describe('effortOfStatus', () => {

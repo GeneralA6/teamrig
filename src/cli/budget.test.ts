@@ -15,10 +15,11 @@ import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { formatUtcDay, MS_PER_DAY, MS_PER_MINUTE } from '../core/time.ts';
+import { formatMeeting, type Meeting } from '../meeting/state.ts';
 import { APP, CliHarness, EVENTS_PATH, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
-import { SUB_TEAMS, teamConfigOf, teamHomeOf } from '../testing/team-tree.ts';
+import { SUB_TEAMS, teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { promptLine, replyLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import { EXIT } from './runtime.ts';
@@ -1227,5 +1228,66 @@ describe('teamrig statusline', () => {
     const files = new FaultyFiles(kit.files).fail('write', join(LIVE, WEEK_SUMMARY_FILE), systemError('EACCES'));
     await kit.run(['statusline'], { stdin: status(APP), files });
     assert.notEqual(kit.files.get(join(LIVE, FIVE_HOUR_SUMMARY_FILE)), undefined);
+  });
+
+  describe('while the owner meets the lead (T2513)', () => {
+    const MEETING_FILE = join(TEAM_HOME, 'state', 'meeting.json');
+    /** The lead's meeting, started an hour before the harness's clock. */
+    const OPEN_MEETING: Meeting = { startedAt: '2030-01-08T09:00:00.000Z', by: 'lead', endedAt: null, since: null };
+    const HELD = `${SHOWN}, meeting on: held`;
+    const COLOURED = `\x1b[38;2;215;95;215m${SHOWN}\x1b[0m`;
+
+    async function meetingKit(config: JsonRecord = LIMITED, meeting: Meeting = OPEN_MEETING): Promise<CliHarness> {
+      const kit = new CliHarness(config);
+      await kit.files.write(MEETING_FILE, formatMeeting(meeting));
+      return kit;
+    }
+
+    it("colours the whole line of the lead's tab, found by its inbox mark or $TEAMRIG_SESSION", async () => {
+      const marked = await meetingKit();
+      await marked.files.append(MARKS, `${JSON.stringify({ v: 1, area: 'lead', line: 0, at: '2030-01-08T08:00:00.000Z', claudeSession: ALPHA_TAB, lastLineHash: null })}\n`);
+      assert.deepEqual(ok(await marked.run(['statusline'], { stdin: status(APP) })), [COLOURED]);
+      const named = await meetingKit();
+      assert.deepEqual(ok(await named.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'lead' } })), [COLOURED]);
+    });
+
+    it("adds the held text to every other tab's line: another session's, or one no session holds", async () => {
+      const kit = await meetingKit();
+      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'alpha' } })), [HELD]);
+      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP) })), [HELD]);
+    });
+
+    it("shows the team's own colour and held text", async () => {
+      const kit = await meetingKit({ ...LIMITED, meeting: { statusLine: { colour: '#00ff00', heldText: 'owner meeting' } } });
+      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP) })), [`${SHOWN}, owner meeting`]);
+      assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'lead' } })), [`\x1b[38;2;0;255;0m${SHOWN}\x1b[0m`]);
+    });
+
+    it("holds a sub-team's tabs, its own lead's too, by the root team's meeting", async () => {
+      const kit = await treeHarness();
+      await kit.files.write(MEETING_FILE, formatMeeting(OPEN_MEETING));
+      const line = ok(await kit.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_TEAM: 'ui', TEAMRIG_SESSION: 'lead' } }));
+      assert.match(line.join('\n'), /^Opus 5\.5, .*, meeting on: held$/);
+    });
+
+    it('marks nothing once the meeting ended, or with the marks off', async () => {
+      const ended = await meetingKit(LIMITED, { ...OPEN_MEETING, endedAt: '2030-01-08T09:30:00.000Z' });
+      assert.deepEqual(ok(await ended.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'lead' } })), [SHOWN]);
+      const off = await meetingKit({ ...LIMITED, meeting: { statusLine: { enabled: false } } });
+      assert.deepEqual(ok(await off.run(['statusline'], { stdin: status(APP), env: { TEAMRIG_SESSION: 'lead' } })), [SHOWN]);
+    });
+
+    it('tells a failed read of the meeting on stderr and still shows the status', async () => {
+      const kit = await meetingKit();
+      const files = new FaultyFiles(kit.files).fail('read', MEETING_FILE, systemError('EACCES'));
+      const result = await kit.run(['statusline'], { stdin: status(APP), files });
+      assert.deepEqual([result.code, result.stdout], [EXIT.ok, [SHOWN]]);
+      assert.match(result.stderr.join('\n'), /^teamrig statusline: the meeting was not read: /);
+    });
+
+    it('with --pass prints the status input again, the meeting unmarked', async () => {
+      const kit = await meetingKit();
+      assert.deepEqual(ok(await kit.run(['statusline', '--pass'], { stdin: status(APP) })), [status(APP)]);
+    });
   });
 });

@@ -6,6 +6,7 @@ import { isTemporaryName, type Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
+import { coloured, type StatusLineMeeting } from '../meeting/status-line.ts';
 
 /**
  * Status line snapshots: what Claude Code's status line input says about one session, saved as
@@ -339,6 +340,8 @@ export interface StatusLineView {
   readonly commit?: string;
   /** Where the team's pace line stands now, in % of the week, shown beside the week's use. */
   readonly pacePct?: number;
+  /** An open meeting's mark: the meeting tab's whole line in its colour, any other tab's held text last. */
+  readonly meeting?: StatusLineMeeting;
 }
 
 /** Where the session works, such as `app on main`, `app at 1a2b3c4` (a detached HEAD) or `app`; empty when the view names nothing. */
@@ -372,7 +375,12 @@ export function statusLineText(snapshot: StatusSnapshot, view: StatusLineView): 
   if (fiveHour !== null) {
     parts.push(`5h ${Math.round(fiveHour.usedPct)}%`);
   }
-  return parts.join(', ');
+  const meeting = view.meeting;
+  if (meeting?.kind === 'held') {
+    parts.push(meeting.text);
+  }
+  const text = parts.join(', ');
+  return meeting?.kind === 'tab' ? coloured(text, meeting.colour) : text;
 }
 
 /** A snapshot in its folder: its file's path and what it holds. */
