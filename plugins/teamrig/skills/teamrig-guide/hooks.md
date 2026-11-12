@@ -1168,6 +1168,13 @@ by itself at `meeting end`, when another meeting starts, or when the meeting lap
 Windows Terminal, it prints nothing, as the spotlight cannot run there. Nothing is typed into a
 terminal; the tab's title and the meeting file's path reach the script as variables.
 
+A message that breaks through the meeting hold (one starting CRITICAL, sent to the lead by another session) also
+lifts the dimming, so the owner sees it at once. The cold-send hook records the last such break-through in
+`<team>/state/meeting-breakthrough.json` (the meeting's start, when it went through and who sent it); at its next
+2 s check the script hides the overlay for `meeting.spotlight.breakthroughSeconds` (10 to 3600, 120 by default),
+then dims again while the meeting is still open. A break-through recorded in an earlier meeting lifts no later one,
+and an unreadable file lifts nothing.
+
 ## The mod: the update notice
 
 Claude Code does not check teamrig's marketplace for updates by itself, so a person ran an old teamrig or
