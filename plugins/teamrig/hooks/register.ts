@@ -109,7 +109,7 @@ function sameUpdate(a: TeamrigUpdate | null, b: TeamrigUpdate | null | undefined
   return a === null || b === null || b === undefined ? a === b : a.plugin === b.plugin && a.installed === b.installed && a.newest === b.newest;
 }
 
-/** A tick worth a debug line: an ask acted on (cleared, held, declined, left while busy) or a failure, not the quiet ones. */
+/** A tick worth a debug line: an ask acted on (cleared, ending, held, declined, left while busy) or a failure, not the quiet ones. */
 function worthLogging(result: { readonly kind: string }): boolean {
   return result.kind !== 'no ask' && result.kind !== 'overlap';
 }

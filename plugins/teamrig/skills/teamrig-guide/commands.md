@@ -6084,6 +6084,10 @@ Flags:
   again once the session is quiet.
 - `--why <reason>`: with `--hold`, why the mod holds the ask (one line, up to 200 characters). The restart names
   the last one when it gives up after an hour, in its log row and the session's inbox line.
+- `--end`: claim an ask in `end` mode, which the restart posts when the session must start again at a changed
+  effort level (a `/clear` keeps the level). It prints `end`; the request stays pending, the mod runs no `/clear`
+  and the restart ends the session and starts it again in its tab. On an ask for a `/clear` it declines. An
+  older mod claiming an `end` ask without it gets `taken` and runs its `/clear`, so a clearing tab is never ended.
 
 Example:
 

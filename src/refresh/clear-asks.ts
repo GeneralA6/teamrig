@@ -3,18 +3,32 @@ import type { Files } from '../core/files.ts';
 import { stringField } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { parseObject } from '../core/jsonl.ts';
-import { askFileOf, CLAIM_HELD, CLAIM_TAKEN, CLAIM_WITHDRAWN, holdWhyFileOf, outcomeFileOf, type ClaimOutcome, type PersonHold } from '../mod/clear-hand.ts';
+import {
+  askFileOf,
+  CLAIM_END,
+  CLAIM_HELD,
+  CLAIM_TAKEN,
+  CLAIM_WITHDRAWN,
+  clearModeOf,
+  holdWhyFileOf,
+  outcomeFileOf,
+  type ClaimOutcome,
+  type ClearMode,
+  type PersonHold,
+} from '../mod/clear-hand.ts';
 
 /**
  * The restart's ask that a tab run /clear: which team session and which request it is for, so the claim
  * can check that request is still pending. `askedAt` makes each ask's text new, so a tab that left one
- * ask (a turn ran) still acts on the next.
+ * ask (a turn ran) still acts on the next. `mode` says whether the claim lets the tab /clear or the
+ * restart end the session (`clear` for an ask posted before the mode).
  */
 export interface ClearAsk {
   readonly team: string;
   readonly id: string;
   readonly at: string;
   readonly askedAt: string;
+  readonly mode: ClearMode;
 }
 
 /**
@@ -49,10 +63,10 @@ function parseClearAsk(text: string): ClearAsk | undefined {
   if (team === undefined || id === undefined || at === undefined || askedAt === undefined || !ID_PATTERN.test(team) || !ID_PATTERN.test(id)) {
     return undefined;
   }
-  return { team, id, at, askedAt };
+  return { team, id, at, askedAt, mode: clearModeOf(record['mode']) };
 }
 
-const OUTCOMES: readonly ClaimOutcome[] = [CLAIM_TAKEN, CLAIM_HELD, CLAIM_WITHDRAWN];
+const OUTCOMES: readonly ClaimOutcome[] = [CLAIM_TAKEN, CLAIM_HELD, CLAIM_WITHDRAWN, CLAIM_END];
 
 function outcomeOf(text: string): ClaimOutcome | undefined {
   return OUTCOMES.find((outcome) => outcome === text.trim());
@@ -99,6 +113,11 @@ export class ClearAsks {
   /** True when this claim won the ask; false when it was answered first (the restart withdrew it). */
   async claim(claudeSession: string): Promise<boolean> {
     return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_TAKEN);
+  }
+
+  /** True when this claim won an ask in `end` mode, so the restart ends the session and the tab runs no /clear; false when it was answered first. */
+  async claimEnd(claudeSession: string): Promise<boolean> {
+    return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_END);
   }
 
   /**

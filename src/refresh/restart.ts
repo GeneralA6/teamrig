@@ -202,7 +202,7 @@ async function tabAnswerOf(deps: RestartDeps, claudeSession: string, outcome: Cl
  * returns, so the next round asks afresh; an earlier run's are removed with the new ask's posting.
  */
 async function handToTab(deps: RestartDeps, plan: RestartPlan, claudeSession: string): Promise<TabAnswer> {
-  await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold, askEveryMs: plan.delayMs });
+  await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold, askEveryMs: plan.delayMs, mode: 'clear' });
   try {
     const deadline = deps.clock.now() + CLAIM_WAIT_MS;
     for (;;) {
