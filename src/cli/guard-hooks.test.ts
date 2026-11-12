@@ -82,6 +82,14 @@ describe("the plugin's hooks.json and the guard runner", () => {
     }
   });
 
+  it('gives every tab-status entry the 15 second timeout the other plain hooks have, as a loaded host measured it past 5 s', async () => {
+    const entries = (await manifestHooks()).filter(({ name }) => name === 'tab-status');
+    assert.ok(entries.length > 0);
+    for (const { event, timeout } of entries) {
+      assert.equal(timeout, 15, `${event}: timeout ${String(timeout)} s`);
+    }
+  });
+
   it('uses the runner on PreToolUse hooks only, where a block stops one tool call', async () => {
     const elsewhere = (await manifestHooks()).filter(({ event, script }) => script === RUNNER && event !== 'PreToolUse');
     assert.deepEqual(elsewhere, []);
