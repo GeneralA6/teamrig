@@ -35,14 +35,17 @@ Then it prints the agenda:
 - `UNGATED`: the waits on the human's decision whose card names no owner gate or business decision: never read
   them out; decide those of sessions you lead and send each its answer as an inbox line;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
-  (`due 10-14 (from T9)`);
+  (`due 10-14 (from T9)`), yours first, then each team's under you (`web/T2`); a team with more than 5 is one count
+  line naming the command that lists them;
 - `DONE`: what finished since the last meeting, in groups (owner asked, each goal, urgent p1, this week's plan);
-  other work and the dropped tasks are one count line each;
+  other work and the dropped tasks are one count line each; then each team's under you: its counts and, at 5 rows or
+  fewer, its grouped rows;
 - `STATS`, `HEALTH`, `FLOW` and `LIMIT`: the week's numbers of your team and the teams under it, as
   `teamrig stats --tree` prints them: give the human the Health tiles in one line, each `[bad]` one with its
   number; a `LIMIT` day sat at the usage limit, so its quiet is no slack;
 - `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since the last
-  meeting, check-clean ones first: news to read, while security samples the check-clean ones weekly;
+  meeting, check-clean ones first: news to read, while security samples the check-clean ones weekly; yours first,
+  then each team's under you (`web/front`), a team with more than 5 as one count line;
 - your unread inbox lines, marked read;
 - the week's use, and under it what of the planned week fits the weekly limit.
 
