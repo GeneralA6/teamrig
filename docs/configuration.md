@@ -488,7 +488,7 @@ Waking a session idle at its prompt when work is handed to it, instead of at its
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Off: a session sees new work only at its next prompt. |
-| `priority` | integer (1 to 99) | `1` | The least urgent priority that wakes a session: 1 wakes for p0 and p1 only. A session its budget holds (past its daily budget while the team has no room today, the wake's own turn counted for both) or a short day pauses (`budget.pauseByPriority`) wakes for p0 only, and one in the budget's quiet hours for p0 and p1 only, whatever this says. |
+| `priority` | integer (1 to 99) | `1` | The least urgent priority that wakes a session: 1 wakes for p0 and p1 only. A session its budget holds (past its daily budget while the team has no room today, the wake's own turn counted for both) or a short day pauses (`budget.pauseByPriority`) wakes for p0 only, and one in the budget's quiet hours for p0 and p1 only (p0 alone when their action is block), whatever this says. |
 | `batchSeconds` | integer (0 to 3600) | `120` | How long a wake waits after the first new task it is for, so tasks handed together wake the session once. |
 | `minGapMinutes` | integer (0 to 1440) | `15` | The least time between two wakes of one session; work handed meanwhile waits and wakes it once. |
 | `dayStartUtc` | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | The day's start (HH:MM UTC, outside the budget's quiet hours): from then each session with work it can start, of any priority, that has had no turn since gets one wake that day, and a burst wakes its sessions the same way once it starts. Unset: no day-start wake, and a burst wakes no one. |
