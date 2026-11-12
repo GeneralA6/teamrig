@@ -62,4 +62,14 @@ describe('hooks: the tab file', () => {
     const result = await broken.run(['hook', 'tab-status'], { stdin: payload('PermissionRequest', { tool_name: 'Bash' }), env: ALPHA, files: faulty });
     assert.deepEqual([result.code, result.stdout], [EXIT.ok, []]);
   });
+
+  it('lets the tool end and the turn end answer as ever when the tab file cannot be written', async () => {
+    const kit = new CliHarness(TEAM);
+    const faulty = new FaultyFiles(kit.files).fail('write', join(TABS, 'alpha.json'), systemError('EACCES'));
+    const toolEnd = await kit.run(['hook', 'tool-end'], { stdin: payload('PostToolUse', { tool_name: 'Bash' }), env: ALPHA, files: faulty });
+    assert.deepEqual([toolEnd.code, toolEnd.stderr], [EXIT.ok, []]);
+    const stop = await kit.run(['hook', 'stop'], { stdin: payload('Stop', { stop_hook_active: false, last_assistant_message: 'Shipped.' }), env: ALPHA, files: faulty });
+    assert.deepEqual([stop.code, stop.stderr], [EXIT.ok, []]);
+    assert.equal(await tabOf(kit), undefined);
+  });
 });
