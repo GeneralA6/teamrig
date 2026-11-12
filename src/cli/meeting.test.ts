@@ -2,10 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MeterLog } from '../budget/calibration.ts';
+import { SPOTLIGHT_VARS } from '../meeting/spotlight.ts';
 import { MEETING_LAPSE_MS } from '../meeting/state.ts';
 import { MergeLog, type SelfMerge } from '../merge/merge-log.ts';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
 
 const MINUTE = 60_000;
@@ -106,6 +108,41 @@ describe('runCli: the daily meeting', () => {
     assert.equal(again.stdout[0], 'MEETING already open since Tue 01-08 10:00 UTC: messages to app-lead are held but CRITICAL ones');
     assert.equal(again.stdout[2], 'DECISIONS 1 waiting on owner (decision or approval)');
     assert.match((await inboxOf(kit, 'alpha'))[0] ?? '', /^READ alpha: nothing new/);
+  });
+
+  // T2517: the spotlight dims every screen but the lead's window while the meeting is open.
+  const SPOTLIT_TEAM = { ...TEAM, meeting: { spotlight: { enabled: true, dim: 0.5 } } };
+
+  it('starts the spotlight on Windows when the team turns it on, once, and says so under the start line', async () => {
+    const kit = await teamBeforeTheMeeting(SPOTLIT_TEAM);
+    const processes = new FakeProcesses();
+    const started = await kit.run(['meeting', 'start', '--session', 'lead'], { platform: 'win32', processes });
+    assert.equal(started.code, EXIT.ok, started.stderr.join('\n'));
+    assert.match(started.stdout[1] ?? '', /^SPOTLIGHT every screen dimmed \(0\.5\) but the window of \[app\] lead, until the meeting ends; its errors go to .*meeting-spotlight\.log$/);
+    assert.equal(started.stdout[2], 'GOALS none ranked: teamrig goal rank <tag> <n> --session lead');
+    assert.equal(processes.hidden.length, 1);
+    const env = processes.hidden[0]?.env ?? {};
+    // The lead's tab title, which the script looks the window up by.
+    assert.equal(env[SPOTLIGHT_VARS.title], '[app] lead');
+    assert.equal(env[SPOTLIGHT_VARS.startedAt], '2030-01-08T10:00:00.000Z');
+    assert.equal(env[SPOTLIGHT_VARS.dim], '0.5');
+
+    kit.clock.advance(10 * MINUTE);
+    const again = await kit.run(['meeting', 'start', '--session', 'lead'], { platform: 'win32', processes });
+    assert.ok(!again.stdout.some((line) => line.startsWith('SPOTLIGHT')), again.stdout.join('\n'));
+    assert.equal(processes.hidden.length, 1);
+  });
+
+  it('starts no spotlight while the team keeps it off, and says why it cannot off Windows', async () => {
+    const off = new FakeProcesses();
+    const quiet = await (await teamBeforeTheMeeting()).run(['meeting', 'start', '--session', 'lead'], { platform: 'win32', processes: off });
+    assert.ok(!quiet.stdout.some((line) => line.includes('SPOTLI')), quiet.stdout.join('\n'));
+    assert.deepEqual(off.hidden, []);
+
+    const linux = new FakeProcesses();
+    const refused = await (await teamBeforeTheMeeting(SPOTLIT_TEAM)).run(['meeting', 'start', '--session', 'lead'], { processes: linux });
+    assert.equal(refused.stdout[1], 'NOT SPOTLIT: it needs Windows, and this is linux');
+    assert.deepEqual(linux.hidden, []);
   });
 
   it('prints the agenda before the first meeting, during one, after its end and after it lapsed', async () => {

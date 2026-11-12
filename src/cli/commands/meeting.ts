@@ -1,7 +1,9 @@
+import { join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
 import { formatAddress } from '../../core/address.ts';
+import { sessionDisplay } from '../../core/ids.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -10,6 +12,7 @@ import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
 import { mergeDigestLines, type MergeDigestInput } from '../../meeting/merges.ts';
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
+import { spotlightLine, startSpotlight } from '../../meeting/spotlight.ts';
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { MergeLog } from '../../merge/merge-log.ts';
 import { goalScores, type BoardTeam, type GoalScore } from '../../register/goal-board.ts';
@@ -158,6 +161,9 @@ async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number)
   return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
 }
 
+/** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
+export const SPOTLIGHT_LOG = 'meeting-spotlight.log';
+
 /** The range of the stats the agenda opens with: the last week, as `stats` reads by default. */
 export const AGENDA_STATS_RANGE: StatsRange = '7d';
 
@@ -242,6 +248,12 @@ export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const meeting: Meeting = { startedAt: new Date(mk.now).toISOString(), by: mk.lead, endedAt: null, since: before === undefined ? null : new Date(before).toISOString() };
   await mk.store.write(meeting);
   runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
+  const spotlit = { title: sessionDisplay(mk.kit.paths.team, mk.leadName), meetingFile: mk.kit.paths.meeting, meeting, log: join(mk.kit.paths.logs, SPOTLIGHT_LOG) };
+  const { spotlight } = mk.config.meeting;
+  const line = spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, spotlit, runtime.cwd), spotlit, spotlight.dim);
+  if (line !== undefined) {
+    runtime.out.stdout(line);
+  }
   await printAgenda(args, runtime, mk, { kind: 'open', meeting });
   runtime.out.stdout(`END ${KIT_NAME} meeting end --session ${mk.lead}: tells each session the decisions recorded on its tasks`);
   return EXIT.ok;
