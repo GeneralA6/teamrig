@@ -71,6 +71,8 @@ import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } fr
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
+import { statusLineMeetingFor, type LoadedTeam } from '../statusline-meeting.ts';
+import type { StatusLineMeeting } from '../../meeting/status-line.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { peerUsageOf, type PeerUsage } from '../stored-week.ts';
 import { loadTree } from '../tree.ts';
@@ -684,20 +686,23 @@ interface StatusLineSetup {
   readonly show: StatusLineConfig;
   /** Undefined outside a team, where no pace line is shown. */
   readonly paceSource: PaceSource | undefined;
+  /** The team the session works in; undefined outside a team, where no meeting is marked. */
+  readonly team: LoadedTeam | undefined;
 }
 
-/** What the status line shows, and what its pace line follows. */
-type StatusLineShown = Pick<StatusLineSetup, 'show' | 'paceSource'>;
+/** What the status line shows, what its pace line follows, and the team whose meeting it marks. */
+type StatusLineShown = Pick<StatusLineSetup, 'show' | 'paceSource' | 'team'>;
 
-/** What the status line reads beside the snapshot: the session's effort level and where the team's pace line stands. */
+/** What the status line reads beside the snapshot: the session's effort level, where the team's pace line stands, and an open meeting's mark. */
 interface StatusLineReading {
   readonly effort: string | undefined;
   readonly pacePct: number | undefined;
+  readonly meeting: StatusLineMeeting | undefined;
 }
 
 /** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
 async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<StatusLineSetup> {
-  const fallback: StatusLineSetup = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, paceSource: undefined };
+  const fallback: StatusLineSetup = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE, paceSource: undefined, team: undefined };
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
   if (found.kind !== 'team') {
     return fallback;
@@ -706,8 +711,22 @@ async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<Status
   if (kit.load.status !== 'loaded') {
     return fallback;
   }
-  const { budget, statusLine } = kit.load.config;
-  return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, paceSource: { budget, teamWeekPath: kit.paths.teamWeek } };
+  const { config } = kit.load;
+  const { budget, statusLine } = config;
+  return { snapshotDir: snapshotDirOf(budget, kit.paths), show: statusLine, paceSource: { budget, teamWeekPath: kit.paths.teamWeek }, team: { kit, config } };
+}
+
+/** The open meeting's mark for the tab of `claudeSession`; a failed read is told on stderr, never breaking the status bar. */
+async function meetingMarkOf(runtime: CliRuntime, team: LoadedTeam | undefined, claudeSession: string): Promise<StatusLineMeeting | undefined> {
+  if (team === undefined) {
+    return undefined;
+  }
+  try {
+    return await statusLineMeetingFor(runtime, team, claudeSession);
+  } catch (error) {
+    runtime.out.stderr(`teamrig statusline: the meeting was not read: ${errorMessage(error)}`);
+    return undefined;
+  }
 }
 
 /**
@@ -752,6 +771,7 @@ function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, sh
     ...(branch === undefined ? {} : { branch }),
     ...(commit === undefined ? {} : { commit }),
     ...(reading.pacePct === undefined ? {} : { pacePct: reading.pacePct }),
+    ...(reading.meeting === undefined ? {} : { meeting: reading.meeting }),
   };
 }
 
@@ -807,7 +827,7 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
     return EXIT.ok;
   }
-  let shown: StatusLineShown = { show: DEFAULT_STATUS_LINE, paceSource: undefined };
+  let shown: StatusLineShown = { show: DEFAULT_STATUS_LINE, paceSource: undefined, team: undefined };
   try {
     const setup = await statusLineSetup(runtime, snapshot.cwd);
     shown = setup;
@@ -820,8 +840,16 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
   } catch (error) {
     runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
   }
+  if (pass) {
+    runtime.out.stdout(passed);
+    return EXIT.ok;
+  }
   const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
-  const reading: StatusLineReading = { effort: effortOfStatus(input), pacePct: await pacePctOf(runtime, snapshot, shown) };
-  runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
+  const reading: StatusLineReading = {
+    effort: effortOfStatus(input),
+    pacePct: await pacePctOf(runtime, snapshot, shown),
+    meeting: await meetingMarkOf(runtime, shown.team, snapshot.sessionId),
+  };
+  runtime.out.stdout(statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
   return EXIT.ok;
 }
