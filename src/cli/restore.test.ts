@@ -8,9 +8,10 @@ import type { RestoreChoice } from '../restore/countdown.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import { continuePrompt } from '../restore/plan.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
-import { TAB_STAGGER_MS } from '../restore/run.ts';
+import { ROOM_POLL_MS, TAB_STAGGER_MS } from '../restore/run.ts';
 import { APP, CliHarness, KIT, TEAM, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
@@ -71,12 +72,21 @@ async function restoreKit(
   return kit;
 }
 
-function machine(kit: CliHarness, processes: FakeProcesses, choice: RestoreChoice = 'go'): RunOptions & { readonly countdown: FakeCountdown } {
+/** Free memory with room for every tab the tests reopen, each held while it loads. */
+const ROOMY_MB = 20_000;
+const TAB_HOLDS = join(KIT, 'host.lock.tabs');
+
+function machine(
+  kit: CliHarness,
+  processes: FakeProcesses,
+  choice: RestoreChoice = 'go',
+  memory: FakeHostMemory = new FakeHostMemory(ROOMY_MB),
+): RunOptions & { readonly countdown: FakeCountdown } {
   const countdown = new FakeCountdown(choice);
   const sessionProcesses = new FakeSessionProcesses()
     .add({ pid: LIVE_PID, parentPid: 1, name: 'claude.exe', commandLine: 'claude' })
     .add({ pid: REUSED_PID, parentPid: 1, name: 'notepad.exe', commandLine: 'notepad.exe' });
-  return { platform: 'win32', processes, probe: new MemoryPathProbe(kit.files), sessionProcesses, restore: { shutdowns: new FakeShutdownLog({ start: SHUTDOWN, end: SHUTDOWN + 60_000 }), countdown, stops: new FakeStopWatch(), logon: undefined, shortcuts: undefined }, countdown };
+  return { platform: 'win32', processes, memory, probe: new MemoryPathProbe(kit.files), sessionProcesses, restore: { shutdowns: new FakeShutdownLog({ start: SHUTDOWN, end: SHUTDOWN + 60_000 }), countdown, stops: new FakeStopWatch(), logon: undefined, shortcuts: undefined }, countdown };
 }
 
 function windowsTab(title: string, folder: string, argv: readonly string[]): string[] {
@@ -216,6 +226,48 @@ describe('teamrig restore run', () => {
     assert.equal(result.stdout.at(-1), `This tab closes in ${TAB_CLOSE_DELAY_MS / 1_000} s.`);
     assert.deepEqual(failed.clock.sleeps, [TAB_CLOSE_DELAY_MS]);
     assert.equal((await new RestoreRegistry(failed.files, restoreSessionsDir(KIT)).read(ALPHA))?.restoreAttempts, 0);
+  });
+
+  it('reopens the lead whatever the room and holds back a session the host has no room for, its tab never opened (T2283)', async () => {
+    const LEAD = '40000000-2222-4333-8444-555555555555';
+    const kit = await restoreKit([entry(LEAD, 1, { team: 'app', session: 'lead' }), entry(ALPHA, 2, { team: 'app', session: 'alpha' })]);
+    await kit.files.write(transcriptOf(LEAD), `${turn('high')}\n`);
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const result = await kit.run(['restore', 'run'], machine(kit, processes, 'go', new FakeHostMemory(5000)));
+    assert.equal(result.code, EXIT.failed);
+    assert.deepEqual(
+      processes.started.map((request) => request.args[4]),
+      ['[app] lead'],
+    );
+    // The lead's tab is held while it loads, so alpha's first look counts it.
+    const noRoom =
+      'no room on the host to reopen app-alpha, counted at 1200 MB resident and 1200 MB committed: 5000 MB free, 1200 MB of it held for 1 tab still ' +
+      'loading, under the 6144 MB a new tab keeps free (delivery.queue.memoryFloorMb + heavyReserveMb, while open.headroom.floorMb is unset) plus 1200 MB ' +
+      'for it. Close a session first: teamrig sessions lists what each one holds';
+    assert.ok(result.stdout.includes(`Waiting up to 5 min for room to reopen app-alpha: ${noRoom}`), result.stdout.join('\n'));
+    assert.ok(result.stdout.some((line) => line.startsWith('HELD app-alpha: no room on the host to reopen app-alpha')), result.stdout.join('\n'));
+    assert.equal((await new RestoreRegistry(kit.files, restoreSessionsDir(KIT)).read(ALPHA))?.restoreAttempts, 0);
+    assert.deepEqual(await kit.files.list(TAB_HOLDS), [], 'alpha was never held, and the lead has loaded');
+  });
+
+  it("counts a reopened tab's room while it loads, so the next waits until it has loaded, then opens (T2283)", async () => {
+    const kit = await restoreKit();
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    okResult(await kit.run(['restore', 'run'], machine(kit, processes, 'go', new FakeHostMemory(8000))));
+    assert.deepEqual(
+      processes.started.map((request) => request.args[4]),
+      ['[app] alpha', 'notes'],
+    );
+    // alpha's hold runs out 5 min after it opened; notes, first refused 4 s after, looks again every 15 s until then.
+    assert.deepEqual(kit.clock.sleeps, [TAB_STAGGER_MS, ...Array<number>(20).fill(ROOM_POLL_MS)]);
+  });
+
+  it('drops the hold of a restored tab that did not open, so its room is free again at once (T2283)', async () => {
+    const kit = await restoreKit();
+    const result = await kit.run(['restore', 'run'], machine(kit, new FakeProcesses(), 'go', new FakeHostMemory(8000)));
+    assert.equal(result.code, EXIT.failed);
+    assert.ok(result.stdout.some((line) => line.startsWith('FAILED to reopen notes: no terminal opened')), result.stdout.join('\n'));
+    assert.deepEqual(kit.clock.sleeps, [], 'notes found the room alpha was held at free again');
   });
 
   it('leaves alone the sessions active since --since, and refuses a --since that is not a time', async () => {

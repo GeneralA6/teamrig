@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { claudeProjectsDir } from '../../budget/discover.ts';
+import { DEFAULT_HEADROOM } from '../../config/defaults.ts';
 import { ownLaunchOf } from '../../config/launch.ts';
 import type { TerminalChoice } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
@@ -18,9 +19,11 @@ import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../../resto
 import { checkRestore, previewRestore, runRestore, type ReopenOutcome, type ReopenTab, type RestoreDeps, type RestoreRun } from '../../restore/run.ts';
 import type { RestoreTeam } from '../../restore/teams.ts';
 import { TranscriptFinder } from '../../restore/transcripts.ts';
+import { noRoomText } from '../../sessions/headroom.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { loadTree } from '../tree.ts';
+import { admitBusyText, admitTab, dropTabHold } from '../headroom.ts';
+import { loadTree, type TreeTeam } from '../tree.ts';
 import { claudeExit, claudeProgramOf, claudeSessionArg, effortFlag, encodedPromptFlag, homeArgs, openSessionTab, TERMINAL_LABELS, terminalFlag } from './open.ts';
 
 /** The title of the tab `restore check` opens for the restore. */
@@ -49,8 +52,7 @@ function homeRuntimeOf(args: ParsedArgs, runtime: CliRuntime): CliRuntime {
 }
 
 /** Every team of the kit home as the restore sees it; a team whose config does not load is left out. */
-async function restoreTeamsOf(runtime: CliRuntime): Promise<RestoreTeam[]> {
-  const { teams } = await loadTree(runtime);
+async function restoreTeamsOf(runtime: CliRuntime, teams: ReadonlyMap<string, TreeTeam>): Promise<RestoreTeam[]> {
   const found: RestoreTeam[] = [];
   for (const [team, { kit, config, roster }] of teams) {
     const { marks } = await new JsonlMarkLog(new PlainLogFile(runtime.files, kit.paths.inboxMarks)).read();
@@ -80,10 +82,48 @@ function reopenOutcomeOf(runtime: CliRuntime, outcome: OpenOutcome, folder: stri
 }
 
 /**
+ * The team whose tab gate a restored tab passes: its own team's, else the first team loaded, since the room and the
+ * holds of tabs still loading are the host's, kept beside the host lock every team shares; undefined with no team.
+ */
+function gateTeamOf(teams: ReadonlyMap<string, TreeTeam>, tab: ReopenTab): TreeTeam | undefined {
+  const own = tab.team === undefined ? undefined : teams.get(tab.team.team);
+  return own ?? [...teams.values()][0];
+}
+
+/**
+ * Opens the tab of one restored session through the host's tab gate, as `open` does (T2283): `no-room` while the host
+ * lacks the room for it, except a team's lead, which opens whatever the room; its tab is held while it loads, and the
+ * hold dropped when the tab does not open.
+ */
+async function reopen(runtime: CliRuntime, teams: ReadonlyMap<string, TreeTeam>, tab: ReopenTab, terminal: TerminalChoice | undefined): Promise<ReopenOutcome> {
+  const gate = gateTeamOf(teams, tab);
+  if (gate === undefined) {
+    return openRestoredTab(runtime, tab, terminal);
+  }
+  const { kit, config, roster } = gate;
+  const what = `reopen ${tab.title}`;
+  const admission = await admitTab(runtime, kit.paths, config, roster.ids, { session: tab.team?.session ?? tab.title, anyRoom: tab.team?.isLead === true });
+  if (admission.kind === 'no-room') {
+    return { kind: 'no-room', why: noRoomText(what, admission.headroom) };
+  }
+  if (admission.kind === 'busy') {
+    return { kind: 'no-room', why: admitBusyText(what) };
+  }
+  const outcome = await openRestoredTab(runtime, tab, terminal).catch(async (error: unknown) => {
+    await dropTabHold(runtime, kit.paths, config, admission.holdId);
+    throw error;
+  });
+  if (outcome.kind !== 'opened') {
+    await dropTabHold(runtime, kit.paths, config, admission.holdId);
+  }
+  return outcome;
+}
+
+/**
  * Opens the tab of one restored session. A session `launch` ran comes back through `launch` again, as its team
  * session, on its effort; any other resumes through `restore resume`, outside any team, as it ran before.
  */
-async function reopen(runtime: CliRuntime, tab: ReopenTab, terminal: TerminalChoice | undefined): Promise<ReopenOutcome> {
+async function openRestoredTab(runtime: CliRuntime, tab: ReopenTab, terminal: TerminalChoice | undefined): Promise<ReopenOutcome> {
   const { team } = tab;
   if (team?.launched === true) {
     const { outcome, argv } = await openSessionTab(runtime, {
@@ -116,11 +156,21 @@ async function reopen(runtime: CliRuntime, tab: ReopenTab, terminal: TerminalCho
   return reopenOutcomeOf(runtime, outcome, tab.folder, argv);
 }
 
+/**
+ * How long a restored tab waits for room: the longest open.headroom.loadMinutes of the teams, since a tab of any
+ * team still loading holds the room it was counted at that long.
+ */
+function roomWaitMsOf(teams: ReadonlyMap<string, TreeTeam>): number {
+  const minutes = [...teams.values()].map(({ config }) => config.open.headroom.loadMinutes);
+  return Math.max(DEFAULT_HEADROOM.loadMinutes, ...minutes) * 60_000;
+}
+
 /** The restore over this machine: the kit home's sessions folder, every team on it, its processes and terminals. */
 async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | undefined): Promise<RestoreDeps> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
   const projectsDir = claudeProjectsDir(runtime.env, runtime.userHome);
   const finder = new TranscriptFinder(runtime.files, runtime.probe, projectsDir);
+  const { teams } = await loadTree(runtime);
   return {
     registry: new RestoreRegistry(runtime.files, restoreSessionsDir(kitHome)),
     archive: new RestoreArchive(runtime.files, restoreArchiveDir(kitHome)),
@@ -130,14 +180,15 @@ async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | und
     shutdowns: runtime.restore.shutdowns,
     countdown: runtime.restore.countdown,
     stops: runtime.restore.stops,
-    teams: await restoreTeamsOf(runtime),
+    teams: await restoreTeamsOf(runtime, teams),
     home: runtime.userHome,
     projectsDir,
     platform: runtime.platform,
+    roomWaitMs: roomWaitMsOf(teams),
     stillRunning: (entry) => runsClaude(runtime.sessionProcesses, entry.pid),
     transcriptOf: (entry) => finder.find(entry),
     readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
-    reopen: (tab) => reopen(runtime, tab, terminal),
+    reopen: (tab) => reopen(runtime, teams, tab, terminal),
     print: (line) => runtime.out.stdout(line),
     log: restoreLogOf(runtime),
   };
