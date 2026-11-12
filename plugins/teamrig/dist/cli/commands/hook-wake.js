@@ -99,7 +99,7 @@ function dueIdsOf(verdict) {
  * (`wake.priority`) and reads the budget only when a task past p0 is due: a session its budget holds (past its
  * daily budget while the team has no room today, or paused by a short day: `wakeRestOf`) wakes for p0 only, one in
  * the budget's quiet hours (unless its lift
- * exempts it) for p1 and p0 (`effectivePriority`). Then it decides again at that priority, which wakes for a part of
+ * exempts it) for p1 and p0, p0 alone when they block (`effectivePriority`). Then it decides again at that priority, which wakes for a part of
  * what was due, and leaves the tasks the rest cut out of what the session knows, so they wake it once the rest ends.
  */
 async function restCappedDecision(runtime, scope, input) {
@@ -113,7 +113,7 @@ async function restCappedDecision(runtime, scope, input) {
     const facts = await budgetFactsOf(runtime, { kit: scope.kit, config, roster: scope.roster, id: scope.id }, undefined);
     const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [scope.tab]);
     const rest = wakeRestOf(facts, config.budget.quietHours, input.now, wakeWOf(config, lastTurnAt, input.now));
-    const maxPriority = effectivePriority(input.maxPriority, rest);
+    const maxPriority = effectivePriority(input.maxPriority, rest, config.budget.quietHours);
     const cut = new Set(dueTasks.filter((task) => task.priority > maxPriority).map((task) => task.id));
     if (cut.size === 0) {
         return decision;

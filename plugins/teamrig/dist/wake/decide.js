@@ -14,7 +14,7 @@ import { unfinishedAfter, waitContext } from "../register/waits.js";
 /**
  * Waking a session idle at its prompt when work is handed to it, pure. A wake is a model turn, so only work the
  * session can go on with now ({@link canGoOn}) and has not seen wakes it: its own task at `wake.priority` or more
- * urgent (p0 only while its budget holds or a short day pauses it, p1 and p0 in quiet hours: {@link effectivePriority}), changed by
+ * urgent (p0 only while its budget holds or a short day pauses it, p1 and p0 in quiet hours, p0 alone when they block: {@link effectivePriority}), changed by
  * someone else or by the clock since the session last touched it (handed to it, raised,
  * reopened, freed by another's finish, its waits cleared, or an approval it waits on answered). Each task wakes a
  * session once, tasks handed together wake it once (`wake.batchSeconds`), and wakes of one session are
@@ -37,8 +37,17 @@ export const WAKE_TITLE_MAX = 80;
  * (`queuedWork`'s urgent, src/budget/work.ts).
  */
 export const HELD_PRIORITY = NOW_PRIORITY.id;
-/** The least urgent priority a session in quiet hours still wakes for: p1, and p0 above it. */
+/** The least urgent priority a session in quiet hours still wakes for: p1, and p0 above it, unless they block. */
 export const QUIET_PRIORITY = 1;
+/**
+ * The least urgent priority a session in quiet hours wakes or reopens for: p0 alone when their action is `block`, else
+ * {@link QUIET_PRIORITY}. A blocking night ends no running turn chain, so a p1 wake there runs on until the morning:
+ * on 11-12 the UTC day start (02:00 IST) freed every session's budget inside the quiet hours, and p1 reopens spent
+ * about 4.4% of the week before 05:00 IST (T2500, T2504).
+ */
+export function quietPriorityOf(quietHours) {
+    return quietHours?.action === 'block' ? HELD_PRIORITY : QUIET_PRIORITY;
+}
 /** True for a status whose task names reasons to wait for: it goes on once they all cleared (`check`'s READY). */
 function goesOnByWaits(status) {
     return status === 'waiting' || status === 'verifying';
@@ -196,12 +205,15 @@ export function wakeRestOf(facts, quietHours, now, turnW) {
     const turnPct = facts.todayWPerPct > 0 ? turnW / facts.todayWPerPct : 0;
     return { held: isPausedNow(facts) || isHeld(facts, turnPct), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
 }
-/** The least urgent priority that wakes the session now: p0 only while its budget holds or pauses it, p1 in quiet hours. */
-export function effectivePriority(configured, rest) {
+/**
+ * The least urgent priority that wakes the session now: p0 only while its budget holds or pauses it, in quiet hours
+ * the cap `quietHours` sets ({@link quietPriorityOf}).
+ */
+export function effectivePriority(configured, rest, quietHours) {
     if (rest.held) {
         return Math.min(configured, HELD_PRIORITY);
     }
-    return rest.quiet ? Math.min(configured, QUIET_PRIORITY) : configured;
+    return rest.quiet ? Math.min(configured, quietPriorityOf(quietHours)) : configured;
 }
 /**
  * The cost of waking a session idle `idleMs` (undefined: unknown, counted cold). It is cold past
