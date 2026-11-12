@@ -7,7 +7,7 @@ import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import type { PathProbe } from '../../core/path-probe.ts';
 import { readContextFiles } from '../../doctor/context-files.ts';
 import { readSettingsDeny } from '../../doctor/deny-lines.ts';
-import { doctorFindings, formatFinding, type ConfiguredProject, type ContextInput, type SecretDeny } from '../../doctor/doctor.ts';
+import { doctorFindings, formatFinding, type ConfiguredProject, type ContextInput, type PageProblem, type SecretDeny } from '../../doctor/doctor.ts';
 import { readSessionLists } from '../../doctor/session-lists.ts';
 import { claudeSettingsFiles, readSettingsEnv } from '../../doctor/settings-env.ts';
 import { readShellHistory } from '../../doctor/shell-history.ts';
@@ -18,6 +18,7 @@ import { JsonlRenameLog } from '../../names/log.ts';
 import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openTeamKit, projectFolder, requireConfig, teamZone } from '../kit.ts';
+import { pageCheckOf, type PageCheck } from '../login-page.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
@@ -59,6 +60,11 @@ export async function readSecretDeny(runtime: CliRuntime, project: string): Prom
   return { files: await readSettingsDeny(runtime.files, paths), pasteInto: join(claudeDir, 'settings.json') };
 }
 
+/** The doctor's view of a page check: only a page webhook that gives no URL is a finding. */
+function pageProblemOf(check: PageCheck): PageProblem | undefined {
+  return check.status === 'problem' ? { team: check.source.team, key: check.source.key, problem: check.problem } : undefined;
+}
+
 /**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
  * (names, the rename log, inboxes, its rules.md beside those of the teams above it, its tree of teams and session names shared with other teams,
@@ -71,7 +77,8 @@ export async function readSecretDeny(runtime: CliRuntime, project: string): Prom
  * `launch.<id>.project` that is no folder on this machine; and the local allow rules off `permissions.keepAllow` that
  * approve a whole tool or program or hold a credential (src/cli/allow-scope.ts); the secret deny lines no settings file
  * holds (src/doctor/deny-lines.ts); and the user's PowerShell history file when no PowerShell profile keeps
- * credentials out of it (src/doctor/shell-history.ts; the history is probed, never read). It reads only and exits 0
+ * credentials out of it (src/doctor/shell-history.ts; the history is probed, never read); and a page webhook the team's
+ * alerts name that resolves to no https URL (src/cli/login-page.ts; resolved, never posted or printed). It reads only and exits 0
  * like `check`: a finding is advice, and each line says the fix. `check` prints the context, allow and deny findings too.
  */
 export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -103,6 +110,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
     projects: await configuredProjects(runtime.probe, config, roster.ids),
     shellHistory: await readShellHistory(runtime.files, runtime.probe, { env: runtime.env, userHome: runtime.userHome, platform: runtime.platform }),
+    page: pageProblemOf(await pageCheckOf(runtime, paths.team)),
     budget: config.budget,
     now: new Date(runtime.clock.now()),
     zone: teamZone(config, runtime),

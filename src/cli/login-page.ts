@@ -66,6 +66,26 @@ export async function loginPageOf(runtime: CliRuntime, team: string, session: st
   return { source: found.source, text: loginPageText(tab, found.zone.clock(new Date(at))) };
 }
 
+/**
+ * What a page of `team` would find without posting it: no team up the tree names a page webhook (`none`), the URL
+ * resolves (`ok`), or why it does not (`problem`). Neither holds the URL, so either may be printed.
+ */
+export type PageCheck =
+  | { readonly status: 'none' }
+  | { readonly status: 'ok'; readonly source: PageSource }
+  | { readonly status: 'problem'; readonly source: PageSource; readonly problem: string };
+
+/** Resolves the page URL `team`'s alerts name, as `sendLoginPage` would, and posts nothing. */
+export async function pageCheckOf(runtime: CliRuntime, team: string): Promise<PageCheck> {
+  const found = await pageSourceOf(runtime, team);
+  if (found === undefined) {
+    return { status: 'none' };
+  }
+  const { source } = found;
+  const url = await pageUrlOf(source, runtime);
+  return 'problem' in url ? { status: 'problem', source, problem: url.problem } : { status: 'ok', source };
+}
+
 type PageUrl = { readonly url: string } | { readonly problem: string };
 
 /** The webhook URL a source names, else why there is none, in words that hold neither the URL nor the file's path. */

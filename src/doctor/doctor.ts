@@ -58,7 +58,9 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `project-missing`: a `team.project` or `launch.<id>.project` that is no folder on this machine, so a tab `open`
  *   starts there refuses to launch;
  * - `shell-history`: a PowerShell history file that keeps every line typed in the console, a credential in a URL too,
- *   while no PowerShell profile sets a history handler or turns saving off.
+ *   while no PowerShell profile sets a history handler or turns saving off;
+ * - `page-webhook`: the page webhook the team's alerts (or a team's above) name gives no https URL, so an expired
+ *   Claude login pages nobody until the day it is needed (T2349: host alerts dead 19 h unseen).
  */
 export type FindingKind =
   | 'requirement'
@@ -82,7 +84,8 @@ export type FindingKind =
   | 'quiet-ask'
   | 'deny-missing'
   | 'project-missing'
-  | 'shell-history';
+  | 'shell-history'
+  | 'page-webhook';
 
 /** A project folder the team config names, and what is at its path on this machine. */
 export interface ConfiguredProject {
@@ -117,6 +120,13 @@ export interface SecretDeny {
 export interface ContextFinding extends Finding {
   readonly kind: 'context-size' | 'context-lists';
   readonly budget: keyof ContextFilesConfig;
+}
+
+/** A page webhook that gives no URL: the team whose alerts name it, by which key, and why, in words that hold neither the URL nor a path. */
+export interface PageProblem {
+  readonly team: string;
+  readonly key: string;
+  readonly problem: string;
 }
 
 /** A session and the model and effort it starts on. */
@@ -165,6 +175,8 @@ export interface DoctorInput {
   readonly projects: readonly ConfiguredProject[];
   /** The user's PowerShell history file and profiles (`readShellHistory`). */
   readonly shellHistory: ShellHistory;
+  /** Why the page webhook the team's alerts name gives no URL (`pageCheckOf`); undefined when it resolves or none is named. */
+  readonly page: PageProblem | undefined;
   /** The team's own budget switch and quiet hours: `quietHours` is no account key, so a child team is checked on its own. */
   readonly budget: Pick<BudgetConfig, 'enabled' | 'quietHours'>;
   readonly now: Date;
@@ -497,6 +509,17 @@ function shellHistoryFindings({ shellHistory: { history, profiles, gated } }: Do
   return [{ kind: 'shell-history', detail }];
 }
 
+/** A page webhook that resolves to no URL: the page goes out only on a login expiry, so a broken one shows nowhere else. */
+function pageFindings({ page, command }: DoctorInput): Finding[] {
+  if (page === undefined) {
+    return [];
+  }
+  const detail =
+    `team ${page.team}'s alerts.${page.key} gives no page URL (${page.problem}), so an expired Claude login pages nobody: ` +
+    `fix alerts.${page.key} or what it names, then run ${command} page test`;
+  return [{ kind: 'page-webhook', detail }];
+}
+
 /**
  * Quiet hours whose action is `ask`: in them a helper launch raises a permission prompt (`helperGate`), which nobody
  * at the host answers at night, so the tab waits until someone does (T1983: 222 minutes on 11-04). `block` refuses
@@ -525,7 +548,7 @@ function quietHoursFindings({ budget, now, zone }: DoctorInput): Finding[] {
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
  * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential,
- * quiet hours that ask before a helper launch nobody answers at night, secret deny lines no settings file holds, a configured project folder that is no folder here, and a PowerShell history no profile keeps credentials out of.
+ * quiet hours that ask before a helper launch nobody answers at night, secret deny lines no settings file holds, a configured project folder that is no folder here, a PowerShell history no profile keeps credentials out of, and a page webhook that gives no URL.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
@@ -545,6 +568,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...denyFindings(input.settingsDeny),
     ...projectFindings(input),
     ...shellHistoryFindings(input),
+    ...pageFindings(input),
   ];
 }
 
