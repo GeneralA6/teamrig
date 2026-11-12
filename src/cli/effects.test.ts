@@ -53,6 +53,7 @@ const EXPECTED = {
   'owner note': 'write',
   'owner next': 'write',
   'owner wake': 'write',
+  'page test': 'write',
   decisions: 'read',
   'decisions asked': 'write',
   'exec request': 'write',
