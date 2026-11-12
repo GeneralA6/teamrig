@@ -69,7 +69,8 @@ one-line summary of what it asks. It closes at the
 meeting's end; `meeting.panel.enabled: false` turns it off
 ([the meeting's agenda panel](../../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-meetings-agenda-panel)).
 On Windows Terminal, the meeting also dims every screen but the lead's window until it ends; clicks go through the
-dimming, and `meeting.spotlight.enabled: false` turns it off
+dimming, a CRITICAL message that breaks through to the lead lifts it for two minutes
+(`meeting.spotlight.breakthroughSeconds`), and `meeting.spotlight.enabled: false` turns it off
 ([the spotlight](../../plugins/teamrig/skills/teamrig-guide/hooks.md#meeting-start-the-spotlight)).
 
 The start counts as asking you every decision it lists. Between meetings the lead asks the new ones in batches:
