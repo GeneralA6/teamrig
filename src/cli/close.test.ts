@@ -251,6 +251,16 @@ describe('teamrig close', () => {
     assert.deepEqual(held.processes.ends, []);
   });
 
+  it('closes a session with p1 work in quiet hours that block, and keeps it open for p0 (T2504)', async () => {
+    const quietHours = { startUtc: '09:00', endUtc: '11:00', action: 'block' };
+    const quiet = await runningAlpha(75, reply(40_000), undefined, { ...TEAM, budget: { enabled: true, quietHours } });
+    ok(await quiet.kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']));
+    const preview = await close(quiet, ['alpha', '--session', 'lead']);
+    assert.match(preview.stdout[0] ?? '', /^CLOSE app-alpha \(session alpha\): quiet 75 min/, [...preview.stdout, ...preview.stderr].join('\n'));
+    ok(await quiet.kit.run(['add', '--title', 'Stop the outage', '--description', 'what and why', '--priority', 'p0', '--owner', 'alpha', '--session', 'lead']));
+    assertRefused(await close(quiet, ['alpha', '--yes', '--session', 'lead']), /alpha \(session alpha\) has work it can start \(T2\)/);
+  });
+
   it('keeps open a session at a tool call, one that put a decision to the person, and one whose time wait ends soon', async () => {
     const call = { type: 'assistant', isSidechain: false, message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: {} }] } };
     const calling = await runningAlpha(75, `${reply(40_000)}${JSON.stringify(call)}\n`);

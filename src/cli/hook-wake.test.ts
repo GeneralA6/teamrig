@@ -232,6 +232,16 @@ describe('hook wake-check', () => {
     assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T2"]'), true);
   });
 
+  it('wakes for p0 only in quiet hours that block, since a woken p1 turn chain would run on until the morning (T2504)', async () => {
+    const budget = { enabled: true, overAction: 'ask', quietHours: { startUtc: '09:00', endUtc: '11:00', action: 'block' } };
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { priority: 2, batchSeconds: 0 }, budget });
+    await check(kit);
+    await hand(kit, 'Fix the outage', 'p1');
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null });
+    await hand(kit, 'Stop the outage', 'p0');
+    assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T2"]'), true);
+  });
+
   it('wakes for p0 only while its budget holds it, and for the work held back once the hold ends (T1159)', async () => {
     const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 }, budget: HOLDING_BUDGET });
     await holdAlpha(kit, ALPHA_TAB, LEAD_TAB);
