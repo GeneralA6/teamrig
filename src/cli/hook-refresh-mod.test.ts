@@ -16,10 +16,10 @@ const GO = { kind: 'go' };
 /** The ask at a tool's result with the context at 130k and no ask before. */
 const ASK_130K =
   'teamrig: your context is 130k (refresh at 120k), so refresh within this turn: finish the step you are on and start no other. ' +
-  `Write your handover to ${HANDOVER}, replacing the whole file (your fresh start reads all of it): what the register lacks (the next step of each task in progress; what to check later, and when; ` +
-  'questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), ' +
-  'not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha` and end your turn: ' +
-  'the fresh start follows it.';
+  `Write your handover to ${HANDOVER}, replacing the whole file (your fresh start reads all of it), with what the register lacks, not task statuses, ` +
+  'which your fresh start reads live from the register: a `## State` section (where things are; the scratchpad files, plan file and scheduled jobs the next session ' +
+  'still needs; questions still open with the user) and a `## Next steps` section (the next step of each task in progress; what to check later, and when). ' +
+  'Then end your turn: the turn end takes the handover as ready and the fresh start follows it.';
 
 /** The lines of a background command the main thread started at 09:30, before the harness's 10:00. */
 const BACKGROUND_START = [
@@ -160,7 +160,7 @@ describe('runCli: hook refresh-mid', () => {
     const running = new Tab();
     await running.transcript(BACKGROUND_START);
     const line = 'A background task you started still runs: say in the handover what its result still needs; the fresh start waits until it reports back. ';
-    assert.deepEqual(await running.mid(130_000), { kind: 'ask', text: ASK_130K.replace('Then run', `${line}Then run`), nextAt: 154_000 });
+    assert.deepEqual(await running.mid(130_000), { kind: 'ask', text: ASK_130K.replace('Then end your turn', `${line}Then end your turn`), nextAt: 154_000 });
     const ended = new Tab();
     await ended.transcript(BACKGROUND_START + BACKGROUND_END);
     assert.deepEqual(await ended.mid(130_000), { kind: 'ask', text: ASK_130K, nextAt: 154_000 });

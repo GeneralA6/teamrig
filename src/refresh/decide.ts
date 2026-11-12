@@ -10,7 +10,7 @@ import type { RefreshState, StandingAsk } from './state.ts';
 
 export type RefreshSettings = Pick<
   RefreshConfig,
-  'enabled' | 'contextTokens' | 'everyTasks' | 'everyTasksMinTokens' | 'tabTitle' | 'restartDelaySeconds' | 'compactCeilingTokens'
+  'enabled' | 'contextTokens' | 'everyTasks' | 'everyTasksMinTokens' | 'tabTitle' | 'restartDelaySeconds' | 'compactCeilingTokens' | 'handoverMaxBytes'
 >;
 
 /** A session whose handover is written, waiting for its fresh start. */
@@ -52,8 +52,10 @@ export interface StopFacts {
 
 /** What a due refresh, or the notice that its handover is written, reads before it acts. */
 export interface DueFacts {
-  /** The fingerprint of the handover file as it is now; null when there is none. */
+  /** The fingerprint of the handover file as it is now (`handoverHashOf(handover)`); null when there is none. */
   readonly handoverHash: string | null;
+  /** The handover file as it is now, which a turn end with an ask standing takes as ready when it can (T2533); undefined when there is none. */
+  readonly handover: string | undefined;
   /** Background work the session started that has not reported back (subagents, commands, monitors, workflows). */
   readonly running: number;
 }
@@ -190,7 +192,8 @@ function finishedSoFar(state: RefreshState | undefined): number {
  */
 export function standingAsk(state: RefreshState | undefined): StandingAsk | null {
   if (state?.phase === 'asked') {
-    return { task: state.task, at: state.at, tokens: state.tokens, handoverHash: state.handoverHash };
+    const { task, at, tokens, handoverHash } = state;
+    return { task, at, tokens, handoverHash, ...(state.fixHash === undefined ? {} : { fixHash: state.fixHash }) };
   }
   return state?.phase === 'boundary' ? state.ask : null;
 }
@@ -285,21 +288,102 @@ function runningLine(running: number): string {
 }
 
 /**
+ * The headings a handover must have for a turn end to take it as ready with no `refresh --ready` call (T2533): what
+ * stands, and what comes next. A heading of any level counts when its text starts with the name, so `## Next steps,
+ * in this order` does. A handover without one is asked to be fixed once (`takenHandover`), so the fresh start never
+ * starts from a handover that lost its state or its next steps.
+ */
+export const HANDOVER_SECTIONS: readonly string[] = ['State', 'Next steps'];
+
+const HEADING = /^#{1,6}[ \t]+(.*)$/;
+
+/** The `HANDOVER_SECTIONS` that `handover` has no heading for, in their order. */
+export function missingSections(handover: string): readonly string[] {
+  const headings = handover.split(/\r?\n/).flatMap((line) => {
+    const text = HEADING.exec(line.trim())?.[1];
+    return text === undefined ? [] : [text.trim().toLowerCase()];
+  });
+  return HANDOVER_SECTIONS.filter((section) => {
+    const name = section.toLowerCase();
+    // The name as a whole word: `## Statement` is no `State` section.
+    return !headings.some((heading) => heading.startsWith(name) && !/^[\p{L}\p{N}]/u.test(heading.slice(name.length)));
+  });
+}
+
+/** The sections as the ask and the fix name them: `## State` and `## Next steps`. */
+function sectionsText(sections: readonly string[]): string {
+  return sections.map((section) => `\`## ${section}\``).join(' and ');
+}
+
+/**
  * The ask to write the handover. It asks only for what the register lacks: the fresh start lists the session's
- * tasks live from the register (hooks/live-tasks.ts), so a status restated here could only go stale. Within a turn
- * it ends the turn after `refresh --ready`, since the fresh start comes only once the turn has ended. It never waits
- * for `running` background work (T1378): a session that runs its queued steps in the background would reach Claude
- * Code's compaction unasked; only the fresh start, which would cut that work off, waits for it.
+ * tasks live from the register (hooks/live-tasks.ts), so a status restated here could only go stale. What it asks
+ * for goes in the two `HANDOVER_SECTIONS`, so the turn end can take the handover as ready by itself (T2533): the
+ * `refresh --ready` call it once asked for re-read the whole context for one line. Within a turn it ends the turn,
+ * since the fresh start comes only once the turn has ended. It never waits for `running` background work (T1378): a
+ * session that runs its queued steps in the background would reach Claude Code's compaction unasked; only the fresh
+ * start, which would cut that work off, waits for it.
  */
 function handoverAsk(moment: AskMoment, cause: Cause, context: AskContext, running: number): string {
   const why = whyOf(cause, context.settings);
-  const after = moment.kind === 'midTurn' ? ' and end your turn: the fresh start follows it.' : '. Do not start new work.';
+  const after = moment.kind === 'midTurn' ? ': the turn end takes the handover as ready and the fresh start follows it.' : ': the turn end takes the handover as ready. Do not start new work.';
   return (
-    `${context.command}: ${why}${whenOf(moment)}. Write your handover to ${context.handoverPath}, replacing the whole file (your fresh start reads all of it): what the register lacks ` +
-    '(the next step of each task in progress; what to check later, and when; questions still open with the user; ' +
-    'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, ' +
-    `which your fresh start reads live from the register. ${runningLine(running)}Then run \`${readyCommand(context.command, context.session.id)}\`${after}`
+    `${context.command}: ${why}${whenOf(moment)}. Write your handover to ${context.handoverPath}, replacing the whole file (your fresh start reads all of it), ` +
+    'with what the register lacks, not task statuses, which your fresh start reads live from the register: ' +
+    'a `## State` section (where things are; the scratchpad files, plan file and scheduled jobs the next session still needs; questions still open with the user) ' +
+    'and a `## Next steps` section (the next step of each task in progress; what to check later, and when). ' +
+    `${runningLine(running)}Then end your turn${after}`
   );
+}
+
+/** `state` with its standing ask marked as asked to fix the handover version `fixHash`; a mid-turn ask is the turn end's now. */
+function withFixAsked(state: RefreshState, fixHash: string): RefreshState {
+  if (state.phase === 'asked') {
+    return { ...state, midTurn: false, fixHash };
+  }
+  return state.phase === 'boundary' && state.ask !== null ? { ...state, ask: { ...state.ask, fixHash } } : state;
+}
+
+/**
+ * A turn end with an ask for the handover standing (T2533): a handover written since the ask (its fingerprint
+ * differs), that `refresh --ready` would take and that has both `HANDOVER_SECTIONS`, is taken as ready, announced at
+ * once unless the open meeting or running work holds the notice, as after the call. One written since that falls
+ * short is asked to be fixed, once per version, naming the gap and the call that still answers the ask. Undefined
+ * leaves the turn end to the ask's own rules: no handover written since, a version already asked about, or a fix the
+ * meeting holds.
+ */
+function takenHandover(state: RefreshState, ask: StandingAsk, facts: StopFacts, due: DueFacts, context: StopContext): StopDecision | undefined {
+  const { handover } = due;
+  const hash = handoverHashOf(handover);
+  if (handover === undefined || hash === null || hash === ask.handoverHash || handover.trim() === '') {
+    return undefined;
+  }
+  const ready = decideReady(state, handover, context.handoverPath, context.now, context.settings.handoverMaxBytes);
+  // A handover marked ready already is announced by `decideStop` before it gets here.
+  if (ready.kind === 'already') {
+    return undefined;
+  }
+  const missing = missingSections(handover);
+  const held = meetingHolds(context.settings, facts.meeting, facts.tokens);
+  if (ready.kind === 'ready' && missing.length === 0) {
+    if (held || due.running > 0) {
+      return { kind: 'write', state: ready.state };
+    }
+    return noticeOf(ready.state, context, context.canRestart ? 'restart' : 'clear');
+  }
+  if (held || hash === ask.fixHash) {
+    return undefined;
+  }
+  // Only a handover `refresh --ready` would take can be answered by the call instead.
+  const [gap, call] =
+    ready.kind === 'ready'
+      ? [`${context.handoverPath} has no ${sectionsText(missing)} section`, `, or, if it is complete as it is, run \`${readyCommand(context.command, context.session.id)}\``]
+      : [ready.reason, ''];
+  return {
+    kind: 'block',
+    state: withFixAsked(state, hash),
+    reason: `${context.command}: your handover is not ready yet: ${gap}. It needs a ${sectionsText(HANDOVER_SECTIONS)} section. Fix it and end your turn${call}.`,
+  };
 }
 
 /**
@@ -311,9 +395,11 @@ function handoverAsk(moment: AskMoment, cause: Cause, context: AskContext, runni
  * the handover is written it tells the user, once, that the session restarts by itself when it can, else that
  * it waits for /clear. While background work the session started still runs, the notice waits for a later stop,
  * since a fresh start would cut that work off; a due refresh asks anyway and names the work (`handoverAsk`). Both
- * wait while an owner meeting the session is in is open (`meetingHolds`). A stop that ends a turn a Stop hook continued
- * never asks, so the kit never loops; the notice that the handover is written does show there, since that is
- * the turn that runs `refresh --ready`. A turn that ends after a tool result asked within it (`decideMidTurn`),
+ * wait while an owner meeting the session is in is open (`meetingHolds`). While an ask stands, a handover written
+ * since it with both `HANDOVER_SECTIONS` is taken as ready at the turn end, with no `refresh --ready` call
+ * (`takenHandover`, T2533), and one that falls short is asked to be fixed once per version. A stop that ends a turn a
+ * Stop hook continued asks for nothing else, so the kit never loops; the notice that the handover is written does
+ * show there, since that is the turn that wrote it. A turn that ends after a tool result asked within it (`decideMidTurn`),
  * with no handover marked ready, is asked once more, as a due refresh. The facts are read cheapest first: the
  * running work, which takes the transcript's last 8 MiB, only once a refresh or the notice is due.
  */
@@ -334,6 +420,18 @@ export function decideStop(state: RefreshState | undefined, context: StopContext
     }
     // A fresh start now would cut the running work off: the notice waits for a stop after it ends.
     return facts.due.running > 0 ? NONE : noticeOf(state, context, context.canRestart ? 'restart' : 'clear');
+  }
+  // A handover written since an ask is taken here, the stop after the ask's own block too: the turn that writes it
+  // ends on that block (T2533).
+  const ask = standingAsk(state);
+  if (state !== undefined && ask !== null) {
+    if (facts?.due === undefined) {
+      return MEASURE;
+    }
+    const taken = takenHandover(state, ask, facts, facts.due, context);
+    if (taken !== undefined) {
+      return taken;
+    }
   }
   if (context.stopHookActive) {
     return NONE;
@@ -441,7 +539,7 @@ export type ReadyDecision =
   | { readonly kind: 'refused'; readonly reason: string }
   /** Already ready: nothing to write, the same answer again. */
   | { readonly kind: 'already' }
-  | { readonly kind: 'ready'; readonly state: RefreshState };
+  | { readonly kind: 'ready'; readonly state: ReadyState };
 
 /**
  * `refresh --ready`: only after a handover was asked for (the session is in the ask, or a task end since left it
