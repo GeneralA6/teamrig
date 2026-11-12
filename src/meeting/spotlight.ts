@@ -178,6 +178,8 @@ export function spotlightRequest(target: SpotlightTarget, env: Env, cwd: string)
     args,
     cwd,
     log: target.log,
+    // Windows PowerShell started with no console runs nothing.
+    needsConsole: true,
     env: {
       ...env,
       [SPOTLIGHT_VARS.title]: target.title,

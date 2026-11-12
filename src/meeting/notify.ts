@@ -1,6 +1,6 @@
 import { KIT_NAME, type Env } from '../core/home.ts';
 import { powerShellRequest } from '../core/powershell.ts';
-import type { Processes, RunRequest, StartOutcome } from '../open/processes.ts';
+import type { HiddenRequest, Processes, StartOutcome } from '../open/processes.ts';
 import type { ScheduledMeeting } from './schedule.ts';
 
 /**
@@ -48,11 +48,12 @@ export const WINDOWS_TOAST_SCRIPT = [
 const MAC_NOTICE_SCRIPT = ['on run argv', 'display notification (item 2 of argv) with title (item 1 of argv)', 'end run'];
 
 /** The program that shows `notice` on `platform`, run hidden in `cwd`; undefined where teamrig knows none. */
-export function noticeRequest(platform: NodeJS.Platform, notice: MeetingNotice, env: Env, cwd: string): RunRequest | undefined {
+export function noticeRequest(platform: NodeJS.Platform, notice: MeetingNotice, env: Env, cwd: string): HiddenRequest | undefined {
   switch (platform) {
     case 'win32': {
       const { program, args } = powerShellRequest(WINDOWS_TOAST_SCRIPT);
-      return { command: program, args, cwd, env: { ...env, [NOTICE_TITLE_VAR]: notice.title, [NOTICE_TEXT_VAR]: notice.text } };
+      // Windows PowerShell started with no console runs nothing (T2517).
+      return { command: program, args, cwd, env: { ...env, [NOTICE_TITLE_VAR]: notice.title, [NOTICE_TEXT_VAR]: notice.text }, needsConsole: true };
     }
     case 'darwin':
       return { command: 'osascript', args: [...MAC_NOTICE_SCRIPT.flatMap((line) => ['-e', line]), notice.title, notice.text], cwd, env };

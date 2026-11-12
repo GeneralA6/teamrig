@@ -112,6 +112,50 @@ describe('nodeProcesses', () => {
     assert.match(await waitForText(log, 'second run'), /^out line\r?\nerror line\r?\nsecond run\r?\n$/);
   });
 
+  // T2517: a detached start gave Windows PowerShell no console, and it exited at once having run nothing. The script
+  // writes after its launcher and cmd are gone (startHidden resolves only then), so it outlives both.
+  it("runs a hidden script of the platform's own shell that needs a console, Windows PowerShell on Windows, after its launcher is gone", async () => {
+    const log = join(DIR, 'logs', 'shell.log');
+    const request =
+      process.platform === 'win32'
+        ? { command: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', "Start-Sleep -Milliseconds 500; 'shell ran in ' + (Get-Location).Path"] }
+        : { command: 'sh', args: ['-c', 'sleep 0.5; echo "shell ran in $(pwd)"'] };
+    assert.deepEqual(await processes.startHidden({ ...request, cwd: DIR, env: process.env, log, needsConsole: true }), { kind: 'started', end: 'spawned' });
+    assert.match(await waitForText(log, 'shell ran'), /shell ran in .*teamrig-processes-/);
+  });
+
+  it('reports a program that needs a console and is not installed as missing, by name or by path', async () => {
+    for (const command of [MISSING, join(DIR, `${MISSING}.exe`)]) {
+      assert.deepEqual(await processes.startHidden({ command, args: [], cwd: TEMP, env: process.env, needsConsole: true }), { kind: 'missing' }, command);
+    }
+  });
+
+  /** A node program that needs a console and writes its one argument `word` to `marker`, as it got it. */
+  const echoRequest = (marker: string, word: string) => ({
+    command: NODE,
+    args: ['-e', "require('node:fs').writeFileSync(process.argv[1], process.argv[2])", marker, word],
+    cwd: TEMP,
+    env: process.env,
+    needsConsole: true,
+  });
+
+  // On Windows cmd starts it, whose command line holds 8191 characters and changes `%`, `!` and quotes.
+  it('passes a program that needs a console every argument unchanged, a longer one than cmd takes among them', async () => {
+    const words = ['two words', 'C:\\folder with space\\', '%PATH%', 'say "hi"', 'wow!', 'two\nlines', 'long'.repeat(2500)];
+    for (const [index, word] of words.entries()) {
+      const marker = join(DIR, `kept-${index}.txt`);
+      assert.deepEqual(await processes.startHidden(echoRequest(marker, word)), { kind: 'started', end: 'spawned' }, word.slice(0, 20));
+      assert.equal(await waitForText(marker, word.slice(0, 3)), word);
+    }
+  });
+
+  it('reports a program that needs a console and cannot start for another reason than a missing program as failed', async () => {
+    const notProgram = join(DIR, 'not-a-console-program.txt');
+    writeFileSync(notProgram, 'text');
+    const outcome = await processes.startHidden({ command: notProgram, args: [], cwd: TEMP, env: process.env, needsConsole: true });
+    assert.match(outcome.kind === 'failed' ? outcome.error : outcome.kind, /^exited with code 1: spawn .*\bE[A-Z]+$/);
+  });
+
   it('reports a hidden program whose log cannot be opened as failed, and starts nothing', async () => {
     const marker = join(DIR, 'unlogged.txt');
     const script = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`;

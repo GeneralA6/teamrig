@@ -21,6 +21,7 @@ describe('spotlightRequest', () => {
     assert.equal(request.command, 'powershell.exe');
     assert.equal(request.cwd, 'work');
     assert.equal(request.log, TARGET.log);
+    assert.equal(request.needsConsole, true, 'Windows PowerShell runs nothing without a console');
     assert.deepEqual(request.env, {
       PATH: 'bin',
       [SPOTLIGHT_VARS.title]: 'app-lead',
