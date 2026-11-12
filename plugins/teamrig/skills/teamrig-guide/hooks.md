@@ -964,6 +964,13 @@ status and task, so one Claude Code still lists after it handed its report back 
 `SessionStart` hooks above, so `hook refresh-wake` starts your first turn at your handover. A Claude Code that does
 not load mods leaves the ask unclaimed, and the restart ends and restarts the session instead.
 
+A `/clear` keeps the session's effort level. So when the session runs at another level than its `launch` entry asks
+(a typed `/effort` after its last start, or one the config changed), the restart posts its ask in `end` mode. The mod
+holds it for the same reasons and the same band, then runs `teamrig hook clear-claim --end` and no `/clear`: the
+restart ends the session's Claude Code and starts it again at its config's level, in the same tab when `teamrig open`
+started it, else in a new tab. While a background shell of the session runs, which an end would take with it, the ask
+stays a `/clear`.
+
 Before it claims, the mod holds the `/clear` for the person at the tab, with `--hold` and its reason, so the restart asks again
 `refresh.restartDelaySeconds` later. It holds while the prompt box holds a draft, or Claude Code will not read it.
 It holds for `refresh.holdAfterActivityMinutes` (30) after the person's last key in the prompt box or prompt, typed or
