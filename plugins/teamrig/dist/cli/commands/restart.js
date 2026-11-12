@@ -1,3 +1,4 @@
+import { launchOf } from "../../config/launch.js";
 import { errorMessage } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
@@ -9,7 +10,7 @@ import { RestartLog } from "../../refresh/restart-log.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
-import { openKit, requireConfig, rosterOf } from "../kit.js";
+import { openKit, reloadTeamConfig, requireConfig, rosterOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { inboxDepsOf } from "./inbox.js";
 import { idFlag, openSessionTab } from "./open.js";
@@ -87,6 +88,11 @@ export async function restart(args, runtime) {
             const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal, teamWindow: config.open.teamWindow };
             const { outcome } = await openSessionTab(runtime, tab);
             return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
+        },
+        launchEffort: async () => {
+            // Read afresh: a typed /effort writes its level back to the config while the restart waits.
+            const load = await reloadTeamConfig(runtime, kit);
+            return load.status === 'loaded' ? launchOf(load.config, id).effort : undefined;
         },
     }, { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project, hold: personHoldOf(config.refresh) });
     const line = inboxLineOf(result);

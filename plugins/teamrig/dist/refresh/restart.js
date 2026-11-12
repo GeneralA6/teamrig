@@ -1,4 +1,5 @@
-import { CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId } from "../mod/clear-hand.js";
+import { typedEffortsOf } from "../effort/typed-effort.js";
+import { CLAIM_END, CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId } from "../mod/clear-hand.js";
 import { endAndWait, tabProcessOf, workCutOffBy } from "../open/end-tab.js";
 import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "./running.js";
@@ -121,26 +122,62 @@ async function waitForQuiet(deps, plan, transcript, started) {
         wait = plan.delayMs;
     }
 }
-/** How the tab's mod answered the ask: `held`, with its reason, while something holds the /clear, else it claimed it (`cleared`). */
+/**
+ * How the tab's mod answered the ask: `held`, with its reason, while something holds the /clear; `end` when it
+ * claimed an `end` ask; else it claimed it for its /clear (`cleared`).
+ */
 async function tabAnswerOf(deps, claudeSession, outcome) {
-    return outcome === CLAIM_HELD ? { kind: 'held', why: (await deps.asks.heldWhy(claudeSession)) ?? NO_HOLD_REASON } : { kind: 'cleared' };
+    switch (outcome) {
+        case CLAIM_HELD:
+            return { kind: 'held', why: (await deps.asks.heldWhy(claudeSession)) ?? NO_HOLD_REASON };
+        case CLAIM_END:
+            return { kind: 'end' };
+        default:
+            return { kind: 'cleared' };
+    }
 }
 /**
- * Asks the tab's mod to run /clear (`mod/clear-hand.ts`) and waits up to CLAIM_WAIT_MS for its answer.
- * `cleared` when the mod claimed it and ran /clear; `held` when the mod held it: Claude Code still runs a
- * helper of the session (or would not list them), which neither a /clear nor an end may cut off, or a draft,
- * the person or the band's count holds the /clear; `unclaimed` when no mod answered: the tab has none (an
- * older Claude Code, mods off) or a turn ran. The ask, its outcome and the hold's reason are gone when this
- * returns, so the next round asks afresh; an earlier run's are removed with the new ask's posting.
+ * The level the session runs at: the newest /effort typed in it after its request (a typed command is no prompt,
+ * so it leaves the request pending), else the level its last turn ran at; null when neither is known.
  */
-async function handToTab(deps, plan, claudeSession) {
-    await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold, askEveryMs: plan.delayMs });
+function runningEffortOf(request, tail) {
+    const asked = Date.parse(request.at);
+    return typedEffortsOf(tail, request.claudeSession).findLast((typed) => typed.at > asked)?.level ?? request.effort;
+}
+/**
+ * How the tab refreshes the session: `end` when it runs at another effort level than the one it starts on, which a
+ * /clear would keep; `clear` when the two match or either is unknown, and while a shell of the session runs, which an
+ * end would take with it and a /clear keeps. The process listing comes last, as it is the slow look.
+ */
+async function modeOf(deps, request, claude, transcript) {
+    const wanted = await deps.launchEffort();
+    if (wanted === undefined) {
+        return 'clear';
+    }
+    const running = runningEffortOf(request, (await deps.files.readTail(transcript, TURN_TAIL_BYTES)) ?? '');
+    if (running === null || running === wanted) {
+        return 'clear';
+    }
+    return (await workCutOffBy(deps, claude)) === undefined ? 'end' : 'clear';
+}
+/**
+ * Asks the tab's mod to refresh the session by `mode` (`mod/clear-hand.ts`) and waits up to CLAIM_WAIT_MS for
+ * its answer. `cleared` when the mod claimed it and ran /clear; `end` when it claimed an `end` ask, for the
+ * restart to end the session; `held` when the mod held it: Claude Code still runs a helper of the session (or
+ * would not list them), which neither a /clear nor an end may cut off, or a draft, the person or the band's
+ * count holds the /clear; `unclaimed` when no mod answered: the tab has none (an older Claude Code, mods off)
+ * or a turn ran. An older mod takes an `end` ask as a /clear (`cleared`). The ask, its outcome and the hold's
+ * reason are gone when this returns, so the next round asks afresh; an earlier run's are removed with the new
+ * ask's posting.
+ */
+async function handToTab(deps, plan, claudeSession, mode) {
+    await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold, askEveryMs: plan.delayMs, mode });
     try {
         const deadline = deps.clock.now() + CLAIM_WAIT_MS;
         for (;;) {
             await deps.sleep(POLL_MS);
             const outcome = await deps.asks.outcome(claudeSession);
-            if (outcome === CLAIM_TAKEN || outcome === CLAIM_HELD) {
+            if (outcome === CLAIM_TAKEN || outcome === CLAIM_HELD || outcome === CLAIM_END) {
                 return await tabAnswerOf(deps, claudeSession, outcome);
             }
             const pending = (await pendingOf(deps, plan)) !== undefined;
@@ -199,7 +236,10 @@ async function endSession(deps, plan, request, claude) {
  * and the session still waits for a fresh start. Then it checks the process is Claude Code (a process that
  * still runs but which the system would not describe is looked at again after the next quiet window) and:
  * - first asks the tab's mod to run /clear (`handToTab`). The /clear keeps the tab and its process, and
- *   Claude Code runs its own SessionEnd and SessionStart `clear` hooks, so no end command is needed;
+ *   Claude Code runs its own SessionEnd and SessionStart `clear` hooks, so no end command is needed. When the
+ *   session runs at another effort level than its config's (`modeOf`), which a /clear keeps, the ask is in
+ *   `end` mode instead: once the mod claims it under the same holds, the session is ended as below and starts
+ *   again at the config's level;
  * - when the mod holds the ask (Claude Code says a helper of the session is still live, or would not list
  *   them; or a draft, the person or the band's count holds the /clear), counts the session as busy: it ends
  *   nothing, waits for quiet and asks again, until GIVE_UP_MS, whose why then names the mod's last reason;
@@ -252,7 +292,7 @@ export async function runRestart(deps, plan) {
         if (!isClaudeSessionId(request.claudeSession)) {
             return endSession(deps, plan, request, claude);
         }
-        const answer = await handToTab(deps, plan, request.claudeSession);
+        const answer = await handToTab(deps, plan, request.claudeSession, await modeOf(deps, request, claude, transcript));
         switch (answer.kind) {
             case 'cleared':
                 // The claim clears the request; this clears it only when the claim stopped before that.
@@ -260,6 +300,9 @@ export async function runRestart(deps, plan) {
                     await deps.store.clearRestart(plan.id);
                 }
                 return { kind: 'cleared' };
+            case 'end':
+                // The end claim leaves the request pending, so a prompt typed since still cancels the end.
+                return endSession(deps, plan, request, claude);
             case 'cancelled':
                 return CANCELLED;
             case 'held': {

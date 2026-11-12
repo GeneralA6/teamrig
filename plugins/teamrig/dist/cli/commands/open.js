@@ -21,7 +21,7 @@ import { teamWindowOf } from "../../open/terminals.js";
 import { urgentFirstPrompt } from "../../wake/asks.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { admitBusyText, admitTab, dropTabHold } from "../headroom.js";
-import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { findTeam, openKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { liveRunOf, liveRunText } from "../live-run.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { launchListing } from "../skill-listing.js";
@@ -357,7 +357,8 @@ export function claudeExit(runtime, command, result) {
  * when the automatic context refresh ended Claude Code for a fresh start, launch starts it again in
  * this tab with the default prompt, and the new session reads its handover first. `--resume` resumes that
  * Claude Code session on the first start only: a restart is always fresh. `--effort` overrides the configured
- * effort and `--no-prompt` starts with no first prompt, as the restore after a reboot reopens an idle session.
+ * effort on the first start only: a restart starts at the config's level as it is then. `--no-prompt` starts with
+ * no first prompt, as the restore after a reboot reopens an idle session.
  * When `teamrig close` or the idle pass ended Claude Code, launch says so and exits 0, so the tab closes: a tab left
  * open on the error offers to run this line again, starting a stale launch beside the session's next one. A start or
  * restart while the session runs in another Claude Code is refused.
@@ -382,7 +383,7 @@ export async function launch(args, runtime) {
     }
     const { command, prefix } = await claudeProgramOf(runtime, env);
     const name = roster.nameOf(id) ?? id;
-    const settings = effort === undefined ? launchOf(config, id) : { ...launchOf(config, id), effort };
+    let settings = effort === undefined ? launchOf(config, id) : { ...launchOf(config, id), effort };
     const resumed = resume === undefined ? '' : `, resuming Claude Code session ${resume}`;
     let listing = await launchListing(sessionRuntime, kit, config, roster, id);
     runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}${resumed}${listing.note}`);
@@ -407,6 +408,10 @@ export async function launch(args, runtime) {
         runtime.out.stdout(`Starting Claude Code again as ${name} with a fresh context: it reads its handover first`);
         first = refreshPrompt(team, id, store.handoverPath(id));
         resuming = undefined;
+        // The restart ended a session that ran at another level than its config's (T2444): it starts again at the
+        // config's level as it is now, which a typed /effort may have changed, and no longer at --effort's.
+        const reload = await reloadTeamConfig(sessionRuntime, kit);
+        settings = launchOf(reload.status === 'loaded' ? reload.config : config, id);
         // A skill added or a Used by line changed since the last start is listed as it is now.
         listing = await launchListing(sessionRuntime, kit, config, roster, id);
     }

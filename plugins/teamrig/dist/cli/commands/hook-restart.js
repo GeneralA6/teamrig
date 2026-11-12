@@ -1,5 +1,7 @@
+import { isEffortLevel } from "../../config/types.js";
 import { stringField } from "../../core/guards.js";
 import { ENV } from "../../core/home.js";
+import { payloadEffortOf } from "../../hooks/model-check.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { noticeOf } from "../../refresh/decide.js";
 import { claudeProcessOf, restartMayAct } from "../../refresh/restart.js";
@@ -16,7 +18,8 @@ export function restartTargetOf(runtime, payload) {
     if (claudeSession === null || transcript === undefined || project === undefined) {
         return undefined;
     }
-    return { claudeSession, transcript, cwd: cwd ?? null, project };
+    const effort = payloadEffortOf(payload);
+    return { claudeSession, transcript, cwd: cwd ?? null, project, effort: isEffortLevel(effort) ? effort : null };
 }
 /** Starts `restart` hidden for the request recorded at `at`, to wait until the session is idle; whether it started. */
 async function startRunner(runtime, team, id, at, project) {
@@ -30,7 +33,7 @@ async function startRunner(runtime, team, id, at, project) {
 }
 /** What a restart keeps of the Stop hook's tab, the process it runs under aside. */
 function restartTabOf(runtime, id, target) {
-    return { claudeSession: target.claudeSession, transcript: target.transcript, cwd: target.cwd, supervised: runtime.env[ENV.launched] === id };
+    return { claudeSession: target.claudeSession, transcript: target.transcript, cwd: target.cwd, supervised: runtime.env[ENV.launched] === id, effort: target.effort };
 }
 /**
  * Whether the session has work it can start now (`startableTasks`, at any priority): a fresh start carries on with
