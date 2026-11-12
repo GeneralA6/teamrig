@@ -5449,7 +5449,11 @@ the team's `budget.targetPct`, `budget.paceEndHoursBeforeReset` and `budget.quie
 team's hooks last said the week's use counts from (`usage/team.week.json`), after a reset inside the week from that
 reset, and over the seven days before the week's reset only until those hooks name a start for this week. Outside a
 team, or once the reading's week reset, no pace is shown. The team config's `statusLine` turns `folder`, `branch` and `pace` off one by one (each is
-on by default; with `branch` off, git is never asked). To go on in a session by hand,
+on by default; with `branch` off, git is never asked). While the owner's daily meeting is open on the root team
+(`teamrig meeting start`, until `meeting end` or its lapse), the lead's tab that started it prints its whole line
+in `meeting.statusLine.colour` (`#d75fd7` by default) and every other tab, a sub-team's too, adds
+`meeting.statusLine.heldText` (`meeting on: held`) last; `meeting.statusLine.enabled: false` turns both off. The
+tab is known by `$TEAMRIG_SESSION` or its inbox mark, and the root team's meeting file is read once a tick. To go on in a session by hand,
 [teamrig restore](#teamrig-restore) brings it back by its recorded Claude session. It also removes the folder's snapshots written more than
 8 days ago, which hold no reading of the current week, and the temporary files over an hour old that a status line
 stopped before its rename left, sweeping the folder at most once an hour (its `.pruned` file says when it last did),
