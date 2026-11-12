@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import type { ParkedRestart, RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
@@ -18,6 +19,18 @@ describe('RefreshStore', () => {
     assert.equal(await store.state('bravo'), undefined);
     assert.equal(files.paths().length, 1);
     assert.match(files.get(join(PATHS.refresh, 'alpha.json')) ?? '', /"phase":"boundary"/);
+  });
+
+  it('refuses to overwrite a state file a newer teamrig wrote', async () => {
+    const files = new MemoryFiles();
+    const store = new RefreshStore(files, PATHS);
+    const path = join(PATHS.refresh, 'alpha.json');
+    await files.write(path, '{"v":3,"phase":"boundary","task":"T3","at":"x","finished":1,"ask":null,"later":true}\n');
+    await assert.rejects(store.setState('alpha', { phase: 'boundary', task: 'T3', at: AT, finished: 2, ask: null }), NewerDataError);
+    assert.match(files.get(path) ?? '', /"later":true/);
+    await files.write(path, '{"v":1,"phase":"boundary","task":"T3","at":"x","finished":1,"ask":null}\n');
+    await store.setState('alpha', { phase: 'boundary', task: 'T3', at: AT, finished: 2, ask: null });
+    assert.match(files.get(path) ?? '', /^\{"v":2,/);
   });
 
   it("keeps the lead's request in a file of its own, so neither write overwrites the other", async () => {
