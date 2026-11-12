@@ -1,3 +1,4 @@
+import { launchOf } from '../../config/launch.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -9,7 +10,7 @@ import { RestartLog, type RestartRecord } from '../../refresh/restart-log.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { openKit, requireConfig, rosterOf } from '../kit.ts';
+import { openKit, reloadTeamConfig, requireConfig, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { idFlag, openSessionTab } from './open.ts';
@@ -91,6 +92,11 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
         const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal, teamWindow: config.open.teamWindow };
         const { outcome } = await openSessionTab(runtime, tab);
         return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
+      },
+      launchEffort: async () => {
+        // Read afresh: a typed /effort writes its level back to the config while the restart waits.
+        const load = await reloadTeamConfig(runtime, kit);
+        return load.status === 'loaded' ? launchOf(load.config, id).effort : undefined;
       },
     },
     { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project, hold: personHoldOf(config.refresh) },

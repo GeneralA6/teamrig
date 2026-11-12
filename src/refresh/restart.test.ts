@@ -7,8 +7,9 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
+import type { EffortLevel } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
-import { askFileOf, holdWhyFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
+import { askFileOf, holdWhyFileOf, outcomeFileOf, type ClearMode } from '../mod/clear-hand.ts';
 import { ClearAsks, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
 import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, LOOKUP_FAILED, NO_HOLD_REASON, personHoldOf, restartMayAct, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
@@ -89,6 +90,8 @@ class World {
   opening: TabOpening = { kind: 'opened' };
   /** Writes a transcript line during every wait, as a session at work. */
   busy = false;
+  /** The effort level the team config starts the session on; undefined: it sets none. */
+  launchEffort: EffortLevel | undefined = undefined;
   /** The ask the tab's mod claimed. */
   claimed: ClearAsk | undefined;
   /** That ask's file as the restart wrote it, with what only the mod reads. */
@@ -121,6 +124,7 @@ class World {
         this.opened.push(this.clock.now());
         return this.opening;
       },
+      launchEffort: async () => this.launchEffort,
     };
   }
 
@@ -475,6 +479,108 @@ ${TURN_END}
     const world = await new World().arm({ claudeSession: '../escape' });
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
     assert.equal(world.clock.now() - START, DELAY_MS, 'no wait for a claim');
+  });
+});
+
+/**
+ * Asks the tab's mod claims as soon as they are posted, as `hook clear-claim` does: an `end` ask with `--end`, else
+ * for its /clear, which clears the request (`cleared` runs). An older mod (`withEnd` false) never passes `--end`.
+ */
+class ClaimedByMod extends ClearAsks {
+  /** The mode of each ask posted, in order. */
+  readonly modes: ClearMode[] = [];
+  private readonly withEnd: boolean;
+  private readonly cleared: () => Promise<void>;
+
+  constructor(files: Files, dir: string, withEnd: boolean, cleared: () => Promise<void>) {
+    super(files, dir);
+    this.withEnd = withEnd;
+    this.cleared = cleared;
+  }
+
+  override async post(claudeSession: string, ask: PostedClearAsk): Promise<void> {
+    await super.post(claudeSession, ask);
+    this.modes.push(ask.mode);
+    if (ask.mode === 'end' && this.withEnd) {
+      assert.equal(await this.claimEnd(claudeSession), true);
+      return;
+    }
+    assert.equal(await this.claim(claudeSession), true);
+    await this.cleared();
+  }
+}
+
+/** The transcript lines of a `/effort <level>` the user typed at `at`, and Claude Code's reply. */
+function typedEffort(at: string, level: EffortLevel): string {
+  const uuid = `effort-${at}`;
+  const entry = { type: 'user', isSidechain: false, sessionId: SESSION, timestamp: at };
+  return [
+    JSON.stringify({ ...entry, uuid, message: { role: 'user', content: `<command-name>/effort</command-name>\n<command-args>${level}</command-args>` } }),
+    JSON.stringify({ ...entry, uuid: `${uuid}-reply`, parentUuid: uuid, message: { role: 'user', content: `<local-command-stdout>Set effort level to ${level}</local-command-stdout>` } }),
+  ].join('\n');
+}
+
+/** A quiet transcript in which the user typed `/effort <level>` at `at`. */
+function transcriptTyped(at: string, level: EffortLevel): string {
+  return `${typedEffort(at, level)}\n${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n`;
+}
+
+describe("runRestart when the session runs at another effort level than its config's", () => {
+  /** A world whose last turn ran at `running` and whose config starts the session at `wanted`, its tab's mod claiming each ask. */
+  async function worldOf(running: EffortLevel | null, wanted: EffortLevel | undefined, options: WorldOptions & { readonly supervised?: boolean; readonly withEnd?: boolean } = {}): Promise<{ readonly world: World; readonly asks: ClaimedByMod }> {
+    const world = await new World(options).arm({ effort: running, supervised: options.supervised ?? true });
+    world.launchEffort = wanted;
+    const asks = new ClaimedByMod(world.files, ASK_DIR, options.withEnd ?? true, () => world.store.clearRestart('alpha'));
+    return { world, asks };
+  }
+
+  it("asks the tab to end the session, and once claimed ends it for launch to start it at the config's level", async () => {
+    const { world, asks } = await worldOf('xhigh', 'medium');
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'restarted', where: 'same tab', endCommand: { kind: 'done' } });
+    assert.deepEqual(asks.modes, ['end']);
+    assert.deepEqual(world.processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
+    assert.equal((await world.store.restart('alpha'))?.phase, 'ending', 'launch starts it again');
+    assert.equal(world.clock.now() - START, DELAY_MS + 500, 'ended at the claim, not after the whole wait for one');
+    assert.ok(world.asksClosed());
+  });
+
+  it('opens a new tab before it ends a session not under launch', async () => {
+    const { world, asks } = await worldOf('xhigh', 'medium', { supervised: false });
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'restarted', where: 'new tab', endCommand: { kind: 'done' } });
+    assert.equal(world.opened.length, 1);
+  });
+
+  it('asks for a /clear when the levels match, or either is unknown', async () => {
+    for (const [running, wanted] of [['medium', 'medium'], [null, 'medium'], ['xhigh', undefined]] as const) {
+      const { world, asks } = await worldOf(running, wanted);
+      assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'cleared' }, `${running} against ${wanted}`);
+      assert.deepEqual([asks.modes, world.processes.ends], [['clear'], []]);
+    }
+  });
+
+  it('takes the level of a /effort typed after the request as the running one, and not one typed before it', async () => {
+    const after = new Date(Date.parse(AT) + 1_000).toISOString();
+    const typed = await worldOf('xhigh', 'medium', { transcript: transcriptTyped(after, 'medium') });
+    assert.deepEqual(await runRestart({ ...typed.world.deps, asks: typed.asks }, PLAN), { kind: 'cleared' });
+    assert.deepEqual(typed.asks.modes, ['clear']);
+    const before = new Date(Date.parse(AT) - 60_000).toISOString();
+    const older = await worldOf('xhigh', 'medium', { transcript: transcriptTyped(before, 'medium') });
+    assert.equal((await runRestart({ ...older.world.deps, asks: older.asks }, PLAN)).kind, 'restarted');
+    assert.deepEqual(older.asks.modes, ['end'], 'the turn after it ran at the request level');
+  });
+
+  it('asks for a /clear, which keeps them, while Claude Code runs a background shell', async () => {
+    const shell: ProcessInfo = { pid: 4200, parentPid: CLAUDE.pid, name: 'bash.exe', commandLine: 'bash -c "npm run nightly"' };
+    const { world, asks } = await worldOf('xhigh', 'medium', { running: [TAB_SHELL, CLAUDE, shell] });
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'cleared' });
+    assert.deepEqual([asks.modes, world.processes.ends], [['clear'], []]);
+  });
+
+  it("counts an older mod's claim of an end ask as its /clear: nothing is ended", async () => {
+    const { world, asks } = await worldOf('xhigh', 'medium', { withEnd: false });
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'cleared' });
+    assert.deepEqual([asks.modes, world.processes.ends, world.opened], [['end'], [], []]);
+    assert.equal(await world.store.restart('alpha'), undefined);
   });
 });
 
