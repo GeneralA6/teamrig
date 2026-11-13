@@ -64,7 +64,7 @@ const BUILT_IN_PROGRAMS: readonly DbWriteProgram[] = [
 
 const NODE_RUNTIMES: ReadonlySet<string> = new Set(['node', 'tsx', 'ts-node']);
 const PACKAGE_RUNNERS: ReadonlySet<string> = new Set(['npx', 'pnpx']);
-const ECHOES: ReadonlySet<string> = new Set(['echo', 'printf', 'write-output']);
+const ECHOES: ReadonlySet<string> = new Set(['echo', 'printf', 'write-output', 'write']);
 const FILE_PRINTERS: ReadonlySet<string> = new Set(['cat', 'type', 'get-content', 'gc']);
 
 /** A file name's extension: a document shell runs a word ending in one as a script (`fix.js`), when it is no option or address. */
@@ -214,6 +214,11 @@ async function inputOf(
     }
   }
   for (const source of runs.filter((other) => other.pipe?.into === run)) {
+    if (source.program.string === true && !source.program.dynamic) {
+      // `'DEL k' | kvcli`: a PowerShell statement that opens with a string is that text, piped in, not a program.
+      texts.push(source.program.text);
+      continue;
+    }
     const words = source.args.filter((arg) => !arg.dynamic).map((arg) => arg.text);
     if (ECHOES.has(source.name)) {
       // printf and `echo -e` turn a written `\n` into a line break, so `printf 'GET a\nDEL b'` pipes two commands.

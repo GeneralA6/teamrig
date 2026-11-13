@@ -253,6 +253,18 @@ describe('dbWritesOf, each client, runner and option it reads', () => {
     }
   });
 
+  it('reads the string a PowerShell statement opens with as the text it pipes to a client', async () => {
+    const ctx = { ...context(), dialect: 'powershell' as const };
+    assert.deepEqual(await writes("'DEL k' | kvcli; \"DEL k\" | kvcli; write 'DEL k' | kvcli", ctx), ['kvcli runs DEL', 'kvcli runs DEL', 'kvcli runs DEL']);
+    assert.deepEqual(await writes("@'\nGET a\nDEL k\n'@ | kvcli", ctx), ['kvcli runs DEL']);
+    assert.deepEqual(await writes("'DROP TABLE t;' | psql", ctx), ['psql runs DROP']);
+    assert.deepEqual(await writes(`@'\n${DOC_FIX}'@ | node -`, ctx), ['node runs deleteMany']);
+    assert.deepEqual(await writes(`@'\n${DOC_FIX}'@ | kubectl exec -i deploy/x -- node -`, ctx), ['node runs deleteMany in a container or on a remote host']);
+    assert.deepEqual(await writes("'GET k' | kvcli", ctx), []);
+    // Named limits: a variable's value or a .NET call's result is only known when the line runs.
+    assert.deepEqual(await writes("$c | kvcli; [IO.File]::ReadAllText('f') | docsh", ctx), []);
+  });
+
   it('reads no input or script whose name is only known when the line runs, and no printer option as a file', async () => {
     // A file at the word's written text: reading a dynamic word as a name would find this write.
     const ctx = context({
