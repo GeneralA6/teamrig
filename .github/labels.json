@@ -1,5 +1,5 @@
 {
-  "$comment": "Every label the issue forms, the format checks and teamrig's import use. Type labels are set by the issue forms; priority, area and state labels need triage rights, so only maintainers and the GitHub watcher set them. tools/ci/github-forms.test.ts holds the forms to this list.",
+  "$comment": "Every label the issue forms, the format checks and teamrig's import use. Type labels are set by the issue forms; priority, area and state labels need triage rights, so only maintainers and the GitHub watcher set them. tools/ci/github-format.test.ts holds the forms to this list.",
   "labels": [
     { "name": "bug", "color": "d73a4a", "description": "Type: something teamrig does wrong" },
     { "name": "task", "color": "0e8a16", "description": "Type: work to do that is not a bug or a new capability" },
