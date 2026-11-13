@@ -39,6 +39,8 @@ const PLACES: DeliveryPlaces = {
   freezesMd: '/team/deploys/claims.md',
   freezesLock: '/team/deploys/claims.lock',
   hostLock: '/kit/host.lock',
+  pipelineFreezes: '/kit/pipeline-freezes.json',
+  pipelineFreezesLock: '/kit/pipeline-freezes.lock',
   pendingMerges: '/team/deploys/pending-merges',
   reviewHolds: '/team/deploys/review-holds',
   gateHolds: '/team/deploys/gate-holds',
