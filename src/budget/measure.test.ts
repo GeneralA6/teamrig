@@ -77,6 +77,52 @@ function wOn(state: UsageState | undefined): number | undefined {
   return state?.byDay[DAY]?.w;
 }
 
+/** A reply on `day` at 09:00 UTC with `input` plain input tokens. */
+function replyOn(day: string, id: string, input: number): string {
+  return replyLine({ id, requestId: `q-${id}`, at: `${day}T09:00:00.000Z`, usage: { input } });
+}
+
+describe('measure: the outside sessions of one UTC day (#75)', () => {
+  const BIG = '0000000e-0000-4000-8000-000000000005';
+  const SPAN = '0000000f-0000-4000-8000-000000000006';
+  const STALE = '00000010-0000-4000-8000-000000000007';
+  const UNTITLED = '00000011-0000-4000-8000-000000000008';
+  const DAY_BEFORE = '2030-01-07';
+  const names: Readonly<Record<string, string>> = { [path(BIG)]: 'big', [path(SPAN)]: 'span', [path(STALE)]: 'stale' };
+
+  function onDay(clock: string): { deps: MeasureDeps; input: MeasureInput } {
+    const transcripts = new MemoryTranscripts();
+    const changed = Date.parse(NOW);
+    transcripts.set(path(BIG), transcript([replyOn(DAY, 'g1', 1_000)]), changed);
+    transcripts.set(path(SPAN), transcript([replyOn(DAY_BEFORE, 's1', 700), replyOn(DAY, 's2', 5)]), changed);
+    // Last written the day before: it has nothing on the later day.
+    transcripts.set(path(STALE), transcript([replyOn(DAY_BEFORE, 'o1', 9_000)]), Date.parse('2030-01-07T20:00:00Z'));
+    transcripts.set(path(UNTITLED), transcript([replyOn(DAY, 'u1', 3)]), changed);
+    const { input } = world();
+    return { deps: { transcripts, titleOf: async (file) => names[file], team: new MemoryUsageStore(), outside: new MemoryUsageStore(), clock: new FakeClock(clock) }, input: { ...input, areaBySession: new Map() } };
+  }
+
+  it('counts and names only the sessions with a call that day, each with that day\'s W', async () => {
+    const later = onDay('2030-01-08T23:00:00Z');
+    const measured = await measure(later.deps, later.input);
+    assert.equal(measured.outsideSessions, 3, 'big, span and the untitled one; stale ran only the day before');
+    assert.deepEqual(measured.outsideTop, [
+      { title: 'big', w: 1_000 },
+      { title: 'span', w: 5 },
+    ]);
+  });
+
+  it('answers differently for the day before: the session that spanned both counts there with that day\'s W only', async () => {
+    const earlier = onDay('2030-01-07T23:00:00Z');
+    const measured = await measure(earlier.deps, earlier.input);
+    assert.equal(measured.outsideSessions, 2, 'span and stale');
+    assert.deepEqual(measured.outsideTop, [
+      { title: 'stale', w: 9_000 },
+      { title: 'span', w: 700 },
+    ]);
+  });
+});
+
 describe('measure', () => {
   it("meters each team session's transcripts under its id and everyone else's under the outside id", async () => {
     const { deps, input, team, outside } = world();
@@ -86,7 +132,7 @@ describe('measure', () => {
       [undefined, 125, 40],
     );
     assert.equal(wOn(measured.outside), 7);
-    assert.deepEqual([measured.outsideSessions, measured.outsideTitles, measured.behind], [1, ['release checks'], []]);
+    assert.deepEqual([measured.outsideSessions, measured.outsideTop, measured.behind], [1, [{ title: 'release checks', w: 7 }], []]);
     assert.equal(wOn((await team.load('alpha')).state), 125);
     assert.equal(wOn((await outside.load(OUTSIDE_ID)).state), 7);
   });
@@ -121,7 +167,7 @@ describe('measure', () => {
       [undefined, 125, 40],
     );
     assert.equal(wOn(measured.outside), undefined);
-    assert.deepEqual([measured.outsideSessions, measured.outsideTitles], [0, []]);
+    assert.deepEqual([measured.outsideSessions, measured.outsideTop], [0, []]);
     assert.equal(wOn((await outside.load(OUTSIDE_ID)).state), undefined);
   });
 
