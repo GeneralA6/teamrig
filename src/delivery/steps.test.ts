@@ -1,12 +1,12 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { constants, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { STEP_PRIORITY } from './priority.ts';
-import { exitCodeOf, nodeStepRunner, STOPPED_EXIT, TIMED_OUT_EXIT } from './steps.ts';
+import { exitCodeOf, nodeStepRunner, stepLaunchOf, STOPPED_EXIT, TIMED_OUT_EXIT } from './steps.ts';
 import { nodeTreeKill, type TreeKill } from './tree-kill.ts';
 import { livenessOf, parseWrittenProcess, WRITE_PROCESS_SCRIPT, type WrittenProcess } from '../testing/process-liveness.ts';
 
@@ -43,12 +43,36 @@ describe('exitCodeOf', () => {
   });
 });
 
+describe('stepLaunchOf', () => {
+  it('runs the command line in cmd.exe on Windows, lowered once it has started', () => {
+    assert.deepEqual(stepLaunchOf('win32', 'npm test', 0), { file: 'npm test', args: [], shell: true, lowerAfter: true });
+  });
+
+  it('starts /bin/sh under nice on POSIX, so the step runs lowered from its first instruction', () => {
+    for (const platform of ['linux', 'darwin'] as const) {
+      assert.deepEqual(stepLaunchOf(platform, 'npm test', 0), {
+        file: 'nice',
+        args: ['-n', String(STEP_PRIORITY), '/bin/sh', '-c', 'npm test'],
+        shell: false,
+        lowerAfter: false,
+      });
+    }
+  });
+
+  it('adds only what brings the step to below normal, and nothing to a process already running lower', () => {
+    assert.deepEqual(stepLaunchOf('linux', 'x', 4).args.slice(0, 2), ['-n', String(STEP_PRIORITY - 4)]);
+    assert.deepEqual(stepLaunchOf('linux', 'x', STEP_PRIORITY + 5).args.slice(0, 2), ['-n', '0']);
+  });
+});
+
 describe('nodeStepRunner', () => {
   let dir = '';
   const runner = nodeStepRunner(process.platform);
 
   before(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'teamrig-steps-'));
+    // The folder's real path: macOS's temp folder sits under /var, a link to /private/var, and a step's
+    // process.cwd() names the real one.
+    dir = await realpath(await mkdtemp(join(tmpdir(), 'teamrig-steps-')));
   });
 
   after(async () => {
@@ -154,15 +178,17 @@ describe('nodeStepRunner', () => {
     await assert.rejects(runner.run({ command: 'node -e "0"', cwd: join(dir, 'missing'), env: process.env, timeoutMs: 30_000 }));
   });
 
-  it('lowers the step it started to below-normal priority', async () => {
+  it('lowers the step it started to below-normal priority on Windows, and starts it lowered elsewhere', async () => {
     const lowered: Array<readonly [number, number]> = [];
     const recording = nodeStepRunner(process.platform, nodeTreeKill(process.platform), {
       of: () => constants.priority.PRIORITY_NORMAL,
       set: (pid, priority) => lowered.push([pid, priority]),
     });
     await recording.run({ command: 'node -e "0"', cwd: dir, env: process.env, timeoutMs: 30_000 });
-    assert.equal(lowered.length, 1);
-    assert.equal(lowered[0]?.[1], STEP_PRIORITY);
+    assert.deepEqual(
+      lowered.map(([, priority]) => priority),
+      process.platform === 'win32' ? [STEP_PRIORITY] : [],
+    );
   });
 
   it('runs the processes its step starts at below-normal priority on this host', async () => {
