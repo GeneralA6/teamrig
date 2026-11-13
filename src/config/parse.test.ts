@@ -27,7 +27,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig' });
+    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig', similarThreshold: 0.35 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
@@ -417,6 +417,7 @@ describe('parseConfig', () => {
       closedDays: 365,
       everyMinutes: 0,
       acceptLabel: 'teamrig',
+      similarThreshold: 0.35,
     });
     for (const wrong of [0, 366]) {
       const parsed = parseConfig({ ...ROSTER, github: { closedDays: wrong } });
@@ -427,6 +428,19 @@ describe('parseConfig', () => {
       const parsed = parseConfig({ ...ROSTER, github: { everyMinutes: wrong } });
       assert.deepEqual(paths(parsed.issues), ['github.everyMinutes']);
       assert.equal(parsed.config.github.everyMinutes, 15);
+    }
+  });
+
+  it('reads the github similar threshold within 0 to 1, else keeps 0.35', () => {
+    for (const good of [0, 0.5, 1]) {
+      const { config, issues } = parseConfig({ ...ROSTER, github: { similarThreshold: good } });
+      assert.deepEqual(issues, []);
+      assert.equal(config.github.similarThreshold, good);
+    }
+    for (const wrong of [-0.1, 1.01, '0.5']) {
+      const parsed = parseConfig({ ...ROSTER, github: { similarThreshold: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.similarThreshold'], JSON.stringify(wrong));
+      assert.equal(parsed.config.github.similarThreshold, 0.35);
     }
   });
 

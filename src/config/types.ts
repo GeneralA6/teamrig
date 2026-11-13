@@ -596,6 +596,11 @@ export interface GithubConfig {
    * were not edited after that. Matched without case.
    */
   readonly acceptLabel: string;
+  /**
+   * The score, from 0 to 1, at which a mirrored issue counts as a duplicate candidate of a new one: the cosine of
+   * their TF-IDF word vectors (src/issues/similar.ts). Higher lists fewer, closer candidates.
+   */
+  readonly similarThreshold: number;
 }
 
 /** The small-commits rule: one logical change per commit, and a reason line on any commit over the bounds. */
