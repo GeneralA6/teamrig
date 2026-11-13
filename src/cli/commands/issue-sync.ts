@@ -11,7 +11,7 @@ import { hostOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
-import { GITHUB_OFF, githubOff, reportAutoSync } from './gh-auto.ts';
+import { GITHUB_OFF, githubOff, reportAutoSync } from './issue-sync-auto.ts';
 
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
@@ -30,12 +30,12 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  * instead. A sync only lists issues, and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
- * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the Stop hook starts (gh-auto.ts), writes as
+ * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the Stop hook starts (issue-sync-auto.ts), writes as
  * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
  * an issue is newly left out. Exit 1 when a repository could not be read (its tasks stay
  * as they are), 2 when the register refused a step, else 0.
  */
-export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const auto = args.switches.has('auto');
   const write = auto || args.switches.has('yes');

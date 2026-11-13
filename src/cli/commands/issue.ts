@@ -8,7 +8,7 @@ import { callerOf } from '../inputs.ts';
 import { hostOf } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { GITHUB_OFF, githubOff } from './gh-auto.ts';
+import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
 import { openTeam } from './register-team.ts';
 
 /**
