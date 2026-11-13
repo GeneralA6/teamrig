@@ -17,7 +17,7 @@ import { openTeam, type Team } from './register-team.ts';
 export const SHOWN_UNROWED = 20;
 
 /**
- * `gh migrate <file> [--out <preview.md>] [--yes]` (T2550): moves the caller's team's tasks to GitHub issues from a
+ * `issue migrate <file> [--out <preview.md>] [--yes]` (T2550): moves the caller's team's tasks to GitHub issues from a
  * file of JSON-lines rows (github/migrate.ts), each a task's public wording or the reason it stays local. Without
  * `--yes` it writes nothing but the `--out` preview, a page with every issue in full for a reviewer. `--yes` opens
  * each planned issue through the issue host port (issues/host.ts; on GitHub with the token saved for the repository's
@@ -58,7 +58,7 @@ export async function ghMigrate(args: ParsedArgs, runtime: CliRuntime): Promise<
   }
   planLines(plan).forEach(say);
   if (!write) {
-    say(`PREVIEW nothing was written; ${KIT_NAME} gh migrate <file> --yes opens the issues and sets each task's ref`);
+    say(`PREVIEW nothing was written; ${KIT_NAME} issue migrate <file> --yes opens the issues and sets each task's ref`);
     return EXIT.ok;
   }
   return openIssues(runtime, team, by, plan.creates, scanner);

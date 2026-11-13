@@ -32,7 +32,7 @@ export const ENV = {
   claudeTempDir: 'CLAUDE_CODE_TMPDIR',
   /** The session `teamrig launch` runs Claude Code for: it starts Claude Code again after an automatic restart. */
   launched: 'TEAMRIG_LAUNCHED',
-  /** `off` turns `teamrig gh sync` off on this machine: it reads nothing and writes nothing. */
+  /** `off` turns `teamrig issue sync` off on this machine: it reads nothing and writes nothing. */
   github: 'TEAMRIG_GITHUB',
   /** Claude Code's effort for every session and helper that gets it, over `--effort`, `/effort` and per-call Agent `effort`; `doctor` warns when set. */
   effortLevel: 'CLAUDE_CODE_EFFORT_LEVEL',

@@ -24,7 +24,7 @@ import { inboxDepsOf } from './inbox.ts';
 import { fileLockOf } from '../file-locks.ts';
 
 /**
- * The automatic GitHub sync: the Stop hook starts `gh sync --auto` hidden in the background once per
+ * The automatic GitHub sync: the Stop hook starts `issue sync --auto` hidden in the background once per
  * `github.everyMinutes` for the whole team, claimed under one lock, and that run tells each owner's inbox
  * the tasks it added, and the lead's when the failing repositories change or an outsider's issue is newly left
  * out. Nothing else keeps running.
@@ -48,7 +48,7 @@ async function readState(runtime: CliRuntime, kit: Kit): Promise<SyncState | und
 
 /**
  * The state before a write, under the lock. A file a newer teamrig wrote is refused (`NewerDataError`), so an older
- * teamrig still running in some tab never drops its fields: its hook starts no sync, its `gh sync --auto` fails.
+ * teamrig still running in some tab never drops its fields: its hook starts no sync, its `issue sync --auto` fails.
  */
 async function writableState(runtime: CliRuntime, kit: Kit): Promise<SyncState | undefined> {
   const text = await runtime.files.read(kit.paths.githubSync);
@@ -58,7 +58,7 @@ async function writableState(runtime: CliRuntime, kit: Kit): Promise<SyncState |
 
 /**
  * The Stop hook's part: once `github.everyMinutes` passed since the last automatic sync, claims the next one
- * and starts `gh sync --auto` hidden, for the team the hook runs for, so the hook neither prints nor waits. A
+ * and starts `issue sync --auto` hidden, for the team the hook runs for, so the hook neither prints nor waits. A
  * turn end that is not due reads one small file; the claim is checked again under the lock, which a hook
  * never waits for (another session's hook holding it is claiming the same sync). A start that fails is
  * retried at the next interval.
@@ -83,7 +83,7 @@ export async function startAutoSync(runtime: CliRuntime, kit: Kit, config: KitCo
   if (claimed) {
     await runtime.processes.startHidden({
       command: runtime.self.node,
-      args: [runtime.self.script, 'gh', 'sync', '--auto'],
+      args: [runtime.self.script, 'issue', 'sync', '--auto'],
       cwd: kit.paths.home,
       env: { ...runtime.env, [ENV.team]: kit.paths.team },
     });
@@ -91,7 +91,7 @@ export async function startAutoSync(runtime: CliRuntime, kit: Kit, config: KitCo
 }
 
 /**
- * What `gh sync --auto` does once it has written: records its finish, failing repositories and left-out issues,
+ * What `issue sync --auto` does once it has written: records its finish, failing repositories and left-out issues,
  * then posts one inbox line to each owner naming the tasks added for it, one to the lead when the failing
  * repositories changed (`failureNews`) and one when an outsider's issue was left out that was not before
  * (`leftOutNews`). It gives a line for each inbox line that was refused, such as an issue title that matches a

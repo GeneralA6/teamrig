@@ -43,7 +43,7 @@ export function repoOwner(repo: string): string {
   return repo.slice(0, repo.indexOf('/')).toLowerCase();
 }
 
-/** The name of the credential `teamrig gh sync` looks for to read `owner`'s repositories. */
+/** The name of the credential `teamrig issue sync` looks for to read `owner`'s repositories. */
 export function tokenName(owner: string): string {
   return `${TOKEN_PREFIX}${owner.toLowerCase()}`;
 }

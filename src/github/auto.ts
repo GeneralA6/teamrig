@@ -38,7 +38,7 @@ export interface SyncState {
   readonly leftOut: ReadonlyMap<string, readonly number[]>;
 }
 
-/** What one `gh sync --auto` run did: the tasks it added, the repositories that failed, and the issues it left out of each repository it read. */
+/** What one `issue sync --auto` run did: the tasks it added, the repositories that failed, and the issues it left out of each repository it read. */
 export interface SyncRun {
   readonly added: readonly AddedTask[];
   readonly failures: readonly RepoFailure[];
