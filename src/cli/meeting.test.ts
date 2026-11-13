@@ -366,6 +366,14 @@ describe('runCli: the daily meeting', () => {
     assert.equal(stdout[week + 1], '  fits: p2 20% (left 69.5% of the week)', stdout.join('\n'));
   });
 
+  it("puts the account's resets in stock right under the week line (T2450)", async () => {
+    const resets = [{ kind: 'fable', count: 3, expiresUtc: '2030-03-01 08:00', usedUtc: [] }];
+    const { stdout } = await (await teamBeforeTheMeeting({ ...TEAM, budget: { resets } })).run(['meeting', 'agenda', '--session', 'lead']);
+    const week = stdout.findIndex((line) => line.startsWith('Week: '));
+    assert.ok(week >= 0, stdout.join('\n'));
+    assert.equal(stdout[week + 1], 'Resets in stock: fable 3 left, the next expiring 2030-03-01 08:00 UTC (in 51 days).');
+  });
+
   it("lists merge's self-merges since the meeting before under pushToProtected gated, check-clean ones marked", async () => {
     const landed: SelfMerge = {
       at: '2030-01-08T09:00:00.000Z',

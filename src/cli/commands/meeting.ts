@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { resetSummaryLine } from '../../budget/resets.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
@@ -238,6 +239,10 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   mergeDigestLines(await mergeDigestOf(runtime, mk, since, rolled)).forEach((line) => runtime.out.stdout(line));
   await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
   runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
+  const resets = resetSummaryLine(mk.config.budget.resets, mk.now, mk.zone, KIT_NAME);
+  if (resets !== undefined) {
+    runtime.out.stdout(resets);
+  }
   const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);
   if (week !== null) {
     fitLines(await weekFitOf(runtime, { own, teams: [own] }, week, false)).forEach((line) => runtime.out.stdout(`  ${line}`));

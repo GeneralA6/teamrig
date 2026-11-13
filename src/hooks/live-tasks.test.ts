@@ -51,6 +51,11 @@ describe('blockStartLines', () => {
     assert.deepEqual(blockStartLines('alpha', { at: 'Tue 01-08 10:00 UTC', meetings: MEETINGS, week: undefined }, 'teamrig'), [START, MEETINGS]);
     assert.deepEqual(blockStartLines('alpha', { at: 'Tue 01-08 10:00 UTC', meetings: undefined, week: undefined }, 'teamrig'), [START]);
   });
+
+  it("ends with the lead's resets line after the week line when there is one (T2450)", () => {
+    const RESETS = 'Resets in stock: fable 2 left, the next expiring 2030-03-01 08:00 UTC (in 51 days).';
+    assert.deepEqual(blockStartLines('alpha', { at: 'Tue 01-08 10:00 UTC', meetings: MEETINGS, week: WEEK, resets: RESETS }, 'teamrig'), [START, MEETINGS, WEEK, RESETS]);
+  });
 });
 
 describe('liveTasksNote', () => {

@@ -1,4 +1,5 @@
 import { weekLine } from '../../budget/report.ts';
+import { resetSummaryLine } from '../../budget/resets.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
@@ -43,7 +44,8 @@ export async function liveTasksNoteOf(runtime: CliRuntime, paths: TeamPaths, con
 /**
  * What `start` prints before session `id`'s task list, for its start note: the time on the team's clock, today's and
  * the missed meetings it is met in or joins (every one for the lead), and the week as a hook reads it (cli/stored-week.ts:
- * the use as last stored, no transcript measured, so a restore of many tabs stays inside the hook's timeout). A
+ * the use as last stored, no transcript measured, so a restore of many tabs stays inside the hook's timeout), and for
+ * the lead the account's resets in stock. A
  * schedule or a week it cannot read leaves its line out, never throws: the note must still reach the session.
  */
 export async function blockStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, id: string): Promise<BlockStart> {
@@ -59,5 +61,6 @@ export async function blockStartOf(runtime: CliRuntime, kit: Kit, config: KitCon
       .then((reading) => weekLine(reading, zone))
       .catch(() => undefined),
   ]);
-  return { at: zone.weekdayMinute(new Date(now)), meetings, week };
+  const resets = id === lead ? resetSummaryLine(config.budget.resets, now, zone, KIT_NAME) : undefined;
+  return { at: zone.weekdayMinute(new Date(now)), meetings, week, ...(resets === undefined ? {} : { resets }) };
 }
