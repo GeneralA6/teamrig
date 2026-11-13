@@ -982,14 +982,16 @@ describe('RegisterPolicy.update', () => {
     );
   });
 
-  it("lets only the lead point a session's task with no ref at the issue it opened for it, never replace a ref (T2550)", () => {
+  it("lets only the lead point a session's task holding no issue at the issue it opened for it, never replace an issue ref (T2550)", () => {
     const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'], leads: { alpha: ['bravo'] } }));
     const bravos = testTask({ id: 'T9', owner: 'bravo' });
     assert.deepEqual(tree.update(bravos, 'lead', { ref: 'gh:acme/app#7' }, undefined, EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: null } });
     assert.equal(tree.update(bravos, 'lead', { ref: 'gh:acme/app#7', priority: 1 }, undefined, EMPTY).ok, true, 'beside the work order');
     const refused = 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: ref)';
     assert.equal(error(tree.update(bravos, 'lead', { ref: 'notes/plan.md' }, undefined, EMPTY)), refused, 'a ref that is no issue');
-    assert.equal(error(tree.update(testTask({ id: 'T9', owner: 'bravo', ref: 'notes/plan.md' }), 'lead', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), refused, "the owner's ref stays");
+    const noted = testTask({ id: 'T9', owner: 'bravo', ref: 'notes/plan.md' });
+    assert.deepEqual(tree.update(noted, 'lead', { ref: 'gh:acme/app#7' }, 'ref was: notes/plan.md', EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: 'ref was: notes/plan.md' } }, 'a note ref gives way');
+    assert.equal(error(tree.update(noted, 'lead', { ref: 'notes/other.md' }, undefined, EMPTY)), refused, 'only to an issue');
     assert.equal(error(tree.update(testTask({ id: 'T9', owner: 'bravo', ref: 'gh:acme/app#3' }), 'lead', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), refused, 'its issue stays');
     assert.equal(error(tree.update(bravos, 'alpha', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), refused, 'a sub-lead does not');
     assert.equal(error(tree.update(bravos, 'charlie', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), 'only the owner (bravo) or a leader above bravo (alpha or lead) changes T9');

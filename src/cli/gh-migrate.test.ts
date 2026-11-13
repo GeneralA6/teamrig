@@ -114,6 +114,18 @@ describe('teamrig gh migrate', () => {
     assert.equal(tasksOf(kit).size, 3, synced.stdout.join('\n'));
   });
 
+  it("replaces a task's note ref with its issue, naming the old ref in the preview and the task's history", async () => {
+    const kit = await migratingTeam();
+    const noted = await kit.run(['update', 'T1', '--ref', 'notes/plan.md'], { env: { TEAMRIG_SESSION: 'alpha' } });
+    assert.equal(noted.code, EXIT.ok, noted.stdout.join('\n'));
+    const replaces = 'REPLACES T1: its ref notes/plan.md gives way to its issue';
+    assert.equal((await expectRun(kit, ['gh', 'migrate', 'rows.jsonl'], new FakeGh(), EXIT.ok))[0], replaces);
+    const lines = await expectRun(kit, ['gh', 'migrate', 'rows.jsonl', '--yes'], new FakeGh(), EXIT.ok);
+    assert.deepEqual(lines.slice(0, 2), [replaces, '2 issue(s) to open, 1 kept local, 0 skipped, 0 live task(s) with no row']);
+    assert.equal(tasksOf(kit).get('T1')?.ref, 'gh:acme/web#1');
+    assert.ok((kit.files.get(EVENTS_PATH) ?? '').includes('ref was: notes/plan.md'));
+  });
+
   it('opens with the token saved for the owner', async () => {
     const kit = await migratingTeam();
     const gh = new FakeGh();
