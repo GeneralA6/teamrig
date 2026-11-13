@@ -5119,7 +5119,9 @@ use of its n sessions, the sub-lead's own included, against the group's daily bu
 group lift. The lifts block then lists group lifts first, adds an `of` column naming the budget each lift is a part
 of (`the team` or `group <sub-lead>`), and its heading says that quiet hours do not apply to a session's lift, but do
 to a group's. With no status line snapshot and no `budget.weeklyLimitW`, the week line says its use is
-unknown and the table gives W and calls only. `Not on the team: N Claude Code sessions (titled ...)` counts the tabs not tied to a session.
+unknown and the table gives W and calls only. `Not on the team: N Claude Code sessions (top by W: <title> <W>, ...)`
+counts the tabs not tied to a session that made a call that day (with `--day`, the day picked) and names the top
+ones by that day's W.
 With other teams on the same Claude account that have the budget on, a `team <id> (<n>)` row for each follows the
 sessions: the use of its n sessions as its own meter last stored it, against its part of the account's daily budget
 (`-` when it has none). The rows and the outside use then add up to the account's day, and the outside line reads
