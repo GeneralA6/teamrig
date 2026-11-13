@@ -660,7 +660,7 @@ The room teamrig open and teamrig hire --yes need on the host before they add a 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `sessionMb` | integer (100 to 65536) | `1200` | The MB a new session is counted to need while no session runs to measure; else the median running session's Claude Code process tree. |
-| `commitMaxPct` | integer (50 to 100) | `92` | The most of the host's commit limit, in %, its commit charge may reach with the new session counted (Windows and Linux; elsewhere free memory alone is checked). |
+| `commitMaxPct` | integer (50 to 100) | `92` | The most of the host's commit limit, in %, its commit charge may reach with the new session counted (Windows, and Linux under strict overcommit, vm.overcommit\_memory 2; elsewhere free memory alone is checked). |
 | `closeIdleMinutes` | integer (15 to 10080) | `60` | How long, in minutes, a session stays quiet before teamrig close may end it to free the host; teamrig open resumes it. |
 | `floorMb` | integer (0 to 1048576) |  | The MB free memory must keep with a new tab and the tabs still loading counted. Unset: delivery.queue.memoryFloorMb plus delivery.queue.heavyReserveMb, so a new tab leaves room for one heavy queued step. |
 | `loadMinutes` | integer (1 to 60) | `5` | How long, in minutes, a tab just opened holds the MB it was counted at, while it loads and free memory does not show it yet. Tab opens and queued steps on the host count the held MB as taken. |

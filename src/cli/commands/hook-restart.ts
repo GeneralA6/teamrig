@@ -3,6 +3,7 @@ import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, type TeamPaths } from '../../core/home.ts';
 import { payloadEffortOf } from '../../hooks/model-check.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
+import { CARRY_TAIL_BYTES, carryOf } from '../../refresh/carry.ts';
 import { noticeOf, type NoticeDecision, type StopContext } from '../../refresh/decide.ts';
 import { claudeProcessOf, restartMayAct } from '../../refresh/restart.ts';
 import type { ParkedRestart, RestartRequest, RestartTab } from '../../refresh/state.ts';
@@ -100,8 +101,28 @@ export async function parkRestart(runtime: CliRuntime, store: RefreshStore, scop
 }
 
 /**
- * Arms the restart a notice announces when work follows the handover (`workFollows`) in the team at `register`; else
- * parks it for the wake that brings the session work (T1383).
+ * Whether the session's next turn comes whether or not a task wake brings it work: the lead, which the owner, its inbox
+ * and its own checks wake, or a session whose transcript (at `transcript`) still has a live recurring scheduled job
+ * (CronCreate, counting those an earlier /clear left in its process: `refresh/carry.ts`). A restart held back for a
+ * wake (T1383) never comes for such a session: the scheduled turn goes on from the full context, which drops the
+ * held-back restart, and every later fire reads that whole context again. Read only at a notice, not at every stop.
+ */
+export async function wokenAnyway(runtime: CliRuntime, store: RefreshStore, config: KitConfig, id: string, transcript: string | undefined): Promise<boolean> {
+  if (config.roles.lead === id) {
+    return true;
+  }
+  const text = transcript === undefined ? undefined : await runtime.files.readTail(transcript, CARRY_TAIL_BYTES);
+  if (text === undefined) {
+    return false;
+  }
+  const record = await store.carried(id);
+  const inherited = record !== undefined && record.transcript === transcript ? record.crons : [];
+  return carryOf(text, runtime.clock.now(), inherited).crons.some((cron) => cron.recurring);
+}
+
+/**
+ * Arms the restart a notice announces when work follows the handover (`workFollows`) in the team at `register`, or when
+ * the session is woken anyway (`wokenAnyway`); else parks it for the wake that brings the session work (T1383).
  */
 export async function restartOrPark(
   runtime: CliRuntime,
@@ -110,7 +131,9 @@ export async function restartOrPark(
   notice: NoticeDecision,
   register: { readonly paths: TeamPaths; readonly config: KitConfig },
 ): Promise<NoticeDecision> {
-  return (await workFollows(runtime, register.paths, register.config, scope.id)) ? armRestart(runtime, store, scope, notice) : parkRestart(runtime, store, scope, notice);
+  const arm =
+    (await workFollows(runtime, register.paths, register.config, scope.id)) || (await wokenAnyway(runtime, store, register.config, scope.id, scope.target.transcript));
+  return arm ? armRestart(runtime, store, scope, notice) : parkRestart(runtime, store, scope, notice);
 }
 
 /** The tab a dead or parked restart is armed from (`rearmDeadRestart`, `armParkedRestart`). */

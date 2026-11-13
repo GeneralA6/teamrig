@@ -3,6 +3,7 @@ import { stringField } from "../../core/guards.js";
 import { ENV } from "../../core/home.js";
 import { payloadEffortOf } from "../../hooks/model-check.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
+import { CARRY_TAIL_BYTES, carryOf } from "../../refresh/carry.js";
 import { noticeOf } from "../../refresh/decide.js";
 import { claudeProcessOf, restartMayAct } from "../../refresh/restart.js";
 import { parkRulesOf } from "../../register/park.js";
@@ -69,11 +70,31 @@ export async function parkRestart(runtime, store, scope, notice) {
     return noticeOf(notice.state, context, 'park');
 }
 /**
- * Arms the restart a notice announces when work follows the handover (`workFollows`) in the team at `register`; else
- * parks it for the wake that brings the session work (T1383).
+ * Whether the session's next turn comes whether or not a task wake brings it work: the lead, which the owner, its inbox
+ * and its own checks wake, or a session whose transcript (at `transcript`) still has a live recurring scheduled job
+ * (CronCreate, counting those an earlier /clear left in its process: `refresh/carry.ts`). A restart held back for a
+ * wake (T1383) never comes for such a session: the scheduled turn goes on from the full context, which drops the
+ * held-back restart, and every later fire reads that whole context again. Read only at a notice, not at every stop.
+ */
+export async function wokenAnyway(runtime, store, config, id, transcript) {
+    if (config.roles.lead === id) {
+        return true;
+    }
+    const text = transcript === undefined ? undefined : await runtime.files.readTail(transcript, CARRY_TAIL_BYTES);
+    if (text === undefined) {
+        return false;
+    }
+    const record = await store.carried(id);
+    const inherited = record !== undefined && record.transcript === transcript ? record.crons : [];
+    return carryOf(text, runtime.clock.now(), inherited).crons.some((cron) => cron.recurring);
+}
+/**
+ * Arms the restart a notice announces when work follows the handover (`workFollows`) in the team at `register`, or when
+ * the session is woken anyway (`wokenAnyway`); else parks it for the wake that brings the session work (T1383).
  */
 export async function restartOrPark(runtime, store, scope, notice, register) {
-    return (await workFollows(runtime, register.paths, register.config, scope.id)) ? armRestart(runtime, store, scope, notice) : parkRestart(runtime, store, scope, notice);
+    const arm = (await workFollows(runtime, register.paths, register.config, scope.id)) || (await wokenAnyway(runtime, store, register.config, scope.id, scope.target.transcript));
+    return arm ? armRestart(runtime, store, scope, notice) : parkRestart(runtime, store, scope, notice);
 }
 /**
  * Records a pending restart for `tab` from now, for the Claude Code the check runs under, and starts its `restart`;
