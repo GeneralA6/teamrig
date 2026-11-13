@@ -1,4 +1,5 @@
 import { MS_PER_DAY } from '../core/time.ts';
+import type { PrepRead } from '../register/focus.ts';
 import type { Task } from '../register/fold.ts';
 import type { ParkFocus, ParkRules } from '../register/park.ts';
 import { ownSizing } from '../register/ranking.ts';
@@ -43,15 +44,18 @@ export function parkedFacts(now: number): Pick<Task, 'workClass' | 'updatedAt' |
 export interface TestRankingFacts {
   readonly classes?: Readonly<Record<string, string>>;
   readonly goals?: Readonly<Record<string, ServedGoal>>;
+  /** Where each task's prep marker stands; any other task has no marker. */
+  readonly preps?: Readonly<Record<string, PrepRead>>;
 }
 
 /** A ranking over fixed facts: a task with no class counts as Improvements, and only its own `size` sizes it. */
-export function testRanking({ classes = {}, goals = {} }: TestRankingFacts = {}): TreeRanking {
+export function testRanking({ classes = {}, goals = {}, preps = {} }: TestRankingFacts = {}): TreeRanking {
   return {
     focus: TEST_FOCUS,
     ownerSource: TEST_OWNER_SOURCE,
     classOf: (task) => classes[task.id] ?? 'Improvements',
     goalOf: (task) => goals[task.id] ?? null,
+    prepOf: (task) => preps[task.id] ?? null,
     sizingOf: ownSizing,
   };
 }
