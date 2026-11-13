@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isRecord } from '../core/guards.ts';
 import { KIT_VERSION } from '../core/version.ts';
 
 const MAIN = fileURLToPath(new URL('./main.ts', import.meta.url));
@@ -36,6 +37,18 @@ function inTempHome<T>(use: (home: string) => T): T {
   }
 }
 
+/**
+ * Lets the team's queued steps start whatever the host's free memory: the default floor waits for 4 GB, which a
+ * 7 GB runner (GitHub's macOS one) rarely has free, and the step then waits out the whole hour.
+ */
+function withoutMemoryFloor(home: string, team: string): void {
+  const path = join(home, 'teams', team, 'config.json');
+  const config: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  assert.ok(isRecord(config), 'team create writes a config object');
+  const queue = { memoryFloorMb: 0, smallReserveMb: 0, heavyReserveMb: 0 };
+  writeFileSync(path, JSON.stringify({ ...config, delivery: { queue } }, null, 2));
+}
+
 /** One command in a fresh kit home. */
 function cli(args: readonly string[], input = ''): CliResult {
   return inTempHome((home) => cliIn(home, args, input));
@@ -63,6 +76,7 @@ describe('main', () => {
   it('runs a queued step under the host lock, releases it and ledgers the step under a fresh id', () => {
     inTempHome((home) => {
       assert.equal(cliIn(home, ['team', 'create', 'app', '--sessions', 'api', '--project', home]).status, 0);
+      withoutMemoryFloor(home, 'app');
       const run = cliIn(home, ['queue', '--session', 'api', '--what', 'probe', '--', process.execPath, '-e', 'process.exit(0)']);
       assert.equal(run.status, 0);
       assert.match(run.stdout, /running: probe \(killed after 45m\)\nDONE exit 0\n$/);
