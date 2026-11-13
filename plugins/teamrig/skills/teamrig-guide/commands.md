@@ -984,14 +984,17 @@ focus.maxActiveKeyResults allows: finish one or move its target first`). A bad t
 
 ### teamrig goal set
 
-Moves a goal's target or renames it, with a note saying why; the lead only. A moved target is a slip: the goal keeps
-the day first planned and every slip with its note, so `goal show` says how far it moved and why.
+Moves a goal's target, renames it or opens its next slice, with a note saying why; the lead only. A moved target is a
+slip: the goal keeps the day first planned and every slip with its note, so `goal show` says how far it moved and why.
+The open slice is the part of the goal shipping next; the lead moves it on when a slice ships, and `goal list` and
+`goal show` print it.
 
 Flags:
 
 - `--session <id|name>`: the caller: the lead.
 - `--target <YYYY-MM-DD>`: the new target; not before the goal's start.
 - `--title "<title>"`: a new title.
+- `--slice <n>`: the slice now open, a whole number from 1.
 - `--note "<why>"`: required: why it changed.
 
 Example:
@@ -1007,8 +1010,8 @@ SET goal A1 2026-10-12 to 2026-11-15, 1 slip | Ship the beta
 ```
 
 Refused, writing nothing: another session, a goal not added (`goal B9 does not exist; add it with goal add`), a set
-naming neither field (`goal set changes --target, --title or both`) or changing nothing (`goal A1 already reads so;
-nothing to change`), and a target before the start.
+naming no field (`goal set changes --target, --title, --slice or more`) or changing nothing (`goal A1 already reads
+so; nothing to change`), and a target before the start. A slice that is not a whole number from 1 is a usage error.
 
 ### teamrig goal rank
 

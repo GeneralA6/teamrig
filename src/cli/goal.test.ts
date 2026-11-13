@@ -38,7 +38,7 @@ describe('runCli: goal add', () => {
     ok(added);
     assert.deepEqual(added.stdout, ['ADDED goal A1 2030-01-08 to 2030-02-01 | Ship the beta']);
     const goal = readGoals(await goalsText(kit)).goals.get('A1');
-    assert.deepEqual(goal, { tag: 'A1', title: 'Ship the beta', start: '2030-01-08', target: '2030-02-01', parent: null, addedAt: '2030-01-08T10:00:00.000Z', addedBy: 'lead', slips: [], rank: null });
+    assert.deepEqual(goal, { tag: 'A1', title: 'Ship the beta', start: '2030-01-08', target: '2030-02-01', parent: null, addedAt: '2030-01-08T10:00:00.000Z', addedBy: 'lead', slips: [], rank: null, slice: null });
   });
 
   it('refuses a key result past focus.maxActiveKeyResults open ones, and lets a top goal in (T2083)', async () => {
@@ -147,7 +147,7 @@ describe('runCli: goal set and show', () => {
     assert.match(said(same), /goal A1 already reads so; nothing to change/);
     const nothing = await kit.run(['goal', 'set', 'A1', '--note', 'no fields', '--session', 'lead']);
     assert.equal(nothing.code, EXIT.refused);
-    assert.match(said(nothing), /goal set changes --target, --title or both/);
+    assert.match(said(nothing), /goal set changes --target, --title, --slice or more/);
     const early = await kit.run(['goal', 'set', 'A1', '--target', '2030-01-01', '--note', 'too early', '--session', 'lead']);
     assert.equal(early.code, EXIT.refused);
     assert.match(said(early), /--target 2030-01-01 is before the goal's start 2030-01-08/);
@@ -161,6 +161,25 @@ describe('runCli: goal set and show', () => {
     ok(await kit.run(['goal', 'rank', 'A1.1', '3', '--session', 'lead']));
     const part = await kit.run(['goal', 'show', 'A1.1']);
     assert.deepEqual(part.stdout, ['A1.1 | Login works', '  window 2030-01-09 to 2030-01-20', '  rank 3', '  added Tue 01-08 10:00 UTC by lead', '  part of A1', '  SLIPS 0']);
+  });
+
+  it('opens a slice, shows it, and refuses the same slice again or a slice that is not a whole number from 1 (T2453)', async () => {
+    const kit = await withGoals();
+    const opened = await kit.run(['goal', 'set', 'A1.1', '--slice', '2', '--note', 'slice 1 shipped', '--session', 'lead']);
+    ok(opened);
+    assert.deepEqual(opened.stdout, ['SET goal A1.1 2030-01-09 to 2030-01-20, part of A1, slice 2 | Login works']);
+    const part = await kit.run(['goal', 'show', 'A1.1']);
+    assert.deepEqual(part.stdout, ['A1.1 | Login works', '  window 2030-01-09 to 2030-01-20', '  slice 2', '  added Tue 01-08 10:00 UTC by lead', '  part of A1', '  SLIPS 0']);
+    const before = await goalsText(kit);
+    const same = await kit.run(['goal', 'set', 'A1.1', '--slice', '2', '--note', 'again', '--session', 'lead']);
+    assert.equal(same.code, EXIT.refused);
+    assert.match(said(same), /goal A1.1 already reads so; nothing to change/);
+    for (const bad of ['0', '1.5', 'two']) {
+      const refused = await kit.run(['goal', 'set', 'A1.1', '--slice', bad, '--note', 'bad', '--session', 'lead']);
+      assert.equal(refused.code, EXIT.usage);
+      assert.match(said(refused), new RegExp(`--slice "${bad.replace('.', '\\.')}" is not a whole number from 1`));
+    }
+    assert.equal(await goalsText(kit), before);
   });
 
   it('refuses to show a goal the team does not have', async () => {
@@ -257,7 +276,7 @@ describe('runCli: goal list', () => {
 });
 
 function goal(tag: string, parent: string | null, rank: number | null = null): Goal {
-  return { tag, title: tag, start: '2030-01-08', target: '2030-02-01', parent, addedAt: '2030-01-08T10:00:00.000Z', addedBy: 'lead', slips: [], rank };
+  return { tag, title: tag, start: '2030-01-08', target: '2030-02-01', parent, addedAt: '2030-01-08T10:00:00.000Z', addedBy: 'lead', slips: [], rank, slice: null };
 }
 
 describe('goalTree', () => {

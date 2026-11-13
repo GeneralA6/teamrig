@@ -26,7 +26,7 @@ function doneTask(id: string, at: string, goals: readonly string[], more: Partia
 }
 
 function goal(tag: string, more: Partial<Goal> = {}): Goal {
-  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target: '2030-02-01', parent: null, addedAt: CREATED, addedBy: 'lead', slips: [], rank: null, ...more };
+  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target: '2030-02-01', parent: null, addedAt: CREATED, addedBy: 'lead', slips: [], rank: null, slice: null, ...more };
 }
 
 function input(events: readonly RegisterEvent[], range: StatsRange): StatsInput {

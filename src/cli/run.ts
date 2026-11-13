@@ -140,7 +140,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   stats: { effect: 'read', flags: ['session', 'range'], switches: ['tree'], load: async () => (await statsCommands()).stats },
   'report done': { effect: 'read', flags: ['session', 'day'], switches: ['all'], load: async () => (await reportCommands()).reportDone },
   'goal add': { effect: 'write', flags: ['session', 'title', 'start', 'target', 'parent'], load: async () => (await goalCommands()).goalAdd },
-  'goal set': { effect: 'write', flags: ['session', 'target', 'title', 'note'], load: async () => (await goalCommands()).goalSet },
+  'goal set': { effect: 'write', flags: ['session', 'target', 'title', 'slice', 'note'], load: async () => (await goalCommands()).goalSet },
   'goal rank': { effect: 'write', flags: ['session'], load: async () => (await goalCommands()).goalRank },
   'goal list': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalList },
   'goal show': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalShow },
@@ -564,8 +564,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the lead adds one of the team's goals: a tag (A1, A2.1), a title and its planned window from
       --start (default today) to --target; --parent: the goal it is part of (a key result, refused past
       focus.maxActiveKeyResults ones with a target of today or later)
-  goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] --note "<why>"   the lead moves a goal's
-      target (a slip, kept with its note) or renames it
+  goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] [--slice <n>] --note "<why>"   the lead
+      moves a goal's target (a slip, kept with its note), renames it or opens its next slice (1 first)
   goal rank <tag> <n>|none   the lead ranks a goal, 1 first, or takes it off the ranking; goal-first
       ranking gives a task the best rank of its goals and the goals they are part of
   goal list   the team's goals, the ranked ones first, then the rest as a tree, each with its window,
