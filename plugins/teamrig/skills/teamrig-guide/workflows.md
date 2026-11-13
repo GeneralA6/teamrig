@@ -245,7 +245,7 @@ teamrig refreshes a long-running session at a turn end once its context is large
 so it never loses work to a compaction.
 
 1. At the end of every turn, the Stop hook measures your context. When it is at or over
-   `refresh.contextTokens` (120,000 by default), at a task end after every third finished task with the context at 80,000 or more
+   `refresh.contextTokens` (120,000 by default; `refresh.largeWindowContextTokens`, 250,000, for a session on a 1M window: a `[1m]` model, or one whose window teamrig infers from the window the mod reports, a context past 200k or a fresh start measured over `refresh.contextTokens`), at a task end after every third finished task with the context at 80,000 or more
    (`refresh.everyTasks`, `refresh.everyTasksMinTokens`), or the lead asked for a refresh (`teamrig refresh <id>`), it
    keeps you going with this instruction. While background work you started (subagents, background commands,
    monitors, workflows) still runs, it adds before `Then end your turn` how many still run, asks the handover to say what
@@ -257,7 +257,10 @@ so it never loses work to a compaction.
 
    Mid-task it says `teamrig: your context is 132k (refresh at 120k), so refresh now rather than at a task end.`
    If you go on without the fresh start (the user typed), it asks again at your next task end, or once your
-   context grew a fifth of `refresh.contextTokens` more. Within a long turn teamrig's mod asks as soon as a tool
+   context grew a fifth of `refresh.contextTokens` more. A fresh start (a `/clear`, a new process) only measures its
+   context at its first turn end, or at the first tool result the mod reports, and asks nothing; a size or task-count
+   refresh then needs the context to have grown that fifth past the measure, so a session that starts over the
+   threshold is never asked again before it did any work. Within a long turn teamrig's mod asks as soon as a tool
    result shows the context past the threshold (`so refresh within this turn: finish the step you are on and start
    no other`, ending `and end your turn: the fresh start follows it`), and until the fresh start Claude Code's own
    compaction waits, up to `refresh.compactCeilingTokens` (185,000).
@@ -274,7 +277,7 @@ so it never loses work to a compaction.
    `Ready. Ask the user to type /clear; your next start reads <path>.`. At the end of that turn the tab title becomes `[shop] web: type /clear` (the session's team and name;
    `refresh.tabTitle: false` turns that off; with `tabStatus.enabled`, after the tab's state circle).
 4. End your turn and start nothing new. The user types `/clear` once done with your screen, which a `/clear`
-   wipes. With `refresh.autoRestart: true` the title reads `[shop] web: restarting` instead: once the tab has been
+   wipes. With `refresh.autoRestart: true` (the default is `"lead"`: the lead only) the title reads `[shop] web: restarting` instead: once the tab has been
    idle 15 s (`refresh.restartDelaySeconds`), teamrig's
    mod runs `/clear` in this tab, after asking Claude Code that no helper of yours still runs (it waits while one does),
    and once the user is away: it waits while the prompt box holds a draft and for 30 minutes after their last key or

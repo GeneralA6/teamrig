@@ -1,12 +1,34 @@
 import { isEffortLevel } from "../config/types.js";
 import { isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
-import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
+import { parseObject, recordVersion, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 /** The format of the refresh files this code reads and writes; a file in another format reads as absent. */
 export const REFRESH_FORMAT = 1;
+/**
+ * The format of the state file (`<id>.json`): 2 adds the `baseline` of a fresh start, 3 the `largeWindow` every phase
+ * carries. A format 1 or 2 file reads as it did, with neither field; a file in a newer format reads as absent and is
+ * never overwritten (`RefreshStore.setState`).
+ */
+export const REFRESH_STATE_FORMAT = 3;
+/** The format before `largeWindow`, still read. */
+const REFRESH_STATE_FORMAT_2 = 2;
 /** A file of this format as an object; undefined for a damaged file or one in another format. */
 function recordOf(text) {
     const record = parseObject(text.trim());
     return record !== undefined && record[VERSION_FIELD] === REFRESH_FORMAT ? record : undefined;
+}
+/** A state file's record: format 1 or 2; undefined for a damaged file or another format. */
+function stateRecordOf(text) {
+    const record = parseObject(text.trim());
+    const version = record === undefined ? undefined : recordVersion(record);
+    return record !== undefined && (version === REFRESH_FORMAT || version === REFRESH_STATE_FORMAT_2 || version === REFRESH_STATE_FORMAT) ? record : undefined;
+}
+/** The baseline field as a spread: absent for none, null while a fresh start waits for it; undefined when damaged. */
+function baselineOf(record) {
+    const baseline = record['baseline'];
+    if (baseline === undefined) {
+        return {};
+    }
+    return baseline === null || isNonNegativeInteger(baseline) ? { baseline } : undefined;
 }
 function tokensOf(record) {
     const tokens = record['tokens'];
@@ -49,26 +71,41 @@ function standingAskOf(value) {
         ? undefined
         : { task, at, tokens, handoverHash, ...fix };
 }
+/** The window field as a spread: absent while nothing told; undefined when damaged. */
+function windowFieldOf(record) {
+    const largeWindow = record['largeWindow'];
+    if (largeWindow === undefined) {
+        return {};
+    }
+    return typeof largeWindow === 'boolean' ? { largeWindow } : undefined;
+}
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
 export function parseRefreshState(text) {
-    const record = recordOf(text);
+    const record = stateRecordOf(text);
     // Only a task end names its task: a refresh another turn end asked for has none.
     const task = record === undefined ? undefined : nullableString(record, 'task');
     const at = record === undefined ? undefined : stringField(record, 'at');
-    if (record === undefined || task === undefined || at === undefined) {
+    const base = record === undefined ? undefined : baselineOf(record);
+    const window = record === undefined ? undefined : windowFieldOf(record);
+    if (record === undefined || task === undefined || at === undefined || base === undefined || window === undefined) {
         return undefined;
     }
+    const phase = phaseOf(record, task, at, base);
+    return phase === undefined ? undefined : { ...phase, ...window };
+}
+/** The phase a refresh state file names, its window field aside; undefined when damaged or unknown. */
+function phaseOf(record, task, at, base) {
     switch (record['phase']) {
         case 'boundary': {
             const finished = finishedOf(record, 1);
             // A file from before an ask could stand on a boundary has none.
             const ask = record['ask'] === undefined ? null : standingAskOf(record['ask']);
-            return task === null || finished === undefined || ask === undefined ? undefined : { phase: 'boundary', task, at, finished, ask };
+            return task === null || finished === undefined || ask === undefined ? undefined : { phase: 'boundary', task, at, finished, ask, ...base };
         }
         case 'idle': {
             const tokens = tokensOf(record);
             const finished = finishedOf(record, 0);
-            return task === null || tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished };
+            return task === null || tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished, ...base };
         }
         case 'asked': {
             const tokens = tokensOf(record);
@@ -92,13 +129,13 @@ export function parseRefreshState(text) {
                 : undefined;
         }
         case 'refreshed':
-            return { phase: 'refreshed', task, at };
+            return { phase: 'refreshed', task, at, ...base };
         default:
             return undefined;
     }
 }
 export function formatRefreshState(state) {
-    return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...state });
+    return toJsonlLine({ [VERSION_FIELD]: REFRESH_STATE_FORMAT, ...state });
 }
 /** A request file's content; undefined when it is damaged or from another format. */
 export function parseRefreshRequest(text) {

@@ -1,4 +1,5 @@
 import { launchOf } from "../../config/launch.js";
+import { autoRestartOf } from "../../config/refresh.js";
 import { errorMessage } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
@@ -68,7 +69,7 @@ export async function restart(args, runtime) {
     const name = roster.nameOf(id) ?? id;
     const store = new RefreshStore(runtime.files, kit.paths);
     const log = new RestartLog(runtime.files, kit.paths);
-    if (!config.refresh.enabled || !config.refresh.autoRestart) {
+    if (!config.refresh.enabled || !autoRestartOf(config, id)) {
         await store.clearRestart(id);
         const off = { kind: 'cancelled', why: 'the automatic restart is off (refresh.autoRestart in the team config)' };
         await logRestart(runtime, log, { session: id, at, endedAt: new Date(runtime.clock.now()).toISOString(), result: off });

@@ -112,7 +112,7 @@ describe('the refresh within a turn', () => {
     const runs = await tab($, on, { 'refresh-mid': { kind: 'ask', text: ASK, nextAt: 154_000 } });
     const result = await $.tool.call({ tool: 'mcp__demo__ping', tool_use_id: 'toolu_1' });
     expect(result.context).toEqual([ASK]);
-    expect(runs).toEqual([{ command: 'refresh-mid', stdin: { session_id: TAB, cwd: '/work/app/src', tokens: 130_000 } }]);
+    expect(runs).toEqual([{ command: 'refresh-mid', stdin: { session_id: TAB, cwd: '/work/app/src', tokens: 130_000, window: 200_000 } }]);
   });
 
   test('asks nothing after a subagent tool, a denied call or a quiet answer', async ($, on) => {

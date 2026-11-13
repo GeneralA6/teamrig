@@ -1733,7 +1733,7 @@ Prints each session: running, with the memory its Claude Code's process tree hol
 servers) and, on Windows, what it has committed (its private bytes, what it adds to the commit charge), closed (the
 Claude Code it last started in has ended) or with no start recorded. The SessionStart hook
 records that process at each start (`state/sessions/<id>.json`); a process id the host gave to a later process
-does not count. Then the host's free memory and commit charge (Windows and Linux). It only reads.
+does not count. Then the host's free memory and commit charge (Windows, and Linux under strict overcommit). It only reads.
 
 With `--pass` it prints, in the roster's order, what an idle pass would do, and changes nothing: `CLOSE` a running
 session [teamrig close](#teamrig-close) would close (quiet `open.headroom.closeIdleMinutes` or more, nothing it can
@@ -2706,7 +2706,7 @@ and list. A rehired session's first prompt reads the handover its retire left fi
 
 It refuses any session but the lead when the host has no room for one more: its free memory, less what the tabs
 still loading hold, must stay over the floor a new tab keeps free with the session counted, and its commit charge,
-with those tabs counted, within `open.headroom.commitMaxPct` (92%; Windows and Linux). The floor is
+with those tabs counted, within `open.headroom.commitMaxPct` (92%; Windows, and Linux under strict overcommit). The floor is
 `open.headroom.floorMb` when set, else `delivery.queue.memoryFloorMb` plus `delivery.queue.heavyReserveMb` (4096 +
 2048), so a tab opened at the floor still leaves a heavy queued step the room it starts at. A session is counted at
 the median running session's Claude Code process tree, else at `open.headroom.sessionMb` (1200 MB): what it holds
@@ -3152,7 +3152,7 @@ It refuses when `claude` is not on the PATH.
 
 ### teamrig restart
 
-The automatic context refresh's restart, when `refresh.autoRestart` is on (off by default: the user types
+The automatic context refresh's restart, when `refresh.autoRestart` is on for the session (`true`, or `"lead"`, the default, for the lead only; otherwise the user types
 `/clear`). The Stop hook runs it hidden once your handover is written; you do not run it yourself. It waits
 until the session has been idle `refresh.restartDelaySeconds` with nothing
 running, then asks the session's tab to run `/clear`, which teamrig's mod does there. While Claude Code lists a helper of
@@ -3260,7 +3260,7 @@ or `FAILED to reopen shop-web (session web): <why>` (exit 1) when it could not w
 
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next
 `set ... --status done` it writes a handover, and the user types `/clear` for the fresh start once done with its
-screen (with `refresh.autoRestart` on, teamrig starts it fresh once it is idle, and one with no work it can start
+screen (with `refresh.autoRestart` on for it, teamrig starts it fresh once it is idle, and one with no work it can start
 once a wake brings it some). The turn end takes a handover written since the ask, with a `## State` and a
 `## Next steps` section, as ready by itself; `teamrig refresh --ready` is the fallback for one the turn end asked to
 fix that is complete without a section. Both refuse a handover over `refresh.handoverMaxBytes` (20,000 bytes;
@@ -3286,7 +3286,7 @@ REQUESTED a refresh of shop-web: at its next turn end it writes its handover to 
 ```
 
 `teamrig refresh --ready --session web` prints `Ready. Ask the user to type /clear; your next start reads
-<handover path>.` With `refresh.autoRestart: true` it says `End your turn now: teamrig starts you fresh once you
+<handover path>.` With `refresh.autoRestart` on for the session (the lead, by default) it says `End your turn now: teamrig starts you fresh once you
 are idle, or asks the user to type /clear` instead.
 
 ## Maintenance

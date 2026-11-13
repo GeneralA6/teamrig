@@ -1,9 +1,23 @@
 import { isEffortLevel, type EffortLevel } from '../config/types.ts';
 import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
-import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import { parseObject, recordVersion, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 
 /** The format of the refresh files this code reads and writes; a file in another format reads as absent. */
 export const REFRESH_FORMAT = 1;
+
+/**
+ * The format of the state file (`<id>.json`): 2 adds the `baseline` of a fresh start, 3 the `largeWindow` every phase
+ * carries. A format 1 or 2 file reads as it did, with neither field; a file in a newer format reads as absent and is
+ * never overwritten (`RefreshStore.setState`).
+ */
+export const REFRESH_STATE_FORMAT = 3;
+/** The format before `largeWindow`, still read. */
+const REFRESH_STATE_FORMAT_2 = 2;
+
+/** The window field every phase of a `RefreshState` carries (its `largeWindow`): absent while nothing told. */
+export interface WindowField {
+  readonly largeWindow?: boolean;
+}
 
 /**
  * An ask for the handover that `refresh --ready` has not answered yet: the fields of the `asked` phase it was made in
@@ -40,14 +54,32 @@ export interface StandingAsk {
  *   from it what that session leaves to take over. `claudePid` is the Claude Code process the notice was
  *   given in (null before, or when it was not found): a /clear keeps the process, so the fresh tab binds by it.
  * - `refreshed`: a fresh start was pointed at the handover.
+ * - `baseline` (on `refreshed`, `boundary` and `idle`): the context the first turn end after a fresh start measured,
+ *   which is mostly the session's own system prompt, rules and handover read. A size or task-count ask then needs
+ *   real growth past it (`decide.ts` `askAt`), so a fresh session that starts over the threshold is never asked to
+ *   refresh again before it did any work. null from a fresh start (a /clear, a new process) until that turn end
+ *   measures it, which asks nothing; absent after a compaction and in a format 1 file.
+ * - `largeWindow` (on every phase): whether the session runs on a context window larger than 200k, as teamrig
+ *   inferred it (`decide.ts` `windowOf`): true on evidence (the window the plugin's mod reports, a context past
+ *   200k, or a fresh start measured over `refresh.contextTokens`), false when the mod reported a 200k window. It is
+ *   carried through every phase, so a /clear, an ask and a compaction keep it; absent while nothing told (a file from
+ *   before it has none). On it the threshold rises to `refresh.largeWindowContextTokens`.
  * In `asked`, `ready` and `refreshed`, `task` is the task whose end asked for the refresh, null when another
  * turn end asked. In `asked` and `ready`, `tokens` is the context the refresh was asked at, null when unknown or
  * when the context was made small since (a compaction, a /clear): a session that goes on without its fresh
  * start is asked again only once its context grew well past it.
  */
-export type RefreshState =
-  | { readonly phase: 'boundary'; readonly task: string; readonly at: string; readonly finished: number; readonly ask: StandingAsk | null }
-  | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly finished: number }
+export type RefreshState = WindowField &
+  (
+  | {
+      readonly phase: 'boundary';
+      readonly task: string;
+      readonly at: string;
+      readonly finished: number;
+      readonly ask: StandingAsk | null;
+      readonly baseline?: number | null;
+    }
+  | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly finished: number; readonly baseline?: number | null }
   | {
       readonly phase: 'asked';
       readonly task: string | null;
@@ -67,7 +99,8 @@ export type RefreshState =
       readonly transcript: string | null;
       readonly claudePid: number | null;
     }
-  | { readonly phase: 'refreshed'; readonly task: string | null; readonly at: string };
+  | { readonly phase: 'refreshed'; readonly task: string | null; readonly at: string; readonly baseline?: number | null }
+  );
 
 /** The lead's ask that a session refresh at its next finished task, whatever its context. */
 export interface RefreshRequest {
@@ -122,6 +155,22 @@ function recordOf(text: string): JsonRecord | undefined {
   return record !== undefined && record[VERSION_FIELD] === REFRESH_FORMAT ? record : undefined;
 }
 
+/** A state file's record: format 1 or 2; undefined for a damaged file or another format. */
+function stateRecordOf(text: string): JsonRecord | undefined {
+  const record = parseObject(text.trim());
+  const version = record === undefined ? undefined : recordVersion(record);
+  return record !== undefined && (version === REFRESH_FORMAT || version === REFRESH_STATE_FORMAT_2 || version === REFRESH_STATE_FORMAT) ? record : undefined;
+}
+
+/** The baseline field as a spread: absent for none, null while a fresh start waits for it; undefined when damaged. */
+function baselineOf(record: JsonRecord): { readonly baseline?: number | null } | undefined {
+  const baseline = record['baseline'];
+  if (baseline === undefined) {
+    return {};
+  }
+  return baseline === null || isNonNegativeInteger(baseline) ? { baseline } : undefined;
+}
+
 function tokensOf(record: JsonRecord): number | null | undefined {
   const tokens = record['tokens'];
   return tokens === null || isNonNegativeInteger(tokens) ? tokens : undefined;
@@ -168,26 +217,43 @@ function standingAskOf(value: unknown): StandingAsk | null | undefined {
     : { task, at, tokens, handoverHash, ...fix };
 }
 
+/** The window field as a spread: absent while nothing told; undefined when damaged. */
+function windowFieldOf(record: JsonRecord): WindowField | undefined {
+  const largeWindow = record['largeWindow'];
+  if (largeWindow === undefined) {
+    return {};
+  }
+  return typeof largeWindow === 'boolean' ? { largeWindow } : undefined;
+}
+
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
 export function parseRefreshState(text: string): RefreshState | undefined {
-  const record = recordOf(text);
+  const record = stateRecordOf(text);
   // Only a task end names its task: a refresh another turn end asked for has none.
   const task = record === undefined ? undefined : nullableString(record, 'task');
   const at = record === undefined ? undefined : stringField(record, 'at');
-  if (record === undefined || task === undefined || at === undefined) {
+  const base = record === undefined ? undefined : baselineOf(record);
+  const window = record === undefined ? undefined : windowFieldOf(record);
+  if (record === undefined || task === undefined || at === undefined || base === undefined || window === undefined) {
     return undefined;
   }
+  const phase = phaseOf(record, task, at, base);
+  return phase === undefined ? undefined : { ...phase, ...window };
+}
+
+/** The phase a refresh state file names, its window field aside; undefined when damaged or unknown. */
+function phaseOf(record: JsonRecord, task: string | null, at: string, base: { readonly baseline?: number | null }): RefreshState | undefined {
   switch (record['phase']) {
     case 'boundary': {
       const finished = finishedOf(record, 1);
       // A file from before an ask could stand on a boundary has none.
       const ask = record['ask'] === undefined ? null : standingAskOf(record['ask']);
-      return task === null || finished === undefined || ask === undefined ? undefined : { phase: 'boundary', task, at, finished, ask };
+      return task === null || finished === undefined || ask === undefined ? undefined : { phase: 'boundary', task, at, finished, ask, ...base };
     }
     case 'idle': {
       const tokens = tokensOf(record);
       const finished = finishedOf(record, 0);
-      return task === null || tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished };
+      return task === null || tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished, ...base };
     }
     case 'asked': {
       const tokens = tokensOf(record);
@@ -211,14 +277,14 @@ export function parseRefreshState(text: string): RefreshState | undefined {
         : undefined;
     }
     case 'refreshed':
-      return { phase: 'refreshed', task, at };
+      return { phase: 'refreshed', task, at, ...base };
     default:
       return undefined;
   }
 }
 
 export function formatRefreshState(state: RefreshState): string {
-  return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...state });
+  return toJsonlLine({ [VERSION_FIELD]: REFRESH_STATE_FORMAT, ...state });
 }
 
 /** A request file's content; undefined when it is damaged or from another format. */

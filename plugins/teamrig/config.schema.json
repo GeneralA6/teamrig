@@ -1530,7 +1530,7 @@
           "type": "object",
           "properties": {
             "sessionMb": { "description": "The MB a new session is counted to need while no session runs to measure; else the median running session's Claude Code process tree.", "type": "integer", "minimum": 100, "maximum": 65536, "default": 1200 },
-            "commitMaxPct": { "description": "The most of the host's commit limit, in %, its commit charge may reach with the new session counted (Windows and Linux; elsewhere free memory alone is checked).", "type": "integer", "minimum": 50, "maximum": 100, "default": 92 },
+            "commitMaxPct": { "description": "The most of the host's commit limit, in %, its commit charge may reach with the new session counted (Windows, and Linux under strict overcommit, vm.overcommit_memory 2; elsewhere free memory alone is checked).", "type": "integer", "minimum": 50, "maximum": 100, "default": 92 },
             "closeIdleMinutes": { "description": "How long, in minutes, a session stays quiet before teamrig close may end it to free the host; teamrig open resumes it.", "type": "integer", "minimum": 15, "maximum": 10080, "default": 60 },
             "floorMb": { "description": "The MB free memory must keep with a new tab and the tabs still loading counted. Unset: delivery.queue.memoryFloorMb plus delivery.queue.heavyReserveMb, so a new tab leaves room for one heavy queued step.", "type": "integer", "minimum": 0, "maximum": 1048576 },
             "loadMinutes": { "description": "How long, in minutes, a tab just opened holds the MB it was counted at, while it loads and free memory does not show it yet. Tab opens and queued steps on the host count the held MB as taken.", "type": "integer", "minimum": 1, "maximum": 60, "default": 5 }
@@ -1670,6 +1670,13 @@
           "maximum": 10000000,
           "default": 120000
         },
+        "largeWindowContextTokens": {
+          "description": "The context size, in tokens, that asks for a refresh of a session on a context window larger than 200k, when larger than contextTokens: its launch model ends in [1m], or its refresh state shows the window, since a model can run a 1M window without the suffix (the lead's plain opus) and no hook is told it: the window the plugin's mod reports, a context past 200k, or a fresh start measured over contextTokens. A fresh session on it starts at over 120k (its system prompt, rules and handover), and the window has room far past it. 0: contextTokens for every window.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000,
+          "default": 250000
+        },
         "everyTasks": {
           "description": "Also refresh once this many tasks were finished since the context was last fresh (a /clear, a new process or a compaction); 0 turns it off.",
           "type": "integer",
@@ -1686,9 +1693,9 @@
         },
         "tabTitle": { "description": "Title the tab once the handover is written: '[<team>] <name>: restarting', or '[<team>] <name>: type /clear'.", "type": "boolean", "default": true },
         "autoRestart": {
-          "description": "Once the handover is written and the turn has ended, start the session fresh on its own, which reads the handover: the plugin's mod runs /clear in its tab; where no mod claims the ask, teamrig ends its Claude Code and starts it again, in the same tab when teamrig open started it, else in a new tab. A session with no work it can start then waits for a wake that brings it some, which starts it fresh instead of waking it. A prompt typed before then keeps the context. false (the default): the user types /clear once done with the screen, which a /clear wipes.",
-          "type": "boolean",
-          "default": false
+          "description": "Once the handover is written and the turn has ended, start the session fresh on its own, which reads the handover: the plugin's mod runs /clear in its tab; where no mod claims the ask, teamrig ends its Claude Code and starts it again, in the same tab when teamrig open started it, else in a new tab. A session with no work it can start then waits for a wake that brings it some, which starts it fresh instead of waking it. A prompt typed before then keeps the context. false: the user types /clear once done with the screen, which a /clear wipes. the string lead (the default): on for the team's lead (roles.lead) only, whose context otherwise grows unasked overnight; every other session waits for /clear.",
+          "anyOf": [{ "type": "boolean" }, { "enum": ["lead"] }],
+          "default": "lead"
         },
         "restartDelaySeconds": {
           "description": "How long after the turn's end the automatic restart waits, so the user can still type to keep the context.",

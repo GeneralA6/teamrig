@@ -88,6 +88,14 @@ export function isEscalation(value) {
  */
 export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'];
 /**
+ * Context refresh: at any turn end with the session's context at or over `contextTokens`, at a task end
+ * (`set <id> --status done`) with `everyTasks` tasks finished since its context was last fresh, or after the lead
+ * asked for it, the session writes a handover; then the user types /clear, or teamrig starts it fresh on its own
+ * (`autoRestart`).
+ */
+/** `refresh.autoRestart`: on or off for every session, or on for the team's lead only. */
+export const AUTO_RESTART_LEAD = 'lead';
+/**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
  * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead; `automatic` as
  * `lead`, and a hired session whose last open task closes is asked to write its handover (hiring/last-task-ask.ts).

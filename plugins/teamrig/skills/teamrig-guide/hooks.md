@@ -896,7 +896,7 @@ rewrite it whole and short, since your fresh start reads all of it. A task you m
 turn's end keeps the refresh pending: the turn's end still takes the handover, after or before that `set`.
 Once it is taken, the turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
 /clear for a fresh start` and sets the tab title to `[shop] web: type /clear`: the user clears once done with the
-screen, which a `/clear` wipes. With `refresh.autoRestart: true` it says `teamrig starts it fresh once it has been
+screen, which a `/clear` wipes. With `refresh.autoRestart` on for the session (`true`, or `"lead"`, the default, for the lead) it says `teamrig starts it fresh once it has been
 idle 15 s (type anything to keep this context)` instead, the title reads `[shop] web: restarting`, and a hidden
 `teamrig restart` then waits until the tab has been idle
 `refresh.restartDelaySeconds` (15) with nothing running and its last turn ended, and the plugin's mod runs `/clear` in
