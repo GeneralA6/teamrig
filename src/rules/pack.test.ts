@@ -265,7 +265,7 @@ describe('renderCorePack', () => {
     const onUtc = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(onUtc, /^3\. .* Write times on the team's clock, zone-marked \(`04:00 UTC`\) \[timeZone\]\.$/m);
     const inIsrael = renderCorePack(testConfig({ timeZone: 'Asia/Jerusalem' }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(inIsrael, /^3\. .* Write times on the team's clock, zone-marked \(`04:00 IST`, UTC\+2 now\); UTC only when UTC is the subject \[timeZone\]\.$/m);
+    assert.match(inIsrael, /^3\. .* Write times on the team's clock, zone-marked \(`04:00 IST`, UTC\+2 now\); UTC only when it is the subject \[timeZone\]\.$/m);
     const summer = { ...RULES_CLOCK, now: new Date('2030-07-08T10:00:00.000Z') };
     const inSummer = renderCorePack(testConfig({ timeZone: 'America/New_York' }), COMMAND, 'win32', summer);
     assert.match(inSummer, /zone-marked \(`04:00 EDT`, UTC-4 now\);/, 'the mark and offset of the day the rules are read');
@@ -275,7 +275,7 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack,
-      /^2\. Own your change end to end: only the session that made it merges, deploys \(when it must run\), verifies and fixes or rolls it back; another session's change goes to its owner\.$/m,
+      /^2\. Own your change end to end: only the session that made it merges, deploys \(if it must run\), verifies and fixes or rolls it back; another session's change goes to its owner\.$/m,
     );
   });
 
@@ -283,14 +283,14 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^11\. A hand-run change or delete of stored data needs the owner's OK after counts or a preview\. Code that writes data/m);
     assert.match(pack, /a parity run explaining each differing row; archive history and audit data before any TTL\. A hand step for the human/);
-    assert.match(pack, /Never print secret values; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
+    assert.match(pack, /Never print secrets; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
   });
 
   it('hands the human a hand step only as a file the security reviewer audited, pinned by its sha256', () => {
     const pack = renderCorePack(testConfig({ roles: { lead: 'lead', securityReviewer: 'alpha' } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack,
-      /before any TTL\. A hand step for the human that changes anything or touches a secret \(a paste, a settings, config or guard line, a grant, a key\) goes only as a file the security reviewer audited, its sha256 on the task, run by one line, never as code in chat; an edit needs a new audit\. Never print secret values;/,
+      /before any TTL\. A hand step for the human that changes anything or touches a secret \(a paste, a settings, config or guard line, a grant, a key\) goes only as a file the security reviewer audited, its sha256 on the task, run by one line, never as code in chat; an edit needs a new audit\. Never print secrets;/,
     );
     assert.match(pack, /alpha reviews privileged commands \(`teamrig exec`\) and hand steps \[roles\.securityReviewer\]\. Other sessions own/);
   });
@@ -403,7 +403,7 @@ describe('renderCorePack', () => {
     assert.match(pack, /the owner's decision queue \[roles\.lead\]\. /);
     assert.doesNotMatch(pack, /re-prioritize/);
     assert.match(pack, / Other sessions own their areas\. Your leader \(the sub-lead listing you \[leads\], else the lead\) sets your work order, staffing and budget, answers your waits;/);
-    assert.match(pack, / asks to a sub-lead's sessions go through it\. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead\.$/m);
+    assert.match(pack, / asks to a sub-lead's sessions go through it\. Cross-area issues go to the nearest leader over both, unowned warnings to the lead\.$/m);
     assert.match(pack, /\[ownerGates\]\. An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new\.$/m);
     assert.match(pack, /at most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
@@ -455,7 +455,7 @@ describe('renderCorePack', () => {
     assert.match(inIsrael, /starts 00:30-02:00 IST \[/, "on the machine's clock, in winter");
     const summer = { ...RULES_CLOCK, now: new Date('2030-07-08T10:00:00.000Z') };
     assert.match(renderCorePack(testConfig({ ...cutoff, timeZone: 'Asia/Jerusalem' }), COMMAND, 'win32', summer), /starts 01:30-03:00 IDT \[/, "on the team's clock, in summer");
-    assert.match(pack, /Pace the week to 99\.5% of the limit, 0\.5% kept for incidents \[budget\]\./);
+    assert.match(pack, /Pace the week to 99\.5% of the limit, 0\.5% kept for incidents \[budget\]; waited-on answers are blockers, never budget-held\./);
   });
 
   it('has owner questions stand alone, and carry the decision marker line only while tab status shows it', () => {
@@ -491,10 +491,10 @@ describe('renderCorePack', () => {
     const weighted = renderCorePack(testConfig({ budget: { subagentWeight: 2.15 } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       weighted,
-      /^8\. Lean calls: batch related shell steps in one call \(each re-reads the context\)\. Work in your own session: a helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only for parallel work or an independent review, never to save tokens or for a build or test you wait on; run helpers on your model and effort\. Task files go in `teamrig files T<id>`, other notes in `--notes`\.$/m,
+      /^8\. Lean calls: batch related shell steps in one call \(each re-reads context\)\. A helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only for parallel work or an independent review, never to save tokens or for a build or test you wait on; run helpers on your model and effort\. Task files go in `teamrig files T<id>`, other notes in `--notes`\.$/m,
     );
     const even = renderCorePack(testConfig({ budget: { subagentWeight: 1 } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(even, /^8\. .* Work in your own session: start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel,/m);
+    assert.match(even, /^8\. .* Start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel,/m);
     assert.doesNotMatch(even, /subagentWeight|subagent that returns/);
   });
 
