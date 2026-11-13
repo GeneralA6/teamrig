@@ -47,4 +47,14 @@ describe('ci.yml', () => {
     }
     assert.match(summary, /^ {8}run: exit 1$/m);
   });
+
+  it('fails the summary unless every job of the run passed, each matrix leg alone', () => {
+    const summary = jobs.get(SUMMARY) ?? '';
+    const name = /^ {4}name: (.+)$/m.exec(summary)?.[1];
+    assert.ok(name !== undefined);
+    assert.match(summary, /^ {4}permissions:\n {6}actions: read\n {6}contents: read\n/m, "it lists the run's jobs with a read-only token");
+    assert.ok(summary.includes(`        run: node tools/ci/every-check-cli.ts "${name}"\n`), 'it leaves out itself, by its own name');
+    assert.match(summary, /^ {10}GH_TOKEN: \$\{\{ github\.token \}\}$/m);
+    assert.ok(summary.indexOf('run: exit 1') < summary.indexOf('every-check-cli.ts'), 'the needs check runs first, so a failed job fails the summary with no API call');
+  });
 });
