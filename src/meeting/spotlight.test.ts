@@ -1,14 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeProcesses } from '../testing/fake-processes.ts';
-import { MEETING_LAPSE_MS, type Meeting } from './state.ts';
 import { SPOTLIGHT_VARS, WINDOWS_SPOTLIGHT_SCRIPT, spotlightLine, spotlightRequest, startSpotlight, type SpotlightPlace } from './spotlight.ts';
 
-const MEETING: Meeting = { startedAt: '2030-01-08T10:00:00.000Z', by: 'lead', endedAt: null, since: null };
+const STARTED_AT = '2030-01-08T10:00:00.000Z';
+const UNTIL = Date.parse('2030-01-08T10:45:00.000Z');
 const TARGET: SpotlightPlace = {
   title: 'app-lead',
   meetingFile: 'state/meeting.json',
-  meeting: MEETING,
+  startedAt: STARTED_AT,
+  until: UNTIL,
   breakthroughFile: 'state/meeting-breakthrough.json',
   log: 'state/logs/meeting-spotlight.log',
 };
@@ -32,8 +33,8 @@ describe('spotlightRequest', () => {
       PATH: 'bin',
       [SPOTLIGHT_VARS.title]: 'app-lead',
       [SPOTLIGHT_VARS.meeting]: 'state/meeting.json',
-      [SPOTLIGHT_VARS.startedAt]: MEETING.startedAt,
-      [SPOTLIGHT_VARS.until]: String(Date.parse(MEETING.startedAt) + MEETING_LAPSE_MS),
+      [SPOTLIGHT_VARS.startedAt]: STARTED_AT,
+      [SPOTLIGHT_VARS.until]: String(UNTIL),
       [SPOTLIGHT_VARS.dim]: '0.4',
       [SPOTLIGHT_VARS.breakthrough]: 'state/meeting-breakthrough.json',
       [SPOTLIGHT_VARS.liftMs]: '30000',

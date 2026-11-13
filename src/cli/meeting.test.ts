@@ -127,6 +127,8 @@ describe('runCli: the daily meeting', () => {
     // The lead's tab title, which the script looks the window up by.
     assert.equal(env[SPOTLIGHT_VARS.title], '[app] lead');
     assert.equal(env[SPOTLIGHT_VARS.startedAt], '2030-01-08T10:00:00.000Z');
+    // The daily meeting lifts it at its lapse at the latest, 4 h after its start.
+    assert.equal(env[SPOTLIGHT_VARS.until], String(Date.parse('2030-01-08T14:00:00.000Z')));
     assert.equal(env[SPOTLIGHT_VARS.dim], '0.5');
     // The file the cold-send hook records a break-through in, and how long one lifts the dimming (T2524).
     assert.match(env[SPOTLIGHT_VARS.breakthrough] ?? '', /meeting-breakthrough\.json$/);
