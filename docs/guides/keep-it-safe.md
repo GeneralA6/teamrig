@@ -173,7 +173,9 @@ would print a secret file's content (`.env`, `~/.npmrc`, `~/.ssh/**`, `*.pem`, C
 `settings.local.json`, the shells' histories...), the whole environment, a
 secret variable's value (by name: `TOKEN`, `SECRET`, `PASSW`, `KEY`, a store's URL by its kind...), a Kubernetes
 secret's data or a dump command's output (`kubectl config view --raw`), and reads the line a container or a host runs
-too. Output piped or redirected away from the screen passes (`cat .env | wc -c`, `echo "$T" | docker login
+too. A line that reads a saved credential out of the host's store is refused whether it prints the key or not
+(`gh auth token`, `git credential fill`, `cmdkey /list`, `CredRead`, a `teamrig-gh-<owner>` name), so a key saved for
+one tool stays with that tool. Output piped or redirected away from the screen passes (`cat .env | wc -c`, `echo "$T" | docker login
 --password-stdin`), and the reason names the ways to use or check a secret unprinted. It also refuses a shell line
 that holds a secret as text, since the line itself stays in the transcript: a token by its shape, credentials in a
 URL, the credentials of an `Authorization` or API key header. A reference (`${DB_URI}`, `<db_password>`) or a
