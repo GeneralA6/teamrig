@@ -18,12 +18,19 @@ describe('hook ends', () => {
   });
 });
 
+/**
+ * The longest delay a timer takes (a longer one fires at once): the time limit of a spec not about the time limit, so a
+ * busy host never kills its hook early. The runner lowers the hook below normal priority, and with every core taken a
+ * node start took past the 10 s this was before (T2700); a hook that hangs still ends at the suite's idle kill.
+ */
+const NO_TIME_LIMIT_MS = 2_147_483_647;
+
 /** A real run of this Node binary with `script`: the runner's own spawn, with no shell. */
 function request(script: string, overrides: Partial<HookRequest> = {}): { readonly lines: string[]; readonly request: HookRequest } {
   const lines: string[] = [];
   return {
     lines,
-    request: { argv: [process.execPath, '-e', script], cwd: process.cwd(), env: { ...process.env, HOOK_PROBE: 'set' }, timeoutMs: 10_000, onLine: (line) => lines.push(line), ...overrides },
+    request: { argv: [process.execPath, '-e', script], cwd: process.cwd(), env: { ...process.env, HOOK_PROBE: 'set' }, timeoutMs: NO_TIME_LIMIT_MS, onLine: (line) => lines.push(line), ...overrides },
   };
 }
 
@@ -56,7 +63,7 @@ describe('nodeHookRunner', () => {
 
   it('kills a hook once its stop aborts, well before its time is up, and one whose stop aborted before it started', async () => {
     const stop = new AbortController();
-    const { request: run } = request('setInterval(() => undefined, 1000)', { timeoutMs: 60_000, stop: stop.signal });
+    const { request: run } = request('setInterval(() => undefined, 1000)', { stop: stop.signal });
     setTimeout(() => stop.abort(), 300);
     assert.deepEqual(await runner.run(run), { kind: 'stopped' });
     assert.deepEqual(await runner.run(run), { kind: 'stopped' });

@@ -84,15 +84,14 @@ function killError(code: string): Error {
   return Object.assign(new Error(`kill ${code}`), { code });
 }
 
-async function until(check: () => boolean, ms = 10_000): Promise<boolean> {
-  const deadline = Date.now() + ms;
+/**
+ * Polls `check` until it holds, with no deadline of its own: a host with every core taken can take past any fixed
+ * one to end a tree (T2700), and a tree that never ends still stops the run at the suite's idle kill.
+ */
+async function until(check: () => boolean): Promise<void> {
   while (!check()) {
-    if (Date.now() > deadline) {
-      return false;
-    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  return true;
 }
 
 describe('parseWindowsProcess and parsePosixProcess', () => {
@@ -389,8 +388,9 @@ describe('nodeSessionProcesses on this machine', () => {
   if (WINDOWS) it(
     "ends a Windows tree but not a detached program whose starter has ended: the restart's waiter outlives the session it ends",
     async () => {
-      // top: the session (claude); child: its MCP server; middle: a hook that starts the waiter and exits.
-      writeFileSync(join(DIR, 'waiter.cjs'), 'setTimeout(() => {}, 30000);\n');
+      // top: the session (claude); child: its MCP server; middle: a hook that starts the waiter and exits. Each runs
+      // 10 minutes, far past any wait a busy host makes (T2700), so the waiter cannot end by itself before the look.
+      writeFileSync(join(DIR, 'waiter.cjs'), 'setTimeout(() => {}, 600000);\n');
       writeFileSync(
         join(DIR, 'middle.cjs'),
         "const w = require('child_process').spawn(process.execPath, [__dirname + '/waiter.cjs'], { detached: true, stdio: 'ignore' });\n" +
@@ -399,11 +399,11 @@ describe('nodeSessionProcesses on this machine', () => {
       writeFileSync(
         join(DIR, 'top.cjs'),
         "const { spawn } = require('child_process');\n" +
-          "const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });\n" +
+          "const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { stdio: 'ignore' });\n" +
           "const middle = spawn(process.execPath, [__dirname + '/middle.cjs'], { stdio: ['ignore', 'pipe', 'ignore'] });\n" +
           "let waiter = '';\nmiddle.stdout.on('data', (d) => (waiter += d));\n" +
           "middle.on('exit', () => console.log(JSON.stringify({ child: child.pid, waiter: Number(waiter) })));\n" +
-          'setTimeout(() => {}, 30000);\n',
+          'setTimeout(() => {}, 600000);\n',
       );
       const top = spawn(NODE, [join(DIR, 'top.cjs')], { stdio: ['ignore', 'pipe', 'ignore'] });
       const line = await new Promise<string>((resolve) => top.stdout.setEncoding('utf8').once('data', resolve));
@@ -413,7 +413,7 @@ describe('nodeSessionProcesses on this machine', () => {
       const waiter = Number(pids.waiter);
       try {
         assert.deepEqual(await processes.end(top.pid ?? 0, 'ask'), { kind: 'ended' });
-        assert.equal(await until(() => !processes.alive(child)), true, 'the session and its children end');
+        await until(() => !processes.alive(child));
         assert.equal(processes.alive(waiter), true, 'the detached waiter runs on');
       } finally {
         await processes.end(waiter, 'force');
