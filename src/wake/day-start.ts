@@ -45,11 +45,21 @@ export function nextDayStartAt(dayStartUtc: string, now: number): number | undef
   return latest === undefined ? undefined : latest + MS_PER_DAY;
 }
 
-/** The moments reached at `now` and not settled yet: the day start (when set) and the burst the session is in. */
-export function dueMoments(now: number, dayStartUtc: string | undefined, burst: Burst | undefined, settled: SettledMoments): readonly DayMoment[] {
+/**
+ * Whether a day start at `dayStart` is settled by the one settled at `settled`: a later one, or one on the same UTC
+ * day, so a schedule that moves today's start after the session had it (src/wake/schedule.ts) gives no second turn.
+ */
+function dayStartSettled(settled: number | undefined, dayStart: number): boolean {
+  return settled !== undefined && (settled >= dayStart || Math.floor(settled / MS_PER_DAY) === Math.floor(dayStart / MS_PER_DAY));
+}
+
+/**
+ * The moments reached at `now` and not settled yet: the day start (`dayStart`, the latest at or before `now`, when
+ * the session has one today) and the burst the session is in.
+ */
+export function dueMoments(now: number, dayStart: number | undefined, burst: Burst | undefined, settled: SettledMoments): readonly DayMoment[] {
   const due: DayMoment[] = [];
-  const dayStart = dayStartUtc === undefined ? undefined : dayStartAt(dayStartUtc, now);
-  if (dayStart !== undefined && (settled.dayStart ?? Number.NEGATIVE_INFINITY) < dayStart) {
+  if (dayStart !== undefined && dayStart <= now && !dayStartSettled(settled.dayStart, dayStart)) {
     due.push({ kind: 'day-start', at: dayStart });
   }
   if (burst !== undefined && burst.at <= now && settled.burst !== burst.at) {

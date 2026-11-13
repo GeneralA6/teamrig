@@ -90,13 +90,20 @@ describe('the day start', () => {
 
 describe('dueMoments', () => {
   it('names the day start until it is settled, and a burst the session is in from its start until it is settled', () => {
-    assert.deepEqual(dueMoments(NOW, '06:00', undefined, NO_SETTLED_MOMENTS), [DAY_START]);
-    assert.deepEqual(dueMoments(NOW, '06:00', BURST, NO_SETTLED_MOMENTS), [DAY_START, BURST_MOMENT]);
-    assert.deepEqual(dueMoments(NOW, '06:00', BURST, { dayStart: SIX, burst: BURST.at }), []);
-    assert.deepEqual(dueMoments(NOW, '06:00', undefined, { dayStart: SIX - DAY, burst: undefined }), [DAY_START], "yesterday's start settles none of today");
-    assert.deepEqual(dueMoments(NOW, '06:00', BURST, { dayStart: SIX, burst: BURST.at - DAY }), [BURST_MOMENT], 'an earlier burst settles none of a new one');
+    assert.deepEqual(dueMoments(NOW, SIX, undefined, NO_SETTLED_MOMENTS), [DAY_START]);
+    assert.deepEqual(dueMoments(NOW, SIX, BURST, NO_SETTLED_MOMENTS), [DAY_START, BURST_MOMENT]);
+    assert.deepEqual(dueMoments(NOW, SIX, BURST, { dayStart: SIX, burst: BURST.at }), []);
+    assert.deepEqual(dueMoments(NOW, SIX, undefined, { dayStart: SIX - DAY, burst: undefined }), [DAY_START], "yesterday's start settles none of today");
+    assert.deepEqual(dueMoments(NOW, SIX, BURST, { dayStart: SIX, burst: BURST.at - DAY }), [BURST_MOMENT], 'an earlier burst settles none of a new one');
     assert.deepEqual(dueMoments(BURST.at - 1, undefined, BURST, NO_SETTLED_MOMENTS), [], 'a burst logged ahead of its start');
     assert.deepEqual(dueMoments(NOW, undefined, BURST, NO_SETTLED_MOMENTS), [BURST_MOMENT]);
+  });
+
+  it('takes a start settled earlier the same UTC day as settled, so a start moved later today wakes no one twice', () => {
+    const moved = SIX + HOUR;
+    assert.deepEqual(dueMoments(NOW, moved, undefined, { dayStart: SIX, burst: undefined }), []);
+    assert.deepEqual(dueMoments(NOW, moved, undefined, { dayStart: SIX - DAY + 3 * HOUR, burst: undefined }), [{ kind: 'day-start', at: moved }], "yesterday's later start settles none of today");
+    assert.deepEqual(dueMoments(SIX - 1, SIX, undefined, NO_SETTLED_MOMENTS), [], 'a start not reached yet');
   });
 });
 
