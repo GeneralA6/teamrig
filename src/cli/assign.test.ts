@@ -61,3 +61,24 @@ describe('runCli: giving a task to another session posts it an inbox line', () =
     assert.deepEqual(await inboxOf(kit, 'bravo'), []);
   });
 });
+
+describe("runCli: a p0 handed to another session says its team's wake check wakes it (T2686)", () => {
+  const WOKEN = 'NOTE bravo is woken at its idle prompt for T1, a p0, so no --wake now is needed';
+
+  async function handed(kit: CliHarness, priority: string): Promise<readonly string[]> {
+    const added = await kit.run(['add', '--title', 'Ship the change', '--description', 'what and why', '--priority', priority, '--owner', 'bravo', '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    return added.stderr;
+  }
+
+  it('names the wake of a p0, and of no p1, whose wake check waits for the budget and quiet hours', async () => {
+    assert.deepEqual(await handed(new CliHarness(), 'p0'), ['NOTE bravo has an inbox line: T1 is yours (p0): Ship the change', WOKEN]);
+    assert.deepEqual(await handed(new CliHarness(), 'p1'), ['NOTE bravo has an inbox line: T1 is yours (p1): Ship the change']);
+  });
+
+  it('names no wake while the team has wakes off, nor for a line it could not post', async () => {
+    assert.deepEqual(await handed(new CliHarness({ ...TEAM, wake: { enabled: false } }), 'p0'), ['NOTE bravo has an inbox line: T1 is yours (p0): Ship the change']);
+    const unsent = await handed(new CliHarness({ ...TEAM, register: { secretPatterns: ['is yours'] } }), 'p0');
+    assert.deepEqual(unsent.map((line) => line.split(':')[0]), ['WARN bravo was not told of T1']);
+  });
+});
