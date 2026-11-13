@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { ignoreClosedPipe } from './node-main.ts';
 
 const MAIN = fileURLToPath(new URL('main.ts', import.meta.url));
 
@@ -28,5 +30,24 @@ describe('stdout closed early (`teamrig show T1 | head -2`)', () => {
     const ended = await runClosedEarly();
     assert.doesNotMatch(ended.stderr, /EPIPE|\n\s+at /);
     assert.equal(ended.status, 0, ended.stderr);
+  });
+});
+
+describe('ignoreClosedPipe', () => {
+  /** A stream error with the given errno code, as node raises it on a failed write. */
+  function streamError(code: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(`write ${code}`), { code });
+  }
+
+  it('swallows EPIPE, so a closed reader ends no run', () => {
+    const stream = new PassThrough();
+    ignoreClosedPipe(stream);
+    assert.doesNotThrow(() => stream.emit('error', streamError('EPIPE')));
+  });
+
+  it('throws any other stream error as before', () => {
+    const stream = new PassThrough();
+    ignoreClosedPipe(stream);
+    assert.throws(() => stream.emit('error', streamError('EIO')), /write EIO/);
   });
 });
