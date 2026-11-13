@@ -4,9 +4,10 @@ import { endOf, type ShellEnd } from '../test-run/shell.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
- * The two kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import, which never writes
- * to GitHub), and the creation of one issue (gh migrate, which opens an issue for a team task). The runner refuses
- * any other command line before it starts: no issue edit, close, label, comment or assignee change.
+ * The four kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import, which never writes
+ * to GitHub), the creation of one issue (gh migrate, which opens an issue for a team task), and one comment on or
+ * the close of one issue or pull request (issue comment and issue close). The runner refuses any other command line
+ * before it starts: no issue edit, reopen, label, assignee change, merge or delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -67,6 +68,57 @@ export function isIssueCreate(args: readonly string[]): boolean {
   return title?.[0] === 'title' && body?.[0] === 'body' && labels.every(([key]) => key === LABEL_FIELD);
 }
 
+/** One issue or pull request of a repository (`owner/name`): GitHub numbers both in one sequence, and its issues API reaches either. */
+export interface IssueNumber {
+  readonly repo: string;
+  readonly number: number;
+}
+
+/** The command line that posts one comment on an issue or pull request, its body a raw field so it stays text. */
+export function issueCommentArgs(target: IssueNumber, body: string): string[] {
+  return ['api', `repos/${target.repo}/issues/${target.number}/comments`, '-X', 'POST', RAW_FIELD, `body=${body}`];
+}
+
+/** The command line that closes one issue or pull request: the issues API closes a pull request too. */
+export function issueCloseArgs(target: IssueNumber): string[] {
+  return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'PATCH', RAW_FIELD, 'state=closed'];
+}
+
+/** `repos/<owner>/<name>/issues/<number>`, then `/comments` or nothing: the paths of a comment and a close. */
+const ISSUE_PATH = /^repos\/([^/]+\/[^/]+)\/issues\/([1-9][0-9]{0,9})(\/comments)?$/;
+
+/** The method of `gh api <path> -X <method>`, and whether the path is the comments', when it is one issue's; else undefined. */
+function issueCall(args: readonly string[]): { readonly method: string; readonly comments: boolean } | undefined {
+  const match = ISSUE_PATH.exec(args[1] ?? '');
+  const repo = match?.[1];
+  const method = args[3];
+  if (args[0] !== 'api' || match === null || repo === undefined || !REPO_NAME.test(repo) || args[2] !== '-X' || method === undefined) {
+    return undefined;
+  }
+  return { method, comments: match[3] !== undefined };
+}
+
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/comments -X POST -f body=<text>` and nothing more: one
+ * comment, its body the only field. Another path, method, flag or field is refused, so the run edits, labels or
+ * assigns nothing.
+ */
+export function isIssueComment(args: readonly string[]): boolean {
+  const call = issueCall(args);
+  const pairs = rawPairs(args.slice(4));
+  return call?.method === 'POST' && call.comments && pairs?.length === 1 && pairs[0]?.[0] === 'body';
+}
+
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number> -X PATCH -f state=closed` and nothing more: the close of
+ * one issue or pull request. Any other field (a title, a body, labels, a reopen) is refused.
+ */
+export function isIssueClose(args: readonly string[]): boolean {
+  const call = issueCall(args);
+  const pairs = rawPairs(args.slice(4));
+  return call?.method === 'PATCH' && !call.comments && pairs?.length === 1 && pairs[0]?.[0] === 'state' && pairs[0][1] === 'closed';
+}
+
 /** `-f key=value` pairs in order; null when anything else is there. */
 function rawPairs(args: readonly string[]): Array<[string, string]> | null {
   const pairs: Array<[string, string]> = [];
@@ -102,13 +154,18 @@ export interface GhRunner {
 /** How long one `gh` run may take before it is stopped: a page of a hundred issues takes seconds. */
 export const GH_TIMEOUT_MS = 60_000;
 
-/** A command line the runner will not start: neither a page of a shipped issue query nor the creation of one issue. */
+/** A command line the runner will not start: none of a shipped issue query's page, one issue's creation, comment or close. */
 export class GhRefusedError extends Error {
   override readonly name = 'GhRefusedError';
 
   constructor(args: readonly string[]) {
-    super(`teamrig only runs gh for its shipped issue queries and to open an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+    super(`teamrig only runs gh for its shipped issue queries and to open, comment on or close an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
   }
+}
+
+/** True for each command line the runner starts. */
+export function isAllowedGh(args: readonly string[]): boolean {
+  return isIssueQuery(args) || isIssueCreate(args) || isIssueComment(args) || isIssueClose(args);
 }
 
 /**
@@ -119,7 +176,7 @@ export class GhRefusedError extends Error {
 export function nodeGhRunner(program = 'gh', leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS): GhRunner {
   return {
     run: (request) => {
-      if (!isIssueQuery(request.args) && !isIssueCreate(request.args)) {
+      if (!isAllowedGh(request.args)) {
         return Promise.reject(new GhRefusedError(request.args));
       }
       return new Promise((resolve, reject) => {
