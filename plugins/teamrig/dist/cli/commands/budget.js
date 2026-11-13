@@ -261,7 +261,7 @@ export async function budget(args, runtime) {
     else {
         const today = formatUtcDay(new Date(now));
         const outsideToday = measured.outside.byDay[today];
-        const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
+        const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, top: measured.outsideTop };
         const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
         // The team's sessions alone, so the rows add up to the team's row of the table above them.
         const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
