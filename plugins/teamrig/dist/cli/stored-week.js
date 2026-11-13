@@ -1,6 +1,7 @@
 import { OUTSIDE_ID, outsideUsageDir } from "../budget/measure.js";
 import { UsageStore } from "../budget/store.js";
 import { accountReadings, calibrationOf, MeterLog } from "../budget/calibration.js";
+import { measuredTurns } from "../budget/turn-average.js";
 import { teamWeekOf } from "../budget/team-week.js";
 import { rateOf } from "../budget/week.js";
 import { accountWeekOn } from "./account-teams.js";
@@ -61,4 +62,19 @@ export async function readWPerPct(runtime, paths, config, now) {
  */
 export async function readTodayWPerPct(runtime, paths, config, now) {
     return (await readStoredWeek(runtime, paths, config, now)).todayWPerPct;
+}
+/**
+ * The average W of a notification turn for a wake of `session` (budget/turn-average.ts): its own stored turns of the
+ * last 7 days, else the team's when it has too few of its own. It reads the stored usage only (the per-day counters
+ * `teamrig budget --burn` shows), never a transcript, so the wake path stays cheap; undefined while there are too few.
+ */
+export async function readMeasuredTurns(runtime, paths, session, sessions, now) {
+    const team = new UsageStore(runtime.files, paths.usage);
+    const ownState = (await team.load(session)).state;
+    const own = measuredTurns([ownState], now);
+    if (own !== undefined) {
+        return own;
+    }
+    const states = await Promise.all(sessions.filter((id) => id !== session).map(async (id) => (await team.load(id)).state));
+    return measuredTurns([ownState, ...states], now);
 }
