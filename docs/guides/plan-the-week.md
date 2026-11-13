@@ -82,7 +82,8 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
   session stalls until the reset.
 - Reset grants the account holds beside its weekly reset (a full reset or a model's, from support or a promotion)
   are written down in `budget.resets` with their expiry and each use taken; the day's view ends with what is left of
-  each, and `teamrig check` warns the lead two weeks before one expires unspent.
+  each, the lead's `teamrig start`, start note and meeting agenda carry one line of the uses left and the next
+  expiry, and `teamrig check` warns the lead two weeks before one expires unspent.
 
 - The pace line climbs to `budget.targetPct` by `budget.paceEndHoursBeforeReset` (1) hours before the reset. Each
   day, what is left to it is spread over the active time to the pace end, and each session's daily budget is its
