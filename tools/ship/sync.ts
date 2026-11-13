@@ -65,21 +65,31 @@ export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
     for (const file of files) deps.writeText(file.path, withVersion(deps.readText(file.path), file, set));
   };
   git('checkout', '--', ...files.map((file) => file.path));
-  const stashed = git('status', '--porcelain', '--untracked-files=no') !== '';
-  if (stashed) git('stash', 'push', '--quiet', '-m', 'ship.ts: the plan, set aside for the rebase onto main');
+  const head = git('rev-parse', 'HEAD');
+  const saved = git('status', '--porcelain', '--untracked-files=no') === '' ? null : setAside(deps);
+  const restore = (reason: string): never => {
+    git('reset', '--hard', '--quiet', head);
+    if (saved !== null) {
+      try {
+        git('stash', 'apply', '--quiet', saved);
+      } catch {
+        refuse(`${reason}; putting the plan back failed too: git stash apply ${saved} restores it`);
+      }
+    }
+    putBack();
+    return refuse(`${reason}; the branch and the plan are as they were before the ship`);
+  };
   try {
     git('rebase', '--quiet', tip);
   } catch {
     git('rebase', '--abort');
-    if (stashed) git('stash', 'pop', '--quiet');
-    putBack();
-    refuse(`rebasing onto origin/${main} ${short} conflicts: rebase by hand, then ship again`);
+    restore(`rebasing onto origin/${main} ${short} conflicts: rebase by hand, then ship again`);
   }
-  if (stashed) {
+  if (saved !== null) {
     try {
-      git('stash', 'pop', '--quiet');
+      git('stash', 'apply', '--quiet', saved);
     } catch {
-      refuse(`the plan's uncommitted changes conflict with origin/${main} ${short}: they stay in git stash; resolve the conflict, then ship again`);
+      restore(`the plan's uncommitted changes conflict with origin/${main} ${short}: rebase by hand and resolve the conflict, then ship again`);
     }
   }
   if (kind === null) return { kind: 'rebased', onto: tip, sets: setNow() };
@@ -94,6 +104,19 @@ export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
     if (named.length > 0) refuse(`the change names its old version ${from} in ${named.join(', ')}: set it to ${sets} there, then ship again`);
   }
   return { kind: 'rebased', onto: tip, sets };
+}
+
+/**
+ * Saves the plan's uncommitted changes as a stash commit that no ref names, then clears them from the tree; returns
+ * its sha. Not `git stash push`: the stash list is shared by every worktree of the clone, so a pop could take another
+ * session's entry, and a refused sync used to leave its own entry behind. The sha is logged, so the plan can be
+ * applied again by hand if the run dies before it is put back.
+ */
+function setAside(deps: SyncDeps): string {
+  const saved = deps.git('stash', 'create', 'ship.ts: the plan, set aside for the rebase onto main');
+  deps.log(`set the plan's uncommitted changes aside as ${saved} (git stash apply ${saved} brings them back)`);
+  deps.git('reset', '--hard', '--quiet');
+  return saved;
 }
 
 /** The files whose lines added since `rev` (working tree included) contain `text`, outside `skipped`. */
