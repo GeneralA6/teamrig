@@ -87,7 +87,10 @@ A task with the same title (ignoring case and extra spaces) that is still open, 
 
 ### teamrig set
 
-Sets a task's status. Only the task's owner may.
+Sets a task's status. Only the task's owner may. A member's change with a `--note` that tells none of its leaders (no
+wait on the lead, say) also prints `NOTED in the register (the lead sees it at its next prompt)` on stderr: the lead
+sees it in its [prompt digest](hooks.md#each-prompt-the-leader-digest), so it is "noted in the register", not "reported to
+the lead".
 
 Flags:
 
@@ -283,6 +286,8 @@ pin of a task it does not own. A pin puts a task above every other task of its o
 leader above the owner sets or clears it (the lead on its own tasks too), never the owner itself; an owner has one
 pin, so a new pin clears the earlier one in the same write, and handing the task to another owner clears it. A sub-lead hands a task only to itself or a session it leads; the lead moves work between
 groups. A `--note` alone adds context to any task's history, from any session; one from the task's owner also becomes the note `show` and the waiting text print, as a note on `set` does, so a restated note shows at once.
+A member's `--note` that tells none of its leaders prints `NOTED in the register (the lead sees it at its next prompt)`
+on stderr, as `set` does.
 The status never changes here: use `set`.
 
 In a tree of teams, the lead at its root, who asks the owner every team's decisions, records an answer on a task of
@@ -1733,7 +1738,7 @@ Prints each session: running, with the memory its Claude Code's process tree hol
 servers) and, on Windows, what it has committed (its private bytes, what it adds to the commit charge), closed (the
 Claude Code it last started in has ended) or with no start recorded. The SessionStart hook
 records that process at each start (`state/sessions/<id>.json`); a process id the host gave to a later process
-does not count. Then the host's free memory and commit charge (Windows and Linux). It only reads.
+does not count. Then the host's free memory and commit charge (Windows, and Linux under strict overcommit). It only reads.
 
 With `--pass` it prints, in the roster's order, what an idle pass would do, and changes nothing: `CLOSE` a running
 session [teamrig close](#teamrig-close) would close (quiet `open.headroom.closeIdleMinutes` or more, nothing it can
@@ -2706,7 +2711,7 @@ and list. A rehired session's first prompt reads the handover its retire left fi
 
 It refuses any session but the lead when the host has no room for one more: its free memory, less what the tabs
 still loading hold, must stay over the floor a new tab keeps free with the session counted, and its commit charge,
-with those tabs counted, within `open.headroom.commitMaxPct` (92%; Windows and Linux). The floor is
+with those tabs counted, within `open.headroom.commitMaxPct` (92%; Windows, and Linux under strict overcommit). The floor is
 `open.headroom.floorMb` when set, else `delivery.queue.memoryFloorMb` plus `delivery.queue.heavyReserveMb` (4096 +
 2048), so a tab opened at the floor still leaves a heavy queued step the room it starts at. A session is counted at
 the median running session's Claude Code process tree, else at `open.headroom.sessionMb` (1200 MB): what it holds

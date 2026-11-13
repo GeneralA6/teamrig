@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
+import { REGISTER_ONLY_LINE } from './commands/register.ts';
 
 /** Every part a bug's review needs, as `set` flags. */
 const REVIEW = [
@@ -58,6 +59,7 @@ describe("runCli: a bug's review (T916)", () => {
     assert.deepEqual(done.stderr, [
       'WARN T1 is a bug: done needs its review, --how, --prevent, --missed-test, --missed-monitor and --missed-log ' +
         '(how it happened, what stops it and how it was missed; teamrig help set); set anyway, as register.review.mode is warn',
+      REGISTER_ONLY_LINE,
     ]);
   });
 

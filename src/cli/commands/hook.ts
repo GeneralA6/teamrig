@@ -53,6 +53,7 @@ import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
 import { bindAfterClear, bindHintOnce, bindNamedTab, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
+import { leaderDigestText } from './hook-leader-digest.ts';
 import { startAutoSync } from './gh-auto.ts';
 import { closedSendHold } from './hook-closed-send.ts';
 import { coldSendHold } from './hook-cold-send.ts';
@@ -216,7 +217,8 @@ async function cancelledRestartLine(runtime: CliRuntime, kit: Kit, id: string, g
  * logs a team session's prompt for the task pane (hook-turn-log.ts), cancels a pending
  * automatic restart, binds a hand-started tab by its title, notes a Claude Code rename of the session, titles a
  * bound tab that has no title after its session (so a /clear keeps it bound), says once how to bind a tab that is
- * not bound, shows the session's new inbox lines and, once per level while it is past its daily budget and the
+ * not bound, shows the session's new inbox lines, to a leader the register changes in its tree since its last prompt
+ * (hook-leader-digest.ts) and, once per level while it is past its daily budget and the
  * team is ahead of its pace line, tells the model to finish the step in hand; or one line when its team pointer
  * is broken.
  */
@@ -265,11 +267,13 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   }
   const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(config.refresh)).catch(() => undefined);
   const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
+  // Like the inbox lines below, reading the digest moves its cursor, so it is read late; only a leader gets one.
+  const digest = session === undefined ? undefined : await leaderDigestText(runtime, kit.paths, config, session).catch(() => undefined);
   // Read last, as reading marks the lines shown: a hook killed at its timeout before printing must leave them unshown.
   const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession, teamZone(config, runtime));
   // An unreadable title may be one the user set, so only a title read as absent is given.
   const tabTitle = title.kind === 'read' ? tabTitleFor(own.roster, session, title.title) : undefined;
-  const texts = [bound, renamed, hint, cancelled, lines, budgetLine].filter((text): text is string => text !== undefined);
+  const texts = [bound, renamed, hint, cancelled, lines, digest, budgetLine].filter((text): text is string => text !== undefined);
   for (const text of promptOutput(texts, tabTitle)) {
     runtime.out.stdout(text);
   }

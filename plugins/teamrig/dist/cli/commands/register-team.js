@@ -13,9 +13,9 @@ export async function teamOf(runtime, kit, access) {
 export async function openTeam(runtime, access) {
     return teamOf(runtime, await openTeamKit(runtime), access);
 }
-/** One inbox line telling a task's owner the task is its own; `shown` names the owner in the NOTE (another team's by address). */
+/** One inbox line telling a task's owner the task is its own, true when posted; `shown` names the owner in the NOTE (another team's by address). */
 export async function tellAssigned(runtime, team, by, task, shown = task.owner) {
-    await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
+    return tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
 }
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
 export async function tellLine(runtime, team, by, to, text, unsent, shown = to) {

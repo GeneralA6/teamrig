@@ -11,6 +11,7 @@ import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, LONG_RULES_TEAM, rulesToOverflow, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
+import { REGISTER_ONLY_LINE } from './commands/register.ts';
 
 const STATE = (id: string): string => join(TEAM_HOME, 'state', 'refresh', `${id}.json`);
 const HANDOVER = (id: string): string => join(TEAM_HOME, 'handover', `${id}.md`);
@@ -622,7 +623,7 @@ describe('runCli: context refresh', () => {
     const done = await kit.run(['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--followups', 'none', '--session', 'alpha'], { files });
     assert.equal(done.code, EXIT.ok);
     assert.match(done.stdout[0] ?? '', /^SET T1 done,/);
-    assert.deepEqual(done.stderr, ['WARN T1 is done, but its refresh check was not recorded: EACCES: simulated']);
+    assert.deepEqual(done.stderr, ['WARN T1 is done, but its refresh check was not recorded: EACCES: simulated', REGISTER_ONLY_LINE]);
   });
 
   it('keeps the Stop hook silent outside a team, without a config or a session, and on any error', async () => {

@@ -159,13 +159,37 @@ function namedListCommand(platform) {
         const script = "Get-CimInstance Win32_Process | ForEach-Object { '{0},{1}' -f $_.WorkingSetSize,$_.Name }";
         return { file: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', script], bytesPerUnit: 1 };
     }
-    return { file: 'ps', args: ['-A', '-o', 'rss=,comm='], bytesPerUnit: 1024 };
+    // On Linux `comm` is the main thread's name, which a program may set: Node 24 names its own `MainThread`, so every
+    // node process would hold memory under that name. The command line's first word names the program instead.
+    return { file: 'ps', args: ['-A', '-o', platform === 'linux' ? 'rss=,args=' : 'rss=,comm='], bytesPerUnit: 1024 };
+}
+/**
+ * A Linux `<rss> <command line>` list as `<rss> <program>` lines: the command line's first word, and a kernel
+ * thread's bracketed name (`[kworker/0:1]`) without its brackets. A line with no command line is left out.
+ */
+export function linuxProgramLines(text) {
+    const lines = [];
+    for (const line of text.split('\n')) {
+        const match = /^\s*(\d+)\s+(\S.*)$/.exec(line);
+        const amount = match?.[1];
+        const commandLine = match?.[2];
+        if (amount === undefined || commandLine === undefined) {
+            continue;
+        }
+        const kernel = /^\[(.+)\]$/.exec(commandLine.trim());
+        const program = kernel?.[1] ?? commandLine.split(/\s+/)[0] ?? commandLine;
+        lines.push(`${amount} ${program}`);
+    }
+    return lines.join('\n');
 }
 /** The host's programs by the memory they hold; undefined when the list fails. The lister itself is counted: a few dozen MB. */
 async function holdersOf(platform) {
     const { file, args, bytesPerUnit } = namedListCommand(platform);
     const text = await outputOf(file, args);
-    return text === undefined ? undefined : parseHolders(text, bytesPerUnit);
+    if (text === undefined) {
+        return undefined;
+    }
+    return parseHolders(platform === 'linux' ? linuxProgramLines(text) : text, bytesPerUnit);
 }
 /** What `file` printed, or undefined when it failed. */
 function outputOf(file, args) {
@@ -173,7 +197,7 @@ function outputOf(file, args) {
         execFile(file, args, { windowsHide: true, maxBuffer: LIST_MAX_BUFFER }, (error, stdout) => resolve(error === null ? stdout : undefined));
     });
 }
-/** The commit charge: Win32_OperatingSystem on Windows, `/proc/meminfo` on Linux, nothing elsewhere. */
+/** The commit charge: Win32_OperatingSystem on Windows, `/proc/meminfo` on Linux under strict overcommit, nothing elsewhere. */
 async function commitOf(platform) {
     if (platform === 'win32') {
         const script = "Get-CimInstance Win32_OperatingSystem | ForEach-Object { '{0},{1}' -f $_.TotalVirtualMemorySize,$_.FreeVirtualMemory }";
@@ -184,11 +208,20 @@ async function commitOf(platform) {
         return undefined;
     }
     try {
-        return parseMeminfoCommit(await readFile('/proc/meminfo', 'utf8'));
+        return linuxCommitOf(await readFile('/proc/sys/vm/overcommit_memory', 'utf8'), await readFile('/proc/meminfo', 'utf8'));
     }
     catch {
         return undefined;
     }
+}
+/**
+ * Linux's commit charge, read only under strict overcommit (`vm.overcommit_memory` 2), the one mode in which the
+ * kernel refuses memory past CommitLimit. Under the default heuristic (0) and always (1) modes Committed_AS passes the
+ * limit on a busy host without harm, so a gate on it would hold every queued step on such a host for good (#599);
+ * the free-memory check still guards those hosts.
+ */
+export function linuxCommitOf(overcommitMode, meminfo) {
+    return overcommitMode.trim() === '2' ? parseMeminfoCommit(meminfo) : undefined;
 }
 /**
  * The real probe: Node's free and total memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its

@@ -7,6 +7,7 @@ import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
+import { REGISTER_ONLY_LINE } from './commands/register.ts';
 
 const START = ['set', 'T2', '--status', 'in-progress', '--session', 'alpha'];
 const HOLD = 'T2 is Improvements work and alpha holds Roadmap work that can move: T1; work that first [focus.wip], or, for a one-commit fix, start it with --one-commit';
@@ -86,7 +87,7 @@ describe('runCli: set and the WIP rule', () => {
       assert.equal(closed.code, EXIT.ok, closed.stdout.join('\n'));
       await kit.run(['add', '--title', 'Ship the chart', '--description', 'what and why', '--priority', 'p2', '--class', 'Roadmap', '--session', 'alpha']);
       const reopened = await kit.run(['set', 'T1', '--status', 'in-progress', '--note', 'it broke live', '--session', 'alpha']);
-      assert.deepEqual([reopened.code, reopened.stderr], [EXIT.ok, []], reopened.stdout.join('\n'));
+      assert.deepEqual([reopened.code, reopened.stderr], [EXIT.ok, [REGISTER_ONLY_LINE]], reopened.stdout.join('\n'));
     }
   });
 
@@ -153,6 +154,6 @@ describe('runCli: set and a class past its share of the week', () => {
     const kit = await spentOn(new CliHarness(LIMITED));
     const files = new FaultyFiles(kit.files).fail('read', join(TEAM_HOME, 'state', 'usage', 'alpha.json'), systemError('EIO'));
     const dropped = await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'not needed', '--session', 'alpha'], { files });
-    assert.deepEqual(dropped.stderr, []);
+    assert.deepEqual(dropped.stderr, [REGISTER_ONLY_LINE]);
   });
 });
