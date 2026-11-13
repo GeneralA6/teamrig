@@ -28,7 +28,7 @@ describe('refresh state files', () => {
   it('reads back every phase it writes, as one versioned line', () => {
     for (const state of EVERY_PHASE) {
       const text = formatRefreshState(state);
-      assert.match(text, /^\{"v":2,"phase":"[a-z]+",.*\}\n$/);
+      assert.match(text, /^\{"v":3,"phase":"[a-z]+",.*\}\n$/);
       assert.deepEqual(parseRefreshState(text), state);
     }
   });
@@ -38,7 +38,7 @@ describe('refresh state files', () => {
       '',
       '{"v":1,"phase":"boundary","task":"T1"',
       '{"phase":"boundary","task":"T1","at":"x"}',
-      '{"v":3,"phase":"boundary","task":"T1","at":"x"}',
+      '{"v":4,"phase":"boundary","task":"T1","at":"x"}',
       '{"v":1,"phase":"later","task":"T1","at":"x"}',
       '{"v":1,"phase":"boundary","at":"x"}',
       '{"v":1,"phase":"boundary","task":"T1"}',
@@ -123,11 +123,34 @@ describe('the baseline field ', () => {
 });
 
 describe('the state file format', () => {
-  it('writes format 2, reads format 1 as a file with no baseline, and pins the fields of the format', () => {
+  it('writes format 3, reads formats 1 and 2 as files with no window or baseline, and pins the fields of the format', () => {
     const old = '{"v":1,"phase":"idle","task":"T1","at":"x","tokens":5,"finished":2}';
     assert.deepEqual(parseRefreshState(old), { phase: 'idle', task: 'T1', at: 'x', tokens: 5, finished: 2 });
-    const state: RefreshState = { phase: 'boundary', task: 'T1', at: AT, finished: 1, ask: { task: 'T0', at: AT, tokens: 1, handoverHash: 'h', fixHash: 'f' }, baseline: 7 };
+    const second = '{"v":2,"phase":"idle","task":"T1","at":"x","tokens":5,"finished":2,"baseline":4}';
+    assert.deepEqual(parseRefreshState(second), { phase: 'idle', task: 'T1', at: 'x', tokens: 5, finished: 2, baseline: 4 });
+    const state: RefreshState = { phase: 'boundary', task: 'T1', at: AT, finished: 1, ask: { task: 'T0', at: AT, tokens: 1, handoverHash: 'h', fixHash: 'f' }, baseline: 7, largeWindow: true };
     const written = JSON.parse(formatRefreshState(state));
-    assert.deepEqual(fieldPaths(written), ['ask.at', 'ask.fixHash', 'ask.handoverHash', 'ask.task', 'ask.tokens', 'at', 'baseline', 'finished', 'phase', 'task', 'v']);
+    assert.deepEqual(fieldPaths(written), ['ask.at', 'ask.fixHash', 'ask.handoverHash', 'ask.task', 'ask.tokens', 'at', 'baseline', 'finished', 'largeWindow', 'phase', 'task', 'v']);
+  });
+});
+
+describe('the window field', () => {
+  it('round-trips a large or small window on every phase, and refuses a bad one', () => {
+    for (const phase of EVERY_PHASE) {
+      for (const largeWindow of [true, false]) {
+        const state = { ...phase, largeWindow };
+        assert.deepEqual(parseRefreshState(formatRefreshState(state)), state, `${phase.phase} ${String(largeWindow)}`);
+      }
+    }
+    assert.equal(parseRefreshState(formatRefreshState({ phase: 'refreshed', task: 'T1', at: AT }).replace('}', ',"largeWindow":"yes"}')), undefined);
+  });
+
+  it('reads a file from before it as telling no window: the live shapes', () => {
+    const fresh = '{"v":1,"phase":"refreshed","task":null,"at":"2030-01-08T10:00:00.000Z"}';
+    assert.deepEqual(parseRefreshState(fresh), { phase: 'refreshed', task: null, at: AT });
+    const judged = '{"v":1,"phase":"idle","task":"T3","at":"2030-01-08T10:00:00.000Z","tokens":140000,"finished":1,"baseline":122000}';
+    const read = parseRefreshState(judged);
+    assert.deepEqual(read, { phase: 'idle', task: 'T3', at: AT, tokens: 140_000, finished: 1, baseline: 122_000 });
+    assert.equal(read !== undefined && 'largeWindow' in read, false);
   });
 });

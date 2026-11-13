@@ -1036,6 +1036,15 @@ export interface RefreshConfig {
   /** The context size, in tokens, that asks for a refresh. Absolute, since a hook cannot see the window size. */
   readonly contextTokens: number;
   /**
+   * The threshold for a session on a context window larger than 200k, when larger than `contextTokens`: its `launch`
+   * model ends in `[1m]`, or its refresh state shows the window, since a model can run a 1M window without the suffix
+   * (the lead's plain `opus`) and no hook is told it: the window the plugin's mod reports, a context past 200k, or a
+   * fresh start measured over `contextTokens` (src/refresh/decide.ts `windowOf`). A fresh session on it starts at over
+   * 120k (its system prompt, rules and handover), and the window has room far past it. 0: `contextTokens` for every
+   * window.
+   */
+  readonly largeWindowContextTokens: number;
+  /**
    * Also refresh once this many tasks were finished since the context was last fresh (a /clear, a new
    * process or a compaction), when the context is at least `everyTasksMinTokens`; 0 turns it off.
    */

@@ -131,10 +131,11 @@ describe('runCli: context refresh', () => {
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"boundary","task":"T1"/);
 
     const asked = await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() });
+    // 300k fits no 200k window, so the threshold is the large window's.
     assert.deepEqual(stopJson(asked), {
       decision: 'block',
       reason:
-        `teamrig: your context is 300k (refresh at 120k) and you just finished T1. Write your handover to ${HANDOVER('alpha')}, replacing the whole file (your fresh start reads all of it), ` +
+        `teamrig: your context is 300k (refresh at 250k) and you just finished T1. Write your handover to ${HANDOVER('alpha')}, replacing the whole file (your fresh start reads all of it), ` +
         'with what the register lacks, not task statuses, which your fresh start reads live from the register: a `## State` section (where things are; the scratchpad files, plan file ' +
         'and scheduled jobs the next session still needs; questions still open with the user) and a `## Next steps` section (the next step of each task in progress; what to check later, and when). ' +
         'Then end your turn: the turn end takes the handover as ready. Do not start new work.',
@@ -361,7 +362,7 @@ describe('runCli: context refresh', () => {
     const typed = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'one more thing', session_title: 'app-alpha' });
     const cancelled = await typedIn.kit.run(['hook', 'inbox-reminder'], { env, stdin: typed });
     assert.ok(
-      cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew 24k more'),
+      cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew 50k more'),
       cancelled.stdout.join('\n'),
     );
     assert.equal(await typedIn.store.parked('alpha'), undefined);
@@ -381,7 +382,7 @@ describe('runCli: context refresh', () => {
     const typed = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'one more thing', session_title: 'app-alpha' });
     const cancelled = await kit.run(['hook', 'inbox-reminder'], { env, stdin: typed });
     assert.ok(
-      cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew 24k more'),
+      cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew 50k more'),
       cancelled.stdout.join('\n'),
     );
     assert.equal(await store.restart('alpha'), undefined);
@@ -412,8 +413,31 @@ describe('runCli: context refresh', () => {
     assert.match((await kit.run(['refresh', 'bravo', '--session', 'lead'])).stdout.join('\n'), /; then type \/clear in its tab$/);
   });
 
+  it('asks a plain opus session that started fresh at 122k only at 250k, and keeps that through its /clear', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false }, launch: { alpha: { model: 'opus' } } });
+    const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+    await store.setState('alpha', { phase: 'refreshed', task: 'T1', at: '2030-01-08T09:59:00.000Z', baseline: null });
+    const stop = async (tokens: number): Promise<CliResult> => {
+      await kit.files.write(TRANSCRIPT, transcript(tokens));
+      return kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() });
+    };
+    assert.deepEqual(await stop(122_000), SILENT, 'the first turn end only measures');
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"baseline":122000,"largeWindow":true/);
+    assert.deepEqual(await stop(146_000), SILENT, 'no ask at its baseline + 24k');
+    assert.deepEqual(await stop(249_999), SILENT);
+    assert.match(JSON.stringify(stopJson(await stop(250_000))), /"decision":"block","reason":"teamrig: your context is 250k \(refresh at 250k\)/);
+    await kit.files.write(HANDOVER('alpha'), '# In progress\n');
+    assert.equal((await kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    assert.ok(contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') })).includes('You were refreshed'));
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed".*"baseline":null,"largeWindow":true/, 'the /clear keeps the window');
+    assert.deepEqual(await stop(130_000), SILENT, 'its first turn end after the /clear asks nothing');
+    assert.deepEqual(await stop(170_000), SILENT, 'nor past 120k + 24k of growth');
+  });
+
   it('never asks a fresh start to refresh again before its context grew: 130k against 120k', async () => {
-    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    // The larger threshold off: a fresh start over 120k shows a large window otherwise, so the guard reads alone.
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false, largeWindowContextTokens: 0 } });
     await handoverWritten(kit);
     stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
     assert.ok(contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') })).includes('You were refreshed after T1'));
@@ -429,6 +453,17 @@ describe('runCli: context refresh', () => {
       assert.deepEqual(await stop(140_000), SILENT, 'nor after tasks with no growth');
     }
     assert.match(JSON.stringify(stopJson(await stop(154_000))), /"decision":"block","reason":"teamrig: your context is 154k/, 'asked once it grew 24k');
+  });
+
+  it('refreshes a session launched on a 1M window only at 250k, and the rest at 120k', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false }, launch: { alpha: { model: 'opus[1m]' } } });
+    const stop = async (session: string, tokens: number): Promise<CliResult> => {
+      await kit.files.write(TRANSCRIPT, transcript(tokens));
+      return kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: session }, stdin: stopPayload() });
+    };
+    assert.deepEqual(await stop('alpha', 200_000), SILENT, 'alpha runs a 1M window');
+    assert.match(JSON.stringify(stopJson(await stop('alpha', 250_000))), /"reason":"teamrig: your context is 250k \(refresh at 250k\)/);
+    assert.match(JSON.stringify(stopJson(await stop('bravo', 130_000))), /"reason":"teamrig: your context is 130k \(refresh at 120k\)/);
   });
 
   it('asks for the handover at any turn end over the threshold, mid-task, and again only once the context grew', async () => {

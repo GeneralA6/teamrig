@@ -690,7 +690,8 @@ export const register: Register = (on) => {
     if (tokens === undefined) {
       return result;
     }
-    const look = await hand.afterTool(tokens);
+    // With the window, which tells the CLI a large one: a hook is never told it.
+    const look = await hand.afterTool(tokens, usage?.context.window);
     if (refreshWorthLogging(look)) {
       $.ui.log(`teamrig refresh within the turn: ${JSON.stringify(look)}`, { to: 'debug' });
     }

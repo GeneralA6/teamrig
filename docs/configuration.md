@@ -763,6 +763,7 @@ Context refresh: when a session finishes a task (teamrig set \<id> --status done
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Off: no session is asked for a handover or refreshed. |
 | `contextTokens` | integer (10000 to 10000000) | `120000` | The context size, in tokens, that asks for a refresh: under the about 167k where Claude Code compacts a 200k window. |
+| `largeWindowContextTokens` | integer (0 to 10000000) | `250000` | The context size, in tokens, that asks for a refresh of a session on a context window larger than 200k, when larger than contextTokens: its launch model ends in [1m], or its refresh state shows the window, since a model can run a 1M window without the suffix (the lead's plain opus) and no hook is told it: the window the plugin's mod reports, a context past 200k, or a fresh start measured over contextTokens. A fresh session on it starts at over 120k (its system prompt, rules and handover), and the window has room far past it. 0: contextTokens for every window. |
 | `everyTasks` | integer (0 to 100) | `3` | Also refresh once this many tasks were finished since the context was last fresh (a /clear, a new process or a compaction); 0 turns it off. |
 | `everyTasksMinTokens` | integer (10000 to 10000000) | `80000` | The smallest context, in tokens, the task count refreshes at. |
 | `tabTitle` | boolean | `true` | Title the tab once the handover is written: '[\<team>] \<name>: restarting', or '[\<team>] \<name>: type /clear'. |
