@@ -147,7 +147,7 @@ export class RefreshHand {
   }
 
   /** At a tool result of the main conversation, with the context the last reply read; never rejects. */
-  async afterTool(tokens: number): Promise<MidTurnTick> {
+  async afterTool(tokens: number, window?: number): Promise<MidTurnTick> {
     if (this.looking) {
       return { kind: 'overlap' };
     }
@@ -162,7 +162,7 @@ export class RefreshHand {
     }
     this.looking = true;
     try {
-      return await this.look(now, tokens);
+      return await this.look(now, tokens, window);
     } catch (error) {
       // Not asked again at every tool result while the CLI fails: only at the recheck.
       this.last = { at: now, nextAt: null, held: false };
@@ -183,8 +183,8 @@ export class RefreshHand {
     }
   }
 
-  private async look(now: number, tokens: number): Promise<MidTurnTick> {
-    const run = await this.run('refresh-mid', { tokens });
+  private async look(now: number, tokens: number, window: number | undefined): Promise<MidTurnTick> {
+    const run = await this.run('refresh-mid', window === undefined ? { tokens } : { tokens, window });
     const answer = run.exitCode === 0 ? parseMidTurnAnswer(run.stdout) : undefined;
     if (answer === undefined) {
       throw new Error(`hook refresh-mid exited ${run.exitCode}: ${run.stdout.trim().slice(0, 200)}`);

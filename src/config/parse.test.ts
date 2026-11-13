@@ -1374,6 +1374,7 @@ describe('parseConfig', () => {
     const chosen = {
       enabled: false,
       contextTokens: 150_000,
+      largeWindowContextTokens: 0,
       everyTasks: 0,
       everyTasksMinTokens: 60_000,
       tabTitle: false,
@@ -1394,6 +1395,7 @@ describe('parseConfig', () => {
       refresh: {
         enabled: 'yes',
         contextTokens: 9_999,
+        largeWindowContextTokens: -1,
         everyTasks: 101,
         everyTasksMinTokens: 9_999,
         tabTitle: 1,
@@ -1419,6 +1421,7 @@ describe('parseConfig', () => {
       'refresh.handoverDir',
       'refresh.handoverMaxBytes',
       'refresh.holdAfterActivityMinutes',
+      'refresh.largeWindowContextTokens',
       'refresh.restartDelaySeconds',
       'refresh.tabTitle',
     ]);
