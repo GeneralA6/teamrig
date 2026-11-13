@@ -1,10 +1,10 @@
 name: ci
 
 on:
-  # Runs on each pull request and each push to main, but every job skips while the repository is private,
-  # where Actions minutes bill: it checks once the repository is public, where they are free. Until then
-  # every check below runs before each push instead, through the pre-push hook (tools/ci/local.ts, list in
-  # tools/ci/local-checks.ts). A pull request from a fork runs with no secrets and the read-only token below.
+  # Runs on each pull request and each push to main. Every job would skip if the repository were made private
+  # again, where Actions minutes bill. Every check below that can run on a machine also runs before each push,
+  # through the pre-push hook (tools/ci/local.ts, list in tools/ci/local-checks.ts). A pull request from a fork
+  # runs with no secrets and the read-only token below.
   push:
     branches: [main]
   pull_request:

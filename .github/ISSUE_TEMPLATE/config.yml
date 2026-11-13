@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/GeneralA6/teamrig/security/advisories/new
+    about: A vulnerability goes through a private advisory, never a public issue.
