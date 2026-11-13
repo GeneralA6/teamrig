@@ -1,3 +1,4 @@
+import { resetSummaryLine } from "../../budget/resets.js";
 import { LeadTree } from "../../config/lead-tree.js";
 import { KIT_NAME } from "../../core/home.js";
 import { LockBusyError } from "../../core/lock.js";
@@ -27,7 +28,7 @@ export const MAX_UNOWNED_NOTICES = 5;
  * --session`), the other sessions' tasks waiting on it (`WAITING ON YOU`, only when some do), the check flags it
  * acts on (the lead's: every flag, as `check`; any other session's: those of the tasks and skills it owns, a sub-lead's
  * also those of its group's tasks) and the
- * week's use (the first line of `budget`). `--all` prints the list and the flags in their long form, as `list
+ * week's use (the first line of `budget`), then for the lead the account's resets in stock (T2450). `--all` prints the list and the flags in their long form, as `list
  * --all` and `check --all` do, and every task waiting on it. Any session's start also posts the lead one inbox line on
  * each warning no session owns that the lead was not told of yet (T951), at most MAX_UNOWNED_NOTICES per start; a told
  * warning is told again only after no start saw it for a day.
@@ -58,6 +59,10 @@ export async function start(args, runtime) {
     await tellLead(runtime, kit, config, report);
     checkLines(id === tree.lead ? report : ownCheck(report, id, tree.groupOf(id)), args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
     runtime.out.stdout(await weekLineOf(runtime, kit, config, roster));
+    const resets = id === tree.lead ? resetSummaryLine(config.budget.resets, now, zone, KIT_NAME) : undefined;
+    if (resets !== undefined) {
+        runtime.out.stdout(resets);
+    }
     return EXIT.ok;
 }
 /**

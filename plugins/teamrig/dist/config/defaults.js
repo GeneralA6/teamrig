@@ -142,11 +142,13 @@ export const DEFAULT_COMMITS = {
  * Neutral on purpose: off, no allowance cap, every session an equal share, and past the line only
  * the warning lines, so a team that turns it on is measured and shown before anything acts.
  * The optional keys (main lead, weekly limit, extra usage's W per dollar, reset, quiet hours, snapshot folder) stay
- * unset. Each team with planned work gets at least 10% of a weekly split, enough for one slice (owner order T2215).
+ * unset, and the account holds no resets beside its weekly one. Each team with planned work gets at least 10% of a weekly
+ * split, enough for one slice (owner order T2215).
  */
 export const DEFAULT_BUDGET = {
     enabled: false,
     subagentWeight: 1,
+    resets: [],
     targetPct: 99.5,
     reservePct: 0.5,
     shareFloorPct: 10,
