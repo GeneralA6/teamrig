@@ -130,6 +130,11 @@ export interface TeamPaths {
   /** The owner's scheduled meetings with one session each (src/meeting/schedule.ts), rewritten under meetingsLock. */
   readonly meetings: string;
   readonly meetingsLock: string;
+  /**
+   * The lead's day schedule (src/wake/schedule-store.ts): each day's start per team or session, read only in the root
+   * team of a tree; written under daySchedule + '.lock'.
+   */
+  readonly daySchedule: string;
   /** The last batch of the owner's decisions the lead asked (src/decisions/store.ts). */
   readonly decisionsAsked: string;
   /** The candidate lines `rules clear` recorded as not conflicting with a core rule (src/rules/verdicts.ts). */
@@ -303,6 +308,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     meetingSpotlit: join(state, 'meeting-spotlit.json'),
     meetings:join(state, 'meetings.jsonl'),
     meetingsLock: join(state, 'meetings.lock'),
+    daySchedule: join(state, 'day-schedule.json'),
     decisionsAsked: join(state, 'decisions-asked.json'),
     ruleVerdicts: join(state, 'rule-verdicts.json'),
     renames: join(state, 'renames.jsonl'),
