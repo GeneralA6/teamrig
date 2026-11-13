@@ -178,7 +178,7 @@ function doneOn(id: string, at: string): RegisterEvent {
 }
 
 function goalRecord(tag: string, target: string): Goal {
-  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target, parent: null, addedAt: '2030-01-01T00:00:00.000Z', addedBy: 'lead', slips: [], rank: null };
+  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target, parent: null, addedAt: '2030-01-01T00:00:00.000Z', addedBy: 'lead', slips: [], rank: null, slice: null };
 }
 
 function teamOf(name: string, events: readonly RegisterEvent[]): StatsTeam {

@@ -16,18 +16,30 @@ import { SESSION_NAME } from './model.ts';
 export const GOALS_FILE = 'goals.jsonl';
 
 /**
- * The newest format of a goal record this teamrig reads and writes: 2 added the rank record (T2083). Each record is
+ * The newest format of a goal record this teamrig reads and writes: 2 added the rank record (T2083), 3 a set's open
+ * `slice` (T2453). Each record is
  * written with the oldest format that holds it, so an older teamrig still reads every goal's add and set; it counts a
  * rank record as one from a newer teamrig and refuses to write beside it, never folding the goals without their ranks.
  */
-export const GOAL_RECORD_VERSION = 2;
+export const GOAL_RECORD_VERSION = 3;
 
-/** The format a goal's add and set are written with: they are unchanged since format 1. */
+/** The format a rank record is written with. */
+const GOAL_RANK_VERSION = 2;
+
+/** The format a goal's add, and a set without a slice, are written with: they are unchanged since format 1. */
 const GOAL_ADD_SET_VERSION = 1;
 
 /** The lowest rank, the first goal, and the highest a goal may take. */
 export const FIRST_GOAL_RANK = 1;
 export const MAX_GOAL_RANK = 99;
+
+/** The first slice of a goal (T2453): slices count from 1. */
+export const FIRST_SLICE = 1;
+
+/** True for a slice a goal may have open: a whole number from FIRST_SLICE. */
+export function isSlice(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= FIRST_SLICE;
+}
 
 /** True for a rank a goal may take: a whole number from FIRST_GOAL_RANK to MAX_GOAL_RANK. */
 export function isGoalRank(value: unknown): value is number {
@@ -55,7 +67,7 @@ export interface GoalAdd {
   readonly parent: string | null;
 }
 
-/** A later change to a goal: a new target (a slip), a new title, or both, always with a note saying why. */
+/** A later change to a goal: a new target (a slip), a new title, a new open slice, or more, always with a note saying why. */
 export interface GoalSet {
   readonly type: 'goal-set';
   readonly at: string;
@@ -65,6 +77,11 @@ export interface GoalSet {
   readonly target: string | null;
   /** The new title; null when this change keeps it. */
   readonly title: string | null;
+  /**
+   * The slice of the goal now open (T2453), the one shipping next, which the lead moves on when a slice ships; null when
+   * this change keeps it. Written with format 3, so a teamrig that would fold the goal without it refuses to write.
+   */
+  readonly slice: number | null;
   readonly note: string;
 }
 
@@ -106,6 +123,8 @@ export interface Goal {
   readonly slips: readonly GoalSlip[];
   /** Its latest rank, 1 first; null while it is unranked. */
   readonly rank: number | null;
+  /** The slice now open (T2453), 1 first; null while the lead has opened none. */
+  readonly slice: number | null;
 }
 
 /** The goal records as read: the goals by tag, in the order they were added, and what could not be used. */
@@ -187,6 +206,7 @@ export function parseGoalRecord(line: JsonlRecord): GoalRecordParse {
       const note = textField(record, 'note');
       const target = record['target'] ?? null;
       const title = record['title'] ?? null;
+      const slice = record['slice'] ?? null;
       if (note === undefined) {
         return { kind: 'unreadable', reason: 'note is not text' };
       }
@@ -196,7 +216,10 @@ export function parseGoalRecord(line: JsonlRecord): GoalRecordParse {
       if (title !== null && (typeof title !== 'string' || title.trim() === '')) {
         return { kind: 'unreadable', reason: 'title is not text' };
       }
-      return { kind: 'record', record: { type: 'goal-set', ...base, target, title, note } };
+      if (slice !== null && !isSlice(slice)) {
+        return { kind: 'unreadable', reason: `slice ${JSON.stringify(slice)} is not a whole number from ${FIRST_SLICE}` };
+      }
+      return { kind: 'record', record: { type: 'goal-set', ...base, target, title, slice, note } };
     }
     case 'goal-rank': {
       const rank = record['rank'] ?? null;
@@ -216,15 +239,16 @@ export function goalRecordJson(record: GoalRecord): JsonRecord {
     case 'goal-add':
       return { v: GOAL_ADD_SET_VERSION, ...record };
     case 'goal-rank':
-      return { v: GOAL_RECORD_VERSION, ...record };
+      return { v: GOAL_RANK_VERSION, ...record };
     case 'goal-set': {
-      const { target, title, ...rest } = record;
-      return { v: GOAL_ADD_SET_VERSION, ...rest, ...(target === null ? {} : { target }), ...(title === null ? {} : { title }) };
+      const { target, title, slice, ...rest } = record;
+      const v = slice === null ? GOAL_ADD_SET_VERSION : GOAL_RECORD_VERSION;
+      return { v, ...rest, ...(target === null ? {} : { target }), ...(title === null ? {} : { title }), ...(slice === null ? {} : { slice }) };
     }
   }
 }
 
-/** The goal a set or a rank record leaves: a set's new title and target (a target move is a slip), a rank's rank. */
+/** The goal a set or a rank record leaves: a set's new title, target (a target move is a slip) and slice, a rank's rank. */
 function changedGoal(goal: Goal, record: GoalSet | GoalRank): Goal {
   if (record.type === 'goal-rank') {
     return { ...goal, rank: record.rank };
@@ -235,6 +259,7 @@ function changedGoal(goal: Goal, record: GoalSet | GoalRank): Goal {
     ...goal,
     title: record.title ?? goal.title,
     target: record.target ?? goal.target,
+    slice: record.slice ?? goal.slice,
     slips: slip === undefined ? goal.slips : [...goal.slips, slip],
   };
 }
@@ -248,7 +273,7 @@ export function foldGoals(records: Iterable<GoalRecord>): { readonly goals: Read
     if (record.type === 'goal-add') {
       if (goal === undefined) {
         const { tag, title, start, target, parent, at, by } = record;
-        goals.set(tag, { tag, title, start, target, parent, addedAt: at, addedBy: by, slips: [], rank: null });
+        goals.set(tag, { tag, title, start, target, parent, addedAt: at, addedBy: by, slips: [], rank: null, slice: null });
       } else {
         ignored += 1;
       }
@@ -296,11 +321,12 @@ export interface GoalAddInput {
   readonly parent: string | null;
 }
 
-/** What `goal set` asks for: at least one of a new target and a new title, and the note. */
+/** What `goal set` asks for: at least one of a new target, title and open slice, and the note. */
 export interface GoalSetInput {
   readonly tag: string;
   readonly target: string | null;
   readonly title: string | null;
+  readonly slice: number | null;
   readonly note: string;
 }
 
@@ -386,8 +412,8 @@ export function goalSetRefusal(input: GoalSetInput, goals: ReadonlyMap<string, G
   if (goal === undefined) {
     return `goal ${input.tag} does not exist; add it with goal add`;
   }
-  if (input.target === null && input.title === null) {
-    return 'goal set changes --target, --title or both';
+  if (input.target === null && input.title === null && input.slice === null) {
+    return 'goal set changes --target, --title, --slice or more';
   }
   if (input.note.trim() === '') {
     return 'goal set says why in --note';
@@ -401,7 +427,10 @@ export function goalSetRefusal(input: GoalSetInput, goals: ReadonlyMap<string, G
   if (input.title !== null && input.title.trim() === '') {
     return 'a goal has a title';
   }
-  if ((input.target ?? goal.target) === goal.target && (input.title ?? goal.title) === goal.title) {
+  if (input.slice !== null && !isSlice(input.slice)) {
+    return `--slice is a whole number from ${FIRST_SLICE}`;
+  }
+  if ((input.target ?? goal.target) === goal.target && (input.title ?? goal.title) === goal.title && (input.slice ?? goal.slice) === goal.slice) {
     return `goal ${input.tag} already reads so; nothing to change`;
   }
   return undefined;
