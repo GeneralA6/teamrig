@@ -1318,7 +1318,9 @@ Who may write: the team's GitHub admin, the one session the owner named with
 session only on its own. An issue is a session's own when one of its tasks has it as its ref (`gh:acme/web#7`, as
 `gh sync` and `gh migrate` set it); a pull request when its branch, in the same repository, is a `t<id>-` branch of
 one of its tasks (a fork's branch never is). Anything else is refused, naming the admin who may write on it. A
-`--session` other than the tab's own `$TEAMRIG_SESSION` is refused, so no session borrows another's right. When
+`--session` other than the tab's own `$TEAMRIG_SESSION` is refused, so no session borrows another's right; from a
+tool call, [the exec guard](hooks.md#before-a-shell-command-the-exec-guard) wants `--session` written out as the
+tab's own, and refuses a raw `gh` write on an issue or pull request, which would skip this check. When
 GitHub cannot say whose a pull request is, it prints `FAILED could not tell whose <target> is: <reason>` and writes
 nothing (exit 1).
 
@@ -5933,9 +5935,10 @@ reason says what to do instead. A missing or broken config keeps `ask`.
 
 ### teamrig hook exec-guard
 
-Before a Bash or PowerShell call, refuses a `teamrig exec approve`, `refuse` or `escalate` run as anyone but the
-tab's own session, and any `exec` call while the installed teamrig client differs from what its build
-hashed. See [Hooks and permissions](hooks.md#before-a-shell-command-the-exec-guard).
+Before a Bash or PowerShell call, refuses a `teamrig exec approve`, `refuse` or `escalate`, or a `teamrig issue
+comment` or `close`, run as anyone but the tab's own session, any `exec` call while the installed teamrig client
+differs from what its build hashed, and, on a team whose `github.repos` names a repository, a raw `gh` write on an
+issue or pull request. See [Hooks and permissions](hooks.md#before-a-shell-command-the-exec-guard).
 
 Flags: none.
 
