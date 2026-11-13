@@ -4,6 +4,7 @@
     "gate": "ci",
     "checks": [
       "scrub and DCO gates",
+      "dependency review",
       "commit size rule",
       "coverage gate",
       "plugin version gate",
