@@ -114,7 +114,7 @@ teamrig runs with Claude Code in a terminal today; other AI tools and more task 
 | --- | --- | --- |
 | AI coding tools | Claude Code | Codex (T204) |
 | Editors | Any terminal Claude Code runs in; `teamrig open` opens tabs in six ([which](setup-by-hand.md#configuration)), each team's in a Windows Terminal window of its own with `open.teamWindow`; a new tab takes the focus only when you typed the open outside a meeting, and in tmux, macOS Terminal and Windows Terminal every other one leaves you in the tab you were in | VS Code family, JetBrains |
-| Task tools | Its own task list; GitHub issues imported into it, read-only (`teamrig gh sync`); its tasks moved to issues once (`teamrig gh migrate`); comments on and closes issues and pull requests by hand (`teamrig issue comment`, `teamrig issue close`) | Jira, Linear, Asana (T206) |
+| Task tools | Its own task list; GitHub issues imported into it, read-only (`teamrig issue sync`); its tasks moved to issues once (`teamrig issue migrate`); comments on and closes issues and pull requests by hand (`teamrig issue comment`, `teamrig issue close`) | Jira, Linear, Asana (T206) |
 
 ## How it works
 
