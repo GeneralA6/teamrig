@@ -123,18 +123,47 @@ export function newestRuns(runs: readonly Run[]): Run[] {
   return [...newest.values()];
 }
 
-function jobResult(job: Job): string {
-  if (job.status !== 'completed') return job.status;
-  if (!cancelledUnstarted(job)) return job.conclusion ?? 'none';
-  return job.runAttempt === 1 ? UNSTARTED : `${UNSTARTED}, again on attempt ${job.runAttempt}`;
+/** The checks a merge waits for, as repos.json lists them (repos.ts). */
+export interface RequiredChecks {
+  readonly names: readonly string[];
+  /** The job that fails whenever any other job of its run did not succeed (`every check passed`), or null. */
+  readonly summary: string | null;
 }
+
+const firstAttemptUnstarted = (job: Job): boolean => cancelledUnstarted(job) && job.runAttempt === 1;
+
+/**
+ * The runs whose summary job's failure only echoes legs cancelled before any step ran: every other job of the run
+ * that did not succeed is one, in the run's first attempt. A re-run starts the summary again with them.
+ */
+function echoingRuns(jobs: readonly Job[], summary: string | null): ReadonlySet<number> {
+  if (summary === null) return new Set();
+  const short = new Map<number, Job[]>();
+  for (const job of jobs) {
+    if (job.name === summary || job.conclusion === 'success') continue;
+    short.set(job.runId, [...(short.get(job.runId) ?? []), job]);
+  }
+  return new Set([...short].filter(([, legs]) => legs.every(firstAttemptUnstarted)).map(([runId]) => runId));
+}
+
+const ECHO = 'an echo of legs cancelled before any step ran';
 
 /**
  * Each listed check must show up and every run of it must pass; skipped or neutral is not a pass. A check whose only
  * runs short of a pass are jobs cancelled before any step ran, in a run's first attempt, is `unstarted`: a re-run may
- * still prove it. The same in a later attempt is a fail, so a runner that never comes is re-run once only.
+ * still prove it. The same in a later attempt is a fail, so a runner that never comes is re-run once only. The
+ * `summary` job's failure counts as such a job when it only echoes them (`echoingRuns`); any other failure fails.
  */
-export function evaluate(required: readonly string[], jobs: readonly Job[], statuses: readonly CommitStatus[]): CheckOutcome[] {
+export function evaluate(required: readonly string[], jobs: readonly Job[], statuses: readonly CommitStatus[], summary: string | null = null): CheckOutcome[] {
+  const echoing = echoingRuns(jobs, summary);
+  const echoes = (job: Job): boolean => job.name === summary && job.status === 'completed' && job.conclusion === 'failure' && echoing.has(job.runId);
+  const awaitsRerun = (job: Job): boolean => firstAttemptUnstarted(job) || echoes(job);
+  const jobResult = (job: Job): string => {
+    if (job.status !== 'completed') return job.status;
+    if (echoes(job)) return `failure, ${ECHO}`;
+    if (!cancelledUnstarted(job)) return job.conclusion ?? 'none';
+    return job.runAttempt === 1 ? UNSTARTED : `${UNSTARTED}, again on attempt ${job.runAttempt}`;
+  };
   return required.map((name): CheckOutcome => {
     const ownJobs = jobs.filter(job => job.name === name);
     const ownStatuses = statuses.filter(status => status.context === name);
@@ -145,8 +174,7 @@ export function evaluate(required: readonly string[], jobs: readonly Job[], stat
     const running = ownJobs.some(job => job.status !== 'completed') || ownStatuses.some(status => status.state === 'pending');
     if (running) return { name, state: 'pending', detail, reruns: [] };
     const short = ownJobs.filter(job => job.conclusion !== 'success');
-    const firstAttemptUnstarted = short.every(job => cancelledUnstarted(job) && job.runAttempt === 1);
-    if (firstAttemptUnstarted && ownStatuses.every(status => status.state === 'success')) {
+    if (short.every(awaitsRerun) && ownStatuses.every(status => status.state === 'success')) {
       return { name, state: 'unstarted', detail, reruns: [...new Set(short.map(job => job.runId))] };
     }
     return { name, state: 'failed', detail, reruns: [] };
@@ -168,9 +196,9 @@ export function rerunFailedJobs(gh: Gh, repo: string, runId: number): void {
 }
 
 /** Every listed check of a commit, read from the Actions jobs and the commit statuses. */
-export function readChecks(gh: Gh, repo: string, sha: string, required: readonly string[]): CheckOutcome[] {
+export function readChecks(gh: Gh, repo: string, sha: string, required: RequiredChecks): CheckOutcome[] {
   const runs = newestRuns(parseRuns(gh(['api', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`])));
   const jobs = runs.flatMap(run => parseJobs(gh(['api', `repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`]), run));
   const statuses = parseStatuses(gh(['api', `repos/${repo}/commits/${sha}/status`]));
-  return evaluate(required, jobs, statuses);
+  return evaluate(required.names, jobs, statuses, required.summary);
 }

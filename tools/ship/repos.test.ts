@@ -9,7 +9,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], local: { runner: null }, regenerated: [] });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [] });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -48,6 +48,19 @@ test('reads the regenerated paths a reship writes again, and refuses a path outs
     assert.throws(() => parseProfiles(entry(regenerated)), /O\/R "regenerated" needs a list of paths inside the repo \(a folder ends in \/\)/, regenerated);
   }
   assert.throws(() => parseProfiles(entry('["dist/","dist/"]')), /O\/R lists a regenerated path twice/);
+});
+
+test('reads the summary check, and refuses one that is blank or not among the checks', () => {
+  const entry = (summary: string): string => `{"O/R":{"main":"main","gate":"ci","checks":["a","all"],"summary":${summary}}}`;
+  assert.equal(profileFor(parseProfiles(entry('"all"')), 'O/R').summary, 'all');
+  for (const summary of ['"b"', '""', '3', '["all"]']) {
+    assert.throws(() => parseProfiles(entry(summary)), /O\/R "summary" needs the name of one of its "checks"/, summary);
+  }
+});
+
+test('the shipped repos.json names each repo\'s every-check-passed job its summary', () => {
+  const profiles = readProfiles();
+  for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) assert.equal(profileFor(profiles, slug).summary, 'every check passed', slug);
 });
 
 test('the shipped repos.json calls regenerated exactly the dist and the version files a ship writes again', () => {

@@ -12,6 +12,7 @@
       "test (macos-latest, node 22)",
       "every check passed"
     ],
+    "summary": "every check passed",
     "local": {
       "runner": "tools/ci/local.ts"
     },
@@ -31,6 +32,7 @@
       "test (macos-latest, node 22)",
       "every check passed"
     ],
+    "summary": "every check passed",
     "local": {
       "runner": "tools/ci/local.ts"
     },

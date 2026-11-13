@@ -93,6 +93,24 @@ test('the verdict fails over a rerun, and waits over one while any check runs or
   assert.equal(verdictOf(evaluate(['absent', 'mac'], [unstarted('mac', 7)], [])), 'waiting');
 });
 
+test('the summary job failing only beside unstarted legs of its run is their echo, re-run with them', () => {
+  const legs = [job('a', 'success'), unstarted('mac', 1)];
+  const [, mac, all] = evaluate(['a', 'mac', 'all'], [...legs, job('all', 'failure')], [], 'all');
+  assert.deepEqual(all, { name: 'all', state: 'unstarted', detail: 'failure, an echo of legs cancelled before any step ran', reruns: [1] });
+  assert.equal(mac?.state, 'unstarted');
+});
+
+test('the summary job fails when any other leg of its run failed, on a later attempt, alone, in another run, or with no summary named', () => {
+  const stateOfAll = (jobs: readonly Job[], summary: string | null = 'all'): string | undefined => evaluate(['all'], jobs, [], summary)[0]?.state;
+  assert.equal(stateOfAll([unstarted('mac', 1), job('lint', 'failure'), job('all', 'failure')]), 'failed', 'a leg the merge does not wait for still fails it');
+  assert.equal(stateOfAll([unstarted('mac', 1), job('lint', 'skipped'), job('all', 'failure')]), 'failed', 'a skipped leg is no echo');
+  assert.equal(stateOfAll([unstarted('mac', 1, 2), { ...job('all', 'failure'), runAttempt: 2 }]), 'failed');
+  assert.equal(stateOfAll([job('all', 'failure')]), 'failed');
+  assert.equal(stateOfAll([unstarted('mac', 2), job('all', 'failure')]), 'failed');
+  assert.equal(stateOfAll([unstarted('mac', 1), job('all', 'failure')], null), 'failed');
+  assert.equal(stateOfAll([unstarted('mac', 1), job('all', 'cancelled')]), 'failed', 'only a summary failure echoes');
+});
+
 test('a re-run posts rerun-failed-jobs for the run', () => {
   const gh = mock.fn<Gh>(() => '');
   rerunFailedJobs(gh, REPO, 7);
@@ -109,6 +127,6 @@ test('reads the newest runs\' latest jobs and the commit statuses of the sha', (
     if (path === `repos/${REPO}/commits/${SHA}/status`) return JSON.stringify({ statuses: [{ context: 'ext/ci', state: 'success' }] });
     throw new Error(`unexpected ${path}`);
   });
-  assert.deepEqual(readChecks(gh, REPO, SHA, ['gates', 'ext/ci']).map(({ state }) => state), ['passed', 'passed']);
+  assert.deepEqual(readChecks(gh, REPO, SHA, { names: ['gates', 'ext/ci'], summary: null }).map(({ state }) => state), ['passed', 'passed']);
   assert.equal(gh.mock.callCount(), 3);
 });

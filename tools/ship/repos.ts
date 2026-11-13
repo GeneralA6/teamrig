@@ -26,6 +26,12 @@ export interface RepoProfile {
   gate: Gate;
   /** Check names as GitHub shows them: an Actions job's name, or a commit status's context. */
   checks: readonly string[];
+  /**
+   * The check that fails whenever any other job of its run did not succeed (`every check passed`), one of `checks`:
+   * its failure beside legs GitHub cancelled before any step ran is their echo, re-run with them (github.ts).
+   * Null when not listed.
+   */
+  summary: string | null;
   local: LocalChecks;
   /**
    * Paths every reship writes again on a newer main (the built dist, the version files), a folder ending in
@@ -48,6 +54,12 @@ function parseLocalChecks(slug: string, value: unknown): LocalChecks {
   return { runner };
 }
 
+function parseSummary(slug: string, value: unknown, checks: readonly string[]): string | null {
+  if (value === undefined) return null;
+  if (!isText(value) || !checks.includes(value)) throw new Error(`repos.json: ${slug} "summary" needs the name of one of its "checks"`);
+  return value;
+}
+
 function parseRegenerated(slug: string, value: unknown): readonly string[] {
   if (value === undefined) return [];
   if (!isNameList(value) || value.some(path => path.startsWith('/') || path.split('/').includes('..'))) {
@@ -59,7 +71,7 @@ function parseRegenerated(slug: string, value: unknown): readonly string[] {
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "local", "regenerated" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
@@ -71,6 +83,7 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
       main: entry['main'],
       gate,
       checks: entry['checks'],
+      summary: parseSummary(slug, entry['summary'], entry['checks']),
       local: parseLocalChecks(slug, entry['local']),
       regenerated: parseRegenerated(slug, entry['regenerated']),
     });
