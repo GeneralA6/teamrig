@@ -31,6 +31,12 @@ export interface DecisionCard {
    * absolute path, which an audit on the task pins at its sha256; the card prints the line that runs it.
    */
   readonly run?: string;
+  /**
+   * Only on a wait on the owner's decision or approval (T2623): what a card whose question is about a test, measure or
+   * proof (proofWordOf) asks the owner for, the approved number it changes, the money it spends or the data it
+   * writes; one that does none of those is approved with the work it tests, and goes ahead.
+   */
+  readonly affects?: string;
 }
 
 /** The CLI flags that write a card's parts, for the refusals that name them. */
@@ -44,6 +50,25 @@ export const GATE_FLAG = '--gate';
 
 /** The CLI flag that writes a card's `run`. */
 export const RUN_FLAG = '--run';
+
+/** The CLI flag that writes a card's `affects`. */
+export const AFFECTS_FLAG = '--affects';
+
+/** How `--affects` is typed. */
+export const AFFECTS_USAGE = `${AFFECTS_FLAG} "<the approved number it changes, the money it spends or the data it writes>"`;
+
+/**
+ * The words that make a card's question about a test, a measure or a proof (T2623): a back-test, a trial, a dry run,
+ * a benchmark, an experiment, a simulation. Such work on what is already approved is approved with it (core rule 6),
+ * so its card asks the owner only for what it changes (`affects`).
+ */
+const PROOF_WORD =
+  /\b(?:back-?|re-?)?test(?:s|ed|ing)?\b|\bmeasur(?:e|es|ed|ing|ements?)\b|\bproofs?\b|\bprov(?:e|es|ed|en|ing)\b|\btrials?\b|\bdry[- ]runs?\b|\bbenchmarks?\b|\bexperiments?\b|\bsimulat(?:e|es|ed|ing|ions?)\b/iu;
+
+/** The first word that makes `question` about a test, a measure or a proof (PROOF_WORD), as written; undefined when none does. */
+export function proofWordOf(question: string): string | undefined {
+  return PROOF_WORD.exec(question)?.[0];
+}
 
 /** The gate that names a business decision, the owner's besides the owner gates (T1194). */
 export const BUSINESS_GATE = 'business';
@@ -122,13 +147,14 @@ export function cardTexts(card: DecisionCard): string[] {
     card.question,
     ...(card.gate === undefined ? [] : [card.gate]),
     ...(card.whyAsk === undefined ? [] : [card.whyAsk]),
+    ...(card.affects === undefined ? [] : [card.affects]),
     ...card.options,
     card.recommend,
     card.byDefault,
   ];
 }
 
-/** Which of a card's owner parts still hold: `whyAsk`, `gate` and `run` each go once what they answer no longer applies. */
+/** Which of a card's owner parts still hold: `whyAsk`, `gate`, `run` and `affects` each go once what they answer no longer applies. */
 export interface KeptOwnerParts {
   /** The task is one the owner ordered and waits on the owner's decision or approval (T802). */
   readonly whyAsk: boolean;
@@ -136,6 +162,8 @@ export interface KeptOwnerParts {
   readonly gate: boolean;
   /** The task waits on the owner's decision or approval, so a hand step still goes to the owner (T2312). */
   readonly run: boolean;
+  /** The task waits on the owner's decision or approval, so what a test it asks about changes still goes to the owner (T2623). */
+  readonly affects: boolean;
 }
 
 /** The card with only the owner parts that still hold (`keep`). */
@@ -148,6 +176,7 @@ export function keptCard(card: DecisionCard, keep: KeptOwnerParts): DecisionCard
     ...(keep.whyAsk && card.whyAsk !== undefined ? { whyAsk: card.whyAsk } : {}),
     ...(keep.gate && card.gate !== undefined ? { gate: card.gate } : {}),
     ...(keep.run && card.run !== undefined ? { run: card.run } : {}),
+    ...(keep.affects && card.affects !== undefined ? { affects: card.affects } : {}),
   };
 }
 
@@ -183,13 +212,14 @@ export function cardProblem(card: DecisionCard, decision: boolean): string | und
 
 /**
  * The parts of a card its writer types, each with the flag that wrote it, for the refusals that name one: the
- * question, why asked, each option, the recommendation and the default. The gate is left out, as it is one of the
+ * question, why asked, what it affects, each option, the recommendation and the default. The gate is left out, as it is one of the
  * names the config gives, and the run file, as it is a path.
  */
 function typedParts(card: DecisionCard): readonly (readonly [string, string])[] {
   return [
     ['--question', card.question],
     ...(card.whyAsk === undefined ? [] : [[WHY_ASK_FLAG, card.whyAsk] satisfies [string, string]]),
+    ...(card.affects === undefined ? [] : [[AFFECTS_FLAG, card.affects] satisfies [string, string]]),
     ...card.options.map((option, index): [string, string] => [`${OPTION_CHOICE_PART}${index + 1}`, option]),
     ['--recommend', card.recommend],
     ['--default', card.byDefault],
@@ -232,6 +262,7 @@ export function sameCard(a: DecisionCard | null, b: DecisionCard | null): boolea
     a.whyAsk === b.whyAsk &&
     a.gate === b.gate &&
     a.run === b.run &&
+    a.affects === b.affects &&
     a.options.length === b.options.length &&
     a.options.every((option, index) => option === b.options[index])
   );
@@ -248,7 +279,7 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (!isRecord(value)) {
     return 'card is not an object';
   }
-  const { question, options, recommend, byDefault, whyAsk, gate, run } = value;
+  const { question, options, recommend, byDefault, whyAsk, gate, run, affects } = value;
   if (typeof question !== 'string' || typeof recommend !== 'string' || typeof byDefault !== 'string') {
     return 'card needs question, recommend and byDefault as text';
   }
@@ -264,6 +295,9 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (run !== undefined && typeof run !== 'string') {
     return 'card run is not text';
   }
+  if (affects !== undefined && typeof affects !== 'string') {
+    return 'card affects is not text';
+  }
   return {
     question,
     options,
@@ -272,12 +306,13 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
     ...(whyAsk === undefined ? {} : { whyAsk }),
     ...(gate === undefined ? {} : { gate }),
     ...(run === undefined ? {} : { run }),
+    ...(affects === undefined ? {} : { affects }),
   };
 }
 
 /**
- * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's and
- * why the owner is asked (when the card says), each option numbered, the recommendation and the default, then the
+ * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's, why
+ * the owner is asked and what a test it asks about changes (when the card says), each option numbered, the recommendation and the default, then the
  * hand step to run (when the card hands one), each line led by `indent`. `audits` are the task's (fold.ts), and
  * `runFiles` what its hand step file hashes to now.
  */
@@ -286,6 +321,7 @@ export function cardLines(card: DecisionCard, indent: string, audits: readonly H
     `${indent}decide: ${card.question}`,
     ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
     ...(card.whyAsk === undefined ? [] : [`${indent}why asked: ${card.whyAsk}`]),
+    ...(card.affects === undefined ? [] : [`${indent}affects: ${card.affects}`]),
     ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
     `${indent}recommended: ${card.recommend}`,
     `${indent}with no answer: ${card.byDefault}`,
