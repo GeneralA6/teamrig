@@ -1,12 +1,13 @@
 import { ENV, KIT_NAME } from '../../core/home.ts';
+import { SecretScanner } from '../../core/secrets.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
 import { importRules } from '../../github/map.ts';
 import { importedTasks, linkedRefs, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
-import { applySteps, closedSince, readRepo, type StepOutcome } from '../../github/sync.ts';
-import { RepoTokens, TokenReadError, type RepoAccess } from '../../github/tokens.ts';
+import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { hostOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
@@ -23,10 +24,10 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
 
 /**
  * `gh sync [--repo <owner/name>] [--yes]`: brings the task list in step with the GitHub issues of the team's
- * `github.repos`, inbound only. Each owner's repositories are read with the token saved for it (github/tokens.ts),
- * else, when none is saved, the gh login, and an ACCESS line says which; a saved token the store could not read
- * fails that owner's repositories, never read through the login instead. gh only ever lists issues
- * (github/gh.ts refuses any other command), and the
+ * `github.repos`, inbound only. Each repository is listed through the issue host port (issues/host.ts; on GitHub
+ * with the token saved for its owner, else, when none is saved, the gh login), and an ACCESS line says which, once
+ * per owner; a saved token the store could not read fails that owner's repositories, never read through the login
+ * instead. A sync only lists issues, and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
  * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the Stop hook starts (gh-auto.ts), writes as
@@ -55,7 +56,8 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const register = teamRegister(runtime, kit.paths, config);
   const rules = importRules(config);
   const since = closedSince(new Date(runtime.clock.now()), config.github.closedDays);
-  const tokens = new RepoTokens(runtime.credentials, runtime.env);
+  // github.repos is GitHub's list, so every repository it names is GitHub's.
+  const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns));
   const told = new Set<string>();
   const ends: RepoEnd[] = [];
   const added: AddedTask[] = [];
@@ -63,18 +65,18 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const leftOut = new Map<string, readonly number[]>();
   let written = 0;
   for (const repo of reposOf(config.github.repos, args.flags.get('repo'))) {
-    const access = await tokens.accessFor(repo);
-    if (access instanceof TokenReadError) {
-      say(`FAILED ${repo}: ${access.message}; its tasks stay as they are`);
+    const reach = await host.reach(repo, 'read');
+    if (reach.kind === 'unreachable') {
+      say(`FAILED ${repo}: ${reach.reason}; its tasks stay as they are`);
       ends.push('failed');
-      failures.push({ repo, reason: access.message });
+      failures.push({ repo, reason: reach.reason });
       continue;
     }
-    if (!told.has(access.owner)) {
-      told.add(access.owner);
-      say(accessLine(access));
+    if (!told.has(reach.scope)) {
+      told.add(reach.scope);
+      say(`ACCESS ${reach.access}`);
     }
-    const read = await readRepo(runtime.gh, access, repo, since);
+    const read = await host.list(repo, since);
     if (read.kind === 'failed') {
       say(`FAILED ${repo}: ${read.reason}; its tasks stay as they are`);
       ends.push('failed');
@@ -128,13 +130,6 @@ function reposOf(repos: readonly string[], asked: string | undefined): readonly 
     throw new RefusedError(`--repo ${asked} is not one of github.repos (${repos.join(', ')})`);
   }
   return [repo];
-}
-
-/** How an owner's repositories are read, said once per owner: a token by the name it is saved under, or the gh login when none is saved. */
-export function accessLine(access: RepoAccess): string {
-  return access.via === 'token'
-    ? `ACCESS ${access.owner}: read with the token saved as ${access.credential}`
-    : `ACCESS ${access.owner}: read with the gh login; no token saved as ${access.credential}`;
 }
 
 function previewLines(repo: string, plan: SyncPlan): string[] {

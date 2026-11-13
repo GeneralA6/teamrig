@@ -40,7 +40,7 @@ export function postRefusal(subject: string, text: string, scanner: SecretScanne
  */
 export async function writeIssue(host: IssueHost, write: IssueWrite, say: (line: string) => void): Promise<boolean> {
   const shown = targetText(write.target);
-  const reach = await host.reach(write.target.repo);
+  const reach = await host.reach(write.target.repo, 'write');
   if (reach.kind === 'unreachable') {
     say(`FAILED ${shown}: ${reach.reason}; nothing was written`);
     return false;

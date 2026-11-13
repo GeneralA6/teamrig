@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GhRefusedError, isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, issueCloseArgs, issueCommentArgs, issueCreateArgs, nodeGhRunner, type IssueDraft, type IssueNumber } from './gh.ts';
+import { GhRefusedError, isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, issueCloseArgs, issueCommentArgs, issueCreateArgs, nodeGhRunner, type IssueNumber } from './gh.ts';
+import type { IssueDraft } from '../issues/host.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs } from './queries.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));

@@ -1,23 +1,30 @@
-import type { HostEnd, HostReach, IssueHost, IssueTarget } from '../issues/host.ts';
+import type { HostEnd, HostList, HostOpen, HostReach, HostUse, IssueDraft, IssueHost, IssueTarget } from '../issues/host.ts';
+
+/** What each use does, as the fake's access line words it. */
+const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'reads', open: 'opens issues', write: 'writes' };
 
 /** One write a FakeIssueHost took. */
-export type HostCall = { readonly kind: 'comment'; readonly target: IssueTarget; readonly body: string } | { readonly kind: 'close'; readonly target: IssueTarget };
+export type HostCall =
+  | { readonly kind: 'open'; readonly draft: IssueDraft }
+  | { readonly kind: 'comment'; readonly target: IssueTarget; readonly body: string }
+  | { readonly kind: 'close'; readonly target: IssueTarget };
 
 /**
- * An issue host that reaches nothing: each write is recorded, and ends done unless a test set it to fail. It is
- * reached as `access` unless a test made it unreachable.
+ * An issue host that reaches nothing and holds no issue: a list is empty, each write is recorded, and ends done
+ * unless a test set it to fail; opened issues are numbered from 1. It is reached as `<owner>: writes as the test`
+ * (or reads, or opens issues), scoped to the owner, unless a test made it unreachable.
  */
 export class FakeIssueHost implements IssueHost {
   readonly name = 'the test host';
   readonly calls: HostCall[] = [];
-  readonly reached: string[] = [];
-  private reach_: HostReach = { kind: 'reached', access: 'acme: writes as the test' };
+  private unreachableFor: string | undefined;
+  private opened = 0;
   private commentEnd: HostEnd = { kind: 'done' };
   private closeEnd: HostEnd = { kind: 'done' };
 
   /** From now on, the host cannot be reached, for `reason`. */
   unreachable(reason: string): this {
-    this.reach_ = { kind: 'unreachable', reason };
+    this.unreachableFor = reason;
     return this;
   }
 
@@ -33,9 +40,21 @@ export class FakeIssueHost implements IssueHost {
     return this;
   }
 
-  reach(repo: string): Promise<HostReach> {
-    this.reached.push(repo);
-    return Promise.resolve(this.reach_);
+  reach(repo: string, use: HostUse): Promise<HostReach> {
+    const owner = repo.split('/')[0] ?? repo;
+    return Promise.resolve(
+      this.unreachableFor === undefined ? { kind: 'reached', access: `${owner}: ${USE_VERB[use]} as the test`, scope: owner } : { kind: 'unreachable', reason: this.unreachableFor },
+    );
+  }
+
+  list(): Promise<HostList> {
+    return Promise.resolve({ kind: 'listed', issues: [], notes: [] });
+  }
+
+  open(draft: IssueDraft): Promise<HostOpen> {
+    this.calls.push({ kind: 'open', draft });
+    this.opened += 1;
+    return Promise.resolve({ kind: 'opened', target: { repo: draft.repo, number: this.opened } });
   }
 
   comment(target: IssueTarget, body: string): Promise<HostEnd> {
