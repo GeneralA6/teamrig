@@ -32,7 +32,17 @@ export type HostReach = { readonly kind: 'reached'; readonly access: string } | 
 /** How one write to a host ended: done, or one plain line saying why not. */
 export type HostEnd = { readonly kind: 'done' } | { readonly kind: 'failed'; readonly reason: string };
 
-/** An issue host's writes on one issue or pull request. Each ends in a HostEnd and never throws. */
+/**
+ * Whose branch a pull request is: its head branch and the repository that branch lives in, lowercase (null when that
+ * fork is gone); `no-pull` when the host shows no pull request of that number (an issue, or one not there); or one
+ * plain line saying why it could not tell.
+ */
+export type HeadRead =
+  | { readonly kind: 'pull'; readonly branch: string; readonly repo: string | null }
+  | { readonly kind: 'no-pull' }
+  | { readonly kind: 'failed'; readonly reason: string };
+
+/** An issue host's reads and writes on one issue or pull request. Each ends in a HostEnd or a HeadRead and never throws. */
 export interface IssueHost {
   /** The host's name, for a message. */
   readonly name: string;
@@ -42,6 +52,8 @@ export interface IssueHost {
   comment(target: IssueTarget, body: string): Promise<HostEnd>;
   /** Closes the issue or pull request. */
   close(target: IssueTarget): Promise<HostEnd>;
+  /** Reads whose branch the pull request `target` is: a read only, which writes nothing. */
+  headOf(target: IssueTarget): Promise<HeadRead>;
 }
 
 /** The hosts teamrig has an adapter for, by the team config list that names their repositories. */
