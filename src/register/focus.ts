@@ -69,15 +69,29 @@ export const NO_SLICED_GOALS: ReadonlyMap<string, SlicedGoal> = new Map();
  * so the CLI and the pane read a marker the same way.
  */
 export function prepStanding(task: Pick<TaskFields, 'prepares'>, goals: ReadonlyMap<string, SlicedGoal>): PrepStanding | null {
-  const { prepares } = task;
-  if (prepares === null) {
-    return null;
-  }
-  const open = goals.get(prepares.goal)?.slice ?? null;
-  const ranked = servedGoalOf({ goals: [prepares.goal] }, goals) !== null;
-  const near = ranked && open !== null && (prepares.slice === open || prepares.slice === open + 1);
-  return near ? 'near' : 'lapsed';
+  return prepRead(task, goals)?.standing ?? null;
 }
 
 /** A marked task's standing: `near`, outside the slice cap, or `lapsed`, treated as any other. */
 export type PrepStanding = 'near' | 'lapsed';
+
+/** A marker's standing ({@link prepStanding}), with why a lapsed one lapsed: the words of check's PREP-LAPSED flag. */
+export type PrepRead = { readonly standing: 'near' } | { readonly standing: 'lapsed'; readonly why: string };
+
+/** {@link prepStanding}, telling a lapsed marker's owner what moved, so it knows to re-mark the task or drop the marker. */
+export function prepRead(task: Pick<TaskFields, 'prepares'>, goals: ReadonlyMap<string, SlicedGoal>): PrepRead | null {
+  const { prepares } = task;
+  if (prepares === null) {
+    return null;
+  }
+  const { goal, slice } = prepares;
+  const marker = `prepares ${goal}:${slice}, goal ${goal}`;
+  if (servedGoalOf({ goals: [goal] }, goals) === null) {
+    return { standing: 'lapsed', why: `${marker} is not ranked` };
+  }
+  const open = goals.get(goal)?.slice ?? null;
+  if (open === null) {
+    return { standing: 'lapsed', why: `${marker} has no slice open` };
+  }
+  return slice === open || slice === open + 1 ? { standing: 'near' } : { standing: 'lapsed', why: `${marker} is on slice ${open}` };
+}
