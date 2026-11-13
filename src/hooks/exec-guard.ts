@@ -26,7 +26,7 @@ import { holdBackOutput } from './permission.ts';
  * last; a call through a program only known when it runs (`$T exec ...`) is refused, as no file can be checked.
  *
  * It refuses every `teamrig owner` call too (T1298): `owner note`, `owner next` and `owner wake` write or wake as the
- * owner (register.ownerSource) whoever runs them, so only the owner's own routes run them: the pane, their own terminal, or
+ * owner (register.ownerSource) whoever runs them, and `owner github-admin` names the GitHub admin (T2705), so only the owner's own routes run them: the pane, their own terminal, or
  * `/teamrig owner ...` typed in a tab, which the mod runs as a write only when the person types it. Like the review
  * check, it reads only a Bash or PowerShell tool call: a script the agent writes that starts the CLI is no such call.
  */
@@ -38,7 +38,7 @@ export const REVIEW_ACTIONS: ReadonlySet<string> = new Set(['approve', 'refuse',
 export const EXEC_COMMANDS: ReadonlySet<string> = new Set(['request', 'dry-run', ...REVIEW_ACTIONS, 'run', 'status']);
 
 /** Every `teamrig owner` command, by which a call through an unknown program reads as a teamrig call. */
-export const OWNER_COMMANDS: ReadonlySet<string> = new Set(['note', 'next', 'wake']);
+export const OWNER_COMMANDS: ReadonlySet<string> = new Set(['note', 'next', 'wake', 'github-admin']);
 
 /** Who the tab runs as, read only once a line holds a review. */
 export type TabIdentity =
