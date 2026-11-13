@@ -91,6 +91,10 @@ function refusedRouteRule(hookAsks) {
 function percent(value) {
     return `${Math.round(value * 100) / 100}%`;
 }
+/** A clause written to follow a colon, opening its own sentence. */
+function sentenceCase(clause) {
+    return clause.charAt(0).toUpperCase() + clause.slice(1);
+}
 /**
  * The note (only what changed), evidence, skill and follow-ups a status change needs, as the register enforces them.
  * One `[register]` names the keys behind them and behind the description `add` demands, so each costs no bracket of
@@ -117,7 +121,7 @@ function timesClause(zone, now) {
     if (label === 'UTC') {
         return " Write times on the team's clock, zone-marked (`04:00 UTC`) [timeZone].";
     }
-    return ` Write times on the team's clock, zone-marked (\`04:00 ${label}\`, ${zone.utcOffset(now)} now); UTC only when UTC is the subject [timeZone].`;
+    return ` Write times on the team's clock, zone-marked (\`04:00 ${label}\`, ${zone.utcOffset(now)} now); UTC only when it is the subject [timeZone].`;
 }
 /**
  * Rule 11's hand-step sentence (T2309). A lead handed the owner a PowerShell paste that loosened a guard before anyone
@@ -193,8 +197,8 @@ export function coreRuleTexts(config, command, platform, clock) {
             // within the group share its own leader gives it (T784). No member list prints here: `leads` has no size limit,
             // so the pack names the key alone.
             ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order, staffing and budget, answers your waits;' +
-            " asks to a sub-lead's sessions go through it. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead.",
-        'own-change': "Own your change end to end: only the session that made it merges, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
+            " asks to a sub-lead's sessions go through it. Cross-area issues go to the nearest leader over both, unowned warnings to the lead.",
+        'own-change': "Own your change end to end: only the session that made it merges, deploys (if it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
         messages: messagesRule(config, command) + timesClause(zone, clock.now),
         register: `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
             ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain-words description of what and why; ${statusDemands(config, command)}` +
@@ -207,13 +211,19 @@ export function coreRuleTexts(config, command, platform, clock) {
             " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
         deploy: "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
             queuedSteps(config.delivery, command, cutoffSpan),
-        'lean-calls': 'Lean calls: batch related shell steps in one call (each re-reads the context).' +
-            ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your model and effort.` +
+        'lean-calls': 'Lean calls: batch related shell steps in one call (each re-reads context).' +
+            // The clause alone keeps work in the session (a helper only for parallel work or a review), so the rule spends
+            // no words on saying it; the helper launch reminder still does.
+            ` ${sentenceCase(helperDefaultClause(budget.subagentWeight))}; run helpers on your model and effort.` +
             // T1457: one place for a task's files and one for a session's other notes, so no session invents its own
             // (T1454's layout). A helper is told to save its findings there in its own start line (hooks/helper-start.ts),
             // which sits outside this cap.
             ` Task files go in \`${command} files T<id>\`, other notes in \`--notes\`.` +
-            (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the limit, ${percent(budget.reservePct)} kept for incidents [budget].` : ''),
+            // T2657: a budget hold on a review or a leader's answer stalls every session waiting on it, so
+            // those answers go first past any budget, and a lead plans its cuts around them.
+            (budget.enabled
+                ? ` Pace the week to ${percent(budget.targetPct)} of the limit, ${percent(budget.reservePct)} kept for incidents [budget]; waited-on answers are blockers, never budget-held.`
+                : ''),
         investigate: 'Investigate first: frequency × impact, the cheapest fix for the visible symptom.' +
             // An owner question names no task by its number alone (the register refuses an owner wait without its
             // decision card, register/card.ts). With tab status on, the marker line ends the turn on the decision circle
@@ -227,7 +237,7 @@ export function coreRuleTexts(config, command, platform, clock) {
         data: "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
             ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
             handStepClause(roles.securityReviewer) +
-            ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
+            ' Never print secrets; bind local services to 127.0.0.1, never 0.0.0.0.',
         contracts: 'Tell the other side before changing a contract it reads (API, table or file).' +
             // T1189: a route removal named the pages it would break, had no answer and shipped; its proof saw the routes
             // answer 404, which any removal does, and never opened a page that read them.
