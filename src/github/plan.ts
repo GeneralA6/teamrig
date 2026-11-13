@@ -1,7 +1,7 @@
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
-import type { GithubIssue } from './issues.ts';
+import type { HostIssue } from '../issues/issue.ts';
 import { issueTask, type ImportRules, type IssueTask } from './map.ts';
 import { issueTrust } from './trust.ts';
 
@@ -32,7 +32,7 @@ export interface SyncPlan {
  * Each issue once, as last read: the closed list is read after the open one, so an issue on both lists
  * (closed between the two reads) counts as closed.
  */
-export function latestIssues(open: readonly GithubIssue[], closed: readonly GithubIssue[]): GithubIssue[] {
+export function latestIssues(open: readonly HostIssue[], closed: readonly HostIssue[]): HostIssue[] {
   return [...new Map([...open, ...closed].map((issue) => [issue.number, issue])).values()];
 }
 
@@ -72,7 +72,7 @@ export function linkedRefs(tasks: Iterable<Task>): Set<string> {
  * accepted, so an outsider's edit after the accept stays on GitHub until someone accepts the issue again;
  * the task keeps the text of the last accept, and stays when its issue stops qualifying.
  */
-export function planSync(issues: readonly GithubIssue[], imported: ReadonlyMap<string, Task>, rules: ImportRules, linked: ReadonlySet<string> = new Set()): SyncPlan {
+export function planSync(issues: readonly HostIssue[], imported: ReadonlyMap<string, Task>, rules: ImportRules, linked: ReadonlySet<string> = new Set()): SyncPlan {
   const perIssue = issues.map((issue) => issueSteps(issue, imported, rules, linked));
   const count = (known: boolean, writes: boolean): number => perIssue.filter((one) => one.known === known && (one.steps.length > 0) === writes).length;
   return {
@@ -91,7 +91,7 @@ interface IssueSteps {
   readonly leftOut?: number;
 }
 
-function issueSteps(issue: GithubIssue, imported: ReadonlyMap<string, Task>, rules: ImportRules, linked: ReadonlySet<string>): IssueSteps {
+function issueSteps(issue: HostIssue, imported: ReadonlyMap<string, Task>, rules: ImportRules, linked: ReadonlySet<string>): IssueSteps {
   const wanted = issueTask(issue, rules);
   const task = imported.get(wanted.ref);
   const followsText = issueTrust(issue, rules.acceptLabel) !== 'untrusted';
@@ -141,7 +141,7 @@ function fieldChanges(task: Task, wanted: IssueTask, followsText: boolean): Impo
  * dropped while its issue is open goes back to open only once GitHub changed the issue after that, as reopening it
  * does, so the team's own close of an issue still open on GitHub stands.
  */
-function statusChange(task: Task, wanted: IssueTask, issue: GithubIssue): StatusInput | undefined {
+function statusChange(task: Task, wanted: IssueTask, issue: HostIssue): StatusInput | undefined {
   switch (wanted.outcome) {
     case 'open':
       return ACTIVE_STATUSES.includes(task.status) || !changedSince(issue, task.statusAt) ? undefined : { status: 'open', note: 'open on GitHub, changed there since this task closed' };
@@ -153,7 +153,7 @@ function statusChange(task: Task, wanted: IssueTask, issue: GithubIssue): Status
 }
 
 /** Whether GitHub changed the issue after `at`; an issue gh gave no time for counts as unchanged. */
-function changedSince(issue: GithubIssue, at: string): boolean {
+function changedSince(issue: HostIssue, at: string): boolean {
   return issue.updatedAt !== undefined && Date.parse(issue.updatedAt) > Date.parse(at);
 }
 

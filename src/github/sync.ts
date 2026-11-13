@@ -2,16 +2,16 @@ import { formatUtcDay } from '../core/time.ts';
 import type { ImportChanges, ImportInput, StatusInput, Verdict } from '../register/policy.ts';
 import type { WriteResult } from '../register/register.ts';
 import type { GhRunner } from './gh.ts';
-import { ISSUE_LIMIT, listIssues, type GithubIssue, type IssueList } from './issues.ts';
+import type { HostIssue, IssueState } from '../issues/issue.ts';
+import { ISSUE_LIMIT, listIssues, type IssueList } from './issues.ts';
 import { latestIssues, type SyncStep } from './plan.ts';
-import type { IssueState } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
 const DAY_MS = 86_400_000;
 
 /** A repository as one sync read it: its issues and what to say about the reads, or why it could not be read. */
 export type RepoRead =
-  | { readonly kind: 'read'; readonly repo: string; readonly issues: readonly GithubIssue[]; readonly notes: readonly string[] }
+  | { readonly kind: 'read'; readonly repo: string; readonly issues: readonly HostIssue[]; readonly notes: readonly string[] }
   | { readonly kind: 'failed'; readonly repo: string; readonly reason: string };
 
 /** The register's import writes (register.ts), the only writes a sync makes. */

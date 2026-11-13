@@ -2,13 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
-import type { GithubIssue, LabelEvent } from './issues.ts';
+import type { HostIssue, LabelEvent } from '../issues/issue.ts';
 import { importRules, type ImportRules } from './map.ts';
 import { closedNote, importedTasks, latestIssues, linkedRefs, planSync } from './plan.ts';
 
 const RULES: ImportRules = importRules(testConfig({ github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } }));
 
-function issue(number: number, overrides: Partial<GithubIssue> = {}): GithubIssue {
+function issue(number: number, overrides: Partial<HostIssue> = {}): HostIssue {
   return {
     repo: 'acme/web',
     number,

@@ -1,11 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { GithubIssue, LabelEvent } from './issues.ts';
+import type { HostIssue, LabelEvent } from '../issues/issue.ts';
 import { issueTrust } from './trust.ts';
 
 const ACCEPTED_AT = '2030-01-05T10:00:00Z';
 
-function issue(overrides: Partial<GithubIssue> = {}): GithubIssue {
+function issue(overrides: Partial<HostIssue> = {}): HostIssue {
   return {
     repo: 'acme/web',
     number: 7,
@@ -33,7 +33,7 @@ function labelled(label: string, actor: string, at = ACCEPTED_AT, actorKind = 'U
 }
 
 /** An outsider's issue that carries the accept label, put on last by `event`. */
-function acceptedBy(event: LabelEvent, overrides: Partial<GithubIssue> = {}): GithubIssue {
+function acceptedBy(event: LabelEvent, overrides: Partial<HostIssue> = {}): HostIssue {
   return issue({ labels: ['bug', 'teamrig'], labelEvents: [labelled('bug', 'maintainer', '2030-01-04T00:00:00Z'), event], ...overrides });
 }
 

@@ -1,4 +1,4 @@
-import type { GithubIssue, LabelEvent } from './issues.ts';
+import type { HostIssue, LabelEvent } from '../issues/issue.ts';
 
 /**
  * How far the sync takes an issue's text: `trusted` for an author inside the repository, `accepted` for an outsider's issue someone else labelled with the accept label after its last edit,
@@ -23,7 +23,7 @@ const PERSON = 'User';
  * author as actor, a workflow or app with a `Bot` one. An edit of the title or body at or after the accept undoes it
  * (the person who accepted read the older text), until someone adds the label again.
  */
-export function issueTrust(issue: GithubIssue, acceptLabel: string): IssueTrust {
+export function issueTrust(issue: HostIssue, acceptLabel: string): IssueTrust {
   if (TRUSTED_ASSOCIATIONS.has(issue.authorAssociation.toUpperCase())) {
     return 'trusted';
   }
@@ -45,7 +45,7 @@ function byAnotherPerson(event: LabelEvent, author: string): boolean {
 }
 
 /** Whether the body or the title changed at or after `at`: an edit in the same second as the accept counts as after it. */
-function editedSince(issue: GithubIssue, at: string): boolean {
+function editedSince(issue: HostIssue, at: string): boolean {
   const accepted = Date.parse(at);
   return [issue.lastEditedAt, issue.renamedAt].some((edit) => edit !== undefined && Date.parse(edit) >= accepted);
 }
