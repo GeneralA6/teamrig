@@ -4271,7 +4271,10 @@ run leaves a `refusal` record instead: when it began to wait and ended, how (`ou
 programs holding memory), its waits by cause, the last thing it waited on (`lastWait`), and the host's free memory at
 both ends (`queueFreeMb`, `endFreeMb`). Exit 0 when the command passed, 1 when it failed or was killed. REFUSED (exit 2) from
 `delivery.schedule.queueCutoffUtc` to midnight UTC, also when the wait for the lock ran past it, and when the lock
-(or, for a small step, the memory it needs) is still held after the wait.
+(or, for a small step, the memory it needs) is still held after the wait. It is REFUSED too while a
+[pipeline freeze](#teamrig-pipeline-freeze) holds its `--kind`, looked at before `--detach` returns, before the lock
+and once more after the wait (`REFUSED the pipeline is frozen until 2030-01-08 14:00 IST by po (PC down; F2); ...
+teamrig pipeline unfreeze F2`), and while the freezes file is unreadable.
 
 The lock is `host.lock` in the kit home, one for every team on the host, unless `delivery.queue.lockPath` names
 another. It lasts `delivery.queue.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
@@ -4412,6 +4415,9 @@ session that waits on the host lock sees why without reading the lock, the ticke
   held for the steps sharing the host (heavy and small) and for the tabs still loading (each named by its team and
   session, held for `open.headroom.loadMinutes` after its open), what the running steps' process trees use, and the
   top memory holders.
+- `FROZEN`: the [pipeline freezes](#teamrig-pipeline-freeze) not yet ended (`none`, or their count and one line
+  each: id, start and end, the step kinds it holds, who set it and why), the one holding now marked `holding now`.
+  An unreadable freezes file shows `FROZEN unknown: ...`, as every new step is refused until it reads.
 - `RUNNING`: the lock's holder (how long it has held the lock and what its process tree uses) and each step sharing
   the host (the MB held for it; a heavy one says `shares the host as a heavy step`). A lock whose process has ended is
   called stale; the next step removes it.
@@ -4435,6 +4441,8 @@ Output:
 ```text
 HOST 7000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); commit charge 30000 of 48000 MB; 2048 MB held for 1 small step; 1500 MB held for 1 tab still loading (shop/web); the running steps' trees use 3500 MB
   top memory holders: vmmem 22.4 GB, msedge 20.9 GB in 35 processes, claude 900 MB in 12 processes
+FROZEN 1
+  F3 2030-01-09 02:00 IST → 2030-01-09 04:00 IST, all steps, by lead (backup)
 RUNNING 2
   lead (heavy: build) holds the lock, for 12m, its tree uses 3000 MB
   alpha (heavy: lint) shares the host, 2048 MB held for it, for 3m, its tree uses 500 MB
@@ -4443,6 +4451,62 @@ WAITING 2
   2. alpha (heavy: specs) for 1m: its ticket names no cause (before its first look, or an older teamrig)
 REFUSED in the last 24h: 1
   2030-01-08 11:30 IST bravo (test api) timedOut after 30m: host lock still held by lead (heavy: build) since 2030-01-08 10:48 IST
+```
+
+### teamrig pipeline freeze
+
+A pipeline freeze holds every new step of this host for a window, say while the PC is down for an upgrade or a
+backup runs, so no build, test, merge or deploy starts that the window would cut. From `--from` (default now) to
+`--to`, no new step of `--kinds` starts: `teamrig queue` of those kinds, `teamrig merge` and `teamrig deploy` are
+REFUSED with the freeze's end and id, and nothing waits for it to end. Steps already running finish. The freezes are
+`pipeline-freezes.json` beside the host lock, one file for every team on the host, written under
+`pipeline-freezes.lock`; ended ones are dropped 7 days after their end. An unreadable file refuses every new step until
+it reads or is removed, and a freeze command leaves it as it is. Each freeze gets the next id, `F1`, `F2` and on.
+
+Only the lead or the delivery owner sets one, since it holds every team's steps. REFUSED (exit 2) for a start in the
+past, an end at or before the start, a window over 7 days, no reason, a secret in the reason, another session, or an
+unreadable freezes file. Exit 1 when the file stayed locked by another write.
+
+Flags:
+
+- `--to <time>`: its end: `HH:MM` today or `YYYY-MM-DD HH:MM`, on the team's clock unless marked `UTC`.
+- `--reason "<why>"`: why the pipeline holds, shown in each refusal.
+- `--from <time>`: its start, the same forms; default now.
+- `--kinds <a,b>`: the step kinds it holds, of `build`, `test`, `lint`, `push`, `merge`, `deploy`, `other`; default
+  every kind.
+- `--session <id|name>`: the session that sets it; default `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig pipeline freeze --session lead --from "2030-01-09 02:00" --to "2030-01-09 04:00" --reason "backup"
+```
+
+Output:
+
+```text
+FROZEN F3 2030-01-09 02:00 IST → 2030-01-09 04:00 IST, all steps, by lead (backup)
+```
+
+### teamrig pipeline unfreeze
+
+Ends pipeline freeze `<id>` now, or drops one still to come, so the steps it held may start. The lead or the delivery
+owner only. REFUSED (exit 2) for an id no live freeze has, another session, or an unreadable freezes file.
+
+Flags:
+
+- `--session <id|name>`: the session that ends it; default `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig pipeline unfreeze F3 --session lead
+```
+
+Output:
+
+```text
+UNFROZEN F3 2030-01-09 02:00 IST → 2030-01-09 04:00 IST, all steps, by lead (backup)
 ```
 
 ### teamrig merge
@@ -4456,7 +4520,8 @@ itself (or `main`, `master`), a branch with nothing that is not on origin alread
 branch whose task has a design note and no decision record (see Decision records below). Also from
 `delivery.schedule.queueCutoffUtc` to midnight UTC, and in the `delivery.schedule.resetBlackoutHours` before
 the weekly token reset: the reset the status line last reported, else the one `budget.reset` sets (unset: no
-blackout).
+blackout). Also while a [pipeline freeze](#teamrig-pipeline-freeze) holds kind `merge`, or `deploy` for a repository
+whose push deploys (`deploysOnPush`).
 
 The repository is the entry of `delivery.repos` whose `mainCheckout` is this checkout's main one:
 
@@ -4711,7 +4776,7 @@ REFUSED (exit 2) before any check or lock for a main checkout off its default br
 commits origin lacks, and for a range with a dependency change `dependencyGate` holds: one with no `dependencyCheck`
 or no `deploy.dependencyInstall` set, or a range deploy cannot read. Also from
 `delivery.schedule.queueCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
-and when a check refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
+while a [pipeline freeze](#teamrig-pipeline-freeze) holds kind `deploy`, and when a check refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
 `delivery.wait.maxMinutes` for the freezes, the checks and the host lock (longer while its line moves), reads origin again under the lock and asks
 the checks again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
 and the command, each killed after `delivery.queue.maxRunMinutes`, all one queued step in the ledger (kind
