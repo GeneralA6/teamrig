@@ -226,10 +226,11 @@ first line over 1,500 characters is cut, and a note names the command that print
 
 ### Each prompt: the leader digest
 
-A leader (the lead, or a sub-lead listed in `leads`) is also shown, under its inbox lines, the register changes in its
-tree since its last prompt: the tasks it owns and those of every session under it, as other sessions changed them. A
-note that lands only in the register (a `set` or `update` that told no leader, which prints
-`NOTED in the register (the lead sees it at its next prompt)`) reaches the leader this way, never by a wake:
+Off by default [register.leaderDigest]: while it is off, no leader is shown a digest and `set` and `update` print no
+`NOTED` line. Turned on, a leader (the lead, or a sub-lead listed in `leads`) is also shown, under its inbox lines,
+the register changes in its tree since its last prompt: the tasks it owns and those of every session under it, as
+other sessions changed them. A note that lands only in the register (a `set` or `update` that told no leader, which
+prints `NOTED in the register (the lead sees it at its next prompt)`) reaches the leader this way, never by a wake:
 
 ```text
 teamrig: register changes in your tree since your last prompt (12 tasks):
