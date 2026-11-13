@@ -123,19 +123,27 @@ function actionOf(finding, env) {
     return holdsAsText(finding) ? env.writes : env.secretReads;
 }
 /**
- * Why the call is refused or asked about: what it would print, with the ways to use or check a secret that never print
+ * Why the call is refused or asked about: the saved credentials it reads out of the host's store, then what it would print, with the ways to use or check a secret that never print
  * it, then the secrets its command line holds as text, with the ways to pass one by reference, then the secrets the
  * text it writes holds, with where a real one belongs and how a test builds one; last, the keys that set it.
  */
 export function secretReason(findings) {
-    const what = findings.filter(({ kind }) => kind !== 'literal' && kind !== 'written').map(describeFinding);
+    const stores = findings.filter(({ kind }) => kind === 'credential').map(describeFinding);
+    const what = findings.filter(({ kind }) => kind !== 'literal' && kind !== 'written' && kind !== 'credential').map(describeFinding);
     const shapes = findings.filter(({ kind }) => kind === 'literal').map(describeFinding);
     const writes = findings.filter(({ kind }) => kind === 'written').map(describeFinding);
     const named = what.length < 2 ? what.join('') : `${what.slice(0, -1).join(', ')} and ${what.at(-1) ?? ''}`;
+    const reads = stores.length === 0
+        ? []
+        : [
+            `this call reads a saved credential out of the host's credential store (${stores.join(', ')}), printed or not. A ` +
+                "session never reads the store: each tool's key stays with the tool that reads it (teamrig's own commands read " +
+                'theirs themselves). To check a saved key, ask the owner to look in their own terminal.',
+        ];
     const printed = what.length === 0
         ? []
         : [
-            `this call would print ${named} into the conversation. Hand a secret to the tool that needs it (stdin, an env ` +
+            `${stores.length === 0 ? 'this call would print' : 'It would also print'} ${named} into the conversation. Hand a secret to the tool that needs it (stdin, an env ` +
                 'file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to look in ' +
                 'their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames or ' +
                 'secretGuard.commands.',
@@ -143,18 +151,18 @@ export function secretReason(findings) {
     const written = shapes.length === 0
         ? []
         : [
-            `${what.length === 0 ? "this call's" : 'Its'} command line holds a secret as text (${shapes.join(', ')}). Pass it by ` +
+            `${what.length + stores.length === 0 ? "this call's" : 'Its'} command line holds a secret as text (${shapes.join(', ')}). Pass it by ` +
                 'reference (its env var name, a file path, stdin, `teamrig exec request`), never as text.',
         ];
     const writing = writes.length === 0
         ? []
         : [
-            `${what.length + shapes.length === 0 ? 'the' : 'The'} text this call writes holds a secret (${writes.join(', ')}). Keep ` +
+            `${what.length + shapes.length + stores.length === 0 ? 'the' : 'The'} text this call writes holds a secret (${writes.join(', ')}). Keep ` +
                 'a real one in a secret file (secretGuard.paths, such as .env) and name it by its env var or path; a test ' +
                 "builds a secret-shaped value at run time from parts (join('gh', 'p_', ...)), so no file holds it whole.",
         ];
-    const keys = [...(what.length === 0 ? [] : ['secretGuard.secretReads']), ...(shapes.length + writes.length === 0 ? [] : ['secretGuard.writes'])];
-    return `teamrig secret guard: ${[...printed, ...written, ...writing].join(' ')} [${keys.join(', ')}]`;
+    const keys = [...(what.length + stores.length === 0 ? [] : ['secretGuard.secretReads']), ...(shapes.length + writes.length === 0 ? [] : ['secretGuard.writes'])];
+    return `teamrig secret guard: ${[...reads, ...printed, ...written, ...writing].join(' ')} [${keys.join(', ')}]`;
 }
 /** The team's own secret patterns (`register.secretPatterns`); none when the config is missing or unreadable. */
 export function secretPatternsOf(load) {
