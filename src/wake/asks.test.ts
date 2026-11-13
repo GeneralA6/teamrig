@@ -154,7 +154,7 @@ describe('askVerdictOf', () => {
 });
 
 describe('the wake for urgent lines', () => {
-  const cost = wakeCost(MINUTE, 60, undefined);
+  const cost = wakeCost(MINUTE, 60, undefined, undefined);
   const task = testTask({ priority: 1, title: 'Fix the login' });
 
   it("quotes each line on the team's clock, then the work handed meanwhile or the cost", () => {
@@ -163,7 +163,7 @@ describe('the wake for urgent lines', () => {
       'Urgent lines were posted for you while this tab was idle; act on each now:\n' +
         '- 12:00 IST teamrig: The idle pass closed bravo.\n' +
         '- 12:01 IST alpha: Bravo has a reply waiting.\n' +
-        'This wake costs about 27k W, warm cache.',
+        'This wake costs at least about 27k W for the first call, warm cache; whole turns usually cost more.',
     );
     assert.equal(handedPrompt('lead', [task], [CLOSED], cost, JERUSALEM), `Urgent lines were posted for you while this tab was idle; act on each now:\n- 12:00 IST teamrig: The idle pass closed bravo.\n${wakePrompt('lead', [task], cost)}`);
     assert.equal(handedPrompt('lead', [task], [], cost, JERUSALEM), wakePrompt('lead', [task], cost));
@@ -180,8 +180,8 @@ describe('the wake for urgent lines', () => {
   });
 
   it('names the lines, their senders and the tasks in the toast', () => {
-    assert.equal(handedToast([], [CLOSED], cost), 'teamrig woke this tab for an urgent line from teamrig (about 27k W, warm cache)');
-    assert.equal(handedToast([task], [CLOSED, REOPEN, CLOSED], cost), 'teamrig woke this tab for T1 and 3 urgent lines from teamrig, alpha (about 27k W, warm cache)');
+    assert.equal(handedToast([], [CLOSED], cost), 'teamrig woke this tab for an urgent line from teamrig (at least about 27k W for the first call, warm cache; whole turns usually cost more)');
+    assert.equal(handedToast([task], [CLOSED, REOPEN, CLOSED], cost), 'teamrig woke this tab for T1 and 3 urgent lines from teamrig, alpha (at least about 27k W for the first call, warm cache; whole turns usually cost more)');
     assert.equal(handedToast([task], [], cost), wakeToast([task], cost));
   });
 });

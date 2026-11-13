@@ -17,11 +17,11 @@ const APP_LEAD: WakeSender = { ...MEMBER, id: 'lead', leader: true, teamLead: tr
 const WEB_LEAD: WakeSender = { team: 'web', id: 'lead', leader: true, teamLead: true, below: ['ui'] };
 
 function warm(label: string, team: string, wPerPct?: number): ReceiverWake {
-  return { label, team, batchSeconds: 120, cost: wakeCost(5 * MINUTE, 60, wPerPct) };
+  return { label, team, batchSeconds: 120, cost: wakeCost(5 * MINUTE, 60, wPerPct, undefined) };
 }
 
 function cold(label: string, team: string, wPerPct?: number): ReceiverWake {
-  return { label, team, batchSeconds: 120, cost: wakeCost(undefined, 60, wPerPct) };
+  return { label, team, batchSeconds: 120, cost: wakeCost(undefined, 60, wPerPct, undefined) };
 }
 
 describe('wakeRefusal', () => {
@@ -77,10 +77,10 @@ describe('wakeByOf', () => {
 
 describe('wakesLine', () => {
   it('names one receiver, its cost and the budget line of its team', () => {
-    assert.equal(wakesLine([warm('bravo', 'app')], [], WAKE_AT_ONCE), "WAKES bravo if its tab is idle, within about 3 minutes: about 27k W, warm cache, on app's budget line");
+    assert.equal(wakesLine([warm('bravo', 'app')], [], WAKE_AT_ONCE), "WAKES bravo if its tab is idle, within about 3 minutes: at least about 27k W for the first call, warm cache; whole turns usually cost more, on app's budget line");
     assert.equal(
       wakesLine([cold('web/front', 'web', W_PER_PCT)], [], WAKE_AT_ONCE),
-      "WAKES web/front if its tab is idle, within about 3 minutes: about 210k W, cold, 0.21% of the week, on web's budget line",
+      "WAKES web/front if its tab is idle, within about 3 minutes: at least about 210k W for the first call, cold, 0.21% of the week; whole turns usually cost more, on web's budget line",
     );
   });
 
@@ -102,13 +102,13 @@ describe('wakesLine', () => {
     );
     assert.equal(
       wakesLine([warm('bravo', 'app', 1_000_000_000)], [], WAKE_AT_ONCE),
-      "WAKES bravo if its tab is idle, within about 3 minutes: about 27k W, warm cache, under 0.01% of the week, on app's budget line",
+      "WAKES bravo if its tab is idle, within about 3 minutes: at least about 27k W for the first call, warm cache, under 0.01% of the week; whole turns usually cost more, on app's budget line",
     );
   });
 
   it("says when the wake comes: the slowest team's wake.batchSeconds and a wake-hand tick, at least a minute", () => {
     const at = (batchSeconds: number): ReceiverWake => ({ ...warm('bravo', 'app'), batchSeconds });
-    assert.equal(wakesLine([at(0)], [], WAKE_AT_ONCE), "WAKES bravo if its tab is idle, within about 1 minute: about 27k W, warm cache, on app's budget line");
+    assert.equal(wakesLine([at(0)], [], WAKE_AT_ONCE), "WAKES bravo if its tab is idle, within about 1 minute: at least about 27k W for the first call, warm cache; whole turns usually cost more, on app's budget line");
     assert.equal(
       wakesLine([at(0), { ...cold('web/front', 'web'), batchSeconds: 600 }], [], WAKE_AT_ONCE),
       'WAKES at most 2 sessions, those whose tab is idle, within about 11 minutes: about 237k W (1 warm cache, 1 cold), on the budget lines of app, web',
@@ -118,7 +118,7 @@ describe('wakesLine', () => {
   it('names the receivers whose team turned wakes off, and wakes no one when that is all of them', () => {
     assert.equal(
       wakesLine([warm('bravo', 'app')], ['web/front'], WAKE_AT_ONCE),
-      "WAKES bravo if its tab is idle, within about 3 minutes: about 27k W, warm cache, on app's budget line; wake.enabled is false on the team of web/front, so its line wakes no one",
+      "WAKES bravo if its tab is idle, within about 3 minutes: at least about 27k W for the first call, warm cache; whole turns usually cost more, on app's budget line; wake.enabled is false on the team of web/front, so its line wakes no one",
     );
     assert.equal(
       wakesLine([warm('bravo', 'app'), warm('charlie', 'app')], ['web/front', 'web/back'], WAKE_AT_ONCE),
@@ -130,7 +130,7 @@ describe('wakesLine', () => {
   it('says a --wake-by wake comes at its time, and only to a receiver that has not seen the line by then', () => {
     assert.equal(
       wakesLine([warm('bravo', 'app')], [], BY),
-      "WAKES bravo at 18:30 IST if it has not seen the line by then and its tab is idle: about 27k W, warm cache, on app's budget line",
+      "WAKES bravo at 18:30 IST if it has not seen the line by then and its tab is idle: at least about 27k W for the first call, warm cache; whole turns usually cost more, on app's budget line",
     );
     assert.equal(
       wakesLine([warm('bravo', 'app'), cold('web/front', 'web')], ['ops/run'], BY),

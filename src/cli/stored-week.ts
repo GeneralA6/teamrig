@@ -1,6 +1,7 @@
 import { OUTSIDE_ID, outsideUsageDir } from '../budget/measure.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
 import { accountReadings, calibrationOf, MeterLog } from '../budget/calibration.ts';
+import { measuredTurns, type MeasuredTurns } from '../budget/turn-average.ts';
 import { teamWeekOf } from '../budget/team-week.ts';
 import { rateOf, type WeekReading } from '../budget/week.ts';
 import type { KitConfig } from '../config/types.ts';
@@ -104,4 +105,19 @@ export async function readTodayWPerPct(
   now: number,
 ): Promise<number | undefined> {
   return (await readStoredWeek(runtime, paths, config, now)).todayWPerPct;
+}
+
+/**
+ * The average W of a notification turn for a wake of `session` (budget/turn-average.ts): its own stored turns of the
+ * last 7 days, else the team's when it has too few of its own. It reads the stored usage only (the per-day counters
+ * `teamrig budget --burn` shows), never a transcript, so the wake path stays cheap; undefined while there are too few.
+ */
+export async function readMeasuredTurns(runtime: CliRuntime, paths: Pick<TeamPaths, 'usage'>, session: string, sessions: readonly string[], now: number): Promise<MeasuredTurns | undefined> {
+  const team = new UsageStore(runtime.files, paths.usage);
+  const own = measuredTurns([(await team.load(session)).state], now);
+  if (own !== undefined) {
+    return own;
+  }
+  const states = await Promise.all(sessions.filter((id) => id !== session).map(async (id) => (await team.load(id)).state));
+  return measuredTurns([(await team.load(session)).state, ...states], now);
 }

@@ -1,4 +1,5 @@
 import { formatPct, formatW } from '../budget/format.ts';
+import { MEASURED_DAYS, type MeasuredTurns } from '../budget/turn-average.ts';
 import { isHeld, quietSpanOf, sessionQuietSpan, type BudgetFacts } from '../budget/warn.ts';
 import { DEFAULT_MESSAGES } from '../config/defaults.ts';
 import { NOW_PRIORITY } from '../config/priorities.ts';
@@ -321,6 +322,11 @@ export interface WakeCost {
   readonly cold: boolean;
   /** In % of the week, at today's W per percent; undefined while that is unknown. */
   readonly weekPct: number | undefined;
+  /**
+   * How many past notification turns `w` is the average of; absent when there were too few, and `w` is then only the
+   * first call's W (a floor: the turn's follow-on calls cost more, which the average counts).
+   */
+  readonly measuredTurns?: number;
 }
 
 /**
@@ -329,11 +335,13 @@ export interface WakeCost {
  * default applies then. `wPerPct` is today's W per percent of the week (`readTodayWPerPct`, cli/stored-week.ts), as
  * `teamrig budget` prices today's rows, undefined while unknown.
  */
-export function wakeCost(idleMs: number | undefined, coldAfterMinutes: number, wPerPct: number | undefined): WakeCost {
+export function wakeCost(idleMs: number | undefined, coldAfterMinutes: number, wPerPct: number | undefined, measured: MeasuredTurns | undefined): WakeCost {
   const after = coldAfterMinutes > 0 ? coldAfterMinutes : DEFAULT_MESSAGES.coldAfterMinutes;
   const cold = idleMs === undefined || isCold(idleMs, after);
-  const w = cold ? COLD_WAKE_W : WARM_WAKE_W;
-  return { w, cold, weekPct: wPerPct === undefined || wPerPct <= 0 ? undefined : w / wPerPct };
+  // The first call alone is 27k or 210k W, but the turn's follow-on calls dominate (~340k measured), so a measured
+  // average of past notification turns replaces it once there is enough of it.
+  const w = measured?.w ?? (cold ? COLD_WAKE_W : WARM_WAKE_W);
+  return { w, cold, weekPct: wPerPct === undefined || wPerPct <= 0 ? undefined : w / wPerPct, ...(measured === undefined ? {} : { measuredTurns: measured.turns }) };
 }
 
 /** The smallest share of the week `formatPct` shows as more than 0.00%. */
@@ -344,9 +352,15 @@ export function weekShareText(weekPct: number | undefined): string {
   return weekPct === undefined ? '' : weekPct < LEAST_PCT ? `, under ${formatPct(LEAST_PCT)} of the week` : `, ${formatPct(weekPct)} of the week`;
 }
 
-/** `about 27k W, warm cache, under 0.01% of the week`. */
+/**
+ * `about 340k W, the average of 121 notification turns in the last 7 days, 0.2% of the week`, or with too little
+ * history `at least about 27k W for the first call, warm cache; whole turns usually cost more`.
+ */
 export function costText(cost: WakeCost): string {
-  return `about ${formatW(cost.w)} W, ${cost.cold ? 'cold' : 'warm cache'}${weekShareText(cost.weekPct)}`;
+  if (cost.measuredTurns !== undefined) {
+    return `about ${formatW(cost.w)} W, the average of ${cost.measuredTurns} notification turns in the last ${MEASURED_DAYS} days${weekShareText(cost.weekPct)}`;
+  }
+  return `at least about ${formatW(cost.w)} W for the first call, ${cost.cold ? 'cold' : 'warm cache'}${weekShareText(cost.weekPct)}; whole turns usually cost more`;
 }
 
 function shortTitle(title: string): string {

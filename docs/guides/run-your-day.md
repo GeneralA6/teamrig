@@ -171,7 +171,7 @@ sequenceDiagram
   M->>R: 2 minutes on: teamrig hook wake-check
   R-->>M: wake, with the prompt and its cost
   M->>W: the prompt, sent as the teamrig plugin
-  Note over M: toast: teamrig woke this tab for T12 (about 27k W, warm cache)
+  Note over M: toast: teamrig woke this tab for T12 (at least about 27k W for the first call, warm cache; whole turns usually cost more)
 ```
 
 - What wakes a session: a task it owns that another session handed to it, raised, reopened or freed by finishing a
