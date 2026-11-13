@@ -330,6 +330,15 @@ describe('statusInputOf: the decision card', () => {
     assert.throws(() => statusInputOf(flags({ status: 'waiting', question: ' ' }), TIMES), /--question needs text/);
     assert.throws(() => statusInputOf(flags({ status: 'waiting', options: 'Basic || Pro' }), TIMES), /--options has an empty choice: separate the choices with \|/);
   });
+
+  it('keeps an escaped \\| inside a choice as a literal |', () => {
+    const typed = flags({ status: 'waiting', waits: 'decision:owner', options: "Approve: add the row 'Account \\| D1 \\| Edit' to the token | Decline: keep the token as it is" });
+    assert.deepEqual(statusInputOf(typed, TIMES).card?.options, ["Approve: add the row 'Account | D1 | Edit' to the token", 'Decline: keep the token as it is']);
+  });
+
+  it('names the choices it split into when one is empty', () => {
+    assert.throws(() => statusInputOf(flags({ status: 'waiting', options: 'Basic || Pro' }), TIMES), /split into 3 choices at each \|: "Basic" \/ "" \/ "Pro"; write \\\| for a \| inside a choice/);
+  });
 });
 
 describe("a typed time in the team's zone", () => {

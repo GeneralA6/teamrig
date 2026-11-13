@@ -73,6 +73,37 @@ export function whyAskUsage(ownerSource: string): string {
 /** How `--options` separates the choices: a comma or a semicolon is common inside one. */
 export const OPTION_SEPARATOR = '|';
 
+/** How a choice says a literal OPTION_SEPARATOR inside it: `--options "keep 'a \\| b' | drop it"`. */
+export const OPTION_SEPARATOR_ESCAPE = `\\${OPTION_SEPARATOR}`;
+
+/** `--options` text as its choices, each trimmed: split at each OPTION_SEPARATOR not escaped as OPTION_SEPARATOR_ESCAPE. */
+export function splitOptions(text: string): string[] {
+  const options: string[] = [];
+  let current = '';
+  for (let index = 0; index < text.length; index += 1) {
+    if (text.startsWith(OPTION_SEPARATOR_ESCAPE, index)) {
+      current += OPTION_SEPARATOR;
+      index += OPTION_SEPARATOR_ESCAPE.length - 1;
+    } else if (text.startsWith(OPTION_SEPARATOR, index)) {
+      options.push(current.trim());
+      current = '';
+    } else {
+      current += text[index];
+    }
+  }
+  options.push(current.trim());
+  return options;
+}
+
+/** What a refusal about the choices adds: how many choices --options split into, each shown, and the escape for a literal separator. */
+export function optionsSplitText(options: readonly string[]): string {
+  const shown = options.map((option) => `"${option}"`).join(' / ');
+  return `--options split into ${options.length} choice${options.length === 1 ? '' : 's'} at each ${OPTION_SEPARATOR}: ${shown}; write ${OPTION_SEPARATOR_ESCAPE} for a ${OPTION_SEPARATOR} inside a choice`;
+}
+
+/** How a refusal names one choice of `--options`, before its number. */
+const OPTION_CHOICE_PART = '--options choice ';
+
 /** The fewest plain words each part of a card says; task ids do not count. */
 export const CARD_MIN_WORDS = 3;
 
@@ -141,10 +172,11 @@ export function namedTaskIds(texts: readonly string[]): string[] {
 export function cardProblem(card: DecisionCard, decision: boolean): string | undefined {
   const thin = typedParts(card).find(([, text]) => plainWords(text) < CARD_MIN_WORDS);
   if (thin !== undefined) {
-    return `${thin[0]} says "${thin[1]}": give at least ${CARD_MIN_WORDS} plain words besides task ids, so it reads without the task list`;
+    const split = thin[0].startsWith(OPTION_CHOICE_PART) ? `; ${optionsSplitText(card.options)}` : '';
+    return `${thin[0]} says "${thin[1]}": give at least ${CARD_MIN_WORDS} plain words besides task ids, so it reads without the task list${split}`;
   }
   if (card.options.length === 1 || (decision && card.options.length < MIN_DECISION_OPTIONS)) {
-    return `--options lists ${card.options.length}: a decision lists at least ${MIN_DECISION_OPTIONS}, separated by ${OPTION_SEPARATOR}${decision ? '' : '; an approval lists none or as many'}`;
+    return `--options lists ${card.options.length}: a decision lists at least ${MIN_DECISION_OPTIONS}, separated by ${OPTION_SEPARATOR}${decision ? '' : '; an approval lists none or as many'}${card.options.length === 0 ? '' : `; ${optionsSplitText(card.options)}`}`;
   }
   return undefined;
 }
@@ -158,7 +190,7 @@ function typedParts(card: DecisionCard): readonly (readonly [string, string])[] 
   return [
     ['--question', card.question],
     ...(card.whyAsk === undefined ? [] : [[WHY_ASK_FLAG, card.whyAsk] satisfies [string, string]]),
-    ...card.options.map((option, index): [string, string] => [`--options choice ${index + 1}`, option]),
+    ...card.options.map((option, index): [string, string] => [`${OPTION_CHOICE_PART}${index + 1}`, option]),
     ['--recommend', card.recommend],
     ['--default', card.byDefault],
   ];

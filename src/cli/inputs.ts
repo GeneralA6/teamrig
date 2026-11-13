@@ -2,7 +2,7 @@ import { ENV, type Env } from '../core/home.ts';
 import { ID_PATTERN, NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { OPTION_SEPARATOR, type DecisionCard } from '../register/card.ts';
+import { OPTION_SEPARATOR, optionsSplitText, splitOptions, type DecisionCard } from '../register/card.ts';
 import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem, type ItemType, type TaskFields } from '../register/events.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
@@ -451,11 +451,11 @@ function flagText(flags: Flags, name: string): string | undefined {
   return text;
 }
 
-/** `--options "<a> | <b>"`: the choices, each trimmed; an empty one is a usage error. */
+/** `--options "<a> | <b>"`: the choices, each trimmed, a `\\|` kept as a literal `|`; an empty one is a usage error. */
 function optionsOf(text: string): string[] {
-  const options = text.split(OPTION_SEPARATOR).map((option) => option.trim());
+  const options = splitOptions(text);
   if (options.some((option) => option === '')) {
-    throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}`);
+    throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}; ${optionsSplitText(options)}`);
   }
   return options;
 }
