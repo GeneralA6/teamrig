@@ -62,8 +62,9 @@ has a run.
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
 of taking the lock. A small step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step
 waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) shares the host too, at
-most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in memory no longer wait for each other,
-while a merge, a deploy and a step queued with `--exclusive` take the lock and wait for every step sharing the host to
+most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in memory no longer wait for each other
+(the second one joins only while `delivery.queue.heavyIdleCpuPct` (25) of the CPU is idle, so two test runs do not
+slow each other into their time limits), while a merge, a deploy and a step queued with `--exclusive` take the lock and wait for every step sharing the host to
 end, so they run alone. With `admission: serial` a heavy step takes the lock that way too; a team whose own deploy
 tool takes the lock file without first waiting for the shares in `<lock>.shared` to end sets it, so no roll starts
 beside two builds.

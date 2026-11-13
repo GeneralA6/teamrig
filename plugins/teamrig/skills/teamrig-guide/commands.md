@@ -4298,7 +4298,12 @@ In its turn, while the lock is not held and host memory lets it in, it writes a 
 A step without `--small` is a heavy step. With `delivery.queue.admission` `pipeline` (the default) it shares the
 host too, as a heavy share in `<lock>.shared` marked `heavy`, while fewer than `delivery.queue.maxHeavyParallel` (2)
 heavy steps run and host memory lets it in with every running step's MB counted; past that cap it waits
-(`2 heavy steps running, the cap 2: ...`, refused with `heavy cap still reached: ...`), and the lock file stays free. With `serial`, or with `--exclusive`, it
+(`2 heavy steps running, the cap 2: ...`, refused with `heavy cap still reached: ...`), and the lock file stays free.
+Beside another heavy step it also needs `delivery.queue.heavyIdleCpuPct` (25) of the host's CPU idle over two reads 2 s
+apart, since two test runs each fanning out over every core slow both until their time limits fire; while less is
+idle it waits (`host CPU 10% idle, 25% needed (delivery.queue.heavyIdleCpuPct) beside 1 heavy step: ...`, refused
+with `host CPU still busy: ...`). A heavy step alone on the host, and a small step, never wait on the CPU; 0 turns
+the check off. With `serial`, or with `--exclusive`, it
 takes the lock instead and holds it while it waits for every step sharing the host to end, so a step that must run
 alone still does, and no new share is let in meanwhile; a merge and a deploy always take the whole host this way. It
 gives up, releasing the lock, when no share ended for `waitMinutes`, and its lock is renewed if it had to wait. A share
@@ -4317,7 +4322,7 @@ being killed. The step's start and end go to the delivery ledger,
 it (`kit`), the kind of work it is (`kind`), the task it works for (`task`, when it names one) and that task's
 register priority as it queued (`priority`, 1 for `p1`; left out when the register lacks the task), when it began to
 wait (`queuedAt`), the host's free memory then (`queueFreeMb`), the ms its wait took by cause (`waits`: `lock`,
-`line`, `draining`, `memory`, `commit`, `freeze`, `check`, each one that took time) and, sampled every
+`line`, `draining`, `memory`, `commit`, `freeze`, `check`, `session`, `heavyCap`, `cpu`, each one that took time) and, sampled every
 `delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the host's free memory as it started (`startFreeMb`),
 the most memory its process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`),
 and `shared: true` for a small step. A step killed at its limit or as its shell ended also records the host's free

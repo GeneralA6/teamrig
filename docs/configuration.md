@@ -402,6 +402,7 @@ The host lock and the limits of one queued step.
 | `agingMinutes` | integer (0 to 1440) | `15` | In pipeline admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. |
 | `perSessionRunning` | integer (0 to 64) | `2` | In pipeline admission, a session with this many steps running (the host lock or a share of the host) waits for one to end, and later steps pass it; 0 caps nothing. |
 | `maxHeavyParallel` | integer (1 to 64) | `2` | In pipeline admission, at most this many heavy queued steps share the host at once, each let in only while the memory gate has room for it beside the steps already sharing it; a merge and a deploy still take the whole host, waiting for every share to end. |
+| `heavyIdleCpuPct` | integer (0 to 100) | `25` | In pipeline admission, a heavy queued step joins another heavy one already sharing the host only while at least this % of the host's CPU time is idle (read over 2 seconds), as two test runs fanned out over every core slow each other until their time limits fire; a heavy step alone on the host never waits on CPU; 0 reads no CPU. |
 
 ## `delivery.freezes`
 
