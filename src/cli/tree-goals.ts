@@ -32,6 +32,10 @@ export class KitTreeGoals implements GoalTagsReader {
     return new Set((await this.all()).keys());
   }
 
+  async sliced(): Promise<ReadonlyMap<string, Goal>> {
+    return this.all();
+  }
+
   /**
    * Every goal a task of the team may serve, whatever `register.goals` says, as a goal's rank counts under `free` too.
    * A tag two teams hold reads as the nearest team's: the root's goes first, so each team below overwrites it.

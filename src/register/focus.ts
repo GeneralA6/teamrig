@@ -58,6 +58,9 @@ export function rankOf(task: Pick<TaskFields, 'goals'>, goals: ReadonlyMap<strin
 /** What prepStanding reads of a goal: its rank chain and its open slice. */
 export type SlicedGoal = RankedGoal & Pick<Goal, 'slice'>;
 
+/** No goal records: no rank, no slice, so no prep marker stands near. */
+export const NO_SLICED_GOALS: ReadonlyMap<string, SlicedGoal> = new Map();
+
 /**
  * Where a task's prep marker stands (T2453): `near` while the goal it prepares is ranked (itself or up its parent
  * chain, as servedGoalOf reads it), has a slice open, and the marked slice is that one or the next; then the task, a

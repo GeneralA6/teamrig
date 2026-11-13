@@ -7,6 +7,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { waitAnswerersOf } from './approval.ts';
+import type { SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
@@ -150,6 +151,8 @@ export interface StatusContext {
   readonly now: Date;
   readonly zone: TimeZone;
   readonly skillExists: boolean;
+  /** The goal records of the team's tree, read for a start's prep marker (T2453); empty for any other status. */
+  readonly goals: ReadonlyMap<string, SlicedGoal>;
 }
 
 export interface StatusChange {
@@ -416,7 +419,7 @@ export class RegisterPolicy {
     }
     // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
     const { focus } = this.config;
-    const wip = wipHold({ ...input, task }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+    const wip = wipHold({ ...input, task, goals: context.goals }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
     if (wip !== undefined && focus.wip.mode === 'refuse') {
       return refuse(wip);
     }

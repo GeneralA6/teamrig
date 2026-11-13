@@ -5,6 +5,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type SizeBase, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import type { AuditPin } from './hand-step.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
+import { NO_SLICED_GOALS, type SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type AuditChange, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
@@ -41,10 +42,16 @@ export interface GoalTagsReader {
    * too, as it only means something for a goal that has slices. Under checked or required, the tags `read` gives.
    */
   recorded(): Promise<ReadonlySet<string>>;
+  /** Those goal records with their rank chain and open slice, read by a start to judge a prep marker (T2453). */
+  sliced(): Promise<ReadonlyMap<string, SlicedGoal>>;
 }
 
 /** The reader of a team that keeps no goal records, as under `register.goals` free: no tag is read. */
-export const NO_GOAL_RECORDS: GoalTagsReader = { read: () => Promise.resolve(NO_GOAL_TAGS), recorded: () => Promise.resolve(NO_GOAL_TAGS) };
+export const NO_GOAL_RECORDS: GoalTagsReader = {
+  read: () => Promise.resolve(NO_GOAL_TAGS),
+  recorded: () => Promise.resolve(NO_GOAL_TAGS),
+  sliced: () => Promise.resolve(NO_SLICED_GOALS),
+};
 
 export interface RegisterDeps {
   readonly log: EventLog;
@@ -209,9 +216,11 @@ export class Register {
 
   async setStatus(caller: string, id: string, input: StatusInput): Promise<Verdict<WriteResult>> {
     const skillExists = await this.skillExists(input);
+    // Only a start reads the goal records: the WIP rule judges a prep marker against them, before the lock.
+    const goals = input.status === 'in-progress' ? await this.deps.goals.sliced() : NO_SLICED_GOALS;
     return this.commit(caller, (snapshot, elsewhere) =>
       onTask(snapshot, elsewhere, id, (task) =>
-        this.statusEvents(task, caller, input, { state: snapshot.state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists }),
+        this.statusEvents(task, caller, input, { state: snapshot.state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists, goals }),
       ),
     );
   }
@@ -235,7 +244,7 @@ export class Register {
           const state = foldEvents([created], [], snapshot.state);
           const waits: readonly WaitReason[] = [...(input.waits ?? []), { kind: 'task', id: askedId }];
           const asking: StatusInput = { ...input, waits, note: input.note ?? fields.value.title };
-          const status = this.statusEvents(task, caller, asking, { state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists });
+          const status = this.statusEvents(task, caller, asking, { state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists, goals: NO_SLICED_GOALS });
           return status.ok ? { ok: true, value: [created, ...status.value] } : status;
         }),
       ),

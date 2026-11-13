@@ -34,7 +34,7 @@ import { renderPlan } from '../../register/plan.ts';
 import { noProgressFlag } from '../../register/progress.ts';
 import { overSizeFlags } from '../../register/over-size.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
-import type { Register, RotationOutcome, WriteResult } from '../../register/register.ts';
+import type { GoalTagsReader, Register, RotationOutcome, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
@@ -49,6 +49,7 @@ import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow, teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { handStepPin, readRunFiles } from '../hand-step-file.ts';
+import { KitTreeGoals } from '../tree-goals.ts';
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
@@ -465,7 +466,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (typed.ask !== null) {
     return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
   }
-  const { held, due, wip } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config);
+  const { held, due, wip } = await startGatesOf(register, new KitTreeGoals(runtime, paths, config), by, id, input, new Date(runtime.clock.now()), team.zone, config);
   const verdict = await register.setStatus(by, id, input);
   const warned = config.register.verifyGate === 'warn';
   // The start as written: one that named its held proof as met asks the verifying owners to confirm it.
@@ -551,7 +552,7 @@ const OPEN_START: StartGates = { held: undefined, due: undefined, wip: undefined
  * What holds the caller's start of its own task, read before the write: the policy refuses that start (or lets
  * it through in warn mode); the owners of the verifying tasks it needs hear of it either way.
  */
-async function startGatesOf(register: Register, caller: string, id: string, input: StatusInput, now: Date, zone: TimeZone, config: KitConfig): Promise<StartGates> {
+async function startGatesOf(register: Register, goalRecords: Pick<GoalTagsReader, 'sliced'>, caller: string, id: string, input: StatusInput, now: Date, zone: TimeZone, config: KitConfig): Promise<StartGates> {
   if (input.status !== 'in-progress') {
     return OPEN_START;
   }
@@ -563,7 +564,9 @@ async function startGatesOf(register: Register, caller: string, id: string, inpu
   }
   const holds = startHolds(task, input.status, tasks);
   const due = dueStartHolds(task, input.status, tasks, now, zone, config.register.maxVerifying);
-  const wip = wipHold({ ...input, task }, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
+  // The goal records count only for a task with a prep marker, so no other start reads them.
+  const goals = task.prepares === null ? undefined : await goalRecords.sliced();
+  const wip = wipHold({ ...input, task, ...(goals === undefined ? {} : { goals }) }, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
   return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due }, wip };
 }
 
