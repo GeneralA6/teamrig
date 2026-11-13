@@ -26,7 +26,7 @@ const LONG_AGO = '2029-11-01T09:00:00.000Z';
 
 /** A task as `queuedWork` reads it: unsized, of no class or type, its status set long ago unless `fields` say otherwise. */
 function workTask(fields: Pick<WorkTask, 'id' | 'owner' | 'status' | 'priority'> & Partial<WorkTask>): WorkTask {
-  return { statusAt: LONG_AGO, sizeBase: null, workClass: null, type: null, ...fields };
+  return { statusAt: LONG_AGO, sizeBase: null, workClass: null, type: null, waits: [], ...fields };
 }
 
 /** Each session's weights by priority id, as `workWeights` maps them. */
@@ -102,6 +102,38 @@ describe('queuedWork', () => {
     assert.deepEqual([...work.urgent], [['alpha', ['T1', 'T2']]]);
     // p0..p5 weigh 6..1; each session weighs its top task alone.
     assert.deepEqual(work.weights, byPriority({ alpha: { 0: 6 }, charlie: { 2: 4 } }));
+  });
+
+  it("lists each session's answers another session waits on: its queued task a waiter names, and a waiter's approval or decision asked of it (T2656)", () => {
+    const work = queuedWork(
+      [
+        workTask({ id: 'T1', owner: 'alpha', status: 'open', priority: 3 }),
+        workTask({ id: 'T2', owner: 'bravo', status: 'waiting', priority: 2, waits: [{ kind: 'task', id: 'T1' }] }),
+        workTask({ id: 'T3', owner: 'charlie', status: 'waiting', priority: 2, waits: [{ kind: 'task', id: 'T1' }, { kind: 'approval', who: 'lead' }] }),
+        workTask({ id: 'T4', owner: 'bravo', status: 'waiting', priority: 1, waits: [{ kind: 'decision', who: 'lead' }] }),
+      ],
+      priorities,
+      NOW,
+    );
+    // T1 is named by two waiters but listed once; the lead's answers are the waiting tasks themselves.
+    assert.deepEqual([...work.awaited], [['alpha', ['T1']], ['lead', ['T3', 'T4']]]);
+  });
+
+  it('lists no answer for a needed task that is itself waiting or finished, a wait on its own owner, or a waiter no longer waiting', () => {
+    const work = queuedWork(
+      [
+        workTask({ id: 'T1', owner: 'alpha', status: 'waiting', priority: 3, waits: [{ kind: 'time', at: '2030-01-08 10:00' }] }),
+        workTask({ id: 'T2', owner: 'alpha', status: 'done', priority: 3 }),
+        workTask({ id: 'T3', owner: 'alpha', status: 'open', priority: 3 }),
+        workTask({ id: 'T4', owner: 'bravo', status: 'waiting', priority: 2, waits: [{ kind: 'task', id: 'T1' }, { kind: 'task', id: 'T2' }, { kind: 'task', id: 'T9' }] }),
+        workTask({ id: 'T5', owner: 'alpha', status: 'waiting', priority: 2, waits: [{ kind: 'task', id: 'T3' }] }),
+        workTask({ id: 'T6', owner: 'lead', status: 'waiting', priority: 2, waits: [{ kind: 'decision', who: 'lead' }] }),
+        workTask({ id: 'T7', owner: 'bravo', status: 'in-progress', priority: 2, waits: [{ kind: 'task', id: 'T3' }] }),
+      ],
+      priorities,
+      NOW,
+    );
+    assert.deepEqual([...work.awaited], []);
   });
 
   it('keeps the size base of every sized task, a finished one too, and only of those', () => {
@@ -182,12 +214,15 @@ describe('cachedWork', () => {
   type SizeTask = (id: string, base: SizeBase) => Promise<void>;
   /** Sets a task of the register over `files` done, by its owner, at the register's clock. */
   type FinishTask = (owner: string, id: string) => Promise<void>;
+  /** Sets a task of the register over `files` waiting, by its owner, on the task `on`. */
+  type WaitTask = (owner: string, id: string, on: string) => Promise<void>;
 
   interface Team {
     readonly files: MemoryFiles;
     readonly add: AddTask;
     readonly size: SizeTask;
     readonly finish: FinishTask;
+    readonly wait: WaitTask;
   }
 
   function registerOn(files: MemoryFiles): Omit<Team, 'files'> {
@@ -216,6 +251,10 @@ describe('cachedWork', () => {
       },
       finish: async (owner, id) => {
         const verdict = await register.setStatus(owner, id, { status: 'done', note: 'shipped', evidence: 'abc1234', skill: 'none', followups: [] });
+        assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
+      },
+      wait: async (owner, id, on) => {
+        const verdict = await register.setStatus(owner, id, { status: 'waiting', note: 'needs it first', waits: [{ kind: 'task', id: on }] });
         assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
       },
     };
@@ -251,10 +290,11 @@ describe('cachedWork', () => {
     const { files } = await team();
     assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).weights], BOTH);
     assert.deepEqual(cacheIn(files), {
-      [VERSION_FIELD]: 6,
+      [VERSION_FIELD]: 7,
       key: { tail: await files.stamp(tail), snapshot: null, priorities: [1, 2, 3, 4, 5] },
       work: { alpha: { 1: 5 }, bravo: { 3: 3 } },
       urgent: {},
+      awaited: {},
       sizeBases: {},
       likeTasks: [],
     });
@@ -284,6 +324,14 @@ describe('cachedWork', () => {
     assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).urgent], [['charlie', ['T3']]]);
     assert.deepEqual(cacheIn(files)['urgent'], { charlie: ['T3'] });
     assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities, NOW)).urgent], [['charlie', ['T3']]]);
+  });
+
+  it("keeps each session's answers awaited in the cache and answers them from it (T2656)", async () => {
+    const { files, wait } = await team();
+    await wait('bravo', 'T2', 'T1');
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities, NOW)).awaited], [['alpha', ['T1']]]);
+    assert.deepEqual(cacheIn(files)['awaited'], { alpha: ['T1'] });
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities, NOW)).awaited], [['alpha', ['T1']]]);
   });
 
   it('answers from the cache while the register and the priorities are unchanged, without reading the register', async () => {
@@ -320,7 +368,10 @@ describe('cachedWork', () => {
   type Damage = (cache: JsonRecord, key: JsonRecord) => string;
   const DAMAGES: readonly (readonly [string, Damage])[] = [
     ['damaged', (cache) => JSON.stringify(cache).slice(0, -2)],
-    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 7, work: {} })],
+    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 8, work: {} })],
+    ['in the sixth format, with no answers awaited', (cache) => JSON.stringify({ [VERSION_FIELD]: 6, key: cache['key'], work: {}, urgent: {}, sizeBases: {}, likeTasks: [] })],
+    ['without its answers awaited', (cache) => JSON.stringify({ ...cache, work: {}, awaited: 'none' })],
+    ['with answers awaited that are not text', (cache) => JSON.stringify({ ...cache, work: {}, awaited: { alpha: [5] } })],
     ['in the fifth format, with no like tasks', (cache) => JSON.stringify({ [VERSION_FIELD]: 5, key: cache['key'], work: {}, urgent: {}, sizeBases: {} })],
     ['in the fourth format, with no size bases', (cache) => JSON.stringify({ [VERSION_FIELD]: 4, key: cache['key'], work: {}, urgent: {} })],
     ['in the third format, every queued task weighed', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 3, work: { alpha: { 1: 10 }, bravo: { 3: 3 } } })],

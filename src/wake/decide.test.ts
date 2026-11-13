@@ -344,6 +344,7 @@ describe('wakeRestOf', () => {
     teamDay: { usedPct: 5, pacePct: 5 },
     isLead: false,
     urgent: [],
+    awaited: [],
     leader: { id: 'lead', name: 'lead', isLead: true },
     zone: TimeZone.UTC,
     ...overrides,
