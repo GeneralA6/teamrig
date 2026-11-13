@@ -5,6 +5,7 @@ import {
   holdersText,
   linuxCommitOf,
   freeMbOf,
+  namedListCommand,
   nodeHostMemory,
   nodeMemoryProbe,
   parseHolders,
@@ -355,6 +356,12 @@ describe('parseHolders (T2209)', () => {
       { name: 'node', mb: 300, processes: 2 },
       { name: '[kworker/0:1]', mb: 50, processes: 1 },
     ]);
+  });
+
+  it('asks `ps` for whole lines on Linux and macOS, so a narrow terminal cuts no program path', () => {
+    assert.deepEqual(namedListCommand('linux').args, ['-A', '-ww', '-o', 'rss=,args=']);
+    assert.deepEqual(namedListCommand('darwin').args, ['-A', '-ww', '-o', 'rss=,comm=']);
+    assert.equal(namedListCommand('win32').file, 'powershell.exe');
   });
 
   it('leaves out a line with no number or no name, and orders equal holders by name', () => {

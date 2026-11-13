@@ -237,9 +237,10 @@ export function holdersText(holders: readonly MemoryHolder[], count: number = TO
 
 /**
  * Lists every process's working set (resident memory) and program name: Win32_Process in bytes, `ps` in KB. Apart
- * from `listCommand`, whose whole-number lines every watch sample parses.
+ * from `listCommand`, whose whole-number lines every watch sample parses. `ps` gets `-ww`: a hook inherits Claude
+ * Code's COLUMNS, and `ps` cuts its last column to that width even into a pipe, so a long program path lost its tail.
  */
-function namedListCommand(platform: NodeJS.Platform): {
+export function namedListCommand(platform: NodeJS.Platform): {
   readonly file: string;
   readonly args: readonly string[];
   readonly bytesPerUnit: number;
@@ -252,9 +253,9 @@ function namedListCommand(platform: NodeJS.Platform): {
   if (platform === 'linux') {
     // Linux's comm is the main thread's name, which a program may set: Node 24 names its main thread MainThread, so
     // every node process would be listed as that. The command line's first word is the program as it was started.
-    return { file: 'ps', args: ['-A', '-o', 'rss=,args='], bytesPerUnit: 1024, listed: 'commandLine' };
+    return { file: 'ps', args: ['-A', '-ww', '-o', 'rss=,args='], bytesPerUnit: 1024, listed: 'commandLine' };
   }
-  return { file: 'ps', args: ['-A', '-o', 'rss=,comm='], bytesPerUnit: 1024, listed: 'program' };
+  return { file: 'ps', args: ['-A', '-ww', '-o', 'rss=,comm='], bytesPerUnit: 1024, listed: 'program' };
 }
 
 /** The host's programs by the memory they hold; undefined when the list fails. The lister itself is counted: a few dozen MB. */
