@@ -80,6 +80,10 @@ class FixedGoals implements GoalTagsReader {
     this.reads += 1;
     return this.tags;
   }
+
+  async recorded(): Promise<ReadonlySet<string>> {
+    return this.read();
+  }
 }
 
 /** The goal records a register's writes read, and the config that says how they hold its tasks' goal tags. */

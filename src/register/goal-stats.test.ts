@@ -7,7 +7,7 @@ import type { Goal } from './goals.ts';
 import type { TaskStatus } from './model.ts';
 import { registerStats, type StatsInput, type StatsRange, type StatsScope } from './stats.ts';
 
-const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
 
 /** Thursday 2030-01-10 12:00 on the team's clock (UTC+2): a 7 d range runs 01-04 to 01-10, the pace 12-28 to 01-10. */
 const NOW = new Date('2030-01-10T10:00:00.000Z');

@@ -5,7 +5,7 @@ import { TEST_CARD } from '../testing/card.ts';
 import { EVENT_VERSION, eventRecord, parseEvent, TASK_LINE_VERSION, type EventParse, type RegisterEvent } from './events.ts';
 
 const BASE = { id: 'T3', at: '2030-01-07T09:00:00.000Z', by: 'alpha' };
-const TASK = { title: 'A task', description: null, owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+const TASK = { title: 'A task', description: null, owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
 
 function parse(record: JsonRecord, version = 0): EventParse {
   return parseEvent({ lineNumber: 1, raw: JSON.stringify(record), record, version });
@@ -23,9 +23,9 @@ function createdMark(result: EventParse): [string | null, boolean] | undefined {
 describe('eventRecord', () => {
   it('leaves an empty after, a null description, size, type, pin or workClass and a false critical or noGoal off a create line, and keeps ones that hold something', () => {
     const create: RegisterEvent = { ...BASE, v: 2, type: 'create', task: TASK };
-    const { after, description, size, type, critical, noGoal, pin, workClass, ...withoutEither } = TASK;
+    const { after, description, size, type, critical, noGoal, pin, workClass, prepares, ...withoutEither } = TASK;
     assert.deepEqual(eventRecord(create), { ...create, task: withoutEither });
-    assert.deepEqual([after, description, size, type, critical, noGoal, pin, workClass], [[], null, null, null, false, false, null, null]);
+    assert.deepEqual([after, description, size, type, critical, noGoal, pin, workClass, prepares], [[], null, null, null, false, false, null, null, null]);
     const marked: RegisterEvent = { ...create, task: { ...TASK, type: 'bug', critical: true } };
     assert.deepEqual(eventRecord(marked), { ...marked, task: { ...withoutEither, type: 'bug', critical: true } });
     const described: RegisterEvent = { ...create, task: { ...TASK, description: 'Why it matters.\nWhat to do.' } };
@@ -304,6 +304,22 @@ describe('parseEvent', () => {
     }
     for (const value of ['', '1st', 'Road/map', 'x'.repeat(33), 7]) {
       assert.equal(reason(parse({ ...BASE, type: 'create', task: { ...TASK, workClass: value } }, 2)), `bad workClass ${JSON.stringify(value)}`, String(value));
+    }
+  });
+
+  it('reads the prep marker of a create line and of an update, leaves out an unset one, reads an older line as unset, and refuses a bad one (T2453)', () => {
+    const marked: RegisterEvent = { ...BASE, v: 2, type: 'create', task: { ...TASK, prepares: { goal: 'A1', slice: 2 } } };
+    assert.deepEqual(parse(eventRecord(marked), 2), { kind: 'event', event: marked });
+    assert.doesNotMatch(JSON.stringify(eventRecord({ ...BASE, v: 2, type: 'create', task: TASK })), /"prepares"/);
+    const { prepares, ...older } = TASK;
+    assert.equal(prepares, null);
+    const old = parse({ ...BASE, type: 'create', task: older }, 2);
+    assert.equal(old.kind === 'event' && old.event.type === 'create' ? old.event.task.prepares : undefined, null);
+    for (const value of [{ goal: 'B1.2', slice: 1 }, null]) {
+      assert.deepEqual(parse({ ...BASE, type: 'update', changes: { prepares: value } }, 2), { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: { prepares: value }, note: null } });
+    }
+    for (const value of ['A1:2', { goal: 'A1', slice: 0 }, { goal: 'A1', slice: 1.5 }, { goal: '1A', slice: 1 }, { slice: 1 }, 7]) {
+      assert.equal(reason(parse({ ...BASE, type: 'update', changes: { prepares: value } }, 2)), `bad prepares ${JSON.stringify(value)}`, JSON.stringify(value));
     }
   });
 

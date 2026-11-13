@@ -327,6 +327,11 @@ Flags:
 - `--pin`: pins the task to the top of its owner's list; the pin names who set it, which `show` prints
   (`pinned by lead: above every other task of api`), and its `list` row says `pinned`.
 - `--unpin`: clears the task's pin.
+- `--prepares <goal>:<slice>|none`: marks the task as a design, study or prep plan for that slice of a goal
+  (`--prepares G1:2`), or `none` to clear it. Only a leader above the owner sets or clears it (the lead on its own
+  tasks too), never the owner: while the slice is the goal's open one (`goal set --slice`) or the next, the task runs
+  outside the slice cap. The goal must be a goal record of the team or a team above, whatever `register.goals`
+  says. `add` takes no `--prepares`: mark the task once it exists. Its `list --all` row says `prepares G1:2`.
 - `--later <date>|none`: the owner puts a waiting card off to that time, in place of an answer: it leaves the
   meeting's DECISIONS for its LATER block, and the decision batches, until the time passed, then is asked again;
   `none` brings it back at once. It goes with a `--note` alone (what the owner said), only on a task waiting on the

@@ -36,10 +36,15 @@ export const NOTHING_ELSEWHERE: ElsewhereReader = { read: () => Promise.resolve(
  */
 export interface GoalTagsReader {
   read(): Promise<ReadonlySet<string>>;
+  /**
+   * The tags of those goal records whatever `register.goals` says (T2453): a prep marker names a record under `free`
+   * too, as it only means something for a goal that has slices. Under checked or required, the tags `read` gives.
+   */
+  recorded(): Promise<ReadonlySet<string>>;
 }
 
 /** The reader of a team that keeps no goal records, as under `register.goals` free: no tag is read. */
-export const NO_GOAL_RECORDS: GoalTagsReader = { read: () => Promise.resolve(NO_GOAL_TAGS) };
+export const NO_GOAL_RECORDS: GoalTagsReader = { read: () => Promise.resolve(NO_GOAL_TAGS), recorded: () => Promise.resolve(NO_GOAL_TAGS) };
 
 export interface RegisterDeps {
   readonly log: EventLog;
@@ -253,7 +258,9 @@ export class Register {
    */
   update(caller: string, id: string, changes: Partial<TaskFields>, note: string | undefined, sizeBase?: SizeBase): Promise<Verdict<WriteResult>> {
     return this.asCaller(caller, async () => {
-      const goalTags = await this.goalTagsFor(changes.goals);
+      // A prep marker names a goal record whatever register.goals says (T2453): every recorded tag, a superset of what
+      // `read` gives, which the goals check under free ignores anyway.
+      const goalTags = changes.prepares ? await this.deps.goals.recorded() : await this.goalTagsFor(changes.goals);
       return this.write((snapshot, elsewhere) =>
         onTask(snapshot, elsewhere, id, (task) => {
           const change = this.deps.policy.update(task, caller, changes, note, snapshot.state, elsewhere, goalTags);

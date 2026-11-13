@@ -477,9 +477,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: ['T1'], size: null, type: null, critical: false, pin: null, workClass: null } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: ['T1'], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {

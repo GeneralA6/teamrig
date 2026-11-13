@@ -4,6 +4,7 @@ import type { JsonlRecord } from '../core/jsonl.ts';
 import { parseUtcDeadline } from '../core/time.ts';
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, WORK_CLASS_NAME, type TaskStatus } from './model.ts';
 import { parseCard, type DecisionCard } from './card.ts';
+import { GOAL_TAG, isSlice } from './goals.ts';
 import { parseAuditPin, type AuditPin } from './hand-step.ts';
 import { parseReview, type ProblemReview } from './review.ts';
 import { parseWaits, type WaitReason } from './waits.ts';
@@ -20,8 +21,8 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
  * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
- * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110) and an update's hand step `audit`
- * (T2312) and a card's `affects` (T2623), which an older reader ignores:
+ * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110), an update's hand step `audit`
+ * (T2312), a card's `affects` (T2623) and a task's `prepares` marker (T2453), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -78,6 +79,23 @@ export interface TaskFields {
    * reads. Absent on older lines: not set.
    */
   readonly workClass: string | null;
+  /**
+   * The goal slice the task prepares (T2453): a design, study or prep plan for slice `slice` of goal `goal`, which only a
+   * lead sets; while that slice is the goal's open one or the next, the task runs outside the slice cap (focus.ts
+   * prepStanding). Parsing checks only the format, so a goal dropped later still reads. Absent on older lines: none.
+   */
+  readonly prepares: TaskPrep | null;
+}
+
+/** A task's prep marker: the goal and the slice of it the task prepares. */
+export interface TaskPrep {
+  readonly goal: string;
+  readonly slice: number;
+}
+
+/** True for a prep marker as a line holds it: a goal tag and a slice from FIRST_SLICE. */
+export function isTaskPrep(value: unknown): value is TaskPrep {
+  return isRecord(value) && typeof value['goal'] === 'string' && GOAL_TAG.test(value['goal']) && isSlice(value['slice']);
 }
 
 /**
@@ -105,7 +123,7 @@ const LEGACY_KINDS: ReadonlyMap<unknown, Pick<TaskFields, 'type' | 'critical'>> 
   ['critical', { type: 'bug', critical: true }],
 ]);
 
-export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'noGoal', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'] as const;
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'noGoal', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass', 'prepares'] as const;
 
 export type TaskFieldName = (typeof TASK_FIELD_NAMES)[number];
 
@@ -242,8 +260,8 @@ const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 
 /**
  * The record an event is written as. A create line leaves out an empty `after`, a null `description`, `size`, `type`,
- * `pin` or `workClass` and a false `critical` or `noGoal`, which read back as none, so a task without them costs no bytes and its
- * line is the one an older teamrig wrote.
+ * `pin`, `workClass` or `prepares` and a false `critical` or `noGoal`, which read back as none, so a task without them costs
+ * no bytes and its line is the one an older teamrig wrote.
  */
 export function eventRecord(event: RegisterEvent): JsonRecord {
   if (event.type !== 'create') {
@@ -258,7 +276,8 @@ export function eventRecord(event: RegisterEvent): JsonRecord {
     (name === 'critical' && !task.critical) ||
     (name === 'noGoal' && !task.noGoal) ||
     (name === 'pin' && task.pin === null) ||
-    (name === 'workClass' && task.workClass === null);
+    (name === 'workClass' && task.workClass === null) ||
+    (name === 'prepares' && task.prepares === null);
   return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
 
@@ -566,6 +585,12 @@ function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, n
         return `bad workClass ${JSON.stringify(value)}`;
       }
       fields.workClass = typeof value === 'string' ? value : null;
+      return undefined;
+    case 'prepares':
+      if (value !== undefined && value !== null && !isTaskPrep(value)) {
+        return `bad prepares ${JSON.stringify(value)}`;
+      }
+      fields.prepares = isTaskPrep(value) ? { goal: value.goal, slice: value.slice } : null;
       return undefined;
   }
 }

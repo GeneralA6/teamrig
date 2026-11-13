@@ -182,10 +182,14 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       --followups; verifying and done need every part (requireOn; mode refuse, warn or off)
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
-      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin] [--note ..]
+      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin]
+      [--prepares <goal>:<slice>|none] [--note ..]
       the lead may change owner, priority, due, week, after, size, type, class, critical and pin on any task
       --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
       on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
+      --prepares <goal>:<slice>|none: marks a design, study or prep plan for that slice of a goal, set only by
+      a leader above the owner (the lead on its own tasks too); while the slice is the goal's open one or the
+      next, the task runs outside the slice cap; none clears it
       a --note from the task's owner also replaces the note show and the waiting text print
   update <id> --later <date>|none --note ..   puts a card waiting on the owner off to that time, out of the
       meeting's DECISIONS and the batches until then (its owner or a leader above it); none brings it back
