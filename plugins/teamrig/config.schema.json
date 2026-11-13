@@ -460,7 +460,7 @@
       "type": "object",
       "properties": {
         "secretReads": {
-          "description": "A call that would print a secret: cat .env, Get-Content ~/.npmrc, the Read tool on a secret file, env, printenv, Get-ChildItem Env:, echo $GITHUB_TOKEN, kubectl get secret -o yaml, kubectl config view --raw: deny refuses it, ask asks the human, allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF).",
+          "description": "A call that would print a secret: cat .env, Get-Content ~/.npmrc, the Read tool on a secret file, env, printenv, Get-ChildItem Env:, echo $GITHUB_TOKEN, kubectl get secret -o yaml, kubectl config view --raw, and a shell line that reads a saved credential out of the host's store, printed or not (gh auth token, git credential fill, CredRead): deny refuses it, ask asks the human, allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF).",
           "type": "string",
           "enum": ["deny", "ask", "allow"],
           "default": "deny"
