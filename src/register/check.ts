@@ -11,7 +11,7 @@ import { leaderHolds, waitedMinutes, type LeaderWaitFocus } from './leader-wait.
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
 import { isProofAsk, isUngated } from './owner-waits.ts';
 import { isUntriaged, type Leaders } from './park.ts';
-import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree, type RankedPlace, type TasksElsewhere, type TreeRanking } from './tree.ts';
+import { loopFix, NO_TASKS_ELSEWHERE, pathText, planBand, TaskTree, type RankedPlace, type TasksElsewhere, type TreeRanking } from './tree.ts';
 import { WATCH_USAGE } from './verify.ts';
 import { formatTask } from './views.ts';
 import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type WaitContext } from './waits.ts';
@@ -40,6 +40,7 @@ export const FLAG_KINDS = [
   'OVER-PACE',
   'OVER-LIMIT',
   'OVER-SIZE',
+  'PREP-LAPSED',
   'OWNER-UNPLANNED',
   'DUE-UNPLANNED',
   'OFF-GOAL',
@@ -107,10 +108,11 @@ export interface Flag {
  *   approved work is approved with it (core rule 6, T2623);
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
- * - PRIORITY-SKIP: in progress below an open task of the same owner that outranks it (a better band, or a higher score
- *   in the same band; a tie skips nothing) and is free to start (every task it comes after finished), for longer than
- *   `prioritySkipAfterHours`: the session is not working its list in order. Rank comes from `ranking`, so a read with
- *   none raises no such flag;
+ * - PRIORITY-SKIP: in progress below an open task of the same owner that outranks it (a better band as plan order reads
+ *   it, near-term prep right after expedite, or a higher score in the same band; a tie skips nothing) and is free to
+ *   start (every task it comes after finished), for longer than `prioritySkipAfterHours`: the session is not working
+ *   its list in order. Rank comes from `ranking`, so a read with none raises no such flag; near-term prep (a prep
+ *   marker standing near, T2453) raises none, as it runs outside the slice cap;
  * - SELF-MADE: the first task still active past `maxSelfMadePerDay` of the tasks its owner added for itself (created
  *   by it, asked by no one else) in the 24 h before now (0 turns it off): a session adding its own work faster than
  *   anything asked for it may be looping or drifting from its goal;
@@ -126,11 +128,14 @@ export interface Flag {
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with an
  *   effective due date: it waits quietly for its proof, and the date raises the alarm, nor for a waiting task with a
  *   time still to come: it is parked until then);
+ * - PREP-LAPSED: a prep marker that no longer stands near (focus.ts prepRead): its goal moved past the slice, opened
+ *   none or lost its rank, so the task is treated as any other; its owner re-marks it or drops the marker;
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
  * - DUE-UNPLANNED: effectively due inside the current week but outside its plan;
  * - OFF-GOAL: in progress with no goal and outside the current week plan, so nothing the team planned asked
  *   for it. The register has no parent tasks: a goal tag or the week plan is what ties a task to the plan.
- * The three week flags need a week; null skips them, and each task gets at most one of them. A wait on or a plan
+ * The three week flags need a week; null skips them, and each task gets at most one of them; near-term prep raises
+ * only OWNER-UNPLANNED, as it runs outside the week plan's dates. A wait on or a plan
  * dependency after a task of another register of the team tree reads that task in `elsewhere`.
  */
 
@@ -167,6 +172,7 @@ export function checkTasks(
     ...ownerProofFlags(task, config),
     ...timeFlags(task, at, config.check, tree),
     ...prioritySkip(task, best, tree, at, config.check),
+    ...prepLapsedFlags(task, tree),
     ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
   ]);
   return [...flags, ...loopFlags(tree)].sort(byFlagKind);
@@ -518,9 +524,10 @@ interface RankedTask {
   readonly place: RankedPlace;
 }
 
-/** Ahead on band, or on score in the same band. Equals outrank neither way, so working beside one skips nothing. */
+/** Ahead on band as plan order reads it, or on score in the same band. Equals outrank neither way, so working beside one skips nothing. */
 function outranks(a: RankedPlace, b: RankedPlace): boolean {
-  return a.band < b.band || (a.band === b.band && a.score > b.score);
+  const [x, y] = [planBand(a), planBand(b)];
+  return x < y || (x === y && a.score > b.score);
 }
 
 /**
@@ -545,24 +552,33 @@ function bestOpenTasks(active: readonly Task[], tree: TaskTree): Map<string, Ran
 function prioritySkip(task: Task, best: ReadonlyMap<string, RankedTask>, tree: TaskTree, at: number, check: RegisterCheckConfig): Flag[] {
   const skipped = best.get(task.owner);
   const place = tree.rankedOf(task);
-  if (task.status !== 'in-progress' || skipped === undefined || place === undefined || !outranks(skipped.place, place)) {
+  if (task.status !== 'in-progress' || skipped === undefined || place === undefined || place.prep || !outranks(skipped.place, place)) {
     return [];
   }
   const since = Math.max(standingSince(task), standingSince(skipped.task));
   if (at - since <= check.prioritySkipAfterHours * MS_PER_HOUR) {
     return [];
   }
-  const rank = skipped.place.band === 0 ? 'expedite' : skipped.place.workClass;
+  const rank = skipped.place.band === 0 ? 'expedite' : skipped.place.prep ? 'near-term prep' : skipped.place.workClass;
   return [{ kind: 'PRIORITY-SKIP', task, detail: `${skipped.task.id} (${rank}, score ${skipped.place.score}) waits open, skipped since ${minute(since, tree.zone)}` }];
 }
 
-/** OWNER-UNPLANNED, or else DUE-UNPLANNED (on the effective due), or else OFF-GOAL. */
+/** PREP-LAPSED, with what moved, on a task whose prep marker no longer stands near. */
+function prepLapsedFlags(task: Task, tree: TaskTree): Flag[] {
+  const prep = tree.prepOf(task);
+  return prep?.standing === 'lapsed' ? [{ kind: 'PREP-LAPSED', task, detail: prep.why }] : [];
+}
+
+/** OWNER-UNPLANNED, or else DUE-UNPLANNED (on the effective due), or else OFF-GOAL; near-term prep only the first. */
 function planFlags(task: Task, plan: WeekPlan, ownerSource: string, tree: TaskTree): Flag[] {
   if (task.week === plan.week) {
     return [];
   }
   if (task.source === ownerSource) {
     return [{ kind: 'OWNER-UNPLANNED', task, detail: `owner order not in week ${plan.week}` }];
+  }
+  if (tree.prepOf(task)?.standing === 'near') {
+    return [];
   }
   const due = tree.dueTime(task);
   if (due !== undefined && due >= plan.start && due < plan.end) {
