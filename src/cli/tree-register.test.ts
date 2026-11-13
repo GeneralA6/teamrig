@@ -23,6 +23,13 @@ const WEB = { TEAMRIG_TEAM: 'web' };
 const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
 
 describe('teamrig add --team', () => {
+  it("names the wake of a p0 by the owner's address, its team's wake check waking it from that register (T2686)", async () => {
+    const kit = await treeHarness();
+    const result = await kit.run(['add', '--team', 'app', '--owner', 'bravo', '--title', 'Review the change', '--description', 'what and why', '--priority', 'p0', '--session', 'front'], { env: WEB });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual(result.stderr.slice(0, 2), ['NOTE app/bravo has an inbox line: T1 is yours (p0): Review the change', 'NOTE app/bravo is woken at its idle prompt for T1, a p0, so no --wake now is needed']);
+  });
+
   it('hands a child team a task from its parent lead, written in the child register only', async () => {
     const kit = await treeHarness();
     const result = await kit.run(['add', '--team', 'web', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
