@@ -21,7 +21,7 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
  * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
  * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110) and an update's hand step `audit`
- * (T2312), which an older reader ignores:
+ * (T2312) and a card's `affects` (T2623), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
