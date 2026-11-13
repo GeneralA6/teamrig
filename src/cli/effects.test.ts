@@ -98,6 +98,8 @@ const EXPECTED = {
   compact: 'write',
   'gh sync': 'write',
   'gh migrate': 'write',
+  'issue comment': 'write',
+  'issue close': 'write',
   budget: 'read',
   'budget lift': 'write',
   'budget cut': 'write',
