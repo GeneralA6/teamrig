@@ -6,7 +6,7 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
  * The four kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import, which never writes
- * to GitHub), the creation of one issue (gh migrate, which opens an issue for a team task), and one comment on or
+ * to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), and one comment on or
  * the close of one issue or pull request (issue comment and issue close). The runner refuses any other command line
  * before it starts: no issue edit, reopen, label, assignee change, merge or delete.
  *
