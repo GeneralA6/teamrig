@@ -238,6 +238,20 @@ describe('teamrig gh sync', () => {
     assert.ok(![...result.stdout, ...result.stderr].some((line) => line.includes('acme-read-token')), 'the token was printed');
   });
 
+  it('fails an owner whose saved token the store cannot read, never reading it through the gh login, and reads the other owners on', async () => {
+    const kit = new CliHarness({ ...TEAM, github: { repos: ['acme/web', 'globex/site'] } });
+    const gh = twoIssues().holds('globex/site', [ghIssue('globex/site', 4)]);
+    const credentials = new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked');
+    const result = await kit.run(['gh', 'sync'], { gh, credentials });
+    assert.equal(result.code, EXIT.failed);
+    assert.deepEqual(result.stdout.slice(0, 3), [
+      'FAILED acme/web: could not read teamrig-gh-acme from the test store: the keyring is locked; unlock the store and rerun, or save the key again with: save teamrig-gh-acme; its tasks stay as they are',
+      'ACCESS globex: read with the gh login; no token saved as teamrig-gh-globex',
+      'REPO globex/site: 1 to add, 0 to change, 0 unchanged',
+    ]);
+    assert.ok(gh.ran.every((request) => ghRepoOf(request.args) === 'globex/site'));
+  });
+
   it('says how to replace a token GitHub refuses, and reads the other owners on', async () => {
     const kit = new CliHarness({ ...TEAM, github: { repos: ['acme/web', 'globex/site'] } });
     const gh = new FakeGh()

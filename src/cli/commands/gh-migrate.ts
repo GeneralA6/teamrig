@@ -5,7 +5,7 @@ import { issueCreateArgs, type GhResult, type GhRunner, type IssueDraft } from '
 import { plainLine, startFailureText } from '../../github/issues.ts';
 import { issueRef } from '../../github/map.ts';
 import { countsLine, createdNumber, parseMigrateRows, planMigration, previewMarkdown, replacedRefNote, type MigrateCreate, type MigratePlan, type MigrateRow, type RefJudge } from '../../github/migrate.ts';
-import { RepoTokens, type RepoAccess } from '../../github/tokens.ts';
+import { RepoTokens, TokenReadError, type RepoAccess } from '../../github/tokens.ts';
 import { exitText } from '../../open/processes.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { onePositional, type ParsedArgs } from '../args.ts';
@@ -26,8 +26,8 @@ type CreateEnd = { readonly kind: 'opened'; readonly number: number } | { readon
  * `gh migrate <file> [--out <preview.md>] [--yes]` (T2550): moves the caller's team's tasks to GitHub issues from a
  * file of JSON-lines rows (github/migrate.ts), each a task's public wording or the reason it stays local. Without
  * `--yes` it writes nothing but the `--out` preview, a page with every issue in full for a reviewer. `--yes` opens
- * each planned issue through gh with the token saved for the repository's owner (github/tokens.ts), else the gh
- * login, then points the task's ref at it as `update <id> --ref` by the caller would, so the sync adds no second
+ * each planned issue through gh with the token saved for the repository's owner (github/tokens.ts), else, when none
+ * is saved, the gh login (a saved token the store could not read stops the run), then points the task's ref at it as `update <id> --ref` by the caller would, so the sync adds no second
  * task for it; a ref that is no issue gives way, named in the update's note. It stops at the first failure, and a rerun skips each task already holding its issue. Exit 1 when
  * gh failed, 2 when the register refused a ref, else 0.
  */
@@ -107,10 +107,15 @@ async function openIssues(runtime: CliRuntime, team: Team, by: string, creates: 
   let opened = 0;
   const stopped = (id: string): string => `STOPPED at ${id} after opening ${opened} issue(s); fix the cause and rerun: tasks holding their issue are skipped`;
   for (const create of creates) {
-    const { access, note } = await tokens.accessFor(create.draft.repo);
+    const access = await tokens.accessFor(create.draft.repo);
+    if (access instanceof TokenReadError) {
+      say(`FAILED ${create.id}: ${access.message}`);
+      say(stopped(create.id));
+      return EXIT.failed;
+    }
     if (!told.has(access.owner)) {
       told.add(access.owner);
-      say(accessLine(access, note));
+      say(accessLine(access));
     }
     const end = await createIssue(runtime.gh, access, create.draft, scanner);
     if (end.kind === 'failed') {
@@ -133,11 +138,11 @@ async function openIssues(runtime: CliRuntime, team: Team, by: string, creates: 
   return EXIT.ok;
 }
 
-/** How an owner's issues are opened, said once per owner: a token by the name it is saved under, or the gh login and why. */
-export function accessLine(access: RepoAccess, note: string | undefined): string {
+/** How an owner's issues are opened, said once per owner: a token by the name it is saved under, or the gh login when none is saved. */
+export function accessLine(access: RepoAccess): string {
   return access.via === 'token'
     ? `ACCESS ${access.owner}: opens issues with the token saved as ${access.credential}`
-    : `ACCESS ${access.owner}: opens issues with the gh login; ${note ?? `no token saved as ${access.credential}`}`;
+    : `ACCESS ${access.owner}: opens issues with the gh login; no token saved as ${access.credential}`;
 }
 
 /**
