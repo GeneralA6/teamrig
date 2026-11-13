@@ -19,7 +19,7 @@ Each session is a tab in the terminal you already have (PowerShell, bash or zsh)
 IDE, no desktop app, no server and no account: in our test, Windows Terminal with twelve session tabs used about
 250 MB of memory.
 
-> **Pre-release.** Nothing is stable yet and there is no release; the repository is private until the first one.
+> **Pre-release.** Nothing is stable yet and there is no release.
 
 ## Get started
 
@@ -32,9 +32,6 @@ claude plugin install teamrig@teamrig
 claude plugin marketplace add GeneralA6/teamrig-pane
 claude plugin install teamrig-pane@teamrig-pane
 ```
-
-While the repositories are private, accept the invites to both first: Claude Code clones a marketplace with your own
-git login, so `git clone https://github.com/GeneralA6/teamrig` must work in your terminal.
 
 Open Claude Code in your project (in a tab already open, type `/reload-plugins` first), ask for a team, and tell your
 lead what you want done. No config files to write.
