@@ -63,3 +63,28 @@ describe('codeql.yml', () => {
     assert.ok(minutes !== undefined && Number(minutes) <= 20, `timeout-minutes: ${minutes}`);
   });
 });
+
+describe('dependabot.yml', () => {
+  const dependabot = read('.github/dependabot.yml');
+  const updates = new Map(
+    dependabot
+      .split(/^(?= {2}- package-ecosystem: )/m)
+      .slice(1)
+      .map((block) => [/^ {2}- package-ecosystem: (\S+)$/m.exec(block)?.[1] ?? '', block]),
+  );
+
+  it('proposes npm and GitHub Actions updates', () => {
+    assert.match(dependabot, /^version: 2$/m);
+    assert.deepEqual([...updates.keys()].sort(), ['github-actions', 'npm']);
+  });
+
+  it('proposes no release younger than 14 days, weekly, in one grouped pull request per ecosystem', () => {
+    for (const [ecosystem, block] of updates) {
+      assert.match(block, /^ {4}directory: \/$/m, ecosystem);
+      assert.match(block, /^ {6}interval: weekly$/m, ecosystem);
+      const days = /^ {4}cooldown:\n {6}default-days: (\d+)$/m.exec(block)?.[1];
+      assert.ok(days !== undefined && Number(days) >= 14, `${ecosystem} cooldown: ${days}`);
+      assert.match(block, /^ {4}groups:\n {6}[\w-]+:\n {8}patterns: \['\*'\]$/m, ecosystem);
+    }
+  });
+});

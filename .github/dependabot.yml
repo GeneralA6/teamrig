@@ -1,0 +1,28 @@
+# Proposes dependency updates as pull requests, weekly, one grouped pull request per ecosystem. A proposal is never
+# merged as it comes, by hand or by a workflow: a maintainer checks the exact version against the advisories and its
+# publish date, then lands it as a signed-off commit of their own through the usual gate and closes the proposal
+# (Dependabot's commits carry no Signed-off-by line, so the DCO gate fails its pull request anyway).
+# The cooldown proposes no release younger than 14 days: a hijacked publish is mostly found and pulled within days.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      npm:
+        patterns: ['*']
+    open-pull-requests-limit: 5
+  # The workflows pin each action to a commit SHA; Dependabot moves the SHA and its version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ['*']
+    open-pull-requests-limit: 5
