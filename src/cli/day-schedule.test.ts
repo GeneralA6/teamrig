@@ -15,7 +15,7 @@ const SCHEDULE = join(teamHomeOf('app'), 'state', 'day-schedule.json');
 /** The tree with team `web` starting its day at 08:00 UTC by its own config. */
 async function webAtEight(): Promise<CliHarness> {
   const kit = await treeHarness();
-  await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS.web, wake: { dayStartUtc: '08:00' } }));
+  await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], wake: { dayStartUtc: '08:00' } }));
   return kit;
 }
 
