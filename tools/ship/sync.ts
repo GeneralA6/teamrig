@@ -1,10 +1,11 @@
 import { type Version, type VersionFile, bumpKindOf, bumped, formatVersion, versionIn, versionMention, withVersion } from './version-bump.ts';
 
 /**
- * Brings a change branch up to main at the start of a ship, while the ship holds the host lock (T629). A ship
- * used to rebase and set its version before it queued for the lock; when other ships merged during the wait
- * (up to an hour), main moved past it and the ship was refused after the whole wait. Inside the lock no other
- * ship merges, so a branch rebased here and merged in the same run cannot go stale.
+ * Brings a change branch up to main at the start of a ship, once the ship has its place on the host (T629). A
+ * ship used to rebase and set its version before it queued; when other ships merged during the wait (up to an
+ * hour), main moved past it and the ship was refused after the whole wait. A place on the host does not keep
+ * main still: heavy steps share the host (`maxHeavyParallel`), so another ship can merge while this one runs its
+ * checks, and merge.ts looks at main again before it merges.
  *
  * The change's version raise is uncommitted, in the plan's last chunk (SKILL.md): it is set aside, the branch
  * and the plan's other uncommitted files are moved onto main, and the same raise (patch, minor or major) is
