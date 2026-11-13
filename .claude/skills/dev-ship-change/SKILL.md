@@ -20,8 +20,9 @@ description: Land a finished teamrig change through small signed commits, a dist
 6. `git push -u origin <branch>`: the pre-push hook runs the local gate (`tools/ci/local.ts`, its checks listed in
    `tools/ci/local-checks.ts`) on the committed tree. Never `--no-verify`.
 7. Open the pull request and fill in the template (`.github/pull_request_template.md`), its `## Alternatives` when
-   the change settles a design question. It is rebase-merged once
-   every check passes on its head, and the branch is deleted.
+   the change settles a design question. Title it with the change's lead subject, as `tools/ship/ship.ts merge`
+   does (its first subject past `build:` and `plugin:`, with the commit count), never the branch name. It is
+   rebase-merged once every check passes on its head, and the branch is deleted.
 
 ## Traps
 
