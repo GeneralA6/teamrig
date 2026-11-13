@@ -4,7 +4,7 @@ import { taskIdIn } from '../issues/posted.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from '../register/model.ts';
 import type { Verdict } from '../register/policy.ts';
-import type { IssueDraft } from './gh.ts';
+import type { IssueDraft } from '../issues/host.ts';
 
 /**
  * Moving a team's tasks to GitHub issues (`teamrig gh migrate`): a file of rows, one per task, says for each task

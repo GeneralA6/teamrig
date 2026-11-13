@@ -4,6 +4,8 @@
  * adapter that keeps its own access rules. A repository reaches a host only when the team config lists it there.
  */
 
+import type { HostIssue } from './issue.ts';
+
 /** One issue or pull request: its repository (`owner/name`, in lowercase) and its number. */
 export interface IssueTarget {
   readonly repo: string;
@@ -26,18 +28,49 @@ export function targetText(target: IssueTarget): string {
   return `${target.repo}#${target.number}`;
 }
 
-/** How a host is reached for a repository: a line saying with what, or why it cannot be, which stops the run. */
-export type HostReach = { readonly kind: 'reached'; readonly access: string } | { readonly kind: 'unreachable'; readonly reason: string };
+/** What a run does on a host, for the line saying how it reaches it: lists issues, opens them, or writes on one. */
+export type HostUse = 'read' | 'open' | 'write';
+
+/**
+ * How a host is reached for a repository, or why it cannot be, which stops the run for it. `scope` names the
+ * repositories one access reaches alike (on GitHub, one owner's), so a run says each access once.
+ */
+export type HostReach =
+  | { readonly kind: 'reached'; readonly access: string; readonly scope: string }
+  | { readonly kind: 'unreachable'; readonly reason: string };
 
 /** How one write to a host ended: done, or one plain line saying why not. */
 export type HostEnd = { readonly kind: 'done' } | { readonly kind: 'failed'; readonly reason: string };
 
-/** An issue host's writes on one issue or pull request. Each ends in a HostEnd and never throws. */
+/**
+ * A repository's issues as one list read them, the open ones and those closed since the day it was given, with what
+ * a reader should know about the read; or why it could not be read, in which case nothing of it was.
+ */
+export type HostList =
+  | { readonly kind: 'listed'; readonly issues: readonly HostIssue[]; readonly notes: readonly string[] }
+  | { readonly kind: 'failed'; readonly reason: string };
+
+/** One issue to open: its repository (`owner/name`), title, body and labels. */
+export interface IssueDraft {
+  readonly repo: string;
+  readonly title: string;
+  readonly body: string;
+  readonly labels: readonly string[];
+}
+
+/** How opening an issue ended: the issue opened, or one plain line saying why there is none. */
+export type HostOpen = { readonly kind: 'opened'; readonly target: IssueTarget } | { readonly kind: 'failed'; readonly reason: string };
+
+/** An issue host: its reads of a repository's issues and its writes. Each ends in a result and never throws. */
 export interface IssueHost {
   /** The host's name, for a message. */
   readonly name: string;
-  /** How the host is reached for `repo`. Asked before any write, so a key that cannot be read writes nothing. */
-  reach(repo: string): Promise<HostReach>;
+  /** How the host is reached for `repo` to `use` it. Asked before any read or write, so a key that cannot be read does nothing. */
+  reach(repo: string, use: HostUse): Promise<HostReach>;
+  /** The open issues of `repo` and those closed on or after `closedSince` (`YYYY-MM-DD`, UTC), the newest state of each. */
+  list(repo: string, closedSince: string): Promise<HostList>;
+  /** Opens one issue. */
+  open(draft: IssueDraft): Promise<HostOpen>;
   /** Posts `body` as one comment. */
   comment(target: IssueTarget, body: string): Promise<HostEnd>;
   /** Closes the issue or pull request. */
