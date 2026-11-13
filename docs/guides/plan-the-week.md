@@ -41,7 +41,9 @@ teamrig plan                                       # the week in force, grouped 
 - What drifts: `check` compares the active tasks with the plan. An owner's order not in it is `OWNER-UNPLANNED`,
   a task due inside the week but not in it `DUE-UNPLANNED`, work in progress with no goal outside it `OFF-GOAL`,
   and a task that cost more than twice its size since it was last sized, as the budget meter attributes it,
-  `OVER-SIZE`.
+  `OVER-SIZE`. A design, study or prep plan the lead marked for a ranked goal's open slice or the next
+  (`update --prepares G1:2`) ranks right after expedite work and raises none of the last three; once the goal moves
+  past that slice it is `PREP-LAPSED`.
 - What it serves: a task names the goals it serves (`--goals A1`), or `--goals none`. The lead records the team's
   goals with `teamrig goal add A1 --title "Ship the beta" --target 2026-11-30`, each with its window, and moves a
   target with `goal set` and a note, kept as a slip; `goal rank A1 1` puts a goal first, and `goal list` shows them,
