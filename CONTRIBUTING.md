@@ -103,7 +103,8 @@ CI (`.github/workflows/ci.yml`) runs on each pull request and each push to `main
 repository is private, where GitHub Actions minutes bill, so it checks only once the repository is public. Its
 `every check passed` job passes only when every other job did: the one check `main` requires (see
 [Pull requests](#pull-requests)). Whether CI runs or not, the `pre-push` hook that `npm ci` sets runs every check CI
-runs (`tools/ci/local.ts`; the list is `tools/ci/local-checks.ts`) on the commit being pushed:
+runs on the commit being pushed (`tools/ci/local.ts`; the list is `tools/ci/local-checks.ts`), all but the
+dependency review, which reads GitHub's dependency graph ([Security checks](#security-checks)):
 - It refuses a push to `main`, before any check: every change lands through a pull request. On GitHub,
   `.github/workflows/main-push-alert.yml` opens an issue when main changes outside a pull request anyway (from a
   clone without the hooks), so the owner hears of it; a commit made in GitHub's web editor raises none.
@@ -116,6 +117,20 @@ runs (`tools/ci/local.ts`; the list is `tools/ci/local-checks.ts`) on the commit
 
 It runs on one machine and one Node, so a failure that only another OS or Node version shows goes unseen until
 the repository is public.
+
+## Security checks
+- **Dependency review**: CI's `dependency review` job fails a pull request that adds or changes a dependency (an
+  npm package or a GitHub Action) with a known advisory, of any severity, dev dependencies included. It is one of
+  the jobs `every check passed` needs, so such a pull request cannot merge.
+- **CodeQL** (`.github/workflows/codeql.yml`) scans the TypeScript on each pull request, each push to `main` and
+  weekly. Its findings show in the Security tab and on the pull request; it is not a required check, so read them.
+- **Dependabot** (`.github/dependabot.yml`) proposes npm and GitHub Actions updates weekly, one grouped pull
+  request per ecosystem, and never a release younger than 14 days. A proposal is never merged as it comes: check
+  the exact version against the advisories and its publish date, land it as your own signed-off commit (its
+  commits carry no `Signed-off-by:` line, so the DCO gate fails its pull request), and close the proposal.
+- **Every action is pinned** to a full commit SHA with its version in a comment (`tools/ci/security-workflows.test.ts`
+  holds every workflow to it), so a moved tag cannot change what runs.
+- **A vulnerability** is reported privately, never in an issue: [SECURITY.md](SECURITY.md).
 
 ## Branches and releases
 - Every change is its own branch off `main` and lands through a pull request once every check
