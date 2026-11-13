@@ -4,6 +4,7 @@ import { parseLedger, type LedgerRecord, type RefusalRecord } from '../../delive
 import { tabsText } from '../../delivery/memory-gate.ts';
 import { holdersText, treeMb, type HostMemory, type ProcessRow } from '../../delivery/memory.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
+import { liveFreezes, parsePipelineFreezes, pipelineFreezeText } from '../../delivery/pipeline-freezes.ts';
 import { minutesText } from '../../delivery/schedule.ts';
 import { TabHolds, tabHoldsDir, type TabHold } from '../../sessions/tab-holds.ts';
 import type { ParsedArgs } from '../args.ts';
@@ -96,6 +97,19 @@ function isRecentRefusal(record: LedgerRecord, fromMs: number): record is Refusa
   return record.type === 'refusal' && Date.parse(record.endedAt) >= fromMs;
 }
 
+/** FROZEN: the pipeline freezes not yet ended, each saying whether it holds now; an unreadable file refuses every step. */
+function frozenLines(text: string | undefined, path: string, nowMs: number, zone: TimeZone): string[] {
+  const read = parsePipelineFreezes(text);
+  if (read.kind === 'unreadable') {
+    return [`FROZEN unknown: the pipeline freezes in ${path} are unreadable (${read.reason}), so every new step is refused`];
+  }
+  const live = liveFreezes(read.freezes, nowMs);
+  return [
+    `FROZEN ${live.length === 0 ? 'none' : live.length}`,
+    ...live.map((freeze) => `  ${pipelineFreezeText(freeze, zone)}${Date.parse(freeze.from) <= nowMs ? ', holding now' : ''}`),
+  ];
+}
+
 function refusalLine(record: RefusalRecord, zone: TimeZone): string {
   const waited = spanText(record.queuedAt, Date.parse(record.endedAt));
   return `  ${zone.minute(new Date(record.endedAt))} ${record.session} (${record.what}) ${record.outcome} after ${waited}: ${record.reason}`;
@@ -105,7 +119,8 @@ function refusalLine(record: RefusalRecord, zone: TimeZone): string {
  * `teamrig pipeline`: the host's steps now, in one read, taking and removing nothing. HOST: free memory, RAM and the
  * floor, the commit charge, the MB held for the steps sharing the host (by kind: heavy, small) and for the tabs still
  * loading (each named by its team and session), what the running steps' process trees use, and the programs holding
- * the most memory. RUNNING: the lock's holder and each step sharing the
+ * the most memory. FROZEN: the pipeline freezes not yet ended (`teamrig pipeline freeze`), each marked when it holds
+ * now. RUNNING: the lock's holder and each step sharing the
  * host (a heavy one named so), with its run time, the MB held for it and what its tree uses. WAITING: the line in the
  * order steps are let in (`HostLock.line`), each with how long it has waited and what its ticket says it waits on, with
  * that wait's numbers. REFUSED: the queued steps of the last day that waited and
@@ -128,6 +143,7 @@ export async function pipeline(_args: ParsedArgs, runtime: CliRuntime): Promise<
   const refused = parseLedger((await runtime.files.read(places.ledger)) ?? '').filter((record) => isRecentRefusal(record, nowMs - REFUSED_SPAN_MS));
   const lines = [
     ...(await hostLines(runtime.memory, delivery.queue.memoryFloorMb, { shares, tabs }, pids, rows)),
+    ...frozenLines(await runtime.files.read(places.pipelineFreezes), places.pipelineFreezes, nowMs, zone),
     ...runningLines(state, shares, rows, nowMs, zone),
     `WAITING ${line.length === 0 ? 'none' : line.length}`,
     ...line.map((waiter, index) => waiterLine(waiter, index + 1, nowMs, zone)),
