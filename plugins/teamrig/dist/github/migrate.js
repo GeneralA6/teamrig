@@ -1,5 +1,6 @@
 import { isRecord } from "../core/guards.js";
 import { SecretScanner } from "../core/secrets.js";
+import { taskIdIn } from "../issues/posted.js";
 import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from "../register/model.js";
 /**
  * Moving a team's tasks to GitHub issues (`teamrig gh migrate`): a file of rows, one per task, says for each task
@@ -17,12 +18,6 @@ const TYPE_LABELS = { bug: 'bug', task: 'enhancement' };
 const ISSUE_KEYS = new Set(['id', 'decision', 'repo', 'type', 'priority', 'title', 'body']);
 /** The keys a row that keeps its task local holds, and no other. */
 const LOCAL_KEYS = new Set(['id', 'decision', 'reason']);
-/**
- * A task id such as T12, alone or after a team (`bravo/T12`). Task ids number one team's own list, so they mean
- * nothing on GitHub and look out of place there: an issue's text never shows one, and the issue and its task are
- * matched by the task's ref instead, which is never posted.
- */
-const TASK_ID = /\bT\d+\b/u;
 /** The longest title GitHub takes for an issue. */
 export const MAX_TITLE = 256;
 /**
@@ -120,9 +115,9 @@ function issueRow(raw, id, scanner) {
     if (secret !== undefined) {
         return { ok: false, error: secret };
     }
-    const named = TASK_ID.exec(`${shown}\n${body}`);
-    if (named !== null) {
-        return { ok: false, error: `${id}: the title or body names the task id ${named[0]}: a task id is the team's own, so a posted issue shows none (link issues by #number)` };
+    const named = taskIdIn(`${shown}\n${body}`);
+    if (named !== undefined) {
+        return { ok: false, error: `${id}: the title or body names the task id ${named}: a task id is the team's own, so a posted issue shows none (link issues by #number)` };
     }
     return { ok: true, value: { decision: 'issue', id, repo: repo.trim().toLowerCase(), type, priority: label, title: shown, body: body.trim() } };
 }

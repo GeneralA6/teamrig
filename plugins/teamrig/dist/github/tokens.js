@@ -1,3 +1,13 @@
+/**
+ * The store holds an owner's credential but could not read it, such as a locked keyring. The command stops: the gh
+ * login may reach far more than the saved key does, so it never stands in for a key that is there.
+ */
+export class TokenReadError extends Error {
+    name = 'TokenReadError';
+    constructor(credential, label, reason, save) {
+        super(`could not read ${credential} from ${label}: ${reason}; unlock the store and rerun, or save the key again with: ${save}`);
+    }
+}
 /** The prefix of the credential that holds an owner's token: `teamrig-gh-<owner>`, the owner in lowercase. */
 export const TOKEN_PREFIX = 'teamrig-gh-';
 /** The owner of `owner/name`, in lowercase. */
@@ -12,7 +22,8 @@ export function tokenName(owner) {
  * The access to each repository, reading the store once per owner. A fine-grained GitHub token reaches the
  * repositories of one owner only, so a team that reads a personal account's and an organisation's
  * repositories saves one token for each, by name: no config names them. An owner with no saved token is
- * read through the gh login, and so is one whose store could not be read, with a note saying why.
+ * reached through the gh login; a token the store holds but could not read gives a TokenReadError, which stops
+ * the command: never the gh login in its place.
  */
 export class RepoTokens {
     store;
@@ -22,6 +33,7 @@ export class RepoTokens {
         this.store = store;
         this.env = env;
     }
+    /** The access to `repo`, or, when the store holds its owner's key but could not read it, the error that stops the command. */
     async accessFor(repo) {
         const owner = repoOwner(repo);
         const credential = tokenName(owner);
@@ -29,11 +41,11 @@ export class RepoTokens {
         const read = await this.readOnce(credential);
         switch (read.kind) {
             case 'found':
-                return { access: { ...login, via: 'token', env: { ...this.env, GH_TOKEN: read.secret } } };
+                return { ...login, via: 'token', env: { ...this.env, GH_TOKEN: read.secret } };
             case 'missing':
-                return { access: login };
+                return login;
             case 'failed':
-                return { access: login, note: `could not read ${credential} from ${this.store.label}: ${read.reason}` };
+                return new TokenReadError(credential, this.store.label, read.reason, login.save);
         }
     }
     readOnce(credential) {

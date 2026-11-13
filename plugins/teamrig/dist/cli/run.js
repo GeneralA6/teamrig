@@ -77,6 +77,7 @@ const jobCommands = () => import("./commands/job.js");
 const deployStatusCommand = () => import("./commands/deploy-status.js");
 const ghCommands = () => import("./commands/gh.js");
 const ghMigrateCommands = () => import("./commands/gh-migrate.js");
+const issueCommands = () => import("./commands/issue.js");
 const startCommands = () => import("./commands/start.js");
 const meetingCommands = () => import("./commands/meeting.js");
 const meetingsCommands = () => import("./commands/meetings.js");
@@ -193,6 +194,8 @@ const COMMANDS = {
     compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
     'gh sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
     'gh migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await ghMigrateCommands()).ghMigrate },
+    'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
+    'issue close': { effect: 'write', flags: ['session', 'comment'], load: async () => (await issueCommands()).issueClose },
     budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
     'budget lift': {
         effect: 'write',
@@ -618,6 +621,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       nothing but the --out preview of every issue in full; --yes opens each issue through gh and
       sets the task's ref to it, so gh sync adds no second task; stops at the first failure, and a
       rerun skips each task already holding its issue
+  issue comment <owner/name#n> --body <text>   posts one comment on an issue or pull request of the
+      team's repositories (github.repos; GitHub is the only host so far), with the token saved for the
+      owner, else the gh login; refuses an empty body, a secret shape or a task id in it; a saved token
+      that cannot be read stops it, never the gh login in its place
+  issue close <owner/name#n> [--comment <text>]   closes one issue or pull request of the team's
+      repositories, first posting --comment when given, with the same checks; a failed comment closes
+      nothing
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;
