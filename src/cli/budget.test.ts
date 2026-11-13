@@ -117,7 +117,7 @@ function usageError(result: CliResult, message: RegExp): void {
 }
 
 const OUTSIDE_LINE =
-  'Not on the team: 1 Claude Code session (titled release checks), 1.00M W today. ' +
+  'Not on the team: 1 Claude Code session (top by W: release checks 1.00M), 1.00M W today. ' +
   'A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.';
 
 describe('teamrig budget', () => {
@@ -379,7 +379,7 @@ describe('teamrig budget', () => {
       'The team used 2.5% of the week that day. 25.00M W in 3 calls.',
       'app-alpha used 2.0% of the week that day. 20.00M W in 2 calls.',
       'app-bravo used 0.50% of the week that day. 5.00M W in 1 call.',
-      'Not on the team: 1 Claude Code session (titled release checks), 1.00M W in 1 call.',
+      'Not on the team: 1 Claude Code session (top by W: release checks 1.00M), 1.00M W in 1 call.',
       W_EXPLAINED,
     ]);
     assert.deepEqual(ok(await run(['budget', '--day', '2030-01-08', '--all'])).slice(4, 5), ['No use that day: app-lead.']);
