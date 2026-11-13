@@ -58,7 +58,7 @@ function rowIds(lines: readonly string[]): string[] {
 
 function section(lines: readonly string[], head: string): string[] {
   const from = lines.findIndex((line) => line.startsWith(head));
-  const to = lines.findIndex((line, index) => index > from && /^[A-Z]+ /.test(line));
+  const to = lines.findIndex((line, index) => index > from && /^[A-Z][A-Z-]* /.test(line));
   return lines.slice(from, to === -1 ? undefined : to);
 }
 
@@ -184,6 +184,32 @@ describe('the meeting agenda', () => {
     const all = agendaLines(inputOf([DECIDE, UNGATED], NOW - MS_PER_DAY, false));
     assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 2 waiting on owner (decision or approval)');
     assert.ok(!all.some((line) => line.startsWith('UNGATED')), all.join('\n'));
+  });
+
+  // T2623: a test, measure or proof of approved work is approved with it, so the lead never reads its card out.
+  describe('a card asking the owner about a test, measure or proof (T2623)', () => {
+    const proof = testTask({ id: 'T9', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: { ...TEST_OWNER_CARD, question: 'Approve the back-test design' } });
+    const ungatedProof = { ...UNGATED, id: 'T10', card: { ...TEST_CARD, question: 'Approve the back-test design' } };
+
+    it('moves it out of DECISIONS into OWNER-PROOF, and leaves an ungated one to UNGATED', () => {
+      const all = agendaLines(inputOf([DECIDE, proof, ungatedProof]));
+      assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 1 waiting on owner (decision or approval)');
+      assert.deepEqual(section(all, 'OWNER-PROOF'), [
+        'OWNER-PROOF 1 asking owner about a test, measure or proof: never read to owner',
+        '  T9 waiting, p2, owner alpha | Add a health check (waiting: decision owner)',
+        '  Each is approved with the work it tests: tell those of the sessions you lead to go ahead and drop the wait; where one does change an approved number, spend money or write data, its owner sets it again with --affects "<which>".',
+      ]);
+      assert.deepEqual(rowIds(section(all, 'UNGATED')), ['T10']);
+    });
+
+    it('keeps one naming what it changes in DECISIONS, and every one there while gates are not required', () => {
+      const affects = { ...proof, card: { ...TEST_OWNER_CARD, question: 'Approve the back-test design', affects: 'buys 400 dollars of price history' } };
+      const all = agendaLines(inputOf([DECIDE, affects]));
+      assert.equal(section(all, 'DECISIONS')[0], 'DECISIONS 2 waiting on owner (decision or approval)');
+      const relaxed = agendaLines(inputOf([DECIDE, proof], NOW - MS_PER_DAY, false));
+      assert.equal(section(relaxed, 'DECISIONS')[0], 'DECISIONS 2 waiting on owner (decision or approval)');
+      assert.ok(![...all, ...relaxed].some((line) => line.startsWith('OWNER-PROOF')), [...all, ...relaxed].join('\n'));
+    });
   });
 
   // T1295: a card the owner put off waits on a time beside the owner, and comes back once that time passed.

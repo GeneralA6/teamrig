@@ -1,12 +1,12 @@
 import type { Weekday } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
-import { cardLines, cardTexts, GATE_FLAG, namedTaskIds } from '../register/card.ts';
+import { AFFECTS_FLAG, cardLines, cardTexts, GATE_FLAG, namedTaskIds } from '../register/card.ts';
 import type { RunFiles } from '../register/hand-step.ts';
 import { doneGroups, doneGroupTitle } from '../register/done-groups.ts';
 import type { Task } from '../register/fold.ts';
 import { isLate, type GoalScore } from '../register/goal-board.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
-import { asksOwner, isDedicated, isUngated, ownerLater } from '../register/owner-waits.ts';
+import { asksOwner, isDedicated, isProofAsk, isUngated, ownerLater } from '../register/owner-waits.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { cut, formatShortTask } from '../register/views.ts';
 import { decisionOrder, isImprovementsDay, type Decision, type DecisionFocus, type DecisionRead } from './decision-order.ts';
@@ -352,6 +352,28 @@ function ungatedLines(input: AgendaInput): string[] {
   ];
 }
 
+/**
+ * OWNER-PROOF: the waits on the owner whose card asks about a test, measure or proof and names nothing it changes
+ * (isProofAsk, T2623), each approved with the work it tests, so the lead never reads one out; an ungated one is
+ * UNGATED's. None while `requireGate` is off, and no block when none waits.
+ */
+function proofLines(input: AgendaInput): string[] {
+  const proofs = input.requireGate
+    ? input.tree.inPlanOrder(input.tasks.filter((task) => isProofAsk(task, input.ownerMarker) && !isUngated(task, input.ownerMarker)))
+    : [];
+  if (proofs.length === 0) {
+    return [];
+  }
+  return [
+    ...listed(
+      `OWNER-PROOF ${proofs.length} asking ${input.ownerMarker} about a test, measure or proof: never read to ${input.ownerMarker}`,
+      proofs.map((task) => rowOf(task, input.tree)),
+      `${input.command} check`,
+    ),
+    `  Each is approved with the work it tests: tell those of the sessions you lead to go ahead and drop the wait; where one does change an approved number, spend money or write data, its owner sets it again with ${AFFECTS_FLAG} "<which>".`,
+  ];
+}
+
 function lateRows(tasks: readonly Task[], tree: TaskTree, now: number, team?: string): string[] {
   return tree.inPlanOrder(tasks.filter((task) => isLate(task, tree, now))).map((task) => rowOf(task, tree, team));
 }
@@ -414,5 +436,5 @@ function doneLines(input: AgendaInput): string[] {
  * owner put off and the ungated waits, which are not, then the late tasks, then the finished ones.
  */
 export function agendaLines(input: AgendaInput): string[] {
-  return [...goalLines(input), ...decisionLines(input), ...dedicatedLines(input), ...incidentLines(input), ...laterLines(input), ...ungatedLines(input), ...lateLines(input), ...doneLines(input)];
+  return [...goalLines(input), ...decisionLines(input), ...dedicatedLines(input), ...incidentLines(input), ...laterLines(input), ...ungatedLines(input), ...proofLines(input), ...lateLines(input), ...doneLines(input)];
 }

@@ -535,6 +535,34 @@ describe('checkTasks: UNGATED', () => {
   });
 });
 
+// T2623: a card set before the refusal that asks the owner about a test, measure or proof of approved work.
+describe('checkTasks: OWNER-PROOF', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const flagged = (tasks: Parameters<typeof checkTasks>[0], config: typeof CONFIG = CONFIG) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config)
+      .filter((flag) => flag.kind === 'OWNER-PROOF')
+      .map((flag) => `${flag.task.id}: ${flag.detail}`);
+  const fix = (word: string, status: string) =>
+    `its card asks owner about a test, measure or proof ("${word}"): one of approved work that changes no approved number, spends no money and writes no data goes ahead; drop the wait on owner and tell your leader, or set it ${status} again with --affects "<the approved number it changes, the money it spends or the data it writes>"`;
+  const proofCard = { ...TEST_OWNER_CARD, question: 'Approve the back-test design for the entry sheet' };
+  const dryRun = { ...TEST_CARD, question: 'May I run a dry run of the import', options: [] };
+  const tasks = [
+    testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: proofCard, ...seen }),
+    testTask({ id: 'T2', status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }], card: dryRun, ...seen }),
+    testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: { ...proofCard, affects: 'buys 400 dollars of price history' }, ...seen }),
+    testTask({ id: 'T4', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, ...seen }),
+    testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, question: proofCard.question }, ...seen }),
+  ];
+
+  it("flags a card on the owner's decision or approval about a test that names nothing it changes, its proof too", () => {
+    assert.deepEqual(flagged(tasks), [`T1: ${fix('back-test', 'waiting')}`, `T2: ${fix('dry run', 'verifying')}`]);
+  });
+
+  it('flags nothing while cards are not required', () => {
+    assert.deepEqual(flagged(tasks, { ...CONFIG, requireDecisionCard: false }), []);
+  });
+});
+
 describe('checkTasks: SELF-MADE', () => {
   const made = (n: number, overrides: Partial<Task> = {}) =>
     testTask({ id: `T${n}`, owner: 'alpha', source: 'alpha', createdBy: 'alpha', createdAt: '2030-01-10T08:00:00.000Z', ownerSeenAt: FRESH, updatedAt: FRESH, ...overrides });

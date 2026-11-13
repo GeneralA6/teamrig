@@ -1,4 +1,5 @@
 import { parseDeadline } from '../core/time.ts';
+import { proofWordOf } from './card.ts';
 import type { Task } from './fold.ts';
 import type { TaskTree } from './tree.ts';
 import { isReady, type WaitContext } from './waits.ts';
@@ -23,6 +24,16 @@ export function waitsOnOwner(task: Task, ownerMarker: string): boolean {
  */
 export function isUngated(task: Task, ownerMarker: string): boolean {
   return task.card !== null && task.card.gate === undefined && task.waits.some((reason) => reason.kind === 'decision' && reason.who === ownerMarker);
+}
+
+/**
+ * Whether a task waits, or its proof waits, on the owner's decision or approval with a card whose question is about a
+ * test, measure or proof (proofWordOf) and that names nothing it changes (`affects`, T2623): while
+ * `register.requireDecisionCard` is on, such work of approved work is approved with it, so check flags it OWNER-PROOF
+ * and neither the meeting agenda's DECISIONS nor a decision batch asks it.
+ */
+export function isProofAsk(task: Task, ownerMarker: string): boolean {
+  return task.card !== null && task.card.affects === undefined && proofWordOf(task.card.question) !== undefined && waitsOnOwner(task, ownerMarker);
 }
 
 /** When a stored time wait passes, in ms; a time that does not parse, which a write never stores, never passes. */
@@ -52,11 +63,11 @@ export function askableSince(task: Task, context: WaitContext): number {
 
 /**
  * Whether a task's wait is the owner's to hear at all: it waits on the owner (waitsOnOwner) and, while `requireGate`
- * (`register.requireDecisionCard`) is on, is not ungated (isUngated, T1194): an ungated one is its session's or its
- * leader's to decide.
+ * (`register.requireDecisionCard`) is on, is neither ungated (isUngated, T1194) nor a proof ask (isProofAsk, T2623):
+ * either is its session's or its leader's to decide.
  */
 function onOwner(task: Task, ownerMarker: string, requireGate: boolean): boolean {
-  return waitsOnOwner(task, ownerMarker) && !(requireGate && isUngated(task, ownerMarker));
+  return waitsOnOwner(task, ownerMarker) && !(requireGate && (isUngated(task, ownerMarker) || isProofAsk(task, ownerMarker)));
 }
 
 /** Whether the lead asks the owner a task's wait now: the owner's to hear (onOwner) and not put off (deferredUntil). */
