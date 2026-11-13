@@ -41,6 +41,7 @@ or take it to the lead.
 | `REFUSED a wait on owner's decision needs a card, so owner decides from it alone: --question ...` | Add the four card flags it prints: what is decided, the options with their numbers, your recommendation, the default. |
 | `REFUSED a card needs --question, --options, --recommend and --default (--options for a decision): ...` | A task not waiting yet has no card to build on: give every part. |
 | `REFUSED --options lists 1: a decision lists at least 2, separated by \|` | List every choice, separated by `\|`; an approval may list none. |
+| `REFUSED --options choice 2 says "D1": ...; --options split into 4 choices at each \|: ...` | A `\|` inside a choice split it: write `\\|` for a literal `\|` in a choice, or reword it. |
 | `REFUSED --recommend says "T378 option 2": give at least 3 plain words besides task ids, so it reads without the task list` (any part) | Say it in words: what the option is and what it costs. |
 | `REFUSED --question, --options, --recommend and --default go only with --status waiting or verifying on a decision or an approval` | Drop the card flags, or wait on the decision. |
 | `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` (or `stays waiting`, for one waiting since before it started) | Leave its status and plan it: `teamrig update T3 --after T2`. |
