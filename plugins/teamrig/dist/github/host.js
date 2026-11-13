@@ -1,13 +1,14 @@
+import { isRecord, recordField, stringField } from "../core/guards.js";
 import { targetText } from "../issues/host.js";
 import { exitText } from "../open/processes.js";
-import { issueCloseArgs, issueCommentArgs } from "./gh.js";
+import { issueCloseArgs, issueCommentArgs, pullReadArgs } from "./gh.js";
 import { ghFailureKind, plainLine, startFailureText } from "./issues.js";
 import { TokenReadError } from "./tokens.js";
 /**
- * GitHub as an issue host (issues/host.ts): each write is one gh REST call the runner's allowlist takes (gh.ts),
+ * GitHub as an issue host (issues/host.ts): each call is one gh REST call the runner's allowlist takes (gh.ts),
  * made with the token saved for the repository's owner, else, when none is saved, the gh login. A saved token the
  * store cannot read reaches nothing: never the login in its place (tokens.ts). gh's own error, any secret shape in
- * it redacted, is the reason a write failed.
+ * it redacted, is the reason a call failed.
  */
 export class GitHubIssueHost {
     name = 'GitHub';
@@ -35,28 +36,62 @@ export class GitHubIssueHost {
     close(target) {
         return this.write(target, issueCloseArgs(target), 'close');
     }
+    /**
+     * The pull request's head, from the REST read of it. GitHub answers 404 for an issue's number as for one not there,
+     * so both read as `no-pull`: no head that could make it a session's own.
+     */
+    async headOf(target) {
+        const end = await this.call(target, pullReadArgs(target), 'read');
+        if (end.kind === 'failed') {
+            return end.notVisible ? { kind: 'no-pull' } : { kind: 'failed', reason: end.reason };
+        }
+        return headIn(end.stdout) ?? { kind: 'failed', reason: `GitHub's answer for ${targetText(target)} names no head branch: look at it on GitHub` };
+    }
     async write(target, args, what) {
+        const end = await this.call(target, args, what);
+        return end.kind === 'ran' ? { kind: 'done' } : { kind: 'failed', reason: end.reason };
+    }
+    async call(target, args, what) {
         const access = await this.tokens.accessFor(target.repo);
         if (access instanceof TokenReadError) {
-            return { kind: 'failed', reason: access.message };
+            return { kind: 'failed', reason: access.message, notVisible: false };
         }
         let result;
         try {
             result = await this.gh.run({ args, env: access.env });
         }
         catch (error) {
-            return { kind: 'failed', reason: startFailureText(error) };
+            return { kind: 'failed', reason: startFailureText(error), notVisible: false };
         }
         if (result.end.kind === 'signal') {
-            return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) on its way to ${what} ${targetText(target)}: look on GitHub before a rerun` };
+            return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) on its way to ${what} ${targetText(target)}: look on GitHub before a rerun`, notVisible: false };
         }
         if (result.end.code !== 0) {
-            return { kind: 'failed', reason: this.scanner.redact(writeFailureText(target, what, result.end.code, result.stderr, access)) };
+            const notVisible = ghFailureKind(result.end.code, result.stderr) === 'not-visible';
+            return { kind: 'failed', reason: this.scanner.redact(writeFailureText(target, what, result.end.code, result.stderr, access)), notVisible };
         }
-        return { kind: 'done' };
+        return { kind: 'ran', stdout: result.stdout };
     }
 }
-/** Why a write failed, with the fix when it is a known one: a refused token or login, a missing permission, an issue not there. */
+/** The head branch and its repository from GitHub's pull request JSON, or undefined when it names no head branch. */
+export function headIn(stdout) {
+    let parsed;
+    try {
+        parsed = JSON.parse(stdout);
+    }
+    catch {
+        return undefined;
+    }
+    const head = isRecord(parsed) ? recordField(parsed, 'head') : undefined;
+    const branch = head === undefined ? undefined : stringField(head, 'ref');
+    if (head === undefined || branch === undefined || branch === '') {
+        return undefined;
+    }
+    const repo = recordField(head, 'repo');
+    const name = repo === undefined ? undefined : stringField(repo, 'full_name');
+    return { kind: 'pull', branch, repo: name === undefined ? null : name.toLowerCase() };
+}
+/** Why a call failed, with the fix when it is a known one: a refused token or login, a missing permission, an issue not there. */
 export function writeFailureText(target, what, code, stderr, access) {
     const shown = targetText(target);
     const token = `the token saved as ${access.credential}`;

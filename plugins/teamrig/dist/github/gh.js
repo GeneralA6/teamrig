@@ -2,10 +2,11 @@ import { spawn } from 'node:child_process';
 import { endOf } from "../test-run/shell.js";
 import { QUERY_VARIABLES, RAW_FIELD } from "./queries.js";
 /**
- * The four kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import, which never writes
- * to GitHub), the creation of one issue (gh migrate, which opens an issue for a team task), and one comment on or
- * the close of one issue or pull request (issue comment and issue close). The runner refuses any other command line
- * before it starts: no issue edit, reopen, label, assignee change, merge or delete.
+ * The five kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import, which never writes
+ * to GitHub), the creation of one issue (gh migrate, which opens an issue for a team task), one comment on or the
+ * close of one issue or pull request (issue comment and issue close), and the read of one pull request (whose branch
+ * it is, which decides whether a session may write on it). The runner refuses any other command line before it
+ * starts: no issue edit, reopen, label, assignee change, merge or delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -83,6 +84,20 @@ export function isIssueComment(args) {
     const pairs = rawPairs(args.slice(4));
     return call?.method === 'POST' && call.comments && pairs?.length === 1 && pairs[0]?.[0] === 'body';
 }
+/** The command line that reads one pull request: a plain GET, so it changes nothing. */
+export function pullReadArgs(target) {
+    return ['api', `repos/${target.repo}/pulls/${target.number}`];
+}
+/** `repos/<owner>/<name>/pulls/<number>`: one pull request, nothing past it. */
+const PULL_PATH = /^repos\/([^/]+\/[^/]+)\/pulls\/[1-9][0-9]{0,9}$/;
+/**
+ * True for `gh api repos/<owner>/<name>/pulls/<number>` and nothing more: the GET of one pull request. A method, a
+ * field or any other flag is refused, since gh turns a field into a POST.
+ */
+export function isPullRead(args) {
+    const repo = PULL_PATH.exec(args[1] ?? '')?.[1];
+    return args.length === 2 && args[0] === 'api' && repo !== undefined && REPO_NAME.test(repo);
+}
 /**
  * True for `gh api repos/<owner>/<name>/issues/<number> -X PATCH -f state=closed` and nothing more: the close of
  * one issue or pull request. Any other field (a title, a body, labels, a reopen) is refused.
@@ -108,16 +123,16 @@ function rawPairs(args) {
 }
 /** How long one `gh` run may take before it is stopped: a page of a hundred issues takes seconds. */
 export const GH_TIMEOUT_MS = 60_000;
-/** A command line the runner will not start: none of a shipped issue query's page, one issue's creation, comment or close. */
+/** A command line the runner will not start: none of a shipped issue query's page, one issue's creation, comment or close, one pull request's read. */
 export class GhRefusedError extends Error {
     name = 'GhRefusedError';
     constructor(args) {
-        super(`teamrig only runs gh for its shipped issue queries and to open, comment on or close an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+        super(`teamrig only runs gh for its shipped issue queries, to open, comment on or close an issue and to read a pull request: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
     }
 }
 /** True for each command line the runner starts. */
 export function isAllowedGh(args) {
-    return isIssueQuery(args) || isIssueCreate(args) || isIssueComment(args) || isIssueClose(args);
+    return isIssueQuery(args) || isIssueCreate(args) || isIssueComment(args) || isIssueClose(args) || isPullRead(args);
 }
 /**
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a
