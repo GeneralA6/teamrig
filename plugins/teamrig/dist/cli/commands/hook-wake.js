@@ -25,7 +25,7 @@ import { noPositionals } from "../args.js";
 import { openKit, rosterOf, teamZone } from "../kit.js";
 import { startDailyRollup } from "../rollup-start.js";
 import { EXIT } from "../runtime.js";
-import { readTodayWPerPct } from "../stored-week.js";
+import { readMeasuredTurns, readTodayWPerPct } from "../stored-week.js";
 import { teamRegister } from "../team-register.js";
 import { budgetFactsOf } from "./hook-budget.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -88,7 +88,7 @@ export async function wakeScopeOf(runtime, payload, needsWake) {
 }
 /** The W of the turn a wake would start in a tab whose last turn was at `lastTurnAt` (undefined: unknown, counted cold). */
 function wakeWOf(config, lastTurnAt, now) {
-    return wakeCost(lastTurnAt === undefined ? undefined : now - lastTurnAt, config.messages.coldAfterMinutes, undefined).w;
+    return wakeCost(lastTurnAt === undefined ? undefined : now - lastTurnAt, config.messages.coldAfterMinutes, undefined, undefined).w;
 }
 /** The ids of the tasks a verdict wakes the session for, now or later. */
 function dueIdsOf(verdict) {
@@ -338,7 +338,8 @@ export async function wakeCheck(args, runtime) {
     const now = runtime.clock.now();
     const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
     const wPerPct = await readTodayWPerPct(runtime, kit.paths, config, now);
-    const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct);
+    const measured = await readMeasuredTurns(runtime, kit.paths, id, config.sessions, now);
+    const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct, measured);
     if (verdict.kind === 'login') {
         await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids: [], cost, retry: 'login' });
         await runtime.files.append(login.log, `${new Date(now).toISOString()} ${loginRetryLine(`${kit.paths.team}/${id} (${tab})`, verdict.why)}\n`);

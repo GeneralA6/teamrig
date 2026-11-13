@@ -21,7 +21,7 @@ import { hookLogOf } from "../hook-logs.js";
 import { callerOf, instantOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { readTodayWPerPct } from "../stored-week.js";
+import { readMeasuredTurns, readTodayWPerPct } from "../stored-week.js";
 import { TreeTasks } from "../tree-tasks.js";
 import { loadTree } from "../tree.js";
 import { verifyNoteOf } from "./verify-queue.js";
@@ -264,7 +264,8 @@ async function postWakes(runtime, own, recipients, text, now, when) {
             continue;
         }
         const last = await lastWriteOf(runtime.transcripts, projects, tabsOf(await marksOf(recipient), recipient.id, RECEIVER_TABS));
-        const cost = wakeCost(last === undefined ? undefined : wakeAt - last, recipient.config.messages.coldAfterMinutes, wPerPct);
+        const measured = await readMeasuredTurns(runtime, recipient.paths, recipient.id, recipient.config.sessions, now);
+        const cost = wakeCost(last === undefined ? undefined : wakeAt - last, recipient.config.messages.coldAfterMinutes, wPerPct, measured);
         wakes.push({ label: recipient.label, team: recipient.team, batchSeconds: recipient.config.wake.batchSeconds, cost });
     }
     return wakes.length === 0 && off.length === 0 ? failed : [...failed, wakesLine(wakes, off, when)];
