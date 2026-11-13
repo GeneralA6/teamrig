@@ -1459,6 +1459,52 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
     assert.equal(set(ordered, { waits: OWNER_DECISION }, relaxed).ok, true, 'requireDecisionCard off');
   });
 
+  // T2623: a session asked the owner to approve the design of a back-test of an approved sheet, which waited 14 h.
+  describe('a card asking the owner about a test, measure or proof (T2623)', () => {
+    const proofCard = { ...TEST_OWNER_CARD, question: 'Approve the back-test design for the approved entry sheet' };
+    const affects = 'buys 400 dollars of price history';
+    const refusal =
+      `--question asks owner about a test, measure or proof ("back-test"): one of approved work that changes no approved number, spends no money and writes no data is approved with that work, so go ahead and tell your leader (lead), and drop the wait on owner's decision; ` +
+      'if it does change, spend or write, say which with --affects "<the approved number it changes, the money it spends or the data it writes>"';
+
+    it('refuses it without --affects, naming the word, the leader to tell and the way out', () => {
+      assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: proofCard })), refusal, 'a new card');
+      assert.equal(error(set({ ...ASKED, card: proofCard }, { waits: OWNER_DECISION, note: 'asked again' })), refusal, 'a card kept from an older row');
+      assert.match(
+        error(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, question: 'May we run a dry run of the import', options: [] } })),
+        /^--question asks owner about a test, measure or proof \("dry run"\): .* drop the wait on owner's approval; /,
+        "an approval on the owner too",
+      );
+      const lead = testTask({ status: 'in-progress', startedAt: TASK.startedAt, owner: 'lead' });
+      assert.match(error(policy.setStatus(lead, 'lead', { status: 'waiting', note: 'x', waits: OWNER_DECISION, card: proofCard }, CTX)), /so go ahead, and drop the wait/, 'the lead has no leader to tell');
+    });
+
+    it('takes it with --affects, keeps it while the owner is asked, and drops it once not', () => {
+      const asked = set(TASK, { waits: OWNER_DECISION, card: { ...proofCard, affects } });
+      assert.deepEqual(asked.ok ? asked.value.card : undefined, { ...proofCard, affects });
+      const waiting = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION, card: { ...proofCard, affects } });
+      const again = set(waiting, { waits: OWNER_DECISION, note: 'asked again' });
+      assert.deepEqual(again.ok ? again.value.card : undefined, { ...proofCard, affects });
+      const toLead = set(waiting, { waits: [{ kind: 'decision', who: 'lead' }] });
+      assert.deepEqual(toLead.ok ? toLead.value.card : undefined, { ...TEST_CARD, question: proofCard.question }, "a wait moved to the lead's decision drops it and the gate");
+    });
+
+    it('takes --affects only with a wait on the owner, and holds it to the plain-word floor', () => {
+      assert.equal(
+        error(set(TASK, { waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, affects } })),
+        "--affects says what a test, measure or proof asks owner for: it goes only with a wait on owner's decision or approval",
+      );
+      assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...proofCard, affects: 'T5' } })), /^--affects says "T5": give at least 3 plain words/);
+    });
+
+    it("asks nothing of a question about no test, of a lead's wait, or while cards are not required", () => {
+      assert.equal(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, question: 'Approve the latest contest price' } }).ok, true, 'no proof word inside other words');
+      assert.equal(set(TASK, { waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, question: proofCard.question } }).ok, true, "the lead's decision");
+      const relaxed = new RegisterPolicy(testConfig({ register: { requireDecisionCard: false } }));
+      assert.equal(set(TASK, { waits: OWNER_DECISION, card: proofCard }, relaxed).ok, true, 'requireDecisionCard off');
+    });
+  });
+
   it('takes the same card again only with a new note', () => {
     const relaxed = new RegisterPolicy(testConfig({ register: { requireNoteOn: [] } }));
     const again = (card: Partial<DecisionCard>) => relaxed.setStatus(ASKED, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card }, CTX);
@@ -1467,7 +1513,10 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
   });
 
   it('checks each part like any text', () => {
-    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, question: credentialUrl() } })), /card looks like it holds a secret/);
+    // The credential URL's host ends in ".test", a proof word (T2623), so the card says what it affects to reach the text check.
+    const affects = 'buys 400 dollars of price history';
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, question: credentialUrl(), affects } })), /card looks like it holds a secret/);
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, affects: `it logs in at ${credentialUrl()}` } })), /card looks like it holds a secret/);
     assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, byDefault: 'x '.repeat(200) } })), /^card has 400 characters/);
   });
 

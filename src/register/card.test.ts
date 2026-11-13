@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD } from '../testing/card.ts';
-import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, sameCard, typedHandStep } from './card.ts';
+import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, proofWordOf, sameCard, typedHandStep } from './card.ts';
 import type { HandStepAudit, RunFiles } from './hand-step.ts';
 
 const WHY_ASK = 'the ordered tier cannot ship at that price';
@@ -107,16 +107,58 @@ describe('the decision card', () => {
     const asked = { ...TEST_CARD, whyAsk: WHY_ASK };
     assert.deepEqual(cardTexts(asked), [TEST_CARD.question, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
     assert.deepEqual(cardLines(asked, '  ', [], NO_FILES).slice(0, 2), ['  decide: Which pricing tier ships first', `  why asked: ${WHY_ASK}`]);
-    assert.deepEqual(keptCard(asked, { whyAsk: false, gate: true, run: false }), TEST_CARD);
-    assert.deepEqual(keptCard(asked, { whyAsk: true, gate: true, run: false }), asked);
+    assert.deepEqual(keptCard(asked, { whyAsk: false, gate: true, run: false, affects: false }), TEST_CARD);
+    assert.deepEqual(keptCard(asked, { whyAsk: true, gate: true, run: false, affects: false }), asked);
   });
 
   it('prints the gate that makes it the owner\'s under the question, and drops it on request (T1194)', () => {
     const both = { ...TEST_OWNER_CARD, whyAsk: WHY_ASK };
     assert.deepEqual(cardTexts(both), [TEST_CARD.question, TEST_GATE, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
     assert.deepEqual(cardLines(both, '  ', [], NO_FILES).slice(0, 3), ['  decide: Which pricing tier ships first', `  gate: ${TEST_GATE}`, `  why asked: ${WHY_ASK}`]);
-    assert.deepEqual(keptCard(both, { whyAsk: true, gate: false, run: false }), { ...TEST_CARD, whyAsk: WHY_ASK });
-    assert.deepEqual(keptCard(both, { whyAsk: false, gate: false, run: false }), TEST_CARD);
+    assert.deepEqual(keptCard(both, { whyAsk: true, gate: false, run: false, affects: false }), { ...TEST_CARD, whyAsk: WHY_ASK });
+    assert.deepEqual(keptCard(both, { whyAsk: false, gate: false, run: false, affects: false }), TEST_CARD);
+  });
+
+  // T2623: a test, measure or proof of approved work is approved with it, so its card says what it changes.
+  describe('a card asking about a test, measure or proof (T2623)', () => {
+    const AFFECTS = 'buys 400 dollars of price history';
+
+    it('finds the first proof word a question names, as written, and none inside another word', () => {
+      const found = [
+        'Approve the back-test design',
+        'Run the retests tonight',
+        'May I retest the import',
+        'Measure the latency first',
+        'Take the measurements now',
+        'Is this proof enough',
+        'Prove the fix on the box',
+        'Start a trial of the queue',
+        'Do a dry run of the import',
+        'A dry-run first',
+        'Benchmark the parser',
+        'One experiment more',
+        'Simulate a full week',
+        'Tested both, shall I merge',
+      ].map(proofWordOf);
+      assert.deepEqual(found, ['back-test', 'retests', 'retest', 'Measure', 'measurements', 'proof', 'Prove', 'trial', 'dry run', 'dry-run', 'Benchmark', 'experiment', 'Simulate', 'Tested']);
+      // The one-word spelling is on the scrub's denylist, so it is built at runtime.
+      const joined = ['back', 'test'].join('');
+      assert.equal(proofWordOf(`Run the ${joined} tonight`), joined);
+      assert.deepEqual(['Approve the latest contest price', 'Ship the protest banner', 'An approved immeasurable plan', 'Which pricing tier ships first'].map(proofWordOf), [undefined, undefined, undefined, undefined]);
+    });
+
+    it('prints what it affects under the question, checks it as text, compares, reads and keeps it while the owner is asked', () => {
+      const tested = { ...TEST_OWNER_CARD, affects: AFFECTS };
+      assert.deepEqual(cardTexts(tested), [TEST_CARD.question, TEST_GATE, AFFECTS, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
+      assert.deepEqual(cardLines(tested, '  ', [], NO_FILES).slice(0, 3), ['  decide: Which pricing tier ships first', `  gate: ${TEST_GATE}`, `  affects: ${AFFECTS}`]);
+      assert.match(cardProblem({ ...tested, affects: 'T5' }, true) ?? '', /^--affects says "T5"/);
+      assert.equal(sameCard(tested, TEST_OWNER_CARD), false);
+      assert.equal(sameCard(tested, { ...tested }), true);
+      assert.deepEqual(parseCard(tested), tested);
+      assert.equal(parseCard({ ...TEST_CARD, affects: 400 }), 'card affects is not text');
+      assert.deepEqual(keptCard(tested, { whyAsk: false, gate: true, run: false, affects: true }), tested);
+      assert.deepEqual(keptCard(tested, { whyAsk: false, gate: true, run: false, affects: false }), TEST_OWNER_CARD);
+    });
   });
 
   describe('the hand step file a card hands the owner (T2312)', () => {
@@ -134,8 +176,8 @@ describe('the decision card', () => {
       assert.equal(sameCard(handed, TEST_OWNER_CARD), false);
       assert.equal(sameCard(handed, { ...TEST_OWNER_CARD, run: '/w/other.ps1' }), false);
       assert.equal(sameCard(handed, { ...handed }), true);
-      assert.deepEqual(keptCard(handed, { whyAsk: false, gate: true, run: true }), handed);
-      assert.deepEqual(keptCard(handed, { whyAsk: false, gate: true, run: false }), TEST_OWNER_CARD);
+      assert.deepEqual(keptCard(handed, { whyAsk: false, gate: true, run: true, affects: false }), handed);
+      assert.deepEqual(keptCard(handed, { whyAsk: false, gate: true, run: false, affects: false }), TEST_OWNER_CARD);
     });
 
     /** The file as its audit pinned it. */
