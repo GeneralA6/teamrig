@@ -289,6 +289,50 @@ describe('secretGuardOutput on what a command line holds (T1369 acceptance)', ()
   });
 });
 
+describe('secretGuardOutput on a read of a saved credential (T2654)', () => {
+  const outputOf = (tool: string, command: string, overrides: Partial<SecretGuardEnv> = {}): string => secretGuardOutput(call(tool, { command }), env(overrides));
+
+  it("refuses a session's read of the host's credential store, a quiet one too, naming how it reads", () => {
+    for (const [tool, command] of [
+      ['Bash', "printf 'host=github.com\\n' | git credential fill > /dev/null"],
+      ['Bash', 'GH_TOKEN=$(gh auth token) gh api user'],
+      ['PowerShell', '$t = gh auth token'],
+      ['PowerShell', 'cmdkey /list'],
+      ['PowerShell', 'node read-key.mjs teamrig-ship-gh'],
+    ] as const) {
+      assert.equal(verdictOf(outputOf(tool, command))?.decision, 'deny', command);
+    }
+    assert.deepEqual(verdictOf(outputOf('Bash', 'gh auth token > t.txt')), {
+      decision: 'deny',
+      reason: secretReason([{ kind: 'credential', via: 'gh auth token' }]),
+    });
+  });
+
+  it('says the store is never read and names the key that sets it, before what else the line prints', () => {
+    assert.equal(
+      secretReason([{ kind: 'credential', via: 'gh auth token' }]),
+      "teamrig secret guard: this call reads a saved credential out of the host's credential store (gh auth token), printed " +
+        "or not. A session never reads the store: each tool's key stays with the tool that reads it (teamrig's own commands " +
+        'read theirs themselves). To check a saved key, ask the owner to look in their own terminal. [secretGuard.secretReads]',
+    );
+    const reason = secretReason([{ kind: 'credential', via: 'cmdkey /list' }, { kind: 'file', path: '.env' }, { kind: 'literal', id: 'github-token', description: 'GitHub token' }]);
+    assert.match(reason, /^teamrig secret guard: this call reads a saved credential .* It would also print the content of \.env into .* Its command line holds a secret as text \(GitHub token\)/);
+    assert.match(reason, /\[secretGuard\.secretReads, secretGuard\.writes\]$/);
+  });
+
+  it('asks or lets it run as secretGuard.secretReads says, whatever secretGuard.writes says', () => {
+    assert.equal(verdictOf(outputOf('Bash', 'gh auth token', { secretReads: 'ask' }))?.decision, 'ask');
+    assert.equal(outputOf('Bash', 'gh auth token', { secretReads: 'allow' }), '');
+    assert.equal(verdictOf(outputOf('Bash', 'gh auth token', { writes: 'allow' }))?.decision, 'deny');
+  });
+
+  it('lets the gh and git lines that read no key pass', () => {
+    for (const command of ['gh auth status', 'gh issue list', 'git credential approve < c.txt', 'teamrig gh sync']) {
+      assert.equal(outputOf('Bash', command), '', command);
+    }
+  });
+});
+
 describe('secretGuardOutput: a Bash line on Windows (T2319)', () => {
   /** A run of n backslashes; on Windows bash receives each run not before a double quote halved, rounded up. */
   const bs = (n: number): string => '\\'.repeat(n);

@@ -376,8 +376,9 @@ export interface SecretGuardConfig {
 /**
  * A call that would print a secret: a secret file's content (`cat .env`, `Get-Content ~/.npmrc`, the Read tool), the
  * whole environment (`env`, `printenv`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`), a
- * Kubernetes secret's data or a dump command's output (`kubectl config view --raw`): `deny` refuses it, `ask` asks the
- * human, `allow` lets it run.
+ * Kubernetes secret's data or a dump command's output (`kubectl config view --raw`), and a shell line that reads a saved
+ * credential out of the host's store, printed or not (`gh auth token`, `git credential fill`, `CredRead`):
+ * `deny` refuses it, `ask` asks the human, `allow` lets it run.
  */
 export type SecretReads = 'deny' | 'ask' | 'allow';
 
