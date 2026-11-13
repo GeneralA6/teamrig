@@ -188,6 +188,11 @@
           "type": "boolean",
           "default": true
         },
+        "leaderDigest": {
+          "description": "Whether a leader (the lead, or a sub-lead in leads) is shown, at each prompt, one line per task changed in its tree since its last prompt, and a member's set or update whose note told no leader prints NOTED in the register. false: neither; a note reaches a leader only by an inbox line.",
+          "type": "boolean",
+          "default": false
+        },
         "requireEvidenceOnDone": { "description": "Whether teamrig set --status done needs --evidence, unless the task already has some.", "type": "boolean", "default": true },
         "requireSkillOnDone": { "description": "Whether teamrig set --status done needs --skill: the skill that holds the work's procedure, or none.", "type": "boolean", "default": true },
         "requireNoteOn": {

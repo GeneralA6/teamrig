@@ -989,6 +989,16 @@ describe('parseConfig', () => {
     assert.equal(config.register.autoArchive, true);
   });
 
+  it('reads register.leaderDigest, off by default, and refuses a value that is not true or false', () => {
+    assert.equal(parseConfig(ROSTER).config.register.leaderDigest, false);
+    const on = parseConfig({ ...ROSTER, register: { leaderDigest: true } });
+    assert.deepEqual([on.issues, on.config.register.leaderDigest], [[], true]);
+    const { config, issues } = parseConfig({ ...ROSTER, register: { leaderDigest: 'yes' } });
+    assert.deepEqual(paths(issues), ['register.leaderDigest']);
+    assert.match(issues[0]?.message ?? '', /true or false/);
+    assert.equal(config.register.leaderDigest, false);
+  });
+
   it('reads requireDescription, on by default, and falls back to on for a value that is not true or false', () => {
     assert.equal(parseConfig(ROSTER).config.register.requireDescription, true);
     const off = parseConfig({ ...ROSTER, register: { requireDescription: false } });

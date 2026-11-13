@@ -1289,6 +1289,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
       CONFIG_LIMITS.requireFollowupsOn.maxItems,
     ),
     autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
+    leaderDigest: read.boolean(raw, 'leaderDigest', path, defaults.leaderDigest),
     requireProofOnVerifying: read.boolean(raw, 'requireProofOnVerifying', path, defaults.requireProofOnVerifying),
     requireDecisionCard: read.boolean(raw, 'requireDecisionCard', path, defaults.requireDecisionCard),
     verifyGate: isVerifyGate(verifyGate) ? verifyGate : defaults.verifyGate,

@@ -9,8 +9,10 @@ import { EXIT } from './runtime.ts';
 const STATE = join(TEAM_HOME, 'state');
 const CURSORS = join(STATE, 'leader-digest');
 const HEADING = /^teamrig: register changes in your tree since your last prompt \((\d+) tasks?\):$/m;
+/** The digest is off by default (register.leaderDigest); these teams turn it on. */
+const ON: JsonRecord = { ...TEAM, register: { leaderDigest: true } };
 /** A team with a sub-lead: alpha leads bravo; charlie answers to the lead. */
-const SUB_LEADS: JsonRecord = { sessions: ['lead', 'alpha', 'bravo', 'charlie'], roles: { lead: 'lead' }, leads: { alpha: ['bravo'] } };
+const SUB_LEADS: JsonRecord = { sessions: ['lead', 'alpha', 'bravo', 'charlie'], roles: { lead: 'lead' }, leads: { alpha: ['bravo'] }, register: { leaderDigest: true } };
 
 async function ok(kit: CliHarness, argv: readonly string[]): Promise<CliResult> {
   const result = await kit.run(argv);
@@ -49,7 +51,7 @@ async function addTask(kit: CliHarness, session: string, title: string): Promise
 
 describe('the leader digest at UserPromptSubmit', () => {
   it("shows a member's register-only change to the lead at its next prompt, once, after a silent first prompt", async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(ON);
     assert.doesNotMatch(await prompt(kit, 'lead'), HEADING, 'the first prompt only sets the cursor');
     assert.ok(kit.files.paths().includes(join(CURSORS, 'lead.json')));
     kit.clock.advance(1_000);
@@ -62,7 +64,7 @@ describe('the leader digest at UserPromptSubmit', () => {
   });
 
   it('shows a change written in the very millisecond the cursor was set, once', async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(ON);
     await ok(kit, ['add', '--title', 'Ship the signup page', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     await prompt(kit, 'lead');
     // The clock has not moved: this event shares the instant of the one the cursor was set at.
@@ -72,7 +74,7 @@ describe('the leader digest at UserPromptSubmit', () => {
   });
 
   it('dedupes to one line per task: its net status change and its newest note, cut to 80 characters', async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(ON);
     await addTask(kit, 'alpha', 'Ship the signup page');
     await addTask(kit, 'bravo', 'Fix the login flake');
     await prompt(kit, 'lead');
@@ -90,7 +92,7 @@ describe('the leader digest at UserPromptSubmit', () => {
   });
 
   it('caps the digest at 10 lines and counts the rest on one line', async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(ON);
     await prompt(kit, 'lead');
     kit.clock.advance(1_000);
     for (let n = 1; n <= 12; n += 1) {
@@ -106,7 +108,7 @@ describe('the leader digest at UserPromptSubmit', () => {
   });
 
   it("leaves out the leader's own writes, and a task of its tree it alone changed", async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(ON);
     await prompt(kit, 'lead');
     kit.clock.advance(1_000);
     await ok(kit, ['add', '--title', 'Ship the signup page', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
@@ -134,19 +136,19 @@ describe('the leader digest at UserPromptSubmit', () => {
   });
 
   it("withholds a note that matches one of the team's secret patterns, even one added after the note was written", async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(ON);
     await addTask(kit, 'alpha', 'Ship the signup page');
     await prompt(kit, 'lead');
     kit.clock.advance(1_000);
     await ok(kit, ['update', 'T1', '--note', 'staging pass is zebra-4242', '--session', 'alpha']);
-    await kit.files.write(CONFIG_PATH, JSON.stringify({ ...TEAM, register: { secretPatterns: ['zebra-\\d+'] } }));
+    await kit.files.write(CONFIG_PATH, JSON.stringify({ ...TEAM, register: { leaderDigest: true, secretPatterns: ['zebra-\\d+'] } }));
     const shown = await prompt(kit, 'lead');
     assert.deepEqual(digestRows(shown), ['- T1 open: (note withheld: it matches a secret shape)']);
     assert.ok(!shown.includes('zebra'));
   });
 
   it('never wakes anyone: it posts no inbox line and asks no wake', async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(ON);
     await prompt(kit, 'lead');
     kit.clock.advance(1_000);
     await addTask(kit, 'alpha', 'Ship the signup page');
@@ -165,9 +167,22 @@ describe('the leader digest at UserPromptSubmit', () => {
   });
 });
 
+describe('with register.leaderDigest off, the default', () => {
+  it("shows a leader no digest and keeps no cursor, and a member's note prints no NOTED line", async () => {
+    const kit = new CliHarness(TEAM);
+    await prompt(kit, 'lead');
+    kit.clock.advance(1_000);
+    await addTask(kit, 'alpha', 'Ship the signup page');
+    const started = await ok(kit, ['set', 'T1', '--status', 'in-progress', '--note', 'started', '--session', 'alpha']);
+    assert.deepEqual(started.stderr, []);
+    assert.doesNotMatch(await prompt(kit, 'lead'), HEADING);
+    assert.ok(!kit.files.paths().some((path) => path.startsWith(CURSORS)), 'no cursor file');
+  });
+});
+
 describe('register-only wording on set and update', () => {
   it("says NOTED for a member's note that told no leader, and not for one that told the lead or for the lead's own", async () => {
-    const kit = new CliHarness(TEAM);
+    const kit = new CliHarness(ON);
     await addTask(kit, 'alpha', 'Ship the signup page');
     const started = await ok(kit, ['set', 'T1', '--status', 'in-progress', '--note', 'started', '--session', 'alpha']);
     assert.match(started.stdout[0] ?? '', /^SET T1 /, 'the task line stays the one stdout line');

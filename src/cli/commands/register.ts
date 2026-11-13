@@ -256,11 +256,12 @@ export const REGISTER_ONLY_LINE = 'NOTED in the register (the lead sees it at it
  * After a `set` or `update` with a note that a member of the team wrote: {@link REGISTER_ONLY_LINE} on stderr, unless
  * the write told the lead or one of the writer's leaders (`told`, the sessions it posted a line to), so the session never
  * says it reported to the lead what only the register holds. The task line stays the one stdout line a script reads.
- * A write with no note, the lead's own writes and those of anyone not on the team get none.
+ * A write with no note, the lead's own writes and those of anyone not on the team get none, and none is printed while
+ * `register.leaderDigest` is off, since then no digest shows the note.
  */
 function noteRegisterOnly(runtime: CliRuntime, team: Team, by: string, note: string | undefined, verdict: Verdict<WriteResult>, told: readonly string[]): void {
   const { lead } = team.config.roles;
-  if (!verdict.ok || (note?.trim() ?? '') === '' || by === lead || !team.config.sessions.includes(by)) {
+  if (!team.config.register.leaderDigest || !verdict.ok || (note?.trim() ?? '') === '' || by === lead || !team.config.sessions.includes(by)) {
     return;
   }
   const leaders = new Set([lead, ...new LeadTree(team.config, team.above).chainOf(by)]);

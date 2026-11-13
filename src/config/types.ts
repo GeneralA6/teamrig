@@ -102,6 +102,12 @@ export interface RegisterConfig {
    */
   readonly autoArchive: boolean;
   /**
+   * Whether a leader (the lead, or a sub-lead in `leads`) is shown, at each prompt, the register changes in its tree
+   * since its last one (hooks/leader-digest.ts), and a member's note that told no leader says it waits for that digest.
+   * Off (the default), neither: a note reaches a leader only by a line posted to it.
+   */
+  readonly leaderDigest: boolean;
+  /**
    * Whether `set --status waiting` on the owner's decision or approval needs a decision card (`--question`,
    * `--options`, `--recommend`, `--default`; register/card.ts), so the owner decides from it alone.
    */
