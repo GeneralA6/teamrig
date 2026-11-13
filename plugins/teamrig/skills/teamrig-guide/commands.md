@@ -1140,15 +1140,18 @@ Output:
 Imports GitHub issues into the task list, inbound only. For each repository in `github.repos` it lists the open
 issues and those closed in the last `github.closedDays` days (14 by default) through the GitHub CLI, `gh`. It only
 ever lists issues: it never creates, edits, comments on, labels, assigns or closes anything on GitHub, and a task
-added with `teamrig add` stays in the task list and never goes to GitHub. Only `teamrig gh migrate`, run by hand,
-opens issues. Setup, tokens and every failure's fix:
+added with `teamrig add` stays in the task list and never goes to GitHub. Only commands run by hand write:
+`teamrig gh migrate` opens issues, `teamrig issue comment` and `teamrig issue close` comment on and close them.
+Setup, tokens and every failure's fix:
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md).
 
-Access, per owner (the `acme` of `acme/web`): the read-only token saved in the system's credential store as
-`teamrig-gh-<owner>` (lowercase), handed to `gh` as `GH_TOKEN` for that run only, else the `gh auth login` account.
-A fine-grained token reaches one owner's repositories, so two owners need two tokens. An `ACCESS` line says, once
-per owner, which one reads it; the token itself is never printed. A missing or refused token gives that repository
-a `FAILED` line naming the fix, and the other repositories are read on.
+Access, per owner (the `acme` of `acme/web`): the token saved in the system's credential store as
+`teamrig-gh-<owner>` (lowercase), handed to `gh` as `GH_TOKEN` for that run only, else the `gh auth login` account;
+the sync needs only Issues: Read-only. A fine-grained token reaches one owner's repositories, so two owners need two
+tokens. An `ACCESS` line says, once per owner, which one reads it; the token itself is never printed. A missing or
+refused token gives that repository a `FAILED` line naming the fix, and the other repositories are read on. A saved
+token the store cannot read (a locked keyring) fails that owner's repositories the same way, never read through
+the `gh` login in its place.
 
 - An open issue with no task becomes one, with the source `github` and the ref `gh:<owner>/<name>#<number>`. Its
   title is the issue's on one plain line, cut to `register.maxTitle`; its priority is its most urgent `p<n>` label
@@ -1235,10 +1238,10 @@ one of `github.repos`, or the register would refuse the ref), a `NO ROW` line na
 full (task, repository, labels, title, body), the tasks kept local with their reasons and the skipped rows, for a
 reviewer to read before anything is posted.
 
-With `--yes` it opens each issue in row order through `gh api` (the create is the one GitHub write teamrig makes:
-one issue, its title, body and labels, the kind of work then the priority), with the token saved for the
-repository's owner as `teamrig-gh-<owner>`, else the `gh auth login` account (an `ACCESS` line per owner says
-which), then sets the task's ref to `gh:<owner>/<name>#<number>` as an `update --ref` by you would, so `teamrig gh
+With `--yes` it opens each issue in row order through `gh api` (one issue, its title, body and labels, the kind of
+work then the priority), with the token saved for the repository's owner as `teamrig-gh-<owner>`, else the `gh auth
+login` account (an `ACCESS` line per owner says which; a saved token the store cannot read stops the run, never the
+`gh` login in its place), then sets the task's ref to `gh:<owner>/<name>#<number>` as an `update --ref` by you would, so `teamrig gh
 sync` adds no second task for it. Each opened issue gives an `OPENED` line and the run ends with `DONE`. The first
 failure stops the run: `FAILED` when gh failed (a stopped gh or one that printed no number may still have opened
 the issue: look before a rerun), `REFUSED` when the register refused the ref (the issue is open: the line gives the
@@ -1268,6 +1271,62 @@ SKIPPED T9: the task is done
 NO ROW 1 live task(s) no row names: T44
 3 issue(s) to open, 1 kept local, 1 skipped, 1 live task(s) with no row
 PREVIEW nothing was written; teamrig gh migrate <file> --yes opens the issues and sets each task's ref
+```
+
+### teamrig issue comment
+
+Posts one comment on an issue or pull request of the team's repositories, named as `owner/name#number`. GitHub is
+the only host so far: the repository must be in `github.repos`, and the comment goes through `gh api` with the
+token saved for the owner as `teamrig-gh-<owner>`, else the `gh auth login` account (an `ACCESS` line says which).
+The token needs Issues and Pull requests: Read and write. It refuses, posting nothing, a caller not on the team, a
+target that is not `owner/name#number`, a repository not in `github.repos`, and a body that is empty, past 65,536
+characters, looks like it holds a secret, or names a task id (`T12`: ids are the team's own, so link issues by
+`#number`). A saved token the store cannot read stops it, never the `gh` login in its place. `TEAMRIG_GITHUB=off`
+prints an `OFF` line and posts nothing. It prints `COMMENTED <target>`, or `FAILED <target>: <reason>` with the fix
+(a token without the permission, an issue not there). Exit 1 when it failed, 2 when refused, else 0.
+
+Flags:
+
+- `--session <id|name>`: the caller, a session of the team.
+- `--body <text>`: the comment, required.
+
+Example:
+
+```sh
+teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."
+```
+
+Output:
+
+```text
+ACCESS acme: writes with the token saved as teamrig-gh-acme
+COMMENTED acme/web#7
+```
+
+### teamrig issue close
+
+Closes one issue or pull request of the team's repositories (a pull request closes unmerged), first posting
+`--comment` when given, with the same access and checks as `teamrig issue comment`. When the comment fails nothing
+is closed. When the close fails after the comment was posted, the `FAILED` line says the comment is posted: rerun
+`teamrig issue close` without `--comment`. Exit 1 when it failed, 2 when refused, else 0.
+
+Flags:
+
+- `--session <id|name>`: the caller, a session of the team.
+- `--comment <text>`: a comment posted before the close.
+
+Example:
+
+```sh
+teamrig issue close acme/web#12 --comment "Merged as #14 with your commits credited. Thank you!"
+```
+
+Output:
+
+```text
+ACCESS acme: writes with the token saved as teamrig-gh-acme
+COMMENTED acme/web#12
+CLOSED acme/web#12
 ```
 
 ## Inbox

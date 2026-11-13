@@ -4,9 +4,11 @@
 written by the repository's people, or accepted by them ([Whose issues become tasks](#whose-issues-become-tasks)),
 becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its title, description (the issue's body),
 priority and open or closed state follow GitHub on every run. The sync never goes the other way: it never creates,
-edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The one
-exception is run by hand: `teamrig gh migrate` moves tasks you choose to new issues, once
-([Moving your tasks to issues](#moving-your-tasks-to-issues)).
+edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The
+writes are all run by hand: `teamrig gh migrate` moves tasks you choose to new issues, once
+([Moving your tasks to issues](#moving-your-tasks-to-issues)), and `teamrig issue comment` and `teamrig issue close`
+answer or close one issue or pull request ([Commenting on and closing](#commenting-on-and-closing)). GitHub is the
+only host teamrig writes to so far.
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
 write. After that it runs on its own every 15 minutes while your sessions work.
@@ -63,10 +65,24 @@ and open or closed state still follow GitHub, its title and description stay as 
 teamrig reads issues through the GitHub CLI, [`gh`](https://cli.github.com). For each owner (the `acme` in
 `acme/web`) it uses:
 
-- **a read-only token saved for that owner**, when there is one: recommended, and needed when your repositories
-  belong to more than one owner;
+- **a token saved for that owner**, when there is one: recommended, and needed when your repositories belong to
+  more than one owner;
 - **else the `gh` login** (`gh auth login`), which works when that account can read the issues of every listed
   repository.
+
+A token is saved, but the credential store cannot read it (a locked keyring, for one): the command stops for that
+owner with a `FAILED` line naming the store and the fix, and never falls back to the `gh` login, which may reach
+more than the token was given. `teamrig gh sync` reads the other owners on.
+
+### What each command needs
+
+Give the token only what the commands you run need:
+
+| Command | Repository permissions |
+| --- | --- |
+| `teamrig gh sync` | **Issues: Read-only** |
+| `teamrig gh migrate` | **Issues: Read and write** |
+| `teamrig issue comment`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments and state are written through its issue) |
 
 ### Why one token per owner
 
@@ -82,9 +98,8 @@ Do this once per owner:
 2. **Token name**: anything, e.g. `teamrig read issues`. **Expiration**: 90 days is a fair balance.
 3. **Resource owner**: the owner of the repositories, e.g. `acme`.
 4. **Repository access**: **Only select repositories**, and pick the ones in `github.repos`.
-5. **Permissions → Repository permissions → Issues: Read-only**. GitHub adds **Metadata: Read-only** by itself.
-   Give it nothing else. Only for a `teamrig gh migrate` run give it **Issues: Read and write**, and set it back
-   to Read-only after.
+5. **Permissions → Repository permissions**: what [each command needs](#what-each-command-needs), for the sync
+   alone **Issues: Read-only**. GitHub adds **Metadata: Read-only** by itself. Give it nothing else.
 6. **Generate token** and copy it. GitHub shows it only once.
 
 For an organisation, an organisation owner may have to approve the token before it works; until then GitHub refuses
@@ -179,7 +194,32 @@ teamrig gh migrate rows.jsonl --yes               # opens the issues
   again: a task that holds its issue already is skipped, and so is a finished task or a repository not in
   `github.repos`.
 - **Write access, for this run only.** The token of each owner needs **Issues: Read and write**. Set it back to
-  Read-only once the issues are open; the sync needs nothing more.
+  Read-only once the issues are open, unless you comment on or close issues with it; the sync needs nothing more.
+
+## Commenting on and closing
+
+`teamrig issue comment` posts one comment on an issue or pull request, and `teamrig issue close` closes one, first
+posting its `--comment` when given; a pull request closes unmerged. Each names its target as `owner/name#number`:
+
+```sh
+teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."
+teamrig issue close acme/web#12 --comment "Merged as #14 with your commits credited. Thank you!"
+```
+
+```text
+ACCESS acme: writes with the token saved as teamrig-gh-acme
+COMMENTED acme/web#12
+CLOSED acme/web#12
+```
+
+- **Only the team's repositories.** A repository not in `github.repos` is refused before anything runs.
+- **Checked text.** An empty text, one past 65,536 characters, one that looks like it holds a secret, or one that
+  names a task id (`T12`: link issues by `#number`) is refused, and nothing is posted.
+- **Nothing half done.** When the comment fails, nothing is closed. When the close fails after the comment was
+  posted, the `FAILED` line says so: rerun `teamrig issue close` without `--comment`, so the comment is not posted
+  twice.
+- **Access.** The same token or `gh` login as the sync, which needs the [write permissions](#what-each-command-needs);
+  a `FAILED` line names the permission a token lacks. `TEAMRIG_GITHUB=off` writes nothing.
 
 ## Renewing a token
 
@@ -192,22 +232,23 @@ again.
 
 | The `FAILED` line says | What it means | Fix |
 | --- | --- | --- |
-| `the token saved as teamrig-gh-acme may not read the issues of acme/web` | The token sees the repository but has no Issues permission. | On GitHub, edit the token: **Issues: Read-only** (**Read and write** for `teamrig gh migrate`). |
+| `the token saved as teamrig-gh-acme may not read the issues of acme/web` | The token sees the repository but has no Issues permission. | On GitHub, edit the token: what [each command needs](#what-each-command-needs). |
 | `acme/web is not visible to the token saved as teamrig-gh-acme` | The repository is not one the token was given, or the name is wrong. | Check `github.repos`; on GitHub, add the repository to the token. |
 | `GitHub refused the token saved as teamrig-gh-acme (expired or revoked?)` | Expired, revoked or not yet approved by the organisation. | Regenerate it and save it again, or ask an organisation owner to approve it. |
 | `... is not visible to the gh login` / `the gh login may not read the issues` | No token is saved for that owner, and the `gh` account cannot read it. | Save a token for the owner (step 2). |
 | `gh is not logged in to GitHub` | No token for that owner and no `gh` login. | Save a token, or run `gh auth login`. |
 | `gh, the GitHub CLI, is not installed` | `gh` is missing. | Install it from [cli.github.com](https://cli.github.com). |
 
-`ACCESS acme: read with the gh login; could not read teamrig-gh-acme from ...` means the credential store itself
-could not be read (a locked keyring, for one); teamrig reads through the `gh` login meanwhile.
+| `could not read teamrig-gh-acme from ...` | The token is saved, but the credential store could not be read (a locked keyring, for one). Nothing ran for that owner: teamrig never uses the `gh` login in a saved token's place. | Unlock the store and rerun, or save the token again. |
 
 ## Safety
 
-- **Read-only sync.** The token can read issues and metadata and nothing else, and the sync runs only the two issue
-  queries it ships, word for word, through `gh api graphql` (any other `gh` command or query is refused in code).
-  The one write is `teamrig gh migrate`'s create of one issue (`gh api repos/<owner>/<name>/issues -X POST` with its
-  title, body and labels only), run by hand.
+- **Read-only sync.** The sync runs only the two issue queries it ships, word for word, through `gh api graphql`, so
+  a token with **Issues: Read-only** is all it needs. Any other `gh` command or query is refused in code, except
+  the three writes, each run by hand on a repository in `github.repos`: `teamrig gh migrate`'s create of one issue
+  (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
+  one comment (`.../issues/<number>/comments -X POST` with its body only) and `teamrig issue close`'s close
+  (`.../issues/<number> -X PATCH` with `state=closed` only).
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
   is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
   that one run.
