@@ -4,7 +4,7 @@ import { mock, test } from 'node:test';
 import type { Gh } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
-import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, ciProof, mainBranchOf, mergeCommand, mergeThroughPull, parseArgs, pullBody, runMerge, waitForChecks } from './merge.ts';
+import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, ciProof, mainBranchOf, mergeCommand, mergeThroughPull, parseArgs, pullBody, pullTitle, runMerge, waitForChecks } from './merge.ts';
 import { parseProfiles } from './repos.ts';
 
 const REPO = 'Owner/repo';
@@ -89,7 +89,7 @@ const request = (overrides: Partial<MergeRequest> = {}): MergeRequest => ({
   head: 'dev',
   base: 'main',
   sha: SHA,
-  title: 'Merge dev into main: 2 commit(s)',
+  title: 'cli: a (2 commits)',
   body: '- a\n- b',
   ...overrides,
 });
@@ -477,6 +477,21 @@ test('the command turns a usage or git error into one line and exit 1', async t 
   const merged = runFixture();
   assert.equal(await mergeCommand(['C:/repo', '--timeout-min', '5'], () => merged.deps), 0);
   assert.equal(merged.out.at(-1), 'MERGED #3 into main, now at main999');
+});
+
+test('the title is the first subject past the dist rebuild and version raise, with the count when there are more', () => {
+  assert.equal(pullTitle(['cli: a']), 'cli: a');
+  assert.equal(pullTitle(['build: rebuild the plugin dist', 'plugin: version 1.2.3, x', 'cli: a', 'docs: b']), 'cli: a (4 commits)');
+  assert.equal(pullTitle(['plugin: version 1.2.3, x', 'build: rebuild the plugin dist']), 'plugin: version 1.2.3, x (2 commits)');
+  assert.equal(pullTitle(['builder: a', 'cli: b']), 'builder: a (2 commits)');
+});
+
+test('the pull request it opens is titled from the commits, never the branch name', async () => {
+  const { deps, ghWrites } = runFixture({ subjects: 'cli: a\ndocs: b\nbuild: rebuild the plugin dist' });
+  assert.equal(await runMerge(ARGS, deps), 0);
+  const opened = ghWrites.find(args => args[1] === `repos/${REPO}/pulls`) ?? [];
+  assert.ok(opened.includes('title=cli: a (3 commits)'), opened.join(' '));
+  assert.ok(!opened.some(arg => arg.startsWith('title=') && arg.includes(BRANCH)));
 });
 
 test('the body lists the shipped commits, caps a long list, and ends with the attribution line', () => {

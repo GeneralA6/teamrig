@@ -223,6 +223,19 @@ export function parseArgs(argv: readonly string[]): MergeArgs {
   return parsed;
 }
 
+/** The areas of a change's bookkeeping commits, which say nothing of what it does. */
+const BOOKKEEPING_SUBJECT = /^(?:build|plugin):/;
+
+/**
+ * The PR title: the change's first subject that is not bookkeeping (a dist rebuild, a version raise), else its first,
+ * with the commit count when there are more. Not the branch name, which carries the author's local task id
+ * (`t<n>-…`) that means nothing to a reader on GitHub.
+ */
+export function pullTitle(subjects: readonly [string, ...string[]]): string {
+  const lead = subjects.find(subject => !BOOKKEEPING_SUBJECT.test(subject)) ?? subjects[0];
+  return subjects.length === 1 ? lead : `${lead} (${subjects.length} commits)`;
+}
+
 /** The PR body: the note when there is one, the commits it ships, then the attribution line. */
 export function pullBody(subjects: readonly string[], note: string | null = null, limit = 60): string {
   const shown = subjects.slice(0, limit).map(subject => `- ${subject}`);
@@ -266,8 +279,9 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
   git('fetch', '--quiet', 'origin', head, profile.main);
   const sha = git('rev-parse', `refs/heads/${head}`);
   if (git('rev-parse', `refs/remotes/origin/${head}`) !== sha) throw new Error(`${head} ${sha.slice(0, 7)} is not pushed: push it first`);
-  const subjects = git('log', '--reverse', '--format=%s', `refs/remotes/origin/${profile.main}..${sha}`).split('\n').filter(line => line !== '');
-  if (subjects.length === 0) throw new Error(`${head} has nothing that ${profile.main} lacks`);
+  const [first, ...rest] = git('log', '--reverse', '--format=%s', `refs/remotes/origin/${profile.main}..${sha}`).split('\n').filter(line => line !== '');
+  if (first === undefined) throw new Error(`${head} has nothing that ${profile.main} lacks`);
+  const subjects: [string, ...string[]] = [first, ...rest];
   const note = args.noteFile === null ? null : deps.gate.readText(args.noteFile);
   if (args.noteFile !== null && note === null) throw new Error(`--note-file ${args.noteFile}: no such file`);
   const callers = deps.renamedCallers(`refs/remotes/origin/${profile.main}`, sha, repo);
@@ -287,7 +301,7 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
       ? ciProof(gh, repo, profile.checks, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
       : localProof(args.dir, profile.local, deps.gate);
   const result = await mergeThroughPull(
-    { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },
+    { repo, head, base: profile.main, sha, title: pullTitle(subjects), body: pullBody(subjects, note) },
     gh,
     mainBranchOf(git, profile.main),
     proof,
