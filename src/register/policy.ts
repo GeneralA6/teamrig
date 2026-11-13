@@ -12,7 +12,7 @@ import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptC
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
 import { waitsOnOwner } from './owner-waits.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
@@ -1024,7 +1024,7 @@ export class RegisterPolicy {
       return refuse(pinned);
     }
     if (caller !== task.owner) {
-      const problem = this.leaderUpdateProblem(task, caller, names, changes.owner);
+      const problem = this.leaderUpdateProblem(task, caller, names, changes);
       if (problem !== undefined) {
         return refuse(problem);
       }
@@ -1098,20 +1098,23 @@ export class RegisterPolicy {
   /**
    * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
    * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS (the lead the LEFT_OWNER_LEAD_FIELDS on a
-   * task whose owner left the team), and a sub-lead hands a task only to itself or a session it leads, so work never
-   * leaves its group by a sub-lead's hand.
+   * task whose owner left the team, or when it points a task with no ref at an issue: gh migrate opens an issue for
+   * each task of the team and links it, while a ref an owner set stays the owner's), and a sub-lead hands a task only
+   * to itself or a session it leads, so work never leaves its group by a sub-lead's hand.
    */
-  private leaderUpdateProblem(task: Task, caller: string, names: readonly TaskFieldName[], owner: string | undefined): string | undefined {
+  private leaderUpdateProblem(task: Task, caller: string, names: readonly TaskFieldName[], changes: Partial<TaskFields>): string | undefined {
     const isLead = caller === this.tree.lead;
     if (!isLead && !this.tree.leads(caller, task.owner)) {
       return `only the owner (${task.owner}) or ${this.approversText(task.owner)} changes ${task.id}`;
     }
-    const allowed = isLead && !this.config.sessions.includes(task.owner) ? LEFT_OWNER_LEAD_FIELDS : LEAD_FIELDS;
+    const linksIssue = task.ref === null && changes.ref !== undefined && changes.ref !== null && changes.ref.startsWith(ISSUE_REF_PREFIX);
+    const allowed = isLead && (linksIssue || !this.config.sessions.includes(task.owner)) ? LEFT_OWNER_LEAD_FIELDS : LEAD_FIELDS;
     const notLead = names.filter((name) => !allowed.includes(name));
     if (notLead.length > 0) {
       return `a leader may change only ${allowed.join(', ')} on a task it does not own (asked: ${notLead.join(', ')})`;
     }
     const group = this.tree.groupOf(caller);
+    const { owner } = changes;
     if (!isLead && owner !== undefined && owner !== caller && !group.includes(owner)) {
       return `${caller} hands ${task.id} only to itself or a session it leads (${group.join(', ')}); the lead (${this.tree.lead}) moves work between groups`;
     }
