@@ -35,7 +35,9 @@ Flags:
 - `--priority p<n>`: required; `p1` keep the lights on, `p2` correctness, `p3` scale, `p4` this week's owner
   decisions, `p5` if budget allows (the defaults).
 - `--owner <session>`: who does it; default you. Another session gets an inbox line naming the task, and stderr
-  says so (`NOTE api has an inbox line: ...`).
+  says so (`NOTE api has an inbox line: ...`). A p0 also wakes the owner at its idle prompt, its team's wake check
+  reading the task from its register (on another team's too), and stderr says so: `NOTE api is woken at its idle
+  prompt for T1, a p0, so no --wake now is needed` (none while the owner's team has `wake.enabled` false).
 - `--source <session>|owner`: who asked; default you. `--source owner` marks an order from the human
   (`register.ownerSource`).
 - `--ref <where it was asked>`: a pointer to the ask, such as a file and line or an inbox date; at most 300
