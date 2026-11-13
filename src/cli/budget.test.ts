@@ -395,6 +395,13 @@ describe('teamrig budget', () => {
     assert.equal(lines[0], 'Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.');
     assert.deepEqual(lines.slice(1, 4), ['Today (UTC day):', '  session         W  calls', '  the team   25.00M      3']);
   });
+
+  it('ends the day view with the account\'s resets in stock, and leaves them out of a recount', async () => {
+    const resets = [{ kind: 'fable', count: 3, expiresUtc: '2030-03-01 08:00', usedUtc: ['2030-01-02 09:00'], note: 'from support' }];
+    const { run } = await world({ ...LIMITED, budget: { weeklyLimitW: 1_000_000_000, resets } });
+    assert.deepEqual(ok(await run(['budget'])).slice(-2), ['Resets in stock:', '  fable: 2 of 3 left, expire 2030-03-01 08:00 UTC (in 51 days) — from support']);
+    assert.ok(!ok(await run(['budget', '--day', '2030-01-07'])).includes('Resets in stock:'));
+  });
 });
 
 describe('teamrig budget lift', () => {
