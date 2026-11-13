@@ -57,4 +57,12 @@ describe('ci.yml', () => {
     assert.match(summary, /^ {10}GH_TOKEN: \$\{\{ github\.token \}\}$/m);
     assert.ok(summary.indexOf('run: exit 1') < summary.indexOf('every-check-cli.ts'), 'the needs check runs first, so a failed job fails the summary with no API call');
   });
+
+  it('stops every job after at most 20 minutes, so a hung test fails instead of holding the required check', () => {
+    for (const [id, job] of jobs) {
+      const minutes = /^ {4}timeout-minutes: (\d+)$/m.exec(job)?.[1];
+      assert.ok(minutes !== undefined, `job ${id} sets no timeout-minutes, so GitHub's 6-hour default holds it`);
+      assert.ok(Number(minutes) <= 20, `job ${id} waits ${minutes} minutes`);
+    }
+  });
 });

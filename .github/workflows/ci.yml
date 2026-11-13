@@ -17,11 +17,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job stops after 20 minutes (timeout-minutes), well past the slowest run, so a hung test fails its job
+# instead of holding the required check pending for GitHub's 6-hour default.
 jobs:
   gates:
     name: scrub and DCO gates
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -40,6 +43,7 @@ jobs:
     # Large-commit: <reason> line, the push guard's rule (see CONTRIBUTING.md).
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -56,6 +60,7 @@ jobs:
     # below the floors in tools/ci/coverage.json (see CONTRIBUTING.md).
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -73,6 +78,7 @@ jobs:
     # which Claude Code ignores (see CONTRIBUTING.md).
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -94,6 +100,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         node: [22, 24]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -125,6 +132,7 @@ jobs:
     if: ${{ always() && !github.event.repository.private }}
     needs: [gates, size-rule, coverage, plugin-version, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # actions: read lists this run's jobs; a job's permissions replace the workflow's, so contents: read is restated.
     permissions:
       actions: read
