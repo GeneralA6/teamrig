@@ -1475,12 +1475,17 @@ no new work items or helpers.
 Never skip a test or check to save budget. The lead can lift it.` A sub-lead's session reads `Your leader <name> can
 lift it.` instead, and the lead `As the lead, lift it only with a stop %.` A session with an open or in-progress p0 task
 reads `start no new work items or helpers, except your p0 work (T5): it goes on past the daily stop.`, and its
-leader's line says it goes on with that work past the stop.
+leader's line says it goes on with that work past the stop. An answer another session waits on is a blocker, so it
+goes on the same way: the session's own open or in-progress task that another owner's waiting task names
+(`task:<id>`), and another owner's waiting task that waits on its approval or decision (`approval:<id>`,
+`decision:<id>`). It reads `except the answers other sessions wait on you for (T9): they go on past the daily stop.`
+(both kinds together: `except your p0 work (T5) and the answers other sessions wait on you for (T9): they go on`).
+Waits are read from the session's own team register only.
 
 In quiet hours, `budget.quietHours.action` applies to helper launches as well (`ask` or `block`; `warn` only
 says the team rests), and the stronger of the two wins. Nothing else is ever held, so a fix in hand always
 finishes. The lead's own helpers, those of a session a leader lifted (`teamrig budget lift`, always with a
-stop %; a lift of its group does not count) and did not cut since, and those of a session with an open or in-progress p0 task always go
+stop %; a lift of its group does not count) and did not cut since, and those of a session with an open or in-progress p0 task or an answer another session waits on always go
 ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
 
 A burst ([teamrig burst start](commands.md#teamrig-burst-start)) comes the same way, once each. A session in it
