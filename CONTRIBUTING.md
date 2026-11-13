@@ -97,11 +97,11 @@ then the pane counts each line of the new format as one from a newer teamrig and
 (`scripts/sync-core.ts --formats`) fails while its copy trails `main`, so the pane cannot ship behind it.
 
 ## The local gate
-CI (`.github/workflows/ci.yml`) runs on each pull request and each push to `main`, but every job skips while the
-repository is private, where GitHub Actions minutes bill, so it checks only once the repository is public. Its
-`every check passed` job passes only when every other job did: the one check `main` requires (see
-[Pull requests](#pull-requests)). Whether CI runs or not, the `pre-push` hook that `npm ci` sets runs every check CI
-runs (`tools/ci/local.ts`; the list is `tools/ci/local-checks.ts`) on the commit being pushed:
+CI (`.github/workflows/ci.yml`) runs on each pull request and each push to `main` (every job would skip if the
+repository were made private again, where GitHub Actions minutes bill). Its `every check passed` job passes only when
+every other job did: the one check `main` requires (see [Pull requests](#pull-requests)). Before that, the
+`pre-push` hook that `npm ci` sets runs every check CI runs that can run here (`tools/ci/local.ts`; the list is
+`tools/ci/local-checks.ts`) on the commit being pushed:
 - It refuses a push to `main`, before any check: every change lands through a pull request. On GitHub,
   `.github/workflows/main-push-alert.yml` opens an issue when main changes outside a pull request anyway (from a
   clone without the hooks), so the owner hears of it; a commit made in GitHub's web editor raises none.
@@ -112,12 +112,12 @@ runs (`tools/ci/local.ts`; the list is `tools/ci/local-checks.ts`) on the commit
   session's own write of one (`hook pass-record-guard`).
 - It cannot be skipped: never push with `--no-verify`.
 
-It runs on one machine and one Node, so a failure that only another OS or Node version shows goes unseen until
-the repository is public.
+It runs on one machine and one Node, so a failure that only another OS or Node version shows waits for CI's test
+matrix.
 
 ## Branches and releases
 - Every change is its own branch off `main` and lands through a pull request once every check
-  passes on its head (the local gate until the repository is public); it is rebase-merged and the branch is deleted.
+  passes on its head (the local gate before the push, CI after it); it is rebase-merged and the branch is deleted.
 - Each commit is one logical change. The `size rule` (`tools/ci/size-rule-cli.ts`, run by the local gate, CI
   and `npm run check`) fails a commit over 400 changed non-test lines or 15 non-test files whose message has
   no `Large-commit: <reason>` line: the push guard's rule at its defaults, so a pull request meets it too.
@@ -130,7 +130,27 @@ the repository is public.
   fails a pull request that does not, and one that gives the marketplace entry a version of its own,
   which Claude Code ignores. How users update: [Updating the plugin](docs/how-it-works.md#updating-the-plugin).
 
+## Issues
+Each issue becomes a task teamrig tracks, so an issue carries the task's fields. Open one through a form: a blank issue
+is turned off.
+
+| Form | Its type label | Sections (all required unless marked) |
+| --- | --- | --- |
+| Bug report | `bug` | What happened, What was expected, Steps, Version (`teamrig --version`), OS |
+| Task | `task` | What, Why, Done when |
+| Feature request | `feature` | Problem, Proposal, Alternatives (optional) |
+
+- **Title**: `<area>: <a plain sentence>`, such as `budget: the week line counts a retired session`.
+- **Labels** are listed in `.github/labels.json`. The form sets the type. Maintainers and the GitHub watcher set
+  the priority (`p1` to `p3`), the area (`area:cli`, `area:hooks`, ...) and the state (`needs-format`,
+  `duplicate`, `teamrig`), which need triage rights.
+- **Security problems** go through a private advisory, never a public issue: the issue chooser links it.
+- `tools/ci/github-format.ts` lists each form's sections and the pull request template's, and
+  `tools/ci/github-format.test.ts` holds the forms, `labels.json` and the template to it.
+
 ## Pull requests
+- **The description**: the template asks for What, Why, Changes, Old-code proof (for a fix, the regression test that
+  fails on the old code), Tests and Issue (`Fixes #<n>` or `Refs #<n>`), then the checklist.
 - **From a fork**: fork the repository, branch off its `main`, and open the pull request against this repository's
   `main`. CI runs it with no secrets and a read-only token, and an outside contributor's run waits for the
   maintainer to approve it.

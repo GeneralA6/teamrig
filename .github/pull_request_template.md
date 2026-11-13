@@ -1,11 +1,20 @@
-## What and why
-<!-- One or two lines: the behaviour this changes and the reason. -->
+## What
+<!-- The behaviour this changes, in one or two plain lines. -->
 
-## Alternatives
-<!-- Only for a change that settles a design question: the options weighed and why this one won. Delete otherwise. -->
+## Why
+<!-- The reason: the bug it fixes or what it makes possible. -->
+
+## Changes
+<!-- The parts it touches, one line each. -->
+
+## Old-code proof
+<!-- A bug fix: the regression test that fails on the old code, and how you ran it there. Otherwise "none, not a fix". -->
 
 ## Tests
-<!-- Which tests prove it. For a bug fix: the regression test, and that it fails on the old code. -->
+<!-- Which tests prove it. -->
+
+## Issue
+<!-- Fixes #<n> when it finishes the issue, Refs #<n> when it is a step toward it. -->
 
 ## Checklist
 - [ ] Every behaviour change has a test; a bug fix has a regression test that fails before the fix.
