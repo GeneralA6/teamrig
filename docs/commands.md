@@ -369,7 +369,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   budget rollup [--from <day>] [--to <day>] [--apply] [--rewrite]
       the team's closed UTC days (from the day after the newest on disk, through yesterday) as a file a day of use
       by class and task; without --apply it only counts them; --rewrite also replaces a day that reads differently
-  burst                        the burst policy, the week's use, its projected surplus at the pace end,
+  schedule [--day <YYYY-MM-DD>]
+      the tree's day schedule for a UTC day (default today): each team's or session's day start, a day not
+      written repeating the last one before it; a team with no entry keeps its wake.dayStartUtc
+  schedule set --start <team[/session]=HH:MM|none,...> [--day <YYYY-MM-DD>]
+      (the root team's lead only) writes a day's starts (UTC; none: no start that day); each start wakes the
+      idle sessions it names once; refuses a past day, a name outside the tree and a start in quiet hours
+  burst                     the burst policy, the week's use, its projected surplus at the pace end,
       the burst in force and its hires; it only reads
   burst start surplus|deadline --reason "<why>" [--sessions <ids>] [--helpers <n>] [--hires <n>]
       [--stop-pct <pct>] [--by <HH:MM|date>] [--task <ids>] [--approved-by "<who>"] [--yes]

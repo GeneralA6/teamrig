@@ -643,7 +643,8 @@ export interface WakeConfig {
   /**
    * The day's start (`HH:MM` UTC, outside the budget's quiet hours): from then each session with work it can start,
    * of any priority, that has had no turn since gets one wake that day, and a burst wakes its sessions the same way
-   * once it starts. Unset: no day-start wake, and a burst wakes no one.
+   * once it starts. Unset: no day-start wake, and a burst wakes no one. The root lead's `teamrig schedule set` overrides
+   * it for a day, per team or session.
    */
   readonly dayStartUtc?: string;
 }

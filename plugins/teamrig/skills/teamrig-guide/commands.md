@@ -5571,6 +5571,56 @@ Week: 100.0% used at 14:05 IDT (status line); the pace line is at 81.2%: 18.8 po
 A caller who is not the lead, or an unknown week (no status line and no `budget.weeklyLimitW`), is `REFUSED`
 (exit 2).
 
+### teamrig schedule
+
+Shows the tree's day schedule for one UTC day: each team's or session's day start (`HH:MM` UTC, or `none`: no
+start that day). A day with no entry written repeats the last day written before it, marked `(repeats <day>)`; a
+team or session the schedule does not name keeps its team's `wake.dayStartUtc`. Any session of the tree can read it.
+
+- `--day <YYYY-MM-DD>`: the UTC day to show (default today).
+- `--session <id|name>`: the caller.
+
+Example:
+
+```sh
+teamrig schedule --day 2030-01-10
+```
+
+Output:
+
+```text
+SCHEDULE 2030-01-10 (UTC; a key not listed keeps its team's wake.dayStartUtc):
+  app 07:00 (repeats 2030-01-08)
+  web/front none (repeats 2030-01-08)
+```
+
+### teamrig schedule set
+
+The root team's lead writes a day's starts. At each start, the idle sessions it names (a whole team, or one session)
+get one wake, as `wake.dayStartUtc` gives; a session's own start wins over its team's. Starts written for a day
+replace those keys on that day and keep the others.
+
+- `--start <team[/session]=HH:MM|none,...>`: the starts, in UTC; a session by id or name.
+- `--day <YYYY-MM-DD>`: the UTC day (default today).
+- `--session <id|name>`: the caller.
+
+Example:
+
+```sh
+teamrig schedule set --day 2030-01-09 --start app=07:30,web/front=none
+```
+
+Output:
+
+```text
+SCHEDULED 2030-01-09 (UTC): app 07:30, web/front none
+  each start wakes its idle sessions once; later days repeat it until one is written (1 day(s) kept)
+```
+
+Refused (exit 2): a caller who is not the lead, a lead of a team under another one (the root's lead writes the whole
+tree's day), a past day, a team outside the tree or a session its team lacks, and a start inside its team's
+`budget.quietHours`. A start that is not `HH:MM` or `none` is a usage error.
+
 ### teamrig burst
 
 Shows the team's burst policy (`burst.policy`), the week's use, the team's share of the week projected unused at the

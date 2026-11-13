@@ -1146,7 +1146,9 @@ The day start: work already on an idle session's list wakes nothing, so a sessio
 With `wake.dayStartUtc` set (`HH:MM` UTC, outside the budget's quiet hours; unset by default), each session with
 work it can start, of any priority, and no turn since that time gets one wake that day, and a burst wakes each of
 its sessions once when the lead starts it. A session that had a turn since is left alone; quiet hours, a hold by
-its budget or nothing it can start delay the wake until they end. The prompt names the moment, the work and the
+its budget or nothing it can start delay the wake until they end. The root team's lead can move or skip a day's
+start per team or session with [teamrig schedule set](commands.md#teamrig-schedule-set); a team or session the
+schedule names takes its start over `wake.dayStartUtc`. The prompt names the moment, the work and the
 cost; the wake log marks it with `moments`.
 
 The day start and the Claude login, which every tab of the machine shares (the
