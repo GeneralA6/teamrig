@@ -622,6 +622,45 @@ describe('hook wake-check at the day start and a burst', () => {
   });
 });
 
+describe("hook wake-check at the day schedule's start (T2000)", () => {
+  const DAY_START = { ...TEAM, wake: { dayStartUtc: '06:00' } };
+  const SCHEDULE = join(TEAM_HOME, 'state', 'day-schedule.json');
+  const waitTill = (recheckAt: number | null) => ({ kind: 'wait', watch: watchOf(), recheckAt });
+
+  function schedule(kit: CliHarness, days: Readonly<Record<string, Readonly<Record<string, string>>>>): Promise<void> {
+    return kit.files.write(SCHEDULE, `${JSON.stringify({ v: 1, days })}\n`);
+  }
+
+  it("wakes no one on a day the schedule gives the team none, over the team's configured start, and wakes at the next scheduled start", async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    await schedule(kit, { '2030-01-08': { app: 'none' }, '2030-01-09': { app: '07:00' } });
+    await hand(kit, 'Tidy the docs', 'p3');
+    const tomorrowSeven = Date.parse('2030-01-09T07:00:00.000Z');
+    assert.deepEqual(answerOf(await check(kit)), waitTill(tomorrowSeven));
+    assert.deepEqual(await logLines(kit), []);
+    kit.clock.advance(tomorrowSeven - kit.clock.now());
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
+  });
+
+  it('waits for a start the schedule sets later today, then wakes the session once', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    await schedule(kit, { '2030-01-08': { app: '12:00' } });
+    await hand(kit, 'Tidy the docs', 'p3');
+    const noon = Date.parse('2030-01-08T12:00:00.000Z');
+    assert.deepEqual(answerOf(await check(kit)), waitTill(noon));
+    kit.clock.advance(noon - kit.clock.now());
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
+    assert.deepEqual(answerOf(await check(kit)), waitTill(Date.parse('2030-01-09T12:00:00.000Z')), 'the day repeats until the next written one');
+  });
+
+  it("takes the session's own start over its team's, for a team with no configured day start too", async () => {
+    const kit = await teamWithAlphaTab(TEAM);
+    await schedule(kit, { '2030-01-08': { app: '12:00', 'app/alpha': '08:00' } });
+    await hand(kit, 'Tidy the docs', 'p3');
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
+  });
+});
+
 describe('hook wake-check runs the idle pass', () => {
   const STATE = join(TEAM_HOME, 'state');
   const PASS_LOG = join(STATE, 'idle-pass.jsonl');
