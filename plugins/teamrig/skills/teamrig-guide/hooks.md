@@ -644,10 +644,11 @@ writes:
 ```
 
 The guard reads the code a line hands over: its arguments, the files they name (from the folder the call runs in), a
-here-document, a file redirected in, and what `echo`, `printf`, `Write-Output` or a `cat` or `Get-Content` of a file
-pipes to it. The line a container or a host runs (`kubectl exec ... --`, `docker exec`, `podman exec`, `ssh host
-'...'`) is read as a line of its own, with what the host pipes or redirects into it, and the reason says it runs
-there. The reason names each write and the step to show first:
+here-document, a file redirected in, what `echo`, `printf`, `Write-Output` (`write`) or a `cat` or `Get-Content` of a
+file pipes to it, and the string or here-string a PowerShell statement opens with (`'DEL k' | kvcli`). The line a
+container or a host runs (`kubectl exec ... --`, `docker exec`, `podman exec`, `ssh host '...'`) is read as a line of
+its own, with what the host pipes or redirects into it, and the reason says it runs there. The reason names each
+write and the step to show first:
 
 ```text
 teamrig db-write guard: this line writes to a database by hand: docsh runs deleteMany. First run a count or find of what it would change, show the owner the counts or a preview, and run the write only with the owner's OK. [dbWriteGuard.writes]
@@ -660,13 +661,15 @@ team's projects the guard does nothing; under `prompts.hookAsks: refuse` the que
 question: Claude Code ranks the guard's `ask` over its `allow`. The guard reads only the line and the files it names,
 so it cannot see, and lets through:
 
-- code built or chosen when the line runs (`docsh --eval "$CODE"`, `node $(ls scripts/*.js)`), a file it cannot
+- code built or chosen when the line runs (`docsh --eval "$CODE"`, `node $(ls scripts/*.js)`), a variable or a .NET
+  call piped in (`$code | kvcli`, `[IO.File]::ReadAllText('fix.js') | docsh`), a file it cannot
   read, what follows a file's first MiB, a file on a network share (`//host/share/fix.sql`) or anything that is no
   regular file (a pipe, a device), and a file on the far side of a container or host (`ssh host 'psql -f fix.sql'`);
 - a script that writes through a client it gets from another module of its own (`import { db } from './db.ts'`): a
   team names such a script as an entrypoint;
 - a database tool that is no built-in client and not in `programs` (an import or restore tool, a migration command),
-  and Node code through a client module not in `nodeClients`;
+  Node code through a client module not in `nodeClients`, and code another runtime runs (`bun`, `deno`);
+- any script whose path ends as an entrypoint's `path` does, wherever it sits on disk: its apply flags alone decide;
 - the line `npx -c '<line>'` or `--call` hands npm, which runs it in its script shell (cmd on Windows), the SQL file
   `sqlite3` reads through `-init <file>` or a `.read <file>` command, and what a line pipes into a group or subshell
   past its first command (`echo 'db.a.drop()' | (cd db && docsh)` hands docsh nothing the guard reads).
