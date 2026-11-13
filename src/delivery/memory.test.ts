@@ -264,6 +264,14 @@ describe('parseHolders (T2209)', () => {
     ]);
   });
 
+  it("reads a Linux `ps` command line by its first word's last part, whatever the main thread is named", () => {
+    const text = '  204800 node -e setTimeout(()=>{},4000)\n 102400 /usr/bin/node /srv/app/main.js --port 1\n  51200 [kworker/0:1]\n';
+    assert.deepEqual(parseHolders(text, 1024, 'commandLine'), [
+      { name: 'node', mb: 300, processes: 2 },
+      { name: '[kworker/0:1]', mb: 50, processes: 1 },
+    ]);
+  });
+
   it('leaves out a line with no number or no name, and orders equal holders by name', () => {
     const text = [`${10 * MB},beta`, 'junk', `,nameless`, `${10 * MB}`, `${10 * MB},alpha`, `${99 * MB}`].join('\n');
     assert.deepEqual(parseHolders(text, 1), [
