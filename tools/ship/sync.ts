@@ -65,6 +65,13 @@ export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
     for (const file of files) deps.writeText(file.path, withVersion(deps.readText(file.path), file, set));
   };
   git('checkout', '--', ...files.map((file) => file.path));
+  // The build writes these again after the sync, and a rerun has them uncommitted (rerun.ts takes back the dist
+  // commit): carried over a main that rebuilt them too, they would conflict for nothing.
+  for (const folder of options.generated) {
+    git('reset', '--quiet', '--', folder);
+    if (git('ls-files', '--', folder) !== '') git('checkout', '--', folder);
+    git('clean', '-fdq', '--', folder);
+  }
   const head = git('rev-parse', 'HEAD');
   const saved = git('status', '--porcelain', '--untracked-files=no') === '' ? null : setAside(deps);
   const restore = (reason: string): never => {

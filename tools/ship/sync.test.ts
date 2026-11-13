@@ -53,6 +53,10 @@ function sceneDeps(scene: Scene): { deps: SyncDeps; calls: string[]; files: Map<
       files.set(KIT_PATH, kitVersion(committedVersion));
       return '';
     },
+    'reset --quiet -- plugins/teamrig/dist': '',
+    'ls-files -- plugins/teamrig/dist': 'plugins/teamrig/dist/teamrig.js',
+    'checkout -- plugins/teamrig/dist': '',
+    'clean -fdq -- plugins/teamrig/dist': '',
     'rev-parse HEAD': HEAD,
     'status --porcelain --untracked-files=no': ' M docs/guide.md',
     'stash create ship.ts: the plan, set aside for the rebase onto main': SAVED,
@@ -198,6 +202,19 @@ test('when even putting the plan back fails, the refusal names the commit that h
   assert.throws(() => syncToMain(deps, OPTIONS), new RegExp(`; putting the plan back failed too: git stash apply ${SAVED} restores it$`));
 });
 
+test('the rebuilt dist is dropped before the rebase, staged and new files too: the build writes it again (T2696)', () => {
+  const { deps, calls } = sceneDeps({});
+  syncToMain(deps, OPTIONS);
+  const dist = ['reset --quiet -- plugins/teamrig/dist', 'ls-files -- plugins/teamrig/dist', 'checkout -- plugins/teamrig/dist', 'clean -fdq -- plugins/teamrig/dist'];
+  const at = calls.indexOf(dist[0] ?? '');
+  assert.deepEqual(calls.slice(at, at + dist.length), dist);
+  assert.ok(at < calls.findIndex((call) => call.startsWith('stash create')));
+
+  const untracked = sceneDeps({ answers: { 'ls-files -- plugins/teamrig/dist': '' } });
+  syncToMain(untracked.deps, OPTIONS);
+  assert.ok(!untracked.calls.includes('checkout -- plugins/teamrig/dist'), 'a folder git tracks nothing in is not checked out');
+});
+
 /**
  * A real clone: main holds the version files, a guide and a built dist; the branch `change` adds src/a.ts; then main
  * moves, changing the guide and the dist. origin is the repo itself, so `fetch origin main` reads its own main.
@@ -248,6 +265,18 @@ describe('on a real clone', () => {
     assert.equal(clone.repo.git('rev-parse', '--abbrev-ref', 'HEAD').trim(), 'change');
     assert.equal(readFileSync(join(clone.repo.dir, 'docs/guide.md'), 'utf8'), 'mine\n');
     assert.equal(readFileSync(join(clone.repo.dir, JSON_PATH), 'utf8'), pluginJson('0.88.1'));
+  });
+
+  it('a plan clear of the moved main is rebased onto it with no stash entry, and the rebuilt dist does not conflict (T2696)', () => {
+    const clone = movedClone();
+    repo = clone.repo;
+    clone.repo.write('docs/other.md', 'mine\n');
+    clone.repo.git('add', 'docs/other.md');
+    assert.deepEqual(syncToMain(clone.deps, OPTIONS), { kind: 'rebased', onto: clone.repo.git('rev-parse', 'main').trim(), sets: '0.88.1' });
+    assert.equal(clone.repo.git('stash', 'list'), '');
+    assert.equal(readFileSync(join(clone.repo.dir, 'docs/other.md'), 'utf8'), 'mine\n');
+    assert.equal(readFileSync(join(clone.repo.dir, 'plugins/teamrig/dist/teamrig.js'), 'utf8'), 'b\n', "main's dist, which the build then writes again");
+    assert.equal(clone.repo.has('plugins/teamrig/dist/new.js'), false);
   });
 });
 
