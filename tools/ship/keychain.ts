@@ -75,9 +75,18 @@ export function readCredential(target: string, powershell: PowerShell): Credenti
   return { kind: 'found', secret };
 }
 
-/** -EncodedCommand takes UTF-16LE base64, so the script needs no quoting through the command line. */
-export const windowsPowerShell: PowerShell = script => {
-  const encoded = Buffer.from(script, 'utf16le').toString('base64');
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { encoding: 'utf8', windowsHide: true });
+/** Runs a program to its end; injected so a spec checks PowerShell's command line on any host. */
+export type RunProgram = (file: string, args: readonly string[]) => Spawned;
+
+/** Runs `file` with no window; a program that cannot start has a null status and no output. */
+export const runProgram: RunProgram = (file, args) => {
+  const result = spawnSync(file, args, { encoding: 'utf8', windowsHide: true });
   return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 };
+
+/** -EncodedCommand takes UTF-16LE base64, so the script needs no quoting through the command line. */
+export function encodedPowerShell(run: RunProgram): PowerShell {
+  return script => run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]);
+}
+
+export const windowsPowerShell: PowerShell = encodedPowerShell(runProgram);
