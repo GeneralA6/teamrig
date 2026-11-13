@@ -1120,12 +1120,13 @@ export class RegisterPolicy {
 
   /**
    * A task for a GitHub issue. The import keys its tasks on their ref, so a second one for the same issue is
-   * refused; a team task that cites the issue in its ref stays the team's. Two issues may share a title, so
-   * the duplicate-title rule does not apply.
+   * refused, and so is one for an issue a team task already links to in its ref (an issue the team opened for
+   * its own task, gh migrate): that task tracks it. Two issues may share a title, so the duplicate-title rule
+   * does not apply.
    */
   importAdd(input: ImportInput, state: RegisterState): Verdict<TaskFields> {
     const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
-    const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
+    const holder = [...state.tasks.values()].find((task) => task.ref === input.ref);
     if (holder !== undefined) {
       return refuse(`${holder.id} already has ref ${input.ref}`);
     }

@@ -4,7 +4,7 @@ import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import type { GithubIssue, LabelEvent } from './issues.ts';
 import { importRules, type ImportRules } from './map.ts';
-import { closedNote, importedTasks, latestIssues, planSync } from './plan.ts';
+import { closedNote, importedTasks, latestIssues, linkedRefs, planSync } from './plan.ts';
 
 const RULES: ImportRules = importRules(testConfig({ github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } }));
 
@@ -56,6 +56,19 @@ describe('importedTasks', () => {
   });
 });
 
+describe('linkedRefs', () => {
+  it('collects the issue refs of the team tasks, whatever their status, and no import task or other ref', () => {
+    const tasks = [
+      imported('T1', 1),
+      testTask({ id: 'T2', ref: 'gh:acme/web#2' }),
+      testTask({ id: 'T3', ref: 'gh:acme/web#3', status: 'done' }),
+      testTask({ id: 'T4', ref: 'https://example.test/design' }),
+      testTask({ id: 'T5', ref: null }),
+    ];
+    assert.deepEqual([...linkedRefs(tasks)], ['gh:acme/web#2', 'gh:acme/web#3']);
+  });
+});
+
 describe('planSync', () => {
   it('adds an open issue with no task, and never a closed one', () => {
     const plan = planSync([issue(7, { labels: ['p1'], assignees: ['octocat'] }), issue(8, { state: 'closed' })], new Map(), RULES);
@@ -66,6 +79,11 @@ describe('planSync', () => {
       unchanged: 0,
       leftOut: [],
     });
+  });
+
+  it('writes nothing for an issue a team task links to, open or closed, and counts it as known', () => {
+    const linked = new Set(['gh:acme/web#7', 'gh:acme/web#8']);
+    assert.deepEqual(planSync([issue(7, { labels: ['p1'] }), issue(8, { state: 'closed' })], new Map(), RULES, linked), { steps: [], inserted: 0, changed: 0, unchanged: 2, leftOut: [] });
   });
 
   it('writes nothing for an issue its task already matches, whatever the team did with it', () => {

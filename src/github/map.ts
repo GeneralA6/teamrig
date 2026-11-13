@@ -60,9 +60,12 @@ export function importRules(config: KitConfig): ImportRules {
   };
 }
 
+/** What every issue ref starts with. */
+export const ISSUE_REF_PREFIX = 'gh:';
+
 /** The ref of an issue's task: one per issue, whatever its title or state. */
 export function issueRef(repo: string, number: number): string {
-  return `gh:${repo}#${number}`;
+  return `${ISSUE_REF_PREFIX}${repo}#${number}`;
 }
 
 export function issueTask(issue: GithubIssue, rules: ImportRules): IssueTask {

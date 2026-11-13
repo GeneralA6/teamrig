@@ -3,7 +3,7 @@ import { ACTIVE_STATUSES } from '../register/model.ts';
 import { GITHUB_SOURCE } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
 import type { GithubIssue } from './issues.ts';
-import { issueTask, type ImportRules, type IssueTask } from './map.ts';
+import { ISSUE_REF_PREFIX, issueTask, type ImportRules, type IssueTask } from './map.ts';
 import { issueTrust } from './trust.ts';
 
 /** How GitHub closed an issue, in the note the sync writes; any other reason is left out. */
@@ -49,7 +49,23 @@ export function importedTasks(tasks: Iterable<Task>): Map<string, Task> {
 }
 
 /**
- * The writes that bring the register in step with a repository's issues. An open issue with no task is
+ * The refs of the team's own tasks that point at an issue: each issue the team opened for one of its tasks (gh
+ * migrate) is tracked by that task, so the import must not add a second task for it. Its text, owner and status
+ * stay the team's: the issue holds the public wording, the task the team's own.
+ */
+export function linkedRefs(tasks: Iterable<Task>): Set<string> {
+  const refs = new Set<string>();
+  for (const task of tasks) {
+    if (task.source !== GITHUB_SOURCE && task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX)) {
+      refs.add(task.ref);
+    }
+  }
+  return refs;
+}
+
+/**
+ * The writes that bring the register in step with a repository's issues. An issue a team task links to
+ * (`linked`, from linkedRefs) is that task's: nothing is written for it. An open issue with no task is
  * added when it is trusted or accepted (trust.ts), else left out by its number; a closed one with no task is
  * not, as there is nothing left to do. On a task the import added, only the title, the description, the
  * priority and whether it is open follow GitHub: any active status stands for an open issue, and its owner,
@@ -57,8 +73,8 @@ export function importedTasks(tasks: Iterable<Task>): Map<string, Task> {
  * accepted, so an outsider's edit after the accept stays on GitHub until someone accepts the issue again;
  * the task keeps the text of the last accept, and stays when its issue stops qualifying.
  */
-export function planSync(issues: readonly GithubIssue[], imported: ReadonlyMap<string, Task>, rules: ImportRules): SyncPlan {
-  const perIssue = issues.map((issue) => issueSteps(issue, imported, rules));
+export function planSync(issues: readonly GithubIssue[], imported: ReadonlyMap<string, Task>, rules: ImportRules, linked: ReadonlySet<string> = new Set()): SyncPlan {
+  const perIssue = issues.map((issue) => issueSteps(issue, imported, rules, linked));
   const count = (known: boolean, writes: boolean): number => perIssue.filter((one) => one.known === known && (one.steps.length > 0) === writes).length;
   return {
     steps: perIssue.flatMap((one) => one.steps),
@@ -76,10 +92,13 @@ interface IssueSteps {
   readonly leftOut?: number;
 }
 
-function issueSteps(issue: GithubIssue, imported: ReadonlyMap<string, Task>, rules: ImportRules): IssueSteps {
+function issueSteps(issue: GithubIssue, imported: ReadonlyMap<string, Task>, rules: ImportRules, linked: ReadonlySet<string>): IssueSteps {
   const wanted = issueTask(issue, rules);
   const task = imported.get(wanted.ref);
   const followsText = issueTrust(issue, rules.acceptLabel) !== 'untrusted';
+  if (task === undefined && linked.has(wanted.ref)) {
+    return { known: true, steps: [] };
+  }
   if (task === undefined) {
     if (wanted.outcome !== 'open') {
       return { known: false, steps: [] };

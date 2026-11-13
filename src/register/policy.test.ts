@@ -1252,13 +1252,18 @@ describe('RegisterPolicy, the GitHub import', () => {
   const URL = 'https://github.com/acme/web/issues/7';
 
   it('adds a task sourced github, keyed by its ref, even under a title the team already tracks', () => {
-    const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#7' });
+    const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#8' });
     assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
       ok: true,
       value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
     });
     assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
     assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');
+  });
+
+  it('refuses a task for an issue a team task links to: that task tracks it', () => {
+    const linked = testTask({ id: 'T5', title: 'Login fails', ref: 'gh:acme/web#7' });
+    assert.equal(error(policy.importAdd(ISSUE, stateOf(linked))), 'T5 already has ref gh:acme/web#7');
   });
 
   it('keeps the github source for the import: a session can neither add nor move a task to it', () => {

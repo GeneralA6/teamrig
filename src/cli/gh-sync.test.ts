@@ -153,13 +153,13 @@ describe('teamrig gh sync', () => {
     assert.ok(!(kit.files.get(EVENTS_PATH) ?? '').includes('hunter2'));
   });
 
-  it('leaves a task the team added alone, even one that cites the issue', async () => {
+  it('adds no second task for an issue a team task links to, and leaves that task alone', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const added = await kit.run(['add', '--title', 'Fix login', '--description', 'what and why', '--priority', 'p1', '--ref', 'gh:acme/web#7'], AS_BRAVO);
     assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
     await expectRun(kit, ['gh', 'sync', '--yes'], twoIssues(), EXIT.ok);
     const { tasks } = register(kit);
-    assert.deepEqual([tasks.get('T1')?.source, tasks.get('T1')?.status, tasks.get('T2')?.source, tasks.get('T2')?.ref], ['bravo', 'open', 'github', 'gh:acme/web#7']);
+    assert.deepEqual([...tasks.values()].filter((task) => task.ref === 'gh:acme/web#7').map((task) => [task.id, task.source, task.status, task.title]), [['T1', 'bravo', 'open', 'Fix login']]);
   });
 
   it('reads nothing when the machine or the team has it off', async () => {

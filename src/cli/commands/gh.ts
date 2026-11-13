@@ -1,7 +1,7 @@
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
 import { importRules } from '../../github/map.ts';
-import { importedTasks, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
+import { importedTasks, linkedRefs, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
 import { applySteps, closedSince, readRepo, type StepOutcome } from '../../github/sync.ts';
 import { RepoTokens, type RepoAccess } from '../../github/tokens.ts';
 import { priorityText } from '../../register/model.ts';
@@ -75,7 +75,8 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
       continue;
     }
     read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
-    const plan = planSync(read.issues, importedTasks((await register.snapshot()).state.tasks.values()), rules);
+    const tasks = [...(await register.snapshot()).state.tasks.values()];
+    const plan = planSync(read.issues, importedTasks(tasks), rules, linkedRefs(tasks));
     leftOut.set(repo, plan.leftOut);
     const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
     if (!write) {
