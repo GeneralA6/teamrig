@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import { testTask } from '../testing/task.ts';
-import { classOf, goalChain, rankOf, servedGoalOf, type RankedGoal } from './focus.ts';
+import { classOf, goalChain, prepStanding, rankOf, servedGoalOf, type RankedGoal, type SlicedGoal } from './focus.ts';
 
 describe('classOf (T2076)', () => {
   it("reads a task's own class, and one with none as the team's default class", () => {
@@ -92,5 +92,34 @@ describe('rankOf (T2083)', () => {
     assert.deepEqual(servedGoalOf(testTask({ goals: ['A1.1.1'] }), goals), { tag: 'A1', rank: 2 });
     assert.deepEqual(servedGoalOf(testTask({ goals: ['A1.1', 'B1', 'C1.1'] }), goals), { tag: 'B1', rank: 1 });
     assert.equal(servedGoalOf(testTask({ goals: ['C1'] }), goals), null);
+  });
+});
+
+describe('prepStanding (T2453)', () => {
+  const goal = (parent: string | null, rank: number | null, slice: number | null): SlicedGoal => ({ parent, rank, slice });
+  const goals: ReadonlyMap<string, SlicedGoal> = new Map([
+    ['A1', goal(null, 1, 2)],
+    ['A1.1', goal('A1', null, 3)],
+    ['B1', goal(null, null, 2)],
+    ['C1', goal(null, 2, null)],
+  ]);
+  const standing = (tag: string, slice: number): ReturnType<typeof prepStanding> => prepStanding(testTask({ prepares: { goal: tag, slice } }), goals);
+
+  it("is near for the ranked goal's open slice or the next one, a rank up the parent chain counting", () => {
+    assert.equal(standing('A1', 2), 'near');
+    assert.equal(standing('A1', 3), 'near');
+    assert.equal(standing('A1.1', 4), 'near', 'its own slice, its parent rank');
+  });
+
+  it('lapses for a slice past the next or one already shipped, an unranked goal, a goal with no slice open or one gone', () => {
+    assert.equal(standing('A1', 5), 'lapsed');
+    assert.equal(standing('A1', 1), 'lapsed');
+    assert.equal(standing('B1', 2), 'lapsed', 'unranked');
+    assert.equal(standing('C1', 1), 'lapsed', 'no slice open');
+    assert.equal(standing('Z9', 1), 'lapsed', 'no such goal');
+  });
+
+  it('is null for a task with no marker', () => {
+    assert.equal(prepStanding(testTask(), goals), null);
   });
 });

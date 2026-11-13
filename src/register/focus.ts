@@ -54,3 +54,27 @@ export function servedGoalOf(task: Pick<TaskFields, 'goals'>, goals: ReadonlyMap
 export function rankOf(task: Pick<TaskFields, 'goals'>, goals: ReadonlyMap<string, RankedGoal>): number | null {
   return servedGoalOf(task, goals)?.rank ?? null;
 }
+
+/** What prepStanding reads of a goal: its rank chain and its open slice. */
+export type SlicedGoal = RankedGoal & Pick<Goal, 'slice'>;
+
+/**
+ * Where a task's prep marker stands (T2453): `near` while the goal it prepares is ranked (itself or up its parent
+ * chain, as servedGoalOf reads it), has a slice open, and the marked slice is that one or the next; then the task, a
+ * design, study or prep plan, runs outside the slice cap. `lapsed` otherwise: the goal moved past the slice, opened
+ * none, lost its rank or is gone, and the task gets the treatment of any other. Null for a task with no marker. Pure,
+ * so the CLI and the pane read a marker the same way.
+ */
+export function prepStanding(task: Pick<TaskFields, 'prepares'>, goals: ReadonlyMap<string, SlicedGoal>): PrepStanding | null {
+  const { prepares } = task;
+  if (prepares === null) {
+    return null;
+  }
+  const open = goals.get(prepares.goal)?.slice ?? null;
+  const ranked = servedGoalOf({ goals: [prepares.goal] }, goals) !== null;
+  const near = ranked && open !== null && (prepares.slice === open || prepares.slice === open + 1);
+  return near ? 'near' : 'lapsed';
+}
+
+/** A marked task's standing: `near`, outside the slice cap, or `lapsed`, treated as any other. */
+export type PrepStanding = 'near' | 'lapsed';
