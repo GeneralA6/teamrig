@@ -4,7 +4,7 @@ import { mock, test } from 'node:test';
 import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
-import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, ciProof, mainBranchOf, mergeCommand, mergeThroughPull, parseArgs, pullBody, runMerge, waitForChecks } from './merge.ts';
+import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, ciProof, mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, runMerge, waitForChecks } from './merge.ts';
 import { parseProfiles } from './repos.ts';
 
 const REPO = 'Owner/repo';
@@ -261,20 +261,31 @@ test('a merge GitHub refuses (not mergeable, head moved) is reported, not thrown
 
 const STALE = 'main moved to moved00, which dev abc1234 does not contain: rebase dev onto origin/main, push it and run merge again';
 
-test('refuses a branch main moved past before opening a pull request or reading a check', async () => {
+test('a branch main moved past comes back as moved, with main\'s tip, before opening a pull request or reading a check', async () => {
   const { gh } = fakeGitHub({ rounds: [green] });
   const result = await mergeOnCi(gh, fakeMain({ tips: [MOVED] }), () => undefined);
-  assert.deepEqual(result.kind === 'refused' ? [result.pull, result.reason] : result, [null, STALE]);
+  assert.deepEqual(result.kind === 'moved' ? [result.pull, result.tip, result.reason] : result, [null, MOVED, STALE]);
   assert.equal(gh.mock.callCount(), 0);
 });
 
-test('refuses without merging when main moves while the checks run', async () => {
+test('a main that moves while the checks run comes back as moved, without merging', async () => {
   const { gh, writes } = fakeGitHub({ rounds: [green] });
   const main = fakeMain({ tips: [BASE, MOVED] });
   const result = await mergeOnCi(gh, main, () => undefined);
-  assert.deepEqual(result.kind === 'refused' ? [result.pull?.number, result.reason] : result, [3, STALE]);
+  assert.deepEqual(result.kind === 'moved' ? [result.pull?.number, result.tip, result.reason] : result, [3, MOVED, STALE]);
   assert.ok(!writes.some(args => args[1]?.endsWith('/merge')));
   assert.deepEqual(main.reads, [BASE, MOVED]);
+});
+
+test("GitHub's 405 for a base branch modified as it merged reads main and comes back as moved (T2696)", async () => {
+  const merge = new Error('gh api repos/Owner/repo/pulls/3/merge: HTTP 405: Base branch was modified. Review and try the merge again.');
+  const main = fakeMain({ tips: [BASE, BASE, MOVED] });
+  const result = await mergeOnCi(fakeGitHub({ rounds: [green], merge }).gh, main, () => undefined);
+  assert.deepEqual(result.kind === 'moved' ? [result.pull?.number, result.tip, result.reason] : result, [3, MOVED, STALE]);
+  assert.deepEqual(main.reads, [BASE, BASE, MOVED]);
+
+  const still = await mergeOnCi(fakeGitHub({ rounds: [green], merge }).gh, fakeMain(), () => undefined);
+  assert.equal(still.kind === 'refused' ? still.reason : still, `GitHub refused the merge: ${merge.message}`, 'a 405 with main still in the head stays a refusal');
 });
 
 test('reads main before opening, again right before merging, and once more to confirm the merged tree is the checked one', async () => {
@@ -566,6 +577,27 @@ test('the command turns a usage or git error into one line and exit 1', async t 
   const merged = runFixture();
   assert.equal(await mergeCommand(['C:/repo', '--timeout-min', '5'], () => merged.deps), 0);
   assert.equal(merged.out.at(-1), 'MERGED #3 into main, now at main999');
+});
+
+test("a ship's merge gets a move of main back unsaid, with main's tip; every other end is said and has its code (T2696)", async () => {
+  const stale = runFixture({ mainTip: MOVED });
+  assert.deepEqual(await mergeBranch(['C:/repo', '--head', BRANCH], () => stale.deps), {
+    kind: 'moved',
+    tip: MOVED,
+    reason: `main moved to moved00, which ${BRANCH} abc1234 does not contain: rebase ${BRANCH} onto origin/main, push it and run merge again`,
+  });
+  assert.deepEqual([stale.out, stale.err], [[], []]);
+  assert.equal(stale.sweep.mock.callCount(), 0);
+
+  const merged = runFixture();
+  assert.deepEqual(await mergeBranch(['C:/repo', '--head', BRANCH], () => merged.deps), { kind: 'done', code: 0 });
+  assert.equal(merged.out.at(-1), 'MERGED #3 into main, now at main999');
+  const refused = runFixture({ rounds: [[['gates', 'completed', 'failure'], ['test', 'completed', 'success']]] });
+  assert.deepEqual(await mergeRun(ARGS, refused.deps), { kind: 'done', code: 1 });
+  assert.deepEqual(refused.err, ['REFUSED failed: gates (failure)']);
+  const broken = runFixture({ pushedSha: 'other' });
+  assert.deepEqual(await mergeBranch(['C:/repo', '--head', BRANCH], () => broken.deps), { kind: 'done', code: 1 });
+  assert.deepEqual(broken.err, [`${BRANCH} abc1234 is not pushed: push it first`]);
 });
 
 test('the body lists the shipped commits, caps a long list, and ends with the attribution line', () => {
