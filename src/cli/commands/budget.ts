@@ -72,7 +72,8 @@ import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } fr
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
-import { statusLineMeetingFor, type LoadedTeam } from '../statusline-meeting.ts';
+import type { LoadedTeam } from '../root-team.ts';
+import { statusLineMeetingFor } from '../statusline-meeting.ts';
 import type { StatusLineMeeting } from '../../meeting/status-line.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { peerUsageOf, type PeerUsage } from '../stored-week.ts';
