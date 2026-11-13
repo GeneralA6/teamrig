@@ -165,6 +165,11 @@ Flags:
   owner's to decide, so while cards are required (`register.requireDecisionCard`) such a wait is refused without
   one: any other question is yours or your leader's (decide it, or `--waits decision:<leader>`). `check` flags one
   an older row holds (`UNGATED`); once no wait is on the owner's decision, the part is dropped.
+- `--affects "<the approved number it changes, the money it spends or the data it writes>"`: allowed only with a
+  wait on the owner's decision or approval. A test, measure or proof of approved work (a back-test, trial, dry run,
+  benchmark) is approved with that work, so while cards are required (`register.requireDecisionCard`) a card whose
+  question asks about one is refused without it: go ahead instead, and tell your leader. `check` flags one an older
+  row holds (`OWNER-PROOF`); once no wait is on the owner, the part is dropped.
 - `--run <path>`: allowed only with a wait on the owner's decision or approval: the hand step file (`.ps1`, `.sh`
   or `.md`) the card hands the owner to run (core rule 11), refused unless an audit on the task (`teamrig audit`)
   pins it at the sha256 its bytes have now, so an edit needs a new audit. The card prints the line that runs it,
@@ -2428,6 +2433,9 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
 - `UNGATED`: each wait on the owner's decision whose card names no owner gate or business decision (`gate:`), left
   out of `DECISIONS` while cards are required (`register.requireDecisionCard`): its session's or the lead's to
   decide, never read to the owner (`check` flags each one `UNGATED`);
+- `OWNER-PROOF`: each wait on the owner whose card asks about a test, measure or proof and names nothing it affects
+  (`affects:`), left out of `DECISIONS` while cards are required: approved with the work it tests, so the lead tells
+  its session to go ahead, never reads it to the owner (`check` flags each one `OWNER-PROOF`);
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`); the head counts every team's;
 - `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most), in the groups of

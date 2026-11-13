@@ -32,6 +32,9 @@ decide from alone. At your first message of the day, or when you ask, the lead r
 - `INCIDENTS`: the active Maintenance bugs and critical tasks, the lead's team first, then each team under it;
 - `UNGATED`: the waits on you whose card names no owner gate or business decision; the lead decides those itself,
   sends each owner its answer and never reads them out;
+- `OWNER-PROOF`: the waits on you about a test, measure or proof of work you already approved that changes no
+  approved number, spends no money and writes no data; your approval of the work covers them, so the lead tells
+  each session to go ahead and never reads them out;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them;
 - `DONE`: what finished since the last meeting;
 - `HEALTH` and `FLOW`: the last week's numbers, as `teamrig stats` prints them, and `LIMIT`, the days the week sat
