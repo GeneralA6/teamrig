@@ -1,6 +1,7 @@
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { assignedNotice } from "../../register/views.js";
+import { HELD_PRIORITY } from "../../wake/decide.js";
 import { openTeamKit, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { leadAboveOf } from "../tree.js";
 import { teamRegister } from "../team-register.js";
@@ -13,9 +14,16 @@ export async function teamOf(runtime, kit, access) {
 export async function openTeam(runtime, access) {
     return teamOf(runtime, await openTeamKit(runtime), access);
 }
-/** One inbox line telling a task's owner the task is its own; `shown` names the owner in the NOTE (another team's by address). */
+/**
+ * One inbox line telling a task's owner the task is its own; `shown` names the owner in the NOTE (another team's by
+ * address). A p0 task also says the owner is woken: its team's wake check wakes an idle owner for it (src/wake/decide.ts:
+ * a p0 wakes even past the budget and in blocking quiet hours), so the asker needs no `inbox add --wake now` (T2686).
+ */
 export async function tellAssigned(runtime, team, by, task, shown = task.owner) {
-    await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
+    const posted = await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
+    if (posted && task.priority === HELD_PRIORITY && team.config.wake.enabled) {
+        runtime.out.stderr(`NOTE ${shown} is woken at its idle prompt for ${task.id}, a p0, so no --wake now is needed`);
+    }
 }
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
 export async function tellLine(runtime, team, by, to, text, unsent, shown = to) {

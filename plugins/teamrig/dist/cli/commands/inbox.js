@@ -231,6 +231,20 @@ async function wakeSenderOf(own, recipients, reads) {
     return { team: own.from.team, id: own.from.id, leader: leads.isLeader(own.from.id), teamLead: leads.lead === own.from.id, below };
 }
 /**
+ * A recipient as the wake gate reads it: whether it leads its team, and whether the sender's team config names it in
+ * `roles` (deliveryOwner, securityReviewer hold `<team>/<id>` when the holder sits on a team above).
+ */
+function wakeTargetOf(own, recipient) {
+    const { deliveryOwner, securityReviewer } = own.config.roles;
+    const named = recipient.crossing ? formatAddress({ team: recipient.team, id: recipient.id }) : recipient.id;
+    return {
+        label: recipient.label,
+        team: recipient.team,
+        teamLead: recipient.config.roles.lead === recipient.id,
+        servesSender: [deliveryOwner, securityReviewer].includes(named),
+    };
+}
+/**
  * Posts a wake ask beside each recipient's posted line, so its tab's wake check wakes it, and returns what that
  * prints: a WAKE FAILED line for each ask that could not be posted (its line stays posted), then the WAKES line. A
  * recipient whose team has `wake.enabled` false gets no ask. A `--wake-by` ask carries its time and the hash of the
@@ -293,7 +307,8 @@ const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>,
  * tells the sender to route such work via that sub-lead (T783). `--wake now` (T1147) also wakes each receiver idle at
  * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; `--wake-by <time>` (T1148) wakes
  * it at that time instead, and only if it has not seen the line by then. A group is woken only by a leader, another
- * team only by the lead of a team above it, else nothing is posted.
+ * team only by a team lead (a team below its own, any team's lead, a role holder its config names), else nothing is
+ * posted.
  */
 export async function add(args, runtime) {
     noPositionals(args);
@@ -322,7 +337,7 @@ export async function add(args, runtime) {
     const reads = new SenderTreeReads(runtime, team);
     const recipients = await recipientsOf(runtime, own, items, to, reads);
     if (when !== undefined) {
-        const refusal = wakeRefusal(await wakeSenderOf(own, recipients, reads), items.some((item) => item.kind !== 'session'), recipients, when);
+        const refusal = wakeRefusal(await wakeSenderOf(own, recipients, reads), items.some((item) => item.kind !== 'session'), recipients.map((recipient) => wakeTargetOf(own, recipient)), when);
         if (refusal !== undefined) {
             throw new RefusedError(refusal);
         }
