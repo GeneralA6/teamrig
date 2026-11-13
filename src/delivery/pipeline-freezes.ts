@@ -125,6 +125,20 @@ export function frozenReason(freeze: PipelineFreeze, zone: TimeZone): string {
   return `the pipeline is frozen until ${zone.minute(new Date(freeze.to))} by ${freeze.session} (${freeze.reason}; ${freeze.id}); no new step starts until then. The lead or the delivery owner ends it early with: teamrig pipeline unfreeze ${freeze.id}`;
 }
 
+/**
+ * Why a step that is each of `kinds` (a merge whose push deploys is a merge and a deploy) may not start at `nowMs`
+ * under the freezes in `text`, the file at `path`, or undefined when none holds it. An unreadable file refuses too,
+ * since a step that runs through a freeze cannot be undone.
+ */
+export function pipelineFrozenRefusal(text: string | undefined, path: string, nowMs: number, kinds: readonly StepKind[], zone: TimeZone): string | undefined {
+  const read = parsePipelineFreezes(text);
+  if (read.kind === 'unreadable') {
+    return `the pipeline freezes in ${path} are unreadable (${read.reason}), so no new step starts until the file reads or is removed`;
+  }
+  const holding = kinds.flatMap((kind) => holdingFreeze(read.freezes, nowMs, kind) ?? [])[0];
+  return holding === undefined ? undefined : frozenReason(holding, zone);
+}
+
 /** Text on one line, its runs of whitespace one space, since a freeze's reason is shown in one-line refusals. */
 function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
