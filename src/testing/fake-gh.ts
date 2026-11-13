@@ -1,5 +1,5 @@
 import { stringField, type JsonRecord } from '../core/guards.ts';
-import { isIssueCreate, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
+import { isIssueClose, isIssueComment, isIssueCreate, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
@@ -99,6 +99,7 @@ export class FakeGh implements GhRunner {
   private readonly canned = new Map<string, GhResult>();
   private readonly createFailures = new Map<string, GhResult>();
   private failure: Error | undefined;
+  private writeFailure: GhResult | undefined;
   private pageSize = ISSUE_PAGE_SIZE;
 
   /** From now on, `repo` holds these issues (as ghIssue builds them). */
@@ -131,6 +132,12 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
+  /** From now on, a comment on or the close of an issue ends as given. */
+  failsWrite(result: GhResult): this {
+    this.writeFailure = result;
+    return this;
+  }
+
   async run(request: GhRequest): Promise<GhResult> {
     this.ran.push(request);
     if (this.failure !== undefined) {
@@ -138,6 +145,9 @@ export class FakeGh implements GhRunner {
     }
     if (isIssueCreate(request.args)) {
       return this.create(request.args);
+    }
+    if (isIssueComment(request.args) || isIssueClose(request.args)) {
+      return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
     const repo = ghRepoOf(request.args);
     const canned = this.canned.get(repo);
