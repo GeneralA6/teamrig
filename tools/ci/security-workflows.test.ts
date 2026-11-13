@@ -88,3 +88,11 @@ describe('dependabot.yml', () => {
     }
   });
 });
+
+describe('SECURITY.md', () => {
+  it('routes a vulnerability report to a private advisory, not a public issue', () => {
+    const policy = read('SECURITY.md');
+    assert.ok(policy.includes('](https://github.com/GeneralA6/teamrig/security/advisories/new)'));
+    assert.match(policy, /never in a public issue/);
+  });
+});
