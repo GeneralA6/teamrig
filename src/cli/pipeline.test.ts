@@ -76,7 +76,8 @@ const REFUSED_TODAY: LedgerRecord = {
   lastWait: { cause: 'lock', text: 'lead (heavy: build) since 2030-01-08 10:48 IST' },
 };
 
-const NO_STEPS = ['RUNNING none', 'WAITING none', 'REFUSED in the last 24h: none'];
+const NO_STEPS = ['FROZEN none', 'RUNNING none', 'WAITING none', 'REFUSED in the last 24h: none'];
+const PIPELINE_FREEZES = join(KIT, 'pipeline-freezes.json');
 
 describe('teamrig pipeline', () => {
   it("says on a quiet host its free memory, RAM and floor, and that nothing runs, waits or was refused, listing no processes", async () => {
@@ -102,6 +103,7 @@ describe('teamrig pipeline', () => {
       stdout: [
         "HOST 7000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); commit charge 30000 of 48000 MB; 2048 MB held for 1 small step; the running steps' trees use 3500 MB",
         `  ${BUSY_HOLDERS_TEXT}`,
+        'FROZEN none',
         'RUNNING 2',
         '  lead (heavy: build) holds the lock, for 12m, its tree uses 3000 MB',
         '  alpha (heavy: lint) shares the host, 2048 MB held for it, for 3m, its tree uses 500 MB',
@@ -124,10 +126,11 @@ describe('teamrig pipeline', () => {
     const result = await kit.run(['pipeline'], { memory, sessionProcesses: running(SHARER) });
     assert.deepEqual(result.stdout, [
       "HOST 16000 MB free of 32768 MB, 4096 MB kept free (delivery.queue.memoryFloorMb); 2048 MB held for 1 small step; the running steps' trees unknown (the host lists no processes)",
+      'FROZEN none',
       'RUNNING 1',
       '  the host lock is free: the lock of lead (heavy: build) since 2030-01-08 09:48 UTC is stale, and the next step removes it',
       '  alpha (heavy: lint) shares the host, 2048 MB held for it, for 3m',
-      ...NO_STEPS.slice(1),
+      ...NO_STEPS.slice(2),
     ]);
     assert.equal(kit.files.get(LOCK), stale);
   });
@@ -168,12 +171,33 @@ describe('teamrig pipeline', () => {
     await queued(kit, TESTS, urgent);
     const memory = new FakeHostMemory(16000).lists(undefined);
     const result = await kit.run(['pipeline'], { memory, sessionProcesses: running(SHARER, WAITER, OLDER_WAITER), timeZone: 'Asia/Jerusalem' });
-    assert.deepEqual(result.stdout.slice(1, 6), [
+    assert.deepEqual(result.stdout.slice(2, 7), [
       'RUNNING 1',
       '  alpha (heavy: build) shares the host as a heavy step, 4096 MB held for it, for 3m',
       'WAITING 2',
       '  1. alpha (heavy: specs) for 1m: its ticket names no cause (before its first look, or an older teamrig)',
       '  2. bravo (heavy: test) for 5m, on lock since 2030-01-08 11:55 IST: lead (heavy: build) since 2030-01-08 11:48 IST',
     ], "alpha's p1 step goes before bravo's, which names no request and so counts at p2");
+  });
+
+  it('lists the pipeline freezes not yet ended on the team clock, saying which hold now, and an unreadable freezes file (T2211)', async () => {
+    const kit = new CliHarness(TEAM);
+    const freeze = { session: 'po', reason: 'PC down', at: '2030-01-08T08:00:00.000Z' };
+    const freezes = [
+      { ...freeze, id: 'F1', from: '2030-01-07T09:00:00.000Z', to: '2030-01-07T10:00:00.000Z' },
+      { ...freeze, id: 'F2', from: '2030-01-08T09:00:00.000Z', to: '2030-01-08T12:00:00.000Z', kinds: ['merge', 'deploy'] },
+      { ...freeze, id: 'F3', from: '2030-01-09T00:00:00.000Z', to: '2030-01-09T02:00:00.000Z', session: 'teamrig', reason: 'backup' },
+    ];
+    await kit.files.write(PIPELINE_FREEZES, JSON.stringify(freezes));
+    const memory = new FakeHostMemory(16000).lists(undefined);
+    const result = await kit.run(['pipeline'], { memory, timeZone: 'Asia/Jerusalem' });
+    assert.deepEqual(result.stdout.slice(1, 4), [
+      'FROZEN 2',
+      '  F2 2030-01-08 11:00 IST → 2030-01-08 14:00 IST, merge,deploy, by po (PC down), holding now',
+      '  F3 2030-01-09 02:00 IST → 2030-01-09 04:00 IST, all steps, by teamrig (backup)',
+    ]);
+    await kit.files.write(PIPELINE_FREEZES, '{');
+    const unreadable = await kit.run(['pipeline'], { memory });
+    assert.equal(unreadable.stdout[1], `FROZEN unknown: the pipeline freezes in ${PIPELINE_FREEZES} are unreadable (not JSON), so every new step is refused`);
   });
 });
