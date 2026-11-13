@@ -795,7 +795,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
   pipeline                     the host's queued steps now, taking nothing: HOST (free memory, RAM,
       the floor, the commit charge, the MB held for the steps sharing the host and for the tabs still
-      loading, what the running steps' process trees use, the top memory holders), RUNNING (the lock's holder and each step
+      loading, what the running steps' process trees use, the top memory holders), FROZEN (the pipeline
+      freezes not yet ended, each marked when it holds now), RUNNING (the lock's holder and each step
       sharing the host, a heavy one named so: run time, MB held, tree use), WAITING (the line in the
       order steps are let in: how long each waited and what its ticket says it waits on, with that
       wait's numbers), REFUSED (queued steps of the last 24h that waited and did not run)
