@@ -268,6 +268,18 @@ too, so unfreeze it first.
   builds.
 - **The reset blackout:** no merge or deploy starts in the `delivery.schedule.resetBlackoutHours` before the
   weekly token reset, the one the status line last reported, else the one `budget.reset` sets; unset, there is none.
+- **A pipeline freeze:** the lead or the delivery owner holds every new step on the host for a window, say while the
+  PC is down; queue steps of the kinds it names, merges and deploys are refused with its end and id, and running steps
+  finish. `teamrig pipeline` lists it under `FROZEN`, and `teamrig pipeline unfreeze <id>` ends it early:
+
+  ```sh
+  teamrig pipeline freeze --session lead --from "2030-01-09 02:00" --to "2030-01-09 04:00" --reason "backup"
+  ```
+
+  ```text
+  FROZEN F3 2030-01-09 02:00 IST → 2030-01-09 04:00 IST, all steps, by lead (backup)
+  ```
+
 - **A wait that ran out:** a queued step is refused once its line has not moved for `waitMinutes`, a merge or a
   deploy after `delivery.wait.maxMinutes`, unless its line keeps moving.
 - **A step taken out of line:** `teamrig withdraw` takes a session's steps still waiting for the lock out of the line,
