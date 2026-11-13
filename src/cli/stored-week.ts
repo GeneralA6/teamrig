@@ -112,12 +112,13 @@ export async function readTodayWPerPct(
  * last 7 days, else the team's when it has too few of its own. It reads the stored usage only (the per-day counters
  * `teamrig budget --burn` shows), never a transcript, so the wake path stays cheap; undefined while there are too few.
  */
-export async function readMeasuredTurns(runtime: CliRuntime, paths: Pick<TeamPaths, 'usage'>, session: string, sessions: readonly string[], now: number): Promise<MeasuredTurns | undefined> {
+export async function readMeasuredTurns(runtime: Pick<CliRuntime, 'files'>, paths: Pick<TeamPaths, 'usage'>, session: string, sessions: readonly string[], now: number): Promise<MeasuredTurns | undefined> {
   const team = new UsageStore(runtime.files, paths.usage);
-  const own = measuredTurns([(await team.load(session)).state], now);
+  const ownState = (await team.load(session)).state;
+  const own = measuredTurns([ownState], now);
   if (own !== undefined) {
     return own;
   }
   const states = await Promise.all(sessions.filter((id) => id !== session).map(async (id) => (await team.load(id)).state));
-  return measuredTurns([(await team.load(session)).state, ...states], now);
+  return measuredTurns([ownState, ...states], now);
 }
