@@ -39,7 +39,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `loops` | [object](#loops) |  | Loop discipline inside a turn. |
 | `wake` | [object](#wake) |  | Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared or answered), tasks handed together wake once, and each wake says what it costs. |
 | `tests` | [object](#tests) |  | What teamrig test prints of a failed run. |
-| `github` | [object](#github) |  | teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local. Each owner's repositories are read with the read-only token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login (docs/github-sync.md). |
+| `github` | [object](#github) |  | The team's GitHub repositories. teamrig gh sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig gh migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md). |
 | `alerts` | [object](#alerts) |  | The alerting rule the core rules state, and where a page to the owner goes. |
 | `decisions` | [object](#decisions) |  | When the lead asks the owner the decisions waiting on them (tasks waiting on the owner's decision or approval), together in one batch instead of one at a time. A batch holds the waits not yet asked and the asked ones now past their due date; `teamrig decisions` prints it and `teamrig decisions asked` records it asked, as a meeting's start does. The lead's check says when one is due. |
 | `tabStatus` | [object](#tabstatus) |  | A colored circle before each terminal tab's title for what its session is doing: green ready, yellow working (or a helper still running), orange waiting on the user, blue waiting on the user's decision (a turn whose last message has a `Decision needed:` line), red an API error, purple compacting. |
@@ -506,7 +506,7 @@ What teamrig test prints of a failed run.
 
 ## `github`
 
-teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local. Each owner's repositories are read with the read-only token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login (docs/github-sync.md).
+The team's GitHub repositories. teamrig gh sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig gh migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md).
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |

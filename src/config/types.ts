@@ -579,7 +579,7 @@ export interface TestsConfig {
   readonly maxFailureChars: number;
 }
 
-/** Which GitHub issues `teamrig gh sync` reads into the register. It only reads GitHub, never writes to it. */
+/** The team's GitHub repositories: `teamrig gh sync` reads their issues into the register, never writing to GitHub; `gh migrate` and `issue comment`/`issue close`, run by hand, write only to them. */
 export interface GithubConfig {
   /** The repositories it reads, as `owner/name` in lowercase; empty turns the import off. */
   readonly repos: readonly string[];
