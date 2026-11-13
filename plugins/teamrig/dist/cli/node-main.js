@@ -41,6 +41,18 @@ export const PROCESS_OUTPUT = {
     stderr: (line) => process.stderr.write(`${line}\n`),
 };
 /**
+ * Ends the stack dump a reader that closed early causes (`teamrig show T1 | head -2`): the write fails with EPIPE, and
+ * with no 'error' listener node throws it as an uncaught exception. The run goes on to its own exit code, since a
+ * command that also writes files must not stop halfway because nobody reads its output; any other stream error still
+ * throws as before.
+ */
+export function ignoreClosedPipe(stream) {
+    stream.on('error', (error) => {
+        if (error.code !== 'EPIPE')
+            throw error;
+    });
+}
+/**
  * The process adapter: real files, clock, git, child processes and stdio around the testable runner. Its own module,
  * apart from the entry scripts, so the guard runner can load it inside a try (T1818): one CLI module that fails to load
  * fails this import, not the entry.
