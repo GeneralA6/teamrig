@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runMain } from '../lib/run-main.ts';
-import { checkEveryJob, runAttemptFromEnv, type RunGh } from './every-check.ts';
+import { checkEveryJob, runFromEnv, type RunGh } from './every-check.ts';
 
 const run = promisify(execFile);
 
@@ -16,7 +16,7 @@ process.exitCode = await runMain(
     if (!self) {
       throw new Error('usage: every-check-cli.ts <the name of the job running it>');
     }
-    return checkEveryJob(runAttemptFromEnv(process.env), self, gh, (line) => console.log(line));
+    return checkEveryJob(runFromEnv(process.env), self, gh, (line) => console.log(line));
   },
   (line) => console.error(line),
 );

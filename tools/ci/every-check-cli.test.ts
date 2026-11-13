@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { TempRepo } from '../lib/temp-repo.ts';
 
 const CLI = fileURLToPath(new URL('./every-check-cli.ts', import.meta.url));
-const RUN_ENV = { GITHUB_REPOSITORY: 'acme/web', GITHUB_RUN_ID: '43', GITHUB_RUN_ATTEMPT: '1' };
+const RUN_ENV = { GITHUB_REPOSITORY: 'acme/web', GITHUB_RUN_ID: '43' };
 
 describe('every-check cli', () => {
   let repo: TempRepo;
@@ -20,7 +20,7 @@ describe('every-check cli', () => {
   });
 
   it('exits 2 outside a GitHub Actions run', () => {
-    const result = repo.run(CLI, ['every check passed'], { GITHUB_REPOSITORY: undefined, GITHUB_RUN_ID: undefined, GITHUB_RUN_ATTEMPT: undefined });
+    const result = repo.run(CLI, ['every check passed'], { GITHUB_REPOSITORY: undefined, GITHUB_RUN_ID: undefined });
     assert.equal(result.status, 2);
     assert.match(result.stderr, /^every-check: needs GITHUB_REPOSITORY/m);
   });

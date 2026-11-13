@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
-import { checkEveryJob, jobsPageOf, listJobs, runAttemptFromEnv, unpassedJobs, type RunAttempt, type RunGh, type RunJob } from './every-check.ts';
+import { checkEveryJob, jobsPageOf, listJobs, runFromEnv, unpassedJobs, type RunGh, type RunJob, type RunRef } from './every-check.ts';
 
 const SELF = 'every check passed';
-const RUN: RunAttempt = { repo: 'acme/web', runId: '43', attempt: '2' };
+const RUN: RunRef = { repo: 'acme/web', runId: '43' };
 
 function job(name: string, conclusion: string | null, status = 'completed'): RunJob {
   return { name, status, conclusion };
@@ -43,12 +43,12 @@ describe('jobsPageOf', () => {
 });
 
 describe('listJobs', () => {
-  it('reads page after page until the listed count, from the run attempt', async () => {
+  it('reads page after page until the listed count, each job at its newest attempt, so a re-run keeps what attempt 1 passed', async () => {
     const { gh, calls } = ghServing([page(3, [job('a', 'success'), job('b', 'success')]), page(3, [job('c', 'success')])]);
     assert.deepEqual((await listJobs(gh, RUN)).map((one) => one.name), ['a', 'b', 'c']);
     assert.deepEqual(calls, [
-      ['api', 'repos/acme/web/actions/runs/43/attempts/2/jobs?per_page=100&page=1'],
-      ['api', 'repos/acme/web/actions/runs/43/attempts/2/jobs?per_page=100&page=2'],
+      ['api', 'repos/acme/web/actions/runs/43/jobs?filter=latest&per_page=100&page=1'],
+      ['api', 'repos/acme/web/actions/runs/43/jobs?filter=latest&per_page=100&page=2'],
     ]);
   });
 
@@ -74,15 +74,15 @@ describe('unpassedJobs', () => {
   });
 });
 
-describe('runAttemptFromEnv', () => {
-  it('reads the repository, the run and its attempt', () => {
-    assert.deepEqual(runAttemptFromEnv({ GITHUB_REPOSITORY: 'acme/web', GITHUB_RUN_ID: '43', GITHUB_RUN_ATTEMPT: '2' }), RUN);
+describe('runFromEnv', () => {
+  it('reads the repository and the run', () => {
+    assert.deepEqual(runFromEnv({ GITHUB_REPOSITORY: 'acme/web', GITHUB_RUN_ID: '43', GITHUB_RUN_ATTEMPT: '2' }), RUN);
   });
 
   it('refuses a missing or malformed value, which would go into an API path', () => {
-    const good = { GITHUB_REPOSITORY: 'acme/web', GITHUB_RUN_ID: '43', GITHUB_RUN_ATTEMPT: '2' };
-    for (const env of [{}, { ...good, GITHUB_REPOSITORY: 'acme/web/../x' }, { ...good, GITHUB_RUN_ID: '43&page=9' }, { ...good, GITHUB_RUN_ATTEMPT: '' }]) {
-      assert.throws(() => runAttemptFromEnv(env), /needs GITHUB_REPOSITORY/);
+    const good = { GITHUB_REPOSITORY: 'acme/web', GITHUB_RUN_ID: '43' };
+    for (const env of [{}, { ...good, GITHUB_REPOSITORY: 'acme/web/../x' }, { ...good, GITHUB_RUN_ID: '43&page=9' }, { ...good, GITHUB_RUN_ID: '' }]) {
+      assert.throws(() => runFromEnv(env), /needs GITHUB_REPOSITORY/);
     }
   });
 });
