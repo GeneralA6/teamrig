@@ -174,4 +174,19 @@ describe('runCli: the decision card', () => {
     assert.ok(lines.some((line) => line.endsWith(`gate: ${TEST_GATE}`)), shown);
     assert.ok(lines.some((line) => line.endsWith(`2. ${TEST_CARD.options[1] ?? ''}`)), shown);
   });
+
+  it('keeps a \\| inside a choice as a literal |, and a bare | in one shows how the choices split', async () => {
+    const kit = await startedTask();
+    const card = (options: string): string[] => ['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the token row', '--options', options, ...TEST_OWNER_CARD_FLAGS.filter((_, index, all) => all[index] !== '--options' && all[index - 1] !== '--options'), '--session', 'alpha'];
+    const bare = await kit.run(card("Approve: add the row 'Account | D1 | Edit' to the token | Decline: keep the token as it is"));
+    assert.equal(bare.code, EXIT.refused);
+    const said = [...bare.stdout, ...bare.stderr].join('\n');
+    assert.match(said, /--options choice 2 says "D1"/);
+    assert.match(said, /--options split into 4 choices at each \|: "Approve: add the row 'Account" \/ "D1" \/ "Edit' to the token" \/ "Decline: keep the token as it is"; write \\\| for a \| inside a choice/);
+    const escaped = await kit.run(card("Approve: add the row 'Account \\| D1 \\| Edit' to the token | Decline: keep the token as it is"));
+    assert.equal(escaped.code, EXIT.ok, escaped.stderr.join('\n'));
+    const shown = (await kit.run(['show', 'T1', '--session', 'alpha'])).stdout.join('\n').split('\n');
+    assert.ok(shown.some((line) => line.endsWith("1. Approve: add the row 'Account | D1 | Edit' to the token")), shown.join('\n'));
+    assert.ok(shown.some((line) => line.endsWith('2. Decline: keep the token as it is')), shown.join('\n'));
+  });
 });
