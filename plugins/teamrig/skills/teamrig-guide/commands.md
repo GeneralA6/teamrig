@@ -2329,6 +2329,11 @@ SKILLS 0 flag(s) in ~/.claude/skills
 Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT. At the last 24 hours' rise of 9.5 points, it ends the week near 85%.
 ```
 
+When the account lists reset grants in [budget.resets], the lead's `start` and its start note end with one more line,
+the uses left of each kind and when the next one expires
+(`Resets in stock: fable 2 left, the next expiring 2027-03-09 09:59 IST (in 116 days).`), so the lead plans the week
+on them and asks the owner for a reset before one lapses; no other session gets it.
+
 A lead with sub-teams runs `teamrig check --tree --session lead` too: `start` reads the lead's own team.
 
 ### teamrig meeting start
@@ -2372,7 +2377,8 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
 - `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since then (from
   `merges.jsonl` in `delivery.dir`), check-clean ones first, marked `CHECK-CLEAN` for security's weekly sample;
 - the lead's unread inbox lines, marked read;
-- the week's use and, under it, the planned week's fit to the weekly limit, as `plan` gives it.
+- the week's use, then the resets in stock (the `start` line, when [budget.resets] lists grants) and, under it, the
+  planned week's fit to the weekly limit, as `plan` gives it.
 
 Each list shows 10 rows at most, then the command that lists them all. A meeting left open stops holding messages
 4 hours after it started. Started again while open, it keeps the meeting as it is and prints the agenda. Only the
