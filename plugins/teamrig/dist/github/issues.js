@@ -11,6 +11,16 @@ const NOT_VISIBLE = /could not resolve to a repository|HTTP 404|not found/i;
 /** A token that reaches the repository but was not given the Issues permission. */
 const NO_PERMISSION = /resource not accessible by/i;
 const URL = /^https:\/\/\S+$/;
+/** The known cause of a gh run that exited with `code` and printed `stderr`, or undefined when it is none of them. */
+export function ghFailureKind(code, stderr) {
+    if (code === GH_EXIT_NO_LOGIN || NO_LOGIN.test(stderr)) {
+        return 'no-login';
+    }
+    if (NO_PERMISSION.test(stderr)) {
+        return 'no-permission';
+    }
+    return NOT_VISIBLE.test(stderr) ? 'not-visible' : undefined;
+}
 /** The arguments for one page of `request`, starting after the cursor `after`; null when the repository is not `owner/name`. */
 export function issuePageArgs(request, after) {
     const [owner, name, ...rest] = request.repo.split('/');
@@ -83,22 +93,22 @@ export function failureText(repo, result, access) {
     }
     const token = `the token saved as ${access.credential}`;
     const saveOne = `save a read-only token for ${access.owner} with: ${access.save}`;
-    if (result.end.code === GH_EXIT_NO_LOGIN || NO_LOGIN.test(result.stderr)) {
-        return access.via === 'token'
-            ? `GitHub refused ${token} (expired or revoked?): create a new one and save it again with: ${access.save}`
-            : `gh is not logged in to GitHub: run gh auth login, or ${saveOne}`;
+    switch (ghFailureKind(result.end.code, result.stderr)) {
+        case 'no-login':
+            return access.via === 'token'
+                ? `GitHub refused ${token} (expired or revoked?): create a new one and save it again with: ${access.save}`
+                : `gh is not logged in to GitHub: run gh auth login, or ${saveOne}`;
+        case 'no-permission':
+            return access.via === 'token'
+                ? `${token} may not read the issues of ${repo}: on GitHub, edit that token and set Issues to Read-only; its text stays the same, so nothing needs saving again`
+                : `the gh login may not read the issues of ${repo}: ${saveOne}`;
+        case 'not-visible':
+            return access.via === 'token'
+                ? `${repo} is not visible to ${token}: check github.repos, and on GitHub give that token this repository`
+                : `${repo} is not visible to the gh login: check github.repos, or ${saveOne}`;
+        case undefined:
+            return plainLine(`gh api graphql for the issues of ${repo} ${exitText(result.end.code, result.stderr)}`);
     }
-    if (NO_PERMISSION.test(result.stderr)) {
-        return access.via === 'token'
-            ? `${token} may not read the issues of ${repo}: on GitHub, edit that token and set Issues to Read-only; its text stays the same, so nothing needs saving again`
-            : `the gh login may not read the issues of ${repo}: ${saveOne}`;
-    }
-    if (NOT_VISIBLE.test(result.stderr)) {
-        return access.via === 'token'
-            ? `${repo} is not visible to ${token}: check github.repos, and on GitHub give that token this repository`
-            : `${repo} is not visible to the gh login: check github.repos, or ${saveOne}`;
-    }
-    return plainLine(`gh api graphql for the issues of ${repo} ${exitText(result.end.code, result.stderr)}`);
 }
 /**
  * One page as `gh api graphql` prints it (`data.repository.issues`): each item that reads as an issue, how many did
