@@ -92,13 +92,18 @@ export interface RankedPlace extends TaskScore {
 /**
  * The band plan order ranks a place by: band 0 (expedite) stays first, near-term prep comes right after it, ahead of
  * the rest of its own band, as a design for the current or next slice must be ready before that slice's build; every
- * other band moves one down. Undefined with no ranking.
+ * other band moves one down.
  */
-export function planBand(ranked: Pick<RankedPlace, 'band' | 'prep'> | undefined): number | undefined {
-  if (ranked === undefined || ranked.band === 0) {
-    return ranked?.band;
+export function planBand(ranked: Pick<RankedPlace, 'band' | 'prep'>): number {
+  if (ranked.band === 0) {
+    return 0;
   }
   return ranked.prep ? 1 : ranked.band + 1;
+}
+
+/** {@link planBand} of a place, undefined with no ranking. */
+function placeBand(place: PlanPlace): number | undefined {
+  return place.ranked === undefined ? undefined : planBand(place.ranked);
 }
 
 /**
@@ -141,7 +146,7 @@ export type PlanKey = (typeof PLAN_KEYS)[number];
 
 const BY_KEY: Readonly<Record<PlanKey, (a: PlanPlace, b: PlanPlace) => number>> = {
   pinned: (a, b) => trueFirst(a.pinned, b.pinned),
-  band: (a, b) => lowFirst(planBand(a.ranked), planBand(b.ranked)),
+  band: (a, b) => lowFirst(placeBand(a), placeBand(b)),
   ready: (a, b) => trueFirst(b.blocked, a.blocked),
   score: (a, b) => highFirst(a.ranked?.score, b.ranked?.score),
   started: (a, b) => trueFirst(a.started, b.started),

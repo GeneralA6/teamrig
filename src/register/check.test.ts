@@ -322,6 +322,15 @@ describe('checkTasks: PRIORITY-SKIP', () => {
     assert.equal(skips([{ ...waiting, priority: 3 }, { ...working, priority: 1 }]).length, 1, 'a p1 in progress below a p3 of a better band');
   });
 
+  it('ranks a skipped near-term prep task right after expedite, and raises none on prep in progress (T2453)', () => {
+    const near = { T1: { standing: 'near' } as const };
+    assert.match(skips([waiting, working], testRanking({ classes: { T2: 'Roadmap' }, preps: near }))[0] ?? '', /^PRIORITY-SKIP \(T1 \(near-term prep, score 3\.33\) waits open/);
+    assert.deepEqual(skips([waiting, working], testRanking({ classes: { T1: 'Roadmap' }, preps: { T2: { standing: 'near' } } })), [], 'prep in progress over Roadmap');
+    assert.deepEqual(skips([{ ...waiting, critical: true }, working], testRanking({ preps: { T2: { standing: 'near' } } })), [], 'prep in progress, even over expedite');
+    const lapsed = { T2: { standing: 'lapsed', why: 'prepares A1:5, goal A1 is on slice 2' } } as const;
+    assert.equal(skips([waiting, working], testRanking({ classes: { T1: 'Roadmap' }, preps: lapsed })).filter((line) => line.startsWith('PRIORITY-SKIP')).length, 1, 'a lapsed marker skips as any task');
+  });
+
   it('calls a skipped task of the expedite band that, not by its class', () => {
     assert.match(skips([{ ...waiting, critical: true }, working], testRanking({ classes: { T1: 'Maintenance' } }))[0] ?? '', /^PRIORITY-SKIP \(T1 \(expedite, score 66\.67\) waits open/);
   });
@@ -462,6 +471,38 @@ describe('checkTasks: OFF-GOAL', () => {
       testTask({ id: 'T2', status: 'in-progress', due: '2030-01-12', ...seen }),
     ];
     assert.deepEqual(kinds(tasks), ['OWNER-UNPLANNED T1', 'DUE-UNPLANNED T2']);
+  });
+
+  it('raises neither OFF-GOAL nor DUE-UNPLANNED on near-term prep, only OWNER-UNPLANNED on an owner order (T2453)', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'in-progress', ...seen }),
+      testTask({ id: 'T2', status: 'in-progress', due: '2030-01-12', ...seen }),
+      testTask({ id: 'T3', status: 'in-progress', source: 'owner', ...seen }),
+    ];
+    const near = { standing: 'near' } as const;
+    const ranking = testRanking({ preps: { T1: near, T2: near, T3: near } });
+    const flags = checkTasks(tasks, NOW, TimeZone.UTC, '2030-01-07', CONFIG, NO_TASKS_ELSEWHERE, ranking).map((flag) => `${flag.kind} ${flag.task.id}`);
+    assert.deepEqual(flags, ['OWNER-UNPLANNED T3']);
+  });
+});
+
+describe('checkTasks: PREP-LAPSED (T2453)', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+
+  it('flags an active task whose prep marker lapsed with what moved, and treats it as any other task: skipping near prep, off goal', () => {
+    const tasks = [testTask({ id: 'T1', status: 'in-progress', ...seen }), testTask({ id: 'T2', ...seen }), testTask({ id: 'T3', status: 'done', ...seen })];
+    const why = 'prepares A1:5, goal A1 is on slice 2';
+    const lapsed = { standing: 'lapsed', why } as const;
+    const ranking = testRanking({ preps: { T1: lapsed, T2: { standing: 'near' }, T3: lapsed } });
+    const flags = checkTasks(tasks, NOW, TimeZone.UTC, '2030-01-07', CONFIG, NO_TASKS_ELSEWHERE, ranking);
+    assert.deepEqual(
+      flags.map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
+      [
+        'PRIORITY-SKIP T1: T2 (near-term prep, score 3.33) waits open, skipped since 01-07 09:00 UTC',
+        `PREP-LAPSED T1: ${why}`,
+        'OFF-GOAL T1: in progress with no goal, not in week 2030-01-07',
+      ],
+    );
   });
 });
 
