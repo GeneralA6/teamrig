@@ -6,7 +6,17 @@ import { isPlaceholderValue } from "../core/secret-shapes.js";
  * a space, a quote or a shell operator, save a URL's `&`, which joins its parameters; a quoted value is the
  * quoted-literal shape's.
  */
-const ASSIGNMENT = /(?<![\w$])([A-Z][A-Z0-9_]*)=([A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'`;,|()<>]+|[^\s"'`;,&|()<>]+)/g;
+const ASSIGNMENT = /(?<![\w$])([A-Z][A-Z0-9_]*)=(<[^\s<>"'`;,&|()]*>[^\s"'`;,&|()<>]*|[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'`;,|()<>]+|[^\s"'`;,&|()<>]+)/g;
+/**
+ * The one placeholder a whole value may be (T192): a printf conversion (`%s`, `%-10s`), `$NAME`, `${NAME}` or an angle
+ * placeholder. Exact, so anything glued on (`%sAKIA...`, `$X-secret`, `<x>sk-...`) is still a value. `${NAME:-default}`
+ * is not one: a default is a value.
+ */
+const EXACT_PLACEHOLDER = /^(?:%[-+ #0]*\d*[sdqvx]|\$[A-Za-z_]\w*|\$\{[A-Za-z_]\w*\}|<[^\s<>]*>)$/;
+/** A value that opens like a placeholder, so only an exact one passes. */
+const PLACEHOLDER_OPENING = /^[%$<]/;
+/** A shell or printf `\n` written as two characters, where a printf format line ends a value. */
+const NEWLINE_ESCAPE = '\\n';
 /** A URL's userinfo, path, query and fragment, the parts that can carry a secret; the scheme and the host never do. */
 const URL_PARTS = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:([^/?#]*)@)?[^/?#]*([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/;
 /** A path segment shaped like a token, as a webhook URL carries its secret: 16 or more word characters, a letter and a digit among them. */
@@ -34,6 +44,13 @@ export class EnvAssignments {
     hitsIn(text) {
         const hits = [];
         for (const [, name = '', value = ''] of text.matchAll(ASSIGNMENT)) {
+            const end = value.indexOf(NEWLINE_ESCAPE);
+            // A printf format line runs its assignments together with `\n`: the value ends at the escape, and what follows is
+            // scanned again as text, so a real secret after a placeholder is still found (T192).
+            if (end >= 0 && EXACT_PLACEHOLDER.test(value.slice(0, end))) {
+                hits.push(...this.hitsIn(value.slice(end + NEWLINE_ESCAPE.length)));
+                continue;
+            }
             if (!this.names.secret(name) || !this.holdsSecret(name, value))
                 continue;
             hits.push({ id: 'env-assignment', description: 'value of a secret variable', value });
@@ -74,5 +91,8 @@ function isGitSetting(name, value) {
 }
 /** True when an assigned `value` is not a secret: a placeholder, a name, a number, a path or a plain word. */
 function isPlainValue(value) {
+    // `$` alone is what stops at a `$(command)`; any longer value opening with a placeholder must be exactly one.
+    if (value !== '$' && PLACEHOLDER_OPENING.test(value))
+        return EXACT_PLACEHOLDER.test(value);
     return isPlaceholderValue(value) || isIdentifierName(value) || NUMBER.test(value) || PATH.test(value) || PLAIN_WORD.test(value);
 }
