@@ -49,7 +49,7 @@ import { blockStartOf, liveTasksNoteOf } from "./live-tasks.js";
 import { droppedEditReasonOf } from "./hook-dropped-edit.js";
 import { effortWritebackOf } from "./hook-effort-writeback.js";
 import { meetingHold } from "./hook-meeting.js";
-import { restartOrPark, restartTargetOf } from "./hook-restart.js";
+import { restartOrPark, restartPidOf, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
 import { promptSecretBlock } from "./hook-prompt-secret.js";
 import { guardLoadOf, hookTeam } from "./hook-guard-load.js";
@@ -635,7 +635,7 @@ async function refreshDecisionOf(runtime, scope, payload) {
     // hook past Claude Code's timeout is killed with every process it started.
     const claude = decided.kind === 'notice' ? await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid) : undefined;
     const decision = decided.kind === 'notice' && decided.restart && target !== undefined
-        ? await restartOrPark(runtime, store, { team: kit.paths.team, id, context, target, claude }, decided, { paths: kit.paths, config })
+        ? await restartOrPark(runtime, store, { team: kit.paths.team, id, context, target, claude: await restartPidOf(runtime, kit.paths, roster.ids, id, claude) }, decided, { paths: kit.paths, config })
         : decided;
     switch (decision.kind) {
         case 'write':
