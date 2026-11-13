@@ -1,6 +1,7 @@
 import { join } from 'node:path';
+import { writableObject } from "../core/jsonl.js";
 import { formatCarriedJobs, parseCarriedJobs } from "./carry.js";
-import { formatParkedRestart, formatRefreshRequest, formatRefreshState, formatRestartRequest, parseParkedRestart, parseRefreshRequest, parseRefreshState, parseRestartRequest, } from "./state.js";
+import { formatParkedRestart, formatRefreshRequest, formatRefreshState, formatRestartRequest, parseParkedRestart, parseRefreshRequest, parseRefreshState, parseRestartRequest, REFRESH_STATE_FORMAT, } from "./state.js";
 /**
  * Each session's refresh files. The state (`<id>.json`) is written only by the session itself, from
  * its commands and hooks; the lead's request (`<id>.request.json`) is a file of its own, so neither
@@ -30,8 +31,11 @@ export class RefreshStore {
         const text = await this.files.read(this.statePath(id));
         return text === undefined ? undefined : parseRefreshState(text);
     }
-    setState(id, state) {
-        return this.files.write(this.statePath(id), formatRefreshState(state));
+    /** Throws NewerDataError when a newer teamrig wrote the file: an older one never overwrites what it cannot read. */
+    async setState(id, state) {
+        const path = this.statePath(id);
+        writableObject(path, await this.files.read(path), REFRESH_STATE_FORMAT);
+        await this.files.write(path, formatRefreshState(state));
     }
     async request(id) {
         const text = await this.files.read(this.requestPath(id));
