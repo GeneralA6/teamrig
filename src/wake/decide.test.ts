@@ -416,17 +416,30 @@ describe('effectivePriority', () => {
 
 describe('wake cost', () => {
   it('is warm under coldAfterMinutes, cold at it or unknown, and the default applies when it is 0', () => {
-    assert.deepEqual(wakeCost(59 * MINUTE, 60, undefined), { w: WARM_WAKE_W, cold: false, weekPct: undefined });
-    assert.equal(wakeCost(60 * MINUTE, 60, undefined).w, COLD_WAKE_W);
-    assert.equal(wakeCost(undefined, 60, undefined).cold, true);
-    assert.equal(wakeCost(61 * MINUTE, 0, undefined).cold, true);
-    assert.equal(wakeCost(MINUTE, 0, 0).weekPct, undefined);
+    assert.deepEqual(wakeCost(59 * MINUTE, 60, undefined, undefined), { w: WARM_WAKE_W, cold: false, weekPct: undefined });
+    assert.equal(wakeCost(60 * MINUTE, 60, undefined, undefined).w, COLD_WAKE_W);
+    assert.equal(wakeCost(undefined, 60, undefined, undefined).cold, true);
+    assert.equal(wakeCost(61 * MINUTE, 0, undefined, undefined).cold, true);
+    assert.equal(wakeCost(MINUTE, 0, 0, undefined).weekPct, undefined);
   });
 
   it('reads as W, warmth and the share of the week', () => {
-    assert.equal(costText(wakeCost(MINUTE, 60, undefined)), 'about 27k W, warm cache');
-    assert.equal(costText(wakeCost(MINUTE, 60, 9_000_000)), 'about 27k W, warm cache, under 0.01% of the week');
-    assert.equal(costText(wakeCost(undefined, 60, 9_000_000)), 'about 210k W, cold, 0.02% of the week');
+    assert.equal(costText(wakeCost(MINUTE, 60, undefined, undefined)), 'at least about 27k W for the first call, warm cache; whole turns usually cost more');
+    assert.equal(costText(wakeCost(MINUTE, 60, 9_000_000, undefined)), 'at least about 27k W for the first call, warm cache, under 0.01% of the week; whole turns usually cost more');
+    assert.equal(costText(wakeCost(undefined, 60, 9_000_000, undefined)), 'at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more');
+  });
+});
+
+describe('wake cost estimate basis (#76)', () => {
+  it('shows the measured average of past notification turns when there is history', () => {
+    const cost = wakeCost(MINUTE, 60, 9_000_000, { w: 340_000, turns: 121 });
+    assert.equal(cost.w, 340_000);
+    assert.equal(costText(cost), 'about 340k W, the average of 121 notification turns in the last 7 days, 0.04% of the week');
+  });
+
+  it('labels the first-call figure as a floor when there is not enough history', () => {
+    assert.equal(costText(wakeCost(MINUTE, 60, undefined, undefined)), 'at least about 27k W for the first call, warm cache; whole turns usually cost more');
+    assert.equal(costText(wakeCost(undefined, 60, undefined, undefined)), 'at least about 210k W for the first call, cold; whole turns usually cost more');
   });
 });
 
@@ -455,12 +468,12 @@ describe('wake text', () => {
   });
 
   it('asks the session to start a work block and states the cost; the toast names the tasks', () => {
-    const cost = wakeCost(MINUTE, 60, undefined);
+    const cost = wakeCost(MINUTE, 60, undefined, undefined);
     const prompt = wakePrompt('alpha', many.slice(0, 1), cost);
     assert.match(prompt, /T1 "Fix T1" \(p1\)/);
     assert.match(prompt, /`teamrig start --session alpha`/);
-    assert.match(prompt, /This wake costs about 27k W, warm cache\.$/);
-    assert.equal(wakeToast(many, cost), 'teamrig woke this tab for T1, T2, T3, T4, T5 and 2 more (about 27k W, warm cache)');
-    assert.equal(wakeToast(many.slice(0, 1), cost), 'teamrig woke this tab for T1 (about 27k W, warm cache)');
+    assert.match(prompt, /This wake costs at least about 27k W for the first call, warm cache; whole turns usually cost more\.$/);
+    assert.equal(wakeToast(many, cost), 'teamrig woke this tab for T1, T2, T3, T4, T5 and 2 more (at least about 27k W for the first call, warm cache; whole turns usually cost more)');
+    assert.equal(wakeToast(many.slice(0, 1), cost), 'teamrig woke this tab for T1 (at least about 27k W for the first call, warm cache; whole turns usually cost more)');
   });
 });
