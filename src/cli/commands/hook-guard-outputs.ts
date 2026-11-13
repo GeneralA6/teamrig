@@ -158,8 +158,10 @@ async function tabIdentityOf(runtime: CliRuntime, kit: Kit | undefined, payload:
 }
 
 /**
- * The exec guard's answer: it refuses a `teamrig exec` review run as anyone but the tab's own session, and any
- * `teamrig exec` call through a client that is no install of this plugin, or one whose files differ from its build.
+ * The exec guard's answer: it refuses a `teamrig exec` review or `teamrig issue` write run as anyone but the tab's own
+ * session, any such call through a client that is no install of this plugin, or one whose files differ from its build,
+ * and, on a team whose issues are on GitHub, a raw `gh` write on an issue or pull request. A config that did not load
+ * names no repository, so raw `gh` writes then pass, as they do on a team without GitHub.
  */
 export function execGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): Promise<string> {
   return execGuardOutput(payload, {
@@ -171,5 +173,6 @@ export function execGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload
     search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
     checkClient: (root) => checkClient(root, runtime.files),
     platform: runtime.platform,
+    githubIssues: guard.load?.status === 'loaded' && guard.load.config.github.repos.length > 0,
   });
 }

@@ -6,6 +6,7 @@ import { placeProgram, placeScript, type ClientFile, type ClientInstalls, type C
 import { runsOf, type LineRuns, type OpaqueRun, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
 import { programName } from '../push-guard/launchers.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
+import { ghWriteOf, type GhWrite } from './gh-writes.ts';
 import { holdBackOutput } from './permission.ts';
 
 /**
@@ -29,6 +30,11 @@ import { holdBackOutput } from './permission.ts';
  * owner (register.ownerSource) whoever runs them, and `owner github-admin` names the GitHub admin (T2705), so only the owner's own routes run them: the pane, their own terminal, or
  * `/teamrig owner ...` typed in a tab, which the mod runs as a write only when the person types it. Like the review
  * check, it reads only a Bash or PowerShell tool call: a script the agent writes that starts the CLI is no such call.
+ *
+ * And it guards who writes on GitHub (T2705): `teamrig issue comment` and `close` let a session write only on its own
+ * issues and pull requests, the GitHub admin on the rest, by the session the CLI takes from `--session`; so a tool
+ * call must name the tab's own, as a review must. On a team whose issues are on GitHub (`github.repos`), a raw `gh`
+ * call that writes on an issue or pull request (hooks/gh-writes.ts) is refused too, as it skips that check.
  */
 
 /** The `teamrig exec` commands that decide a request. */
@@ -39,6 +45,9 @@ export const EXEC_COMMANDS: ReadonlySet<string> = new Set(['request', 'dry-run',
 
 /** Every `teamrig owner` command, by which a call through an unknown program reads as a teamrig call. */
 export const OWNER_COMMANDS: ReadonlySet<string> = new Set(['note', 'next', 'wake', 'github-admin']);
+
+/** The `teamrig issue` commands that write on an issue or pull request, as the session `--session` names. */
+export const ISSUE_WRITES: ReadonlySet<string> = new Set(['comment', 'close']);
 
 /** Who the tab runs as, read only once a line holds a review. */
 export type TabIdentity =
@@ -67,6 +76,8 @@ export interface ExecGuardEnv {
   readonly checkClient: (root: string) => Promise<ClientCheck>;
   /** The host's platform: on Windows a Bash line is read as written and as bash receives it (core/bash-tool-readings.ts). */
   readonly platform: NodeJS.Platform;
+  /** True when the team's issues are on GitHub (`github.repos` names one): a raw `gh` write on an issue or pull request is refused. */
+  readonly githubIssues: boolean;
 }
 
 /** A review a line runs: its action and every `--session` value it names. */
@@ -93,7 +104,14 @@ interface OwnerCall {
   readonly action: string | undefined;
 }
 
-type GuardedCall = ReviewCall | PlainCall | UnreadableCall | OwnerCall;
+/** A `teamrig issue` write, which writes as the session `--session` names: each `--session` value, as written. */
+interface IssueCall {
+  readonly kind: 'issue';
+  readonly action: string;
+  readonly sessions: readonly ShellWord[];
+}
+
+type GuardedCall = ReviewCall | PlainCall | UnreadableCall | OwnerCall | IssueCall;
 
 /** teamrig's own entry point when a line runs it through node: `node <plugin>/dist/cli/main.js exec ...`. */
 const CLI_ENTRY = /[\\/]cli[\\/]main\.[jt]s$/i;
@@ -119,6 +137,11 @@ function startsGroup(words: readonly ShellWord[], name: string, commands: Readon
 /** True when the words read as a teamrig exec command. */
 function startsExec(words: readonly ShellWord[]): boolean {
   return startsGroup(words, 'exec', EXEC_COMMANDS);
+}
+
+/** True when the words read as a teamrig issue write. */
+function startsIssue(words: readonly ShellWord[]): boolean {
+  return startsGroup(words, 'issue', ISSUE_WRITES);
 }
 
 /** True when the words read as a teamrig owner command. */
@@ -149,7 +172,7 @@ function teamrigLaunchOf(run: ProgramRun): TeamrigLaunch | undefined {
   if (!script.dynamic) {
     return entry === -1 ? undefined : { client: { kind: 'script', word: script }, words };
   }
-  return entry !== -1 || startsExec(words) || startsOwner(words) ? { client: { kind: 'opaque', word: script }, words } : undefined;
+  return entry !== -1 || startsExec(words) || startsOwner(words) || startsIssue(words) ? { client: { kind: 'opaque', word: script }, words } : undefined;
 }
 
 /** True for a teamrig call whose subcommand is only known when it runs (`teamrig "$G" approve R1`), which the walker leaves unread. */
@@ -157,10 +180,43 @@ function hidesSubcommand(run: OpaqueRun): boolean {
   return !run.program.dynamic && programName(run.program.text) === 'teamrig';
 }
 
+/** Each `--session` value the words name, as the CLI reads flags (src/cli/args.ts): each flag takes the word after it. */
+function sessionWordsOf(tail: readonly ShellWord[]): ShellWord[] {
+  const sessions: ShellWord[] = [];
+  for (let index = 0; index < tail.length; index += 1) {
+    const token = tail[index]?.text ?? '';
+    if (!token.startsWith('--')) {
+      continue;
+    }
+    const value = tail[index + 1];
+    if (token === '--session' && value !== undefined) {
+      sessions.push(value);
+    }
+    index += 1;
+  }
+  return sessions;
+}
+
+/**
+ * The `teamrig issue` write the words run, or undefined for a command that writes nothing (`issue similar`). A word
+ * only known when it runs may stand anywhere but in the command or the `--session` value: the CLI refuses a flag
+ * given twice, and a value that starts with `--`, so no such word can name the session past a written-out one.
+ */
+function issueCallOf(words: readonly ShellWord[]): GuardedCall | undefined {
+  const action = words[1];
+  if (action === undefined) {
+    return undefined;
+  }
+  if (action.dynamic) {
+    return { kind: 'unreadable' };
+  }
+  return ISSUE_WRITES.has(action.text) ? { kind: 'issue', action: action.text, sessions: sessionWordsOf(words.slice(2)) } : undefined;
+}
+
 /**
  * The guarded call the words run, read as the CLI reads them (src/cli/args.ts): the first two words are the command,
- * and each flag of a review takes the word after it as its value. Undefined when they run no `teamrig exec` or
- * `teamrig owner` command.
+ * and each flag of a review takes the word after it as its value. Undefined when they run no `teamrig exec`,
+ * `teamrig owner` or `teamrig issue` write.
  */
 function guardedCallOf(words: readonly ShellWord[]): GuardedCall | undefined {
   const [group, action] = words;
@@ -172,6 +228,9 @@ function guardedCallOf(words: readonly ShellWord[]): GuardedCall | undefined {
   }
   if (group.text === 'owner') {
     return { kind: 'owner', action: ownerActionOf(words) };
+  }
+  if (group.text === 'issue') {
+    return issueCallOf(words);
   }
   if (group.text !== 'exec') {
     return undefined;
@@ -189,19 +248,7 @@ function guardedCallOf(words: readonly ShellWord[]): GuardedCall | undefined {
   if (tail.some((word) => word.dynamic)) {
     return { kind: 'unreadable' };
   }
-  const sessions: string[] = [];
-  for (let index = 0; index < tail.length; index += 1) {
-    const token = tail[index]?.text ?? '';
-    if (!token.startsWith('--')) {
-      continue;
-    }
-    const value = tail[index + 1];
-    if (token === '--session' && value !== undefined) {
-      sessions.push(value.text);
-    }
-    index += 1;
-  }
-  return { kind: 'review', action: action.text, sessions };
+  return { kind: 'review', action: action.text, sessions: sessionWordsOf(tail).map((word) => word.text) };
 }
 
 const UNREADABLE =
@@ -236,11 +283,11 @@ function clientRefusalOf(check: ClientCheck, root: string, installs: ClientInsta
 }
 
 /** Why the guard refuses a client file that is no install of this plugin. */
-function foreignRefusalOf(file: Extract<ClientFile, { kind: 'file' }>, installs: ClientInstalls): string {
+function foreignRefusalOf(file: Extract<ClientFile, { kind: 'file' }>, installs: ClientInstalls, group: string): string {
   const own = ownClientOf(installs);
   return file.by === 'found'
     ? `the \`teamrig\` this line's shell finds on PATH is ${file.path}, no install of the teamrig plugin; remove it from PATH, or run the plugin's own (${own}).`
-    : `\`teamrig exec\` here starts ${file.path}, no install of the teamrig plugin; run the plugin's own (${own}).`;
+    : `\`teamrig ${group}\` here starts ${file.path}, no install of the teamrig plugin; run the plugin's own (${own}).`;
 }
 
 /** Why the guard refuses a `teamrig owner` call: the routes the owner runs it by. */
@@ -249,18 +296,18 @@ function ownerRefusalOf(action: string | undefined): string {
   return `\`${command}\` acts as the owner; the owner runs it from the pane or their own terminal, or types \`/${command} ...\` in a tab, never through a tool call.`;
 }
 
-/** Why the guard refuses a call through a program only known when it runs. */
-function opaqueRefusalOf(word: ShellWord): string {
-  return `\`teamrig exec\` here starts a program only known when it runs (${word.text}), so the guard cannot tell which client runs it; write it out: \`teamrig\`, or its full path.`;
+/** Why the guard refuses a call through a program only known when it runs; `group` is the teamrig group it runs, such as exec. */
+function opaqueRefusalOf(word: ShellWord, group: string): string {
+  return `\`teamrig ${group}\` here starts a program only known when it runs (${word.text}), so the guard cannot tell which client runs it; write it out: \`teamrig\`, or its full path.`;
 }
 
 /** What a teamrig call's client word starts: the install root it is an entry of, or why the guard refuses it. */
 type ClientRoot = { readonly kind: 'root'; readonly root: string } | { readonly kind: 'refused'; readonly why: string };
 
-/** The install a call's client word starts, placed as the line's shell places it. */
-async function clientRootOf(client: ClientWord, at: WordAt, env: ExecGuardEnv): Promise<ClientRoot> {
+/** The install a call's client word starts, placed as the line's shell places it; `group` is the teamrig group the call runs. */
+async function clientRootOf(client: ClientWord, at: WordAt, env: ExecGuardEnv, group: string): Promise<ClientRoot> {
   if (client.kind === 'opaque') {
-    return { kind: 'refused', why: opaqueRefusalOf(client.word) };
+    return { kind: 'refused', why: opaqueRefusalOf(client.word, group) };
   }
   const file = client.kind === 'program' ? await placeProgram(client.word.text, at, env.search) : placeScript(client.word.text, at);
   switch (file.kind) {
@@ -273,16 +320,51 @@ async function clientRootOf(client: ClientWord, at: WordAt, env: ExecGuardEnv): 
       };
     case 'file': {
       const root = env.installs.rootOf(file.path);
-      return root === undefined ? { kind: 'refused', why: foreignRefusalOf(file, env.installs) } : { kind: 'root', root };
+      return root === undefined ? { kind: 'refused', why: foreignRefusalOf(file, env.installs, group) } : { kind: 'root', root };
     }
   }
 }
 
-/** Why the guard refuses a review, or undefined when it runs as the tab's own session. */
-function reviewRefusalOf(call: ReviewCall, identity: TabIdentity): string | undefined {
-  const command = `\`teamrig exec ${call.action}\``;
+/** A call that acts as the session `--session` names, as a refusal words it. */
+interface ActingCall {
+  /** The command, quoted: `teamrig exec approve`. */
+  readonly command: string;
+  /** What it does, after the command: `reviews a request`. */
+  readonly does: string;
+  /** Its verb for a session acting: `reviews`. */
+  readonly verb: string;
+  /** Why the owner never runs it through a tool call, for a `--session` that names the owner. */
+  readonly ownerRoute: (named: string) => string;
+  readonly sessions: readonly ShellWord[];
+}
+
+/** A review as an acting call. */
+function reviewActing(call: ReviewCall): ActingCall {
+  return {
+    command: `\`teamrig exec ${call.action}\``,
+    does: 'reviews a request',
+    verb: 'reviews',
+    ownerRoute: (named) => `the owner reviews in their own terminal, or types \`/teamrig exec ${call.action} R<n> --session ${named}\` in a tab, never through a tool call.`,
+    sessions: call.sessions.map((text) => ({ text, dynamic: false })),
+  };
+}
+
+/** A `teamrig issue` write as an acting call. */
+function issueActing(call: IssueCall): ActingCall {
+  return {
+    command: `\`teamrig issue ${call.action}\``,
+    does: 'writes on GitHub',
+    verb: 'writes',
+    ownerRoute: () => '`teamrig issue` writes as a session of the team, never as the owner.',
+    sessions: call.sessions,
+  };
+}
+
+/** Why the guard refuses a call that acts as `--session`, or undefined when it names the tab's own session, written out once. */
+function actingRefusalOf(call: ActingCall, identity: TabIdentity): string | undefined {
+  const { command, verb } = call;
   if (identity.kind === 'unbound') {
-    return `${command} reviews a request, and ${identity.why}, so the guard cannot tell who reviews.`;
+    return `${command} ${call.does}, and ${identity.why}, so the guard cannot tell who ${verb}.`;
   }
   const own = `--session ${identity.session}`;
   const [named, twice] = call.sessions;
@@ -292,17 +374,34 @@ function reviewRefusalOf(call: ReviewCall, identity: TabIdentity): string | unde
   if (twice !== undefined) {
     return `${command} names --session more than once; name this tab's own once (${own}).`;
   }
-  if (named === identity.owner) {
-    return (
-      `${command} names the owner (--session ${named}); the owner reviews in their own terminal, or types ` +
-      `\`/teamrig exec ${call.action} R<n> --session ${named}\` in a tab, never through a tool call.`
-    );
+  if (named.dynamic) {
+    return `${command} names --session by a word only known when it runs (${named.text}); write this tab's own out (${own}).`;
   }
-  const id = identity.idOf(named);
+  if (named.text === identity.owner) {
+    return `${command} names the owner (--session ${named.text}); ${call.ownerRoute(named.text)}`;
+  }
+  const id = identity.idOf(named.text);
   if (id === undefined) {
-    return `${command} names --session ${named}, no session of the team; a session reviews only as itself (${own}).`;
+    return `${command} names --session ${named.text}, no session of the team; a session ${verb} only as itself (${own}).`;
   }
-  return id === identity.session ? undefined : `${command} names --session ${named}, but this tab is ${identity.session}'s; a session reviews only as itself (${own}).`;
+  return id === identity.session ? undefined : `${command} names --session ${named.text}, but this tab is ${identity.session}'s; a session ${verb} only as itself (${own}).`;
+}
+
+/** Why the guard refuses a raw `gh` write on an issue or pull request. */
+function ghRefusalOf(write: GhWrite): string {
+  const route = 'use `teamrig issue comment` or `teamrig issue close`, which check who may write (each session its own issues and pull requests, the GitHub admin the rest)';
+  return write.kind === 'write'
+    ? `\`${write.what}\` writes on an issue or pull request past teamrig's check of who may; ${route}.`
+    : `\`${write.what}\` has a word only known when it runs, so the guard cannot tell whether it writes on an issue or pull request; write it out, and for a write ${route}.`;
+}
+
+/** The writes on issues and pull requests a line's `gh` calls make, and those of a program only known when it runs whose words read as one (`$GH issue close 7`). */
+function ghWritesOf(runs: LineRuns): GhWrite[] {
+  const words = [...runs.programs.filter((run) => run.name === 'gh').map((run) => run.args), ...runs.opaque.map((run) => run.args)];
+  return words.flatMap((args) => {
+    const write = ghWriteOf(args);
+    return write === undefined ? [] : [write];
+  });
 }
 
 /**
@@ -351,20 +450,24 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     return launch === undefined || call === undefined ? [] : [{ call, client: launch.client, at }];
   });
   const opaque = runs.opaque.filter((run) => startsExec(run.args));
+  const opaqueIssue = runs.opaque.filter((run) => startsIssue(run.args));
   const opaqueOwner = runs.opaque.filter((run) => startsOwner(run.args));
+  const ghWrites = env.githubIssues ? ghWritesOf(runs) : [];
   const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
   const fed = runs.fedShells.length > 0;
-  if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && !unread && !fed) {
+  if (calls.length === 0 && opaque.length === 0 && opaqueIssue.length === 0 && opaqueOwner.length === 0 && ghWrites.length === 0 && !unread && !fed) {
     return '';
   }
   const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : [])];
-  reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
+  reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program, 'exec')));
+  reasons.push(...opaqueIssue.map((run) => opaqueRefusalOf(run.program, 'issue')));
+  reasons.push(...ghWrites.map(ghRefusalOf));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : [])));
   reasons.push(...opaqueOwner.map((run) => ownerRefusalOf(ownerActionOf(run.args))));
   const roots = new Set<string>();
   for (const { call, client, at } of calls) {
-    if (call.kind === 'review' || call.kind === 'plain') {
-      const placed = await clientRootOf(client, at, env);
+    if (call.kind === 'review' || call.kind === 'plain' || call.kind === 'issue') {
+      const placed = await clientRootOf(client, at, env, call.kind === 'issue' ? 'issue' : 'exec');
       if (placed.kind === 'refused') {
         reasons.push(placed.why);
       } else {
@@ -378,10 +481,10 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
       reasons.push(refusal);
     }
   }
-  const reviews = calls.map(({ call }) => call).filter((call) => call.kind === 'review');
-  if (reviews.length > 0) {
+  const acting = calls.flatMap(({ call }) => (call.kind === 'review' ? [reviewActing(call)] : call.kind === 'issue' ? [issueActing(call)] : []));
+  if (acting.length > 0) {
     const identity = await env.identity();
-    reasons.push(...reviews.map((call) => reviewRefusalOf(call, identity)).filter((reason) => reason !== undefined));
+    reasons.push(...acting.map((call) => actingRefusalOf(call, identity)).filter((reason) => reason !== undefined));
   }
   return reasons.length === 0 ? '' : holdBackOutput('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`, env.hookAsks);
 }

@@ -49,6 +49,7 @@ function env(
       return Promise.resolve(root === INSTALL ? client : (placing.others?.[root] ?? INTACT));
     },
     platform: 'linux',
+    githubIssues: true,
     reads: () => reads,
     checks: () => checked.length,
     checked: () => checked,
@@ -318,6 +319,14 @@ describe('execGuardOutput', () => {
     assert.equal(quiet.checks(), 0);
   });
 
+  it('refuses an issue write through a program only known when it runs, and lets one with no write pass', async () => {
+    const found = await verdict(bash('$T issue close acme/web#7 --session alpha'));
+    assert.match(found?.reason ?? '', /`teamrig issue` here starts a program only known when it runs \(\$T\)/);
+    const script = await verdict(bash('node $SCRIPT issue comment acme/web#7 --body hi --session alpha'));
+    assert.match(script?.reason ?? '', /`teamrig issue` here starts a program only known when it runs \(\$SCRIPT\)/);
+    assert.equal(await verdict(bash('$T issue similar acme/web#7')), undefined);
+  });
+
   it('knows every teamrig exec command the CLI has, so a call through an unknown program reads as one', () => {
     const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('exec ')).map((name) => name.slice('exec '.length));
     assert.deepEqual([...EXEC_COMMANDS].sort(), commands.sort());
@@ -434,5 +443,76 @@ describe('execGuardOutput: a Bash line on Windows (T2319)', () => {
     assert.equal(await verdict(bash(`teamrig exec approve R1 --session alpha --note 'a${bs(2)}b'`), quiet), undefined);
     assert.equal(quiet.reads(), 1);
     assert.deepEqual(quiet.checked(), [INSTALL]);
+  });
+});
+
+describe('execGuardOutput: who writes on GitHub (T2705)', () => {
+  it('lets a teamrig issue write through that names the tab’s own session once, a body only known when it runs included', async () => {
+    const quiet = env();
+    for (const line of [
+      'teamrig issue comment acme/web#7 --body "thanks" --session alpha',
+      'teamrig issue close acme/web#7 --session app-alpha --comment "$(cat note.md)"',
+      'teamrig issue comment acme/web#7 --body $TEXT --session alpha',
+    ]) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.equal(quiet.reads(), 3);
+    assert.deepEqual([...new Set(quiet.checked())], [INSTALL]);
+  });
+
+  it('refuses a teamrig issue write as another session, by no --session, twice, or by a word only known when it runs', async () => {
+    for (const [line, reason] of [
+      ['teamrig issue close acme/web#7 --session bravo', "`teamrig issue close` names --session bravo, but this tab is alpha's; a session writes only as itself (--session alpha)."],
+      ['TEAMRIG_SESSION=bravo teamrig issue comment acme/web#7 --body hi', "`teamrig issue comment` names no --session; name this tab's own (--session alpha)"],
+      ['teamrig issue close acme/web#7 --session alpha --session bravo', '`teamrig issue close` names --session more than once'],
+      ['teamrig issue close acme/web#7 --session "$WHO"', "`teamrig issue close` names --session by a word only known when it runs ($WHO); write this tab's own out"],
+      ['teamrig issue close acme/web#7 --session zulu', 'names --session zulu, no session of the team; a session writes only as itself'],
+      ['teamrig issue close acme/web#7 --session owner', '`teamrig issue close` names the owner (--session owner); `teamrig issue` writes as a session of the team, never as the owner.'],
+      ['teamrig issue "$WHAT" acme/web#7 --session alpha', 'cannot tell whether it reviews a request, or as whom'],
+    ] as const) {
+      const found = await verdict(bash(line));
+      assert.equal(found?.decision, 'deny', line);
+      assert.ok(found?.reason.includes(reason), `${line}: ${found?.reason ?? ''}`);
+    }
+  });
+
+  it('refuses a teamrig issue write from a tab bound to no session, and one through a client that is no install of the plugin', async () => {
+    const unbound = await verdict(bash('teamrig issue close acme/web#7 --session alpha'), env({ kind: 'unbound', why: 'this tab is not bound to a session of the team' }));
+    assert.ok(unbound?.reason.includes('`teamrig issue close` writes on GitHub, and this tab is not bound to a session of the team, so the guard cannot tell who writes.'), unbound?.reason);
+    const foreign = await verdict(bash('node C:/w/src/cli/main.ts issue close acme/web#7 --session alpha'));
+    assert.match(foreign?.reason ?? '', /`teamrig issue` here starts C:[\\/]w[\\/]src[\\/]cli[\\/]main\.ts, no install of the teamrig plugin/);
+  });
+
+  it('leaves a teamrig issue command that writes nothing to the normal flow, without reading the tab', async () => {
+    const quiet = env();
+    assert.equal(await verdict(bash('teamrig issue similar acme/web#7'), quiet), undefined);
+    assert.equal(await verdict(bash('teamrig issue'), quiet), undefined);
+    assert.equal(quiet.reads(), 0);
+  });
+
+  it('refuses a raw gh write on an issue or pull request, wherever the line runs it, and lets reads and new ones pass', async () => {
+    const quiet = env();
+    for (const [line, what] of [
+      ['gh issue close 7 -R acme/web', 'gh issue close'],
+      ['git fetch && gh pr merge 3 --rebase', 'gh pr merge'],
+      ['gh api -X PATCH repos/acme/web/issues/7 -f state=closed', 'gh api PATCH repos/acme/web/issues/7'],
+      ['$GH issue comment 7 --body hi', 'gh issue comment'],
+    ] as const) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.ok(found?.reason.includes(`\`${what}\` writes on an issue or pull request past teamrig's check of who may; use \`teamrig issue comment\``), `${line}: ${found?.reason ?? ''}`);
+    }
+    for (const line of ['gh issue view 7', 'gh pr create --fill', 'gh api repos/acme/web/pulls/3', 'gh pr list --state open']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.equal(quiet.reads(), 0);
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('refuses a raw gh call it cannot read on issues, and passes every gh write on a team whose issues are not on GitHub', async () => {
+    const found = await verdict(powershell('gh issue $verb 7'));
+    assert.ok(found?.reason.includes('`gh issue $verb` has a word only known when it runs, so the guard cannot tell whether it writes'), found?.reason);
+    const off = { ...env(), githubIssues: false };
+    assert.equal(await verdict(bash('gh issue close 7'), off), undefined);
   });
 });
