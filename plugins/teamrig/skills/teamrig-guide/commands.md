@@ -1138,7 +1138,8 @@ Output:
 Imports GitHub issues into the task list, inbound only. For each repository in `github.repos` it lists the open
 issues and those closed in the last `github.closedDays` days (14 by default) through the GitHub CLI, `gh`. It only
 ever lists issues: it never creates, edits, comments on, labels, assigns or closes anything on GitHub, and a task
-added with `teamrig add` stays in the task list and never goes to GitHub. Setup, tokens and every failure's fix:
+added with `teamrig add` stays in the task list and never goes to GitHub. Only `teamrig gh migrate`, run by hand,
+opens issues. Setup, tokens and every failure's fix:
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md).
 
 Access, per owner (the `acme` of `acme/web`): the read-only token saved in the system's credential store as
@@ -1214,6 +1215,57 @@ WROTE 3 change(s) to the task list as github; GitHub was only read
 Without `--yes` the counts read `to add` and `to change`, a new task's id is `new`, and the last line is
 `PREVIEW nothing was written; teamrig gh sync --yes writes the above as github`. Each repository shows its first
 10 rows, then `... and <n> more`.
+
+### teamrig gh migrate
+
+Moves the team's tasks to GitHub issues once, from a row file you write: JSON lines, one row per task. An issue row
+is `{"id", "decision": "issue", "repo", "type": "bug"|"task", "priority": "p1"-"p3", "title", "body"}`, with the
+task's public wording, since an issue is open to anyone who can read the repository; a local row is `{"id",
+"decision": "local", "reason"}` and keeps the task off GitHub. A bad line, or one that looks like it holds a
+secret, refuses the whole file, naming the line.
+
+Without `--yes` it writes nothing. It prints a `REPLACES` line for each task whose ref is not an issue (the issue
+takes the ref's place; the update's note keeps `ref was: <old>`), a `SKIPPED` line for each row it will not act on
+(no such task in the working set, the task is finished, the task holds its issue already, the repository is not
+one of `github.repos`, or the register would refuse the ref), a `NO ROW` line naming the live tasks no row covers
+(the first 20, then how many more), and the counts. `--out` also writes a Markdown preview with every issue in
+full (task, repository, labels, title, body), the tasks kept local with their reasons and the skipped rows, for a
+reviewer to read before anything is posted.
+
+With `--yes` it opens each issue in row order through `gh api` (the create is the one GitHub write teamrig makes:
+one issue, its title, body and labels, the kind of work then the priority), with the token saved for the
+repository's owner as `teamrig-gh-<owner>`, else the `gh auth login` account (an `ACCESS` line per owner says
+which), then sets the task's ref to `gh:<owner>/<name>#<number>` as an `update --ref` by you would, so `teamrig gh
+sync` adds no second task for it. Each opened issue gives an `OPENED` line and the run ends with `DONE`. The first
+failure stops the run: `FAILED` when gh failed (a stopped gh or one that printed no number may still have opened
+the issue: look before a rerun), `REFUSED` when the register refused the ref (the issue is open: the line gives the
+`teamrig update` that sets it), then `STOPPED`. A rerun skips each task already holding its issue.
+
+`TEAMRIG_GITHUB=off` makes `--yes` print an `OFF` line and open nothing. Exit 1 when gh failed, 2 when the register
+refused a ref, else 0.
+
+Flags:
+
+- `--session <id|name>`: the caller, a session of the team; each ref is set as its update.
+- `--out <preview.md>`: writes the Markdown preview there.
+- `--yes`: opens the issues and sets each task's ref. Without it nothing is written but the preview.
+
+Example:
+
+```sh
+teamrig gh migrate rows.jsonl --out preview.md
+```
+
+Output:
+
+```text
+PREVIEW FILE /work/preview.md
+REPLACES T12: its ref notes/login.md gives way to its issue
+SKIPPED T9: the task is done
+NO ROW 1 live task(s) no row names: T44
+3 issue(s) to open, 1 kept local, 1 skipped, 1 live task(s) with no row
+PREVIEW nothing was written; teamrig gh migrate <file> --yes opens the issues and sets each task's ref
+```
 
 ## Inbox
 

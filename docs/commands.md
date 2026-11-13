@@ -321,6 +321,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before
+  gh migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
+      from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
+      title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
+      nothing but the --out preview of every issue in full; --yes opens each issue through gh and
+      sets the task's ref to it, so gh sync adds no second task; stops at the first failure, and a
+      rerun skips each task already holding its issue
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;

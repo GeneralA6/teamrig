@@ -3,8 +3,10 @@
 `teamrig gh sync` brings the issues of your GitHub repositories into the task list, one way only. Each open issue
 written by the repository's people, or accepted by them ([Whose issues become tasks](#whose-issues-become-tasks)),
 becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its title, description (the issue's body),
-priority and open or closed state follow GitHub on every run. Nothing ever goes the other way: teamrig never creates, edits, comments on or closes
-anything on GitHub, and a task added with `teamrig add` stays on your machine.
+priority and open or closed state follow GitHub on every run. The sync never goes the other way: it never creates,
+edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The one
+exception is run by hand: `teamrig gh migrate` moves tasks you choose to new issues, once
+([Moving your tasks to issues](#moving-your-tasks-to-issues)).
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
 write. After that it runs on its own every 15 minutes while your sessions work.
@@ -81,7 +83,8 @@ Do this once per owner:
 3. **Resource owner**: the owner of the repositories, e.g. `acme`.
 4. **Repository access**: **Only select repositories**, and pick the ones in `github.repos`.
 5. **Permissions → Repository permissions → Issues: Read-only**. GitHub adds **Metadata: Read-only** by itself.
-   Give it nothing else.
+   Give it nothing else. Only for a `teamrig gh migrate` run give it **Issues: Read and write**, and set it back
+   to Read-only after.
 6. **Generate token** and copy it. GitHub shows it only once.
 
 For an organisation, an organisation owner may have to approve the token before it works; until then GitHub refuses
@@ -146,6 +149,35 @@ while every session is idle nothing is read; the next turn that ends catches up.
 `"everyMinutes": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
 `teamrig gh sync --yes` still works at any time.
 
+## Moving your tasks to issues
+
+To move a team's task list to GitHub, say before a repository goes public, `teamrig gh migrate` opens one issue per
+task you choose. Issues are public on a public repository, so you write each one's wording yourself, in a row file
+of JSON lines:
+
+```text
+{"id": "T12", "decision": "issue", "repo": "acme/web", "type": "bug", "priority": "p1", "title": "Login redirect loops", "body": "After a sign-in the page redirects back to the login form."}
+{"id": "T15", "decision": "local", "reason": "names a customer"}
+```
+
+```sh
+teamrig gh migrate rows.jsonl --out preview.md    # writes nothing but the preview
+teamrig gh migrate rows.jsonl --yes               # opens the issues
+```
+
+- **Preview first.** Without `--yes` nothing is written. `--out` writes a page with every issue in full (repository,
+  labels, title, body), the tasks kept local with their reasons and the rows it skips, for a reviewer. The output
+  counts the issues to open and names the live tasks no row covers (`NO ROW`).
+- **Each issue is linked.** `--yes` opens the issues in row order, each labelled with its type and priority, and sets
+  the task's ref to `gh:<owner>/<name>#<number>`, so the sync that follows adds no second task. A task whose ref is
+  not an issue gets its issue in the ref's place (`REPLACES` in the preview); the update's note keeps the old ref,
+  so the task's history still has it.
+- **Safe to rerun.** The first failure stops the run (`FAILED` or `REFUSED`, then `STOPPED`); fix the cause and run it
+  again: a task that holds its issue already is skipped, and so is a finished task or a repository not in
+  `github.repos`.
+- **Write access, for this run only.** The token of each owner needs **Issues: Read and write**. Set it back to
+  Read-only once the issues are open; the sync needs nothing more.
+
 ## Renewing a token
 
 When a token expires, GitHub refuses it and the `FAILED` line says so. Regenerate it on GitHub (the token's page has
@@ -157,7 +189,7 @@ again.
 
 | The `FAILED` line says | What it means | Fix |
 | --- | --- | --- |
-| `the token saved as teamrig-gh-acme may not read the issues of acme/web` | The token sees the repository but has no Issues permission. | On GitHub, edit the token: **Issues: Read-only**. |
+| `the token saved as teamrig-gh-acme may not read the issues of acme/web` | The token sees the repository but has no Issues permission. | On GitHub, edit the token: **Issues: Read-only** (**Read and write** for `teamrig gh migrate`). |
 | `acme/web is not visible to the token saved as teamrig-gh-acme` | The repository is not one the token was given, or the name is wrong. | Check `github.repos`; on GitHub, add the repository to the token. |
 | `GitHub refused the token saved as teamrig-gh-acme (expired or revoked?)` | Expired, revoked or not yet approved by the organisation. | Regenerate it and save it again, or ask an organisation owner to approve it. |
 | `... is not visible to the gh login` / `the gh login may not read the issues` | No token is saved for that owner, and the `gh` account cannot read it. | Save a token for the owner (step 2). |
@@ -169,8 +201,10 @@ could not be read (a locked keyring, for one); teamrig reads through the `gh` lo
 
 ## Safety
 
-- **Read-only.** The token can read issues and metadata and nothing else, and teamrig runs only the two issue
+- **Read-only sync.** The token can read issues and metadata and nothing else, and the sync runs only the two issue
   queries it ships, word for word, through `gh api graphql` (any other `gh` command or query is refused in code).
+  The one write is `teamrig gh migrate`'s create of one issue (`gh api repos/<owner>/<name>/issues -X POST` with its
+  title, body and labels only), run by hand.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
   is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
   that one run.
