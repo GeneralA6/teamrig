@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import { testTask } from '../testing/task.ts';
-import { classOf, goalChain, prepStanding, rankOf, servedGoalOf, type RankedGoal, type SlicedGoal } from './focus.ts';
+import { classOf, goalChain, prepRead, prepStanding, rankOf, servedGoalOf, type RankedGoal, type SlicedGoal } from './focus.ts';
 
 describe('classOf (T2076)', () => {
   it("reads a task's own class, and one with none as the team's default class", () => {
@@ -121,5 +121,15 @@ describe('prepStanding (T2453)', () => {
 
   it('is null for a task with no marker', () => {
     assert.equal(prepStanding(testTask(), goals), null);
+  });
+
+  it('says why a marker lapsed, as PREP-LAPSED prints it', () => {
+    const read = (tag: string, slice: number): ReturnType<typeof prepRead> => prepRead(testTask({ prepares: { goal: tag, slice } }), goals);
+    assert.deepEqual(read('A1', 5), { standing: 'lapsed', why: 'prepares A1:5, goal A1 is on slice 2' });
+    assert.deepEqual(read('B1', 2), { standing: 'lapsed', why: 'prepares B1:2, goal B1 is not ranked' });
+    assert.deepEqual(read('Z9', 1), { standing: 'lapsed', why: 'prepares Z9:1, goal Z9 is not ranked' }, 'a goal gone ranks nothing');
+    assert.deepEqual(read('C1', 1), { standing: 'lapsed', why: 'prepares C1:1, goal C1 has no slice open' });
+    assert.deepEqual(read('A1', 3), { standing: 'near' });
+    assert.equal(prepRead(testTask(), goals), null);
   });
 });
