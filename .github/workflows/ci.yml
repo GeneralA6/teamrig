@@ -37,6 +37,22 @@ jobs:
       - run: node tools/scrub/cli.ts --github
       - run: node tools/dco/cli.ts --github
 
+  dependency-review:
+    name: dependency review
+    # Fails a pull request that adds or changes a dependency (an npm package or a GitHub Action) with a known
+    # advisory of any severity, dev dependencies included: they run at install and build time too. It reads
+    # GitHub's dependency graph, so it needs no checkout. A push to main or a run by hand has no pull request
+    # to compare, so the step skips there and the job passes.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          fail-on-severity: low
+          fail-on-scopes: runtime, development, unknown
+
   size-rule:
     name: commit size rule
     # Fails a commit over 400 changed non-test lines or 15 non-test files whose message has no
@@ -130,7 +146,7 @@ jobs:
     # failed, was cancelled or skipped; always() runs it after a failed one, where a job would skip, which
     # a required check reads as a pass.
     if: ${{ always() && !github.event.repository.private }}
-    needs: [gates, size-rule, coverage, plugin-version, test]
+    needs: [gates, dependency-review, size-rule, coverage, plugin-version, test]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # actions: read lists this run's jobs; a job's permissions replace the workflow's, so contents: read is restated.
