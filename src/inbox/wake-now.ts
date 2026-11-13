@@ -40,28 +40,40 @@ export interface WakeSender {
   readonly below: readonly string[];
 }
 
-/** A receiver as the gate reads it: how the line names it, and its team. */
+/** A receiver as the gate reads it: how the line names it, its team, and the roles that let a lead of another team wake it. */
 export interface WakeTarget {
   readonly label: string;
   readonly team: string;
+  /** It holds its own team's lead role. */
+  readonly teamLead: boolean;
+  /** The sender's team config names it in `roles` (deliveryOwner, securityReviewer), as the session serving that team. */
+  readonly servesSender: boolean;
+}
+
+/** A team lead may wake a session of another team: one below its own, any team's lead, or a role holder serving it. */
+function leadMayWake(sender: WakeSender, target: WakeTarget): boolean {
+  return sender.teamLead && (sender.below.includes(target.team) || target.teamLead || target.servesSender);
 }
 
 /**
  * Why the sender may not wake these receivers; undefined when it may. A wake spends the receiver's turn and its
  * team's budget line, so a group (`all`, `leads`, `group:<leader>`, `team:<team>`, `tree:leads`) is woken only by a
- * leader, and a session of another team only by the lead of a team above that team; on its own team any session may
- * wake a session it names.
+ * leader, and a session of another team only by a team lead: in a team below its own, the lead of any team of its tree,
+ * or a session its own config names in `roles`. Leads escalate up and across (T2685: a child team's lead could wake
+ * neither its parent lead nor its security reviewer while a p0 waited on them); on its own team any session may wake
+ * one it names.
  */
 export function wakeRefusal(sender: WakeSender, group: boolean, targets: readonly WakeTarget[], when: WakeWhen): string | undefined {
   const { asked, flag } = flagsOf(when);
   if (group && !sender.leader) {
     return `${asked} on a group is a leader's: ${sender.id} leads no one on ${sender.team}; post the line without ${flag}, and each receiver reads it at its next prompt`;
   }
-  const outside = targets.filter((target) => target.team !== sender.team && !(sender.teamLead && sender.below.includes(target.team)));
+  const outside = targets.filter((target) => target.team !== sender.team && !leadMayWake(sender, target));
   if (outside.length > 0) {
     return (
-      `${asked} reaches another team only from the lead of a team above it, since a wake spends that team's budget line: ` +
-      `${sender.team}/${sender.id} may not wake ${outside.map((target) => target.label).join(', ')}; post the line without ${flag}`
+      `${asked} reaches another team only from a team lead, since a wake spends that team's budget line: a session of a ` +
+      `team below its own, any team's lead, or a session its config names in roles; ` +
+      `${sender.team}/${sender.id} may not wake ${outside.map((target) => target.label).join(', ')}; post the line without ${flag}, or ask your lead to wake it`
     );
   }
   return undefined;
