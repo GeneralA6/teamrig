@@ -14,7 +14,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review or an `issue comment` or `issue close` run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner` command, which acts as the owner, a raw `gh` write on an issue or pull request of a team on GitHub, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
@@ -630,6 +630,19 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
   `... | iex`, `x | bash -c bash`), whatever feeds it, as the pipe can carry a review the line never shows. Run the
   commands directly, or hand the shell a heredoc, which the guard reads as written. A shell with no pipe into it
   (`bash --version`, a bare `cmd`) passes.
+- **an issue write as another**: [issue comment](commands.md#teamrig-issue-comment) and
+  [issue close](commands.md#teamrig-issue-close) write as the session `--session` names, and each session may
+  write only on its own issues and pull requests, so the guard holds them to the review's rules: one `--session`,
+  written out, naming the tab's own session, never the owner's, through an install of the plugin. A body only known
+  when the line runs (`--body "$(cat note.md)"`) is fine: the CLI refuses a flag given twice, so it cannot name
+  another session past the one written out.
+- **a raw `gh` write on an issue or pull request**, on a team whose `github.repos` names a repository:
+  `gh issue close`, `comment`, `edit`, `reopen` and the rest that change one, the same `gh pr` commands with
+  `merge`, `review` and `ready`, a `gh api` call that writes on an `issues` or `pulls` path (a method other than
+  GET, or a body), and a GraphQL call whose body may hold a mutation. Such a call skips the check of who may write;
+  use `teamrig issue comment` or `teamrig issue close`. Opening an issue or pull request (`gh issue create`,
+  `gh pr create`) and every read pass, as does every `gh` call on a team without `github.repos`, or one whose config
+  did not load.
 
 It always refuses and never asks; no config key turns it off. The guard reads only the call, so it cannot see:
 
@@ -646,7 +659,10 @@ It always refuses and never asks; no config key turns it off. The guard reads on
 - code node runs before the client: a preload option (`-r`, `--import`) or `NODE_OPTIONS`, which the `exec`
   commands themselves refuse (below);
 - a change made to the list too: the list sits beside the code, so the check stops a slip that edits the installed
-  files, not a session set on rewriting both.
+  files, not a session set on rewriting both;
+- a `gh` write hidden behind a name gh resolves itself, such as a `gh alias` or a `gh` extension, or one any other
+  program makes with the machine's GitHub login: the guard stops a slip, and the login's own rights are the
+  owner's to limit.
 
 Every `exec` command also checks the node it runs on, however it was started, and refuses before it reads or writes
 anything when node's command line or `NODE_OPTIONS` holds an option outside `--no-warnings`, `--no-deprecation`,
@@ -1577,8 +1593,9 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   unless `secretGuard.secretReads` (a print) or `secretGuard.writes` (text) is `ask` or `allow`.
 - **The secret redactor** replaces a secret in a call's result on its own, whatever the mode, unless
   `secretGuard.redact` is `false`.
-- **The exec guard** refuses a privileged command's review run as another session or the owner, any
-  `exec` call through a client that is no install of the plugin or was changed, every `owner` command, and a shell fed its commands from a pipe, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
+- **The exec guard** refuses a privileged command's review or an issue write run as another session or the owner, any
+  `exec` call through a client that is no install of the plugin or was changed, every `owner` command, a raw `gh`
+  write on an issue or pull request of a team on GitHub, and a shell fed its commands from a pipe, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,
   `dry-run`, `status`, `run`) instead of the one rule.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
