@@ -95,7 +95,11 @@ The injected context holds:
    fresh start (the automatic restart, a `/clear` or a new start) after the handover was written. A compact or resume keeps the old context, so the
    note waits. It then lists what the old session leaves: its scheduled jobs (`CronCreate`; after a `/clear`
    they are still scheduled and the note says so, after a new process it lists them to make again), a pending
-   wake-up to make again (`ScheduleWakeup`), its scratchpad and its plan file. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
+   wake-up to make again (`ScheduleWakeup`), its scratchpad and its plan file, and, when the owner typed in it, a pointer to
+   `<handover dir>/<id>.owner.md`: the owner's own prompts from the old transcript, oldest first (the newest 40 prompts
+   within 16,000 characters), those typed after the handover was last written marked, so a decision the handover
+   missed is not lost. Scheduled checks, notifications, slash commands, teamrig's own prompts and any prompt repeated
+   three times or more are left out; a file from an earlier refresh is removed when there is nothing to carry. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
    handover and carry on, so it does not sit idle until someone types.
 7. **Live tasks**: at that fresh start after a refresh, and at every start after a compaction (Claude Code's
    `/compact` or its automatic one), what `teamrig start` prints first, then the session's active tasks as the

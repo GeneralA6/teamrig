@@ -43,6 +43,15 @@ test('a blob that is not a printable token (stored in another encoding) is refus
   assert.doesNotMatch(JSON.stringify(result), /QZX/);
 });
 
+test('the real PowerShell runner reports a script\'s exit, and a failed start where there is no powershell.exe', () => {
+  const result = windowsPowerShell('exit 3');
+  // On Windows the script's own exit code; elsewhere powershell.exe is not found, so the run has no status. Either
+  // way the runner returns a spawn result rather than throwing, which readCredential reads as an error.
+  assert.equal(result.status, process.platform === 'win32' ? 3 : null);
+  assert.equal(typeof result.stdout, 'string');
+  assert.equal(typeof result.stderr, 'string');
+});
+
 // The keychain reads Windows Credential Manager only, and the repo gate fails a skipped test, so other hosts do not register it.
 if (process.platform === 'win32') test('reads a real generic credential from Windows Credential Manager', () => {
   const target = `teamrig-ship-test-${randomBytes(4).toString('hex')}`;

@@ -30,6 +30,7 @@ import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js"
 import { JsonlRenameLog } from "../../names/log.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { decideStart, decideStop, reaskGrowth, thousands, } from "../../refresh/decide.js";
+import { ownerTurnsLine, ownerTurnsText } from "../../refresh/owner-turns.js";
 import { carryLines, carryStartOf, readCarry } from "../../refresh/carry.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -459,7 +460,7 @@ function carryRecordFailed(error) {
 async function carryFrom(runtime, store, id, transcript, now) {
     const record = await store.carried(id);
     const inherited = record?.transcript === transcript ? record.crons : [];
-    return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited), inherited };
+    return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited, store.handoverPath(id)), inherited };
 }
 /**
  * Records the jobs a /clear leaves live in the process for the fresh session's transcript, which never names them,
@@ -489,13 +490,33 @@ async function carriedLinesOf(runtime, store, id, transcript, payload, zone) {
     catch (error) {
         return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
     }
-    const lines = read.carry === undefined ? [] : carryLines(read.carry, now, start, zone);
+    const lines = read.carry === undefined ? [] : [...carryLines(read.carry, now, start, zone), ...(await ownerTurnsNoteOf(runtime, store, id, read.carry.ownerTurns ?? []))];
     try {
         await keepCarried(store, id, read.carry?.crons ?? read.inherited, start, startTranscriptOf(payload));
         return lines;
     }
     catch (error) {
         return [...lines, carryRecordFailed(error)];
+    }
+}
+/**
+ * What the owner typed in the old session, written beside the handover for the fresh start to read, and the note's
+ * line that points at it; a file from an earlier refresh is removed when there is nothing to carry. Says, never
+ * throws, when it cannot write it.
+ */
+async function ownerTurnsNoteOf(runtime, store, id, turns) {
+    const path = store.ownerTurnsPath(id);
+    try {
+        const line = ownerTurnsLine(turns, path);
+        if (line === undefined) {
+            await runtime.files.remove(path);
+            return [];
+        }
+        await runtime.files.write(path, ownerTurnsText(turns));
+        return [line];
+    }
+    catch (error) {
+        return [`${KIT_NAME} could not keep what the owner typed in your old session (${errorMessage(error)}): read its transcript's last prompts before you go on.`];
     }
 }
 /**
