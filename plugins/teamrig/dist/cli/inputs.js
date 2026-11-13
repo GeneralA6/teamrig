@@ -1,7 +1,7 @@
 import { ENV } from "../core/home.js";
 import { ID_PATTERN, NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from "../core/time.js";
-import { OPTION_SEPARATOR } from "../register/card.js";
+import { OPTION_SEPARATOR, optionsSplitText, splitOptions } from "../register/card.js";
 import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
 import { WAITS_USAGE } from "../register/policy.js";
@@ -398,11 +398,11 @@ function flagText(flags, name) {
     }
     return text;
 }
-/** `--options "<a> | <b>"`: the choices, each trimmed; an empty one is a usage error. */
+/** `--options "<a> | <b>"`: the choices, each trimmed, a `\\|` kept as a literal `|`; an empty one is a usage error. */
 function optionsOf(text) {
-    const options = text.split(OPTION_SEPARATOR).map((option) => option.trim());
+    const options = splitOptions(text);
     if (options.some((option) => option === '')) {
-        throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}`);
+        throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}; ${optionsSplitText(options)}`);
     }
     return options;
 }
