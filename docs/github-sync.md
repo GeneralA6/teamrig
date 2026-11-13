@@ -1,11 +1,11 @@
 # GitHub sync
 
-`teamrig gh sync` brings the issues of your GitHub repositories into the task list, one way only. Each open issue
+`teamrig issue sync` brings the issues of your GitHub repositories into the task list, one way only. Each open issue
 written by the repository's people, or accepted by them ([Whose issues become tasks](#whose-issues-become-tasks)),
 becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its title, description (the issue's body),
 priority and open or closed state follow GitHub on every run. The sync never goes the other way: it never creates,
 edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The
-writes are all run by hand: `teamrig gh migrate` moves tasks you choose to new issues, once
+writes are all run by hand: `teamrig issue migrate` moves tasks you choose to new issues, once
 ([Moving your tasks to issues](#moving-your-tasks-to-issues)), and `teamrig issue comment` and `teamrig issue close`
 answer or close one issue or pull request ([Commenting on and closing](#commenting-on-and-closing)). GitHub is the
 only host teamrig writes to so far.
@@ -33,7 +33,7 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
 | `sessions` | Optional. The session that owns each repository's issues, so each session sees the issues of its own repositories. One session can own several. |
 | `owners` | Optional. A GitHub login to a session: an issue assigned to that login goes to that session, whatever its repository. |
 | `closedDays` | How many days back closed issues are read, to finish their tasks. Default 14. |
-| `everyMinutes` | How often it runs on its own, in minutes (0 to 1440). Default 15; 0 leaves it to `teamrig gh sync --yes`. |
+| `everyMinutes` | How often it runs on its own, in minutes (0 to 1440). Default 15; 0 leaves it to `teamrig issue sync --yes`. |
 | `acceptLabel` | Optional. The label that lets an issue by someone outside the repository become a task ([below](#whose-issues-become-tasks)). Default `teamrig`. |
 
 Who owns a new issue's task: the session of its first assignee listed in `owners`; else its repository's session in
@@ -72,7 +72,7 @@ teamrig reads issues through the GitHub CLI, [`gh`](https://cli.github.com). For
 
 A token is saved, but the credential store cannot read it (a locked keyring, for one): the command stops for that
 owner with a `FAILED` line naming the store and the fix, and never falls back to the `gh` login, which may reach
-more than the token was given. `teamrig gh sync` reads the other owners on.
+more than the token was given. `teamrig issue sync` reads the other owners on.
 
 ### What each command needs
 
@@ -80,8 +80,8 @@ Give the token only what the commands you run need:
 
 | Command | Repository permissions |
 | --- | --- |
-| `teamrig gh sync` | **Issues: Read-only** |
-| `teamrig gh migrate` | **Issues: Read and write** |
+| `teamrig issue sync` | **Issues: Read-only** |
+| `teamrig issue migrate` | **Issues: Read and write** |
 | `teamrig issue comment`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments and state are written through its issue) |
 
 ### Why one token per owner
@@ -121,8 +121,8 @@ On Linux without `secret-tool`, teamrig reads through the `gh` login.
 ## 3. Preview, then write
 
 ```sh
-teamrig gh sync          # shows what it would do, writes nothing
-teamrig gh sync --yes    # writes it
+teamrig issue sync          # shows what it would do, writes nothing
+teamrig issue sync --yes    # writes it
 ```
 
 The preview is also the check that access works. It says once per owner how that owner's repositories are read:
@@ -137,18 +137,18 @@ REPO acme/api: 0 to add, 0 to change, 3 unchanged
 ACCESS globex: read with the gh login; no token saved as teamrig-gh-globex
 REPO globex/site: 1 to add, 0 to change, 0 unchanged
 ADD new gh:globex/site#4 p2 web: "Broken footer link"
-PREVIEW nothing was written; teamrig gh sync --yes writes the above as github
+PREVIEW nothing was written; teamrig issue sync --yes writes the above as github
 ```
 
 A repository that cannot be read gets a `FAILED` line saying what to fix; its tasks stay as they are and the other
 repositories are read on. A `LEFT OUT` line names, by number only, the open issues by people outside the repository
-that no one accepted yet (at most 20, then how many more); their text is never printed. `teamrig gh sync --repo
+that no one accepted yet (at most 20, then how many more); their text is never printed. `teamrig issue sync --repo
 acme/web` reads one repository only.
 
 ## Then it runs on its own
 
 Once the repositories are listed, nobody needs to run it. When a session of the team ends a turn, its Stop hook
-checks whether `everyMinutes` (15) have passed since the last sync; if so, it starts `teamrig gh sync --auto` hidden
+checks whether `everyMinutes` (15) have passed since the last sync; if so, it starts `teamrig issue sync --auto` hidden
 in the background, once for the whole team, and the turn goes on as usual. Nothing keeps running between syncs, so
 while every session is idle nothing is read; the next turn that ends catches up.
 
@@ -162,11 +162,11 @@ while every session is idle nothing is read; the next turn that ends catches up.
   "teamrig" label to one on GitHub to make it a task at the next sync`.
 
 `"everyMinutes": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
-`teamrig gh sync --yes` still works at any time.
+`teamrig issue sync --yes` still works at any time.
 
 ## Moving your tasks to issues
 
-To move a team's task list to GitHub, say before a repository goes public, `teamrig gh migrate` opens one issue per
+To move a team's task list to GitHub, say before a repository goes public, `teamrig issue migrate` opens one issue per
 task you choose. Issues are public on a public repository, so you write each one's wording yourself, in a row file
 of JSON lines:
 
@@ -176,8 +176,8 @@ of JSON lines:
 ```
 
 ```sh
-teamrig gh migrate rows.jsonl --out preview.md    # writes nothing but the preview
-teamrig gh migrate rows.jsonl --yes               # opens the issues
+teamrig issue migrate rows.jsonl --out preview.md    # writes nothing but the preview
+teamrig issue migrate rows.jsonl --yes               # opens the issues
 ```
 
 - **No task ids on GitHub.** A task id numbers your team's own list and means nothing to a reader of the issue, so
@@ -245,7 +245,7 @@ again.
 
 - **Read-only sync.** The sync runs only the two issue queries it ships, word for word, through `gh api graphql`, so
   a token with **Issues: Read-only** is all it needs. Any other `gh` command or query is refused in code, except
-  the three writes, each run by hand on a repository in `github.repos`: `teamrig gh migrate`'s create of one issue
+  the three writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
   one comment (`.../issues/<number>/comments -X POST` with its body only) and `teamrig issue close`'s close
   (`.../issues/<number> -X PATCH` with `state=closed` only).

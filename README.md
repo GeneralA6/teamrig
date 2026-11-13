@@ -199,7 +199,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
   wrappers and own-branch rebases to Claude Code's auto-mode facts, so auto mode stops asking about them.
 - **A model per session:** each session starts on its own model and effort, and you're told when one runs on another.
   An `/effort` you type in a session's tab becomes its effort in the config, so a restore or restart keeps it.
-- **GitHub issues in the task list:** `teamrig gh sync` reads your repositories' open issues every 15 minutes, one way
+- **GitHub issues in the task list:** `teamrig issue sync` reads your repositories' open issues every 15 minutes, one way
   only ([GitHub sync](docs/github-sync.md)).
 - **Shipping from many sessions:** `teamrig queue` runs builds and test runs under one host lock, `teamrig merge`
   merges a finished branch (by a push, or through your own merge command such as a pull request), `teamrig deploy` brings it to the running system (or, with `--targets`, restarts some services onto new config with

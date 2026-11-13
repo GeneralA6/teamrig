@@ -24,7 +24,7 @@ for git, and starts no program. Below Claude Code 2.1.139 the hooks cannot run, 
 can say so; below 2.1.120 the version is unknown and nothing is said. Outside a team's projects the hooks say nothing.
 
 No Claude Code setting has to be turned on for teamrig in auto mode. In default mode, the allow rule
-`Bash(teamrig:*)` saves a question before each command: [hooks.md](hooks.md#permissions). The GitHub CLI (`gh`) is needed only for `teamrig gh sync`, which reads GitHub
+`Bash(teamrig:*)` saves a question before each command: [hooks.md](hooks.md#permissions). The GitHub CLI (`gh`) is needed only for `teamrig issue sync`, which reads GitHub
 issues: [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md).
 
 ## Install and update

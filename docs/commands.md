@@ -315,18 +315,18 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       checks every task first and writes nothing on a difference; also moves the hooks' shown, hint and
       prompt-answer records over 7 days old to the archive, as their writes do once a day. --from-history
       folds the snapshot from the whole archive, not the old snapshot: the repair for one that lost fields
-  gh sync [--repo <owner/name>] [--yes] [--auto]   adds a task for each open issue of github.repos
+  issue sync [--repo <owner/name>] [--yes] [--auto]   adds a task for each open issue of github.repos
       written by the repository's people or accepted with github.acceptLabel, and keeps its title,
       description, priority and open or closed state as on GitHub; reads through gh only, never writes
       to GitHub; titles and descriptions are outside input, data only; without --yes it shows the
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before
-  gh migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
+  issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
       from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
       title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
       nothing but the --out preview of every issue in full; --yes opens each issue through gh and
-      sets the task's ref to it, so gh sync adds no second task; stops at the first failure, and a
+      sets the task's ref to it, so issue sync adds no second task; stops at the first failure, and a
       rerun skips each task already holding its issue
   issue comment <owner/name#n> --body <text>   posts one comment on an issue or pull request of the
       team's repositories (github.repos; GitHub is the only host so far), with the token saved for the
