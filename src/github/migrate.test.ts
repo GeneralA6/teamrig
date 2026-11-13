@@ -100,6 +100,18 @@ describe('parseMigrateRows', () => {
     assert.doesNotMatch(error, new RegExp(secret, 'u'));
     assert.match(refused(issueLine({ title: `Key ${secret}` }), scanner), /looks like it holds a secret/u);
   });
+
+  it('refuses a title or body naming a task id, alone or after a team, so no posted issue shows one', () => {
+    const error = (named: string): string => `line 1: T1: the title or body names the task id ${named}: a task id is the team's own, so a posted issue shows none (link issues by #number)`;
+    assert.equal(refused(issueLine({ title: 'Follow-up to T12' })), error('T12'));
+    assert.equal(refused(issueLine({ body: 'Waits on `bravo/T3` first.' })), error('T3'));
+    assert.equal(refused(issueLine({ body: 'Needs T7.\nThen T8.' })), error('T7'));
+  });
+
+  it('takes a body linking issues by #number and words merely holding a T and digits', () => {
+    const body = 'Follows #12; the UTF8 path and the T-shaped layout stay; `set <id> --waits task:<team>/<id>`.';
+    assert.equal(parsed(issueLine({ title: 'Fix the TLS10 fallback', body })).length, 1);
+  });
 });
 
 describe('rowLabels', () => {
