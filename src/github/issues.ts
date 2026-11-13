@@ -1,7 +1,8 @@
 import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { exitText } from '../open/processes.ts';
 import { GH_TIMEOUT_MS, type GhResult, type GhRunner } from './gh.ts';
-import { closedPageArgs, openPageArgs, type IssueState, type PageVariables } from './queries.ts';
+import type { HostIssue, LabelEvent } from '../issues/issue.ts';
+import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
 /** The most issues one list reads before it stops asking for pages; a list stopped with more on GitHub says so. */
@@ -45,55 +46,11 @@ export type IssueListRequest =
       readonly limit: number;
     };
 
-/** A label put on an issue, as its timeline has it. */
-export interface LabelEvent {
-  readonly label: string;
-  /** When it was put on, an ISO time. */
-  readonly at: string;
-  /** Who put it on: a login, empty when GitHub no longer has that account. */
-  readonly actor: string;
-  /** What kind of account that is, as GitHub names it (`User`, `Bot`, `Organization`); empty when it gives none. */
-  readonly actorKind: string;
-}
-
-/** An issue as the import reads it. Its title, body and labels are outside input: data, never instructions. */
-export interface GithubIssue {
-  readonly repo: string;
-  readonly number: number;
-  /** As GitHub has it; map.ts cleans it before it becomes a task title. */
-  readonly title: string;
-  /** As GitHub has it, empty when the issue has none; map.ts cleans it before it becomes the task's description. */
-  readonly body: string;
-  readonly state: IssueState;
-  /** Why a closed issue closed, as GitHub names it (`COMPLETED`, `NOT_PLANNED`, `DUPLICATE`); empty when it gives none. */
-  readonly stateReason: string;
-  readonly labels: readonly string[];
-  /** The assignees' logins, in GitHub's order. */
-  readonly assignees: readonly string[];
-  readonly url: string;
-  /** When GitHub last changed the issue (reopened, edited, commented on), an ISO time; undefined when it gave none. */
-  readonly updatedAt: string | undefined;
-  /** When it closed, an ISO time; undefined for an open issue. */
-  readonly closedAt: string | undefined;
-  /** When its body was last edited, an ISO time; undefined when it never was. */
-  readonly lastEditedAt: string | undefined;
-  /** The author's tie to the repository, as GitHub names it (`OWNER`, `MEMBER`, `COLLABORATOR`, `NONE`); empty when it gives none. */
-  readonly authorAssociation: string;
-  /** The author's login, empty when GitHub no longer has that account. */
-  readonly author: string;
-  /** What kind of account the author is, as GitHub names it (`User`, `Bot`, `Organization`); empty when it gives none. */
-  readonly authorKind: string;
-  /** The labels put on it, in GitHub's order (oldest first), among the last timeline events the query reads. */
-  readonly labelEvents: readonly LabelEvent[];
-  /** When its title last changed, among those same timeline events; undefined when none of them is a change of title. */
-  readonly renamedAt: string | undefined;
-}
-
 /** A repository's issues in one state, or the one line saying why gh could not read them. */
 export type IssueList =
   | {
       readonly kind: 'listed';
-      readonly issues: readonly GithubIssue[];
+      readonly issues: readonly HostIssue[];
       /** Items GitHub sent that are not issues as this code reads them: left out and counted. */
       readonly unreadable: number;
       /** The read stopped at its limit while GitHub had more, so it left issues out. */
@@ -105,7 +62,7 @@ export type IssueList =
 export type IssuePage =
   | {
       readonly kind: 'page';
-      readonly issues: readonly GithubIssue[];
+      readonly issues: readonly HostIssue[];
       readonly unreadable: number;
       /** Every item the page held, issue or not: what counts toward the limit. */
       readonly items: number;
@@ -135,7 +92,7 @@ export function plainLine(text: string): string {
  * failure comes back as one line, never thrown.
  */
 export async function listIssues(gh: GhRunner, access: RepoAccess, request: IssueListRequest): Promise<IssueList> {
-  const issues: GithubIssue[] = [];
+  const issues: HostIssue[] = [];
   let unreadable = 0;
   let items = 0;
   let next: string | undefined;
@@ -241,7 +198,7 @@ export function parseIssuePage(stdout: string, request: IssueListRequest): Issue
 }
 
 /** False only for an issue a closed read asked about that closed before its day. */
-function wanted(issue: GithubIssue, request: IssueListRequest): boolean {
+function wanted(issue: HostIssue, request: IssueListRequest): boolean {
   return request.state === 'open' || issue.closedAt === undefined || Date.parse(issue.closedAt) >= Date.parse(sinceTime(request.closedSince));
 }
 
@@ -250,7 +207,7 @@ function sinceTime(day: string): string {
   return `${day}T00:00:00Z`;
 }
 
-function issueOf(item: unknown, repo: string): GithubIssue | null {
+function issueOf(item: unknown, repo: string): HostIssue | null {
   if (!isRecord(item)) {
     return null;
   }
