@@ -144,7 +144,8 @@ is turned off.
 - **Labels** are listed in `.github/labels.json`. The form sets the type. Maintainers and the GitHub watcher set
   the priority (`p1` to `p3`), the area (`area:cli`, `area:hooks`, ...) and the state (`needs-format`,
   `duplicate`, `teamrig`), which need triage rights.
-- **Security problems** go through a private advisory, never a public issue: the issue chooser links it.
+- **Security problems** go through a private advisory, never a public issue: the issue chooser links it, and
+  [SECURITY.md](SECURITY.md) says what to send.
 - `tools/ci/github-format.ts` lists each form's sections and the pull request template's, and
   `tools/ci/github-format.test.ts` holds the forms, `labels.json` and the template to it.
 
