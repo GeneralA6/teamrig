@@ -34,7 +34,9 @@ export class TempRepo {
   readonly env: Readonly<Record<string, string>>;
 
   constructor(prefix: string) {
-    this.root = mkdtempSync(join(realpathSync(tmpdir()), `teamrig-${prefix}-`));
+    // The native realpath also spells out Windows' short 8.3 names (GitHub's runner has TEMP under RUNNER~1), as git
+    // does when it prints a path: the JS realpath leaves them, and a spec's expected path would then differ from git's.
+    this.root = mkdtempSync(join(realpathSync.native(tmpdir()), `teamrig-${prefix}-`));
     this.dir = join(this.root, 'repo');
     this.outside = join(this.root, 'outside');
     mkdirSync(this.dir);
