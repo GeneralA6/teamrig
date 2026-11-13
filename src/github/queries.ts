@@ -4,8 +4,6 @@
  * mutation) and never reads past the fields below.
  */
 
-export type IssueState = 'open' | 'closed';
-
 /** Issues one page reads: GitHub's largest page. */
 export const ISSUE_PAGE_SIZE = 100;
 

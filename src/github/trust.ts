@@ -1,4 +1,4 @@
-import type { GithubIssue, LabelEvent } from './issues.ts';
+import type { HostIssue, LabelEvent } from '../issues/issue.ts';
 import { isMainPushAlertTitle } from './main-push-alert-title.ts';
 
 /**
@@ -35,7 +35,7 @@ const ACTIONS_BOT = 'github-actions';
  * author as actor, a workflow or app with a `Bot` one. An edit of the title or body at or after the accept undoes it
  * (the person who accepted read the older text), until someone adds the label again.
  */
-export function issueTrust(issue: GithubIssue, acceptLabel: string): IssueTrust {
+export function issueTrust(issue: HostIssue, acceptLabel: string): IssueTrust {
   if (TRUSTED_ASSOCIATIONS.has(issue.authorAssociation.toUpperCase()) || isOwnMainPushAlert(issue)) {
     return 'trusted';
   }
@@ -52,7 +52,7 @@ export function issueTrust(issue: GithubIssue, acceptLabel: string): IssueTrust 
  * that bot no author tie (`NONE`, or `CONTRIBUTOR` once it has one), and any other issue by it waits for the accept
  * label like an outsider's, since another workflow may copy an outsider's text into its issue.
  */
-function isOwnMainPushAlert(issue: GithubIssue): boolean {
+function isOwnMainPushAlert(issue: HostIssue): boolean {
   return issue.authorKind === BOT && issue.author === ACTIONS_BOT && isMainPushAlertTitle(issue.title);
 }
 
@@ -67,7 +67,7 @@ function byAnotherPerson(event: LabelEvent, author: string): boolean {
 }
 
 /** Whether the body or the title changed at or after `at`: an edit in the same second as the accept counts as after it. */
-function editedSince(issue: GithubIssue, at: string): boolean {
+function editedSince(issue: HostIssue, at: string): boolean {
   const accepted = Date.parse(at);
   return [issue.lastEditedAt, issue.renamedAt].some((edit) => edit !== undefined && Date.parse(edit) >= accepted);
 }
