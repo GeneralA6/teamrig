@@ -1,8 +1,10 @@
 import { treeOf } from '../delivery/processes.ts';
 import { KIT_NAME, type TeamPaths } from '../core/home.ts';
 import { runsClaude } from '../open/session-processes.ts';
+import { KIND_TAIL_BYTES, transcriptKindOf } from '../restore/transcript-kind.ts';
 import { measureSessions, runningPlaces } from '../sessions/measure.ts';
 import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
+import { backgroundJobSessionOf, isForkOf } from './same-session.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
 /**
@@ -24,6 +26,8 @@ export interface LiveRun {
   readonly claudePid: number;
   /** `claudePid` and every process it started, and they started, that still runs. */
   readonly tree: ReadonlySet<number>;
+  /** The record that names `claudePid`. */
+  readonly record: SessionRecord;
 }
 
 /**
@@ -49,10 +53,47 @@ export async function liveRunOf(
     return undefined;
   }
   const place = runningPlaces(measureSessions(records, rows)).find((running) => running.id === id);
-  return place === undefined ? undefined : { claudePid: place.claudePid, tree: new Set(treeOf(place.claudePid, rows).map((row) => row.pid)) };
+  return place === undefined ? undefined : { claudePid: place.claudePid, tree: new Set(treeOf(place.claudePid, rows).map((row) => row.pid)), record };
 }
 
 /** Why `name` (session `id`) gets no second Claude Code while it runs in `run`. */
 export function liveRunText(name: string, id: string, run: LiveRun): string {
   return `${name} (session ${id}) already runs in Claude Code process ${run.claudePid}, and a second one would work beside it on the same tasks: use its tab, or end that one first (${KIT_NAME} sessions lists what runs)`;
+}
+
+/**
+ * Whether the Claude Code process `pid` is the live run's own session, not a second one: inside its tree, or a forked
+ * worker (`--fork-session --resume <the record's session or transcript>`, which Claude Code runs a /clear in, outside
+ * the tab's process tree), or the background job the tab handed its conversation to (`isHandedOffJob`).
+ */
+export async function isLiveRunOwn(runtime: Pick<CliRuntime, 'files' | 'sessionProcesses'>, live: LiveRun, pid: number): Promise<boolean> {
+  if (live.tree.has(pid)) {
+    return true;
+  }
+  if (isForkOf((await runtime.sessionProcesses.describe(pid))?.commandLine, live.record.claudeSession)) {
+    return true;
+  }
+  return isHandedOffJob(runtime, live, pid);
+}
+
+/**
+ * Whether the Claude Code process `pid` is the background job the live run's tab handed its conversation to (`claude
+ * --bg`, or /bg in the tab): the tab's transcript ends in Claude Code's `continued-in` record (`transcriptKindOf`, so not
+ * once the tab had a turn since), and it names the session the job runs as under Claude Code's background host
+ * (`backgroundJobSessionOf`). The process tree does not tell this job: once the daemon that started its host is
+ * replaced (a Claude Code update does that), init adopts the host, out of the tab's tree. False when the record names no
+ * transcript, the transcript cannot be read, or the host's processes cannot be listed.
+ */
+export async function isHandedOffJob(runtime: Pick<CliRuntime, 'files' | 'sessionProcesses'>, live: LiveRun, pid: number): Promise<boolean> {
+  const transcript = live.record.transcript;
+  if (transcript === undefined) {
+    return false;
+  }
+  const tail = await runtime.files.readTail(transcript, KIND_TAIL_BYTES).catch(() => undefined);
+  const handedTo = transcriptKindOf(tail ?? '').continuedIn;
+  if (handedTo === undefined) {
+    return false;
+  }
+  const lineage = await runtime.sessionProcesses.lineage(pid);
+  return lineage !== undefined && backgroundJobSessionOf(lineage) === handedTo;
 }

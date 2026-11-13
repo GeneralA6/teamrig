@@ -2,7 +2,7 @@ import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
 import type { Kit } from '../kit.ts';
-import { liveRunOf, type LiveRun } from '../live-run.ts';
+import { isLiveRunOwn, liveRunOf, type LiveRun } from '../live-run.ts';
 import type { CliRuntime } from '../runtime.ts';
 
 /** What recording a session's start has to say; both undefined when it recorded it, or kept it silently. */
@@ -20,7 +20,8 @@ const RECORDED: StartRecordNotes = { failure: undefined, duplicate: undefined };
  * Code session and its transcript (undefined: the payload named none), and its Claude Code process, which is this
  * hook's parent, as Claude Code starts its hooks itself (exec form, no shell). While the session runs in another
  * Claude Code process it keeps that one's record, so wakes and closes still find the live tab: a Claude Code that one
- * started, such as a `claude -p` run inside the session, says nothing, and any other is told to stop. It never
+ * started, such as a `claude -p` run inside the session, or a fork or background job of the same conversation, says
+ * nothing, and any other is told to stop. It never
  * throws: a failure is the note the start shows, and the next start records again.
  */
 export async function recordSessionStart(
@@ -35,7 +36,8 @@ export async function recordSessionStart(
     const claudePid = runtime.sessionProcesses.parentPid;
     const live = await liveRunOf(runtime, kit.paths, ids, id, claudePid);
     if (live !== undefined) {
-      return { failure: undefined, duplicate: live.tree.has(claudePid) ? undefined : duplicateText(id, claudePid, live) };
+      // Its own tree, a fork of its conversation or the background job it handed it to is no second one.
+      return { failure: undefined, duplicate: (await isLiveRunOwn(runtime, live, claudePid)) ? undefined : duplicateText(id, claudePid, live) };
     }
     const started = { claudePid, claudeSession, at: new Date(runtime.clock.now()).toISOString() };
     const record = transcript === undefined ? started : { ...started, transcript };
