@@ -1280,6 +1280,27 @@ NO ROW 1 live task(s) no row names: T44
 PREVIEW nothing was written; teamrig gh migrate <file> --yes opens the issues and sets each task's ref
 ```
 
+### teamrig gh admin
+
+Prints the team's GitHub admin, the one session [owner github-admin](#teamrig-owner-github-admin) named: `ADMIN` with
+the session and when the owner set it, `NONE` when no admin is set, or `BROKEN` with why the role does not hold (the
+file was changed after the owner set it, it was set for another team, or its key is gone or cannot be read). While it
+is broken, no session is admin. Any session may run it; it writes nothing.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig gh admin
+```
+
+Output:
+
+```text
+ADMIN github is the GitHub admin of team shop, set 2030-01-08T10:00:00.000Z
+```
+
 ### teamrig issue comment
 
 Posts one comment on an issue or pull request of the team's repositories, named as `owner/name#number`. GitHub is
@@ -3024,6 +3045,37 @@ Output:
 
 ```text
 WAKES shop-web (session web) within about 15 s: an inbox line from owner asks it to work its task list in plan order
+```
+
+### teamrig owner github-admin
+
+The owner names the one session of the team that may close, comment on and delete any issue, pull request or
+branch of the team's repositories (`github.repos`); every other session acts only on its own. No admin is set until
+the owner sets one. Repository settings, branch protection, secrets, collaborators and pushes or merges to the
+default branch stay the owner's, whoever is admin.
+
+Each set saves a fresh random key in the operating system's credential store (the Windows Credential Manager, the
+macOS keychain or the Secret Service keyring) as `teamrig-github-admin-<team>`, then writes the role file
+`github-admin.json` in the team's home, signed with that key. Every check reads both: a file a session edited, one
+from before the last set, or one whose key is gone reads as no admin, so an edit can turn the role off but never hand
+it to a session. `none` removes the role. A key the store would not save leaves the role as it was (`FAILED`, exit 1).
+
+It is refused from an agent's tool call and under `$CLAUDECODE`, as `owner note` is: the owner runs it in their own
+terminal, or types `/teamrig owner github-admin <session>` in a tab. A session not on the team is refused. Any
+session reads who the admin is with [gh admin](#teamrig-gh-admin).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig owner github-admin github
+```
+
+Output:
+
+```text
+SET github is the GitHub admin of team shop: it may close, comment on and delete any issue, pull request or branch of acme/web; every other session only its own
 ```
 
 ### teamrig launch
