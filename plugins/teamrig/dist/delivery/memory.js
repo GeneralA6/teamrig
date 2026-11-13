@@ -124,16 +124,16 @@ function programOf(listed) {
  * The programs a named process list holds memory in, most first (then by name), each process's memory, in the
  * lister's unit (`bytesPerUnit` bytes), summed by program; a line that is not a whole number and a name is left out.
  */
-export function parseHolders(text, bytesPerUnit) {
+export function parseHolders(text, bytesPerUnit, listed = 'program') {
     const held = new Map();
     for (const line of text.split(/\r?\n/)) {
         const match = HOLDER_LINE.exec(line);
         const amount = Number(match?.[1]);
-        const listed = match?.[2];
-        if (listed === undefined || !Number.isSafeInteger(amount)) {
+        const shown = match?.[2];
+        if (shown === undefined || !Number.isSafeInteger(amount)) {
             continue;
         }
-        const name = programOf(listed);
+        const name = programOf(listed === 'commandLine' ? (shown.split(/\s/)[0] ?? shown) : shown);
         const sum = held.get(name) ?? { bytes: 0, processes: 0 };
         held.set(name, { bytes: sum.bytes + amount * bytesPerUnit, processes: sum.processes + 1 });
     }
@@ -157,15 +157,20 @@ export function holdersText(holders, count = TOP_HOLDERS) {
 function namedListCommand(platform) {
     if (platform === 'win32') {
         const script = "Get-CimInstance Win32_Process | ForEach-Object { '{0},{1}' -f $_.WorkingSetSize,$_.Name }";
-        return { file: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', script], bytesPerUnit: 1 };
+        return { file: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', script], bytesPerUnit: 1, listed: 'program' };
     }
-    return { file: 'ps', args: ['-A', '-o', 'rss=,comm='], bytesPerUnit: 1024 };
+    if (platform === 'linux') {
+        // Linux's comm is the main thread's name, which a program may set: Node 24 names its main thread MainThread, so
+        // every node process would be listed as that. The command line's first word is the program as it was started.
+        return { file: 'ps', args: ['-A', '-o', 'rss=,args='], bytesPerUnit: 1024, listed: 'commandLine' };
+    }
+    return { file: 'ps', args: ['-A', '-o', 'rss=,comm='], bytesPerUnit: 1024, listed: 'program' };
 }
 /** The host's programs by the memory they hold; undefined when the list fails. The lister itself is counted: a few dozen MB. */
 async function holdersOf(platform) {
-    const { file, args, bytesPerUnit } = namedListCommand(platform);
+    const { file, args, bytesPerUnit, listed } = namedListCommand(platform);
     const text = await outputOf(file, args);
-    return text === undefined ? undefined : parseHolders(text, bytesPerUnit);
+    return text === undefined ? undefined : parseHolders(text, bytesPerUnit, listed);
 }
 /** What `file` printed, or undefined when it failed. */
 function outputOf(file, args) {
