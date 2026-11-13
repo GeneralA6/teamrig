@@ -1364,8 +1364,9 @@ Flags:
 Every receiver gets the same line, stamped with the same minute, or none does: an unknown session or team, one out
 of reach, `group:` on a session that leads no one, a task no register of your tree holds, a group that holds only
 you, or a line any receiving team's secret patterns refuse is `REFUSED` (exit 2) and posts nothing. With `--wake now`
-or `--wake-by`, so is a group sent by a session that leads no one, and a session of another team unless you lead a
-team above it, since a wake spends that team's budget line: post the line without the flag instead. Both flags
+or `--wake-by`, so is a group sent by a session that leads no one, and a session of another team unless you lead
+your team and it sits on a team below yours, leads its own team, or is named in your team's `roles` (deliveryOwner,
+securityReviewer), since a wake spends that team's budget line: post the line without the flag instead. Both flags
 together, a `--wake-by` time that is not a time, and one already past are usage errors (exit 64): send a line due now
 with `--wake now`.
 

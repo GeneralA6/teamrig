@@ -102,7 +102,7 @@ or take it to the lead.
 | --- | --- |
 | `REFUSED an inbox item is one non-empty line` | Put it on one line; a longer note goes in a file the line points at. |
 | `REFUSED no team x with a config in this kit home` | Check the team id with `teamrig team tree`. |
-| A refusal to reach another team's session | Any session reaches any session of its tree (`teamrig team tree` shows it); a separate tree is out of reach. `--wake now` reaches another team only from the lead of a team above it: post the line without `--wake`. |
+| A refusal to reach another team's session | Any session reaches any session of its tree (`teamrig team tree` shows it); a separate tree is out of reach. `--wake now` reaches another team only from a team lead: a team below its own, any team's lead, or a session its config names in roles: post the line without `--wake`. |
 
 ## Team, names and sessions
 
