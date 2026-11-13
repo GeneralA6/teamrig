@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { type CheckOutcome, type Gh, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
+import { type CheckOutcome, type Gh, type RequiredChecks, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
 import { type MergeOutcome, type PullRequest, findOpenPull, openPull, rebaseMerge } from './pulls.ts';
 import { sweepAfterMerge } from './leftovers.ts';
@@ -49,7 +49,7 @@ const rerunRefused = (outcomes: readonly CheckOutcome[], message: string): Check
  * before any step ran (no runner came) is re-run once, then waited on again; `evaluate` fails the same in a later
  * attempt, and a run already re-run here is not re-run again while GitHub starts the new attempt.
  */
-export async function waitForChecks(gh: Gh, repo: string, sha: string, required: readonly string[], waiter: Waiter, polling: Polling, log: (line: string) => void = () => {}): Promise<ChecksResult> {
+export async function waitForChecks(gh: Gh, repo: string, sha: string, required: RequiredChecks, waiter: Waiter, polling: Polling, log: (line: string) => void = () => {}): Promise<ChecksResult> {
   const deadline = waiter.now() + polling.timeoutMs;
   const rerun = new Set<number>();
   for (;;) {
@@ -99,7 +99,7 @@ const listed = (outcomes: readonly CheckOutcome[], state: CheckOutcome['state'])
     .join('; ');
 
 /** The `ci` gate: every check in `required` green on GitHub for the sha. */
-export function ciProof(gh: Gh, repo: string, required: readonly string[], waiter: Waiter, polling: Polling): Proof {
+export function ciProof(gh: Gh, repo: string, required: RequiredChecks, waiter: Waiter, polling: Polling): Proof {
   return {
     before: () => null,
     prove: async (sha, log) => {
@@ -309,7 +309,7 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
   const gh = deps.ghFor(credential.secret);
   const proof =
     profile.gate === 'ci'
-      ? ciProof(gh, repo, profile.checks, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
+      ? ciProof(gh, repo, { names: profile.checks, summary: profile.summary }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
       : localProof(args.dir, profile.local, deps.gate);
   const result = await mergeThroughPull(
     { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },

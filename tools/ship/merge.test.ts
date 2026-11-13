@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
-import type { Gh } from './github.ts';
+import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
 import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, ciProof, mainBranchOf, mergeCommand, mergeThroughPull, parseArgs, pullBody, runMerge, waitForChecks } from './merge.ts';
@@ -107,10 +107,11 @@ const request = (overrides: Partial<MergeRequest> = {}): MergeRequest => ({
 });
 
 const POLLING = { timeoutMs: 10 * MINUTE, intervalMs: MINUTE };
+const CHECKS: RequiredChecks = { names: ['gates', 'test'], summary: null };
 
 /** mergeThroughPull on the `ci` gate: checks gates and test on GitHub. */
 const mergeOnCi = (gh: Gh, main: MainBranch, log: (line: string) => void): Promise<MergeResult> =>
-  mergeThroughPull(request(), gh, main, ciProof(gh, REPO, ['gates', 'test'], fakeWaiter(), POLLING), log);
+  mergeThroughPull(request(), gh, main, ciProof(gh, REPO, CHECKS, fakeWaiter(), POLLING), log);
 
 const green: readonly JobState[] = [
   ['gates', 'completed', 'success'],
@@ -120,7 +121,7 @@ const green: readonly JobState[] = [
 test('waits while checks run and returns once all are green', async () => {
   const { gh } = fakeGitHub({ rounds: [[['gates', 'queued', null]], [['gates', 'completed', 'success'], ['test', 'in_progress', null]], green] });
   const waiter = fakeWaiter();
-  const result = await waitForChecks(gh, REPO, SHA, ['gates', 'test'], waiter, { timeoutMs: 10 * MINUTE, intervalMs: MINUTE });
+  const result = await waitForChecks(gh, REPO, SHA, CHECKS, waiter, { timeoutMs: 10 * MINUTE, intervalMs: MINUTE });
   assert.equal(result.verdict, 'passed');
   assert.deepEqual(waiter.slept, [MINUTE, MINUTE]);
 });
@@ -128,14 +129,14 @@ test('waits while checks run and returns once all are green', async () => {
 test('a failed check stops the wait at once', async () => {
   const { gh } = fakeGitHub({ rounds: [[['gates', 'completed', 'failure'], ['test', 'queued', null]]] });
   const waiter = fakeWaiter();
-  assert.equal((await waitForChecks(gh, REPO, SHA, ['gates', 'test'], waiter, { timeoutMs: 10 * MINUTE, intervalMs: MINUTE })).verdict, 'failed');
+  assert.equal((await waitForChecks(gh, REPO, SHA, CHECKS, waiter, { timeoutMs: 10 * MINUTE, intervalMs: MINUTE })).verdict, 'failed');
   assert.deepEqual(waiter.slept, []);
 });
 
 test('a check still missing at the deadline times out, and the last sleep stops at the deadline', async () => {
   const { gh } = fakeGitHub({ rounds: [[['gates', 'completed', 'success']]] });
   const waiter = fakeWaiter();
-  const result = await waitForChecks(gh, REPO, SHA, ['gates', 'test'], waiter, { timeoutMs: 150_000, intervalMs: MINUTE });
+  const result = await waitForChecks(gh, REPO, SHA, CHECKS, waiter, { timeoutMs: 150_000, intervalMs: MINUTE });
   assert.equal(result.verdict, 'timeout');
   assert.deepEqual(waiter.slept, [MINUTE, MINUTE, 30_000]);
   assert.deepEqual(result.outcomes.map(({ state }) => state), ['passed', 'missing']);
@@ -210,7 +211,7 @@ test('a job cancelled after a step ran, or a failure beside an unstarted job, re
 test('an unstarted job waits for the rest of the run before its re-run (T2675)', async () => {
   const { gh, writes } = fakeGitHub({ rounds: [[['gates', 'in_progress', null], macosUnstarted], [['gates', 'completed', 'success'], macosUnstarted], green] });
   const waiter = fakeWaiter();
-  const result = await waitForChecks(gh, REPO, SHA, ['gates', 'test'], waiter, POLLING);
+  const result = await waitForChecks(gh, REPO, SHA, CHECKS, waiter, POLLING);
   assert.equal(result.verdict, 'passed');
   assert.equal(writes.filter(args => args[1] === RERUN_PATH).length, 1);
   assert.equal(gh.mock.calls.findIndex(call => call.arguments[0][1] === RERUN_PATH) > gh.mock.calls.findIndex(call => (call.arguments[0][1] ?? '').includes('/jobs')), true);
@@ -228,11 +229,27 @@ test('a re-run GitHub refuses fails the unstarted check with its error; one stil
   // GitHub has not started the new attempt yet: the same run is not re-run twice, and the deadline names it.
   const stuck = fakeGitHub({ rounds: [[['gates', 'completed', 'success'], macosUnstarted]] });
   const sameAttempt: Gh = args => (args[1]?.includes('/actions/runs?head_sha=') === true ? '{"workflow_runs":[{"id":1,"workflow_id":1,"event":"pull_request","run_number":1,"run_attempt":1}]}' : stuck.gh(args));
-  const result = await waitForChecks(sameAttempt, REPO, SHA, ['gates', 'test'], fakeWaiter(), { timeoutMs: 2 * MINUTE, intervalMs: MINUTE });
+  const result = await waitForChecks(sameAttempt, REPO, SHA, CHECKS, fakeWaiter(), { timeoutMs: 2 * MINUTE, intervalMs: MINUTE });
   assert.equal(result.verdict, 'timeout');
   assert.equal(stuck.writes.filter(args => args[1] === RERUN_PATH).length, 1);
-  const timedOut = await ciProof(sameAttempt, REPO, ['gates', 'test'], fakeWaiter(), { timeoutMs: MINUTE, intervalMs: MINUTE }).prove(SHA, () => undefined);
+  const timedOut = await ciProof(sameAttempt, REPO, CHECKS, fakeWaiter(), { timeoutMs: MINUTE, intervalMs: MINUTE }).prove(SHA, () => undefined);
   assert.equal(timedOut, 'not green after 1 min: test (cancelled before any step ran)');
+});
+
+test('the summary job failing beside an unstarted leg is re-run with it; failing again on the next attempt refuses (T2675)', async () => {
+  const withSummary: RequiredChecks = { names: ['gates', 'test', 'all'], summary: 'all' };
+  const echo: readonly JobState[] = [['gates', 'completed', 'success'], macosUnstarted, ['all', 'completed', 'failure']];
+  const recovers = fakeGitHub({ rounds: [echo, [...green, ['all', 'completed', 'success']]] });
+  const passed = await waitForChecks(recovers.gh, REPO, SHA, withSummary, fakeWaiter(), POLLING);
+  assert.equal(passed.verdict, 'passed');
+  assert.equal(recovers.writes.filter(args => args[1] === RERUN_PATH).length, 1);
+
+  const again = await waitForChecks(fakeGitHub({ rounds: [echo] }).gh, REPO, SHA, withSummary, fakeWaiter(), POLLING);
+  assert.equal(again.verdict, 'failed');
+  assert.deepEqual(again.outcomes.filter(({ state }) => state === 'failed').map(({ name, detail }) => `${name}: ${detail}`), [
+    'test: cancelled before any step ran, again on attempt 2',
+    'all: failure',
+  ]);
 });
 
 test('a merge GitHub refuses (not mergeable, head moved) is reported, not thrown', async () => {
