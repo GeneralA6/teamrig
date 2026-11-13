@@ -2,7 +2,7 @@ import type { FocusConfig } from '../config/types.ts';
 import { quantile } from '../core/quantile.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { ItemType } from './events.ts';
-import { classOf, servedGoalOf, type RankedGoal } from './focus.ts';
+import { classOf, prepRead, servedGoalOf, type SlicedGoal } from './focus.ts';
 import type { Task } from './fold.ts';
 import type { SizeFacts } from './score.ts';
 import type { TreeRanking, TreeTask } from './tree.ts';
@@ -22,7 +22,8 @@ export interface RankingInput {
   readonly focus: RankingFocus;
   /** The `source` of a task the owner ordered (`register.ownerSource`). */
   readonly ownerSource: string;
-  readonly goals: ReadonlyMap<string, RankedGoal>;
+  /** The goal records: their rank chain for the goal a task serves, and their open slice for its prep marker. */
+  readonly goals: ReadonlyMap<string, SlicedGoal>;
   readonly sizing: Sizing;
 }
 
@@ -41,6 +42,7 @@ export function treeRanking({ focus, ownerSource, goals, sizing }: RankingInput)
     ownerSource,
     classOf: (task) => rowClass(task, focus),
     goalOf: (task) => servedGoalOf({ goals: task.goals ?? [] }, goals),
+    prepOf: (task) => prepRead({ prepares: task.prepares ?? null }, goals),
     sizingOf: sizing,
   };
 }

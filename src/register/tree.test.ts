@@ -99,7 +99,7 @@ describe('planOrder', () => {
   ];
 
   /** A place's rank in the given band at the given score. */
-  const rank = (band: Band, score: number): RankedPlace => ({ band, score, costOfDelay: score, sizePct: 1, workClass: 'Roadmap', goal: null });
+  const rank = (band: Band, score: number, prep = false): RankedPlace => ({ band, score, costOfDelay: score, sizePct: 1, workClass: 'Roadmap', goal: null, prep });
 
   it('decides on the first key that differs, each in turn', () => {
     const cases: [string, [PlanPlace, PlanPlace]][] = [
@@ -109,6 +109,8 @@ describe('planOrder', () => {
       ['band', pair({ ranked: rank(1, 1) }, { ranked: rank(2, 99) })],
       ['band', pair({ ranked: rank(2, 1) })],
       ['band', pair({ ranked: rank(1, 1), blocked: true }, { ranked: rank(2, 99) })],
+      ['band', pair({ ranked: rank(2, 1, true) }, { ranked: rank(1, 99) })],
+      ['band', pair({ ranked: rank(0, 1) }, { ranked: rank(1, 99, true) })],
       ['ready', pair({ ranked: rank(1, 1), at: 900 }, { ranked: rank(1, 99), started: true, blocked: true })],
       ['ready', pair({ at: 900 }, { started: true, blocked: true })],
       ['score', pair({ ranked: rank(1, 20), at: 900 }, { ranked: rank(1, 10), started: true })],
