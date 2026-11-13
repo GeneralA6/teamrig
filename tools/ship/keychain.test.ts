@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mock, test } from 'node:test';
-import { NOT_FOUND_EXIT, type PowerShell, credentialScript, readCredential, windowsPowerShell } from './keychain.ts';
+import { NOT_FOUND_EXIT, type PowerShell, type RunProgram, credentialScript, encodedPowerShell, readCredential, runProgram, windowsPowerShell } from './keychain.ts';
 
 const TOKEN = ['github', '_pat_', '11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz'].join('');
 const base64 = (text: string): string => Buffer.from(text, 'utf8').toString('base64');
@@ -41,6 +41,20 @@ test('a blob that is not a printable token (stored in another encoding) is refus
   const result = readCredential('teamrig-ship-gh', () => ({ status: 0, stdout: garbled, stderr: '' }));
   assert.equal(result.kind, 'error');
   assert.doesNotMatch(JSON.stringify(result), /QZX/);
+});
+
+test('runs PowerShell with the script as UTF-16LE base64, never as plain text on the command line', () => {
+  const run = mock.fn<RunProgram>(() => ({ status: 0, stdout: 'out', stderr: '' }));
+  assert.deepEqual(encodedPowerShell(run)("Write-Output 'é'"), { status: 0, stdout: 'out', stderr: '' });
+  const [file, args] = run.mock.calls[0]?.arguments ?? [];
+  assert.equal(file, 'powershell.exe');
+  assert.deepEqual(args?.slice(0, 3), ['-NoProfile', '-NonInteractive', '-EncodedCommand']);
+  assert.equal(Buffer.from(args?.[3] ?? '', 'base64').toString('utf16le'), "Write-Output 'é'");
+});
+
+test('runs a real program to its end, and gives a program that cannot start a null status and no output', () => {
+  assert.deepEqual(runProgram(process.execPath, ['-e', 'process.stdout.write("out"); process.stderr.write("err"); process.exit(4)']), { status: 4, stdout: 'out', stderr: 'err' });
+  assert.deepEqual(runProgram('teamrig-no-such-program', []), { status: null, stdout: '', stderr: '' });
 });
 
 // The keychain reads Windows Credential Manager only, and the repo gate fails a skipped test, so other hosts do not register it.
