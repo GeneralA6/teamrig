@@ -33,7 +33,7 @@ describe('teamrig inbox add --wake now', () => {
       code: EXIT.ok,
       stdout: [
         'POSTED to bravo; bravo is reminded at its next prompt',
-        "WAKES bravo if its tab is idle, within about 3 minutes: about 210k W, cold, on app's budget line",
+        "WAKES bravo if its tab is idle, within about 3 minutes: at least about 210k W for the first call, cold; whole turns usually cost more, on app's budget line",
       ],
       stderr: [],
     });
@@ -47,14 +47,14 @@ describe('teamrig inbox add --wake now', () => {
     const transcripts = new MemoryTranscripts();
     transcripts.set(transcriptOf(BRAVO_TAB), '{}\n', NOW - 5 * MINUTE);
     const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi', '--wake', 'now', '--session', 'alpha'], { transcripts });
-    assert.equal(result.stdout[1], "WAKES bravo if its tab is idle, within about 3 minutes: about 27k W, warm cache, on app's budget line");
+    assert.equal(result.stdout[1], "WAKES bravo if its tab is idle, within about 3 minutes: at least about 27k W for the first call, warm cache; whole turns usually cost more, on app's budget line");
   });
 
   it("prices the wake at today's W per percent, as the wake check does, on a day dearer than its week (T1138)", async () => {
     const kit = await treeHarness({ ...LED, budget: { weeklyLimitW: 1_000_000_000 } });
     await meterDearDay(kit, 'alpha', ALPHA_TAB);
     const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi', '--wake', 'now', '--session', 'alpha']);
-    assert.equal(result.stdout[1], "WAKES bravo if its tab is idle, within about 3 minutes: about 210k W, cold, 0.04% of the week, on app's budget line", 'the week rate would say 0.02%');
+    assert.equal(result.stdout[1], "WAKES bravo if its tab is idle, within about 3 minutes: at least about 210k W for the first call, cold, 0.04% of the week; whole turns usually cost more, on app's budget line", 'the week rate would say 0.02%');
   });
 
   it('lets a leader wake its group, and refuses a group to a session that leads no one, posting nothing', async () => {
@@ -62,7 +62,7 @@ describe('teamrig inbox add --wake now', () => {
     const group = await kit.run(['inbox', 'add', '--to', 'group:bravo', '--text', 'merge slot is yours', '--wake', 'now', '--session', 'bravo']);
     assert.deepEqual(group.stdout, [
       'POSTED to charlie; charlie is reminded at its next prompt',
-      "WAKES charlie if its tab is idle, within about 3 minutes: about 210k W, cold, on app's budget line",
+      "WAKES charlie if its tab is idle, within about 3 minutes: at least about 210k W for the first call, cold; whole turns usually cost more, on app's budget line",
     ]);
     const member = await kit.run(['inbox', 'add', '--to', 'all', '--text', 'main is frozen', '--wake', 'now', '--session', 'alpha']);
     assert.deepEqual(
@@ -110,7 +110,7 @@ describe('teamrig inbox add --wake now', () => {
     const result = await kit.run(['inbox', 'add', '--to', 'web/front,ops/run', '--text', 'deploy at 18:00', '--wake', 'now', '--session', 'lead']);
     assert.deepEqual(result.stdout, [
       'POSTED to 2 sessions (web/front, ops/run); each is reminded at its next prompt',
-      "WAKES ops/run if its tab is idle, within about 3 minutes: about 210k W, cold, on ops's budget line; wake.enabled is false on the team of web/front, so its line wakes no one",
+      "WAKES ops/run if its tab is idle, within about 3 minutes: at least about 210k W for the first call, cold; whole turns usually cost more, on ops's budget line; wake.enabled is false on the team of web/front, so its line wakes no one",
     ]);
     assert.equal(kit.files.get(teamInboxOf('web', 'front')), '- 2030-01-08 10:00 app/lead: deploy at 18:00\n');
     assert.equal(askOf(kit, 'web', 'front'), undefined);
@@ -120,7 +120,7 @@ describe('teamrig inbox add --wake now', () => {
     const kit = await treeHarness(LED);
     await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], wake: { batchSeconds: 600 } }));
     const result = await kit.run(['inbox', 'add', '--to', 'web/front', '--text', 'deploy at 18:00', '--wake', 'now', '--session', 'lead']);
-    assert.equal(result.stdout[1], "WAKES web/front if its tab is idle, within about 11 minutes: about 210k W, cold, on web's budget line");
+    assert.equal(result.stdout[1], "WAKES web/front if its tab is idle, within about 11 minutes: at least about 210k W for the first call, cold; whole turns usually cost more, on web's budget line");
   });
 
   it('takes only now, refusing any other value before posting', async () => {
@@ -140,7 +140,7 @@ describe('teamrig inbox add --wake-by', () => {
     const result = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', ' the api is ready ', '--wake-by', '16:30', '--session', 'alpha']);
     assert.deepEqual(result.stdout, [
       'POSTED to bravo; bravo is reminded at its next prompt',
-      "WAKES bravo at 16:30 UTC if it has not seen the line by then and its tab is idle: about 210k W, cold, on app's budget line",
+      "WAKES bravo at 16:30 UTC if it has not seen the line by then and its tab is idle: at least about 210k W for the first call, cold; whole turns usually cost more, on app's budget line",
     ]);
     const line = '- 2030-01-08 10:00 alpha: the api is ready';
     assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), `${line}\n`);
@@ -150,7 +150,7 @@ describe('teamrig inbox add --wake-by', () => {
   it("dates a time that is not today on the team's clock, and hashes the line another team's receiver gets", async () => {
     const kit = await treeHarness(LED);
     const result = await kit.run(['inbox', 'add', '--to', 'web/front', '--text', 'new icons', '--wake-by', '2030-01-09T07:00:00Z', '--session', 'lead']);
-    assert.equal(result.stdout[1], "WAKES web/front at 01-09 07:00 UTC if it has not seen the line by then and its tab is idle: about 210k W, cold, on web's budget line");
+    assert.equal(result.stdout[1], "WAKES web/front at 01-09 07:00 UTC if it has not seen the line by then and its tab is idle: at least about 210k W for the first call, cold; whole turns usually cost more, on web's budget line");
     const by = { at: Date.parse('2030-01-09T07:00:00Z'), line: lineHash('- 2030-01-08 10:00 app/lead: new icons') };
     assert.equal(askOf(kit, 'web', 'front'), formatWakeAsk({ from: 'app/lead', text: 'new icons', at: NOW, by }));
   });
@@ -162,8 +162,8 @@ describe('teamrig inbox add --wake-by', () => {
     transcripts.set(transcriptOf(BRAVO_TAB), '{}\n', NOW - 5 * MINUTE);
     const soon = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi', '--wake-by', '10:30', '--session', 'alpha'], { transcripts });
     const later = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'hi again', '--wake-by', '16:30', '--session', 'alpha'], { transcripts });
-    assert.match(soon.stdout[1] ?? '', /at 10:30 UTC .*: about 27k W, warm cache,/);
-    assert.match(later.stdout[1] ?? '', /at 16:30 UTC .*: about 210k W, cold,/);
+    assert.match(soon.stdout[1] ?? '', /at 10:30 UTC .*: at least about 27k W for the first call, warm cache; whole turns usually cost more,/);
+    assert.match(later.stdout[1] ?? '', /at 16:30 UTC .*: at least about 210k W for the first call, cold; whole turns usually cost more,/);
   });
 
   it('refuses it beside --wake now, a time already past and one it cannot read, before posting', async () => {

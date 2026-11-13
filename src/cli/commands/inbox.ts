@@ -24,7 +24,7 @@ import { hookLogOf } from '../hook-logs.ts';
 import { callerOf, instantOf, sessionRef } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readTodayWPerPct } from '../stored-week.ts';
+import { readMeasuredTurns, readTodayWPerPct } from '../stored-week.ts';
 import { TreeTasks, type TreeRegister } from '../tree-tasks.ts';
 import { loadTree, type KitTree, type TreeTeam } from '../tree.ts';
 import { verifyNoteOf } from './verify-queue.ts';
@@ -308,7 +308,8 @@ async function postWakes(runtime: CliRuntime, own: SenderTeam, recipients: reado
       continue;
     }
     const last = await lastWriteOf(runtime.transcripts, projects, tabsOf(await marksOf(recipient), recipient.id, RECEIVER_TABS));
-    const cost = wakeCost(last === undefined ? undefined : wakeAt - last, recipient.config.messages.coldAfterMinutes, wPerPct);
+    const measured = await readMeasuredTurns(runtime, recipient.paths, recipient.id, recipient.config.sessions, now);
+    const cost = wakeCost(last === undefined ? undefined : wakeAt - last, recipient.config.messages.coldAfterMinutes, wPerPct, measured);
     wakes.push({ label: recipient.label, team: recipient.team, batchSeconds: recipient.config.wake.batchSeconds, cost });
   }
   return wakes.length === 0 && off.length === 0 ? failed : [...failed, wakesLine(wakes, off, when)];

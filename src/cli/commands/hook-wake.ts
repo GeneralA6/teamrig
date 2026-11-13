@@ -40,7 +40,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rosterOf, teamZone, type Kit } from '../kit.ts';
 import { startDailyRollup } from '../rollup-start.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { readTodayWPerPct } from '../stored-week.ts';
+import { readMeasuredTurns, readTodayWPerPct } from '../stored-week.ts';
 import { teamRegister } from '../team-register.ts';
 import { budgetFactsOf } from './hook-budget.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -139,7 +139,7 @@ export async function wakeScopeOf(runtime: CliRuntime, payload: unknown, needsWa
 
 /** The W of the turn a wake would start in a tab whose last turn was at `lastTurnAt` (undefined: unknown, counted cold). */
 function wakeWOf(config: KitConfig, lastTurnAt: number | undefined, now: number): number {
-  return wakeCost(lastTurnAt === undefined ? undefined : now - lastTurnAt, config.messages.coldAfterMinutes, undefined).w;
+  return wakeCost(lastTurnAt === undefined ? undefined : now - lastTurnAt, config.messages.coldAfterMinutes, undefined, undefined).w;
 }
 
 /** The ids of the tasks a verdict wakes the session for, now or later. */
@@ -439,7 +439,8 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
   const now = runtime.clock.now();
   const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
   const wPerPct = await readTodayWPerPct(runtime, kit.paths, config, now);
-  const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct);
+  const measured = await readMeasuredTurns(runtime, kit.paths, id, config.sessions, now);
+  const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct, measured);
   if (verdict.kind === 'login') {
     await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids: [], cost, retry: 'login' });
     await runtime.files.append(login.log, `${new Date(now).toISOString()} ${loginRetryLine(`${kit.paths.team}/${id} (${tab})`, verdict.why)}\n`);

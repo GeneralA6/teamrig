@@ -209,7 +209,7 @@ describe('the day-start prompt and toast', () => {
     assert.equal(
       dayStartPrompt('alpha', 'app-alpha', [DAY_START], tasks, COLD, TimeZone.UTC),
       'The day started at 06:00 UTC and this tab has had no turn since. Work you can start: T4 "Ship the page" (p1), T9 "Tidy the docs" (p3). ' +
-        'Start a work block (`teamrig start --session alpha`) and work your list in plan order. This wake costs about 210k W, cold, 0.02% of the week.',
+        'Start a work block (`teamrig start --session alpha`) and work your list in plan order. This wake costs at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more.',
     );
     const both = dayStartPrompt('alpha', 'app-alpha', [DAY_START, BURST_MOMENT], tasks, COLD, TimeZone.UTC);
     assert.match(both, /^The day started at 06:00 UTC and this tab has had no turn since\. The lead started a surplus burst until .*: app-alpha's daily budget is at least 2\.5%, up to 3 helpers at once\. Work you can start: T4/);
@@ -220,8 +220,8 @@ describe('the day-start prompt and toast', () => {
   });
 
   it('tells the person which moments woke the tab, for which tasks, and the cost', () => {
-    assert.equal(dayStartToast([DAY_START], tasks, COLD), 'teamrig woke this tab for the day start: T4, T9 (about 210k W, cold, 0.02% of the week)');
-    assert.equal(dayStartToast([BURST_MOMENT], tasks, COLD), 'teamrig woke this tab for the burst: T4, T9 (about 210k W, cold, 0.02% of the week)');
+    assert.equal(dayStartToast([DAY_START], tasks, COLD), 'teamrig woke this tab for the day start: T4, T9 (at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more)');
+    assert.equal(dayStartToast([BURST_MOMENT], tasks, COLD), 'teamrig woke this tab for the burst: T4, T9 (at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more)');
     assert.equal(dayStartToast([DAY_START, BURST_MOMENT], tasks, COLD).startsWith('teamrig woke this tab for the day start and the burst: '), true);
   });
 });
