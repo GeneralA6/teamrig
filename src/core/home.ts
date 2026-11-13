@@ -125,6 +125,8 @@ export interface TeamPaths {
    * lifts for a while after it.
    */
   readonly meetingBreakthrough: string;
+  /** The scheduled meeting the spotlight frames, started or ended (src/meeting/spotlit.ts). */
+  readonly meetingSpotlit: string;
   /** The owner's scheduled meetings with one session each (src/meeting/schedule.ts), rewritten under meetingsLock. */
   readonly meetings: string;
   readonly meetingsLock: string;
@@ -298,7 +300,8 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     coldSends: join(state, 'cold-sends.jsonl'),
     meeting: join(state, 'meeting.json'),
     meetingBreakthrough: join(state, 'meeting-breakthrough.json'),
-    meetings: join(state, 'meetings.jsonl'),
+    meetingSpotlit: join(state, 'meeting-spotlit.json'),
+    meetings:join(state, 'meetings.jsonl'),
     meetingsLock: join(state, 'meetings.lock'),
     decisionsAsked: join(state, 'decisions-asked.json'),
     ruleVerdicts: join(state, 'rule-verdicts.json'),

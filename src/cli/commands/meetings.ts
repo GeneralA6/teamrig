@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
@@ -20,6 +21,8 @@ import {
   type MeetingStatus,
   type ScheduledMeeting,
 } from '../../meeting/schedule.ts';
+import { SPOTLIGHT_LOG, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
+import { SpotlitStore, spotlitUntil } from '../../meeting/spotlit.ts';
 import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
 import { focusTab, type FocusOutcome } from '../../open/focus.ts';
 import { shellCommand } from '../../open/quote.ts';
@@ -337,6 +340,36 @@ function openingAsk(mk: MeetingsKit, text: string, posted: boolean): WakeAsk {
   return posted ? { ...ask, by: { at: mk.now, line: lineHash(inboxLineOf(new Date(mk.now), mk.caller, text)) } } : ask;
 }
 
+function nameOf(mk: MeetingsKit, session: string): string {
+  return mk.roster.nameOf(session) ?? session;
+}
+
+/** The title of `session`'s tab, which a start brings to the front and the spotlight frames. */
+function tabTitleOf(mk: MeetingsKit, session: string): string {
+  return sessionDisplay(mk.kit.paths.team, nameOf(mk, session));
+}
+
+/**
+ * Dims every screen but the window of the session met's tab while `meeting` is on (T2662), as the daily meeting does
+ * for the lead's: until it is ended or dropped, another one starts, or its minutes and SPOTLIT_GRACE_MS pass. A tab
+ * that opens only now is framed once its window shows. Returns what that prints, nothing when it cannot run here.
+ */
+async function spotlightMeeting(runtime: CliRuntime, mk: MeetingsKit, meeting: ScheduledMeeting): Promise<string | undefined> {
+  const startedAt = new Date(mk.now).toISOString();
+  await new SpotlitStore(runtime.files, mk.kit.paths.meetingSpotlit).start(meeting.id, startedAt);
+  const place: SpotlightPlace = {
+    title: tabTitleOf(mk, meeting.session),
+    meetingFile: mk.kit.paths.meetingSpotlit,
+    startedAt,
+    until: spotlitUntil(meeting, mk.now),
+    // A break-through lifts only the daily meeting's spotlight: the file names that meeting's start, never this one.
+    breakthroughFile: mk.kit.paths.meetingBreakthrough,
+    log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
+  };
+  const { spotlight } = mk.config.meeting;
+  return spotlightLine(await startSpotlight(runtime, spotlight, mk.config.open.terminal, place, runtime.cwd), place, spotlight.dim);
+}
+
 /** What bringing the running tab of session `name`, titled `title`, to the front prints. */
 function focusLine(outcome: FocusOutcome, name: string, title: string): string {
   switch (outcome.kind) {
@@ -358,11 +391,11 @@ function focusLine(outcome: FocusOutcome, name: string, title: string): string {
  */
 async function deliver(runtime: CliRuntime, mk: MeetingsKit, meeting: ScheduledMeeting, posted: boolean): Promise<string[]> {
   const id = meeting.session;
-  const name = mk.roster.nameOf(id) ?? id;
+  const name = nameOf(mk, id);
   const ask = openingAsk(mk, openingPrompt(meeting), posted);
   const asks = new WakeAsks(runtime.files, mk.kit.paths.wakeAsks);
   if ((await liveRunOf(runtime, mk.kit.paths, mk.roster.ids, id)) !== undefined) {
-    const title = sessionDisplay(mk.kit.paths.team, name);
+    const title = tabTitleOf(mk, id);
     const focused = focusLine(await focusTab(runtime, mk.config.open.terminal, title, runtime.cwd), name, title);
     if (!mk.config.wake.enabled) {
       return [focused, `NOT WOKEN ${name}: wake.enabled is false on the team, so the meeting waits in its inbox for its next prompt`];
@@ -418,7 +451,16 @@ export async function meetingStartScheduled(args: ParsedArgs, runtime: CliRuntim
     runtime.out.stdout(problem === undefined ? `TOLD ${joining.join(', ')}` : `NOT TOLD ${joining.join(', ')}: ${problem}`);
   }
   delivered.forEach((line) => runtime.out.stdout(line));
+  const spotlit = await spotlightMeeting(runtime, mk, started);
+  if (spotlit !== undefined) {
+    runtime.out.stdout(spotlit);
+  }
   return EXIT.ok;
+}
+
+/** Lifts the spotlight of meeting `id` once it is ended or dropped; one over another meeting stays. */
+async function liftSpotlight(runtime: CliRuntime, mk: MeetingsKit, id: string): Promise<void> {
+  await new SpotlitStore(runtime.files, mk.kit.paths.meetingSpotlit).end(id, new Date(mk.now).toISOString());
 }
 
 /** `meeting end <id>`: the meeting was held; scheduled or started, it is done. */
@@ -426,6 +468,7 @@ export async function meetingEndScheduled(args: ParsedArgs, runtime: CliRuntime)
   const mk = await meetingsKit(args, runtime, 'write');
   const note = noteOf(args.flags.get('note'), new SecretScanner(mk.config.register.secretPatterns));
   const ended = await change(args, mk, 'end', ['scheduled', 'started'], (meeting) => ({ ...meeting, status: 'done', note: note ?? meeting.note }));
+  await liftSpotlight(runtime, mk, ended.id);
   runtime.out.stdout(`ENDED ${meetingLine(ended, mk.zone, mk.now)}`);
   return EXIT.ok;
 }
@@ -435,6 +478,7 @@ export async function meetingDrop(args: ParsedArgs, runtime: CliRuntime): Promis
   const mk = await meetingsKit(args, runtime, 'write');
   const note = lineOf('--note', requiredFlag(args.flags, 'note'), new SecretScanner(mk.config.register.secretPatterns));
   const dropped = await change(args, mk, 'drop', ['scheduled', 'started'], (meeting) => ({ ...meeting, status: 'dropped', note }));
+  await liftSpotlight(runtime, mk, dropped.id);
   runtime.out.stdout(`DROPPED ${meetingLine(dropped, mk.zone, mk.now)}`);
   await tell(runtime, mk, dropped, `Meeting ${dropped.id} with the owner (${mk.zone.weekdayMinute(new Date(dropped.at))}) is dropped: ${note}`);
   return EXIT.ok;
