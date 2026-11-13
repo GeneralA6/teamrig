@@ -30,18 +30,24 @@ describe('the decision card', () => {
   it('refuses a part that is a bare task number, naming the part', () => {
     assert.equal(
       cardProblem({ ...TEST_CARD, options: ['Basic at 9 dollars a month', 'T378 option B'] }, true),
-      '--options choice 2 says "T378 option B": give at least 3 plain words besides task ids, so it reads without the task list',
+      '--options choice 2 says "T378 option B": give at least 3 plain words besides task ids, so it reads without the task list; --options split into 2 choices at each |: "Basic at 9 dollars a month" / "T378 option B"; write \\| for a | inside a choice',
     );
     assert.match(cardProblem({ ...TEST_CARD, byDefault: 'T5' }, true) ?? '', /^--default says "T5"/);
     assert.match(cardProblem({ ...TEST_CARD, whyAsk: 'see T5' }, true) ?? '', /^--why-ask says "see T5"/);
     assert.equal(cardProblem({ ...TEST_CARD, whyAsk: WHY_ASK }, true), undefined);
   });
 
+  it('shows the choices --options split into when a | inside a choice split it', () => {
+    const split = cardProblem({ ...TEST_CARD, options: ["Approve: add the row 'Account", 'D1', "Edit' to the token", 'Decline: keep the token as it is'] }, true) ?? '';
+    assert.match(split, /^--options choice 2 says "D1": /);
+    assert.match(split, /--options split into 4 choices at each \|: "Approve: add the row 'Account" \/ "D1" \/ "Edit' to the token" \/ "Decline: keep the token as it is"; write \\\| for a \| inside a choice$/);
+  });
+
   it('asks a decision for two options at least, and never takes one alone', () => {
     assert.equal(cardProblem({ ...TEST_CARD, options: [] }, true), '--options lists 0: a decision lists at least 2, separated by |');
     assert.equal(
       cardProblem({ ...TEST_CARD, options: ['Basic at 9 dollars'] }, false),
-      '--options lists 1: a decision lists at least 2, separated by |; an approval lists none or as many',
+      '--options lists 1: a decision lists at least 2, separated by |; an approval lists none or as many; --options split into 1 choice at each |: "Basic at 9 dollars"; write \\| for a | inside a choice',
     );
   });
 
