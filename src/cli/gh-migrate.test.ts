@@ -126,6 +126,19 @@ describe('teamrig gh migrate', () => {
     assert.ok((kit.files.get(EVENTS_PATH) ?? '').includes('ref was: notes/plan.md'));
   });
 
+  it('stops, opening nothing through the gh login, when the store holds the key but cannot read it', async () => {
+    const kit = await migratingTeam();
+    const gh = new FakeGh();
+    const credentials = new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked');
+    const lines = await expectRun(kit, ['gh', 'migrate', 'rows.jsonl', '--yes'], gh, EXIT.failed, { credentials });
+    assert.deepEqual(lines.slice(1), [
+      'FAILED T1: could not read teamrig-gh-acme from the test store: the keyring is locked; unlock the store and rerun, or save the key again with: save teamrig-gh-acme',
+      'STOPPED at T1 after opening 0 issue(s); fix the cause and rerun: tasks holding their issue are skipped',
+    ]);
+    assert.deepEqual(gh.ran, []);
+    assert.ok([...tasksOf(kit).values()].every((task) => task.ref === null));
+  });
+
   it('opens with the token saved for the owner', async () => {
     const kit = await migratingTeam();
     const gh = new FakeGh();

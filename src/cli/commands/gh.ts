@@ -3,7 +3,7 @@ import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.
 import { importRules } from '../../github/map.ts';
 import { importedTasks, linkedRefs, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
 import { applySteps, closedSince, readRepo, type StepOutcome } from '../../github/sync.ts';
-import { RepoTokens, type RepoAccess } from '../../github/tokens.ts';
+import { RepoTokens, TokenReadError, type RepoAccess } from '../../github/tokens.ts';
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -23,8 +23,9 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
 
 /**
  * `gh sync [--repo <owner/name>] [--yes]`: brings the task list in step with the GitHub issues of the team's
- * `github.repos`, inbound only. Each owner's repositories are read with the read-only token saved for it
- * (github/tokens.ts), else the gh login, and an ACCESS line says which. gh only ever lists issues
+ * `github.repos`, inbound only. Each owner's repositories are read with the token saved for it (github/tokens.ts),
+ * else, when none is saved, the gh login, and an ACCESS line says which; a saved token the store could not read
+ * fails that owner's repositories, never read through the login instead. gh only ever lists issues
  * (github/gh.ts refuses any other command), and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
@@ -62,10 +63,16 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const leftOut = new Map<string, readonly number[]>();
   let written = 0;
   for (const repo of reposOf(config.github.repos, args.flags.get('repo'))) {
-    const { access, note } = await tokens.accessFor(repo);
+    const access = await tokens.accessFor(repo);
+    if (access instanceof TokenReadError) {
+      say(`FAILED ${repo}: ${access.message}; its tasks stay as they are`);
+      ends.push('failed');
+      failures.push({ repo, reason: access.message });
+      continue;
+    }
     if (!told.has(access.owner)) {
       told.add(access.owner);
-      say(accessLine(access, note));
+      say(accessLine(access));
     }
     const read = await readRepo(runtime.gh, access, repo, since);
     if (read.kind === 'failed') {
@@ -123,11 +130,11 @@ function reposOf(repos: readonly string[], asked: string | undefined): readonly 
   return [repo];
 }
 
-/** How an owner's repositories are read, said once per owner: a token by the name it is saved under, or the gh login and why. */
-export function accessLine(access: RepoAccess, note: string | undefined): string {
+/** How an owner's repositories are read, said once per owner: a token by the name it is saved under, or the gh login when none is saved. */
+export function accessLine(access: RepoAccess): string {
   return access.via === 'token'
     ? `ACCESS ${access.owner}: read with the token saved as ${access.credential}`
-    : `ACCESS ${access.owner}: read with the gh login; ${note ?? `no token saved as ${access.credential}`}`;
+    : `ACCESS ${access.owner}: read with the gh login; no token saved as ${access.credential}`;
 }
 
 function previewLines(repo: string, plan: SyncPlan): string[] {
