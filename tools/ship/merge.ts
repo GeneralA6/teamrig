@@ -148,20 +148,28 @@ export interface MainBranch {
   treeOf(sha: string): string;
 }
 
+/** main's tip that a head does not contain, and why that stops the merge. */
+export interface MainMove {
+  tip: string;
+  reason: string;
+}
+
 /**
- * Merged, refused, or merged onto a main that moved between the last check and the merge (GitHub's merge
- * call cannot pin the base): main then holds a tree no check ran on.
+ * Merged, refused, moved past (main's tip is not in the head's history, before the merge or as GitHub merged: a
+ * ship can rebase and go again, T2696), or merged onto a main that moved between the last check and the merge
+ * (GitHub's merge call cannot pin the base): main then holds a tree no check ran on.
  */
 export type MergeResult =
   | { kind: 'merged'; pull: PullRequest; sha: string }
   | { kind: 'refused'; pull: PullRequest | null; reason: string }
+  | ({ kind: 'moved'; pull: PullRequest | null } & MainMove)
   | { kind: 'drifted'; pull: PullRequest; sha: string; reason: string };
 
-/** Why `head` cannot merge as checked, when main's tip is not in its history; null when it is. */
-function behindMain(main: MainBranch, { head, base, sha }: MergeRequest): string | null {
+/** main's tip and why `head` cannot merge as checked, when that tip is not in its history; null when it is. */
+function behindMain(main: MainBranch, { head, base, sha }: MergeRequest): MainMove | null {
   const tip = main.tip();
   if (main.contains(sha, tip)) return null;
-  return `${base} moved to ${tip.slice(0, 7)}, which ${head} ${sha.slice(0, 7)} does not contain: rebase ${head} onto origin/${base}, push it and run merge again`;
+  return { tip, reason: `${base} moved to ${tip.slice(0, 7)}, which ${head} ${sha.slice(0, 7)} does not contain: rebase ${head} onto origin/${base}, push it and run merge again` };
 }
 
 /** Why main's merged tip differs from the checked head's tree, or null when it holds that very tree. */
@@ -178,10 +186,13 @@ function driftAfter(main: MainBranch, request: MergeRequest, merged: string): st
 /** A merge GitHub refuses for a rule set on the repo (required checks, branch protection), not for the change. */
 const REPO_RULE = /required status check|protected branch|branch protection|repository rule/i;
 
+/** GitHub's 405 when main moved between the last read and the merge call. */
+const BASE_MODIFIED = /base branch was modified/i;
+
 export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: MainBranch, proof: Proof, log: (line: string) => void): Promise<MergeResult> {
   const { repo, head, base, sha } = request;
   const stale = behindMain(main, request);
-  if (stale !== null) return { kind: 'refused', pull: null, reason: stale };
+  if (stale !== null) return { kind: 'moved', pull: null, ...stale };
   const unready = proof.before(sha);
   if (unready !== null) return { kind: 'refused', pull: null, reason: unready };
   const found = findOpenPull(gh, repo, head, base);
@@ -193,7 +204,7 @@ export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: Main
   if (failed !== null) return { kind: 'refused', pull, reason: failed };
   // main may have moved while the checks ran.
   const moved = behindMain(main, request);
-  if (moved !== null) return { kind: 'refused', pull, reason: moved };
+  if (moved !== null) return { kind: 'moved', pull, ...moved };
 
   let merged: MergeOutcome;
   try {
@@ -203,6 +214,9 @@ export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: Main
     merged = { merged: false, message: error instanceof Error ? error.message : String(error) };
   }
   if (!merged.merged) {
+    // Read main only for this answer: it names main's move, and the head is then simply behind it.
+    const raced = BASE_MODIFIED.test(merged.message) ? behindMain(main, request) : null;
+    if (raced !== null) return { kind: 'moved', pull, ...raced };
     const rule = REPO_RULE.test(merged.message) ? " (a rule set on the repo, not the change: changing it is the repo owner's call, so report it and stop)" : '';
     return { kind: 'refused', pull, reason: `GitHub refused the merge: ${merged.message}${rule}` };
   }
@@ -283,7 +297,21 @@ function checkedOutBranch(git: MergeDeps['git']): string {
   return branch;
 }
 
+/** How a merge run ended: its exit code once it said why, or main moved past the head and nothing was said yet. */
+export type MergeExit = { kind: 'done'; code: number } | ({ kind: 'moved' } & MainMove);
+
+const done = (code: number): MergeExit => ({ kind: 'done', code });
+
+/** `ship.ts merge` as a run: a move of main comes back unsaid, so a ship can rebase and go again (T2696). */
 export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number> {
+  const exit = await mergeRun(args, deps);
+  if (exit.kind === 'done') return exit.code;
+  deps.err(`REFUSED ${exit.reason}`);
+  return 1;
+}
+
+/** The merge itself; prints every outcome but a move of main past the head, which it returns to the caller. */
+export async function mergeRun(args: MergeArgs, deps: MergeDeps): Promise<MergeExit> {
   const { git } = deps;
   const repo = slugOf(git('remote', 'get-url', 'origin'));
   const profile = profileFor(deps.profiles, repo);
@@ -299,13 +327,13 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
   const callers = deps.renamedCallers(`refs/remotes/origin/${profile.main}`, sha, repo);
   if (callers !== null) {
     deps.err(`REFUSED ${callers}`);
-    return 1;
+    return done(1);
   }
 
   const credential = deps.credential();
   if (credential.kind !== 'found') {
     deps.err(describeCredential(credential));
-    return 1;
+    return done(1);
   }
   const gh = deps.ghFor(credential.secret);
   const proof =
@@ -319,18 +347,19 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
     proof,
     deps.out,
   );
+  if (result.kind === 'moved') return { kind: 'moved', tip: result.tip, reason: result.reason };
   if (result.kind === 'refused') {
     deps.err(`REFUSED ${result.reason}`);
-    return 1;
+    return done(1);
   }
   deps.out(`MERGED #${result.pull.number} into ${profile.main}, now at ${result.sha.slice(0, 7)}`);
   // A drifted merge landed too: head's work is on main either way.
   deps.sweep({ repo, head, sha }, profile, gh);
   if (result.kind === 'drifted') {
     deps.err(`DRIFTED ${result.reason}`);
-    return 1;
+    return done(1);
   }
-  return 0;
+  return done(0);
 }
 
 /** The real git, keychain, gh, clock and local checks for a repo dir. */
@@ -352,16 +381,26 @@ export function realMergeDeps(dir: string): MergeDeps {
   };
 }
 
-/** `ship.ts merge ...`: the exit code; a usage or git error is one line, never a stack. */
-export async function mergeCommand(argv: readonly string[], depsFor: (dir: string) => MergeDeps = realMergeDeps): Promise<number> {
+/** Parses `argv` and runs `run` on its deps; a usage or git error is one line, never a stack, and ends as `failed`. */
+async function fromArgv<T>(argv: readonly string[], depsFor: (dir: string) => MergeDeps, run: (args: MergeArgs, deps: MergeDeps) => Promise<T>, failed: T): Promise<T> {
   let err: (line: string) => void = line => console.error(line);
   try {
     const args = parseArgs(argv);
     const deps = depsFor(args.dir);
     err = deps.err;
-    return await runMerge(args, deps);
+    return await run(args, deps);
   } catch (error) {
     err(error instanceof Error ? error.message : String(error));
-    return 1;
+    return failed;
   }
+}
+
+/** `ship.ts merge ...`: the exit code. */
+export function mergeCommand(argv: readonly string[], depsFor: (dir: string) => MergeDeps = realMergeDeps): Promise<number> {
+  return fromArgv(argv, depsFor, runMerge, 1);
+}
+
+/** The merge a ship runs (ship.ts): like `mergeCommand`, but a move of main past the branch comes back to the ship. */
+export function mergeBranch(argv: readonly string[], depsFor: (dir: string) => MergeDeps = realMergeDeps): Promise<MergeExit> {
+  return fromArgv(argv, depsFor, mergeRun, done(1));
 }
