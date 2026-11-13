@@ -4,6 +4,7 @@ import {
   nodeProgramRunner,
   systemCredentials,
   windowsReadScript,
+  windowsSaveScript,
   type ProgramRequest,
   type ProgramResult,
   type ProgramRunner,
@@ -127,5 +128,95 @@ describe('nodeProgramRunner', () => {
 
   it('rejects when the program is not there', async () => {
     await assert.rejects(nodeProgramRunner()({ program: 'teamrig-no-such-program', args: [] }), { code: 'ENOENT' });
+  });
+});
+
+/** A runner that answers each run with the next of `results` and records each request. */
+function answeringEach(...results: ProgramResult[]): { readonly run: ProgramRunner; readonly ran: ProgramRequest[] } {
+  const ran: ProgramRequest[] = [];
+  return {
+    ran,
+    run: async (request) => {
+      ran.push(request);
+      const result = results[ran.length - 1];
+      assert.ok(result !== undefined, `no answer for run ${ran.length}`);
+      return result;
+    },
+  };
+}
+
+const KEY = 'aBc_-123.~+/=';
+
+describe('saving a credential', () => {
+  it('saves on Windows through an encoded script, the secret on stdin only, and reads it back', async () => {
+    const runner = answeringEach(exited(0), exited(0, base64(KEY)));
+    assert.deepEqual(await systemCredentials('win32', runner.run).save(NAME, KEY), { kind: 'saved' });
+    const [save, read] = runner.ran;
+    assert.equal(save?.program, 'powershell.exe');
+    assert.equal(save?.stdin, KEY);
+    assert.equal(Buffer.from(save?.args[3] ?? '', 'base64').toString('utf16le'), windowsSaveScript(NAME));
+    assert.ok(windowsSaveScript(NAME).includes(`::Save('${NAME}', $secret)`));
+    assert.ok(!(save?.args ?? []).some((arg) => arg.includes(KEY) || Buffer.from(arg, 'base64').toString('utf16le').includes(KEY)));
+    assert.equal(read?.stdin, undefined);
+  });
+
+  it('saves on macOS through security -i, the secret in its stdin command, never in argv', async () => {
+    const runner = answeringEach(exited(0), exited(0, `${KEY}\n`));
+    assert.deepEqual(await systemCredentials('darwin', runner.run).save(NAME, KEY), { kind: 'saved' });
+    assert.deepEqual(runner.ran[0], { program: 'security', args: ['-i'], stdin: `add-generic-password -U -s ${NAME} -a teamrig -w ${KEY}\n` });
+  });
+
+  it('saves on Linux through secret-tool store, the secret on stdin', async () => {
+    const runner = answeringEach(exited(0), exited(0, `${KEY}\n`));
+    assert.deepEqual(await systemCredentials('linux', runner.run).save(NAME, KEY), { kind: 'saved' });
+    assert.deepEqual(runner.ran[0], { program: 'secret-tool', args: ['store', `--label=${NAME}`, 'service', NAME], stdin: KEY });
+  });
+
+  it('fails when the read back does not find the same secret, never naming it', async () => {
+    const other = await systemCredentials('darwin', answeringEach(exited(0), exited(0, 'other\n')).run).save(NAME, KEY);
+    assert.deepEqual(other, { kind: 'failed', reason: `the macOS keychain did not keep ${NAME}: read back, it holds another value` });
+    const none = await systemCredentials('linux', answeringEach(exited(0), exited(1)).run).save(NAME, KEY);
+    assert.deepEqual(none, { kind: 'failed', reason: `the Secret Service keyring did not keep ${NAME}: read back, nothing is saved under it` });
+    const broken = await systemCredentials('linux', answeringEach(exited(0), exited(2, '', 'locked\n')).run).save(NAME, KEY);
+    assert.deepEqual(broken, { kind: 'failed', reason: `the Secret Service keyring did not keep ${NAME}: read back, secret-tool exited 2: locked` });
+  });
+
+  it('fails by the tool end when the save itself fails, and reads nothing back', async () => {
+    const runner = answeringEach(exited(1, '', 'CredWriteW failed with Windows error 1312\n'));
+    assert.deepEqual(await systemCredentials('win32', runner.run).save(NAME, KEY), {
+      kind: 'failed',
+      reason: 'powershell.exe exited 1: CredWriteW failed with Windows error 1312',
+    });
+    assert.equal(runner.ran.length, 1);
+    assert.deepEqual(await systemCredentials('linux', notStarting('ENOENT')).save(NAME, KEY), {
+      kind: 'failed',
+      reason: 'secret-tool could not start: spawn secret-tool ENOENT',
+    });
+  });
+
+  it('refuses a name that needs quoting or a secret a tool would split, without running anything', async () => {
+    const runner = answeringEach();
+    const store = systemCredentials('darwin', runner.run);
+    assert.deepEqual(await store.save('a b', KEY), { kind: 'failed', reason: `"a b" is not a credential name: letters, digits, '.', '_' or '-'` });
+    const split = await store.save(NAME, 'two words');
+    assert.deepEqual(split, { kind: 'failed', reason: `the secret for ${NAME} is not text teamrig saves: letters, digits and . _ ~ + / = -` });
+    assert.ok(!split.reason.includes('two words'));
+    assert.deepEqual(runner.ran, []);
+  });
+});
+
+describe('nodeProgramRunner with stdin', () => {
+  it('writes the request stdin to the program and closes it', async () => {
+    const result = await nodeProgramRunner()({
+      program: process.execPath,
+      args: ['-e', 'let t = ""; process.stdin.on("data", (c) => (t += c)).on("end", () => process.stdout.write(t.toUpperCase()))'],
+      stdin: 'secret',
+    });
+    assert.deepEqual(result, { end: { kind: 'exited', code: 0 }, stdout: 'SECRET', stderr: '' });
+  });
+
+  it('gives the exit of a program that ends without reading its stdin', async () => {
+    const result = await nodeProgramRunner()({ program: process.execPath, args: ['-e', 'process.exitCode = 4'], stdin: 'x'.repeat(1 << 20) });
+    assert.deepEqual(result.end, { kind: 'exited', code: 4 });
   });
 });
