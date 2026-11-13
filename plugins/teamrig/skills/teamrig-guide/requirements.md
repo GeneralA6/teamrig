@@ -6,7 +6,7 @@ What teamrig needs on the machine, from its code and its CI.
 | --- | --- | --- |
 | Claude Code | 2.1.139 or later | It loads the plugin, runs its hooks and puts `teamrig` on the PATH. Every hook uses the exec form (`args`), which Claude Code added in 2.1.139. CI does not run Claude Code; hand tests ran on 2.1.299 and 2.1.300. The automatic refresh's `/clear` comes from the plugin's mod (Claude Code's function hooks, tried on 2.1.299); a Claude Code that does not load it gets the restart instead. |
 | Node.js | 22.18 or later (`engines` in `package.json`) | `teamrig` and every hook run `node <plugin>/dist/cli/main.js`, so `node` must be on the PATH. 22.18 is the floor `package.json` sets; no older Node.js is tested. |
-| Operating system | Linux, Windows or macOS | CI runs the tests on ubuntu, windows and macos, each on Node 22 and 24. CI is paused for now: each change is tested before it is pushed on one machine and Node, so the others go unchecked until CI runs again. |
+| Operating system | Linux, Windows or macOS | CI runs the tests on ubuntu, windows and macos, each on Node 22; a newer Node.js is not tested. |
 | git | any | The push guard reads git config and aliases; `teamrig commits check` runs git. Not needed for tasks or inboxes. |
 | A terminal for `teamrig open` | see below | Only `open` uses one; every other command works in any shell. |
 
