@@ -6,6 +6,7 @@ import { nodeTranscriptSource } from '../budget/discover.ts';
 import { nodeFileBytes } from '../core/file-bytes.ts';
 import { nodeFiles } from '../core/files.ts';
 import { GIT_TREES } from '../delivery/git-tree.ts';
+import { nodeHostCpu } from '../delivery/cpu.ts';
 import { nodeHostMemory } from '../delivery/memory.ts';
 import { launchingShellsOf, nodeEvery, starterWatch } from '../delivery/starter-watch.ts';
 import { nodeStepRunner } from '../delivery/steps.ts';
@@ -97,6 +98,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     shell: nodeShellRunner(),
     steps: nodeStepRunner(process.platform),
     memory: nodeHostMemory(process.platform),
+    cpu: nodeHostCpu(),
     gh: nodeGhRunner(),
     credentials: systemCredentials(process.platform, nodeProgramRunner()),
     probe: NODE_PATH_PROBE,

@@ -106,6 +106,7 @@ export const CONFIG_LIMITS = {
   queueAgingMinutes: { min: 0, max: 1440 },
   queuePerSessionRunning: { min: 0, max: 64 },
   queueMaxHeavyParallel: { min: 1, max: 64 },
+  queueHeavyIdleCpuPct: { min: 0, max: 100 },
   headroomSessionMb: { min: 100, max: 65_536 },
   headroomCommitMaxPct: { min: 50, max: 100 },
   headroomCloseIdleMinutes: { min: 15, max: 10_080 },

@@ -7,6 +7,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { AdmitFile } from './admit-file.ts';
 import { admissionOrder, classOf, placeInLine, type AdmissionRules } from './admission.ts';
+import type { CpuGate } from './cpu.ts';
 import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
 import { isLineRequest, type LineRequest } from './process-request.ts';
@@ -198,11 +199,23 @@ export interface HeavyCapWait {
 }
 
 /**
+ * A heavy step first in line, below the heavy cap, while the host's CPU is too busy for it beside the heavy steps
+ * already sharing it (`running`, T2700): `idlePct` of its CPU time was idle, `needPct` needed
+ * (`delivery.queue.heavyIdleCpuPct`).
+ */
+export interface CpuWait {
+  readonly kind: 'cpu';
+  readonly idlePct: number;
+  readonly needPct: number;
+  readonly running: readonly HostShare[];
+}
+
+/**
  * What a waiter waits on: the lock's holder, the earlier waiter the free lock goes to next, the steps sharing the host
  * that a step that took the lock waits to end, or, for the first in line, the host's free memory or commit charge
  * (`MemoryWait`). In admission's `pipeline` mode also its session's cap (`sessionCap`), the heavy steps sharing the
- * host at their cap (`heavyCap`), and, for a moment, another step being admitted (`admitting`), which holds the admit
- * file.
+ * host at their cap (`heavyCap`) or with the CPU too busy for one more (`cpu`), and, for a moment, another step being
+ * admitted (`admitting`), which holds the admit file.
  */
 export type LockWait =
   | LockHolder
@@ -211,6 +224,7 @@ export type LockWait =
   | MemoryWait
   | SessionCapWait
   | HeavyCapWait
+  | CpuWait
   | { readonly kind: 'admitting' };
 
 /**
@@ -255,6 +269,11 @@ export interface HostLockPorts {
    * step, as the deploy freezes' writers share.
    */
   readonly memory?: MemoryGate;
+  /**
+   * The gate a heavy step passes on the host's CPU before it joins another heavy step sharing the host (T2700); none
+   * lets it in on memory alone.
+   */
+  readonly cpu?: CpuGate;
   /**
    * How the line is ordered (T2210): absent or `serial`, in arrival order, with no admit file and no session cap;
    * `pipeline`, in admission order (see the class).
@@ -471,6 +490,8 @@ export function holderText(holder: LockWait, zone: TimeZone): string {
       return `${stepsText(holder.running.length, '')} of its session running, its cap ${holder.cap}: ${heldText(holder.running, zone)}`;
     case 'heavyCap':
       return `${stepsText(holder.running.length, 'heavy ')} running, the cap ${holder.cap}: ${heldText(holder.running, zone)}`;
+    case 'cpu':
+      return `host CPU ${holder.idlePct}% idle, ${holder.needPct}% needed (delivery.queue.heavyIdleCpuPct) beside ${stepsText(holder.running.length, 'heavy ')}: ${heldText(holder.running, zone)}`;
     case 'admitting':
       return 'another step being admitted';
   }
@@ -542,6 +563,8 @@ export function busyText(holder: LockWait, zone: TimeZone): string {
       return `session cap still reached: ${holderText(holder, zone)}`;
     case 'heavyCap':
       return `heavy cap still reached: ${holderText(holder, zone)}`;
+    case 'cpu':
+      return `host CPU still busy: ${holderText(holder, zone)}`;
     case 'held':
     case 'unknown':
     case 'queued':
@@ -571,6 +594,7 @@ function waitKey(holder: LockWait, ahead: number): string {
       return `${holder.kind} ${idsOf(holder.shares)} ${ahead}`;
     case 'sessionCap':
     case 'heavyCap':
+    case 'cpu':
       return `${holder.kind} ${idsOf(holder.running)} ${ahead}`;
     case 'admitting':
       return `admitting ${ahead}`;
@@ -632,6 +656,7 @@ function standingBehind(ahead: readonly LockWaiter[], holder: LockWait): Set<str
       break;
     case 'sessionCap':
     case 'heavyCap':
+    case 'cpu':
       for (const info of holder.running) {
         ids.add(info.id);
       }
@@ -1203,6 +1228,13 @@ export class HostLock {
       const running = others.filter(isHeavyShare);
       if (running.length >= hold.cap) {
         return { kind: 'busy', holder: { kind: 'heavyCap', cap: hold.cap, running } };
+      }
+      // A heavy step alone on the host is never held on CPU: a host the day's other work keeps busy would never ship.
+      if (running.length > 0 && this.ports.cpu !== undefined) {
+        const cpu = await this.ports.cpu.look();
+        if (cpu.kind === 'cpu') {
+          return { kind: 'busy', holder: { ...cpu, running } };
+        }
       }
     }
     const look = await this.lookAtMemory(need, others);

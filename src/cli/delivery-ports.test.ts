@@ -4,6 +4,7 @@ import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import type { HostLockInfo, Taking } from '../delivery/host-lock.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
+import { FakeHostCpu } from '../testing/fake-host-cpu.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -12,7 +13,7 @@ import { freezesLockOf, hostLockOf } from './delivery-ports.ts';
 import type { CliRuntime } from './runtime.ts';
 
 const PATH = '/kit/host.lock';
-const QUEUE = { lockTtlMinutes: 150, memoryFloorMb: 4096, heavyReserveMb: 4096, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 1, maxHeavyParallel: 2 } as const;
+const QUEUE = { lockTtlMinutes: 150, memoryFloorMb: 4096, heavyReserveMb: 4096, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 1, maxHeavyParallel: 2, heavyIdleCpuPct: 25 } as const;
 const HEADROOM = { commitMaxPct: 92 };
 const FOCUS = { defaultClass: 'Improvements' };
 const PID = 4242;
@@ -20,12 +21,16 @@ const PID = 4242;
 /** A small step's ask: to share the host with 100 MB held for it. */
 const SMALL = { need: { shares: true, reserveMb: 100 } };
 
-/** The CLI's ports over files in memory at `clock`'s time (10:00 by default), on a host with `memory`, where `processes` run (none by default). */
+/**
+ * The CLI's ports over files in memory at `clock`'s time (10:00 by default), on a host with `memory` and `cpu` (idle by
+ * default), where `processes` run (none by default).
+ */
 function runtimeOf(
   memory: FakeHostMemory,
   processes: FakeSessionProcesses = new FakeSessionProcesses(),
   clock: FakeClock = new FakeClock('2030-01-08T10:00:00Z'),
-): Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessionProcesses' | 'newId' | 'memory'> {
+  cpu: FakeHostCpu = new FakeHostCpu(),
+): Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessionProcesses' | 'newId' | 'memory' | 'cpu'> {
   let ids = 0;
   return {
     files: new MemoryFiles({}, clock),
@@ -38,6 +43,7 @@ function runtimeOf(
       return `t${ids}`;
     },
     memory,
+    cpu,
   };
 }
 
@@ -84,6 +90,23 @@ describe('hostLockOf (T2210)', () => {
     const second = await lock.acquire('alpha', 'heavy: lint', 0, 30_000, () => undefined, SMALL);
 
     assert.equal(second.kind, 'taken');
+  });
+});
+
+describe('hostLockOf (T2700)', () => {
+  const running = (): FakeSessionProcesses => new FakeSessionProcesses().add({ pid: PID, parentPid: 1, name: 'node', commandLine: 'node cli.ts queue' });
+
+  it('keeps a second heavy step off a host whose CPU is less than delivery.queue.heavyIdleCpuPct idle, and lets it in at 0', async () => {
+    const results: unknown[] = [];
+    for (const heavyIdleCpuPct of [25, 0]) {
+      const runtime = runtimeOf(new FakeHostMemory(16_000), running(), new FakeClock('2030-01-08T10:00:00Z'), new FakeHostCpu(10));
+      const lock = hostLockOf(runtime, PATH, { ...QUEUE, heavyIdleCpuPct }, HEADROOM, FOCUS, TimeZone.UTC);
+      const first = heldLock(await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined));
+      const second = await lock.acquire('beta', 'heavy: build', 0, 30_000, () => undefined);
+      results.push(second.kind === 'busy' ? second.holder : second.kind, first);
+    }
+    const [busy, running25, taken] = results;
+    assert.deepEqual([busy, taken], [{ kind: 'cpu', idlePct: 10, needPct: 25, running: [running25] }, 'taken']);
   });
 });
 
