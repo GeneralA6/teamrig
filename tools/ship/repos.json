@@ -8,11 +8,8 @@
       "coverage gate",
       "plugin version gate",
       "test (ubuntu-latest, node 22)",
-      "test (ubuntu-latest, node 24)",
       "test (windows-latest, node 22)",
-      "test (windows-latest, node 24)",
       "test (macos-latest, node 22)",
-      "test (macos-latest, node 24)",
       "every check passed"
     ],
     "local": {
@@ -30,11 +27,8 @@
       "plugin version gate",
       "hooks/core matches the teamrig pin",
       "test (ubuntu-latest, node 22)",
-      "test (ubuntu-latest, node 24)",
       "test (windows-latest, node 22)",
-      "test (windows-latest, node 24)",
       "test (macos-latest, node 22)",
-      "test (macos-latest, node 24)",
       "every check passed"
     ],
     "local": {

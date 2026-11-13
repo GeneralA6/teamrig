@@ -96,10 +96,12 @@ test('the shipped repos.json still lists every job a teamrig pull request runs, 
   const jobs = [...workflow.matchAll(/^ {4}name: (.+)$/gm)].map(match => match[1] ?? '').filter(name => !name.includes('${{'));
   assert.ok(jobs.includes('commit size rule'), jobs.join(', '));
   for (const job of jobs) assert.ok(teamrig.checks.includes(job), `ci.yml job "${job}" is missing from repos.json, so a CI merge would not wait for it`);
-  for (const os of ['ubuntu-latest', 'windows-latest', 'macos-latest']) {
-    for (const node of [22, 24]) assert.ok(teamrig.checks.includes(`test (${os}, node ${node})`));
-  }
-  assert.equal(teamrig.checks.length, jobs.length + 6);
+  const tests = teamrig.checks.filter(check => check.startsWith('test ('));
+  assert.deepEqual(tests, ['ubuntu-latest', 'windows-latest', 'macos-latest'].map(os => `test (${os}, node 22)`));
+  const matrix = (key: string): string[] => (new RegExp(`^ {8}${key}: \\[([^\\]]+)\\]$`, 'm').exec(workflow)?.[1] ?? '').split(',').map(item => item.trim());
+  const run = new Set(matrix('os').flatMap(os => matrix('node').map(node => `test (${os}, node ${node})`)));
+  for (const check of tests) assert.ok(run.has(check), `repos.json waits for "${check}", which ci.yml's test matrix never runs`);
+  assert.equal(teamrig.checks.length, jobs.length + tests.length);
 });
 
 test('both plugin repos wait for the plugin version gate, so a plugin change cannot merge without a version raise', () => {
