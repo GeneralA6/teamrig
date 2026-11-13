@@ -1,33 +1,9 @@
-import type { KitConfig } from '../config/types.ts';
 import { MeetingStore, phaseOf } from '../meeting/state.ts';
 import { statusLineMeetingOf, type StatusLineMeeting } from '../meeting/status-line.ts';
 import { teamSessionOf } from './commands/hook-input.ts';
-import { openKit, rosterOf, type Kit } from './kit.ts';
+import { rosterOf } from './kit.ts';
+import { rootTeamOf, type LoadedTeam } from './root-team.ts';
 import type { CliRuntime } from './runtime.ts';
-
-/** A team's opened kit with its loaded config. */
-export interface LoadedTeam {
-  readonly kit: Kit;
-  readonly config: KitConfig;
-}
-
-/**
- * The root of the tree `own` sits in, up its `team.parent` links: the owner meets only the root team's lead. Undefined
- * when a config on the way does not load; a loop of parent links ends at the last team before the first one met again.
- */
-async function rootTeamOf(runtime: CliRuntime, own: LoadedTeam): Promise<LoadedTeam | undefined> {
-  const seen = new Set<string>([own.kit.paths.team]);
-  let current = own;
-  for (let parent = own.config.team?.parent; parent !== undefined && !seen.has(parent); parent = current.config.team?.parent) {
-    seen.add(parent);
-    const kit = await openKit(runtime, parent);
-    if (kit.load.status !== 'loaded') {
-      return undefined;
-    }
-    current = { kit, config: kit.load.config };
-  }
-  return current;
-}
 
 /**
  * The meeting mark of the status line of `claudeSession`, a tab of team `own` (T2513), as the own team's
