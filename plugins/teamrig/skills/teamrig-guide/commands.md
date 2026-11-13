@@ -678,7 +678,9 @@ read, and SECRET-GUARD-OFF: a secret check turned off, which is the owner's call
 run under (the user's, the project folder's, each `delivery.repos` repository's and its worktrees') that sets
 `disableAllHooks`, which stops every teamrig hook, the secret guard's included, FIVE-HOUR: the account's five-hour
 window has reached 80% [budget.fiveHourWarnPct] or rises fast enough to fill before it resets, and at 100% every
-session stalls until that reset; it is raised once a window, and a plan with no such window never shows it, and from
+session stalls until that reset; it is raised once a window, and a plan with no such window never shows it,
+RESET-EXPIRING: a reset grant in [budget.resets] with uses left expires within 14 days, and one not spent by then is
+lost; it is raised once a grant and again after each use, and from
 the restore's record (`<kit home>/bin/launchers.json`, written by [restore install](#teamrig-restore-install),
 `uninstall` and a newer version's first session start) RESTORE-DEAD: a logon entry or shortcut teamrig set up that
 starts a Node or launcher that is gone, such as one left on a Node an upgrade removed, and RESTORE-STRAY: a `Restore
@@ -4980,6 +4982,10 @@ On a plan with a five-hour window, a line under the week's gives that window's u
 span 15 minutes, where its rise takes it
 (`Five-hour window: 40.0% used at 10:30 IDT. Resets 13:00 IDT. At its rise of 60.0 points an hour, it reaches 100% 11:30 IDT.`),
 or near what it ends (`..., it ends near 18%.`). A plan with no such window, or a window that has reset, prints no line.
+When the account lists reset grants in [budget.resets] (Claude Code tells a session nothing of them, so the team
+writes each down as it is granted and used), the day's view ends with what is left of each and when it expires
+(`Resets in stock:` then `  fable: 2 of 3 left, expire 2027-03-09 09:59 IST (in 116 days)`); a recount of a past
+day leaves them out.
 The period, the meter log (below) and the extra-usage log ([teamrig budget extra](#teamrig-budget-extra)) are the
 account's: a team under a parent on its Claude
 account reads and writes them in the folder of the highest team above it reached through teams all on that account,
