@@ -9,7 +9,7 @@ import { callerOf } from '../inputs.ts';
 import { hostOf } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { GITHUB_OFF, githubOff } from './gh-auto.ts';
+import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
 import { reportRotation } from './register.ts';
 import { openTeam, type Team } from './register-team.ts';
 
@@ -26,7 +26,7 @@ export const SHOWN_UNROWED = 20;
  * task for it; a ref that is no issue gives way, named in the update's note. It stops at the first failure, and a rerun skips each task already holding its issue. Exit 1 when
  * gh failed, 2 when the register refused a ref, else 0.
  */
-export async function ghMigrate(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function issueMigrate(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const path = resolve(runtime.cwd, onePositional(args, 'file'));
   const write = args.switches.has('yes');
   const caller = callerOf(args.flags, runtime.env);

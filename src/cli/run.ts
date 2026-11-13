@@ -93,8 +93,8 @@ const pipelineFreezeCommands = () => import('./commands/pipeline-freeze.ts');
 const stablePeriodsCommand = () => import('./commands/stable-periods.ts');
 const jobCommands = () => import('./commands/job.ts');
 const deployStatusCommand = () => import('./commands/deploy-status.ts');
-const ghCommands = () => import('./commands/gh.ts');
-const ghMigrateCommands = () => import('./commands/gh-migrate.ts');
+const issueSyncCommands = () => import('./commands/issue-sync.ts');
+const issueMigrateCommands = () => import('./commands/issue-migrate.ts');
 const issueCommands = () => import('./commands/issue.ts');
 const startCommands = () => import('./commands/start.ts');
 const meetingCommands = () => import('./commands/meeting.ts');
@@ -213,8 +213,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
   'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
   compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
-  'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
-  'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await ghMigrateCommands()).ghMigrate },
+  'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await issueSyncCommands()).issueSync },
+  'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
   'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
   'issue close': { effect: 'write', flags: ['session', 'comment'], load: async () => (await issueCommands()).issueClose },
   budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
