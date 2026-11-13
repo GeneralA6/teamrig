@@ -3,6 +3,7 @@ import type { Roster } from '../../config/roster.ts';
 import type { QueueConfig } from '../../config/types.ts';
 import { busyText, holderText, isHeavyShare, underLock, waitText, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
+import { pipelineFrozenRefusal } from '../../delivery/pipeline-freezes.ts';
 import { deliveryPlaces, detachedLogOf } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
 import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
@@ -99,8 +100,22 @@ function requestOf(args: ParsedArgs, words: readonly string[], what: string): Pr
   return processRequest(kindOf(args, words), taskOf(args, what));
 }
 
-function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined, zone: TimeZone): void {
-  const reason = queueCutoffReason(runtime.clock.now(), cutoffUtc, zone);
+/** What the step's start is checked against: the queue cutoff, and the host's pipeline freezes on its kind. */
+interface StartGate {
+  readonly cutoffUtc: string | undefined;
+  readonly pipelineFreezes: string;
+  readonly kind: StepKind;
+  readonly zone: TimeZone;
+}
+
+/** Why the step may not start now (the queue cutoff, or a pipeline freeze on its kind), or undefined when it may. */
+async function startRefusal(runtime: CliRuntime, gate: StartGate): Promise<string | undefined> {
+  const now = runtime.clock.now();
+  return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone);
+}
+
+async function refuseUnstartable(runtime: CliRuntime, gate: StartGate): Promise<void> {
+  const reason = await startRefusal(runtime, gate);
   if (reason !== undefined) {
     throw new RefusedError(reason);
   }
@@ -434,11 +449,12 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
+  const gate: StartGate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone };
   if (detach) {
     if (parent !== undefined) {
       throw new UsageError('--detach under a live host lock: a step a queued step starts runs at once under its lock, and that step waits for its result; run it without --detach');
     }
-    refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
+    await refuseUnstartable(runtime, gate);
     const id = detachedIdOf(runtime.clock.now(), runtime.pid);
     return await startDetached(runtime, { log: detachedLogOf(delivery, kit.paths, id) }, args, { id, session, what, words });
   }
@@ -454,7 +470,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       const code = await runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), step);
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
     }
-    refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
+    await refuseUnstartable(runtime, gate);
     // The register is read only for a step that queues: a nested step or one refused at once records nothing.
     const register = new JsonlEventLog(runtime.files, kit.paths.events);
     const line = await lineRequestOf(request, async (id) => (await register.read()).state.tasks.get(id), config.focus);
@@ -492,9 +508,9 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     const waited = waits.end();
     const waitedMs = runtime.clock.now() - waited.queuedAt;
     try {
-      const cutoff = queueCutoffReason(runtime.clock.now(), delivery.schedule.queueCutoffUtc, zone);
-      if (cutoff !== undefined) {
-        return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'refused', reason: cutoff });
+      const refusal = await startRefusal(runtime, gate);
+      if (refusal !== undefined) {
+        return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'refused', reason: refusal });
       }
       const sharing = sharingText(need.reserveMb, taking);
       if (sharing !== undefined) {

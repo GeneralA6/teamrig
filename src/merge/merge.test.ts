@@ -1073,6 +1073,21 @@ describe('merge waits for what may hold a deploy, and refuses what forbids one',
     assert.deepEqual(world.steps.ran, []);
   });
 
+  it('refuses under a pipeline freeze on merges, or on deploys when its push deploys, and merges under one on other kinds', async () => {
+    const frozen = (kinds: readonly string[]): string =>
+      JSON.stringify([{ id: 'F2', session: 'po', from: '2030-01-08T09:00:00.000Z', to: '2030-01-08T12:00:00.000Z', reason: 'PC down', kinds, at: '2030-01-08T08:00:00.000Z' }]);
+    const onMerges = new World();
+    await onMerges.files.write(PLACES.pipelineFreezes, frozen(['merge']));
+    refused(await onMerges.run(), /^the pipeline is frozen until 2030-01-08 12:00 UTC by po \(PC down; F2\); no new step starts until then\. .* teamrig pipeline unfreeze F2$/);
+    assert.deepEqual(onMerges.steps.ran, []);
+    const onDeploys = new World({ repos: deploying });
+    await onDeploys.files.write(PLACES.pipelineFreezes, frozen(['deploy']));
+    refused(await onDeploys.run(), /pipeline unfreeze F2$/);
+    const quiet = new World();
+    await quiet.files.write(PLACES.pipelineFreezes, frozen(['deploy', 'test']));
+    assert.equal((await quiet.run()).kind, 'done');
+  });
+
   it('refuses in the blackout before the weekly reset, and reads the reset only when a blackout is set', async () => {
     const reset: ResetTime = { at: Date.parse('2030-01-08T12:00:00Z'), source: 'status line' };
     const blackout = new World({ schedule: { resetBlackoutHours: 4 }, reset });

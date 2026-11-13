@@ -22,6 +22,14 @@ const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
 const SHARED = `${LOCK}.shared`;
 const MINUTE = 60_000;
+const PIPELINE_FREEZES = join(KIT, 'pipeline-freezes.json');
+/** The refusal under {@link pipelineFreezes}' freeze. */
+const FROZEN = 'the pipeline is frozen until 2030-01-08 12:00 UTC by po (PC down; F1); no new step starts until then. The lead or the delivery owner ends it early with: teamrig pipeline unfreeze F1';
+
+/** The pipeline freezes file holding F1 by po from `from` until 12:00 UTC, on `kinds` (every kind when absent). */
+function pipelineFreezes(freeze: { readonly from: string; readonly kinds?: readonly string[] }): string {
+  return JSON.stringify([{ id: 'F1', session: 'po', to: '2030-01-08T12:00:00.000Z', reason: 'PC down', at: '2030-01-08T08:00:00.000Z', ...freeze }]);
+}
 
 /** The team config naming admission `serial`, where a heavy step takes the lock file. */
 const SERIAL = { ...TEAM, delivery: { queue: { admission: 'serial' } } };
@@ -225,6 +233,34 @@ describe('teamrig queue', () => {
       stderr: [],
     });
     const refusal = buildRefused('2030-01-08T10:40:02.000Z', 40 * MINUTE + FIRST_IN_LINE_POLL_MS, 'refused', 'queue cutoff 10:30-00:00 UTC (now 10:40 UTC)');
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), ledgerOf(kit)], [[], undefined, [refusal]]);
+  });
+
+  it('refuses under a pipeline freeze on its kind before taking the lock, and runs under one on other kinds', async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(PIPELINE_FREEZES, pipelineFreezes({ from: '2030-01-08T09:00:00.000Z', kinds: ['build'] }));
+    const result = await kit.run(BUILD, { steps });
+    assert.deepEqual(result, { code: 2, stdout: [`REFUSED ${FROZEN}`], stderr: [] });
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
+    await kit.files.write(PIPELINE_FREEZES, pipelineFreezes({ from: '2030-01-08T09:00:00.000Z', kinds: ['merge'] }));
+    steps.ends(0, MINUTE);
+    assert.equal((await kit.run(BUILD, { steps })).code, 0);
+  });
+
+  it('refuses every step while the pipeline freezes file is unreadable', async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(PIPELINE_FREEZES, '[{');
+    const result = await kit.run(BUILD, { steps });
+    assert.deepEqual(result, { code: 2, stdout: [`REFUSED the pipeline freezes in ${PIPELINE_FREEZES} are unreadable (not JSON), so no new step starts until the file reads or is removed`], stderr: [] });
+  });
+
+  it('refuses, recording its refusal, a step whose wait ran into a pipeline freeze, with delivery.queue.admission serial', async () => {
+    const { kit, steps } = harness(SERIAL);
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
+    await kit.files.write(PIPELINE_FREEZES, pipelineFreezes({ from: '2030-01-08T10:30:00.000Z' }));
+    const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
+    assert.deepEqual(result.stdout.at(-1), `REFUSED ${FROZEN}`);
+    const refusal = buildRefused('2030-01-08T10:40:02.000Z', 40 * MINUTE + FIRST_IN_LINE_POLL_MS, 'refused', FROZEN);
     assert.deepEqual([steps.ran, kit.files.get(LOCK), ledgerOf(kit)], [[], undefined, [refusal]]);
   });
 
@@ -891,6 +927,15 @@ describe('teamrig queue --detach (T2227)', () => {
     const args = ['/opt/teamrig/dist/cli/main.js', 'queue', '--detached-run', DETACHED_ID, '--session', 'alpha', '--what', 'build api', '--max-minutes', '90', '--exclusive', '--', 'npm', 'run', 'build'];
     assert.deepEqual([hidden?.command, hidden?.args, hidden?.cwd, hidden?.log, hidden?.env['PROBE']], ['/usr/bin/node', args, APP, DETACHED_LOG, 'yes']);
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), await alphaLines(kit)], [[], undefined, undefined, []], 'the caller waits for nothing and runs nothing');
+  });
+
+  it('refuses under a pipeline freeze on its kind, starting nothing', async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(PIPELINE_FREEZES, pipelineFreezes({ from: '2030-01-08T09:00:00.000Z' }));
+    const processes = new FakeProcesses();
+    const result = await kit.run(DETACH_BUILD, { steps, processes, env: { TEAMRIG_SESSION: 'alpha' } });
+    assert.deepEqual(result, { code: 2, stdout: [`REFUSED ${FROZEN}`], stderr: [] });
+    assert.deepEqual([processes.hidden, steps.ran], [[], []]);
   });
 
   it('refuses from the queue cutoff on, starting nothing', async () => {

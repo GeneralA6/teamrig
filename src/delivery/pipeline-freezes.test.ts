@@ -16,6 +16,7 @@ import {
   liveFreezes,
   parsePipelineFreezes,
   pipelineFreezeText,
+  pipelineFrozenRefusal,
   PIPELINE_FREEZES_LOCK_TTL_MS,
   type PipelineFreeze,
   type PipelineFreezeRequest,
@@ -86,6 +87,26 @@ describe('freeze texts', () => {
     assert.equal(frozenReason(KEPT[0]!, TimeZone.UTC), 'the pipeline is frozen until 2030-01-08 11:00 UTC by teamrig (release; F3); no new step starts until then. The lead or the delivery owner ends it early with: teamrig pipeline unfreeze F3');
     assert.equal(pipelineFreezeText(KEPT[0]!, TimeZone.UTC), 'F3 2030-01-08 09:00 UTC → 2030-01-08 11:00 UTC, merge, by teamrig (release)');
     assert.equal(pipelineFreezeText(KEPT[1]!, TimeZone.UTC), 'F4 2030-01-09 00:00 UTC → 2030-01-09 02:00 UTC, all steps, by po (backup)');
+  });
+});
+
+describe('pipelineFrozenRefusal', () => {
+  const now = Date.parse(NOW);
+  const text = JSON.stringify(KEPT);
+  const path = PLACES.pipelineFreezes;
+
+  it('refuses a step any of whose kinds a freeze holds, and passes one no freeze holds or with no file', () => {
+    assert.equal(pipelineFrozenRefusal(text, path, now, ['merge'], TimeZone.UTC), frozenReason(KEPT[0]!, TimeZone.UTC));
+    assert.equal(pipelineFrozenRefusal(text, path, now, ['deploy', 'merge'], TimeZone.UTC), frozenReason(KEPT[0]!, TimeZone.UTC));
+    assert.equal(pipelineFrozenRefusal(text, path, now, ['test'], TimeZone.UTC), undefined);
+    assert.equal(pipelineFrozenRefusal(undefined, path, now, ['merge'], TimeZone.UTC), undefined);
+  });
+
+  it('refuses every step while the file is unreadable, naming it', () => {
+    assert.equal(
+      pipelineFrozenRefusal('[{', path, now, ['test'], TimeZone.UTC),
+      'the pipeline freezes in /team/deploys/pipeline-freezes.json are unreadable (not JSON), so no new step starts until the file reads or is removed',
+    );
   });
 });
 

@@ -318,6 +318,21 @@ describe('deployRepo', () => {
     assert.deepEqual([late.hooks.ran.length, late.pulled()], [0, false]);
   });
 
+  it('refuses under a pipeline freeze on deploys, and deploys under one on other kinds', async () => {
+    const frozen = (kinds: readonly string[]): string =>
+      JSON.stringify([{ id: 'F2', session: 'po', from: '2030-01-08T09:00:00.000Z', to: '2030-01-08T12:00:00.000Z', reason: 'PC down', kinds, at: '2030-01-08T08:00:00.000Z' }]);
+    const held = new World();
+    await held.files.write(PLACES.pipelineFreezes, frozen(['deploy']));
+    refused(
+      await held.run(),
+      'the pipeline is frozen until 2030-01-08 12:00 UTC by po (PC down; F2); no new step starts until then. The lead or the delivery owner ends it early with: teamrig pipeline unfreeze F2',
+    );
+    assert.deepEqual([held.hooks.ran.length, held.pulled()], [0, false]);
+    const other = new World();
+    await other.files.write(PLACES.pipelineFreezes, frozen(['merge']));
+    assert.deepEqual(await other.run(), { kind: 'done', summary: 'c1..c2 deployed' });
+  });
+
   it('records the deploy and fails when the deploy command fails, its last line redacted', async () => {
     const world = new World();
     world.hooks.answer(COMMAND, { lines: [`orchestrator CRASH: ${SECRET}`], end: 1 });
