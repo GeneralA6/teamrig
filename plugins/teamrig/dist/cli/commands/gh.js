@@ -1,7 +1,7 @@
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { addedTasks } from "../../github/auto.js";
 import { importRules } from "../../github/map.js";
-import { importedTasks, planSync } from "../../github/plan.js";
+import { importedTasks, linkedRefs, planSync } from "../../github/plan.js";
 import { applySteps, closedSince, readRepo } from "../../github/sync.js";
 import { RepoTokens } from "../../github/tokens.js";
 import { priorityText } from "../../register/model.js";
@@ -69,7 +69,8 @@ export async function ghSync(args, runtime) {
             continue;
         }
         read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
-        const plan = planSync(read.issues, importedTasks((await register.snapshot()).state.tasks.values()), rules);
+        const tasks = [...(await register.snapshot()).state.tasks.values()];
+        const plan = planSync(read.issues, importedTasks(tasks), rules, linkedRefs(tasks));
         leftOut.set(repo, plan.leftOut);
         const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
         if (!write) {

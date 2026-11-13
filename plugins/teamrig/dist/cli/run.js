@@ -76,6 +76,7 @@ const stablePeriodsCommand = () => import("./commands/stable-periods.js");
 const jobCommands = () => import("./commands/job.js");
 const deployStatusCommand = () => import("./commands/deploy-status.js");
 const ghCommands = () => import("./commands/gh.js");
+const ghMigrateCommands = () => import("./commands/gh-migrate.js");
 const startCommands = () => import("./commands/start.js");
 const meetingCommands = () => import("./commands/meeting.js");
 const meetingsCommands = () => import("./commands/meetings.js");
@@ -191,6 +192,7 @@ const COMMANDS = {
     'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
     compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
     'gh sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
+    'gh migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await ghMigrateCommands()).ghMigrate },
     budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
     'budget lift': {
         effect: 'write',
@@ -610,6 +612,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before
+  gh migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
+      from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
+      title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
+      nothing but the --out preview of every issue in full; --yes opens each issue through gh and
+      sets the task's ref to it, so gh sync adds no second task; stops at the first failure, and a
+      rerun skips each task already holding its issue
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;
