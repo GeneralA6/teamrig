@@ -413,7 +413,7 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
     return answer(runtime, waitAnswer(scope, null));
   }
   const restarts = new RefreshStore(runtime.files, kit.paths);
-  const rearm: RearmScope = { team: kit.paths.team, id, tab, refresh: config.refresh, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
+  const rearm: RearmScope = { team: kit.paths.team, id, tab, refresh: config.refresh, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined, paths: kit.paths, ids: scope.roster.ids };
   if (await restartHoldsWake(runtime, restarts, rearm)) {
     return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
   }

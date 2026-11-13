@@ -8,6 +8,7 @@ import { claudeProcessOf, restartMayAct } from "../../refresh/restart.js";
 import { parkRulesOf } from "../../register/park.js";
 import { startableTasks } from "../../wake/day-start.js";
 import { teamZone } from "../kit.js";
+import { isHandedOffJob, isLiveRunOwn, liveRunOf } from "../live-run.js";
 import { teamRegister } from "../team-register.js";
 /** The restart's target; undefined when Claude Code did not give its session, its transcript or a folder. */
 export function restartTargetOf(runtime, payload) {
@@ -20,6 +21,24 @@ export function restartTargetOf(runtime, payload) {
     }
     const effort = payloadEffortOf(payload);
     return { claudeSession, transcript, cwd: cwd ?? null, project, effort: isEffortLevel(effort) ? effort : null };
+}
+/**
+ * The Claude Code process a restart for session `id` (of a team whose sessions are `ids`) is armed against, given the
+ * `claude` the hook runs under. A /clear may run in a forked worker outside the tab's process tree; signalling that
+ * would kill the worker and leave the tab, so when the session's live run is another process and `claude` is a fork of
+ * its conversation, the live run's tab process is the one. Otherwise `claude`, as for the background job the tab handed
+ * its conversation to (`isHandedOffJob`): the job runs the session, and the restart of a background session ends no
+ * process.
+ */
+export async function restartPidOf(runtime, paths, ids, id, claude) {
+    if (claude === undefined) {
+        return undefined;
+    }
+    const live = await liveRunOf(runtime, paths, ids, id, claude);
+    if (live === undefined || live.tree.has(claude) || (await isHandedOffJob(runtime, live, claude))) {
+        return claude;
+    }
+    return (await isLiveRunOwn(runtime, live, claude)) ? live.claudePid : claude;
 }
 /** Starts `restart` hidden for the request recorded at `at`, to wait until the session is idle; whether it started. */
 async function startRunner(runtime, team, id, at, project) {
@@ -82,7 +101,7 @@ export async function restartOrPark(runtime, store, scope, notice, register) {
 async function armFromTab(runtime, store, scope, tab) {
     const { team, id, cwd } = scope;
     // Looked up on this rare path only: each look at a process starts a PowerShell on Windows.
-    const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+    const claude = await restartPidOf(runtime, scope.paths, scope.ids, id, await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid));
     const project = runtime.env[ENV.claudeProjectDir] ?? tab.cwd ?? cwd;
     if (claude !== undefined && project !== undefined) {
         const at = new Date(runtime.clock.now()).toISOString();

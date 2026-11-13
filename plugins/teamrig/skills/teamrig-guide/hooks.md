@@ -6,7 +6,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
-| `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are, and records the session's Claude Code process (`state/sessions/<id>.json`); while the session runs in another Claude Code it keeps that record and tells this second one, and the user, to stop |
+| `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are, and records the session's Claude Code process (`state/sessions/<id>.json`); while the session runs in another Claude Code it keeps that record and tells this second one, and the user, to stop; a Claude Code of the same conversation is no second one and gets no stop: one the session started, a forked worker (`--fork-session --resume` of the recorded session or transcript, where a `/clear` may run) and the background job the tab handed its conversation to (`/bg`, `claude --bg`) |
 | `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
@@ -903,7 +903,7 @@ idle 15 s (type anything to keep this context)` instead, the title reads `[shop]
 this tab. Where no mod claims it within 10 s, the restart ends this Claude Code and starts it again: in the same tab
 when `teamrig open` started it, else in a new tab. It never does that while this Claude Code runs a background shell
 (a background command or a monitor), which the end would take too: your inbox then says to type `/clear`, which
-keeps it. teamrig's own wake for work handed meanwhile waits for it, and wakes the fresh session. When you have no
+keeps it. When the turn ended in a forked worker Claude Code runs outside the tab (a fork of this conversation), the restart is armed against the tab's own Claude Code, never the worker. teamrig's own wake for work handed meanwhile waits for it, and wakes the fresh session. When you have no
 work you can start then (no task you may start now, at any priority), the restart waits for work instead: the message
 ends `it has no work it can start now, so teamrig starts it fresh once a wake brings it some (type anything to keep
 this context)`, the title reads `[shop] web: waits for work`, and the wake check that finds work for you (a task

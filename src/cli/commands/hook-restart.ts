@@ -10,6 +10,7 @@ import type { RefreshStore } from '../../refresh/store.ts';
 import { parkRulesOf } from '../../register/park.ts';
 import { startableTasks } from '../../wake/day-start.ts';
 import { teamZone } from '../kit.ts';
+import { isHandedOffJob, isLiveRunOwn, liveRunOf } from '../live-run.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 
@@ -45,6 +46,25 @@ export interface RestartScope {
   readonly target: RestartTarget;
   /** The Claude Code process the hook runs under (`claudeProcessOf`); undefined when it was not found. */
   readonly claude: number | undefined;
+}
+
+/**
+ * The Claude Code process a restart for session `id` (of a team whose sessions are `ids`) is armed against, given the
+ * `claude` the hook runs under. A /clear may run in a forked worker outside the tab's process tree; signalling that
+ * would kill the worker and leave the tab, so when the session's live run is another process and `claude` is a fork of
+ * its conversation, the live run's tab process is the one. Otherwise `claude`, as for the background job the tab handed
+ * its conversation to (`isHandedOffJob`): the job runs the session, and the restart of a background session ends no
+ * process.
+ */
+export async function restartPidOf(runtime: CliRuntime, paths: Pick<TeamPaths, 'sessions'>, ids: readonly string[], id: string, claude: number | undefined): Promise<number | undefined> {
+  if (claude === undefined) {
+    return undefined;
+  }
+  const live = await liveRunOf(runtime, paths, ids, id, claude);
+  if (live === undefined || live.tree.has(claude) || (await isHandedOffJob(runtime, live, claude))) {
+    return claude;
+  }
+  return (await isLiveRunOwn(runtime, live, claude)) ? live.claudePid : claude;
 }
 
 /** Starts `restart` hidden for the request recorded at `at`, to wait until the session is idle; whether it started. */
@@ -122,6 +142,9 @@ export interface RearmScope {
   readonly refresh: Pick<RefreshConfig, 'enabled' | 'autoRestart'>;
   /** The tab's working folder, as Claude Code gave it; undefined when it gave none. */
   readonly cwd: string | undefined;
+  /** Where the team's session records are, and its sessions, to find the tab's own Claude Code process (`restartPidOf`). */
+  readonly paths: Pick<TeamPaths, 'sessions'>;
+  readonly ids: readonly string[];
 }
 
 /**
@@ -131,7 +154,7 @@ export interface RearmScope {
 async function armFromTab(runtime: CliRuntime, store: RefreshStore, scope: RearmScope, tab: RestartTab): Promise<boolean> {
   const { team, id, cwd } = scope;
   // Looked up on this rare path only: each look at a process starts a PowerShell on Windows.
-  const claude = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+  const claude = await restartPidOf(runtime, scope.paths, scope.ids, id, await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid));
   const project = runtime.env[ENV.claudeProjectDir] ?? tab.cwd ?? cwd;
   if (claude !== undefined && project !== undefined) {
     const at = new Date(runtime.clock.now()).toISOString();
