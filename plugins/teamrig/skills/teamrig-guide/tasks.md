@@ -60,8 +60,8 @@ the lead; with wakes off, message the lead), else in the batch due now or the ne
 
 A wait on the owner's decision or approval needs a card, so the owner decides from it alone, never from a bare
 task number [register.requireDecisionCard]: `--question` (what is decided), `--options` (the choices with their
-numbers, separated by `|`: at least two for a decision; none or as many for an approval), `--recommend` (which,
-and why) and `--default` (what happens with no answer by the due date). Each part says at least 3 plain words
+numbers, separated by `|`, with `\|` for a `|` inside a choice: at least two for a decision; none or as many for an
+approval), `--recommend` (which, and why) and `--default` (what happens with no answer by the due date). Each part says at least 3 plain words
 besides task ids. A wait on the lead may carry one too; any other status refuses the flags. Setting `waiting`
 again keeps the card, and a flag given then changes only its part. `show` prints the card, and the meeting
 agenda reads it out with the title of each other task it names. An owner's order approves its own work and proof,
