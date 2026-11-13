@@ -70,7 +70,11 @@ why only the owner can see the result), printed as `why asked:`; `set` refuses o
 an older one `OWNER-ORDERED`. Only an owner gate [ownerGates] or a business decision is the owner's to decide, so
 a wait on the owner's decision names it with `--gate` (one of the owner gates, or `business`), printed as `gate:`;
 `set` refuses one without it, and `check` flags an older one `UNGATED`. Any other question is the session's or its
-leader's, however many good answers it has: decide it, or wait on your leader (`--waits decision:<leader>`).
+leader's, however many good answers it has: decide it, or wait on your leader (`--waits decision:<leader>`). A test,
+measure or proof of approved work (a back-test, trial, dry run, benchmark) is approved with that work, so a card
+asking the owner about one asks only with `--affects` (the approved number it changes, the money it spends or the
+data it writes), printed as `affects:`; `set` refuses one without it, and `check` flags an older one `OWNER-PROOF`.
+One that does none of those goes ahead, and you tell your leader.
 
 A step the human runs by hand that changes anything or touches a secret (core rule 11) reaches the owner only as a
 file its auditor read, never as code or a paste typed into a card: the security reviewer [roles.securityReviewer],
@@ -307,6 +311,7 @@ checkpoint; a session may run it for itself.
 | `NO-CARD` | a `waiting` task waits on the owner's decision or approval with no card, as one set before cards reads [register.requireDecisionCard] | The owner sets it waiting again with the card (`set --status waiting --waits ... --question ... --options ... --recommend ... --default ...`). |
 | `OWNER-ORDERED` | a task the owner ordered waits (or its proof waits) on the owner's decision or approval with no `--why-ask`, as one set before it was required, or while cards are not [register.requireDecisionCard], reads | The owner drops the wait on the owner, since the order approves its own work and proof, or sets it again with `--why-ask "<how the order must change, what new it needs, or why only the owner can see the result>"`. |
 | `UNGATED` | a task waits (or its proof waits) on the owner's decision with a card naming no owner gate or business decision, as one set before `--gate` was required reads [register.requireDecisionCard] | The owner decides it, or waits on its leader, since only an owner gate [ownerGates] or a business decision is the owner's; or sets it again with `--gate "<the owner gate, or business>"`. |
+| `OWNER-PROOF` | a task waits (or its proof waits) on the owner's decision or approval with a card asking about a test, measure or proof (a back-test, trial, dry run, benchmark) that names no `--affects`, as one set before it was required reads [register.requireDecisionCard] | The owner drops the wait on the owner and goes ahead, since the approved work approves its proof, and tells its leader; or, when it changes an approved number, spends money or writes data, sets it again with `--affects "<which>"`. |
 | `RUN-CHANGED` | a task waits (or its proof waits) on a decision or an approval with a card whose hand step file (`--run`) changed or went since the audit on the task pinned it: every print of the card hashes the file again, and then prints that it is not to be run in place of its run line | The owner has the security reviewer audit it again (`audit <id> --file <path>`), or sets the card again without `--run`. |
 | `PEER-WAIT` | a `waiting` task (or a `verifying` task's proof) waits on the decision or the approval of a session that is neither the lead nor the owner, as an older teamrig wrote | The owner waits on that work by its task instead: `set --status waiting --ask <session> --text "<the work>"`. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |

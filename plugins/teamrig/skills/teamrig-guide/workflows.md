@@ -186,7 +186,8 @@ it stays `open`, planned after it (`teamrig update T4 --after T5`), and its line
 
 ## Write a decision card
 
-A wait on the owner carries a card (`--question`, `--options`, `--recommend`, `--default`, and `--gate`), which the
+A wait on the owner carries a card (`--question`, `--options`, `--recommend`, `--default`, `--gate`, and `--affects`
+for a test, measure or proof), which the
 lead reads out at the daily meeting and the pane shows. The owner reads it cold, between other cards, so they can
 decide from it alone in about a minute:
 
@@ -422,6 +423,9 @@ each flag (full table: [tasks.md](tasks.md#check-flags)):
 - `UNGATED`: a task asks the owner to decide what no owner gate or business decision makes the owner's: never read
   it to the owner; decide it yourself if it is yours to decide, else one inbox line to its owner to decide it, or
   to set it again with `--gate`.
+- `OWNER-PROOF`: a task asks the owner about a test, measure or proof of approved work that changes no approved
+  number, spends no money and writes no data: never read it to the owner; one inbox line to its owner to go ahead
+  and drop the wait, or to set it again with `--affects`.
 - `RUN-CHANGED`: a card hands the owner a hand step file that changed or went since its audit: never ask the owner
   to run it; one inbox line to its owner to have it audited again, or to set the card again without `--run`.
 - `DECISIONS batch due`: ask the human the batch `teamrig decisions --session lead` prints, together, each card as it
