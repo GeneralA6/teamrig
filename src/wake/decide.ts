@@ -338,8 +338,8 @@ export interface WakeCost {
 export function wakeCost(idleMs: number | undefined, coldAfterMinutes: number, wPerPct: number | undefined, measured: MeasuredTurns | undefined): WakeCost {
   const after = coldAfterMinutes > 0 ? coldAfterMinutes : DEFAULT_MESSAGES.coldAfterMinutes;
   const cold = idleMs === undefined || isCold(idleMs, after);
-  // The first call alone is 27k or 210k W, but the turn's follow-on calls dominate (~340k measured), so a measured
-  // average of past notification turns replaces it once there is enough of it.
+  // The first call alone is 27k or 210k W, but the turn's follow-on calls cost more (`teamrig budget --burn` shows
+  // the whole turns), so a measured average of past notification turns replaces it once there is enough of it.
   const w = measured?.w ?? (cold ? COLD_WAKE_W : WARM_WAKE_W);
   return { w, cold, weekPct: wPerPct === undefined || wPerPct <= 0 ? undefined : w / wPerPct, ...(measured === undefined ? {} : { measuredTurns: measured.turns }) };
 }
