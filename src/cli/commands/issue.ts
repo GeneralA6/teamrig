@@ -1,12 +1,11 @@
 import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { GitHubIssueHost } from '../../github/host.ts';
-import { RepoTokens } from '../../github/tokens.ts';
-import { hostKindOf, parseIssueTarget, type HostKind, type IssueHost, type IssueTarget } from '../../issues/host.ts';
+import { hostKindOf, parseIssueTarget, type IssueTarget } from '../../issues/host.ts';
 import { postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
+import { hostOf } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './gh-auto.ts';
@@ -67,12 +66,4 @@ async function writeOn(args: ParsedArgs, runtime: CliRuntime, write: IssueWrite,
     return EXIT.ok;
   }
   return (await writeIssue(hostOf(kind, runtime, scanner), write, say)) ? EXIT.ok : EXIT.failed;
-}
-
-/** The adapter for a host kind. */
-function hostOf(kind: HostKind, runtime: CliRuntime, scanner: SecretScanner): IssueHost {
-  switch (kind) {
-    case 'github':
-      return new GitHubIssueHost(runtime.gh, new RepoTokens(runtime.credentials, runtime.env), scanner);
-  }
 }

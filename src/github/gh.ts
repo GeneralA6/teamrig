@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
+import type { IssueDraft } from '../issues/host.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
@@ -35,14 +36,6 @@ const REPO_NAME = /^[A-Za-z0-9-]+\/(?!\.\.?$)[A-Za-z0-9_.-]+$/;
 
 /** The field gh sends as one item of the issue's label list. */
 const LABEL_FIELD = 'labels[]';
-
-/** One issue to open: its repository (`owner/name`), title, body and labels. */
-export interface IssueDraft {
-  readonly repo: string;
-  readonly title: string;
-  readonly body: string;
-  readonly labels: readonly string[];
-}
 
 /** The command line that opens one issue: the REST create, every field raw, so no value is read as a file or a number. */
 export function issueCreateArgs(draft: IssueDraft): string[] {
