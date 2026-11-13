@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { type CheckOutcome, type Gh, type RequiredChecks, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
 import { type MergeOutcome, type PullRequest, findOpenPull, openPull, rebaseMerge } from './pulls.ts';
-import { sweepAfterMerge } from './leftovers.ts';
+import { type MergedHead, pullsOfHead, sweepAfterMerge } from './leftovers.ts';
 import { type GateDeps, proveTree, realGateDeps } from './local-gate.ts';
 import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers.ts';
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
@@ -19,7 +19,8 @@ import { describeCredential } from './token-check.ts';
  * is a fail, and a job GitHub cancelled before any step ran is re-run once) or `local` (the head checked out
  * clean in the repo dir, with a pass record for its tree, else the local checks run there; see local-gate.ts). Before any GitHub call it refuses a change that renames a teamrig
  * command while a consumer on this machine still calls only the old name (see renamed-callers.ts). Once merged,
- * it deletes the remote branches an earlier push of the same task left with no work main lacks (leftovers.ts).
+ * it deletes on origin the merged head while it is still at the merged sha, the branches an earlier push of the
+ * same task left with no work main lacks, and every closed, unmerged pull request's head (leftovers.ts).
  *
  * A rebase merge replays the branch onto main as it is at merge time, and GitHub merges a stale branch
  * whenever it does not conflict: what lands is then a tree no check ran on, and a commit that repeats one
@@ -269,8 +270,8 @@ export interface MergeDeps {
   gate: GateDeps;
   /** Why the change from main (`base`) to `tip` may not merge for a renamed command a consumer still calls, or null. */
   renamedCallers: (base: string, tip: string, repo: string) => string | null;
-  /** After `head` merged: deletes the remote leftovers of its task and names the rest (leftovers.ts); never throws. */
-  sweep: (head: string, profile: RepoProfile) => void;
+  /** After a head merged: deletes it, its task's leftovers and the closed heads on origin, and names the rest (leftovers.ts); never throws. */
+  sweep: (merged: MergedHead, profile: RepoProfile, gh: Gh) => void;
   out: (line: string) => void;
   err: (line: string) => void;
 }
@@ -324,7 +325,7 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
   }
   deps.out(`MERGED #${result.pull.number} into ${profile.main}, now at ${result.sha.slice(0, 7)}`);
   // A drifted merge landed too: head's work is on main either way.
-  deps.sweep(head, profile);
+  deps.sweep({ repo, head, sha }, profile, gh);
   if (result.kind === 'drifted') {
     deps.err(`DRIFTED ${result.reason}`);
     return 1;
@@ -345,7 +346,7 @@ export function realMergeDeps(dir: string): MergeDeps {
     waiter: { now: () => Date.now(), sleep: ms => new Promise(done => setTimeout(done, ms)) },
     gate: realGateDeps(dir, out),
     renamedCallers: (base, tip, repo) => renamedCallersRefusal({ base, tip, repo }, { env: process.env, userHome: homedir() }, realRenamedCallersDeps(dir, out)),
-    sweep: (head, profile) => sweepAfterMerge(head, profile, { git, out, err }),
+    sweep: (merged, profile, gh) => sweepAfterMerge(merged, profile, { git, pullsOf: pullsOfHead(gh, merged.repo), out, err }),
     out,
     err,
   };
