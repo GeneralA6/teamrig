@@ -3,7 +3,8 @@ import { ID_PATTERN, NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { OPTION_SEPARATOR, optionsSplitText, splitOptions, type DecisionCard } from '../register/card.ts';
-import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem, type ItemType, type TaskFields } from '../register/events.ts';
+import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem, type ItemType, type TaskFields, type TaskPrep } from '../register/events.ts';
+import { FIRST_SLICE, GOAL_TAG, isSlice } from '../register/goals.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
 import { REVIEW_FLAGS, REVIEW_ORDER, type ProblemReview } from '../register/review.ts';
@@ -335,7 +336,23 @@ export function changesOf(flags: Flags, times: TypedTimes): Partial<TaskFields> 
   if (workClass !== undefined) {
     changes.workClass = workClass === NONE ? null : workClass;
   }
+  const prepares = flags.get('prepares');
+  if (prepares !== undefined) {
+    changes.prepares = prepares === NONE ? null : prepOf(prepares);
+  }
   return changes;
+}
+
+/** `--prepares G:2`: the goal and its slice the task prepares (T2453); the policy checks the goal is a record. */
+export function prepOf(text: string): TaskPrep {
+  const colon = text.lastIndexOf(':');
+  const goal = text.slice(0, Math.max(colon, 0));
+  const sliceText = text.slice(colon + 1);
+  const slice = /^\d+$/.test(sliceText) ? Number(sliceText) : Number.NaN;
+  if (colon < 0 || !GOAL_TAG.test(goal) || !isSlice(slice)) {
+    throw new UsageError(`--prepares "${text}" is not <goal>:<slice> like G1:2 (a slice from ${FIRST_SLICE}) or ${NONE}`);
+  }
+  return { goal, slice };
 }
 
 /** A status as typed; `next` says what to type for the old `blocked`, which is refused (no alias kept). */

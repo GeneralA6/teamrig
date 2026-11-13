@@ -10,7 +10,7 @@ import { waitAnswerersOf } from './approval.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
-import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
+import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { ITEM_TYPE_TRAITS, traitsOf } from './item-types.ts';
@@ -35,10 +35,10 @@ export const GITHUB_STATUSES: readonly TaskStatus[] = ['open', 'done', 'dropped'
 
 /**
  * Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size
- * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, and its
- * work class, as leaders triage the class of their sessions' tasks (T2076).
+ * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, its
+ * work class, as leaders triage the class of their sessions' tasks (T2076), and the goal slice it prepares (T2453).
  */
-export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'];
+export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass', 'prepares'];
 
 /**
  * Fields the lead may change on a task whose owner is no session of the team any more (a retired hire, a session that
@@ -333,6 +333,8 @@ export class RegisterPolicy {
       critical: input.critical ?? false,
       pin: null,
       workClass: input.workClass ?? null,
+      // A lead marks what a task prepares with `update` once it exists, where the policy knows who marks it.
+      prepares: null,
     };
     if (fields.description === null && this.config.register.requireDescription) {
       return refuse(DESCRIPTION_NEEDED);
@@ -1054,8 +1056,10 @@ export class RegisterPolicy {
       return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
     }
     const pinned = changes.pin === undefined ? undefined : this.pinProblem(task.id, changes.owner ?? task.owner, caller, changes.pin);
-    if (pinned !== undefined) {
-      return refuse(pinned);
+    const prepared = changes.prepares === undefined ? undefined : this.prepProblem(task.id, changes.owner ?? task.owner, caller, changes.prepares, goalTags);
+    const marked = pinned ?? prepared;
+    if (marked !== undefined) {
+      return refuse(marked);
     }
     if (caller !== task.owner) {
       const problem = this.leaderUpdateProblem(task, caller, names, changes);
@@ -1130,6 +1134,20 @@ export class RegisterPolicy {
   }
 
   /**
+   * Why `caller` may not set or clear the prep marker of task `id` (T2453), or undefined when it may: the marker lets a
+   * design for a ranked goal's near slice past the slice cap, so only a lead sets it (the lead, or a sub-lead over the
+   * task's `owner`), never the owner itself unless it is the lead, so a build cannot ride it. A marker names one of
+   * `goalTags`, the goal records of the team and the teams above it, whatever register.goals says: a marker on no goal
+   * would only ever lapse.
+   */
+  private prepProblem(id: string, owner: string, caller: string, prepares: TaskPrep | null, goalTags: ReadonlySet<string>): string | undefined {
+    if (caller !== this.tree.lead && !this.tree.leads(caller, owner)) {
+      return `only ${this.approversText(owner)} marks what ${id} prepares: the marker lets a design run outside the slice cap`;
+    }
+    return prepares === null || goalTags.has(prepares.goal) ? undefined : `goal ${prepares.goal} is not a goal record of the team or a team above: teamrig goal list lists them`;
+  }
+
+  /**
    * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
    * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS (the lead the LEFT_OWNER_LEAD_FIELDS on a
    * task whose owner left the team, or when it points a task holding no issue ref at an issue: gh migrate opens an
@@ -1163,7 +1181,7 @@ export class RegisterPolicy {
    * does not apply.
    */
   importAdd(input: ImportInput, state: RegisterState): Verdict<TaskFields> {
-    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
     const holder = [...state.tasks.values()].find((task) => task.ref === input.ref);
     if (holder !== undefined) {
       return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -1303,8 +1321,8 @@ export class RegisterPolicy {
 const OWN_LIMITS: readonly string[] = ['title', 'description'];
 
 function pickFields(task: Task): TaskFields {
-  const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass } = task;
-  return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass };
+  const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, prepares } = task;
+  return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, prepares };
 }
 
 /** An update naming goals for a task said to serve none also clears that mark, which a task with goals cannot hold. */

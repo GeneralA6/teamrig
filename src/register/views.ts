@@ -1,7 +1,7 @@
 import { parseDeadline, showStored, storedText } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { cardLines } from './card.ts';
-import type { ItemType, RegisterEvent } from './events.ts';
+import { isTaskPrep, type ItemType, type RegisterEvent, type TaskPrep } from './events.ts';
 import { shortSha256, type HandStepAudit, type RunFiles } from './hand-step.ts';
 import { itemTypeOf } from './item-types.ts';
 import type { ApprovalAnswer, Task } from './fold.ts';
@@ -288,6 +288,9 @@ export function formatTask(task: Task, team: string | undefined, tree: TaskTree)
   if (task.workClass !== null && tree.rankedOf(task) === undefined) {
     parts.push(`class ${task.workClass}`);
   }
+  if (task.prepares !== null) {
+    parts.push(`prepares ${prepText(task.prepares)}`);
+  }
   return `${parts.join(', ')} | ${task.title}${statusNote(task, tree)}${neededByText(task, tree)}`;
 }
 
@@ -345,10 +348,18 @@ function changeText(name: string, value: unknown, zone: TimeZone): string {
   if (name === 'workClass') {
     return typeof value === 'string' ? value : 'none';
   }
+  if (name === 'prepares') {
+    return isTaskPrep(value) ? prepText(value) : 'none';
+  }
   if (name === 'goals' && Array.isArray(value) && value.length === 0) {
     return 'none';
   }
   return Array.isArray(value) ? value.join(',') : String(value);
+}
+
+/** A prep marker as rows print it (T2453): `G1:2`, the goal and the slice the task prepares, as `--prepares` takes it. */
+function prepText(prep: TaskPrep): string {
+  return `${prep.goal}:${prep.slice}`;
 }
 
 /** A hand step file an audit pins on its task (T2312), as `show` prints it: path, short sha256, auditor and when. */
@@ -377,6 +388,7 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
         task.type === null ? undefined : `type=${task.type}`,
         task.critical ? 'critical=true' : undefined,
         task.workClass === null ? undefined : `workClass=${task.workClass}`,
+        task.prepares === null ? undefined : `prepares=${prepText(task.prepares)}`,
       ]
         .filter((part) => part !== undefined)
         .join(' ');
