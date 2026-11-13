@@ -1,7 +1,7 @@
 import type { FocusConfig } from '../config/types.ts';
 import { canMove } from './can-move.ts';
 import type { Task } from './fold.ts';
-import { classOf } from './focus.ts';
+import { classOf, prepStanding, type SlicedGoal } from './focus.ts';
 import type { TaskStatus } from './model.ts';
 import { bandOf } from './score.ts';
 import type { WaitContext } from './waits.ts';
@@ -36,6 +36,11 @@ export interface WipStart {
   readonly oneCommit?: boolean;
   /** The classes that have spent their share of the week (budget/class-spend.ts); none given holds nothing for it. */
   readonly spentClasses?: ReadonlySet<string>;
+  /**
+   * The goal records of the team's tree, read for a prep marker (T2453): a task that prepares a ranked goal's open or
+   * next slice skips the two class holds. None given: no marker counts, and the task is held as any other.
+   */
+  readonly goals?: ReadonlyMap<string, SlicedGoal>;
 }
 
 /** Roadmap work its owner can take up now: open or in progress, with nothing holding it back. */
@@ -59,14 +64,17 @@ function namedIds(tasks: readonly Task[]): string {
  * Why a move into in-progress may not happen now, for the refusal or the warning; undefined when nothing holds it.
  * The cap limits new starts, never the finishing of started work, so NOT_A_START passes every hold; only a task's
  * owner sets its status, so a reopen here is always the session's own. `--one-commit` is the way past for a small fix.
+ * Near-term prep (a design, study or prep plan for a ranked goal's open or next slice) runs now, ahead of its turn
+ * (T2453), so it skips the class holds; it still counts against the cap, as it is started work like any other.
  */
-export function wipHold({ task, status, oneCommit, spentClasses }: WipStart, tasks: Iterable<Task>, context: WaitContext, focus: WipFocus, ownerSource: string): string | undefined {
+export function wipHold({ task, status, oneCommit, spentClasses, goals }: WipStart, tasks: Iterable<Task>, context: WaitContext, focus: WipFocus, ownerSource: string): string | undefined {
   const workClass = classOf(task, focus);
   if (focus.wip.mode === 'off' || status !== 'in-progress' || NOT_A_START.includes(task.status) || oneCommit === true || isExempt(task, workClass, focus, ownerSource)) {
     return undefined;
   }
   const others = [...tasks].filter((held) => held.owner === task.owner && held.id !== task.id);
-  if (workClass !== focus.roadmapClass && workClass !== focus.maintenanceClass) {
+  const nearPrep = goals !== undefined && prepStanding(task, goals) === 'near';
+  if (!nearPrep && workClass !== focus.roadmapClass && workClass !== focus.maintenanceClass) {
     if (spentClasses?.has(workClass) === true) {
       return `${task.id} is ${workClass} work and ${workClass} has spent its share of the week [focus.allocation]: it waits for the week's reset, ${ONE_COMMIT_WAY}`;
     }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
+import type { SlicedGoal } from './focus.ts';
 import { waitContext } from './waits.ts';
 import { wipHold, type WipFocus } from './wip.ts';
 
@@ -202,6 +203,38 @@ describe('wipHold: what is exempt', () => {
   it('holds a critical task when the expedite arm is off', () => {
     const noExpedite: WipFocus = { ...FOCUS, expedite: { critical: false, ownerP1: true } };
     assert.match(holdOf({ ...ROADMAP, workClass: 'Maintenance', critical: true }, inProgress(3), noExpedite) ?? '', /^alpha already has 3 tasks/);
+  });
+
+  describe('near-term prep (T2453)', () => {
+    const GOALS: ReadonlyMap<string, SlicedGoal> = new Map([
+      ['G', { parent: null, rank: 1, slice: 2 }],
+      ['U', { parent: null, rank: null, slice: 2 }],
+    ]);
+    const prep = (goal: string, slice: number): Task => ({ ...TOOLING, prepares: { goal, slice } });
+    const prepHoldOf = (task: Task, others: readonly Task[], spentClasses: ReadonlySet<string> = new Set()): string | undefined => {
+      const tasks = [task, ...others];
+      const context = waitContext(new Map(tasks.map((held) => [held.id, held])), NOW, TimeZone.UTC);
+      return wipHold({ task, status: 'in-progress', spentClasses, goals: GOALS }, tasks, context, FOCUS, OWNER);
+    };
+
+    it('passes prep for the open or the next slice past the Roadmap-first and the class-share holds', () => {
+      assert.equal(prepHoldOf(prep('G', 2), [ROADMAP]), undefined);
+      assert.equal(prepHoldOf(prep('G', 3), [ROADMAP], new Set(['Improvements'])), undefined);
+    });
+
+    it('holds near-term prep at the in-progress limit, as it is started work too', () => {
+      assert.match(prepHoldOf(prep('G', 3), inProgress(3)) ?? '', /^alpha already has 3 tasks/);
+    });
+
+    it('holds a lapsed marker as any other start: a later slice, an unranked goal, a goal no record names', () => {
+      for (const task of [prep('G', 4), prep('U', 2), prep('X', 1)]) {
+        assert.match(prepHoldOf(task, [ROADMAP]) ?? '', /^T9 is Improvements work and alpha holds Roadmap work/);
+      }
+    });
+
+    it('counts no marker when the caller gave no goal records', () => {
+      assert.match(holdOf(prep('G', 2), [ROADMAP]) ?? '', /^T9 is Improvements work/);
+    });
   });
 
   it('holds a critical task of a class that is not Maintenance, which no expedite covers', () => {
