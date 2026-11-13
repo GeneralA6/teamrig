@@ -1098,8 +1098,9 @@ export class RegisterPolicy {
   /**
    * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
    * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS (the lead the LEFT_OWNER_LEAD_FIELDS on a
-   * task whose owner left the team, or when it points a task with no ref at an issue: gh migrate opens an issue for
-   * each task of the team and links it, while a ref an owner set stays the owner's), and a sub-lead hands a task only
+   * task whose owner left the team, or when it points a task holding no issue ref at an issue: gh migrate opens an
+   * issue for each task of the team and links it, replacing a note ref, while a task's issue stays its issue), and a
+   * sub-lead hands a task only
    * to itself or a session it leads, so work never leaves its group by a sub-lead's hand.
    */
   private leaderUpdateProblem(task: Task, caller: string, names: readonly TaskFieldName[], changes: Partial<TaskFields>): string | undefined {
@@ -1107,7 +1108,7 @@ export class RegisterPolicy {
     if (!isLead && !this.tree.leads(caller, task.owner)) {
       return `only the owner (${task.owner}) or ${this.approversText(task.owner)} changes ${task.id}`;
     }
-    const linksIssue = task.ref === null && changes.ref !== undefined && changes.ref !== null && changes.ref.startsWith(ISSUE_REF_PREFIX);
+    const linksIssue = task.ref?.startsWith(ISSUE_REF_PREFIX) !== true && changes.ref !== undefined && changes.ref !== null && changes.ref.startsWith(ISSUE_REF_PREFIX);
     const allowed = isLead && (linksIssue || !this.config.sessions.includes(task.owner)) ? LEFT_OWNER_LEAD_FIELDS : LEAD_FIELDS;
     const notLead = names.filter((name) => !allowed.includes(name));
     if (notLead.length > 0) {

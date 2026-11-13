@@ -9,7 +9,9 @@ import type { IssueDraft } from './gh.ts';
  * Moving a team's tasks to GitHub issues (`teamrig gh migrate`): a file of rows, one per task, says for each task
  * whether it becomes an issue, with the public wording the team wrote for it, or stays on the team's own list
  * with a reason. Each issue row opens one issue and points the task's ref at it, so the sync (plan.ts) knows the
- * issue is that task's and adds no second one; the task keeps its own text, owner, priority and status.
+ * issue is that task's and adds no second one; the task keeps its own text, owner, priority and status. A ref that
+ * is no issue (a note of where the task came from) gives way to the issue: the register's history keeps it, and the
+ * update's note names it, so it is never lost and never posted.
  */
 
 /** The priorities a row gives, as the sync reads them back from an issue's labels (map.ts). */
@@ -52,6 +54,8 @@ export type MigrateRow = IssueRow | LocalRow;
 export interface MigrateCreate {
   readonly id: string;
   readonly draft: IssueDraft;
+  /** The task's ref the issue ref replaces, or null when it has none. */
+  readonly replaces: string | null;
 }
 
 /** A row or task the migration leaves as it is, and why. */
@@ -178,10 +182,10 @@ export function rowLabels(row: IssueRow): string[] {
 }
 
 /**
- * What the rows do to the team's tasks. An issue row opens an issue only for a live task with no ref, in one of
- * the team's `repos`, that the caller may change (`judge`); any other is skipped with its reason, so a rerun
- * after a stop skips each task already holding its issue, and a ref pointing elsewhere (a note) is never
- * overwritten. A live task no row names is listed, so none is left behind unseen.
+ * What the rows do to the team's tasks. An issue row opens an issue only for a live task holding no issue ref, in
+ * one of the team's `repos`, that the caller may change (`judge`); any other is skipped with its reason, so a rerun
+ * after a stop skips each task already holding its issue. A ref that is no issue is replaced, and its create names
+ * it. A live task no row names is listed, so none is left behind unseen.
  */
 export function planMigration(rows: readonly MigrateRow[], tasks: ReadonlyMap<string, Task>, repos: readonly string[], judge: RefJudge): MigratePlan {
   const creates: MigrateCreate[] = [];
@@ -195,7 +199,7 @@ export function planMigration(rows: readonly MigrateRow[], tasks: ReadonlyMap<st
     } else if (row.decision === 'local') {
       local.push(row);
     } else {
-      creates.push({ id: row.id, draft: { repo: row.repo, title: row.title, body: row.body, labels: rowLabels(row) } });
+      creates.push({ id: row.id, draft: { repo: row.repo, title: row.title, body: row.body, labels: rowLabels(row) }, replaces: task?.ref ?? null });
     }
   }
   const named = new Set(rows.map((row) => row.id));
@@ -213,8 +217,8 @@ function skipReason(row: MigrateRow, task: Task | undefined, repos: readonly str
   if (row.decision === 'local') {
     return undefined;
   }
-  if (task.ref !== null) {
-    return task.ref.startsWith(ISSUE_REF_PREFIX) ? `the task has its issue already: ${task.ref}` : `the task's ref points elsewhere (${task.ref}); clear it or keep the task local`;
+  if (task.ref?.startsWith(ISSUE_REF_PREFIX) === true) {
+    return `the task has its issue already: ${task.ref}`;
   }
   if (!repos.includes(row.repo)) {
     return `${row.repo} is not one of github.repos (${repos.join(', ')})`;
@@ -242,6 +246,7 @@ export function previewMarkdown(plan: MigratePlan): string {
   const issues = plan.creates.flatMap((create) => [
     `### ${create.id} → ${create.draft.repo} [${create.draft.labels.join(', ')}]`,
     '',
+    ...(create.replaces === null ? [] : [`Replaces the task's ref ${create.replaces} (kept in the task's history, not posted).`, '']),
     `**${create.draft.title}**`,
     '',
     create.draft.body,
@@ -268,6 +273,11 @@ export function previewMarkdown(plan: MigratePlan): string {
     '',
     ...list(plan.unrowed),
   ].join('\n');
+}
+
+/** The note an issue ref's update carries when it replaces a ref, so the task's history says what it was. */
+export function replacedRefNote(old: string): string {
+  return `ref was: ${old}`;
 }
 
 /** The plan's counts on one line. */

@@ -114,7 +114,7 @@ describe('planMigration', () => {
     const local: MigrateRow = { decision: 'local', id: 'T2', reason: 'Private.' };
     const plan = planMigration([issueRow(), local], tasksOf(testTask(), testTask({ id: 'T2', status: 'waiting' })), [REPO], allow);
     assert.deepEqual(plan, {
-      creates: [{ id: 'T1', draft: { repo: REPO, title: 'Add a health check', body: 'Why and what.', labels: ['enhancement', 'p2'] } }],
+      creates: [{ id: 'T1', draft: { repo: REPO, title: 'Add a health check', body: 'Why and what.', labels: ['enhancement', 'p2'] }, replaces: null }],
       local: [local],
       skipped: [],
       unrowed: [],
@@ -137,9 +137,13 @@ describe('planMigration', () => {
     assert.deepEqual(plan.skipped, [{ id: 'T1', reason: `the task has its issue already: gh:${REPO}#7` }]);
   });
 
-  it('never overwrites a ref that points elsewhere', () => {
+  it('replaces a ref that is no issue, naming it', () => {
     const plan = planMigration([issueRow()], tasksOf(testTask({ ref: 'notes/plan.md' })), [REPO], allow);
-    assert.deepEqual(plan.skipped, [{ id: 'T1', reason: "the task's ref points elsewhere (notes/plan.md); clear it or keep the task local" }]);
+    assert.deepEqual(plan.skipped, []);
+    assert.deepEqual(
+      plan.creates.map((create) => [create.id, create.replaces]),
+      [['T1', 'notes/plan.md']],
+    );
   });
 
   it("skips a repo outside the team's github.repos", () => {
@@ -180,7 +184,7 @@ describe('previewMarkdown', () => {
   it('shows each issue in full, the local, skipped and unrowed tasks, and the counts', () => {
     const plan = planMigration(
       [issueRow({ type: 'bug', priority: 'p1', body: 'Line one.\n\nLine two.' }), { decision: 'local', id: 'T2', reason: 'Private.' }, issueRow({ id: 'T9' })],
-      tasksOf(testTask(), testTask({ id: 'T2' }), testTask({ id: 'T3' })),
+      tasksOf(testTask({ ref: 'notes/plan.md' }), testTask({ id: 'T2' }), testTask({ id: 'T3' })),
       [REPO],
       allow,
     );
@@ -194,6 +198,8 @@ describe('previewMarkdown', () => {
         '## Issues to open',
         '',
         `### T1 → ${REPO} [bug, p1]`,
+        '',
+        "Replaces the task's ref notes/plan.md (kept in the task's history, not posted).",
         '',
         '**Add a health check**',
         '',

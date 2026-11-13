@@ -4,7 +4,7 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { issueCreateArgs, type GhResult, type GhRunner, type IssueDraft } from '../../github/gh.ts';
 import { plainLine, startFailureText } from '../../github/issues.ts';
 import { issueRef } from '../../github/map.ts';
-import { countsLine, createdNumber, parseMigrateRows, planMigration, previewMarkdown, type MigrateCreate, type MigratePlan, type MigrateRow, type RefJudge } from '../../github/migrate.ts';
+import { countsLine, createdNumber, parseMigrateRows, planMigration, previewMarkdown, replacedRefNote, type MigrateCreate, type MigratePlan, type MigrateRow, type RefJudge } from '../../github/migrate.ts';
 import { RepoTokens, type RepoAccess } from '../../github/tokens.ts';
 import { exitText } from '../../open/processes.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
@@ -28,7 +28,7 @@ type CreateEnd = { readonly kind: 'opened'; readonly number: number } | { readon
  * `--yes` it writes nothing but the `--out` preview, a page with every issue in full for a reviewer. `--yes` opens
  * each planned issue through gh with the token saved for the repository's owner (github/tokens.ts), else the gh
  * login, then points the task's ref at it as `update <id> --ref` by the caller would, so the sync adds no second
- * task for it. It stops at the first failure, and a rerun skips each task already holding its issue. Exit 1 when
+ * task for it; a ref that is no issue gives way, named in the update's note. It stops at the first failure, and a rerun skips each task already holding its issue. Exit 1 when
  * gh failed, 2 when the register refused a ref, else 0.
  */
 export async function ghMigrate(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -51,7 +51,7 @@ export async function ghMigrate(args: ParsedArgs, runtime: CliRuntime): Promise<
   const rows = await rowsAt(runtime, path, scanner);
   const { snapshot, elsewhere } = await team.register.snapshotWithElsewhere();
   const judge: RefJudge = (task, ref) => {
-    const verdict = policy.update(task, by, { ref }, undefined, snapshot.state, elsewhere);
+    const verdict = policy.update(task, by, { ref }, refNote(task.ref), snapshot.state, elsewhere);
     return verdict.ok ? undefined : verdict.error;
   };
   const plan = planMigration(rows, snapshot.state.tasks, team.config.github.repos, judge);
@@ -82,11 +82,17 @@ async function rowsAt(runtime: CliRuntime, path: string, scanner: SecretScanner)
   return parsed.value;
 }
 
-/** Each skipped row with why, the live tasks no row names, and the counts. */
+/** The note of a ref update: the ref it replaces, when there is one. */
+function refNote(old: string | null): string | undefined {
+  return old === null ? undefined : replacedRefNote(old);
+}
+
+/** Each ref an issue replaces, each skipped row with why, the live tasks no row names, and the counts. */
 function planLines(plan: MigratePlan): string[] {
   const more = plan.unrowed.length - SHOWN_UNROWED;
   const unrowed = plan.unrowed.slice(0, SHOWN_UNROWED).join(' ');
   return [
+    ...plan.creates.flatMap((create) => (create.replaces === null ? [] : [`REPLACES ${create.id}: its ref ${create.replaces} gives way to its issue`])),
     ...plan.skipped.map((skip) => `SKIPPED ${skip.id}: ${skip.reason}`),
     ...(plan.unrowed.length === 0 ? [] : [`NO ROW ${plan.unrowed.length} live task(s) no row names: ${unrowed}${more > 0 ? ` and ${more} more` : ''}`]),
     countsLine(plan),
@@ -113,7 +119,7 @@ async function openIssues(runtime: CliRuntime, team: Team, by: string, creates: 
       return EXIT.failed;
     }
     const ref = issueRef(create.draft.repo, end.number);
-    const verdict = await team.register.update(by, create.id, { ref }, undefined);
+    const verdict = await team.register.update(by, create.id, { ref }, refNote(create.replaces));
     if (!verdict.ok) {
       say(`REFUSED ${create.id}: ${verdict.error}; its issue ${ref} was opened: set it with ${KIT_NAME} update ${create.id} --ref ${ref}`);
       say(stopped(create.id));
