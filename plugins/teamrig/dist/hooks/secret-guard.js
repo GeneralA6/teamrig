@@ -3,9 +3,18 @@ import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { resolveDir } from "../push-guard/location.js";
 import { describeFinding, uniqueFindings } from "../secret-guard/findings.js";
+import { braceAlternatives } from "../secret-guard/glob.js";
 import { literalFindings, writtenFindings } from "../secret-guard/literals.js";
 import { shellFindings } from "../secret-guard/shell.js";
 import { holdBackOutput } from "./permission.js";
+/** The most `{a,b}` alternatives the guard spells out of one Grep glob; one with more counts as naming a secret file. */
+const MAX_GREP_ALTERNATIVES = 64;
+/**
+ * The longest Grep glob the guard reads; a longer one counts as naming a secret file. Reading a glob's groups and sets
+ * costs time cubic in its length (`{[` repeated 8,000 times took 4.2 s, 16,000 times 33 s, past the hook's 15 s), and
+ * a glob a person or a model writes for a search stays far shorter.
+ */
+const MAX_GREP_GLOB_LENGTH = 1024;
 /**
  * The call once for each text its shell may run (`toolCommandReadings`): a Bash line on Windows also as bash receives
  * it, so a secret the line as written hides behind a backslash run is still found. `secretFindingsOf` reads one text,
@@ -81,8 +90,16 @@ function grepFindings(input, dir, rules) {
         return [{ kind: 'file', path }];
     }
     return grepIncludes(stringField(input, 'glob') ?? '')
-        .filter((glob) => rules.paths.mayName(`${target}/${glob}`, true))
+        .filter((glob) => mayPick(rules, target, glob))
         .map((glob) => ({ kind: 'file', path: glob }));
+}
+/**
+ * True when a Grep `glob` may pick a secret file in `target`: one of its `{a,b}` alternatives may, or it is too long
+ * or has too many alternatives to read.
+ */
+function mayPick(rules, target, glob) {
+    const globs = glob.length > MAX_GREP_GLOB_LENGTH ? undefined : braceAlternatives(glob, MAX_GREP_ALTERNATIVES);
+    return globs === undefined || globs.some((one) => rules.paths.mayName(`${target}/${one}`, true));
 }
 /**
  * The globs of a Grep's `glob` input that pick the files it reads. Claude Code splits the input at whitespace, then

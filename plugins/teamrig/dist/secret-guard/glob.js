@@ -8,6 +8,110 @@ const SET = /\[([^\]/]+)\]/g;
 /** A character a regular expression's set reads as syntax. */
 const SET_SYNTAX = /[\\\]^-]/;
 /**
+ * The plain globs a glob with `{a,b}` alternatives stands for, as ripgrep reads them: `*.{ts,pem}` gives `*.ts` and
+ * `*.pem`. A brace inside a `[...]` set, an escaped one or one that never closes is a plain character. A group inside
+ * an alternative is spelled out too: ripgrep 15 reads it so, and 14 refuses the glob, so the reading costs nothing
+ * there. Undefined past `limit` globs, so the caller can count such a glob as naming anything.
+ */
+export function braceAlternatives(glob, limit) {
+    const spelled = [];
+    let pending = [glob];
+    while (pending.length > 0) {
+        const next = [];
+        for (const item of pending) {
+            const group = firstGroup(item);
+            // Counted before the spread: past about 120,000 arguments a spread throws instead of reaching the limit.
+            if (spelled.length + next.length + (group?.choices.length ?? 1) > limit) {
+                return undefined;
+            }
+            if (group === undefined) {
+                spelled.push(plainGlob(item));
+            }
+            else {
+                next.push(...group.choices.map((choice) => `${item.slice(0, group.open)}${choice}${item.slice(group.close + 1)}`));
+            }
+        }
+        pending = next;
+    }
+    return spelled;
+}
+/**
+ * `glob` without what ripgrep reads away: the `\` of an escaped character, on Windows too, and a `}` no `{` opened, so
+ * `*.\pem` and `*.pem}` both pick `b.pem`. An escaped `*` comes out a wildcard, which reads wider: the safe side.
+ */
+function plainGlob(glob) {
+    let plain = '';
+    for (let index = 0, end = 0; index < glob.length; index = end) {
+        end = tokenEnd(glob, index);
+        const token = glob.slice(index, end);
+        if (token !== '}') {
+            plain += token.startsWith('\\') ? token.slice(1) : token;
+        }
+    }
+    return plain;
+}
+/** The first `{...}` group of `glob` that closes, outside any `[...]` set. */
+function firstGroup(glob) {
+    for (let open = nextBrace(glob, 0); open !== -1; open = nextBrace(glob, open + 1)) {
+        const group = groupAt(glob, open);
+        if (group !== undefined) {
+            return group;
+        }
+    }
+    return undefined;
+}
+/** The index of the first `{` at or after `from` that is neither escaped nor in a `[...]` set, or -1. */
+function nextBrace(glob, from) {
+    for (let index = from; index < glob.length; index = tokenEnd(glob, index)) {
+        if (glob[index] === '{') {
+            return index;
+        }
+    }
+    return -1;
+}
+/** The group that opens at `open`, its inner groups left in its choices; undefined when it never closes. */
+function groupAt(glob, open) {
+    const choices = [];
+    let depth = 0;
+    let start = open + 1;
+    for (let index = open + 1; index < glob.length; index = tokenEnd(glob, index)) {
+        const char = glob[index];
+        if (char === '}' && depth === 0) {
+            choices.push(glob.slice(start, index));
+            return { open, close: index, choices };
+        }
+        if (char === '{') {
+            depth += 1;
+        }
+        else if (char === '}') {
+            depth -= 1;
+        }
+        else if (char === ',' && depth === 0) {
+            choices.push(glob.slice(start, index));
+            start = index + 1;
+        }
+    }
+    return undefined;
+}
+/** The index after what starts at `index`: an escaped character, a `[...]` set, or one character. */
+function tokenEnd(glob, index) {
+    return glob[index] === '\\' ? index + 2 : (setEnd(glob, index) ?? index + 1);
+}
+/**
+ * The index after a `[...]` set that starts at `index`, read as ripgrep reads one: a `!` or `^` after the `[` negates,
+ * the first member may be a `]`, and a `/` is a member like any other, so `{[{/],*.pem}` holds the set `[{/]` and the
+ * choice `*.pem`. Undefined for no set, or one that never closes: ripgrep refuses that glob, and reading its `[` as a
+ * plain character spells out more choices, the safe side.
+ */
+function setEnd(glob, index) {
+    if (glob[index] !== '[') {
+        return undefined;
+    }
+    const first = glob[index + 1] === '!' || glob[index + 1] === '^' ? index + 2 : index + 1;
+    const close = glob.indexOf(']', first + 1);
+    return close === -1 ? undefined : close + 1;
+}
+/**
  * True when `text` holds a wildcard a shell or the guard expands: `*`, `?` or a `[...]` set. One set no character fits
  * (`[z-a]`) means none: the word can match no file, so bash keeps all of it as typed, and it names that literal path.
  */
