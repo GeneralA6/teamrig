@@ -23,7 +23,7 @@ export const SHOWN_LEFT_OUT = 20;
 type RepoEnd = 'ok' | 'failed' | 'refused';
 
 /**
- * `gh sync [--repo <owner/name>] [--yes]`: brings the task list in step with the GitHub issues of the team's
+ * `issue sync [--repo <owner/name>] [--yes]`: brings the task list in step with the GitHub issues of the team's
  * `github.repos`, inbound only. Each repository is listed through the issue host port (issues/host.ts; on GitHub
  * with the token saved for its owner, else, when none is saved, the gh login), and an ACCESS line says which, once
  * per owner; a saved token the store could not read fails that owner's repositories, never read through the login
@@ -109,7 +109,7 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   say(
     write
       ? `WROTE ${written} change(s) to the task list as ${GITHUB_ACTOR}; GitHub was only read`
-      : `PREVIEW nothing was written; ${KIT_NAME} gh sync --yes writes the above as ${GITHUB_ACTOR}`,
+      : `PREVIEW nothing was written; ${KIT_NAME} issue sync --yes writes the above as ${GITHUB_ACTOR}`,
   );
   return ends.includes('failed') ? EXIT.failed : ends.includes('refused') ? EXIT.refused : EXIT.ok;
 }

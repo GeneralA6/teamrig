@@ -655,7 +655,7 @@ export interface TestsConfig {
   readonly maxFailureChars: number;
 }
 
-/** The team's GitHub repositories: `teamrig gh sync` reads their issues into the register, never writing to GitHub; `gh migrate` and `issue comment`/`issue close`, run by hand, write only to them. */
+/** The team's GitHub repositories: `teamrig issue sync` reads their issues into the register, never writing to GitHub; `issue migrate` and `issue comment`/`issue close`, run by hand, write only to them. */
 export interface GithubConfig {
   /** The repositories it reads, as `owner/name` in lowercase; empty turns the import off. */
   readonly repos: readonly string[];
@@ -665,7 +665,7 @@ export interface GithubConfig {
   readonly sessions: Readonly<Record<string, string>>;
   /** How many days back closed issues are read, to finish the tasks they were imported as. */
   readonly closedDays: number;
-  /** How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to `gh sync --yes`. */
+  /** How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to `issue sync --yes`. */
   readonly everyMinutes: number;
   /**
    * The label that lets an issue by an author outside the repository (not its owner, an organization member or a

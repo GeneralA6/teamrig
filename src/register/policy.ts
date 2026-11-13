@@ -1153,7 +1153,7 @@ export class RegisterPolicy {
   /**
    * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
    * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS (the lead the LEFT_OWNER_LEAD_FIELDS on a
-   * task whose owner left the team, or when it points a task holding no issue ref at an issue: gh migrate opens an
+   * task whose owner left the team, or when it points a task holding no issue ref at an issue: issue migrate opens an
    * issue for each task of the team and links it, replacing a note ref, while a task's issue stays its issue), and a
    * sub-lead hands a task only
    * to itself or a session it leads, so work never leaves its group by a sub-lead's hand.
@@ -1180,7 +1180,7 @@ export class RegisterPolicy {
   /**
    * A task for a GitHub issue. The import keys its tasks on their ref, so a second one for the same issue is
    * refused, and so is one for an issue a team task already links to in its ref (an issue the team opened for
-   * its own task, gh migrate): that task tracks it. Two issues may share a title, so the duplicate-title rule
+   * its own task, issue migrate): that task tracks it. Two issues may share a title, so the duplicate-title rule
    * does not apply.
    */
   importAdd(input: ImportInput, state: RegisterState): Verdict<TaskFields> {
@@ -1248,7 +1248,7 @@ export class RegisterPolicy {
   private teamSourceProblem(source: string): string | undefined {
     const { ownerSource } = this.config.register;
     if (source === GITHUB_SOURCE) {
-      return `source ${GITHUB_SOURCE} is kept for the tasks teamrig gh sync imports`;
+      return `source ${GITHUB_SOURCE} is kept for the tasks teamrig issue sync imports`;
     }
     return source === ownerSource || SESSION_NAME.test(source) ? undefined : `source ${source} is neither a session id nor ${ownerSource}`;
   }

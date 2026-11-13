@@ -203,7 +203,7 @@ describe('previewMarkdown', () => {
     assert.equal(
       previewMarkdown(plan),
       [
-        '# gh migrate preview',
+        '# issue migrate preview',
         '',
         '1 issue(s) to open, 1 kept local, 1 skipped, 1 live task(s) with no row',
         '',

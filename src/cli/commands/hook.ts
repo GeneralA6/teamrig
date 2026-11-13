@@ -826,7 +826,7 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
  * hired session whose last open task closed, once, to write its handover and retire; after a `set` to waiting it sends the
  * session, once, to its work it can start that does not come after the waiting task (keep-working.ts),
  * never in quiet hours or past its daily budget. Once per `github.everyMinutes` for the whole
- * team it starts `gh sync --auto` hidden in the background (gh-auto.ts), and every 10 minutes it tells the lead of
+ * team it starts `issue sync --auto` hidden in the background (gh-auto.ts), and every 10 minutes it tells the lead of
  * a team tab that runs without its hooks (hook-hookless.ts). With tab status on, it also sets the
  * tab's title to the ready circle, or the working one while a helper runs, in any tab of the team (hook-tab-status.ts).
  * Each team session's reply is logged for the task pane (hook-turn-log.ts).

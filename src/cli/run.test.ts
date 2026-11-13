@@ -199,6 +199,16 @@ describe('runCli: help, version and usage errors', () => {
     assert.deepEqual([bare.code, reasonOf(bare)], [EXIT.usage, 'priority "3" is not p<n>: write p3']);
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
   });
+
+  it('refuses gh sync and gh migrate with their new group, issue, running neither', async () => {
+    const kit = new CliHarness();
+    for (const argv of [['gh', 'sync', '--yes'], ['gh', 'migrate', 'rows.jsonl', '--yes']]) {
+      const result = await kit.run(argv);
+      assert.equal(result.code, EXIT.usage, argv.join(' '));
+      assert.equal(result.stderr[0]?.split('\n')[0], 'gh was renamed: use issue', argv.join(' '));
+    }
+    assert.equal(kit.files.get(EVENTS_PATH), undefined);
+  });
 });
 
 describe('runCli: a command line cmd.exe cut at a line break', () => {

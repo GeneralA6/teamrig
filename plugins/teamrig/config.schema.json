@@ -1246,7 +1246,7 @@
       }
     },
     "github": {
-      "description": "The team's GitHub repositories. teamrig gh sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig gh migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md).",
+      "description": "The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md).",
       "type": "object",
       "properties": {
         "repos": {
@@ -1288,7 +1288,7 @@
           "default": 14
         },
         "everyMinutes": {
-          "description": "How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig gh sync --yes.",
+          "description": "How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig issue sync --yes.",
           "type": "integer",
           "minimum": 0,
           "maximum": 1440,
