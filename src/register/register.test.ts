@@ -12,6 +12,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
 import { testTask } from '../testing/task.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION } from './events.ts';
+import type { SlicedGoal } from './focus.ts';
 import { layoutPaths } from './layout.ts';
 import { OWN_NUMBERS, type TaskNumbering } from './numbering.ts';
 import { RegisterPolicy, type Verdict } from './policy.ts';
@@ -83,6 +84,11 @@ class FixedGoals implements GoalTagsReader {
 
   async recorded(): Promise<ReadonlySet<string>> {
     return this.read();
+  }
+
+  /** Each tag as a goal ranked by its place in the list, with slice 1 open. */
+  async sliced(): Promise<ReadonlyMap<string, SlicedGoal>> {
+    return new Map([...this.tags].map((tag, index) => [tag, { parent: null, rank: index + 1, slice: 1 }]));
   }
 }
 
@@ -636,6 +642,15 @@ describe("Register: goal tags held to the team tree's goal records (T1730)", () 
     written(await register.add('lead', INPUT));
     assert.equal(errorOf(await register.update('alpha', 'T1', { goals: ['Z9'] }, undefined)), UNKNOWN_Z9);
     assert.equal(written(await register.update('alpha', 'T1', { goals: ['A1'] }, undefined)).task.goals.join(','), 'A1');
+  });
+
+  it("judges a start's prep marker against the goal records it reads (T2453)", async () => {
+    const { register } = checked(['A1']);
+    written(await register.add('lead', { ...INPUT, workClass: 'Roadmap' }));
+    written(await register.add('lead', { ...INPUT, title: 'Design the next slice', workClass: 'Improvements' }));
+    assert.match(errorOf(await register.setStatus('alpha', 'T2', { status: 'in-progress' })), /^T2 is Improvements work and alpha holds Roadmap work/);
+    written(await register.update('lead', 'T2', { prepares: { goal: 'A1', slice: 2 } }, undefined));
+    assert.equal(written(await register.setStatus('alpha', 'T2', { status: 'in-progress' })).task.status, 'in-progress');
   });
 
   it('reads no goal records for a caller off the roster', async () => {

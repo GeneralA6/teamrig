@@ -7,6 +7,7 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
+import { NO_SLICED_GOALS } from './focus.ts';
 import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, PROOF_WAITS_USAGE, RegisterPolicy, type AddInput, type AskInput, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import type { ProblemReview } from './review.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
@@ -20,7 +21,7 @@ const INPUT: AddInput = { title: 'Add a health check', description: 'what and wh
 const TASK: Task = testTask({ status: 'in-progress', startedAt: '2030-01-07T10:00:00.000Z' });
 const NOW = new Date('2030-01-08T12:00:00.000Z');
 /** A status change judged on an empty register at NOW, with no skill on disk. */
-const CTX: StatusContext = { state: EMPTY, elsewhere: NO_TASKS_ELSEWHERE, now: NOW, zone: TimeZone.UTC, skillExists: false };
+const CTX: StatusContext = { state: EMPTY, elsewhere: NO_TASKS_ELSEWHERE, now: NOW, zone: TimeZone.UTC, skillExists: false, goals: NO_SLICED_GOALS };
 
 /** The tasks of the tree's other registers, all on team `web`'s. */
 function elsewhereOf(...tasks: readonly Task[]): TasksElsewhere {
@@ -480,6 +481,13 @@ describe('RegisterPolicy.setStatus: the WIP rule holds a start (T2076)', () => {
       error(policy.setStatus(tooling, 'alpha', { status: 'in-progress' }, context)),
       'T2 is Improvements work and alpha holds Roadmap work that can move: T1; work that first [focus.wip], or, for a one-commit fix, start it with --one-commit',
     );
+  });
+
+  it('lets near-term prep start past the Roadmap work, judged on the goal records of the context (T2453)', () => {
+    const prep: Task = { ...tooling, prepares: { goal: 'G', slice: 2 } };
+    const goals = new Map([['G', { parent: null, rank: 1, slice: 1 }]]);
+    assert.equal(policy.setStatus(prep, 'alpha', { status: 'in-progress' }, { ...context, goals }).ok, true);
+    assert.match(error(policy.setStatus(prep, 'alpha', { status: 'in-progress' }, context)), /^T2 is Improvements work and alpha holds Roadmap work/);
   });
 
   it('lets a one-commit fix start, and takes --one-commit with no other status', () => {
