@@ -283,7 +283,7 @@
     "dist/core/team.js": "e8930db0a595fc8a9ab01fc56e7843dcc49f766d4c9ac82b45e27a0ec9c4e5ba",
     "dist/core/time.js": "304b90892d0765f2bc233e4191d057b1c02ef84ff3cfe1dffaa17add9f852a30",
     "dist/core/unique-by.js": "6f5a8a643dcb59836439fbe8dedf274f21e366794452f743389988cb6e5c17ba",
-    "dist/core/version.js": "70b53edb2e0ed61a040c5ec87195e087966eb3f977ce91e6eb48253db5997a7a",
+    "dist/core/version.js": "c88f75c358ca2f31225bf0c125ebd79c08fe9a134461dddb4390b50b5947b7a3",
     "dist/core/webhook.js": "080e09a3491f3b74134ce10ec5f21ac2b049989d92e8f59264ac0d340ccc54ad",
     "dist/core/work-block.js": "423c998dbedaf76e94f04002e13454abf6980e032cf9a21cd12c6a6a7af4e6a7",
     "dist/core/zone.js": "083678f2f96d0004e522d04351f67f6c5420b2b6bff81f7930aadae8c841679e",
