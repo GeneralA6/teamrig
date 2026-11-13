@@ -481,6 +481,21 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
 - **a dump command's output**: a command that prints credentials whatever it names: `kubectl config view --raw`
   (a plain `view` redacts them), and the team's own `secretGuard.commands`.
 
+It refuses a Bash or PowerShell line that reads a saved credential out of the host's store too, printed or not, since
+a session that only captures a key (`T=$(gh auth token)`) holds it all the same: `git credential fill`,
+`git credential-<helper> get`, `gh auth token`, `gh auth status --show-token`, `security find-generic-password` (and
+`find-internet-password`, `dump-keychain`), `secret-tool lookup` or `search`, `cmdkey /list`, `vaultcmd /listcreds`,
+`keyring get` and `Get-Secret`; and a line that anywhere names a store API (`CredRead`, `CredEnumerate`,
+`PasswordVault`, `Get-StoredCredential`, `keyring.get_password`, `keytar`) or a credential teamrig saves its GitHub
+tokens under (`teamrig-gh-<owner>`, `teamrig-ship-gh`). Without this any session could read every key its user saved,
+so a key kept for one tool drew no line between sessions; teamrig's own commands still read theirs, in their own
+process. A line that only mentions one of these words is refused as well (`grep -rn teamrig-gh- src`): search with the
+Grep tool instead, which runs no shell. `secretGuard.secretReads` settles it; no `!pattern` lets one through. The
+reason: "teamrig secret guard: this call reads a saved credential out of the host's credential store (gh auth token),
+printed or not. A session never reads the store: each tool's key stays with the tool that reads it (teamrig's own
+commands read theirs themselves). To check a saved key, ask the owner to look in their own terminal.
+[secretGuard.secretReads]"
+
 It also refuses a Bash or PowerShell line that holds a secret as text, a quiet one too, since the line itself stays in
 the transcript: a token by its shape (GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, a JSON web token, a
 private key block), credentials in a URL (`postgres://app:<the password>@db`), the credentials of an `Authorization`
