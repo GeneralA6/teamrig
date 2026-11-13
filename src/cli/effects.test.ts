@@ -97,6 +97,7 @@ const EXPECTED = {
   doctor: 'read',
   compact: 'write',
   'gh sync': 'write',
+  'gh migrate': 'write',
   budget: 'read',
   'budget lift': 'write',
   'budget cut': 'write',
