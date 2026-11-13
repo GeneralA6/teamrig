@@ -23,6 +23,7 @@ import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, outsideUsageDir, type Measured } from '../../budget/measure.ts';
 import { paceLineOfWeek } from '../../budget/pace.ts';
+import { resetStockLines } from '../../budget/resets.ts';
 import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, teamPartOf, type BudgetSplit, type TeamsOnAccount } from '../../budget/parts.ts';
 import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
@@ -345,7 +346,10 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     if (recountDay === undefined) {
       const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
       const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
-      lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone });
+      lines = [
+        ...todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone }),
+        ...resetStockLines(config.budget.resets, now, zone),
+      ];
     } else {
       lines = recountLines(today, { week, sessions, outside, all });
     }
