@@ -1192,6 +1192,11 @@ by itself at `meeting end`, when another meeting starts, or when the meeting lap
 Windows Terminal, it prints nothing, as the spotlight cannot run there. Nothing is typed into a
 terminal; the tab's title and the meeting file's path reach the script as variables.
 
+A scheduled meeting dims the same way: `meeting start M3` leaves lit only the window holding the session met's tab
+and records the meeting in `<team>/state/meeting-spotlit.json`. It lifts at `meeting end M3` or its drop, when
+another scheduled meeting starts, or 15 minutes past its booked length. Ending or dropping a meeting the file no longer names
+lifts nothing.
+
 A message that breaks through the meeting hold (one starting CRITICAL, sent to the lead by another session) also
 lifts the dimming, so the owner sees it at once. The cold-send hook records the last such break-through in
 `<team>/state/meeting-breakthrough.json` (the meeting's start, when it went through and who sent it); at its next
