@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
+import type { Writable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { nodeTranscriptSource } from '../budget/discover.ts';
 import { nodeFileBytes } from '../core/file-bytes.ts';
@@ -57,7 +58,7 @@ export const PROCESS_OUTPUT: Output = {
  * command that also writes files must not stop halfway because nobody reads its output; any other stream error still
  * throws as before.
  */
-export function ignoreClosedPipe(stream: NodeJS.WriteStream): void {
+export function ignoreClosedPipe(stream: Writable): void {
   stream.on('error', (error: NodeJS.ErrnoException) => {
     if (error.code !== 'EPIPE') throw error;
   });
