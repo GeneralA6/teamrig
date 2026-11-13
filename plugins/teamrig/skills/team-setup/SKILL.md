@@ -285,6 +285,8 @@ Act on each flag:
   next week (`update --week`), or tell the user what it would cut.
 - `OVER-SIZE`: a task cost more than twice its size since it was last sized. Ask its owner in one inbox line to
   re-size what is left (`update --size`, which counts from then on), split the rest into its own task, or drop it; `teamrig budget --task <id>` shows where it went.
+- `PREP-LAPSED`: re-mark the task for the slice it now prepares (`update --prepares <goal>:<slice>`), or clear
+  the marker (`--prepares none`).
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the user what it would push out.
 - A skill flag: tell the skill's owner in one inbox line.
 
