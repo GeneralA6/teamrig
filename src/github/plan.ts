@@ -1,9 +1,8 @@
 import type { Task } from '../register/fold.ts';
-import { ACTIVE_STATUSES } from '../register/model.ts';
-import { GITHUB_SOURCE } from '../register/model.ts';
+import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX } from '../register/model.ts';
 import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
 import type { GithubIssue } from './issues.ts';
-import { ISSUE_REF_PREFIX, issueTask, type ImportRules, type IssueTask } from './map.ts';
+import { issueTask, type ImportRules, type IssueTask } from './map.ts';
 import { issueTrust } from './trust.ts';
 
 /** How GitHub closed an issue, in the note the sync writes; any other reason is left out. */
