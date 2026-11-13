@@ -34,6 +34,8 @@ export const SESSION_NAME = ID_PATTERN;
  * read side (views.ts, and the pane's copy of it) needs no write policy.
  */
 export const GITHUB_SOURCE = 'github';
+/** What every issue ref starts with; here, beside GITHUB_SOURCE, so the write policy can tell an issue ref apart. */
+export const ISSUE_REF_PREFIX = 'gh:';
 /** A priority as the CLI prints and takes it: `p1`, the most urgent, `p2` and so on. */
 export function priorityText(priority) {
     return `p${priority}`;
