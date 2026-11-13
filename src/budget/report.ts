@@ -70,8 +70,10 @@ export interface GroupToday extends LiftNames {
 export interface OutsideToday {
   readonly w: number;
   readonly calls: number;
+  /** Outside sessions with a call on the day. */
   readonly sessions: number;
-  readonly titles: readonly string[];
+  /** The titled ones among them with their W on the day, the most first. */
+  readonly top: readonly { readonly title: string; readonly w: number }[];
 }
 
 /** Another team on the account today, from its sessions' stores as last stored (src/cli/stored-week.ts `peerUsageOf`). */
@@ -325,11 +327,14 @@ function liftLines(report: TodayReport): string[] {
   return [`Lifts, today only: ${terms}`, ...indented([...table, ...notes])];
 }
 
-/** "N Claude Code sessions (titled a, b, +2 more)": the first five titles, or every one with `--all`. */
+/**
+ * "N Claude Code sessions (top by W: a 40.10M, b 1.20M, +2 more titled)": the five that spent most that day with
+ * their W, or every titled one with `--all`. It names the biggest, not all of them, and untitled sessions stay out.
+ */
 function outsideSessionsText(outside: OutsideToday, all: boolean): string {
-  const shown = all ? outside.titles : outside.titles.slice(0, OUTSIDE_TITLES_SHOWN);
-  const more = outside.titles.length - shown.length;
-  const titles = shown.length === 0 ? '' : ` (titled ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''})`;
+  const shown = all ? outside.top : outside.top.slice(0, OUTSIDE_TITLES_SHOWN);
+  const more = outside.top.length - shown.length;
+  const titles = shown.length === 0 ? '' : ` (top by W: ${shown.map(({ title, w }) => `${title} ${formatW(w)}`).join(', ')}${more > 0 ? `, +${more} more titled` : ''})`;
   return `${outside.sessions} Claude Code session${outside.sessions === 1 ? '' : 's'}${titles}`;
 }
 

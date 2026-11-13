@@ -22,6 +22,17 @@ export interface Attribution {
   /** How many Claude Code sessions are outside the team, and the titles of those that have one. */
   readonly outsideSessions: number;
   readonly outsideTitles: readonly string[];
+  /**
+   * Each outside Claude Code session with its title (when it has one), for reading what it spent on one day: the
+   * count and titles above span the whole scan window, which is no day.
+   */
+  readonly outsideEach: readonly OutsideSession[];
+}
+
+/** An outside Claude Code session: its transcripts and its title. */
+export interface OutsideSession {
+  readonly files: ClaudeSessionFiles;
+  readonly title: string | undefined;
 }
 
 /** Another team on the account whose own hooks meter its tabs: its session ids and its inbox marks. */
@@ -58,6 +69,7 @@ export async function attribute(input: AttributionInput): Promise<Attribution> {
   const byTeamSession = new Map<string, TranscriptSet>();
   let outside = NO_TRANSCRIPTS;
   const outsideTitles: string[] = [];
+  const outsideEach: OutsideSession[] = [];
   let outsideSessions = 0;
   for (const session of input.sessions) {
     const marked = input.areaBySession.get(session.claudeSession);
@@ -74,6 +86,7 @@ export async function attribute(input: AttributionInput): Promise<Attribution> {
     if (id === undefined) {
       outside = joined(outside, session);
       outsideSessions += 1;
+      outsideEach.push({ files: session, title });
       if (title !== undefined && !outsideTitles.includes(title)) {
         outsideTitles.push(title);
       }
@@ -81,7 +94,7 @@ export async function attribute(input: AttributionInput): Promise<Attribution> {
     }
     byTeamSession.set(id, joined(byTeamSession.get(id) ?? NO_TRANSCRIPTS, session));
   }
-  return { byTeamSession, outside, outsideSessions, outsideTitles };
+  return { byTeamSession, outside, outsideSessions, outsideTitles, outsideEach };
 }
 
 /** Whether the peer's mark binds the Claude Code session to one of its sessions; a mark of a session it no longer has does not. */
