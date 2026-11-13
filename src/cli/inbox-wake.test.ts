@@ -84,7 +84,19 @@ describe('teamrig inbox add --wake now', () => {
     assert.equal(askOf(kit, 'ui', 'pixel'), formatWakeAsk({ from: 'app/lead', text: 'new icons', at: NOW }));
   });
 
-  it("refuses another team to a sub-lead and a team above to a child team's lead, posting nothing", async () => {
+  it("lets a child team's lead wake its parent lead, a sibling team's lead and the role holder above its config names (T2685)", async () => {
+    const kit = await treeHarness(LED);
+    await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], roles: { lead: 'lead', securityReviewer: 'app/alpha' } }));
+    const result = await kit.run(['inbox', 'add', '--to', 'app/lead,ops/lead,app/alpha', '--text', 'p0 waits on a review', '--wake', 'now', '--session', 'lead'], {
+      env: { TEAMRIG_TEAM: 'web' },
+    });
+    assert.equal(result.code, EXIT.ok);
+    for (const [team, id] of [['app', 'lead'], ['ops', 'lead'], ['app', 'alpha']] as const) {
+      assert.equal(askOf(kit, team, id), formatWakeAsk({ from: 'web/lead', text: 'p0 waits on a review', at: NOW }));
+    }
+  });
+
+  it("refuses another team to a sub-lead, and a team above's other sessions to a child team's lead, posting nothing", async () => {
     const kit = await treeHarness(LED);
     const subLead = await kit.run(['inbox', 'add', '--to', 'web/front', '--text', 'hi', '--wake', 'now', '--session', 'bravo']);
     assert.deepEqual(
@@ -92,16 +104,16 @@ describe('teamrig inbox add --wake now', () => {
       [
         EXIT.refused,
         [
-          "REFUSED --wake now reaches another team only from the lead of a team above it, since a wake spends that team's budget line: app/bravo may not wake web/front; post the line without --wake",
+          "REFUSED --wake now reaches another team only from a team lead, since a wake spends that team's budget line: a session of a team below its own, any team's lead, or a session its config names in roles; app/bravo may not wake web/front; post the line without --wake, or ask your lead to wake it",
         ],
       ],
     );
-    const up = await kit.run(['inbox', 'add', '--to', 'app/lead', '--text', 'login page done', '--wake', 'now', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } });
+    const up = await kit.run(['inbox', 'add', '--to', 'app/alpha', '--text', 'login page done', '--wake', 'now', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } });
     assert.equal(up.code, EXIT.refused);
-    assert.match(up.stdout.join('\n'), /web\/lead may not wake app\/lead/);
+    assert.match(up.stdout.join('\n'), /web\/lead may not wake app\/alpha/);
     assert.equal(kit.files.get(teamInboxOf('web', 'front')), undefined);
-    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), undefined);
-    assert.equal(askOf(kit, 'app', 'lead'), undefined);
+    assert.equal(kit.files.get(teamInboxOf('app', 'alpha')), undefined);
+    assert.equal(askOf(kit, 'app', 'alpha'), undefined);
   });
 
   it('posts the line with no ask to a receiver whose team turned wakes off, and says so', async () => {

@@ -569,7 +569,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       task:T<n> is that task's owner and the owner of each active task of your tree whose ref is T<n>; a
       group leaves you out; a comma-separated list posts the line to each receiver once
       --wake now: also wakes each receiver idle at its prompt within about 3 minutes and says what
-      that costs; a group only from a leader, another team only from the lead of a team above it
+      that costs; a group only from a leader, another team only from a team lead: a team below its
+      own, any team's lead, or a session its config names in roles
       --wake-by <time>: wakes each receiver at that time instead, only if it has not seen the line by
       then and its tab is idle; the same gate
   exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its

@@ -16,7 +16,7 @@ import { CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf, type InboxMark } from '../../
 import { reachOf } from '../../inbox/reach.ts';
 import { routeReminderOf } from '../../inbox/route.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
-import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine, type ReceiverWake, type WakeSender, type WakeWhen } from '../../inbox/wake-now.ts';
+import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine, type ReceiverWake, type WakeSender, type WakeTarget, type WakeWhen } from '../../inbox/wake-now.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { wakeCost } from '../../wake/decide.ts';
 import { noPositionals, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
@@ -276,6 +276,21 @@ async function wakeSenderOf(own: SenderTeam, recipients: readonly Recipient[], r
 }
 
 /**
+ * A recipient as the wake gate reads it: whether it leads its team, and whether the sender's team config names it in
+ * `roles` (deliveryOwner, securityReviewer hold `<team>/<id>` when the holder sits on a team above).
+ */
+function wakeTargetOf(own: SenderTeam, recipient: Recipient): WakeTarget {
+  const { deliveryOwner, securityReviewer } = own.config.roles;
+  const named = recipient.crossing ? formatAddress({ team: recipient.team, id: recipient.id }) : recipient.id;
+  return {
+    label: recipient.label,
+    team: recipient.team,
+    teamLead: recipient.config.roles.lead === recipient.id,
+    servesSender: [deliveryOwner, securityReviewer].includes(named),
+  };
+}
+
+/**
  * Posts a wake ask beside each recipient's posted line, so its tab's wake check wakes it, and returns what that
  * prints: a WAKE FAILED line for each ask that could not be posted (its line stays posted), then the WAKES line. A
  * recipient whose team has `wake.enabled` false gets no ask. A `--wake-by` ask carries its time and the hash of the
@@ -340,7 +355,8 @@ const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>,
  * tells the sender to route such work via that sub-lead (T783). `--wake now` (T1147) also wakes each receiver idle at
  * its prompt within about 3 minutes (`wake.batchSeconds`), and says what that costs; `--wake-by <time>` (T1148) wakes
  * it at that time instead, and only if it has not seen the line by then. A group is woken only by a leader, another
- * team only by the lead of a team above it, else nothing is posted.
+ * team only by a team lead (a team below its own, any team's lead, a role holder its config names), else nothing is
+ * posted.
  */
 export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -372,7 +388,7 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
     const refusal = wakeRefusal(
       await wakeSenderOf(own, recipients, reads),
       items.some((item) => item.kind !== 'session'),
-      recipients,
+      recipients.map((recipient) => wakeTargetOf(own, recipient)),
       when,
     );
     if (refusal !== undefined) {
