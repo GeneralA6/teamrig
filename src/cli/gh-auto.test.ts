@@ -31,7 +31,7 @@ function githubLines(kit: CliHarness, id: string): string[] {
 }
 
 describe('the Stop hook starts the automatic GitHub sync', () => {
-  it('starts gh sync --auto hidden, for its team, once per github.everyMinutes across all sessions', async () => {
+  it('starts issue sync --auto hidden, for its team, once per github.everyMinutes across all sessions', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const processes = new FakeProcesses();
     await stop(kit, processes);
@@ -40,7 +40,7 @@ describe('the Stop hook starts the automatic GitHub sync', () => {
     const [request] = processes.hidden;
     assert.deepEqual(
       { command: request?.command, args: request?.args, cwd: request?.cwd, team: request?.env['TEAMRIG_TEAM'] },
-      { command: '/usr/bin/node', args: ['/opt/teamrig/dist/cli/main.js', 'gh', 'sync', '--auto'], cwd: TEAM_HOME, team: 'app' },
+      { command: '/usr/bin/node', args: ['/opt/teamrig/dist/cli/main.js', 'issue', 'sync', '--auto'], cwd: TEAM_HOME, team: 'app' },
     );
     kit.clock.advance(14 * MINUTE);
     await stop(kit, processes, 'alpha');
@@ -65,25 +65,25 @@ describe('the Stop hook starts the automatic GitHub sync', () => {
   });
 });
 
-describe('teamrig gh sync --auto', () => {
+describe('teamrig issue sync --auto', () => {
   it("writes, tells each owner its new tasks, and tells the lead a failing repository once and its recovery", async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const issues = [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] }), ghIssue('acme/web', 8, { title: 'Add search' })];
     const first = kit.clock.now();
     const failing = (): FakeGh => new FakeGh().holds('acme/web', issues).answers('acme/api', REFUSED);
-    assert.equal((await kit.run(['gh', 'sync', '--auto'], { gh: failing() })).code, EXIT.failed);
+    assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: failing() })).code, EXIT.failed);
     assert.deepEqual(githubLines(kit, 'bravo'), ['GitHub sync added 1 task(s) for you: T1 gh:acme/web#7 "Fix login"']);
     const [added, failed] = githubLines(kit, 'lead');
     assert.equal(added, 'GitHub sync added 1 task(s) for you: T2 gh:acme/web#8 "Add search"');
     assert.match(failed ?? '', /^GitHub sync could not read acme\/api \(.+\); it retries at each run/);
 
     kit.clock.advance(15 * MINUTE);
-    assert.equal((await kit.run(['gh', 'sync', '--auto'], { gh: failing() })).code, EXIT.failed);
+    assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: failing() })).code, EXIT.failed);
     assert.equal(githubLines(kit, 'lead').length, 2);
     assert.equal(githubLines(kit, 'bravo').length, 1);
 
     kit.clock.advance(15 * MINUTE);
-    assert.equal((await kit.run(['gh', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
+    assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
     assert.equal(githubLines(kit, 'lead')[2], 'GitHub sync reads every repository again (acme/api failed before)');
     assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map() });
   });
@@ -101,7 +101,7 @@ describe('teamrig gh sync --auto', () => {
     ];
     for (const [gh, code] of runs) {
       kit.clock.advance(15 * MINUTE);
-      const result = await kit.run(['gh', 'sync', '--auto'], { gh });
+      const result = await kit.run(['issue', 'sync', '--auto'], { gh });
       assert.equal(result.code, code, [...result.stdout, ...result.stderr].join('\n'));
     }
     const lines = githubLines(kit, 'lead');
@@ -120,14 +120,14 @@ describe('teamrig gh sync --auto', () => {
     const processes = new FakeProcesses();
     await stop(kit, processes);
     assert.deepEqual(processes.hidden, []);
-    const result = await kit.run(['gh', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', []).holds('acme/api', []) });
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', []).holds('acme/api', []) });
     assert.notEqual(result.code, EXIT.ok);
     assert.match([...result.stdout, ...result.stderr].join('\n'), new RegExp(`holds format v${SYNC_STATE_FORMAT + 1} records`));
     assert.equal(kit.files.get(STATE), newer);
   });
 
   it('reads every repository, so it refuses --repo', async () => {
-    const result = await new CliHarness(GITHUB_TEAM).run(['gh', 'sync', '--auto', '--repo', 'acme/web'], { gh: new FakeGh() });
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'sync', '--auto', '--repo', 'acme/web'], { gh: new FakeGh() });
     assert.equal(result.code, EXIT.refused);
     assert.match([...result.stdout, ...result.stderr].join('\n'), /--auto reads every repository of github\.repos/);
   });

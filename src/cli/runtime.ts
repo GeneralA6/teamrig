@@ -77,9 +77,9 @@ export interface CliRuntime {
   readonly memory: HostMemory;
   /** The processes that started this one, so a queued step whose launching shell was ended stops too. */
   readonly starters: StarterWatch;
-  /** The GitHub CLI, for `teamrig gh sync`; it runs reads only (github/gh.ts). */
+  /** The GitHub CLI, for `teamrig issue sync`; it runs reads only (github/gh.ts). */
   readonly gh: GhRunner;
-  /** The system's saved secrets, where `teamrig gh sync` finds each owner's read-only GitHub token; only ever read. */
+  /** The system's saved secrets, where `teamrig issue sync` finds each owner's read-only GitHub token; only ever read. */
   readonly credentials: CredentialStore;
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;

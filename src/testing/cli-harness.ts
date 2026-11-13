@@ -136,9 +136,9 @@ export interface RunOptions {
   readonly sleep?: Sleep;
   /** The shell `teamrig test` runs in; default one that prints nothing and exits 0. */
   readonly shell?: ShellRunner;
-  /** The GitHub CLI `gh sync` reads through; default one that sees no repository. */
+  /** The GitHub CLI `issue sync` reads through; default one that sees no repository. */
   readonly gh?: GhRunner;
-  /** The saved secrets `gh sync` reads tokens from; default a store with none. */
+  /** The saved secrets `issue sync` reads tokens from; default a store with none. */
   readonly credentials?: CredentialStore;
   /** The folders and programs the CLI sees; default none. */
   readonly probe?: PathProbe;
