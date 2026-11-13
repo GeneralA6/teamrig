@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
-import { checkEveryJob, jobsPageOf, listJobs, runFromEnv, unpassedJobs, type RunGh, type RunJob, type RunRef } from './every-check.ts';
+import { checkEveryJob, GH_MAX_BUFFER, ghCli, jobsPageOf, listJobs, runFromEnv, unpassedJobs, type RunFile, type RunGh, type RunJob, type RunRef } from './every-check.ts';
 
 const SELF = 'every check passed';
 const RUN: RunRef = { repo: 'acme/web', runId: '43' };
@@ -25,6 +25,23 @@ function ghServing(pages: readonly string[]): { gh: RunGh; calls: string[][] } {
   };
   return { gh, calls };
 }
+
+describe('ghCli', () => {
+  it('runs gh by argv with no window and a large buffer, and resolves with what it printed', async () => {
+    const calls: { file: string; args: readonly string[]; options: { windowsHide: boolean; maxBuffer: number } }[] = [];
+    const run: RunFile = (file, args, options) => {
+      calls.push({ file, args, options });
+      return Promise.resolve({ stdout: '{"total_count":0,"jobs":[]}' });
+    };
+    assert.equal(await ghCli(run)(['api', 'repos/acme/web/actions/runs/43/jobs']), '{"total_count":0,"jobs":[]}');
+    assert.deepEqual(calls, [{ file: 'gh', args: ['api', 'repos/acme/web/actions/runs/43/jobs'], options: { windowsHide: true, maxBuffer: GH_MAX_BUFFER } }]);
+  });
+
+  it('rejects with the run failure, so a check never passes on a gh that failed', async () => {
+    const run: RunFile = () => Promise.reject(new Error('spawn gh ENOENT'));
+    await assert.rejects(ghCli(run)(['api', 'x']), /ENOENT/);
+  });
+});
 
 describe('jobsPageOf', () => {
   it('reads the count and each job, a running job with no conclusion', () => {

@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { isRecord, stringField } from '../lib/guards.ts';
 
@@ -18,6 +20,17 @@ export interface RunRef {
 
 /** Runs the GitHub CLI with the arguments, never through a shell; resolves with what it prints. */
 export type RunGh = (args: readonly string[]) => Promise<string>;
+
+/** Runs a program by argv, never through a shell; resolves with what it printed. */
+export type RunFile = (file: string, args: readonly string[], options: { windowsHide: boolean; maxBuffer: number }) => Promise<{ stdout: string }>;
+
+/** The most a gh call may print: a page of 100 jobs stays far below it. */
+export const GH_MAX_BUFFER = 16 * 1024 * 1024;
+
+/** The GitHub CLI, which reads GH_TOKEN from the environment, run through `run` (Node's execFile by default). */
+export function ghCli(run: RunFile = promisify(execFile)): RunGh {
+  return async (args) => (await run('gh', [...args], { windowsHide: true, maxBuffer: GH_MAX_BUFFER })).stdout;
+}
 
 /** One page of the jobs API, and the count of jobs across every page. */
 export interface JobsPage {
