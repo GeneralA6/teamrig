@@ -1221,8 +1221,9 @@ Without `--yes` the counts read `to add` and `to change`, a new task's id is `ne
 Moves the team's tasks to GitHub issues once, from a row file you write: JSON lines, one row per task. An issue row
 is `{"id", "decision": "issue", "repo", "type": "bug"|"task", "priority": "p1"-"p3", "title", "body"}`, with the
 task's public wording, since an issue is open to anyone who can read the repository; a local row is `{"id",
-"decision": "local", "reason"}` and keeps the task off GitHub. A bad line, or one that looks like it holds a
-secret, refuses the whole file, naming the line.
+"decision": "local", "reason"}` and keeps the task off GitHub. A bad line, one that looks like it holds a secret,
+or an issue row whose title or body names a task id (`T12`, `bravo/T12`: ids are the team's own, so an issue links
+others by `#number`), refuses the whole file, naming the line.
 
 Without `--yes` it writes nothing. It prints a `REPLACES` line for each task whose ref is not an issue (the issue
 takes the ref's place; the update's note keeps `ref was: <old>`), a `SKIPPED` line for each row it will not act on

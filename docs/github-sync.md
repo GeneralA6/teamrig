@@ -165,6 +165,9 @@ teamrig gh migrate rows.jsonl --out preview.md    # writes nothing but the previ
 teamrig gh migrate rows.jsonl --yes               # opens the issues
 ```
 
+- **No task ids on GitHub.** A task id numbers your team's own list and means nothing to a reader of the issue, so
+  a row whose title or body names one (`T12`, `bravo/T12`) refuses the file; link other issues by `#number`. The
+  issue carries only its title, body and labels: the task finds its issue through its ref, which is never posted.
 - **Preview first.** Without `--yes` nothing is written. `--out` writes a page with every issue in full (repository,
   labels, title, body), the tasks kept local with their reasons and the rows it skips, for a reviewer. The output
   counts the issues to open and names the live tasks no row covers (`NO ROW`).
