@@ -1152,14 +1152,14 @@ Output:
 /home/you/.teamrig/teams/web/tasks/T12
 ```
 
-### teamrig gh sync
+### teamrig issue sync
 
 Imports GitHub issues into the task list, inbound only. For each repository in `github.repos` it lists the open
 issues and those closed in the last `github.closedDays` days (14 by default) through the GitHub CLI, `gh`. It only
 ever lists issues: it never creates, edits, comments on, labels, assigns or closes anything on GitHub, and a task
 added with `teamrig add` stays in the task list and never goes to GitHub. Only commands run by hand write:
-`teamrig gh migrate` opens issues, `teamrig issue comment` and `teamrig issue close` comment on and close them.
-Setup, tokens and every failure's fix:
+`teamrig issue migrate` opens issues, `teamrig issue comment` and `teamrig issue close` comment on and close them.
+Its old name, gh sync, is refused with this one (exit 64). Setup, tokens and every failure's fix:
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md).
 
 Access, per owner (the `acme` of `acme/web`): the token saved in the system's credential store as
@@ -1203,7 +1203,7 @@ repository could not be read (its tasks stay as they are, and the `FAILED` line 
 register refused a step (a `SKIPPED` line each), else 0.
 
 On its own: with `github.repos` listed and `github.everyMinutes` above 0 (15 by default), the Stop hook of any team
-session starts `teamrig gh sync --auto` hidden in the background once per that many minutes for the whole team (one
+session starts `teamrig issue sync --auto` hidden in the background once per that many minutes for the whole team (one
 state file under a lock; nothing keeps running between syncs). A new issue so reaches its owner while sessions work;
 a run by hand still works at any time.
 
@@ -1219,7 +1219,7 @@ Flags:
 Example:
 
 ```sh
-teamrig gh sync --yes
+teamrig issue sync --yes
 ```
 
 Output:
@@ -1235,11 +1235,12 @@ WROTE 3 change(s) to the task list as github; GitHub was only read
 ```
 
 Without `--yes` the counts read `to add` and `to change`, a new task's id is `new`, and the last line is
-`PREVIEW nothing was written; teamrig gh sync --yes writes the above as github`. Each repository shows its first
+`PREVIEW nothing was written; teamrig issue sync --yes writes the above as github`. Each repository shows its first
 10 rows, then `... and <n> more`.
 
-### teamrig gh migrate
+### teamrig issue migrate
 
+Its old name, gh migrate, is refused with this one (exit 64).
 Moves the team's tasks to GitHub issues once, from a row file you write: JSON lines, one row per task. An issue row
 is `{"id", "decision": "issue", "repo", "type": "bug"|"task", "priority": "p1"-"p3", "title", "body"}`, with the
 task's public wording, since an issue is open to anyone who can read the repository; a local row is `{"id",
@@ -1276,7 +1277,7 @@ Flags:
 Example:
 
 ```sh
-teamrig gh migrate rows.jsonl --out preview.md
+teamrig issue migrate rows.jsonl --out preview.md
 ```
 
 Output:
@@ -1287,7 +1288,7 @@ REPLACES T12: its ref notes/login.md gives way to its issue
 SKIPPED T9: the task is done
 NO ROW 1 live task(s) no row names: T44
 3 issue(s) to open, 1 kept local, 1 skipped, 1 live task(s) with no row
-PREVIEW nothing was written; teamrig gh migrate <file> --yes opens the issues and sets each task's ref
+PREVIEW nothing was written; teamrig issue migrate <file> --yes opens the issues and sets each task's ref
 ```
 
 ### teamrig issue comment

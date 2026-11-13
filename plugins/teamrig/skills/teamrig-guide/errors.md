@@ -253,6 +253,7 @@ From `teamrig restore install` and `uninstall` ([commands.md](commands.md#teamri
 | `priority "2" is not p<n>: write p2` | Write priorities as `p2`. |
 | `priority "t2" is the old tier spelling: write p2` | Write `p2`. |
 | `--tier was renamed: use --priority` | Use `--priority`. |
+| `gh was renamed: use issue` | gh sync is now `teamrig issue sync`, and gh migrate is `teamrig issue migrate`. |
 | `"9" is not a task id like T12` | Write task ids as `T9`. |
 | `--status "finished" is not open\|in-progress\|verifying\|waiting\|done\|dropped` | Use one of those six. |
 | `--status blocked was replaced by waiting: use --status waiting --waits <reason> (...)` | Set `waiting` with what it waits for. |
