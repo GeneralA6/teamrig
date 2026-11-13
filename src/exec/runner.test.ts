@@ -31,6 +31,8 @@ const CREDENTIALS = { DB_READ_URI: READ_VALUE, DB_WRITE_URI: WRITE_VALUE };
 const WINDOWS_ADDED = ['HOMEDRIVE', 'HOMEPATH', 'LOGONSERVER', 'PATH', 'SYSTEMDRIVE', 'SYSTEMROOT', 'TEMP', 'USERDOMAIN', 'USERNAME', 'USERPROFILE', 'WINDIR'];
 /** What Node's spawn passes on from the parent on every platform when the given environment lacks it: the coverage folder of a coverage run. */
 const NODE_ADDED = process.env['NODE_V8_COVERAGE'] === undefined ? [] : ['NODE_V8_COVERAGE'];
+/** What a process on macOS sets in its own environment as it starts, when CoreFoundation finds it unset: its text encoding. */
+const MACOS_ADDED = ['__CF_USER_TEXT_ENCODING'];
 const KIT: ReviewKit = { reviewers: { owner: 'owner', security: 'security' }, signer: new UnsignedReviews(), nonces: RANDOM_NONCES };
 
 function credentialsOf(values: Readonly<Record<string, string>>): CredentialSource {
@@ -266,13 +268,14 @@ describe('nodeExecSpawner', () => {
     assert.deepEqual([end.exitCode, end.timedOut], [0, false]);
   });
 
-  it('gives the process only the environment it is given, besides the names Windows adds', async () => {
+  it('gives the process only the environment it is given, besides the names Windows or macOS add', async () => {
     const given = { ...env, ONLY: 'x' };
     const end = await spawner.run({ ...node('process.stdout.write(JSON.stringify(Object.keys(process.env)))'), env: given });
     const seen: unknown = JSON.parse(end.output);
     assert.ok(isStringArray(seen), end.output);
     assert.deepEqual(Object.keys(given).filter((name) => !seen.includes(name)), [], 'a given variable is missing');
-    const allowed = new Set([...(process.platform === 'win32' ? WINDOWS_ADDED : []), ...NODE_ADDED]);
+    const platformAdded = process.platform === 'win32' ? WINDOWS_ADDED : process.platform === 'darwin' ? MACOS_ADDED : [];
+    const allowed = new Set([...platformAdded, ...NODE_ADDED]);
     assert.deepEqual(seen.filter((name) => !Object.hasOwn(given, name) && !allowed.has(name.toUpperCase())), [], 'the executor leaked a variable');
   });
 
