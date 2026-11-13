@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { SHIP_TOKEN } from '../../src/github/tokens.ts';
 
 /**
  * Reads a generic credential's secret from Windows Credential Manager (CredReadW), so ship's gh calls get a
@@ -6,7 +7,7 @@ import { spawnSync } from 'node:child_process';
  * argv, which other processes can read) and is decoded here in memory only.
  * Store it once (prompts, nothing echoed): cmdkey /generic:teamrig-ship-gh /user:teamrig /pass
  */
-export const SHIP_TOKEN_TARGET = 'teamrig-ship-gh';
+export const SHIP_TOKEN_TARGET = SHIP_TOKEN;
 
 /** PowerShell's exit code when the credential does not exist. */
 export const NOT_FOUND_EXIT = 3;
