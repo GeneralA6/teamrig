@@ -81,6 +81,8 @@ const EXPECTED = {
   queue: 'write',
   withdraw: 'write',
   pipeline: 'read',
+  'pipeline freeze': 'write',
+  'pipeline unfreeze': 'write',
   merge: 'write',
   deploy: 'write',
   freeze: 'write',

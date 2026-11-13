@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_DELIVERY_WAIT, DEFAULT_FREEZES, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
 import type { DeliveryConfig } from '../config/types.ts';
 import { teamPaths } from '../core/home.ts';
+import { PIPELINE_FREEZES_FILE, PIPELINE_FREEZES_LOCK_FILE } from './pipeline-freezes.ts';
 import { deliveryDirOf, deliveryPlaces, DETACHED_DIR, detachedLogOf, GATE_HOLDS_DIR, HOST_LOCK_FILE, MERGES_FILE, REVIEW_HOLDS_DIR, teamPlace } from './places.ts';
 
 const HOME = resolve('kit', 'teams', 'app');
@@ -54,6 +55,14 @@ describe('deliveryPlaces', () => {
     assert.equal(places.merges, join(dir, MERGES_FILE));
     assert.equal(join(places.ledger, '..'), dir);
     assert.equal(places.hostLock, join(KIT, HOST_LOCK_FILE));
+    assert.equal(places.pipelineFreezes, join(KIT, PIPELINE_FREEZES_FILE));
+    assert.equal(places.pipelineFreezesLock, join(KIT, PIPELINE_FREEZES_LOCK_FILE));
+  });
+
+  it('keeps the pipeline freezes beside the host lock that delivery.queue.lockPath moves, so every team sharing it reads them', () => {
+    const places = deliveryPlaces({ ...CONFIG, queue: { ...DEFAULT_QUEUE, lockPath: 'shared/host.lock' } }, PATHS);
+    assert.equal(places.pipelineFreezes, join(PATHS.home, 'shared', PIPELINE_FREEZES_FILE));
+    assert.equal(places.pipelineFreezesLock, join(PATHS.home, 'shared', PIPELINE_FREEZES_LOCK_FILE));
   });
 
   it("moves them with delivery.dir, a relative one in the team's folder", () => {

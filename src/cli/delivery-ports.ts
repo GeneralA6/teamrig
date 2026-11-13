@@ -6,6 +6,7 @@ import type { AdmissionRules } from '../delivery/admission.ts';
 import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import { HostLock, type HostLockPorts } from '../delivery/host-lock.ts';
 import { MemoryGate } from '../delivery/memory-gate.ts';
+import { PIPELINE_FREEZES_LOCK_TTL_MS } from '../delivery/pipeline-freezes.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { TabHolds, tabHoldsDir } from '../sessions/tab-holds.ts';
@@ -61,6 +62,11 @@ export function hostLockOf(
  */
 export function freezesLockOf(runtime: LockRuntime, path: string, zone: TimeZone): HostLock {
   return lockAt(runtime, path, FREEZES_LOCK_TTL_MS, zone, {});
+}
+
+/** The lock on the pipeline freezes at `path`, held for one read and write: like the deploy freezes' lock, no memory gate. */
+export function pipelineFreezesLockOf(runtime: LockRuntime, path: string, zone: TimeZone): HostLock {
+  return lockAt(runtime, path, PIPELINE_FREEZES_LOCK_TTL_MS, zone, {});
 }
 
 /** What gates a lock that guards steps: the memory gate, and the rules its line is ordered by. */
