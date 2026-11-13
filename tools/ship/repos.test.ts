@@ -56,6 +56,32 @@ test('the shipped repos.json calls regenerated exactly the dist and the version 
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').regenerated, ['plugins/teamrig-pane/.claude-plugin/plugin.json']);
 });
 
+/** The status checks main's ruleset requires before GitHub accepts a merge. */
+function rulesetRequiredChecks(): string[] {
+  const ruleset: unknown = JSON.parse(readFileSync(new URL('../../.github/rulesets/main.json', import.meta.url), 'utf8'));
+  assert.ok(typeof ruleset === 'object' && ruleset !== null && 'rules' in ruleset && Array.isArray(ruleset.rules));
+  const contexts: string[] = [];
+  for (const rule of ruleset.rules) {
+    if (typeof rule !== 'object' || rule === null || !('parameters' in rule)) continue;
+    const parameters: unknown = rule.parameters;
+    if (typeof parameters !== 'object' || parameters === null || !('required_status_checks' in parameters) || !Array.isArray(parameters.required_status_checks)) continue;
+    for (const check of parameters.required_status_checks) {
+      if (typeof check === 'object' && check !== null && 'context' in check && typeof check.context === 'string') contexts.push(check.context);
+    }
+  }
+  return contexts;
+}
+
+test('the shipped repos.json waits on GitHub for every check main\'s ruleset requires, so a merge is never refused while CI runs', () => {
+  const required = rulesetRequiredChecks();
+  assert.ok(required.length > 0, 'the ruleset requires a status check');
+  for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) {
+    const profile = profileFor(readProfiles(), slug);
+    assert.equal(profile.gate, 'ci', slug);
+    for (const check of required) assert.ok(profile.checks.includes(check), `${slug} waits for ${check}`);
+  }
+});
+
 test('finds the GitHub slug in an SSH or HTTPS remote', () => {
   assert.equal(slugOf('git@github.com:GeneralA6/teamrig.git'), 'GeneralA6/teamrig');
   assert.equal(slugOf('https://github.com/GeneralA6/teamrig-pane'), 'GeneralA6/teamrig-pane');
@@ -83,11 +109,9 @@ test('both plugin repos wait for the plugin version gate, so a plugin change can
   }
 });
 
-test('while CI is paused both repos merge on the local gate, proved by their own local CI runner', () => {
+test('both repos keep their own local CI runner, which a ship runs before it pushes', () => {
   const profiles = readProfiles();
   for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) {
-    const profile = profileFor(profiles, slug);
-    assert.equal(profile.gate, 'local', slug);
-    assert.deepEqual(profile.local, { runner: 'tools/ci/local.ts' }, slug);
+    assert.deepEqual(profileFor(profiles, slug).local, { runner: 'tools/ci/local.ts' }, slug);
   }
 });
