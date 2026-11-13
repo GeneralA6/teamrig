@@ -1306,9 +1306,18 @@ characters, looks like it holds a secret, or names a task id (`T12`: ids are the
 prints an `OFF` line and posts nothing. It prints `COMMENTED <target>`, or `FAILED <target>: <reason>` with the fix
 (a token without the permission, an issue not there). Exit 1 when it failed, 2 when refused, else 0.
 
+Who may write: the team's GitHub admin, the one session the owner named with
+[owner github-admin](#teamrig-owner-github-admin), on any issue or pull request of `github.repos`; every other
+session only on its own. An issue is a session's own when one of its tasks has it as its ref (`gh:acme/web#7`, as
+`gh sync` and `gh migrate` set it); a pull request when its branch, in the same repository, is a `t<id>-` branch of
+one of its tasks (a fork's branch never is). Anything else is refused, naming the admin who may write on it. A
+`--session` other than the tab's own `$TEAMRIG_SESSION` is refused, so no session borrows another's right. When
+GitHub cannot say whose a pull request is, it prints `FAILED could not tell whose <target> is: <reason>` and writes
+nothing (exit 1).
+
 Flags:
 
-- `--session <id|name>`: the caller, a session of the team.
+- `--session <id|name>`: the caller, a session of the team; the tab's own session when the tab sets one.
 - `--body <text>`: the comment, required.
 
 Example:
@@ -1327,7 +1336,8 @@ COMMENTED acme/web#7
 ### teamrig issue close
 
 Closes one issue or pull request of the team's repositories (a pull request closes unmerged), first posting
-`--comment` when given, with the same access and checks as `teamrig issue comment`. When the comment fails nothing
+`--comment` when given, with the same access and checks as `teamrig issue comment`, who may write included: only
+the GitHub admin closes what is not the caller's own. When the comment fails nothing
 is closed. When the close fails after the comment was posted, the `FAILED` line says the comment is posted: rerun
 `teamrig issue close` without `--comment`. Exit 1 when it failed, 2 when refused, else 0.
 
