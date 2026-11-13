@@ -100,3 +100,61 @@ describe('ToolOutputRedactor', () => {
     assert.deepEqual(classes, ['first kind']);
   });
 });
+
+describe('ToolOutputRedactor: placeholders after a secret-looking name', () => {
+  const tokenName = 'X_API_' + 'TOKEN';
+  const untouched = (text: string): { classes: readonly string[]; stdout: unknown } => {
+    const { response, classes } = redactor.redact({ stdout: text });
+    return { classes, stdout: response['stdout'] };
+  };
+  // Built at run time so the repository's own scans see no secret here.
+  const GHP = join('gh', 'p_', 'Zq8Lm2Nx5Rt7Vw1Yb4Cd6Fg9Hj3Kp0Sa8De');
+  const AWS = join('AKIA', 'IOSFODNN7', 'EXAMPLE');
+
+  it('leaves a value that is exactly one placeholder, and opens no rotation', () => {
+    const exempt = [
+      `${tokenName}=%s`,
+      `${tokenName}=%-10s`,
+      `${tokenName}=%q`,
+      `${tokenName}=$tok`,
+      `${tokenName}=\${TOK}`,
+      `${tokenName}=<token>`,
+      `${tokenName}=`,
+      `printf '${tokenName}=%s\\nY_ACCOUNT_ID=%s\\n' "$tok" "$id"`,
+      `printf '${tokenName}=%s\\nY_ACCOUNT_ID=%s\\n'`,
+      `${tokenName}=%s; echo done`,
+    ];
+    for (const text of exempt) assert.deepEqual(untouched(text), { classes: [], stdout: text }, text);
+  });
+
+  it('still redacts a real secret beside a placeholder, or glued to one', () => {
+    const risky = [
+      `A_TOKEN=%s B_TOKEN=${GHP}`,
+      `printf 'A_TOKEN=%s\\nB_TOKEN=${GHP}\\n'`,
+      `${tokenName}=%s${AWS}`,
+      `${tokenName}=$X-realsecretvalue123`,
+      `${tokenName}=\${X}abc123def456ghi`,
+      `${tokenName}=<x>sk-live-abcdef123456`,
+      `${tokenName}=${PASSWORD}`,
+    ];
+    for (const text of risky) {
+      const { classes, stdout } = untouched(text);
+      assert.notEqual(classes.length, 0, text);
+      assert.notEqual(stdout, text, text);
+      for (const secret of [GHP, AWS, 'realsecretvalue123', 'abc123def456ghi', 'sk-live-abcdef123456', PASSWORD]) {
+        assert.ok(typeof stdout === 'string' && !stdout.includes(secret), `${secret} left in: ${stdout}`);
+      }
+    }
+  });
+
+  it('passes a package.json export whose key names a token and whose value is a relative script path', () => {
+    for (const text of ['"./cli/pkg-token": "./dist/cli/pkg-token.js",', '"./token": "../lib/token.mjs"']) {
+      assert.deepEqual(untouched(text), { classes: [], stdout: text }, text);
+    }
+  });
+
+  it('still redacts a quoted value that only starts like a path', () => {
+    const text = join('"api_', 'token": "./', 'Qx7mRt_Lp4wZn92/x"');
+    assert.notEqual(untouched(text).classes.length, 0);
+  });
+});

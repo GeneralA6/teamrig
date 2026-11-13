@@ -194,6 +194,8 @@ one per kind, session and day while that task is open (once it is closed, a late
 names it to the session. For credentials in a URL the task names the account they were for (`login app at
 example.com`), never the value. A secret variable's URL value goes only when it carries a login, a password, a
 secret-named parameter or a token-shaped path segment; a connection string without them stays.
+A value that is exactly one placeholder (`%s`, `$NAME`, `${NAME}`, `<token>`) or empty stays, as does a relative script path
+(`./dist/cli/x-token.js`); anything added to a placeholder (`%sabc`, `$X-abc`) is still a value.
 `secretGuard.redact: false` turns it off
 ([what it does not cover](../../plugins/teamrig/skills/teamrig-guide/hooks.md#after-a-tool-call-the-secret-redactor)).
 
