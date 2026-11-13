@@ -2,7 +2,8 @@ import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import type { KitConfig } from '../config/types.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { ISSUE_REF_PREFIX } from '../register/model.ts';
-import { plainLine, type GithubIssue } from './issues.ts';
+import type { HostIssue } from '../issues/issue.ts';
+import { plainLine } from './issues.ts';
 
 /** The priority of an issue with no priority label of the team's: p2, or the team's least urgent level when it has no p2. */
 export const ISSUE_PRIORITY = 2;
@@ -66,7 +67,7 @@ export function issueRef(repo: string, number: number): string {
   return `${ISSUE_REF_PREFIX}${repo}#${number}`;
 }
 
-export function issueTask(issue: GithubIssue, rules: ImportRules): IssueTask {
+export function issueTask(issue: HostIssue, rules: ImportRules): IssueTask {
   return {
     ref: issueRef(issue.repo, issue.number),
     title: taskTitle(issue, rules.maxTitle),
@@ -82,7 +83,7 @@ export function issueTask(issue: GithubIssue, rules: ImportRules): IssueTask {
  * The issue's title on one plain line, cut to `maxTitle`: outside text, so control and format characters
  * go. A title with nothing left names the issue instead.
  */
-export function taskTitle(issue: GithubIssue, maxTitle: number): string {
+export function taskTitle(issue: HostIssue, maxTitle: number): string {
   const title = plainLine(issue.title);
   const text = title === '' ? `GitHub issue ${issue.repo}#${issue.number}` : title;
   // A cut between the two halves of a character leaves the first half alone: it goes too.
@@ -129,7 +130,7 @@ export function issuePriority(labels: readonly string[], priorities: readonly nu
  * Who an issue's task goes to: the session of its first assignee `github.owners` lists, in GitHub's order;
  * else its repository's session in `github.sessions`; else the lead.
  */
-export function issueOwner(issue: Pick<GithubIssue, 'repo' | 'assignees'>, rules: ImportRules): string {
+export function issueOwner(issue: Pick<HostIssue, 'repo' | 'assignees'>, rules: ImportRules): string {
   for (const login of issue.assignees) {
     const session = rules.owners.get(login.toLowerCase());
     if (session !== undefined) {
@@ -139,7 +140,7 @@ export function issueOwner(issue: Pick<GithubIssue, 'repo' | 'assignees'>, rules
   return rules.repoSessions.get(issue.repo) ?? rules.lead;
 }
 
-export function issueOutcome(issue: GithubIssue): IssueOutcome {
+export function issueOutcome(issue: HostIssue): IssueOutcome {
   if (issue.state === 'open') {
     return 'open';
   }

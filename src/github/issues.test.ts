@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
 import { isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
-import { issuePageArgs, listIssues, parseIssuePage, plainLine, type GithubIssue, type IssueListRequest } from './issues.ts';
+import type { HostIssue } from '../issues/issue.ts';
+import { issuePageArgs, listIssues, parseIssuePage, plainLine, type IssueListRequest } from './issues.ts';
 import { closedPageArgs, openPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -19,7 +20,7 @@ function spawnError(message: string, code: string): Error {
 }
 
 /** An issue of acme/web as read from what ghIssue gives when a test sets nothing. */
-function readIssue(number: number, overrides: Partial<GithubIssue> = {}): GithubIssue {
+function readIssue(number: number, overrides: Partial<HostIssue> = {}): HostIssue {
   return {
     repo: 'acme/web',
     number,
