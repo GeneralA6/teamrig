@@ -1,3 +1,4 @@
+import { interpreterDoubt, interpreterOf, interpreterText, readScriptFile, scriptMayPush } from './interpreters.ts';
 import { isAssignment, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
 import { Location, resolveDir } from './location.ts';
 import { redirectsInput, stdinUse } from './stdin.ts';
@@ -55,6 +56,8 @@ export interface FinderContext {
   readonly home: string;
   readonly dialect: ShellDialect;
   readonly git: GitConfigReader;
+  /** Reads a script file an interpreter runs (see interpreters.ts); undefined when unreadable. Defaults to the file system. */
+  readonly readScript?: (path: string) => string | undefined;
 }
 
 /** Git's own commands; an alias never overrides one. */
@@ -330,7 +333,6 @@ class GitInvocationFinder {
     const commands = dialect === 'bash' ? resolveLiteralVariables(parsed, depth === 0 ? location.home : undefined) : parsed.commands;
     let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
     for (const command of commands) {
-      command.words.forEach((word) => this.mention(word.text));
       let stdin = command.stdin;
       // A substitution's commands, read before the command that holds them, sit between a pipe's two ends.
       if (piped !== undefined && command.nesting <= piped.nesting) {
@@ -339,13 +341,19 @@ class GitInvocationFinder {
       }
       location.enter(command.subshells);
       const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
+      // An interpreter's words and stdin are its script, judged by visitCommand, not shell words that name a push:
+      // a python heredoc that posts a message saying "push" arms no doubt about the line.
+      const script = launched?.kind === 'program' && interpreterOf(launched) !== undefined;
+      if (!script) {
+        command.words.forEach((word) => this.mention(word.text));
+      }
       // A shell that runs a word as a script reads its substitutions as commands already.
       if (launched?.kind !== 'script') {
         this.visitHeld(command.words, location, depth);
       }
       if (stdin !== undefined) {
         const use = launched === undefined ? 'read' : stdinUse(command, launched);
-        if (use !== 'stored') {
+        if (use !== 'stored' && !script) {
           this.mention(stdin.text);
         }
         piped = use === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
@@ -406,6 +414,16 @@ class GitInvocationFinder {
         break;
       }
       case 'program': {
+        const language = interpreterOf(launched);
+        if (language !== undefined) {
+          const inner = location.child();
+          launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
+          const text = interpreterText(launched, stdin, inner.dir, this.context.readScript ?? readScriptFile);
+          if (scriptMayPush(text, language)) {
+            this.doubt(interpreterDoubt(language), false);
+          }
+          break;
+        }
         const name = programName(launched.program.text);
         const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
         if (name !== 'git' && (subcommand === undefined || !BUILTINS.has(subcommand))) {
