@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { type CheckOutcome, type Gh, ghWithToken, readChecks, verdictOf } from './github.ts';
+import { type CheckOutcome, type Gh, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
 import { type MergeOutcome, type PullRequest, findOpenPull, openPull, rebaseMerge } from './pulls.ts';
 import { sweepAfterMerge } from './leftovers.ts';
@@ -16,8 +16,8 @@ import { describeCredential } from './token-check.ts';
  * PR's head sha by the repo's gate in repos.json, refuse again if main moved meanwhile, then rebase-merge
  * pinned to that sha and confirm main's new tree is the tree the checks ran on. The gate is `ci` (wait until
  * every listed check passed on GitHub; a failed one stops at once, a missing or running one at the deadline
- * is a fail) or `local` (the head checked out clean in the repo dir, with a pass record for its tree, else
- * the local checks run there; see local-gate.ts). Before any GitHub call it refuses a change that renames a teamrig
+ * is a fail, and a job GitHub cancelled before any step ran is re-run once) or `local` (the head checked out
+ * clean in the repo dir, with a pass record for its tree, else the local checks run there; see local-gate.ts). Before any GitHub call it refuses a change that renames a teamrig
  * command while a consumer on this machine still calls only the old name (see renamed-callers.ts). Once merged,
  * it deletes the remote branches an earlier push of the same task left with no work main lacks (leftovers.ts).
  *
@@ -38,12 +38,37 @@ export interface Polling {
 
 export type ChecksResult = { verdict: 'passed' | 'failed' | 'timeout'; outcomes: CheckOutcome[] };
 
-export async function waitForChecks(gh: Gh, repo: string, sha: string, required: readonly string[], waiter: Waiter, polling: Polling): Promise<ChecksResult> {
+/** The checks that wait on a re-run, failed for the re-run call's error: nothing else can prove them. */
+const rerunRefused = (outcomes: readonly CheckOutcome[], message: string): ChecksResult => ({
+  verdict: 'failed',
+  outcomes: outcomes.map(outcome => (outcome.state === 'unstarted' ? { ...outcome, state: 'failed', detail: `${outcome.detail}; the re-run failed: ${message}`, reruns: [] } : outcome)),
+});
+
+/**
+ * Polls the required checks until they pass, one fails, or the deadline. A run whose required jobs GitHub cancelled
+ * before any step ran (no runner came) is re-run once, then waited on again; `evaluate` fails the same in a later
+ * attempt, and a run already re-run here is not re-run again while GitHub starts the new attempt.
+ */
+export async function waitForChecks(gh: Gh, repo: string, sha: string, required: readonly string[], waiter: Waiter, polling: Polling, log: (line: string) => void = () => {}): Promise<ChecksResult> {
   const deadline = waiter.now() + polling.timeoutMs;
+  const rerun = new Set<number>();
   for (;;) {
     const outcomes = readChecks(gh, repo, sha, required);
     const verdict = verdictOf(outcomes);
-    if (verdict !== 'waiting') return { verdict, outcomes };
+    if (verdict === 'passed' || verdict === 'failed') return { verdict, outcomes };
+    if (verdict === 'rerun') {
+      for (const runId of new Set(outcomes.flatMap(outcome => outcome.reruns))) {
+        if (rerun.has(runId)) continue;
+        rerun.add(runId);
+        const names = outcomes.filter(outcome => outcome.reruns.includes(runId)).map(outcome => outcome.name);
+        try {
+          rerunFailedJobs(gh, repo, runId);
+        } catch (error) {
+          return rerunRefused(outcomes, error instanceof Error ? error.message : String(error));
+        }
+        log(`re-ran run ${runId}: ${names.join(', ')} cancelled before any step ran (no runner came); waiting again, once`);
+      }
+    }
     if (waiter.now() >= deadline) return { verdict: 'timeout', outcomes };
     await waiter.sleep(Math.min(polling.intervalMs, Math.max(deadline - waiter.now(), 0)));
   }
@@ -78,11 +103,11 @@ export function ciProof(gh: Gh, repo: string, required: readonly string[], waite
   return {
     before: () => null,
     prove: async (sha, log) => {
-      const checks = await waitForChecks(gh, repo, sha, required, waiter, polling);
+      const checks = await waitForChecks(gh, repo, sha, required, waiter, polling, log);
       for (const outcome of checks.outcomes) log(`check ${outcome.state}: ${outcome.name} (${outcome.detail})`);
       if (checks.verdict === 'failed') return `failed: ${listed(checks.outcomes, 'failed')}`;
       if (checks.verdict === 'timeout') {
-        const open = [listed(checks.outcomes, 'pending'), listed(checks.outcomes, 'missing')].filter(part => part !== '').join('; ');
+        const open = [listed(checks.outcomes, 'pending'), listed(checks.outcomes, 'missing'), listed(checks.outcomes, 'unstarted')].filter(part => part !== '').join('; ');
         return `not green after ${Math.round(polling.timeoutMs / 60_000)} min: ${open}`;
       }
       return null;

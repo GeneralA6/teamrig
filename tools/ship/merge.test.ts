@@ -51,17 +51,24 @@ function fakeWaiter(): Waiter & { slept: number[] } {
   };
 }
 
-type JobState = readonly [name: string, status: string, conclusion: string | null];
+/** A job's name, status and conclusion; `unstarted` gives it no steps, as GitHub shows a job that never got a runner. */
+type JobState = readonly [name: string, status: string, conclusion: string | null, unstarted?: 'unstarted'];
 
 interface FakeGitHub {
   gh: ReturnType<typeof mock.fn<Gh>>;
   writes: string[][];
 }
 
-/** GitHub with one workflow run whose jobs move through `rounds`, one round per read of the jobs. */
-function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; merge?: string | Error }): FakeGitHub {
+const RERUN_PATH = `repos/${REPO}/actions/runs/1/rerun-failed-jobs`;
+
+/**
+ * GitHub with one workflow run whose jobs move through `rounds`, one round per read of the jobs. A re-run of the run
+ * makes its next attempt, or throws `rerun` when given.
+ */
+function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; merge?: string | Error; rerun?: Error }): FakeGitHub {
   const writes: string[][] = [];
   let round = 0;
+  let attempt = 1;
   const pull = (sha: string): string => JSON.stringify({ number: 3, html_url: `https://github.com/${REPO}/pull/3`, head: { ref: 'dev', sha }, base: { ref: 'main' } });
   const gh = mock.fn<Gh>(args => {
     const path = args[1] ?? '';
@@ -72,11 +79,16 @@ function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPul
       if (options.merge instanceof Error) throw options.merge;
       return options.merge ?? '{"sha":"main999","merged":true,"message":"merged"}';
     }
-    if (path.includes('/actions/runs?head_sha=')) return '{"workflow_runs":[{"id":1,"workflow_id":1,"event":"pull_request","run_number":1,"run_attempt":1}]}';
+    if (path === RERUN_PATH) {
+      if (options.rerun !== undefined) throw options.rerun;
+      attempt += 1;
+      return '';
+    }
+    if (path.includes('/actions/runs?head_sha=')) return JSON.stringify({ workflow_runs: [{ id: 1, workflow_id: 1, event: 'pull_request', run_number: 1, run_attempt: attempt }] });
     if (path.includes('/actions/runs/1/jobs')) {
       const jobs = options.rounds[Math.min(round, options.rounds.length - 1)] ?? [];
       round += 1;
-      return JSON.stringify({ jobs: jobs.map(([name, status, conclusion]) => ({ name, status, conclusion })) });
+      return JSON.stringify({ jobs: jobs.map(([name, status, conclusion, unstarted]) => ({ name, status, conclusion, steps: unstarted === undefined ? [{ name: 'Set up job' }] : [] })) });
     }
     if (path.endsWith('/status')) return '{"statuses":[]}';
     throw new Error(`unexpected gh ${args.join(' ')}`);
@@ -164,6 +176,63 @@ test('never merges on a failed or timed-out check, and says which', async () => 
   const timedOut = await mergeOnCi(slow.gh, fakeMain(), () => undefined);
   assert.deepEqual(timedOut.kind === 'refused' ? timedOut.reason : timedOut, 'not green after 10 min: gates (in_progress); test (no job or status of that name)');
   assert.ok(!slow.writes.some(args => args[1]?.endsWith('/merge')));
+});
+
+const macosUnstarted: JobState = ['test', 'completed', 'cancelled', 'unstarted'];
+
+test('a job GitHub cancelled before any step ran is re-run once, and the merge goes ahead once it passes (T2675)', async () => {
+  const { gh, writes } = fakeGitHub({ rounds: [[['gates', 'completed', 'success'], macosUnstarted], [['gates', 'completed', 'success'], ['test', 'queued', null]], green] });
+  const log: string[] = [];
+  const result = await mergeOnCi(gh, fakeMain(), line => log.push(line));
+  assert.equal(result.kind, 'merged');
+  assert.deepEqual(writes.filter(args => args[1] === RERUN_PATH), [['api', RERUN_PATH, '-X', 'POST']]);
+  assert.ok(log.includes('re-ran run 1: test cancelled before any step ran (no runner came); waiting again, once'), log.join('\n'));
+});
+
+test('a second cancel before any step ran refuses, and is never re-run again (T2675)', async () => {
+  const { gh, writes } = fakeGitHub({ rounds: [[['gates', 'completed', 'success'], macosUnstarted]] });
+  const result = await mergeOnCi(gh, fakeMain(), () => undefined);
+  assert.deepEqual(result.kind === 'refused' ? result.reason : result, 'failed: test (cancelled before any step ran, again on attempt 2)');
+  assert.equal(writes.filter(args => args[1] === RERUN_PATH).length, 1);
+});
+
+test('a job cancelled after a step ran, or a failure beside an unstarted job, refuses without a re-run (T2675)', async () => {
+  const started = fakeGitHub({ rounds: [[['gates', 'completed', 'success'], ['test', 'completed', 'cancelled']]] });
+  const cancelled = await mergeOnCi(started.gh, fakeMain(), () => undefined);
+  assert.deepEqual(cancelled.kind === 'refused' ? cancelled.reason : cancelled, 'failed: test (cancelled)');
+
+  const failing = fakeGitHub({ rounds: [[['gates', 'completed', 'failure'], macosUnstarted]] });
+  const failed = await mergeOnCi(failing.gh, fakeMain(), () => undefined);
+  assert.deepEqual(failed.kind === 'refused' ? failed.reason : failed, 'failed: gates (failure)');
+  assert.ok(![...started.writes, ...failing.writes].some(args => args[1] === RERUN_PATH));
+});
+
+test('an unstarted job waits for the rest of the run before its re-run (T2675)', async () => {
+  const { gh, writes } = fakeGitHub({ rounds: [[['gates', 'in_progress', null], macosUnstarted], [['gates', 'completed', 'success'], macosUnstarted], green] });
+  const waiter = fakeWaiter();
+  const result = await waitForChecks(gh, REPO, SHA, ['gates', 'test'], waiter, POLLING);
+  assert.equal(result.verdict, 'passed');
+  assert.equal(writes.filter(args => args[1] === RERUN_PATH).length, 1);
+  assert.equal(gh.mock.calls.findIndex(call => call.arguments[0][1] === RERUN_PATH) > gh.mock.calls.findIndex(call => (call.arguments[0][1] ?? '').includes('/jobs')), true);
+  assert.deepEqual(waiter.slept, [MINUTE, MINUTE]);
+});
+
+test('a re-run GitHub refuses fails the unstarted check with its error; one still waiting at the deadline is named (T2675)', async () => {
+  const refusing = fakeGitHub({ rounds: [[['gates', 'completed', 'success'], macosUnstarted]], rerun: new Error('gh api repos/Owner/repo/actions/runs/1/rerun-failed-jobs: HTTP 403') });
+  const refused = await mergeOnCi(refusing.gh, fakeMain(), () => undefined);
+  assert.deepEqual(
+    refused.kind === 'refused' ? refused.reason : refused,
+    'failed: test (cancelled before any step ran; the re-run failed: gh api repos/Owner/repo/actions/runs/1/rerun-failed-jobs: HTTP 403)',
+  );
+
+  // GitHub has not started the new attempt yet: the same run is not re-run twice, and the deadline names it.
+  const stuck = fakeGitHub({ rounds: [[['gates', 'completed', 'success'], macosUnstarted]] });
+  const sameAttempt: Gh = args => (args[1]?.includes('/actions/runs?head_sha=') === true ? '{"workflow_runs":[{"id":1,"workflow_id":1,"event":"pull_request","run_number":1,"run_attempt":1}]}' : stuck.gh(args));
+  const result = await waitForChecks(sameAttempt, REPO, SHA, ['gates', 'test'], fakeWaiter(), { timeoutMs: 2 * MINUTE, intervalMs: MINUTE });
+  assert.equal(result.verdict, 'timeout');
+  assert.equal(stuck.writes.filter(args => args[1] === RERUN_PATH).length, 1);
+  const timedOut = await ciProof(sameAttempt, REPO, ['gates', 'test'], fakeWaiter(), { timeoutMs: MINUTE, intervalMs: MINUTE }).prove(SHA, () => undefined);
+  assert.equal(timedOut, 'not green after 1 min: test (cancelled before any step ran)');
 });
 
 test('a merge GitHub refuses (not mergeable, head moved) is reported, not thrown', async () => {

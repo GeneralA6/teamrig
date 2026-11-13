@@ -6,6 +6,7 @@ import { listAt, numberAt, stringAt } from './json.ts';
  * The token is fine-grained, and fine-grained tokens get no Checks permission (a GitHub App one), so the
  * proof that a check passed comes from the Actions jobs of the head sha (Actions: read) and its commit
  * statuses (Commit statuses: read). A listed check that neither shows is missing, and missing is a fail.
+ * Actions: write lets the merge re-run a job GitHub cancelled before any step ran (`rerunFailedJobs`).
  */
 
 /**
@@ -50,6 +51,11 @@ export interface Job {
   name: string;
   status: string;
   conclusion: string | null;
+  /** The run the job belongs to, and which attempt of it the job is. */
+  runId: number;
+  runAttempt: number;
+  /** Whether any step of the job began: a job GitHub cancelled while it waited for a runner has none. */
+  started: boolean;
 }
 
 export interface CommitStatus {
@@ -57,12 +63,15 @@ export interface CommitStatus {
   state: string;
 }
 
-export type CheckState = 'passed' | 'failed' | 'pending' | 'missing';
+/** `unstarted`: every run of the check that did not pass is a job GitHub cancelled before any step ran, in a run's first attempt. */
+export type CheckState = 'passed' | 'failed' | 'pending' | 'missing' | 'unstarted';
 
 export interface CheckOutcome {
   name: string;
   state: CheckState;
   detail: string;
+  /** For an `unstarted` check, the runs whose cancelled jobs a re-run would start again; empty otherwise. */
+  reruns: readonly number[];
 }
 
 export function parseRuns(json: string): Run[] {
@@ -75,12 +84,29 @@ export function parseRuns(json: string): Run[] {
   }));
 }
 
-export function parseJobs(json: string): Job[] {
+/** The jobs of `run`'s latest attempt (`jobs?filter=latest`). */
+export function parseJobs(json: string, run: Pick<Run, 'id' | 'runAttempt'>): Job[] {
   return listAt(json, 'jobs', 'run jobs').map(job => {
     const conclusion = job['conclusion'];
-    return { name: stringAt(job, 'name', 'job'), status: stringAt(job, 'status', 'job'), conclusion: typeof conclusion === 'string' ? conclusion : null };
+    const steps = job['steps'];
+    return {
+      name: stringAt(job, 'name', 'job'),
+      status: stringAt(job, 'status', 'job'),
+      conclusion: typeof conclusion === 'string' ? conclusion : null,
+      runId: run.id,
+      runAttempt: run.runAttempt,
+      started: Array.isArray(steps) && steps.length > 0,
+    };
   });
 }
+
+/**
+ * A job GitHub cancelled before any step ran: it waited for a runner that never came (PR 937's macOS job, 15 min,
+ * no runner, no steps). Nothing of the change ran, so it says nothing about the change.
+ */
+export const cancelledUnstarted = (job: Job): boolean => job.status === 'completed' && job.conclusion === 'cancelled' && !job.started;
+
+const UNSTARTED = 'cancelled before any step ran';
 
 export function parseStatuses(json: string): CommitStatus[] {
   return listAt(json, 'statuses', 'combined status').map(status => ({ context: stringAt(status, 'context', 'status'), state: stringAt(status, 'state', 'status') }));
@@ -97,31 +123,54 @@ export function newestRuns(runs: readonly Run[]): Run[] {
   return [...newest.values()];
 }
 
-/** Each listed check must show up and every run of it must pass; skipped or neutral is not a pass. */
+function jobResult(job: Job): string {
+  if (job.status !== 'completed') return job.status;
+  if (!cancelledUnstarted(job)) return job.conclusion ?? 'none';
+  return job.runAttempt === 1 ? UNSTARTED : `${UNSTARTED}, again on attempt ${job.runAttempt}`;
+}
+
+/**
+ * Each listed check must show up and every run of it must pass; skipped or neutral is not a pass. A check whose only
+ * runs short of a pass are jobs cancelled before any step ran, in a run's first attempt, is `unstarted`: a re-run may
+ * still prove it. The same in a later attempt is a fail, so a runner that never comes is re-run once only.
+ */
 export function evaluate(required: readonly string[], jobs: readonly Job[], statuses: readonly CommitStatus[]): CheckOutcome[] {
-  return required.map(name => {
+  return required.map((name): CheckOutcome => {
     const ownJobs = jobs.filter(job => job.name === name);
     const ownStatuses = statuses.filter(status => status.context === name);
-    if (ownJobs.length === 0 && ownStatuses.length === 0) return { name, state: 'missing', detail: 'no job or status of that name' };
-    const results = [...ownJobs.map(job => (job.status === 'completed' ? (job.conclusion ?? 'none') : job.status)), ...ownStatuses.map(status => status.state)];
+    if (ownJobs.length === 0 && ownStatuses.length === 0) return { name, state: 'missing', detail: 'no job or status of that name', reruns: [] };
+    const results = [...ownJobs.map(jobResult), ...ownStatuses.map(status => status.state)];
     const detail = results.join(', ');
-    if (results.every(result => result === 'success')) return { name, state: 'passed', detail };
+    if (results.every(result => result === 'success')) return { name, state: 'passed', detail, reruns: [] };
     const running = ownJobs.some(job => job.status !== 'completed') || ownStatuses.some(status => status.state === 'pending');
-    return { name, state: running ? 'pending' : 'failed', detail };
+    if (running) return { name, state: 'pending', detail, reruns: [] };
+    const short = ownJobs.filter(job => job.conclusion !== 'success');
+    const firstAttemptUnstarted = short.every(job => cancelledUnstarted(job) && job.runAttempt === 1);
+    if (firstAttemptUnstarted && ownStatuses.every(status => status.state === 'success')) {
+      return { name, state: 'unstarted', detail, reruns: [...new Set(short.map(job => job.runId))] };
+    }
+    return { name, state: 'failed', detail, reruns: [] };
   });
 }
 
-export type Verdict = 'passed' | 'failed' | 'waiting';
+/** `rerun`: nothing failed or runs, and some check waits only on jobs cancelled before any step ran. */
+export type Verdict = 'passed' | 'failed' | 'waiting' | 'rerun';
 
 export function verdictOf(outcomes: readonly CheckOutcome[]): Verdict {
   if (outcomes.some(outcome => outcome.state === 'failed')) return 'failed';
-  return outcomes.every(outcome => outcome.state === 'passed') ? 'passed' : 'waiting';
+  if (outcomes.some(outcome => outcome.state === 'pending' || outcome.state === 'missing')) return 'waiting';
+  return outcomes.some(outcome => outcome.state === 'unstarted') ? 'rerun' : 'passed';
+}
+
+/** Starts the failed and cancelled jobs of a completed run again, as a new attempt of it (Actions: write). */
+export function rerunFailedJobs(gh: Gh, repo: string, runId: number): void {
+  gh(['api', `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`, '-X', 'POST']);
 }
 
 /** Every listed check of a commit, read from the Actions jobs and the commit statuses. */
 export function readChecks(gh: Gh, repo: string, sha: string, required: readonly string[]): CheckOutcome[] {
   const runs = newestRuns(parseRuns(gh(['api', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`])));
-  const jobs = runs.flatMap(run => parseJobs(gh(['api', `repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`])));
+  const jobs = runs.flatMap(run => parseJobs(gh(['api', `repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`]), run));
   const statuses = parseStatuses(gh(['api', `repos/${repo}/commits/${sha}/status`]));
   return evaluate(required, jobs, statuses);
 }
