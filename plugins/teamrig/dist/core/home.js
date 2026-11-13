@@ -110,6 +110,7 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         coldSends: join(state, 'cold-sends.jsonl'),
         meeting: join(state, 'meeting.json'),
         meetingBreakthrough: join(state, 'meeting-breakthrough.json'),
+        meetingSpotlit: join(state, 'meeting-spotlit.json'),
         meetings: join(state, 'meetings.jsonl'),
         meetingsLock: join(state, 'meetings.lock'),
         decisionsAsked: join(state, 'decisions-asked.json'),

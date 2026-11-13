@@ -9,8 +9,8 @@ import { agendaLines, agendaSince } from "../../meeting/agenda.js";
 import { mergeDigestLines } from "../../meeting/merges.js";
 import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
 import { MeetingSchedule } from "../../meeting/schedule.js";
-import { spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
-import { MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
+import { SPOTLIGHT_LOG, spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
+import { MEETING_LAPSE_MS, MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
 import { MergeLog } from "../../merge/merge-log.js";
 import { goalScores } from "../../register/goal-board.js";
 import { currentWeekOf } from "../../register/week.js";
@@ -134,8 +134,6 @@ async function mergeDigestOf(runtime, mk, since, { own, teams }) {
         gated: teams.some((rolled) => rolled.config.pushGuard.pushToProtected === 'gated'),
     };
 }
-/** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
-export const SPOTLIGHT_LOG = 'meeting-spotlight.log';
 /** The range of the stats the agenda opens with: the last week, as `stats` reads by default. */
 export const AGENDA_STATS_RANGE = '7d';
 /**
@@ -213,7 +211,8 @@ export async function meetingStart(args, runtime) {
     const spotlit = {
         title: sessionDisplay(mk.kit.paths.team, mk.leadName),
         meetingFile: mk.kit.paths.meeting,
-        meeting,
+        startedAt: meeting.startedAt,
+        until: Date.parse(meeting.startedAt) + MEETING_LAPSE_MS,
         breakthroughFile: mk.kit.paths.meetingBreakthrough,
         log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
     };
