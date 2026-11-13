@@ -99,8 +99,8 @@ test('the shipped repos.json still lists every job a teamrig pull request runs, 
   const tests = teamrig.checks.filter(check => check.startsWith('test ('));
   assert.deepEqual(tests, ['ubuntu-latest', 'windows-latest', 'macos-latest'].map(os => `test (${os}, node 22)`));
   const matrix = (key: string): string[] => (new RegExp(`^ {8}${key}: \\[([^\\]]+)\\]$`, 'm').exec(workflow)?.[1] ?? '').split(',').map(item => item.trim());
-  const run = new Set(matrix('os').flatMap(os => matrix('node').map(node => `test (${os}, node ${node})`)));
-  for (const check of tests) assert.ok(run.has(check), `repos.json waits for "${check}", which ci.yml's test matrix never runs`);
+  const run = matrix('os').flatMap(os => matrix('node').map(node => `test (${os}, node ${node})`));
+  assert.deepEqual(tests, run, 'repos.json must wait for exactly the test runs ci.yml\'s matrix makes');
   assert.equal(teamrig.checks.length, jobs.length + tests.length);
 });
 

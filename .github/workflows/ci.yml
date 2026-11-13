@@ -85,14 +85,14 @@ jobs:
 
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
-    # Each run tests all three OSes on node 22 and 24, since paths,
-    # renames and hook launch differ by OS (macOS minutes bill at 10x, Windows at 2x).
+    # Each run tests all three OSes, since paths, renames and hook launch differ by OS (macOS minutes
+    # bill at 10x, Windows at 2x). Node 22 only, to ease the shared free GitHub runners.
     if: ${{ !github.event.repository.private }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: [22, 24]
+        node: [22]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
