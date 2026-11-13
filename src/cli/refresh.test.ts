@@ -736,6 +736,17 @@ describe('runCli: live tasks in the start note', () => {
     assert.ok((await start(kit, 'compact')).endsWith(`\n${START}\n${week ?? ''}\n${LIVE}`), 'every compaction');
   });
 
+  it("gives the lead the account's resets in stock after the week line, and no other session (T2450)", async () => {
+    const resets = [{ kind: 'full', count: 1, expiresUtc: '2030-01-20 22:00', usedUtc: [] }];
+    const kit = new CliHarness({ ...TEAM, budget: { resets } });
+    await finishTask(kit, 'alpha');
+    await addTasks(kit);
+    const [week] = linesBeforeLive(await start(kit, 'compact'), 1);
+    assert.match(week ?? '', /^Week: /, "alpha's note: the week line stays the last before the block");
+    const lead = contextOf(await kit.run(['hook', 'session-start'], { env: { TEAMRIG_SESSION: 'lead' }, stdin: startPayload('compact') }));
+    assert.match(lead, /\nWeek: [^\n]*\nResets in stock: full 1 left, the next expiring 2030-01-20 22:00 UTC \(in 12 days\)\.\n/);
+  });
+
   it("names today's meetings the session is met in, as start does, before the week line (T1529)", async () => {
     const kit = new CliHarness();
     await finishTask(kit, 'alpha');

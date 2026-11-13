@@ -126,17 +126,19 @@ export interface BlockStart {
   readonly meetings: string | undefined;
   /** `start`'s week line (budget/report.ts weekLine), from the week as last stored; undefined when it could not be read. */
   readonly week: string | undefined;
+  /** The lead's resets line (budget/resets.ts resetSummaryLine); absent for any other session or with no grants. */
+  readonly resets?: string;
 }
 
 /**
  * The lines before the live-task block that make the note the session's work-block start (T1529): `start`'s first line
- * and what it means, its MEETINGS line when there is one, and its week line. A refreshed or compacted session ran
+ * and what it means, its MEETINGS line when there is one, its week line and the lead's resets line. A refreshed or compacted session ran
  * `start` right after the note in 4 of 5 starts (T1379), re-reading its whole context for what the note already holds;
  * `start` adds only the check flags and the list past the block's rows, so it waits for the next work block.
  */
 export function blockStartLines(owner: string, start: BlockStart, command: string): string[] {
   const counts = `${BLOCK_START_WORDS}, so run no \`${command} start\` now; it would add only the check flags and the rest of the list (run it at your next work block)`;
-  return [`START ${owner}, ${start.at}: ${counts}.`, ...(start.meetings === undefined ? [] : [start.meetings]), ...(start.week === undefined ? [] : [start.week])];
+  return [`START ${owner}, ${start.at}: ${counts}.`, ...(start.meetings === undefined ? [] : [start.meetings]), ...(start.week === undefined ? [] : [start.week]), ...(start.resets === undefined ? [] : [start.resets])];
 }
 
 /** The block's one line when the start note has no room for it (T1376): the command that prints it, run first. */
