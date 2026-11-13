@@ -88,6 +88,7 @@ const pipelineCommand = () => import('./commands/pipeline.ts');
 const mergeCommand = () => import('./commands/merge.ts');
 const deployCommand = () => import('./commands/deploy.ts');
 const freezeCommands = () => import('./commands/freeze.ts');
+const pipelineFreezeCommands = () => import('./commands/pipeline-freeze.ts');
 const stablePeriodsCommand = () => import('./commands/stable-periods.ts');
 const jobCommands = () => import('./commands/job.ts');
 const deployStatusCommand = () => import('./commands/deploy-status.ts');
@@ -259,6 +260,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   pipeline: { effect: 'read', flags: [], load: async () => (await pipelineCommand()).pipeline },
+  'pipeline freeze': { effect: 'write', flags: ['session', 'from', 'to', 'reason', 'kinds'], load: async () => (await pipelineFreezeCommands()).pipelineFreeze },
+  'pipeline unfreeze': { effect: 'write', flags: ['session'], load: async () => (await pipelineFreezeCommands()).pipelineUnfreeze },
   merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
   deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
   freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await freezeCommands()).freeze },
@@ -796,6 +799,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       sharing the host, a heavy one named so: run time, MB held, tree use), WAITING (the line in the
       order steps are let in: how long each waited and what its ticket says it waits on, with that
       wait's numbers), REFUSED (queued steps of the last 24h that waited and did not run)
+  pipeline freeze --to <time> --reason "<why>" [--from <time>] [--kinds <a,b>] [--session <id|name>]
+      a pipeline freeze, say for a PC downtime: from --from (default now) to --to, no new step of
+      --kinds (build,test,lint,push,merge,deploy,other; default every kind) starts on this host: queue,
+      merge and deploy are REFUSED naming its end and id; running steps finish. At most 7 days; the
+      lead or the delivery owner only; REFUSED for a start in the past or a secret in the reason
+  pipeline unfreeze <id> [--session <id|name>]   ends pipeline freeze <id> (F3) now, or drops one
+      still to come; the lead or the delivery owner only
   merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
       here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new, a dependency change delivery.repos.<name>.dependencyGate holds and
