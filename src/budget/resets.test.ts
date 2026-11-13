@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ResetStock } from '../config/types.ts';
 import { TimeZone } from '../core/zone.ts';
-import { daysToExpiry, resetStockLines, resetsLeft } from './resets.ts';
+import { daysToExpiry, resetStockLines, resetSummaryLine, resetsLeft } from './resets.ts';
 
 const NOW = Date.parse('2030-01-01T12:00:00Z');
 
@@ -62,5 +62,36 @@ describe('resetStockLines', () => {
       'Resets in stock:',
       '  fable: 3 of 3 left, expiry unreadable (soon)',
     ]);
+  });
+});
+
+describe('resetSummaryLine', () => {
+  it('says nothing when the account lists no grants', () => {
+    assert.equal(resetSummaryLine([], NOW, TimeZone.UTC, 'teamrig'), undefined);
+  });
+
+  it('sums the uses left per kind with the soonest expiry, in the order the config lists the kinds (T2450)', () => {
+    const laterFable: ResetStock = { ...FABLE, count: 2, expiresUtc: '2030-06-01 08:00', usedUtc: ['2029-12-20 10:00'] };
+    assert.equal(
+      resetSummaryLine([laterFable, FULL, FABLE], NOW, TimeZone.UTC, 'teamrig'),
+      'Resets in stock: fable 4 left, the next expiring 2030-03-01 08:00 UTC (in 58 days); full 1 left, the next expiring 2030-01-02 22:00 UTC (in 1 day).',
+    );
+  });
+
+  it('leaves out grants used up, expired or with an expiry it cannot read', () => {
+    const usedUp: ResetStock = { ...FABLE, count: 1, expiresUtc: '2030-01-05 08:00', usedUtc: ['2029-12-20 10:00'] };
+    const expired: ResetStock = { ...FABLE, expiresUtc: '2029-12-31 08:00' };
+    const unreadable: ResetStock = { ...FABLE, expiresUtc: 'soon' };
+    assert.equal(
+      resetSummaryLine([usedUp, expired, unreadable, FABLE], NOW, TimeZone.UTC, 'teamrig'),
+      'Resets in stock: fable 3 left, the next expiring 2030-03-01 08:00 UTC (in 58 days).',
+    );
+  });
+
+  it('says none are left, and where the grants are listed, when every grant is used up or expired', () => {
+    assert.equal(
+      resetSummaryLine([{ ...BARE_FULL, usedUtc: ['2029-12-30 10:00'] }, { ...FABLE, expiresUtc: '2029-12-31 08:00' }], NOW, TimeZone.UTC, 'teamrig'),
+      'Resets in stock: none left (`teamrig budget` lists the grants).',
+    );
   });
 });
