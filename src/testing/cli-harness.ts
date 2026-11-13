@@ -25,6 +25,7 @@ import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
+import type { HostCpu } from '../delivery/cpu.ts';
 import type { HostMemory } from '../delivery/memory.ts';
 import type { StarterWatch } from '../delivery/starter-watch.ts';
 import type { StepRunner } from '../delivery/steps.ts';
@@ -156,6 +157,8 @@ export interface RunOptions {
   readonly steps?: StepRunner;
   /** The host memory (queue's watch, `teamrig sessions`); default one that lists no process and measures nothing. */
   readonly memory?: HostMemory;
+  /** The host CPU a heavy queued step's admission reads; default an idle one. */
+  readonly cpu?: HostCpu;
   /** The processes that started a `teamrig queue` run; default a shell and its Claude Code, which never end. */
   readonly starters?: StarterWatch;
   /** The git `teamrig merge` drives; default the fake repository at /w/feat (testing/fake-merge-git.ts). */
@@ -243,6 +246,7 @@ export class CliHarness {
       ...(options.restore === undefined ? {} : { restore: options.restore }),
       ...(options.steps === undefined ? {} : { steps: options.steps }),
       ...(options.memory === undefined ? {} : { memory: options.memory }),
+      ...(options.cpu === undefined ? {} : { cpu: options.cpu }),
       ...(options.starters === undefined ? {} : { starters: options.starters }),
       ...(options.mergeGit === undefined ? {} : { mergeGit: options.mergeGit }),
       ...(options.trees === undefined ? {} : { trees: options.trees }),

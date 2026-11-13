@@ -32,7 +32,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
       schedule: {},
-      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, heavyIdleCpuPct: 25 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },
@@ -562,7 +562,7 @@ describe('parseConfig', () => {
   it('keeps the delivery folder, host lock and queued step limits', () => {
     const delivery = {
       dir: 'data/deploys',
-      queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512, heavyReserveMb: 1024, admission: 'serial', agingMinutes: 0, perSessionRunning: 0, maxHeavyParallel: 3 },
+      queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512, heavyReserveMb: 1024, admission: 'serial', agingMinutes: 0, perSessionRunning: 0, maxHeavyParallel: 3, heavyIdleCpuPct: 0 },
       wait: { pollSeconds: 5, maxMinutes: 0 },
       checkTimeoutSeconds: 45,
       freezes: { maxMinutes: 90 },
@@ -805,12 +805,13 @@ describe('parseConfig', () => {
   it('reports an empty delivery folder or lock path, limits out of range and an unknown admission word', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      delivery: { dir: ' ', queue: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577, heavyReserveMb: -1, admission: 'fifo', agingMinutes: 1441, perSessionRunning: -1, maxHeavyParallel: 0 }, wait: { pollSeconds: 0 } },
+      delivery: { dir: ' ', queue: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577, heavyReserveMb: -1, admission: 'fifo', agingMinutes: 1441, perSessionRunning: -1, maxHeavyParallel: 0, heavyIdleCpuPct: 101 }, wait: { pollSeconds: 0 } },
     });
     assert.deepEqual(paths(issues).sort(), [
       'delivery.dir',
       'delivery.queue.admission',
       'delivery.queue.agingMinutes',
+      'delivery.queue.heavyIdleCpuPct',
       'delivery.queue.heavyReserveMb',
       'delivery.queue.lockPath',
       'delivery.queue.lockTtlMinutes',
@@ -825,7 +826,7 @@ describe('parseConfig', () => {
     assert.equal(issues.find((issue) => issue.path === 'delivery.queue.admission')?.message, 'expected one of pipeline, serial (got "fifo")');
     assert.deepEqual(config.delivery, {
       schedule: {},
-      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, heavyIdleCpuPct: 25 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },

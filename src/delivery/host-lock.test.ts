@@ -11,10 +11,12 @@ import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import type { Files } from '../core/files.ts';
+import { FakeHostCpu } from '../testing/fake-host-cpu.ts';
 import { FakeHostMemory, noLoadingTabs } from '../testing/fake-host-memory.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { AdmissionRules } from './admission.ts';
 import type { OpenCharge } from './class-turns.ts';
+import { CpuGate } from './cpu.ts';
 import {
   busyText,
   FIRST_IN_LINE_POLL_MS,
@@ -84,12 +86,16 @@ const SMALL: StepNeed = { shares: true, reserveMb: 2048 };
 /** The gate's gaps between its reads take no time here (memory-gate.test.ts times them), so a spec's sleeps stay the lock's own. */
 const noGap: Sleep = async () => undefined;
 
+/** The CPU gate's idle share in these specs: the config default of `delivery.queue.heavyIdleCpuPct`. */
+const CPU_NEED_PCT = 25;
+
 /**
  * The host lock over files in memory at 10:00, with this process and `OTHER` running; `sleep` default the clock's.
  * With `memory`, every step passes a memory gate ({@link GATE}) over that host first; with `admission`, the line is
- * ordered by those rules.
+ * ordered by those rules; with `cpu`, a heavy step joining another passes a CPU gate over that host needing
+ * {@link CPU_NEED_PCT} idle.
  */
-function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep, memory?: FakeHostMemory, admission?: AdmissionRules): World {
+function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep, memory?: FakeHostMemory, admission?: AdmissionRules, cpu?: FakeHostCpu): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
   const running = new Set([ME, OTHER]);
@@ -107,6 +113,7 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
     },
     ...(memory === undefined ? {} : { memory: new MemoryGate(memory, noGap, GATE, noLoadingTabs) }),
     ...(admission === undefined ? {} : { admission }),
+    ...(cpu === undefined ? {} : { cpu: new CpuGate(cpu, noGap, CPU_NEED_PCT) }),
   });
   return { files, clock, running, lock };
 }
@@ -1142,7 +1149,7 @@ describe('HostLock waitingOn: what a waiter says it waits on (T2209)', () => {
     const known = waiterOf('2030-01-08T09:58:00.000Z', { id: 'known', waitingOn: HELD_BY_PO });
     const later = waiterOf('2030-01-08T09:59:00.000Z');
     const [path] = ticket(later);
-    const text = JSON.stringify({ ...onDisk(later), waitingOn: { reason: 'cpu', text: 'host CPU busy', since: '2030-01-08T09:59:00.000Z' } });
+    const text = JSON.stringify({ ...onDisk(later), waitingOn: { reason: 'disk', text: 'host disk busy', since: '2030-01-08T09:59:00.000Z' } });
     const { files, lock } = world(Object.fromEntries([ticket(known), [path, text]]));
     const told: number[] = [];
     const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, (_holder, ahead) => told.push(ahead));
@@ -1706,5 +1713,50 @@ describe('HostLock heavy shares (T2210)', () => {
       [holderText(capped, TimeZone.UTC), busyText(capped, TimeZone.UTC), waitText(capped, 1, TimeZone.UTC)],
       [cappedText, `heavy cap still reached: ${cappedText}`, `${cappedText}; 1 ahead in line`],
     );
+  });
+});
+
+describe('HostLock CPU room for a second heavy step (T2700)', () => {
+  const busyCpuText = 'host CPU 10% idle, 25% needed (delivery.queue.heavyIdleCpuPct) beside 1 heavy step: po (heavy: build) since 2030-01-08 09:50 UTC';
+
+  it('keeps a second heavy step waiting while the CPU is too busy beside a heavy step, saying so on its ticket, and lets it in once enough is idle', async () => {
+    const running = heavyOf();
+    const cpu = new FakeHostCpu().idles(10, 25);
+    const seen: (WaitingOn | undefined)[] = [];
+    const { clock, lock } = world(
+      Object.fromEntries([shareFile(running)]),
+      (time, store) => async (ms) => {
+        seen.push(await waitingOnOf(store, time));
+        await time.sleep(ms);
+      },
+      new FakeHostMemory(16_000),
+      PIPELINE,
+      cpu,
+    );
+    const told: string[] = [];
+    const taking = await lock.acquire('alpha', 'heavy: build', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)), { request: REQUEST });
+    assert.deepEqual(told, [busyCpuText]);
+    const onTicket = 'host CPU 10% idle, 25% needed (delivery.queue.heavyIdleCpuPct) beside 1 heavy step: po (heavy: build) since 2030-01-08 11:50 IST';
+    assert.deepEqual(seen, [{ reason: 'cpu', text: onTicket, since: '2030-01-08T10:00:00.000Z' }]);
+    assert.deepEqual([clock.sleeps, taking.kind === 'taken' ? taking.sharing : undefined, cpu.reads], [[FIRST_IN_LINE_POLL_MS], { freeMb: 16_000, others: [running], heavy: true }, 4]);
+  });
+
+  it('refuses a second heavy step whose wait runs out on a busy CPU, writing no share, and says the CPU is still busy', async () => {
+    const running = heavyOf();
+    const { files, lock } = world(Object.fromEntries([shareFile(running)]), undefined, new FakeHostMemory(16_000), PIPELINE, new FakeHostCpu(10));
+    const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: REQUEST });
+    assert.deepEqual([taking, await files.list(SHARED)], [{ kind: 'busy', holder: { kind: 'cpu', idlePct: 10, needPct: 25, running: [running] } }, ['other.json']]);
+    const holder: LockWait = { kind: 'cpu', idlePct: 10, needPct: 25, running: [running] };
+    assert.deepEqual([holderText(holder, TimeZone.UTC), busyText(holder, TimeZone.UTC), waitText(holder, 1, TimeZone.UTC)], [busyCpuText, `host CPU still busy: ${busyCpuText}`, `${busyCpuText}; 1 ahead in line`]);
+  });
+
+  it('never reads the CPU for a heavy step alone on the host, nor for a small step beside a heavy one', async () => {
+    const lone = new FakeHostCpu(0);
+    const alone = world({}, undefined, new FakeHostMemory(16_000), PIPELINE, lone);
+    const heavy = await alone.lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: REQUEST });
+    const beside = new FakeHostCpu(0);
+    const shared = world(Object.fromEntries([shareFile(heavyOf())]), undefined, new FakeHostMemory(16_000), PIPELINE, beside);
+    const small = await shared.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    assert.deepEqual([heavy.kind, small.kind, lone.reads, beside.reads], ['taken', 'taken', 0, 0]);
   });
 });

@@ -936,6 +936,12 @@ export interface QueueConfig {
    * waiting for every share to end.
    */
   readonly maxHeavyParallel: number;
+  /**
+   * In `pipeline` admission, a heavy queued step joins another heavy one already sharing the host only while at least
+   * this % of the host's CPU time is idle (read over 2 seconds), as two test runs fanned out over every core slow each
+   * other until their time limits fire; a heavy step alone on the host never waits on CPU; 0 reads no CPU.
+   */
+  readonly heavyIdleCpuPct: number;
 }
 
 /** How a delivery step waits. */

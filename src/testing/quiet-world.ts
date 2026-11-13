@@ -4,6 +4,7 @@ import { FakeCredentials } from './fake-credentials.ts';
 import { FakeExecSpawner } from './fake-exec-spawner.ts';
 import { FakeWebhook } from './fake-webhook.ts';
 import { FakeGh } from './fake-gh.ts';
+import { FakeHostCpu } from './fake-host-cpu.ts';
 import { FakeHostMemory } from './fake-host-memory.ts';
 import { FakeHooks } from './fake-hooks.ts';
 import { FakeMergeGit } from './fake-merge-git.ts';
@@ -18,7 +19,7 @@ import { noWorktrees } from './fake-worktrees.ts';
 import { quietRestore } from './fake-restore.ts';
 
 /** The parts of a CLI run that reach outside the kit: git, the commit log, stdin and the operating system. */
-export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'starters' | 'newId'>;
+export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'cpu' | 'starters' | 'newId'>;
 
 /**
  * The MB free on a quiet host: over the default floor plus a heavy step's reserve, so no step waits on the memory
@@ -32,7 +33,7 @@ export const ROOMY_FREE_MB = 16_000;
  * so nothing starts and no session process runs, a shell command prints nothing and exits 0, gh sees no repository and no token is saved; its requirements check finds
  * nothing missing, and there are no transcripts and no worktrees; merge finds only the fake repository at /w/feat
  * (testing/fake-merge-git.ts) and a pre-push check no repository, a queued step and each program a deploy runs exit 0 at once while the shell that started it
- * runs on, the host has room in memory for any queued step (`ROOMY_FREE_MB` free), the package registry holds no package, a privileged command `teamrig exec` runs exits 0 in a clean checkout of the
+ * runs on, the host has room in memory for any queued step (`ROOMY_FREE_MB` free) and an idle CPU, the package registry holds no package, a privileged command `teamrig exec` runs exits 0 in a clean checkout of the
  * fixture request's repository (testing/fake-checkout.ts), and new ids count up: `id-1`, `id-2`.
  */
 export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideWorld {
@@ -64,6 +65,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     webhook: new FakeWebhook(),
     steps: new FakeSteps(),
     memory: new FakeHostMemory(ROOMY_FREE_MB),
+    cpu: new FakeHostCpu(),
     starters: new FakeStarterWatch(),
     newId: () => {
       ids += 1;

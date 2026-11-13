@@ -1,5 +1,6 @@
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
+import type { HostCpu } from '../delivery/cpu.ts';
 import type { HostMemory } from '../delivery/memory.ts';
 import type { TreeState } from '../delivery/push-pass.ts';
 import type { StarterWatch } from '../delivery/starter-watch.ts';
@@ -75,6 +76,8 @@ export interface CliRuntime {
   readonly steps: StepRunner;
   /** The host's free memory, processes and commit charge, and a watch of a queued step's process tree (its ledger record). */
   readonly memory: HostMemory;
+  /** The host's CPU time, which a heavy queued step's admission reads for idle CPU (T2700). */
+  readonly cpu: HostCpu;
   /** The processes that started this one, so a queued step whose launching shell was ended stops too. */
   readonly starters: StarterWatch;
   /** The GitHub CLI, for `teamrig gh sync`; it runs reads only (github/gh.ts). */
