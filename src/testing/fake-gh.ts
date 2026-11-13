@@ -1,5 +1,5 @@
 import { stringField, type JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
+import { isIssueClose, isIssueComment, isIssueCreate, isPullRead, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
@@ -98,6 +98,8 @@ export class FakeGh implements GhRunner {
   private readonly issues = new Map<string, readonly JsonRecord[]>();
   private readonly canned = new Map<string, GhResult>();
   private readonly createFailures = new Map<string, GhResult>();
+  /** Pull requests by `owner/name/pulls/<number>`: the head branch and the repository it lives in (null: a fork since deleted). */
+  private readonly pulls = new Map<string, { readonly branch: string; readonly repo: string | null }>();
   private failure: Error | undefined;
   private writeFailure: GhResult | undefined;
   private pageSize = ISSUE_PAGE_SIZE;
@@ -132,6 +134,12 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
+  /** From now on, `repo` has pull request `number` from `branch` of `headRepo` (`repo` unless set; null: a deleted fork). */
+  opensPull(repo: string, number: number, branch: string, headRepo: string | null = repo): this {
+    this.pulls.set(`${repo}/pulls/${number}`, { branch, repo: headRepo });
+    return this;
+  }
+
   /** From now on, a comment on or the close of an issue ends as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
@@ -148,6 +156,9 @@ export class FakeGh implements GhRunner {
     }
     if (isIssueComment(request.args) || isIssueClose(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
+    }
+    if (isPullRead(request.args)) {
+      return this.pull(request.args[1] ?? '');
     }
     const repo = ghRepoOf(request.args);
     const canned = this.canned.get(repo);
@@ -173,6 +184,24 @@ export class FakeGh implements GhRunner {
     const nodes = held.slice(offset, offset + this.pageSize);
     const pageInfo = { hasNextPage: offset + nodes.length < held.length, endCursor: nodes.length === 0 ? null : String(offset + nodes.length) };
     return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository: { issues: { pageInfo, nodes } } } }), stderr: '' };
+  }
+
+  /**
+   * A pull request read as GitHub's REST API answers it: the pull request with its head, or 404 for a number that is
+   * an issue or not there. A repository given `answers` ends as given.
+   */
+  private pull(path: string): GhResult {
+    const key = path.slice('repos/'.length);
+    const canned = this.canned.get(key.slice(0, key.indexOf('/pulls/')));
+    if (canned !== undefined) {
+      return canned;
+    }
+    const pull = this.pulls.get(key);
+    if (pull === undefined) {
+      return { end: { kind: 'exited', code: 1 }, stdout: JSON.stringify({ message: 'Not Found', status: '404' }), stderr: 'gh: Not Found (HTTP 404)\n' };
+    }
+    const head = { ref: pull.branch, repo: pull.repo === null ? null : { full_name: pull.repo } };
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ number: Number(key.slice(key.lastIndexOf('/') + 1)), head }), stderr: '' };
   }
 
   /**

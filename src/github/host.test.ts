@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh } from '../testing/fake-gh.ts';
-import { isIssueClose, isIssueComment } from './gh.ts';
-import { GitHubIssueHost } from './host.ts';
+import { isIssueClose, isIssueComment, isPullRead } from './gh.ts';
+import { GitHubIssueHost, headIn } from './host.ts';
 import { RepoTokens } from './tokens.ts';
 
 const ENV = { HOME: '/u' };
@@ -68,5 +68,38 @@ describe('GitHubIssueHost', () => {
     assert.ok(notInstalled.kind === 'failed' && notInstalled.reason.startsWith('gh, the GitHub CLI, is not installed'));
     const stopped = new FakeGh().failsWrite({ end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
     assert.deepEqual(await hostWith(stopped).comment(TARGET, 'Thanks'), { kind: 'failed', reason: 'gh was stopped (SIGTERM) on its way to comment on acme/web#7: look on GitHub before a rerun' });
+  });
+
+  it("reads a pull request's head through the allowlisted GET, with the token, and writes nothing (T2705)", async () => {
+    const gh = new FakeGh().opensPull('acme/web', 7, 't12-fix').opensPull('acme/web', 8, 't12-fix', 'Stranger/Web');
+    const host = hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'acme-issues-token'));
+    assert.deepEqual(await host.headOf(TARGET), { kind: 'pull', branch: 't12-fix', repo: 'acme/web' });
+    assert.deepEqual(await host.headOf({ repo: 'acme/web', number: 8 }), { kind: 'pull', branch: 't12-fix', repo: 'stranger/web' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/pulls/7'], ['api', 'repos/acme/web/pulls/8']]);
+    assert.ok(gh.ran.every((request) => isPullRead(request.args) && request.env['GH_TOKEN'] === 'acme-issues-token'));
+  });
+
+  it("reads an issue's number, or one not there, as no pull request, and names any other failure", async () => {
+    assert.deepEqual(await hostWith(new FakeGh()).headOf(TARGET), { kind: 'no-pull' });
+    const denied = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' });
+    const end = await hostWith(denied).headOf(TARGET);
+    assert.ok(end.kind === 'failed' && end.reason.startsWith('the gh login may not read acme/web#7'), JSON.stringify(end));
+    const locked = await hostWith(new FakeGh(), new FakeCredentials().failsOn('teamrig-gh-acme', 'locked')).headOf(TARGET);
+    assert.ok(locked.kind === 'failed' && locked.reason.includes('locked'));
+    const odd = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 0 }, stdout: '{"number":7}', stderr: '' });
+    assert.deepEqual(await hostWith(odd).headOf(TARGET), { kind: 'failed', reason: "GitHub's answer for acme/web#7 names no head branch: look at it on GitHub" });
+  });
+});
+
+describe('headIn', () => {
+  it('reads the head branch and its repository in lowercase, null for a deleted fork', () => {
+    assert.deepEqual(headIn('{"head":{"ref":"t1-x","repo":{"full_name":"Acme/Web"}}}'), { kind: 'pull', branch: 't1-x', repo: 'acme/web' });
+    assert.deepEqual(headIn('{"head":{"ref":"t1-x","repo":null}}'), { kind: 'pull', branch: 't1-x', repo: null });
+  });
+
+  it('finds no head in text that is not JSON, not an object, or has no head branch', () => {
+    for (const text of ['not json', '[]', '{}', '{"head":null}', '{"head":{"ref":""}}', '{"head":{"ref":7}}']) {
+      assert.equal(headIn(text), undefined, text);
+    }
   });
 });
