@@ -540,7 +540,10 @@ test('a branch main moved past is refused before any pull request; a merge onto 
 test("once merged, drifted or not, it sweeps the merged head's leftovers; a refusal sweeps nothing", async () => {
   const merged = runFixture();
   assert.equal(await runMerge(ARGS, merged.deps), 0);
-  assert.deepEqual(merged.sweep.mock.calls.map(call => [call.arguments[0], call.arguments[1].main]), [[BRANCH, 'main']]);
+  assert.deepEqual(
+    merged.sweep.mock.calls.map(call => [call.arguments[0], call.arguments[1].main, call.arguments[2] === merged.ghFor.mock.calls[0]?.result]),
+    [[{ repo: REPO, head: BRANCH, sha: SHA }, 'main', true]],
+  );
   const drifted = runFixture({ mergedTree: 'tree-other' });
   assert.equal(await runMerge(ARGS, drifted.deps), 1);
   assert.equal(drifted.sweep.mock.callCount(), 1);
