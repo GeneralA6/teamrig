@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { formatRefreshRequest, formatRefreshState, parseRefreshRequest, parseRefreshState, type RefreshState } from './state.ts';
 
 const AT = '2030-01-08T10:00:00.000Z';
@@ -27,7 +28,7 @@ describe('refresh state files', () => {
   it('reads back every phase it writes, as one versioned line', () => {
     for (const state of EVERY_PHASE) {
       const text = formatRefreshState(state);
-      assert.match(text, /^\{"v":1,"phase":"[a-z]+",.*\}\n$/);
+      assert.match(text, /^\{"v":2,"phase":"[a-z]+",.*\}\n$/);
       assert.deepEqual(parseRefreshState(text), state);
     }
   });
@@ -37,7 +38,7 @@ describe('refresh state files', () => {
       '',
       '{"v":1,"phase":"boundary","task":"T1"',
       '{"phase":"boundary","task":"T1","at":"x"}',
-      '{"v":2,"phase":"boundary","task":"T1","at":"x"}',
+      '{"v":3,"phase":"boundary","task":"T1","at":"x"}',
       '{"v":1,"phase":"later","task":"T1","at":"x"}',
       '{"v":1,"phase":"boundary","at":"x"}',
       '{"v":1,"phase":"boundary","task":"T1"}',
@@ -103,5 +104,30 @@ describe('refresh state files', () => {
     assert.equal(parseRefreshRequest('{"v":1,"at":"x"}'), undefined);
     assert.equal(parseRefreshRequest('{"v":2,"by":"lead","at":"x"}'), undefined);
     assert.equal(parseRefreshRequest('nope'), undefined);
+  });
+});
+
+describe('the baseline field ', () => {
+  it('round-trips a measured or pending baseline, reads a file without one as none, and refuses a bad one', () => {
+    for (const state of [
+      { phase: 'refreshed', task: 'T1', at: '2030-01-08T10:00:00.000Z', baseline: null },
+      { phase: 'refreshed', task: null, at: '2030-01-08T10:00:00.000Z', baseline: 130_000 },
+      { phase: 'idle', task: 'T1', at: '2030-01-08T10:00:00.000Z', tokens: 140_000, finished: 2, baseline: 130_000 },
+      { phase: 'boundary', task: 'T1', at: '2030-01-08T10:00:00.000Z', finished: 1, ask: null, baseline: null },
+      { phase: 'idle', task: 'T1', at: '2030-01-08T10:00:00.000Z', tokens: null, finished: 0 },
+    ] satisfies RefreshState[]) {
+      assert.deepEqual(parseRefreshState(formatRefreshState(state)), state, `${state.phase} ${String('baseline' in state ? state.baseline : 'none')}`);
+    }
+    assert.equal(parseRefreshState(formatRefreshState({ phase: 'refreshed', task: 'T1', at: 'x' }).replace('}', ',"baseline":-1}')), undefined);
+  });
+});
+
+describe('the state file format', () => {
+  it('writes format 2, reads format 1 as a file with no baseline, and pins the fields of the format', () => {
+    const old = '{"v":1,"phase":"idle","task":"T1","at":"x","tokens":5,"finished":2}';
+    assert.deepEqual(parseRefreshState(old), { phase: 'idle', task: 'T1', at: 'x', tokens: 5, finished: 2 });
+    const state: RefreshState = { phase: 'boundary', task: 'T1', at: AT, finished: 1, ask: { task: 'T0', at: AT, tokens: 1, handoverHash: 'h', fixHash: 'f' }, baseline: 7 };
+    const written = JSON.parse(formatRefreshState(state));
+    assert.deepEqual(fieldPaths(written), ['ask.at', 'ask.fixHash', 'ask.handoverHash', 'ask.task', 'ask.tokens', 'at', 'baseline', 'finished', 'phase', 'task', 'v']);
   });
 });

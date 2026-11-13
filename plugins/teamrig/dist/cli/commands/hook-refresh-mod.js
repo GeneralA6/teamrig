@@ -1,4 +1,5 @@
 import { claudeProjectsDir, findTranscript } from "../../budget/discover.js";
+import { sessionRefreshOf } from "../../config/refresh.js";
 import { isNonNegativeInteger, isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
@@ -58,7 +59,7 @@ async function transcriptOf(runtime, payload) {
 function askContextOf(runtime, scope, store) {
     const { config, roster, id } = scope;
     return {
-        settings: config.refresh,
+        settings: sessionRefreshOf(config, id),
         now: new Date(runtime.clock.now()).toISOString(),
         session: { id, team: scope.kit.paths.team, name: roster.nameOf(id) ?? id },
         handoverPath: store.handoverPath(id),
@@ -98,6 +99,10 @@ export async function refreshMid(args, runtime) {
             await store.setState(scope.id, decision.state);
             return answer(runtime, { kind: 'ask', text: decision.reason, nextAt: decision.nextAt });
         case 'none':
+            if (decision.state !== undefined) {
+                // A fresh start's first measure: its baseline.
+                await store.setState(scope.id, decision.state);
+            }
             return answer(runtime, { kind: 'wait', nextAt: decision.nextAt });
         case 'measure':
             // Asked only without the due facts, which the second decision has.

@@ -95,7 +95,10 @@ sequenceDiagram
   long task refreshes before Claude Code compacts it; at a task end (`set <id> --status done`) it names the task.
   A session that goes on without its fresh start (you typed, or never typed `/clear`) is asked again at its next
   task end, or once its context grew a fifth of `refresh.contextTokens` more; a compaction or a `/clear` brings
-  the ask back to the threshold.
+  the ask back to the threshold. A fresh start (a `/clear`, a new process) only measures its context at its first
+  turn end, asking nothing, and a size or task-count ask then waits until the context grew that fifth past the
+  measure: a session whose fresh start already sits over the threshold (its system prompt, rules and handover) is
+  not asked to refresh again before it did any work.
 - A session busy in one long turn is asked within it: after each tool result teamrig's mod checks the context, and
   past the threshold it adds the ask to the result (finish the step, write the handover, end the turn). Until the
   fresh start, Claude Code's own compaction waits, up to `refresh.compactCeilingTokens` (185,000 by default, 15k
@@ -103,7 +106,7 @@ sequenceDiagram
 - An owner's meeting is never cut off: while the daily meeting is open, the lead is not asked and not restarted,
   and while a booked one started with `teamrig meeting start M<n>` is on, neither are the session met and those
   joining, up to `refresh.compactCeilingTokens`; the end of the turn that runs `teamrig meeting end` asks at once.
-- Two rules in the team config ask for it. `refresh.contextTokens` (120,000 by default) refreshes at that size,
+- Two rules in the team config ask for it. `refresh.contextTokens` (120,000 by default; `refresh.largeWindowContextTokens`, 250,000, for a session launched on a 1M window, a `[1m]` model) refreshes at that size,
   well before Claude Code compacts a 200k window at about 167k. `refresh.everyTasks` (3 by default) refreshes at
   every third finished task once the context is at `refresh.everyTasksMinTokens` (80,000) or more, so a session
   that grows slowly still gets a fresh start; a `/clear`, a new process or a compaction starts the count over.
@@ -119,7 +122,7 @@ sequenceDiagram
   and a `## Next steps` section; one that falls short (missing, blank, too long, or without a section) is asked to
   be fixed, once per version. `teamrig refresh --ready` still answers the ask, for a handover complete without a
   section.
-- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, off by default: the user types `/clear` once done with the screen). A hidden
+- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, on for the lead by default: the user types `/clear` for any other session once done with the screen). A hidden
   `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
   then leaves an ask for its tab. A session with no work it can start waits for work first (its tab title reads
   `waits for work`): the wake that brings it some starts the restart instead of waking the old context. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
