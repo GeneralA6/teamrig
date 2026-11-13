@@ -1,0 +1,23 @@
+{
+  "$comment": "Every label the issue forms, the format checks and teamrig's import use. Type labels are set by the issue forms; priority, area and state labels need triage rights, so only maintainers and the GitHub watcher set them. tools/ci/github-forms.test.ts holds the forms to this list.",
+  "labels": [
+    { "name": "bug", "color": "d73a4a", "description": "Type: something teamrig does wrong" },
+    { "name": "task", "color": "0e8a16", "description": "Type: work to do that is not a bug or a new capability" },
+    { "name": "feature", "color": "a2eeef", "description": "Type: a new capability or a change in behaviour" },
+    { "name": "p1", "color": "b60205", "description": "Priority 1: next up" },
+    { "name": "p2", "color": "fbca04", "description": "Priority 2: soon" },
+    { "name": "p3", "color": "ededed", "description": "Priority 3: when there is room" },
+    { "name": "area:cli", "color": "c5def5", "description": "Area: the teamrig commands" },
+    { "name": "area:hooks", "color": "c5def5", "description": "Area: the hooks, guards and refusals" },
+    { "name": "area:register", "color": "c5def5", "description": "Area: tasks, the inbox and the register" },
+    { "name": "area:budget", "color": "c5def5", "description": "Area: usage limits, pacing and the budget" },
+    { "name": "area:github", "color": "c5def5", "description": "Area: GitHub sync, issues and pull requests" },
+    { "name": "area:docs", "color": "c5def5", "description": "Area: the docs, the guide and the README" },
+    { "name": "area:ci", "color": "c5def5", "description": "Area: CI, the local gate and the release tools" },
+    { "name": "needs-format", "color": "e99695", "description": "State: a section of the issue form is missing or empty" },
+    { "name": "duplicate", "color": "cfd3d7", "description": "State: another issue or pull request already covers this" },
+    { "name": "teamrig", "color": "5319e7", "description": "State: accepted, so teamrig imports it as a task" },
+    { "name": "good first issue", "color": "7057ff", "description": "Good for newcomers" },
+    { "name": "help wanted", "color": "008672", "description": "Extra attention is needed" }
+  ]
+}

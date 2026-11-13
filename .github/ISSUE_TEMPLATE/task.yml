@@ -1,0 +1,29 @@
+name: Task
+description: Work to do on teamrig - a change, a cleanup, a doc - that is not a bug or a new capability.
+title: "<area>: <the work, as a plain sentence>"
+labels: [task]
+body:
+  - type: markdown
+    attributes:
+      value: Each section becomes part of the task teamrig tracks for this issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: The work, in plain words.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What it fixes or makes possible, and for whom.
+    validations:
+      required: true
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: How anyone can tell it is finished, such as a command's output or a test that passes.
+    validations:
+      required: true

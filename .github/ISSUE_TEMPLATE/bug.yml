@@ -1,0 +1,49 @@
+name: Bug report
+description: Something teamrig does wrong or refuses when it should not.
+title: "<area>: <what goes wrong>"
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Each section becomes part of the task teamrig tracks for this issue. A security problem goes through a
+        private advisory instead (see the links when you open an issue), never a public issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What teamrig did, with the exact output or refusal line.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What was expected
+      description: What it should have done instead, and why.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: The commands or actions that show it, from a fresh start where you can.
+      placeholder: |
+        1. teamrig ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `teamrig --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true

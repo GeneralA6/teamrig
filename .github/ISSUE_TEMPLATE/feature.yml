@@ -1,0 +1,29 @@
+name: Feature request
+description: A new capability, or a change in how teamrig behaves.
+title: "<area>: <the capability>"
+labels: [feature]
+body:
+  - type: markdown
+    attributes:
+      value: Each section becomes part of the task teamrig tracks for this issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you cannot do today, or what costs too much, with an example.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What teamrig should do, as you would use it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you considered or use today, if any.
+    validations:
+      required: false
