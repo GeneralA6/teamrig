@@ -18,6 +18,7 @@ export async function attribute(input) {
     const byTeamSession = new Map();
     let outside = NO_TRANSCRIPTS;
     const outsideTitles = [];
+    const outsideEach = [];
     let outsideSessions = 0;
     for (const session of input.sessions) {
         const marked = input.areaBySession.get(session.claudeSession);
@@ -34,6 +35,7 @@ export async function attribute(input) {
         if (id === undefined) {
             outside = joined(outside, session);
             outsideSessions += 1;
+            outsideEach.push({ files: session, title });
             if (title !== undefined && !outsideTitles.includes(title)) {
                 outsideTitles.push(title);
             }
@@ -41,7 +43,7 @@ export async function attribute(input) {
         }
         byTeamSession.set(id, joined(byTeamSession.get(id) ?? NO_TRANSCRIPTS, session));
     }
-    return { byTeamSession, outside, outsideSessions, outsideTitles };
+    return { byTeamSession, outside, outsideSessions, outsideTitles, outsideEach };
 }
 /** Whether the peer's mark binds the Claude Code session to one of its sessions; a mark of a session it no longer has does not. */
 function isMarkedBy(peer, claudeSession) {
