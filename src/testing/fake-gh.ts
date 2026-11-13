@@ -1,5 +1,5 @@
 import { stringField, type JsonRecord } from '../core/guards.ts';
-import type { GhRequest, GhResult, GhRunner } from '../github/gh.ts';
+import { isIssueCreate, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
@@ -97,6 +97,7 @@ export class FakeGh implements GhRunner {
   readonly ran: GhRequest[] = [];
   private readonly issues = new Map<string, readonly JsonRecord[]>();
   private readonly canned = new Map<string, GhResult>();
+  private readonly createFailures = new Map<string, GhResult>();
   private failure: Error | undefined;
   private pageSize = ISSUE_PAGE_SIZE;
 
@@ -124,10 +125,19 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
+  /** From now on, opening an issue in `repo` ends as given and opens nothing. */
+  failsCreate(repo: string, result: GhResult): this {
+    this.createFailures.set(repo, result);
+    return this;
+  }
+
   async run(request: GhRequest): Promise<GhResult> {
     this.ran.push(request);
     if (this.failure !== undefined) {
       throw this.failure;
+    }
+    if (isIssueCreate(request.args)) {
+      return this.create(request.args);
     }
     const repo = ghRepoOf(request.args);
     const canned = this.canned.get(repo);
@@ -154,4 +164,24 @@ export class FakeGh implements GhRunner {
     const pageInfo = { hasNextPage: offset + nodes.length < held.length, endCursor: nodes.length === 0 ? null : String(offset + nodes.length) };
     return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository: { issues: { pageInfo, nodes } } } }), stderr: '' };
   }
+
+  /**
+   * An issue create as GitHub's REST API answers it: the new issue, numbered after the last one the repository
+   * holds, is added to it open, so a later sync reads it back.
+   */
+  private create(args: readonly string[]): GhResult {
+    const repo = (args[1] ?? '').slice('repos/'.length, -'/issues'.length);
+    const failure = this.createFailures.get(repo);
+    if (failure !== undefined) {
+      return failure;
+    }
+    const held = this.issues.get(repo) ?? [];
+    const number = Math.max(0, ...held.map((issue) => (typeof issue['number'] === 'number' ? issue['number'] : 0))) + 1;
+    const labels = args.flatMap((arg, at) => (args[at - 1] === RAW_FIELD && arg.startsWith(LABEL_PREFIX) ? [arg.slice(LABEL_PREFIX.length)] : []));
+    this.issues.set(repo, [...held, ghIssue(repo, number, { title: fieldOf(args, 'title') ?? '', body: fieldOf(args, 'body') ?? '', labels })]);
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ number, html_url: `https://github.com/${repo}/issues/${number}` }), stderr: '' };
+  }
 }
+
+/** How a label field of an issue create starts. */
+const LABEL_PREFIX = 'labels[]=';
