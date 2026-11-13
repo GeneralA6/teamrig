@@ -2,6 +2,8 @@ import { join } from 'node:path';
 import { attribute } from "./attribute.js";
 import { discoverTranscripts } from "./discover.js";
 import { runMeter } from "./meter.js";
+import { MemoryUsageStore } from "./store.js";
+import { formatUtcDay, MS_PER_DAY } from "../core/time.js";
 /** The id use outside the team and its peer teams on the account is kept under, in its own store. */
 export const OUTSIDE_ID = 'all';
 /**
@@ -32,6 +34,36 @@ async function meterSession(deps, store, session, transcripts, input) {
     return { state, behind: true };
 }
 /**
+ * What the outside sessions spent on the clock's UTC day, session by session: each session a transcript of which
+ * changed that day is metered into a throwaway store from the day's first line, as the meter starts a transcript
+ * it has not seen, and counts when it had a call that day. The stored outside totals are one sum over all of them,
+ * so neither a count nor a title could be told per day from them; a session that only ran on another day is out.
+ */
+async function outsideOnDay(deps, input, each) {
+    const now = deps.clock.now();
+    const day = formatUtcDay(new Date(now));
+    const dayStart = now - (now % MS_PER_DAY);
+    let sessions = 0;
+    const top = [];
+    for (const { files, title } of each) {
+        const paths = [...files.main, ...files.subagents];
+        const changed = await Promise.all(paths.map((path) => deps.transcripts.changedAt(path)));
+        // A cheap skip only: a file untouched since the day began holds no record of it; the records' times decide.
+        if (!changed.some((at) => at !== undefined && at >= dayStart)) {
+            continue;
+        }
+        const used = (await meterSession(deps, new MemoryUsageStore(), files.claudeSession, files, input)).state.byDay[day];
+        if (used === undefined || used.calls === 0) {
+            continue;
+        }
+        sessions += 1;
+        if (title !== undefined) {
+            top.push({ title, w: used.w });
+        }
+    }
+    return { sessions, top };
+}
+/**
  * Counts every Claude Code session's use up to now into the stores: each team session's transcripts
  * under its id (by its inbox mark, else its title) and everyone else's under `OUTSIDE_ID`, but the tabs a peer
  * team's mark binds, which its own hooks meter.
@@ -57,5 +89,14 @@ export async function measure(deps, input) {
     if (outside.behind) {
         behind.push(OUTSIDE_ID);
     }
-    return { bySession, outside: outside.state, outsideSessions: found.outsideSessions, outsideTitles: found.outsideTitles, behind };
+    const day = await outsideOnDay(deps, input, found.outsideEach);
+    return { bySession, outside: outside.state, outsideSessions: day.sessions, outsideTop: mergedTitles(day.top), behind };
+}
+/** One entry per title (two sessions may share one), W summed, the most first. */
+function mergedTitles(top) {
+    const byTitle = new Map();
+    for (const { title, w } of top) {
+        byTitle.set(title, (byTitle.get(title) ?? 0) + w);
+    }
+    return [...byTitle].map(([title, w]) => ({ title, w })).sort((a, b) => b.w - a.w);
 }
