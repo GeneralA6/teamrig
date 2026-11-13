@@ -178,7 +178,7 @@ function outputOf(file, args) {
         execFile(file, args, { windowsHide: true, maxBuffer: LIST_MAX_BUFFER }, (error, stdout) => resolve(error === null ? stdout : undefined));
     });
 }
-/** The commit charge: Win32_OperatingSystem on Windows, `/proc/meminfo` on Linux, nothing elsewhere. */
+/** The commit charge: Win32_OperatingSystem on Windows, `/proc/meminfo` on Linux under strict overcommit, nothing elsewhere. */
 async function commitOf(platform) {
     if (platform === 'win32') {
         const script = "Get-CimInstance Win32_OperatingSystem | ForEach-Object { '{0},{1}' -f $_.TotalVirtualMemorySize,$_.FreeVirtualMemory }";
@@ -189,11 +189,20 @@ async function commitOf(platform) {
         return undefined;
     }
     try {
-        return parseMeminfoCommit(await readFile('/proc/meminfo', 'utf8'));
+        return linuxCommitOf(await readFile('/proc/sys/vm/overcommit_memory', 'utf8'), await readFile('/proc/meminfo', 'utf8'));
     }
     catch {
         return undefined;
     }
+}
+/**
+ * Linux's commit charge, read only under strict overcommit (`vm.overcommit_memory` 2), the one mode in which the
+ * kernel refuses memory past CommitLimit. Under the default heuristic (0) and always (1) modes Committed_AS passes the
+ * limit on a busy host without harm, so a gate on it would hold every queued step on such a host for good (#599);
+ * the free-memory check still guards those hosts.
+ */
+export function linuxCommitOf(overcommitMode, meminfo) {
+    return overcommitMode.trim() === '2' ? parseMeminfoCommit(meminfo) : undefined;
 }
 /**
  * The real probe: Node's free and total memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its
