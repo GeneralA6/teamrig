@@ -164,12 +164,14 @@ export interface StepNeed {
  * What a step in line asks of the host: how it holds it (`need`; none is a heavy step, with the gate's
  * `heavyReserveMb` held for it), whether it takes the whole host (`exclusive`: the lock file, in `pipeline` mode too,
  * as a merge or a deploy does; it wins over a small need), and what it works for (`request`), which its ticket and
- * share carry.
+ * share carry. `arrivedAt` (epoch ms, never past now) is when the step first joined the line, for a run that took a
+ * step over after its launching shell ended (T2304): its ticket keeps that place instead of going to the end.
  */
 export interface StepAsk {
   readonly need?: StepNeed;
   readonly exclusive?: boolean;
   readonly request?: LineRequest;
+  readonly arrivedAt?: number;
 }
 
 /**
@@ -812,7 +814,7 @@ export class HostLock {
    */
   async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, ask: StepAsk = {}, stop?: AbortSignal): Promise<Taking> {
     const patience = new Patience(this.ports.clock.now(), maxWaitMs);
-    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask));
+    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask), ask.arrivedAt);
     const reports = new WaitReports(onWait, this.ports.zone);
     try {
       const waited = await this.waitInLine(ticket, patience, pollMs, reports, ask, stop);
@@ -1353,9 +1355,12 @@ export class HostLock {
     return { ...request, needMb: this.heldMbOf(need), heavy: hold.kind !== 'small', exclusive: hold.kind === 'whole' };
   }
 
-  /** Writes this step's ticket at the end of the line, its wait running out at `deadline`, saying what it asks when it names a `request`. */
-  private async joinLine(session: string, purpose: string, deadline: number, request: TicketRequest | undefined): Promise<OwnTicket> {
-    const now = this.ports.clock.now();
+  /**
+   * Writes this step's ticket in line, its wait running out at `deadline`, saying what it asks when it names a `request`:
+   * at the end, or at its first arrival `arrivedAt` when it joins again (never later than now).
+   */
+  private async joinLine(session: string, purpose: string, deadline: number, request: TicketRequest | undefined, arrivedAt?: number): Promise<OwnTicket> {
+    const now = Math.min(arrivedAt ?? this.ports.clock.now(), this.ports.clock.now());
     const waiter: LockWaiter = {
       id: this.ports.newId(),
       pid: this.ports.pid,
