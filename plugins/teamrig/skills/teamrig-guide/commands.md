@@ -2891,7 +2891,9 @@ Flags:
 
 - `--prompt "<first prompt>"`: a first prompt instead of the default one.
 - `--resume`: a rehired session goes on in its last Claude Code session (`claude --resume`) instead, with a first
-  prompt to read its inbox and list again. It measures that session as `hire` does and refuses, with why, when
+  prompt to read its inbox and list again. So does one whose tab ended outside teamrig (a crash, a closed window, a
+  reboot), neither rehired nor closed, on a prompt that says its tasks may have moved; `--project` must name the
+  folder it ran in when that was not the team's. It measures that session as `hire` does and refuses, with why, when
   it is gone, over `hiring.resumeMaxTokens` or idle over `hiring.resumeMaxIdleDays`. A closed session needs no
   `--resume`; with it, it refuses rather than open fresh.
 - `--terminal <name>`: `auto`, `tmux`, `windows-terminal`, `macos-terminal`, `gnome-terminal`, `konsole`,

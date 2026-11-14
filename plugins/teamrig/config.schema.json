@@ -1846,8 +1846,8 @@
           "default": "owner"
         },
         "reviewDays": { "description": "Days from a hire to its review date, unless teamrig hire --review names one.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
-        "resumeMaxTokens": { "description": "The most context tokens a rehired session's last Claude Code session may hold for teamrig open --resume to resume it; past it the session starts fresh on its handover.", "type": "integer", "minimum": 10000, "maximum": 1000000, "default": 250000 },
-        "resumeMaxIdleDays": { "description": "The most days a rehired session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it; past it the session starts fresh on its handover.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
+        "resumeMaxTokens": { "description": "The most context tokens a session's last Claude Code session may hold for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh.", "type": "integer", "minimum": 10000, "maximum": 1000000, "default": 250000 },
+        "resumeMaxIdleDays": { "description": "The most days a session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
         "scaleOut": {
           "description": "How teamrig check measures an area against its dated work for a SCALE-OUT flag: its pace is the tasks it finished lately, and the dated tasks of the top priorities are what it must finish in time.",
           "type": "object",

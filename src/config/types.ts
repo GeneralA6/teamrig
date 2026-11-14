@@ -1241,7 +1241,7 @@ export interface HiringConfig {
   readonly policy: HiringPolicy;
   /** Days from a hire to its review date, unless the hire names one. */
   readonly reviewDays: number;
-  /** The most context tokens a rehired session's last Claude Code session may hold for `open --resume` to resume it. */
+  /** The most context tokens a session's last Claude Code session may hold for `open --resume` to resume it. */
   readonly resumeMaxTokens: number;
   /** The most days that session may have been idle (its transcript unwritten) for `open --resume` to resume it. */
   readonly resumeMaxIdleDays: number;
