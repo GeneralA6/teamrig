@@ -4,7 +4,7 @@
  * adapter that keeps its own access rules. A repository reaches a host only when the team config lists it there.
  */
 
-import type { HostIssue } from './issue.ts';
+import type { HostIssue, LinkedIssue } from './issue.ts';
 
 /** One issue or pull request: its repository (`owner/name`, in lowercase) and its number. */
 export interface IssueTarget {
@@ -57,6 +57,14 @@ export type HostList =
   | { readonly kind: 'listed'; readonly issues: readonly HostIssue[]; readonly notes: readonly string[] }
   | { readonly kind: 'failed'; readonly reason: string };
 
+/**
+ * Every issue of a repository, in any state, with its links, and what a reader should know about the read (it stopped
+ * at its limit, or left out items it could not read). Or why it could not be read, in which case nothing of it was.
+ */
+export type HostLinks =
+  | { readonly kind: 'listed'; readonly issues: readonly LinkedIssue[]; readonly notes: readonly string[] }
+  | { readonly kind: 'failed'; readonly reason: string };
+
 /** One issue to open: its repository (`owner/name`), title, body and labels. */
 export interface IssueDraft {
   readonly repo: string;
@@ -88,6 +96,12 @@ export interface IssueHost {
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd>;
   /** Takes `label` off the issue or pull request; the repository keeps the label. */
   removeLabel(target: IssueTarget, label: string): Promise<HostEnd>;
+  /** Every issue of `repo` with its host id, its parent and its blockers. */
+  links(repo: string): Promise<HostLinks>;
+  /** Puts the issue whose host id is `childId` under `parent` as its sub-issue. */
+  addSubIssue(parent: IssueTarget, childId: number): Promise<HostEnd>;
+  /** Marks `target` blocked by the issue whose host id is `blockerId`. */
+  addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd>;
 }
 
 /** The hosts teamrig has an adapter for, by the team config list that names their repositories. */

@@ -1,6 +1,7 @@
-import { stringField, type JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, isLabelAdd, isLabelRead, isLabelRemove, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
-import { CLOSED_ISSUES_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
+import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
+import { isIssueClose, isIssueComment, isIssueCreate, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
+import { nodesOf } from '../github/issues.ts';
+import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
 export interface IssueSpec {
@@ -22,6 +23,23 @@ export interface IssueSpec {
   readonly authorKind?: string;
   /** Timeline items, as labeledEvent and renamedEvent build them, oldest first. */
   readonly timeline?: readonly JsonRecord[];
+  /** GitHub's own id for it, which a link write names; 1000 plus its number unless set. */
+  readonly hostId?: number;
+  /** Its parent issue; none unless set. */
+  readonly parent?: IssueAt;
+  /** The issues it is blocked by, in this repository or another. */
+  readonly blockedBy?: readonly IssueAt[];
+}
+
+/** An issue of a repository (`owner/name`), as a link names it. */
+export interface IssueAt {
+  readonly repo: string;
+  readonly number: number;
+}
+
+/** An issue as the links query names a parent or a blocker. */
+function issueNode(at: IssueAt): JsonRecord {
+  return { number: at.number, repository: { nameWithOwner: at.repo } };
 }
 
 /**
@@ -46,6 +64,9 @@ export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): Jso
     labels: { nodes: (spec.labels ?? []).map((name) => ({ name })) },
     assignees: { nodes: (spec.assignees ?? []).map((login) => ({ login })) },
     timelineItems: { nodes: spec.timeline ?? [] },
+    fullDatabaseId: String(spec.hostId ?? 1000 + number),
+    parent: spec.parent === undefined ? null : issueNode(spec.parent),
+    blockedBy: { nodes: (spec.blockedBy ?? []).map(issueNode) },
   };
 }
 
@@ -139,7 +160,7 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
-  /** From now on, a comment on, the close of, or a label added to or taken off an issue ends as given. */
+  /** From now on, a comment on, the close of, a label added to or taken off, or a link added to an issue ends as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
     return this;
@@ -159,6 +180,9 @@ export class FakeGh implements GhRunner {
     if (isIssueComment(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
+    if (isLinkAdd(request.args)) {
+      return this.writeFailure ?? this.link(request.args);
+    }
     const repo = ghRepoOf(request.args);
     const canned = this.canned.get(repo);
     if (canned !== undefined) {
@@ -175,7 +199,9 @@ export class FakeGh implements GhRunner {
         ? issues.filter((issue) => issue['state'] === 'OPEN')
         : query === CLOSED_ISSUES_QUERY
           ? issues.filter((issue) => issue['state'] === 'CLOSED' && !(Date.parse(stringField(issue, 'updatedAt') ?? '') < since))
-          : undefined;
+          : query === ISSUE_LINKS_QUERY
+            ? issues
+            : undefined;
     if (held === undefined) {
       return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: the fake gh answers only the shipped issue queries\n' };
     }
@@ -214,7 +240,58 @@ export class FakeGh implements GhRunner {
     this.issues.set(repo, [...held, ghIssue(repo, number, { title: fieldOf(args, 'title') ?? '', body: fieldOf(args, 'body') ?? '', labels })]);
     return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ number, html_url: `https://github.com/${repo}/issues/${number}` }), stderr: '' };
   }
+
+  /**
+   * A link write as GitHub's REST API answers it: the issue the id names, in any repository held, goes under the
+   * issue of the path as its sub-issue, or onto its blockers, so a later links read sees it; LINK_REFUSED for an id
+   * it does not hold, a sub-issue that has a parent already, or a link it has already.
+   */
+  private link(args: readonly string[]): GhResult {
+    const match = LINK_WRITE.exec(args[1] ?? '');
+    const id = (args[5] ?? '').split('=')[1] ?? '';
+    const at = { repo: match?.[1] ?? '', number: Number(match?.[2]) };
+    const named = [...this.issues].flatMap(([holder, issues]) => issues.filter((issue) => issue['fullDatabaseId'] === id).map((issue) => ({ holder, issue })));
+    const other = named[0];
+    if (other === undefined || !this.holdsIssue(at)) {
+      return LINK_REFUSED;
+    }
+    const otherAt = { repo: other.holder, number: Number(other.issue['number']) };
+    if (match?.[3] === 'sub_issues') {
+      return other.issue['parent'] !== null ? LINK_REFUSED : this.change(otherAt, (issue) => ({ ...issue, parent: issueNode(at) }));
+    }
+    return this.change(at, (issue) => {
+      const blockers = nodesOf(issue['blockedBy']);
+      return blockers.some((node) => issueNodeIs(node, otherAt)) ? undefined : { ...issue, blockedBy: { nodes: [...blockers, issueNode(otherAt)] } };
+    });
+  }
+
+  private holdsIssue(at: IssueAt): boolean {
+    return (this.issues.get(at.repo) ?? []).some((issue) => issue['number'] === at.number);
+  }
+
+  /** Replaces the held issue `at` by what `edit` makes of it; LINK_REFUSED when `edit` gives nothing, a link already there. */
+  private change(at: IssueAt, edit: (issue: JsonRecord) => JsonRecord | undefined): GhResult {
+    const held = this.issues.get(at.repo) ?? [];
+    const issue = held.find((item) => item['number'] === at.number);
+    const changed = issue === undefined ? undefined : edit(issue);
+    if (changed === undefined) {
+      return LINK_REFUSED;
+    }
+    this.issues.set(at.repo, held.map((item) => (item === issue ? changed : item)));
+    return { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
+  }
 }
+
+/** GitHub's answer to a link write it refuses: an id it does not hold, a second parent, a link it has already. */
+const LINK_REFUSED: GhResult = { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Validation Failed (HTTP 422)\n' };
+
+function issueNodeIs(node: JsonRecord, at: IssueAt): boolean {
+  const repository = recordField(node, 'repository');
+  return node['number'] === at.number && repository !== undefined && repository['nameWithOwner'] === at.repo;
+}
+
+/** The issue path of a link write, the endpoint, and its typed id field. */
+const LINK_WRITE = /^repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/(sub_issues|dependencies\/blocked_by)$/;
 
 /** How a label field of an issue create starts. */
 const LABEL_PREFIX = 'labels[]=';

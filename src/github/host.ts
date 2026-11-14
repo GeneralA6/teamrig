@@ -4,6 +4,7 @@ import {
   type CloseReason,
   type HostEnd,
   type HostLabel,
+  type HostLinks,
   type HostList,
   type HostOpen,
   type HostReach,
@@ -14,8 +15,20 @@ import {
 } from '../issues/host.ts';
 import type { IssueState } from '../issues/issue.ts';
 import { exitText } from '../open/processes.ts';
-import { issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, labelReadArgs, type GhResult, type GhRunner } from './gh.ts';
+import {
+  blockedByAddArgs,
+  issueCloseArgs,
+  issueCommentArgs,
+  issueCreateArgs,
+  issueLabelAddArgs,
+  issueLabelRemoveArgs,
+  labelReadArgs,
+  subIssueAddArgs,
+  type GhResult,
+  type GhRunner,
+} from './gh.ts';
 import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, startFailureText, type IssueList } from './issues.ts';
+import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
 import { latestIssues } from './plan.ts';
 import { TokenReadError, type RepoAccess, type RepoTokens } from './tokens.ts';
@@ -24,9 +37,9 @@ import { TokenReadError, type RepoAccess, type RepoTokens } from './tokens.ts';
 const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'read with', open: 'opens issues with', write: 'writes with' };
 
 /**
- * GitHub as an issue host (issues/host.ts): a list is pages of the two shipped issue queries, and each write one gh
- * REST call the runner's allowlist takes (gh.ts), made with the token saved for the repository's owner, else, when
- * none is saved, the gh login. A saved token the store cannot read reaches nothing: never the login in its place
+ * GitHub as an issue host (issues/host.ts): a list is pages of the two shipped issue queries, a links read pages of
+ * the third, and each write one gh REST call the runner's allowlist takes (gh.ts), made with the token saved for the
+ * repository's owner, else, when none is saved, the gh login. A saved token the store cannot read reaches nothing: never the login in its place
  * (tokens.ts). gh's own error, any secret shape in it redacted, is the reason a write failed.
  */
 export class GitHubIssueHost implements IssueHost {
@@ -145,6 +158,20 @@ export class GitHubIssueHost implements IssueHost {
   removeLabel(target: IssueTarget, label: string): Promise<HostEnd> {
     const shown = JSON.stringify(label);
     return this.write(target, issueLabelRemoveArgs(target, label), `take ${shown} off`, `${targetText(target)} does not carry the label ${shown}, or is not there`);
+  }
+
+  /** Every issue of the repository with its links, read with the same access as a list. */
+  async links(repo: string): Promise<HostLinks> {
+    const access = await this.tokens.accessFor(repo);
+    return access instanceof TokenReadError ? { kind: 'failed', reason: access.message } : listLinks(this.gh, access, repo);
+  }
+
+  addSubIssue(parent: IssueTarget, childId: number): Promise<HostEnd> {
+    return this.write(parent, subIssueAddArgs(parent, childId), 'add a sub-issue to');
+  }
+
+  addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd> {
+    return this.write(target, blockedByAddArgs(target, blockerId), 'add a blocker to');
   }
 
   /** One write; `missing`, when given, says what a Not Found means for it in place of the issue not being there. */

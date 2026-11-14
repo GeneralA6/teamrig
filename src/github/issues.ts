@@ -277,7 +277,7 @@ function timeField(item: JsonRecord, key: string): string | undefined {
 }
 
 /** The objects of a connection's `nodes`, such as an issue's labels; anything else is left out. */
-function nodesOf(connection: unknown): JsonRecord[] {
+export function nodesOf(connection: unknown): JsonRecord[] {
   const nodes = isRecord(connection) ? connection['nodes'] : undefined;
   if (!Array.isArray(nodes)) {
     return [];

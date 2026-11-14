@@ -5,7 +5,7 @@ import { FakeCredentials } from '../testing/fake-credentials.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, isLabelAdd, isLabelRead, isLabelRemove, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
+import { isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import { GitHubIssueHost } from './host.ts';
 import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import { CLOSED_ISSUES_QUERY } from './queries.ts';
@@ -213,5 +213,46 @@ describe('GitHubIssueHost', () => {
     assert.ok(notInstalled.kind === 'failed' && notInstalled.reason.startsWith('gh, the GitHub CLI, is not installed'));
     const stopped = new FakeGh().failsWrite({ end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
     assert.deepEqual(await hostWith(stopped).comment(TARGET, 'Thanks'), { kind: 'failed', reason: 'gh was stopped (SIGTERM) on its way to comment on acme/web#7: look on GitHub before a rerun' });
+  });
+});
+
+describe('GitHubIssueHost links', () => {
+  it("adds a sub-issue and a blocker through the allowlisted calls with the owner's token, and a links read then has them", async () => {
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7), ghIssue('acme/web', 8, { hostId: 6375244885 }), ghIssue('acme/web', 9)]);
+    const host = hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'acme-issues-token'));
+    assert.deepEqual(await host.addSubIssue(TARGET, 6375244885), { kind: 'done' });
+    assert.deepEqual(await host.addBlockedBy(TARGET, 1009), { kind: 'done' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [
+      ['api', 'repos/acme/web/issues/7/sub_issues', '-X', 'POST', '-F', 'sub_issue_id=6375244885'],
+      ['api', 'repos/acme/web/issues/7/dependencies/blocked_by', '-X', 'POST', '-F', 'issue_id=1009'],
+    ]);
+    assert.ok(gh.ran.every((request) => isLinkAdd(request.args) && request.env['GH_TOKEN'] === 'acme-issues-token'));
+    const links = await host.links('acme/web');
+    assert.deepEqual(links.kind === 'listed' && links.issues, [
+      { number: 7, hostId: 1007, parent: undefined, blockedBy: [9] },
+      { number: 8, hostId: 6375244885, parent: { repo: 'acme/web', number: 7 }, blockedBy: [] },
+      { number: 9, hostId: 1009, parent: undefined, blockedBy: [] },
+    ]);
+    assert.ok(isIssueQuery(gh.ran[2]?.args ?? []) && gh.ran[2]?.env['GH_TOKEN'] === 'acme-issues-token');
+  });
+
+  it('names the link a refusal was for: one GitHub has already, or one the token may not add', async () => {
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { blockedBy: [{ repo: 'acme/web', number: 9 }] }), ghIssue('acme/web', 9)]);
+    assert.deepEqual(await hostWith(gh).addBlockedBy(TARGET, 1009), { kind: 'failed', reason: 'gh api to add a blocker to acme/web#7 exited with code 1: gh: Validation Failed (HTTP 422)' });
+    const denied = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by personal access token (HTTP 403)\n' });
+    assert.deepEqual(await hostWith(denied).addSubIssue(TARGET, 1008), {
+      kind: 'failed',
+      reason: 'the gh login may not add a sub-issue to acme/web#7: save a token for acme with Issues and Pull requests read and write, with: save teamrig-gh-acme',
+    });
+  });
+
+  it('reads and writes no link, and runs no gh, when the store holds the key but cannot read it', async () => {
+    const gh = new FakeGh();
+    const host = hostWith(gh, new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked'));
+    const reason = 'could not read teamrig-gh-acme from the test store: the keyring is locked; unlock the store and rerun, or save the key again with: save teamrig-gh-acme';
+    assert.deepEqual(await host.links('acme/web'), { kind: 'failed', reason });
+    assert.deepEqual(await host.addSubIssue(TARGET, 1008), { kind: 'failed', reason });
+    assert.deepEqual(await host.addBlockedBy(TARGET, 1008), { kind: 'failed', reason });
+    assert.deepEqual(gh.ran, []);
   });
 });
