@@ -6814,7 +6814,8 @@ a `Decision needed:` line. A sub-team's lead is refused even in a meeting, and i
 parent lead in one inbox line instead of asking the owner. A helper's reason says to end its report with the decision
 instead. Before a Bash line, the same switch refuses a team session's line that leads with `cd D &&` and runs git or
 leaves the session's folder, which Claude Code would hold on a permission prompt, and its reason quotes the line's
-`git -C` / `env -C` form to rerun. See
+`git -C` / `env -C` form to rerun; a line with a `cd` that has no such form (a `cd` mid-line, a folder only known when
+it runs) is refused too when git runs after it or it may leave the folder, saying to drop the `cd`. See
 [Hooks and permissions](hooks.md#before-a-question-the-picker-guard).
 
 Flags: none.
