@@ -1,24 +1,8 @@
 import { MeetingStore, phaseOf } from "../meeting/state.js";
 import { statusLineMeetingOf } from "../meeting/status-line.js";
 import { teamSessionOf } from "./commands/hook-input.js";
-import { openKit, rosterOf } from "./kit.js";
-/**
- * The root of the tree `own` sits in, up its `team.parent` links: the owner meets only the root team's lead. Undefined
- * when a config on the way does not load; a loop of parent links ends at the last team before the first one met again.
- */
-async function rootTeamOf(runtime, own) {
-    const seen = new Set([own.kit.paths.team]);
-    let current = own;
-    for (let parent = own.config.team?.parent; parent !== undefined && !seen.has(parent); parent = current.config.team?.parent) {
-        seen.add(parent);
-        const kit = await openKit(runtime, parent);
-        if (kit.load.status !== 'loaded') {
-            return undefined;
-        }
-        current = { kit, config: kit.load.config };
-    }
-    return current;
-}
+import { rosterOf } from "./kit.js";
+import { rootTeamOf } from "./root-team.js";
 /**
  * The meeting mark of the status line of `claudeSession`, a tab of team `own` (T2513), as the own team's
  * `meeting.statusLine` shows it: undefined with the marks off or no meeting open on the root team. Only a tab of the
