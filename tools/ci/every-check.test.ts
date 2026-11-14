@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
-import { checkEveryJob, GH_MAX_BUFFER, ghCli, jobsPageOf, listJobs, runFromEnv, unpassedJobs, type RunFile, type RunGh, type RunJob, type RunRef } from './every-check.ts';
+import { checkEveryJob, GH_MAX_BUFFER, ghCli, jobsPageOf, listJobs, RELIST, runFromEnv, unpassedJobs, type Relist, type RunFile, type RunGh, type RunJob, type RunRef } from './every-check.ts';
 
 const SELF = 'every check passed';
 const RUN: RunRef = { repo: 'acme/web', runId: '43' };
@@ -85,9 +85,11 @@ describe('unpassedJobs', () => {
       job('coverage', 'skipped'),
       job('size-rule', 'failure'),
       job('plugin-version', null, 'queued'),
+      job('scrub', 'success', 'in_progress'),
+      job('lint', 'failure', 'in_progress'),
       job(SELF, null, 'in_progress'),
     ];
-    assert.deepEqual(unpassedJobs(jobs, SELF).map((one) => one.name), ['test (macos-latest, node 22)', 'coverage', 'size-rule', 'plugin-version']);
+    assert.deepEqual(unpassedJobs(jobs, SELF).map((one) => one.name), ['test (macos-latest, node 22)', 'coverage', 'size-rule', 'plugin-version', 'lint']);
   });
 });
 
@@ -105,11 +107,53 @@ describe('runFromEnv', () => {
 });
 
 describe('checkEveryJob', () => {
-  async function check(jobs: readonly RunJob[]): Promise<{ code: number; lines: string[] }> {
+  /** A relist that records each pause instead of sleeping. */
+  function relisting(tries: number): { relist: Relist; pauses: number[] } {
+    const pauses: number[] = [];
+    return { relist: { tries, pauseMs: 10_000, sleep: (ms) => { pauses.push(ms); return Promise.resolve(); } }, pauses };
+  }
+
+  /** Checks a run whose jobs API lists `listings` in turn, one page each. */
+  async function checkListings(listings: readonly (readonly RunJob[])[], tries = 0): Promise<{ code: number; lines: string[]; listed: number; pauses: number[] }> {
     const lines: string[] = [];
-    const code = await checkEveryJob(RUN, SELF, ghServing([page(jobs.length, jobs)]).gh, (line) => lines.push(line));
+    const served = ghServing(listings.map((jobs) => page(jobs.length, jobs)));
+    const { relist, pauses } = relisting(tries);
+    const code = await checkEveryJob(RUN, SELF, served.gh, (line) => lines.push(line), relist);
+    return { code, lines, listed: served.calls.length, pauses };
+  }
+
+  async function check(jobs: readonly RunJob[]): Promise<{ code: number; lines: string[] }> {
+    const { code, lines } = await checkListings([jobs]);
     return { code, lines };
   }
+
+  it('passes on the run 43534894842 hit: a job the API still lists in_progress though it concluded with success', async () => {
+    const result = await checkListings([[job('scrub and DCO gates', 'success', 'in_progress'), job('coverage gate', 'success'), job(SELF, null, 'in_progress')]], 6);
+    assert.deepEqual(result, { code: EXIT_CLEAN, lines: ['every-check: all 2 jobs of run 43 passed'], listed: 1, pauses: [] });
+  });
+
+  it('lists the jobs again while one has no conclusion yet, and passes once it concludes with success', async () => {
+    const lagging = [job('gates', null, 'in_progress'), job('coverage', 'success'), job(SELF, null, 'in_progress')];
+    const concluded = [job('gates', 'success'), job('coverage', 'success'), job(SELF, null, 'in_progress')];
+    const result = await checkListings([lagging, lagging, concluded], 6);
+    assert.deepEqual(result, { code: EXIT_CLEAN, lines: ['every-check: all 2 jobs of run 43 passed'], listed: 3, pauses: [10_000, 10_000] });
+  });
+
+  it('gives up after its tries and names the job that never concluded', async () => {
+    const lagging = [job('gates', null, 'in_progress'), job(SELF, null, 'in_progress')];
+    const result = await checkListings([lagging, lagging, lagging], 2);
+    assert.deepEqual(result, { code: EXIT_FINDINGS, lines: ['every-check: gates is still in_progress'], listed: 3, pauses: [10_000, 10_000] });
+  });
+
+  it('fails at once on a job that concluded otherwise, listing nothing again', async () => {
+    const result = await checkListings([[job('lint', 'failure', 'in_progress'), job('coverage', 'success'), job(SELF, null, 'in_progress')]], 6);
+    assert.deepEqual(result, { code: EXIT_FINDINGS, lines: ['every-check: lint ended failure'], listed: 1, pauses: [] });
+  });
+
+  it('waits 10 s between listings, 6 times at most, by default', () => {
+    assert.equal(RELIST.tries, 6);
+    assert.equal(RELIST.pauseMs, 10_000);
+  });
 
   it('passes when every other job completed with success', async () => {
     assert.deepEqual(await check([job('gates', 'success'), job('test (ubuntu-latest, node 22)', 'success'), job(SELF, null, 'in_progress')]), {
