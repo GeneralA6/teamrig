@@ -221,6 +221,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (.ps1, .sh or .md) for a task still to finish at the sha256 of its bytes now (core rule 11), so a
       card may hand it to the owner; an edit needs a new audit; the task's owner gets an inbox line;
       --team <child>: the reviewer on a team above audits a task of that team below
+  audit T<n> --verdict "<what the review found>" [--note ..] [--team <child>]   the security reviewer
+      gives its verdict on the task's card (core rule 9), pinned with the question, options and
+      recommendation it read; a card edited after it prints the verdict stale; the owner gets an inbox line
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--type task,bug] [--parked|--untriaged] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due

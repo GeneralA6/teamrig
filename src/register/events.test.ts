@@ -226,6 +226,13 @@ describe('parseEvent', () => {
     assert.equal(reason(parse({ ...BASE, type: 'update', changes: {}, audit: 'a.ps1' }, 2)), 'audit is not an object');
   });
 
+  it("reads an update's security verdict with the card parts it read, round trips it, and refuses a bad one (T2761)", () => {
+    const read = { question: 'Grant the read to the reports folder', options: ['Grant it', 'Keep it closed'], recommend: 'Grant it, read only' };
+    const judged: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: {}, note: null, securityVerdict: { text: 'Pass: read only', read } };
+    assert.deepEqual(parse(eventRecord(judged), 2), { kind: 'event', event: judged });
+    assert.match(reason(parse({ ...BASE, type: 'update', changes: {}, securityVerdict: { text: 'Pass' } }, 2)), /^bad security verdict /);
+  });
+
   it('reads the type and critical mark of a create line and of an update, and an older line as neither (T1252)', () => {
     const marked: RegisterEvent = { ...BASE, v: 2, type: 'create', task: { ...TASK, type: 'bug', critical: true } };
     assert.deepEqual(parse(eventRecord(marked), 2), { kind: 'event', event: marked });

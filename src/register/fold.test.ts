@@ -71,6 +71,17 @@ describe('foldEvents: the size base OVER-SIZE counts from (T649)', () => {
   });
 });
 
+describe("foldEvents: the security verdict on a task's card (T2761)", () => {
+  const read = { question: TEST_CARD.question, options: TEST_CARD.options, recommend: TEST_CARD.recommend };
+  const judged = (hour: number, by: string, text: string): RegisterEvent => ({ v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by, changes: {}, note: null, securityVerdict: { text, read } });
+
+  it('starts with none, keeps the latest with who gave it and when, and keeps it through a status change', () => {
+    assert.equal(taskAfter([create(9)]).securityVerdict, null);
+    const task = taskAfter([create(9), judged(10, 'gamma', 'Fail: grants write'), judged(11, 'gamma', 'Pass: read only'), status(12, 'waiting')]);
+    assert.deepEqual(task.securityVerdict, { text: 'Pass: read only', read, by: 'gamma', at: at(11) });
+  });
+});
+
 describe('foldEvents: the hand step files audited for a task (T2312)', () => {
   const first = 'a'.repeat(64);
   const second = 'b'.repeat(64);

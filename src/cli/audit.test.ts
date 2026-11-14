@@ -6,7 +6,7 @@ import { formatConfig } from '../config/load.ts';
 import { readEvents } from '../register/snapshot.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { SUB_TEAMS, teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
-import { TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
+import { TEST_CARD, TEST_CARD_FLAGS, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { EXIT } from './runtime.ts';
 
 const STEP = join(APP, 'steps', 'grant-read.ps1');
@@ -73,7 +73,7 @@ describe('runCli: audit, the security reviewer pins a hand step file for a task 
     }
     const bare = await kit.run(['audit', 'T1', '--session', 'bravo']);
     assert.equal(bare.code, EXIT.usage);
-    assert.match(bare.stderr[0] ?? '', /--file is required/);
+    assert.match(bare.stderr[0] ?? '', /^audit takes one of --file <the hand step file> or --verdict/);
     const blank = await kit.run(['audit', 'T1', '--file', ' ', '--session', 'bravo']);
     assert.equal(blank.code, EXIT.usage);
     assert.match(blank.stderr[0] ?? '', /--file needs the hand step file's path/);
@@ -88,6 +88,45 @@ describe('runCli: audit, the security reviewer pins a hand step file for a task 
     const result = await kit.run(['audit', 'T1', '--file', broken, '--session', 'bravo']);
     assert.equal(result.code, EXIT.usage);
     assert.match(result.stderr[0] ?? '', /^--file takes the hand step file's path on one line: a path with a line break is not pinned/);
+    assert.deepEqual(filesOf(kit), before);
+  });
+});
+
+describe("runCli: audit --verdict, the security reviewer's verdict on a task's card (T2761)", () => {
+  /** reviewed() with T1 started and waiting on the lead's decision with a card. */
+  async function carded(): Promise<CliHarness> {
+    const kit = await reviewed();
+    for (const line of [
+      ['set', 'T1', '--status', 'in-progress', '--session', 'alpha'],
+      ['set', 'T1', '--status', 'waiting', '--waits', 'decision:lead', '--note', 'the grant needs a call', ...TEST_CARD_FLAGS, '--session', 'alpha'],
+    ]) {
+      const result = await kit.run(line);
+      assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    }
+    return kit;
+  }
+
+  it("pins the verdict with the card parts it read as one update line, and tells the task's owner", async () => {
+    const kit = await carded();
+    const result = await kit.run(['audit', 'T1', '--verdict', 'Pass: read only, no secret', '--session', 'bravo']);
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.match(result.stdout[0] ?? '', /^AUDITED T1 waiting/);
+    const told = "bravo gave the security verdict on T1's card: Pass: read only, no secret; an edit to its question, options or recommendation needs a new verdict (core rule 9)";
+    assert.deepEqual(result.stderr, [`NOTE alpha has an inbox line: ${told}`]);
+    const last = readEvents(kit.files.get(EVENTS_PATH) ?? '').events.at(-1);
+    assert.ok(last?.type === 'update');
+    assert.deepEqual(last.securityVerdict, { text: 'Pass: read only, no secret', read: { question: TEST_CARD.question, options: TEST_CARD.options, recommend: TEST_CARD.recommend } });
+  });
+
+  it('refuses both --file and --verdict, and a task with no card, writing nothing', async () => {
+    const kit = await reviewed();
+    const before = filesOf(kit);
+    const both = await kit.run(['audit', 'T1', '--file', STEP, '--verdict', 'Pass', '--session', 'bravo']);
+    assert.equal(both.code, EXIT.usage);
+    assert.match(both.stderr[0] ?? '', /^audit takes one of --file <the hand step file> or --verdict/);
+    const bare = await kit.run(['audit', 'T1', '--verdict', 'Pass', '--session', 'bravo']);
+    assert.equal(bare.code, EXIT.refused);
+    assert.match(bare.stdout[0] ?? '', /^REFUSED T1 has no card: a security verdict is given on the card the owner reads/);
     assert.deepEqual(filesOf(kit), before);
   });
 });

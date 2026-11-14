@@ -126,7 +126,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   sweep: { effect: 'write', flags: ['session', 'out'], switches: ['tree'], load: async () => (await sweepCommands()).sweep },
   'sweep apply': { effect: 'write', flags: ['session'], switches: ['apply'], load: async () => (await sweepCommands()).apply },
   approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
-  audit: { effect: 'write', flags: ['session', 'file', 'note', 'team'], load: async () => (await auditCommand()).audit },
+  audit: { effect: 'write', flags: ['session', 'file', 'verdict', 'note', 'team'], load: async () => (await auditCommand()).audit },
   list: {
     effect: 'read',
     flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal', 'type'],
@@ -545,6 +545,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (.ps1, .sh or .md) for a task still to finish at the sha256 of its bytes now (core rule 11), so a
       card may hand it to the owner; an edit needs a new audit; the task's owner gets an inbox line;
       --team <child>: the reviewer on a team above audits a task of that team below
+  audit T<n> --verdict "<what the review found>" [--note ..] [--team <child>]   the security reviewer
+      gives its verdict on the task's card (core rule 9), pinned with the question, options and
+      recommendation it read; a card edited after it prints the verdict stale; the owner gets an inbox line
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--type task,bug] [--parked|--untriaged] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due

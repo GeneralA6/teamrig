@@ -1,6 +1,7 @@
 import type { DecisionCard } from './card.ts';
 import { withAudit, type HandStepAudit } from './hand-step.ts';
 import type { ProblemReview } from './review.ts';
+import type { SecurityVerdict } from './security-verdict.ts';
 import type { ApprovalVerdict, RegisterEvent, SizeBase, TaskFields, UpdateEvent } from './events.ts';
 import { WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { namesNewWait, type WaitReason } from './waits.ts';
@@ -79,6 +80,12 @@ export interface Task extends TaskFields {
    * audited, a later audit of a path replacing the one before; a status change keeps them. Empty when none.
    */
   readonly audits: readonly HandStepAudit[];
+  /**
+   * The security reviewer's latest verdict on the task's card (T2761), with the card parts it read, who gave it and
+   * when; a later verdict replaces it and a status change keeps it, so a card edited since prints it as stale. Null
+   * when none was given.
+   */
+  readonly securityVerdict: SecurityVerdict | null;
   /** When the task first went in progress (or verifying): only a started task can wait on another task. */
   readonly startedAt: string | null;
   readonly createdAt: string;
@@ -206,6 +213,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     review: {},
     sizeBase: null,
     audits: [],
+    securityVerdict: null,
     startedAt: null,
     createdAt: at,
     createdBy: by,
@@ -268,7 +276,7 @@ function reparksAfter(task: Task, event: Extract<RegisterEvent, { type: 'status'
  * gives its size base too (T649). An update with an `audit` pins a hand step file for the task, by the session that
  * wrote it (T2312).
  */
-function withChanges(task: Task, { changes, note, at, by, verdict, waits, decided, sizeBase, audit }: UpdateEvent): Task {
+function withChanges(task: Task, { changes, note, at, by, verdict, waits, decided, sizeBase, audit, securityVerdict }: UpdateEvent): Task {
   const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
   const shown = note !== null && by === task.owner ? note : task.note;
   const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
@@ -286,6 +294,7 @@ function withChanges(task: Task, { changes, note, at, by, verdict, waits, decide
     waitsAt: namesNewWait(task.waits, kept) ? at : task.waitsAt,
     sizeBase: base,
     audits: audit === undefined ? task.audits : withAudit(task.audits, { ...audit, by, at }),
+    securityVerdict: securityVerdict === undefined ? task.securityVerdict : { ...securityVerdict, by, at },
     updatedAt: at,
     updatedBy: by,
     priorityAt,

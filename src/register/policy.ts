@@ -11,6 +11,7 @@ import type { SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
+import { verdictReadOf, type SecurityVerdictPin } from './security-verdict.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
@@ -223,10 +224,20 @@ export interface OwnerChange extends UpdateChange {
   readonly by: string;
 }
 
-/** An audit (T2312): an update that changes no field and pins a hand step file for the task at its sha256. */
-export interface AuditChange extends UpdateChange {
-  readonly audit: AuditPin;
-}
+/**
+ * An audit: an update that changes no field and pins either a hand step file for the task at its sha256 (T2312) or
+ * the security reviewer's verdict on the task's card, with the card parts it read (T2761).
+ */
+export type AuditChange = (UpdateChange & { readonly audit: AuditPin }) | (UpdateChange & { readonly securityVerdict: SecurityVerdictPin });
+
+/** What an audit reads: a hand step file pinned at its sha256, or the task's card, with the reviewer's verdict on it. */
+export type AuditSubject = { readonly kind: 'file'; readonly pin: AuditPin } | { readonly kind: 'verdict'; readonly text: string };
+
+/** How the refusals about an audit name what it reads, and the core rule behind it. */
+const AUDITED: Readonly<Record<AuditSubject['kind'], { readonly own: string; readonly other: (owner: string) => string; readonly rule: string }>> = {
+  file: { own: 'audit its own hand step', other: (owner) => `audit a hand step of ${owner}'s`, rule: 'core rule 11' },
+  verdict: { own: 'give the security verdict on its own card', other: (owner) => `give the security verdict on a card of ${owner}'s`, rule: 'core rule 9' },
+};
 
 function ok<T>(value: T): Verdict<T> {
   return { ok: true, value };
@@ -953,49 +964,65 @@ export class RegisterPolicy {
   }
 
   /**
-   * An audit (T2312, core rule 11): `caller`, a session of this team, read the hand step file `pin` names and pins it
-   * for the task at its sha256, so the task's card may hand it to the owner. Only an auditor of the owner's may
-   * (auditorsOf), never the task's own owner, as {@link auditFrom} judges the rest.
+   * An audit: `caller`, a session of this team, read what `subject` names and pins it for the task: a hand step file
+   * at its sha256, so the task's card may hand it to the owner (T2312, core rule 11), or the task's card with its
+   * security verdict, so a security-related card may reach the owner (T2761, core rule 9). Only an auditor of the
+   * owner's may (auditorsOf), never the task's own owner, as {@link auditFrom} judges the rest.
    */
-  audit(task: Task, caller: string, pin: AuditPin, note: string | undefined): Verdict<AuditChange> {
+  audit(task: Task, caller: string, subject: AuditSubject, note: string | undefined): Verdict<AuditChange> {
     if (caller === task.owner) {
-      return refuse(`${caller} owns ${task.id}, so it does not audit its own hand step (core rule 11); who audits it: ${this.auditorsText(task.owner)}`);
+      const audited = AUDITED[subject.kind];
+      return refuse(`${caller} owns ${task.id}, so it does not ${audited.own} (${audited.rule}); who audits it: ${this.auditorsText(task.owner)}`);
     }
     const auditors = this.auditorsOf(task.owner);
     if (auditors !== undefined && !auditors.includes(caller)) {
-      return this.notAuditor(task, caller);
+      return this.notAuditor(task, caller, subject);
     }
-    return this.auditContent(task, pin, note);
+    return this.auditContent(task, subject, note);
   }
 
-  private notAuditor(task: Task, caller: string): Verdict<AuditChange> {
-    return refuse(`${caller} does not audit a hand step of ${task.owner}'s; who audits it: ${this.auditorsText(task.owner)}`);
+  private notAuditor(task: Task, caller: string, subject: AuditSubject): Verdict<AuditChange> {
+    return refuse(`${caller} does not ${AUDITED[subject.kind].other(task.owner)}; who audits it: ${this.auditorsText(task.owner)}`);
   }
 
   /**
    * An audit from a team above (T2312), `asker` being its `<team>/<id>`, as the tree decides: only an auditor of the
    * owner's that this team's roles name there may. A team with no security reviewer audits its hand steps itself.
    */
-  auditFrom(task: Task, asker: string, pin: AuditPin, note: string | undefined): Verdict<AuditChange> {
+  auditFrom(task: Task, asker: string, subject: AuditSubject, note: string | undefined): Verdict<AuditChange> {
     const auditors = this.auditorsOf(task.owner);
     if (auditors === undefined || !auditors.includes(asker)) {
-      return this.notAuditor(task, asker);
+      return this.notAuditor(task, asker, subject);
     }
-    return this.auditContent(task, pin, note);
+    return this.auditContent(task, subject, note);
   }
 
-  /** An audit's content: a task still to finish, a hand step file of a kind with a run line, and an optional note. */
-  private auditContent(task: Task, pin: AuditPin, note: string | undefined): Verdict<AuditChange> {
+  /**
+   * An audit's content: a task still to finish and an optional note; for a file, a hand step file of a kind with a
+   * run line; for a verdict, a card on the task to give it on and a verdict in words, pinned with the card parts read.
+   */
+  private auditContent(task: Task, subject: AuditSubject, note: string | undefined): Verdict<AuditChange> {
     if (!ACTIVE_STATUSES.includes(task.status)) {
-      return refuse(`${task.id} is ${task.status}: a hand step is audited for a task still to finish`);
-    }
-    const kindProblem = handStepFileProblem(pin.path);
-    if (kindProblem !== undefined) {
-      return refuse(kindProblem);
+      return refuse(`${task.id} is ${task.status}: ${subject.kind === 'file' ? 'a hand step' : 'a card'} is audited for a task still to finish`);
     }
     const text = blankToNull(note);
-    const problem = this.checkText('note', text);
-    return problem === undefined ? ok({ changes: {}, note: text, audit: pin }) : refuse(problem);
+    const noteProblem = this.checkText('note', text);
+    if (noteProblem !== undefined) {
+      return refuse(noteProblem);
+    }
+    if (subject.kind === 'file') {
+      const kindProblem = handStepFileProblem(subject.pin.path);
+      return kindProblem === undefined ? ok({ changes: {}, note: text, audit: subject.pin }) : refuse(kindProblem);
+    }
+    if (task.card === null) {
+      return refuse(`${task.id} has no card: a security verdict is given on the card the owner reads, so its owner sets the card first (${CARD_FLAGS})`);
+    }
+    const verdict = blankToNull(subject.text);
+    if (verdict === null) {
+      return refuse('--verdict is blank: say what the review found and whether the owner may approve it');
+    }
+    const verdictProblem = this.checkText('verdict', verdict);
+    return verdictProblem === undefined ? ok({ changes: {}, note: text, securityVerdict: { text: verdict, read: verdictReadOf(task.card) } }) : refuse(verdictProblem);
   }
 
   /**

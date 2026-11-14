@@ -54,6 +54,7 @@ describe('golden register logs', () => {
       decided: null,
       sizeBase: null,
       audits: [],
+      securityVerdict: null,
       proof: null,
       followups: [],
       startedAt: '2030-01-07T10:00:00.000Z',

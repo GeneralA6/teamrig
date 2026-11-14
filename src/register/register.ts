@@ -3,11 +3,10 @@ import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, TASK_LINE_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type SizeBase, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
-import type { AuditPin } from './hand-step.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { NO_SLICED_GOALS, type SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type AuditChange, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type AuditChange, type AuditSubject, type DeferChange, type ImportChanges, type ImportInput, type OwnerChange, type RegisterPolicy, type StatusContext, type StatusInput, type TriageChanges, type UpdateChange, type Verdict } from './policy.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import type { TaskNumbering } from './numbering.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -431,20 +430,21 @@ export class Register {
   }
 
   /**
-   * `audit <id> --file <path>`: a session of this team pins a hand step file for the task at its sha256 (T2312), an
-   * update that changes no field, so the task's card may hand the file to the owner.
+   * `audit <id> --file <path>` or `--verdict "<text>"`: a session of this team pins a hand step file for the task at
+   * its sha256 (T2312), so the task's card may hand the file to the owner, or its security verdict on the task's card
+   * (T2761), so a security-related card may reach the owner; an update that changes no field.
    */
-  audit(caller: string, id: string, pin: AuditPin, note: string | undefined): Promise<Verdict<WriteResult>> {
-    return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.audit(task, caller, pin, note)))));
+  audit(caller: string, id: string, subject: AuditSubject, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.audit(task, caller, subject, note)))));
   }
 
   /**
-   * `audit <id> --file <path> --team <child>`: an audit from a team above, `asker` being its `<team>/<id>`, as in
-   * approveFrom: the tree decides who that may be, so this team's roster check is skipped; the policy still holds the
-   * audit to the task owner's auditors.
+   * `audit <id> --file <path>|--verdict "<text>" --team <child>`: an audit from a team above, `asker` being its
+   * `<team>/<id>`, as in approveFrom: the tree decides who that may be, so this team's roster check is skipped; the
+   * policy still holds the audit to the task owner's auditors.
    */
-  auditFrom(asker: string, id: string, pin: AuditPin, note: string | undefined): Promise<Verdict<WriteResult>> {
-    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.auditFrom(task, asker, pin, note)))));
+  auditFrom(asker: string, id: string, subject: AuditSubject, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.auditFrom(task, asker, subject, note)))));
   }
 
   /** The update a Later, a Decided or an audit writes: no field changed; the task's waits from then on, or the file pinned. */
