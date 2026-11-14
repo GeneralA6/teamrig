@@ -31,6 +31,7 @@ export function hostLockOf(runtime, path, queue, headroom, focus, zone) {
     const admission = {
         mode: queue.admission,
         agingMinutes: queue.agingMinutes,
+        memoryPassMinutes: queue.memoryPassMinutes,
         perSessionRunning: queue.perSessionRunning,
         maxHeavyParallel: queue.maxHeavyParallel,
         defaultClass: focus.defaultClass,
