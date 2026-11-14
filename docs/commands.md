@@ -219,8 +219,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       row's fate, --apply writes; never deletes, never parks
   approve <id> --note "<what you checked, or why not>" [--decline]   a leader above the task's owner (the
       lead or a sub-lead), or roles.securityReviewer on a task not its own: answers a task waiting on
-      its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
-      point and ask again), and check flags the approved task READY
+      its approval (approval:<lead>); its owner gets an inbox line, which wakes its idle tab, to push or
+      merge (or to fix the note's point and ask again), and check flags the approved task READY
   approve <team>/<id> --note .. [--decline]   the lead of a team's parent team answers a task of that
       team's lead waiting on its approval (approval:app/lead), named as its inbox line prints it: web/T3
   audit T<n> --file <path> [--note "<what you checked>"] [--team <child>]   the security reviewer

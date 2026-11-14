@@ -131,7 +131,7 @@ The injected context holds:
    earlier one of a task that needs it, as `due 10-17 (from T21)`), the plan dependencies not finished yet
    (`after`) and, for a waiting task, its wait reasons with the ready ones marked. Then `WAITING ON YOU` lists the
    active tasks of other sessions that need one of the session's unfinished tasks or wait on its decision or
-   approval: at most 3 rows, the rest one `+N more` line naming `teamrig start --session <id> --all`; with none,
+   approval it has not answered yet: at most 3 rows, the rest one `+N more` line naming `teamrig start --session <id> --all`; with none,
    no block. A session with no active task gets one line, `... none active; ...`, then that block. A register it
    cannot read gives a line naming `teamrig list --session <id>` instead. A resume and any other start keep or begin their context, so they get no
    block; `teamrig start` lists the tasks there.

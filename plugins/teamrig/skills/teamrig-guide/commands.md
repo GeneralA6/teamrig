@@ -472,7 +472,10 @@ dry run: inserted 0, changed 1, unchanged 2, unconfirmed 1, refused 1; nothing w
 The lead's answer to a task waiting on its approval (`--waits approval:<lead>`), say before a push or a merge to
 main: the lead checks the request (the `approvals` skill has the checklist) and approves it, or declines it with
 what to fix. The task's owner gets one inbox line with the answer and the note: push or merge, then set the task's
-next status; or set it in progress, fix the note's point and ask again. An approved task shows `· lead approved`
+next status; or set it in progress, fix the note's point and ask again. With the team's wakes on (`wake.enabled`)
+the answer is a wake ask too, as `inbox add --wake now` posts, so an idle owner wakes on it at once and a closed
+one is reopened by the idle pass with it quoted; an ask that cannot be posted is a `WARN` naming that by-hand wake.
+An approved task shows `· lead approved`
 in its waiting text and `check` flags it `READY` until its owner sets the next status, which clears the answer.
 Only the lead answers (or a sub-lead above the task's owner, or the security reviewer, `roles.securityReviewer`, on
 a task not its own), only a task waiting on its approval, always with a note; an approval of the owner's stays the
@@ -2410,7 +2413,8 @@ Prints what you read at the start of a work block, in one call: the time on the 
 meetings you are met in or join and any missed ones (`MEETINGS`, every one for the lead, only when there are some), your unread inbox lines (marked read,
 as `inbox read` does, which also ties this Claude Code session to your area), your task list, the `check` flags you
 act on and the week's use. Between the list and the flags, `WAITING ON YOU` lists the active tasks of other
-sessions that need one of your unfinished tasks or wait on your decision or approval (at most 5, then `+N more`),
+sessions that need one of your unfinished tasks or wait on your decision or approval not yet answered (at most 5,
+then `+N more`),
 when some do. The lead gets every flag, as `teamrig check` prints them; any other session gets the
 flags of the tasks and skills it owns, and a sub-lead also those of its group's tasks. Run it at the start of every work block and after every `/clear`.
 

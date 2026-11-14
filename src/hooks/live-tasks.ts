@@ -73,7 +73,7 @@ function liveRow(task: Task, tree: TaskTree): string {
 
 /**
  * `WAITING ON YOU 2 task(s) of other sessions:` and a row each: the active tasks of other sessions that need the
- * owner's unfinished tasks or wait on its decision or approval, in the order given, at most `limit` of them and a
+ * owner's unfinished tasks or wait on its decision or approval not yet answered, in the order given, at most `limit` of them and a
  * `+N more` line naming `start`; nothing when none waits.
  */
 function waitingLines(owner: string, waiting: readonly WaitingOnYou[], limit: number, tree: TaskTree, command: string): string[] {
