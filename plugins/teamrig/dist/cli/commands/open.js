@@ -25,6 +25,7 @@ import { findTeam, openKit, reloadTeamConfig, requireConfig, rosterOf, sessionId
 import { liveRunOf, liveRunText } from "../live-run.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { launchListing } from "../skill-listing.js";
+import { tabFocusOf } from "../tab-focus.js";
 import { loadTree } from "../tree.js";
 import { noteResumedTab } from "../wake-opened.js";
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from "./rehire.js";
@@ -94,7 +95,7 @@ export async function openSessionTab(runtime, tab) {
         ...(tab.prompt === undefined ? ['--no-prompt'] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
     ];
     const window = teamWindowOf(tab.teamWindow, tab.team);
-    return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window }), argv };
+    return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window, focus: tab.focus }), argv };
 }
 /**
  * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>] [--resume]`: a new terminal tab in
@@ -118,7 +119,7 @@ export async function open(args, runtime) {
     const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
     const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
     const prompt = args.flags.get('prompt');
-    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), ...(prompt === undefined ? {} : { prompt }) });
+    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), focus: await tabFocusOf(runtime), ...(prompt === undefined ? {} : { prompt }) });
     return printOpenResult(runtime, opened);
 }
 /** Prints what an open did: its OPENED line, or, when no terminal opened, why and the command to run in its folder (exit 3). */
@@ -140,7 +141,7 @@ export function printOpenResult(runtime, opened) {
  * (a hire that never ran, T1364) opens as a new hire does, its reopen logged too.
  */
 export async function openSession(runtime, kit, config, roster, request) {
-    const { team, id, project, terminal, asked } = request;
+    const { team, id, project, terminal, asked, focus } = request;
     const name = roster.nameOf(id) ?? id;
     await refuseLiveRun(runtime, kit, roster, id, name);
     const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
@@ -164,7 +165,7 @@ export async function openSession(runtime, kit, config, roster, request) {
     if (admission.kind === 'busy') {
         throw new RefusedError(admitBusyText(what));
     }
-    const opening = openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, ...(resume === undefined ? {} : { resume }) });
+    const opening = openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, focus, ...(resume === undefined ? {} : { resume }) });
     const { outcome, argv } = await opening.catch(async (error) => {
         await dropTabHold(runtime, kit.paths, config, admission.holdId);
         throw error;
