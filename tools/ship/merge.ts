@@ -50,11 +50,20 @@ const rerunRefused = (outcomes: readonly CheckOutcome[], message: string): Check
  * before any step ran (no runner came) is re-run once, then waited on again; `evaluate` fails the same in a later
  * attempt, and a run already re-run here is not re-run again while GitHub starts the new attempt.
  */
-export async function waitForChecks(gh: Gh, repo: string, sha: string, required: RequiredChecks, waiter: Waiter, polling: Polling, log: (line: string) => void = () => {}): Promise<ChecksResult> {
+export async function waitForChecks(
+  gh: Gh,
+  repo: string,
+  sha: string,
+  branch: string,
+  required: RequiredChecks,
+  waiter: Waiter,
+  polling: Polling,
+  log: (line: string) => void = () => {},
+): Promise<ChecksResult> {
   const deadline = waiter.now() + polling.timeoutMs;
   const rerun = new Set<number>();
   for (;;) {
-    const outcomes = readChecks(gh, repo, sha, required);
+    const outcomes = readChecks(gh, repo, sha, branch, required);
     const verdict = verdictOf(outcomes);
     if (verdict === 'passed' || verdict === 'failed') return { verdict, outcomes };
     if (verdict === 'rerun') {
@@ -99,12 +108,12 @@ const listed = (outcomes: readonly CheckOutcome[], state: CheckOutcome['state'])
     .map(outcome => `${outcome.name} (${outcome.detail})`)
     .join('; ');
 
-/** The `ci` gate: every check in `required` green on GitHub for the sha. */
-export function ciProof(gh: Gh, repo: string, required: RequiredChecks, waiter: Waiter, polling: Polling): Proof {
+/** The `ci` gate: every check in `required` green on GitHub for the sha, in the runs of `branch` (the head merged). */
+export function ciProof(gh: Gh, repo: string, branch: string, required: RequiredChecks, waiter: Waiter, polling: Polling): Proof {
   return {
     before: () => null,
     prove: async (sha, log) => {
-      const checks = await waitForChecks(gh, repo, sha, required, waiter, polling, log);
+      const checks = await waitForChecks(gh, repo, sha, branch, required, waiter, polling, log);
       for (const outcome of checks.outcomes) log(`check ${outcome.state}: ${outcome.name} (${outcome.detail})`);
       if (checks.verdict === 'failed') return `failed: ${listed(checks.outcomes, 'failed')}`;
       if (checks.verdict === 'timeout') {
@@ -387,7 +396,7 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps): Promise<MergeE
   const gh = deps.ghFor(credential.secret);
   const proof =
     profile.gate === 'ci'
-      ? ciProof(gh, repo, { names: profile.checks, summary: profile.summary }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
+      ? ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
       : localProof(args.dir, profile.local, deps.gate);
   const result = await mergeThroughPull(
     { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },
