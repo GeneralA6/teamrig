@@ -1,12 +1,12 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
 import { NOW_PRIORITY, topPriority } from "../config/priorities.js";
 import { approvalCleared, waitAnswerersOf } from "./approval.js";
-import { CARD_FLAGS, GATE_FLAG, RUN_FLAG, whyAskUsage } from "./card.js";
+import { AFFECTS_USAGE, CARD_FLAGS, GATE_FLAG, proofWordOf, RUN_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { auditOf, runFileDrift } from "./hand-step.js";
 import { leaderHolds, waitedMinutes } from "./leader-wait.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
-import { isUngated } from "./owner-waits.js";
+import { isProofAsk, isUngated } from "./owner-waits.js";
 import { isUntriaged } from "./park.js";
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree } from "./tree.js";
 import { WATCH_USAGE } from "./verify.js";
@@ -26,6 +26,7 @@ export const FLAG_KINDS = [
     'NO-CARD',
     'OWNER-ORDERED',
     'UNGATED',
+    'OWNER-PROOF',
     'RUN-CHANGED',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
@@ -83,6 +84,10 @@ const IN_HAND = 1;
  * - UNGATED: waiting, or its proof waiting, on the owner's decision with a card naming no owner gate or business
  *   decision (`gate`, card.ts), as one set before gates reads; never with `requireDecisionCard` off: only an owner
  *   gate or a business decision is the owner's to decide, any other question its session's or its leader's (T1194);
+ * - OWNER-PROOF: waiting, or its proof waiting, on the owner's decision or approval with a card whose question is about
+ *   a test, measure or proof and that names no approved number it changes, money it spends or data it writes
+ *   (`affects`, card.ts), as one set before that was asked reads; never with `requireDecisionCard` off: such work of
+ *   approved work is approved with it (core rule 6, T2623);
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open task of the same owner that outranks it (a better band, or a higher score
@@ -133,6 +138,7 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
         ...noCardFlags(task, config),
         ...ownerOrderedFlags(task, config.ownerSource),
         ...ungatedFlags(task, config),
+        ...ownerProofFlags(task, config),
         ...timeFlags(task, at, config.check, tree),
         ...prioritySkip(task, best, tree, at, config.check),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
@@ -241,6 +247,21 @@ function ungatedFlags(task, config) {
             },
         ]
         : [];
+}
+/** OWNER-PROOF, as {@link checkTasks} describes it. */
+function ownerProofFlags(task, config) {
+    const { ownerSource } = config;
+    const { card } = task;
+    const word = config.requireDecisionCard && card !== null && isProofAsk(task, ownerSource) ? proofWordOf(card.question) : undefined;
+    return word === undefined
+        ? []
+        : [
+            {
+                kind: 'OWNER-PROOF',
+                task,
+                detail: `its card asks ${ownerSource} about a test, measure or proof ("${word}"): one of approved work that changes no approved number, spends no money and writes no data goes ahead; drop the wait on ${ownerSource} and tell your leader, or set it ${task.status} again with ${AFFECTS_USAGE}`,
+            },
+        ];
 }
 /**
  * READY, as {@link checkTasks} describes it: a decided task whose waits left are ready (T1366); a waiting task's

@@ -361,7 +361,7 @@ function reviewInputOf(flags) {
     }
     return Object.keys(review).length === 0 ? undefined : review;
 }
-/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`); undefined when it names none. */
+/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`, `--affects`); undefined when it names none. */
 function cardInputOf(flags) {
     const card = {};
     const question = flagText(flags, 'question');
@@ -387,6 +387,10 @@ function cardInputOf(flags) {
     const gate = flagText(flags, 'gate');
     if (gate !== undefined) {
         card.gate = gate;
+    }
+    const affects = flagText(flags, 'affects');
+    if (affects !== undefined) {
+        card.affects = affects;
     }
     return Object.keys(card).length === 0 ? undefined : card;
 }

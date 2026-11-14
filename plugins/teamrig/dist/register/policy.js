@@ -6,7 +6,7 @@ import { SecretScanner } from "../core/secrets.js";
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
 import { waitAnswerersOf } from "./approval.js";
 import { NO_GOAL_TAGS } from "./goals.js";
-import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
+import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256 } from "./hand-step.js";
 import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { isRepark, taskNumber } from "./fold.js";
@@ -407,6 +407,8 @@ export class RegisterPolicy {
      * owner's decision, naming an owner gate or business, and a card keeps it only while that holds (T1194); while
      * cards are required, the owner is asked to decide only with it (gatedCard). `--run` hands the owner a hand step
      * file only while an audit pins it (runProblem), and a card keeps it only while it asks the owner (T2312).
+     * `--affects` goes only with a wait on the owner's decision or approval, and a card keeps it only while that holds;
+     * while cards are required, a card asking the owner about a test, measure or proof asks only with it (proofCard, T2623).
      */
     cardChange(task, input, waits) {
         const asks = waits.filter((reason) => reason.kind === 'decision' || reason.kind === 'approval');
@@ -425,6 +427,9 @@ export class RegisterPolicy {
         if (given?.whyAsk !== undefined && !ordered) {
             return refuse(`${WHY_ASK_FLAG} says why ${ownerSource} is asked about what ${ownerSource} ordered: it goes only with a wait on ${ownerSource}'s decision or approval of a task from ${ownerSource}`);
         }
+        if (given?.affects !== undefined && owners.length === 0) {
+            return refuse(`${AFFECTS_FLAG} says what a test, measure or proof asks ${ownerSource} for: it goes only with a wait on ${ownerSource}'s decision or approval`);
+        }
         if (given?.gate !== undefined && !decidesOwner) {
             return refuse(`${GATE_FLAG} names the owner gate or business decision that makes a question ${ownerSource}'s: it goes only with a wait on ${ownerSource}'s decision`);
         }
@@ -433,7 +438,7 @@ export class RegisterPolicy {
             return refuse(`${GATE_FLAG} "${given.gate}" is no owner gate [ownerGates] and no business decision: ${gateUsage(this.config.ownerGates)}`);
         }
         const kept = WAIT_STATUSES.includes(task.status) ? task.card : null;
-        const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner, run: owners.length > 0 });
+        const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner, run: owners.length > 0, affects: owners.length > 0 });
         if (given === undefined) {
             if (before !== null || owners.length === 0 || !requireDecisionCard || ordered) {
                 return this.ownerAsk(task, owners, before);
@@ -453,6 +458,7 @@ export class RegisterPolicy {
             ...(parts.whyAsk === undefined ? {} : { whyAsk: parts.whyAsk }),
             ...(parts.gate === undefined ? {} : { gate: parts.gate }),
             ...(parts.run === undefined ? {} : { run: parts.run }),
+            ...(parts.affects === undefined ? {} : { affects: parts.affects }),
         };
         const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
         return problem === undefined ? this.ownerAsk(task, owners, card) : refuse(problem);
@@ -481,13 +487,14 @@ export class RegisterPolicy {
         return undefined;
     }
     /**
-     * What a card asking the owner (`owners`) must say besides its parts, and must not: why, on an owner's order; its
-     * gate, on a decision; and no hand step in its text (typedStepProblem).
+     * What a card asking the owner (`owners`) must say besides its parts, and must not: no hand step in its text
+     * (typedStepProblem); what it changes, on a test, measure or proof (proofProblem); why, on an owner's order; its
+     * gate, on a decision.
      */
     ownerAsk(task, owners, card) {
-        const typed = owners.length === 0 || card === null ? undefined : this.typedStepProblem(task, card);
-        if (typed !== undefined) {
-            return refuse(typed);
+        const problem = owners.length === 0 || card === null ? undefined : (this.typedStepProblem(task, card) ?? this.proofProblem(task, owners, card));
+        if (problem !== undefined) {
+            return refuse(problem);
         }
         const ordered = this.ownerOrderCard(task, owners, card);
         return ordered.ok ? this.gatedCard(task, owners, card) : ordered;
@@ -507,6 +514,29 @@ export class RegisterPolicy {
             `Write the step to a ${HAND_STEP_KINDS.join(', ')} file, have it audited (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --file <path>) and give ${RUN_FLAG} <path>; ` +
             `a card that hands no step says so without code or an ask to paste ("the line is in")`);
     }
+    /** Who leads the task's owner: its sub-lead or the lead, and for the lead, the parent team's lead; undefined at the root. */
+    leaderOf(task) {
+        return this.tree.leaderOf(task.owner) ?? (task.owner === this.tree.lead ? this.tree.above : undefined);
+    }
+    /**
+     * A test, measure or proof of work already approved is approved with it (core rule 6, T2623): while
+     * `register.requireDecisionCard` is on, a card asking the owner whose question is about one (proofWordOf) asks only
+     * with `affects`, the approved number it changes, the money it spends or the data it writes; one that does none of
+     * those goes ahead, and its session tells its leader. A card kept from an older row is held to it too; check flags
+     * rows written before (OWNER-PROOF).
+     */
+    proofProblem(task, owners, card) {
+        const { ownerSource, requireDecisionCard } = this.config.register;
+        const word = card.affects === undefined && requireDecisionCard ? proofWordOf(card.question) : undefined;
+        if (word === undefined) {
+            return undefined;
+        }
+        const kinds = owners.map((reason) => reason.kind).join(' and ');
+        const leader = this.leaderOf(task);
+        const tell = leader === undefined ? '' : ` and tell your leader (${leader})`;
+        return (`--question asks ${ownerSource} about a test, measure or proof ("${word}"): one of approved work that changes no approved number, spends no money and writes no data is approved with that work, so go ahead${tell}, and drop the wait on ${ownerSource}'s ${kinds}; ` +
+            `if it does change, spend or write, say which with ${AFFECTS_USAGE}`);
+    }
     /**
      * Only an owner gate [ownerGates] or a business decision is the owner's to decide (T1194), so while
      * `register.requireDecisionCard` is on, a wait on the owner's decision needs a card naming its gate; any other
@@ -518,7 +548,7 @@ export class RegisterPolicy {
         if (!requireDecisionCard || card?.gate !== undefined || !owners.some((reason) => reason.kind === 'decision')) {
             return ok(card);
         }
-        const leader = this.tree.leaderOf(task.owner) ?? (task.owner === this.tree.lead ? this.tree.above : undefined);
+        const leader = this.leaderOf(task);
         const elsewhere = leader === undefined ? 'decide it' : `decide it, or wait on your leader (--waits decision:${leader})`;
         return refuse(`only an owner gate or a business decision is ${ownerSource}'s to decide: give ${gateUsage(this.config.ownerGates)}${card === null ? ` with ${CARD_USAGE}` : ''}; any other question is yours however many good answers it has: ${elsewhere}`);
     }
