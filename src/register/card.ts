@@ -80,6 +80,22 @@ export function proofWordOf(question: string): string | undefined {
   return PROOF_WORD.exec(question)?.[0];
 }
 
+/**
+ * The words that make a card security-related (T2761): a guard, a permission, a deny, settings, a secret, a token,
+ * a grant, `teamrig exec`, auto mode, a privileged step. The bare words key and allow are left out, and so are
+ * tokens and setting: a key result, an allowance, a token budget and setting a date are not security matters.
+ */
+const SECURITY_WORD =
+  /\bguards?\b|\bpermissions?\b|\bden(?:y|ies|ied)\b|\bsettings\b|\bsecrets?\b|\btoken\b|\bgrant(?:s|ed|ing)?\b|\bexec\b|\bauto-?mode\b|\bprivileged\b/iu;
+
+/**
+ * The first word in what `card` asks the owner to approve (its question, options and recommendation, the parts a
+ * security verdict reads) that makes it security-related (SECURITY_WORD), as written; undefined when none does.
+ */
+export function securityWordOf(card: DecisionCard): string | undefined {
+  return SECURITY_WORD.exec([card.question, ...card.options, card.recommend].join(' | '))?.[0];
+}
+
 /** The gate that names a business decision, the owner's besides the owner gates (T1194). */
 export const BUSINESS_GATE = 'business';
 

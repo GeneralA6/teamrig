@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD } from '../testing/card.ts';
-import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, proofWordOf, sameCard, typedHandStep } from './card.ts';
+import { cardLines, cardProblem, cardTexts, gateChoices, gateOf, keptCard, namedTaskIds, parseCard, plainWords, proofWordOf, sameCard, securityWordOf, typedHandStep } from './card.ts';
 import type { HandStepAudit, RunFiles } from './hand-step.ts';
 
 const WHY_ASK = 'the ordered tier cannot ship at that price';
@@ -170,6 +170,30 @@ describe('the decision card', () => {
       const joined = ['back', 'test'].join('');
       assert.equal(proofWordOf(`Run the ${joined} tonight`), joined);
       assert.deepEqual(['Approve the latest contest price', 'Ship the protest banner', 'An approved immeasurable plan', 'Which pricing tier ships first'].map(proofWordOf), [undefined, undefined, undefined, undefined]);
+    });
+
+    // T2761: the words that make a card security-related, read over every part a security verdict reads.
+    it('finds the first security word in the question, an option or the recommendation, and none of key, allow, tokens or setting', () => {
+      const asked = (question: string) => securityWordOf({ ...TEST_CARD, question });
+      const found = [
+        'Loosen the push guard',
+        'Delegate one permission',
+        'Add a deny line',
+        'Edit the settings file',
+        'Rotate the secret',
+        'Mint a token for the bot',
+        'Granted to the pane',
+        'Run it through teamrig exec',
+        'Widen the auto-mode list',
+        'Turn on automode',
+        'A privileged step',
+      ].map(asked);
+      assert.deepEqual(found, ['guard', 'permission', 'deny', 'settings', 'secret', 'token', 'Granted', 'exec', 'auto-mode', 'automode', 'privileged']);
+      assert.equal(securityWordOf({ ...TEST_CARD, options: ['Keep it', 'Drop the guard'] }), 'guard');
+      assert.equal(securityWordOf({ ...TEST_CARD, recommend: 'Grant it for a week' }), 'Grant');
+      assert.equal(securityWordOf({ ...TEST_CARD, byDefault: 'The guard stays', gate: 'permissions' }), undefined);
+      const plain = ['Pick the key result', 'Allow a later date', 'Spend 20M tokens', 'Setting the due date', 'Execute the plan', 'Which pricing tier ships first'];
+      assert.deepEqual(plain.map(asked), plain.map(() => undefined));
     });
 
     it('prints what it affects under the question, checks it as text, compares, reads and keeps it while the owner is asked', () => {

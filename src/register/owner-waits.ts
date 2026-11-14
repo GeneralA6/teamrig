@@ -1,6 +1,7 @@
 import { parseDeadline } from '../core/time.ts';
-import { proofWordOf } from './card.ts';
+import { proofWordOf, securityWordOf } from './card.ts';
 import type { Task } from './fold.ts';
+import { verdictIsCurrent } from './security-verdict.ts';
 import type { TaskTree } from './tree.ts';
 import { isReady, type WaitContext } from './waits.ts';
 
@@ -34,6 +35,20 @@ export function isUngated(task: Task, ownerMarker: string): boolean {
  */
 export function isProofAsk(task: Task, ownerMarker: string): boolean {
   return task.card !== null && task.card.affects === undefined && proofWordOf(task.card.question) !== undefined && waitsOnOwner(task, ownerMarker);
+}
+
+/**
+ * The security word (securityWordOf) of a card on the owner's decision or approval that no security verdict covers
+ * (T2761): no verdict, or one given on another question, options or recommendation (verdictIsCurrent). A card that
+ * hands a hand step (`run`) is covered by its audit. Undefined for any other task. The write refuses only a card on a
+ * security gate or marked `security`; this catches the rest by their words, for check to warn of (SECURITY-UNREVIEWED).
+ */
+export function unreviewedSecurityWord(task: Task, ownerMarker: string): string | undefined {
+  const { card, securityVerdict } = task;
+  if (card === null || card.run !== undefined || !waitsOnOwner(task, ownerMarker) || (securityVerdict !== null && verdictIsCurrent(securityVerdict, card))) {
+    return undefined;
+  }
+  return securityWordOf(card);
 }
 
 /** When a stored time wait passes, in ms; a time that does not parse, which a write never stores, never passes. */

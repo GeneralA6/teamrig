@@ -426,6 +426,9 @@ each flag (full table: [tasks.md](tasks.md#check-flags)):
 - `OWNER-PROOF`: a task asks the owner about a test, measure or proof of approved work that changes no approved
   number, spends no money and writes no data: never read it to the owner; one inbox line to its owner to go ahead
   and drop the wait, or to set it again with `--affects`.
+- `SECURITY-UNREVIEWED`: a card asks the owner about a guard, a permission, a secret or another security word with
+  no security verdict on it: read it to the owner only once the security reviewer's verdict is on it; one inbox line
+  to its owner to have it read (`audit --verdict`).
 - `RUN-CHANGED`: a card hands the owner a hand step file that changed or went since its audit: never ask the owner
   to run it; one inbox line to its owner to have it audited again, or to set the card again without `--run`.
 - `DECISIONS batch due`: ask the human the batch `teamrig decisions --session lead` prints, together, each card as it

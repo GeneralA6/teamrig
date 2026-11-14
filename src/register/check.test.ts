@@ -604,6 +604,34 @@ describe('checkTasks: OWNER-PROOF', () => {
   });
 });
 
+// T2761: a security-related card on the owner with no security verdict, which the write does not refuse.
+describe('checkTasks: SECURITY-UNREVIEWED', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const flagged = (tasks: Parameters<typeof checkTasks>[0]) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG)
+      .filter((flag) => flag.kind === 'SECURITY-UNREVIEWED')
+      .map((flag) => `${flag.task.id}: ${flag.detail}`);
+  const fix = (id: string, word: string) =>
+    `its card asks owner about a security matter ("${word}") with no security verdict on it: move its wait to your leader, have the security reviewer read it (teamrig audit ${id} --verdict "<what the review found>"), then wait on owner again with the card unchanged`;
+  const guardCard = { ...TEST_OWNER_CARD, question: 'Loosen the push guard for the bot' };
+  const read = { question: guardCard.question, options: [...guardCard.options], recommend: guardCard.recommend };
+  const verdict = { text: 'Pass: read only', read, by: 'bravo', at: FRESH };
+  const onOwner = { status: 'waiting' as const, waits: [{ kind: 'decision' as const, who: 'owner' }], ...seen };
+  const tasks = [
+    testTask({ id: 'T1', ...onOwner, card: guardCard }),
+    testTask({ id: 'T2', status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, options: ['Keep it', 'Grant it'] }, ...seen }),
+    testTask({ id: 'T3', ...onOwner, card: guardCard, securityVerdict: verdict }),
+    testTask({ id: 'T4', ...onOwner, card: { ...guardCard, recommend: 'Loosen it, the bot needs it' }, securityVerdict: verdict }),
+    testTask({ id: 'T5', ...onOwner, card: { ...guardCard, run: 'step.ps1' } }),
+    testTask({ id: 'T6', ...onOwner, card: TEST_OWNER_CARD }),
+    testTask({ id: 'T7', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: guardCard, ...seen }),
+  ];
+
+  it("flags a security-worded card on the owner's decision or approval that no current verdict or audit covers, its proof too", () => {
+    assert.deepEqual(flagged(tasks), [`T1: ${fix('T1', 'guard')}`, `T2: ${fix('T2', 'Grant')}`, `T4: ${fix('T4', 'guard')}`]);
+  });
+});
+
 describe('checkTasks: SELF-MADE', () => {
   const made = (n: number, overrides: Partial<Task> = {}) =>
     testTask({ id: `T${n}`, owner: 'alpha', source: 'alpha', createdBy: 'alpha', createdAt: '2030-01-10T08:00:00.000Z', ownerSeenAt: FRESH, updatedAt: FRESH, ...overrides });

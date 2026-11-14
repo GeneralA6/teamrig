@@ -501,7 +501,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       refused unless an audit (teamrig audit) pins it at its sha256 now; the card prints its run line
       a card on a gate in securityGates (permissions by default), or marked --security, reaches the owner
       only with the security verdict on it (teamrig audit --verdict): set it on your leader's wait first,
-      then move the wait to the owner with the card unchanged; the card prints the verdict
+      then move the wait to the owner with the card unchanged; the card prints the verdict; check flags
+      SECURITY-UNREVIEWED an owner card naming a guard, permission, secret or the like with no verdict
       a bug gives its review (register.review): --cause "<the root cause, at its source>"
       --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and
       --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";

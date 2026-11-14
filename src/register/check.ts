@@ -9,7 +9,7 @@ import { taskNumber, type Task } from './fold.ts';
 import { auditOf, runFileDrift, type RunFiles } from './hand-step.ts';
 import { leaderHolds, waitedMinutes, type LeaderWaitFocus } from './leader-wait.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
-import { isProofAsk, isUngated } from './owner-waits.ts';
+import { isProofAsk, isUngated, unreviewedSecurityWord } from './owner-waits.ts';
 import { isUntriaged, type Leaders } from './park.ts';
 import { loopFix, NO_TASKS_ELSEWHERE, pathText, planBand, TaskTree, type RankedPlace, type TasksElsewhere, type TreeRanking } from './tree.ts';
 import { WATCH_USAGE } from './verify.ts';
@@ -31,6 +31,7 @@ export const FLAG_KINDS = [
   'OWNER-ORDERED',
   'UNGATED',
   'OWNER-PROOF',
+  'SECURITY-UNREVIEWED',
   'RUN-CHANGED',
   'NOT-PICKED-UP',
   'PRIORITY-SKIP',
@@ -106,6 +107,11 @@ export interface Flag {
  *   a test, measure or proof and that names no approved number it changes, money it spends or data it writes
  *   (`affects`, card.ts), as one set before that was asked reads; never with `requireDecisionCard` off: such work of
  *   approved work is approved with it (core rule 6, T2623);
+ * - SECURITY-UNREVIEWED: waiting, or its proof waiting, on the owner's decision or approval with a card that names a
+ *   guard, a permission, a secret or another security word (securityWordOf, card.ts) and no security verdict covers,
+ *   nor a hand step's audit: a security-related ask reaches the owner only with the reviewer's verdict (core rule 9,
+ *   T2761). A warning: the write refuses only a card on a security gate or marked `security`, as a word alone may
+ *   name no security matter;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open task of the same owner that outranks it (a better band as plan order reads
@@ -170,6 +176,7 @@ export function checkTasks(
     ...ownerOrderedFlags(task, config.ownerSource),
     ...ungatedFlags(task, config),
     ...ownerProofFlags(task, config),
+    ...securityUnreviewedFlags(task, config.ownerSource),
     ...timeFlags(task, at, config.check, tree),
     ...prioritySkip(task, best, tree, at, config.check),
     ...prepLapsedFlags(task, tree),
@@ -311,6 +318,20 @@ function ownerProofFlags(task: Task, config: RegisterConfig): Flag[] {
           kind: 'OWNER-PROOF',
           task,
           detail: `its card asks ${ownerSource} about a test, measure or proof ("${word}"): one of approved work that changes no approved number, spends no money and writes no data goes ahead; drop the wait on ${ownerSource} and tell your leader, or set it ${task.status} again with ${AFFECTS_USAGE}`,
+        },
+      ];
+}
+
+/** SECURITY-UNREVIEWED, as {@link checkTasks} describes it. */
+function securityUnreviewedFlags(task: Task, ownerSource: string): Flag[] {
+  const word = unreviewedSecurityWord(task, ownerSource);
+  return word === undefined
+    ? []
+    : [
+        {
+          kind: 'SECURITY-UNREVIEWED',
+          task,
+          detail: `its card asks ${ownerSource} about a security matter ("${word}") with no security verdict on it: move its wait to your leader, have the security reviewer read it (teamrig audit ${task.id} --verdict "<what the review found>"), then wait on ${ownerSource} again with the card unchanged`,
         },
       ];
 }
