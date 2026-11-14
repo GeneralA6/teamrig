@@ -48,6 +48,7 @@ import { closedSendHold } from "./hook-closed-send.js";
 import { coldSendHold } from "./hook-cold-send.js";
 import { blockStartOf, liveTasksNoteOf } from "./live-tasks.js";
 import { droppedEditReasonOf } from "./hook-dropped-edit.js";
+import { handStepReasonOf } from "./hook-hand-step.js";
 import { effortWritebackOf } from "./hook-effort-writeback.js";
 import { meetingHold } from "./hook-meeting.js";
 import { restartOrPark, restartTargetOf } from "./hook-restart.js";
@@ -728,6 +729,11 @@ async function stopOutputOf(runtime, payload) {
     if (dropped !== undefined) {
         return blockOutput(dropped);
     }
+    // Before the refresh too, for the same reason: a hand step typed into the reply is unsafe now (core rule 11).
+    const handStep = await handStepReasonOf(runtime, payload).catch(() => undefined);
+    if (handStep !== undefined) {
+        return blockOutput(handStep);
+    }
     const decision = await refreshDecisionOf(runtime, scope, payload).catch(() => ({ kind: 'none' }));
     // Before the model notices, which then read the level just written: no "runs at another effort" for a typed /effort.
     const effort = await effortWritebackOf(runtime, scope, payload).catch(() => ({ config: scope.config, lines: [] }));
@@ -747,7 +753,9 @@ async function stopOutputOf(runtime, payload) {
 }
 /**
  * Stop, at the end of every turn: first sends the session back, once, to a skill edit of the turn that
- * Claude Code refused and it never redid (hook-dropped-edit.ts), leaving the rest to its next stop. It asks the session for its handover once when its context reached the
+ * Claude Code refused and it never redid (hook-dropped-edit.ts), leaving the rest to its next stop; next, once, to a
+ * reply that handed the human a shell or JSON block or a call line with no pinned sha256 (hook-hand-step.ts, core
+ * rule 11). It asks the session for its handover once when its context reached the
  * team's threshold or the lead asked, and at a task end (`set done`) also after enough tasks, then tells the user
  * once that it waits for /clear, or with `refresh.autoRestart` that it restarts by itself when idle (hook-restart.ts). It
  * writes an `/effort` the user typed in the session to its `launch` entry, logs it and tells its leader
