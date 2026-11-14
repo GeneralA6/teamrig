@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { posix, resolve, win32 } from 'node:path';
-import { Location, resolveDir } from './location.ts';
+import { bashDrivePath, bashNativeWord, Location, resolveDir } from './location.ts';
 import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
 const CWD = '/work/app';
@@ -34,6 +34,26 @@ describe('resolveDir', () => {
     assert.equal(resolveDir('C:\\work', 'sub', HOME), 'C:\\work\\sub');
     assert.equal(resolveDir('C:\\work', '..\\other', HOME), 'C:\\other');
     assert.equal(resolveDir(CWD, '~/x', 'C:/u'), 'C:\\u\\x');
+  });
+});
+
+describe('bashDrivePath', () => {
+  it('names a Git Bash drive path as Windows does only on a host whose home names a drive, and any other path as it is', () => {
+    assert.equal(bashDrivePath('/c/kit/bin/teamrig', 'C:/u'), 'C:/kit/bin/teamrig');
+    assert.equal(bashDrivePath('/d', 'C:/u'), 'D:/');
+    assert.equal(bashDrivePath('/usr/bin/git', 'C:/u'), '/usr/bin/git');
+    assert.equal(bashDrivePath('kit/bin/teamrig', 'C:/u'), 'kit/bin/teamrig');
+    assert.equal(bashDrivePath('/c/kit', '/u'), '/c/kit', 'a POSIX host has no drives');
+  });
+});
+
+describe('bashNativeWord', () => {
+  it('turns a /c/x word or an option value into C:/x on a Windows home, as MSYS hands it to git', () => {
+    assert.deepEqual(bashNativeWord(word('/c/x'), 'C:/u'), word('C:/x'));
+    assert.deepEqual(bashNativeWord(word('--git-dir=/d/r/.git'), 'C:/u'), word('--git-dir=D:/r/.git'));
+    assert.deepEqual(bashNativeWord(word('t1-x'), 'C:/u'), word('t1-x'));
+    assert.deepEqual(bashNativeWord(word('/c/x', true), 'C:/u'), word('/c/x', true));
+    assert.deepEqual(bashNativeWord(word('/c/x'), '/u'), word('/c/x'));
   });
 });
 
@@ -134,9 +154,27 @@ describe('Location: nested shells and launchers', () => {
 
   it('moves to the folder a launcher names', () => {
     const location = new Location(CWD, HOME);
-    location.moveTo(word('sub'));
+    location.moveTo(word('sub'), 'bash');
     assert.equal(location.dir, resolve(CWD, 'sub'));
-    location.moveTo(word('$D', true));
+    location.moveTo(word('$D', true), 'bash');
     assert.equal(location.dir, undefined);
+  });
+});
+
+describe('Location: Git Bash drive paths', () => {
+  const onWindows = (line: string): string | undefined => walk(line, 'bash', new Location('C:\\work', 'C:/u')).dir;
+
+  it('reads cd and pushd to /c/x as C:\\x on a host whose home names a drive', () => {
+    assert.equal(onWindows('cd /c/x'), 'C:\\x');
+    assert.equal(onWindows('cd /d/repo/sub && git status'), 'D:\\repo\\sub');
+    assert.equal(onWindows('pushd /c/x'), 'C:\\x');
+  });
+
+  it('reads a launcher folder the same way in bash, and leaves a POSIX host and PowerShell as they were', () => {
+    const location = new Location('C:\\work', 'C:/u');
+    location.moveTo(word('/c/x'), 'bash');
+    assert.equal(location.dir, 'C:\\x');
+    assert.equal(walk('cd /c/x', 'bash', new Location(CWD, HOME, posix)).dir, '/c/x');
+    assert.equal(walk('cd /c/x', 'powershell', new Location('C:\\work', 'C:/u')).dir, 'C:\\c\\x');
   });
 });

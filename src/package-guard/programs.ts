@@ -231,14 +231,14 @@ function visitCommand(
   const launched = launch(command.words, dialect, inlet.text);
   if (launched.kind === 'script') {
     const inner = location.child();
-    launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
+    launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
     visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet, inlet.fed);
     if (launched.sameShell) {
       location.adopt(inner);
     }
   } else if (launched.kind === 'program' && !launched.program.dynamic) {
     const inner = location.child();
-    launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
+    launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
     const run: Draft<ProgramRun> = {
       name: programName(launched.program.text),
       program: launched.program,

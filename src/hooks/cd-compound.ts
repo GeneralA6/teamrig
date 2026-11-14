@@ -1,8 +1,7 @@
 import * as nodePath from 'node:path';
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
-import { resolveDir } from '../push-guard/location.ts';
-import { bashDrivePath } from '../secret-guard/paths.ts';
+import { bashDrivePath, resolveDir } from '../push-guard/location.ts';
 import { rerunOf } from './rerun-forms.ts';
 
 /**

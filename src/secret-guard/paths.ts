@@ -1,5 +1,5 @@
 import * as nodePath from 'node:path';
-import { resolveDir } from '../push-guard/location.ts';
+import { bashDrivePath, resolveDir } from '../push-guard/location.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
 import { globRegExp, hasWildcard, type GlobOptions } from './glob.ts';
 
@@ -173,10 +173,4 @@ export function wordPath(text: string, place: WordPlace): string {
   const expanded = text.replace(HOME_VARIABLES[place.dialect], () => place.home).replace(OTHER_PARTS[place.dialect], UNKNOWN);
   const native = place.dialect === 'bash' ? bashDrivePath(expanded, place.home) : expanded;
   return resolveDir(place.dir, native, place.home) ?? `${UNKNOWN}/${native}`;
-}
-
-/** A Bash path as Windows names it on a Windows host (whose home names a drive): Git Bash's `/c/x` is `C:/x`; any other path as it is. */
-export function bashDrivePath(path: string, home: string): string {
-  const drive = /^[A-Za-z]:/.test(home) ? /^\/([A-Za-z])(\/|$)/.exec(path) : null;
-  return drive === null ? path : `${(drive[1] ?? '').toUpperCase()}:/${path.slice(drive[0].length)}`;
 }

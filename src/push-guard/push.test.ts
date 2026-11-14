@@ -264,6 +264,15 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
+  it('allows quoted text whose backticks never close, as bash runs nothing there (T2764)', () => {
+    expectRows([
+      ["printf '%s' 'then `\\`' ; git push origin t1-x", 'allow'],
+      ["echo 'x `\\` git push origin main'", 'allow'],
+      ["echo 'say `\\`git push\\`` here'", 'ask', 'doubt'],
+      ["echo 'the form `git push origin b` asks'", 'ask', 'doubt'],
+    ]);
+  });
+
   it("reads git's global options", () => {
     expectRows([
       ['git -C ../other push origin main', 'ask'],
@@ -681,6 +690,31 @@ describe('evaluatePushes: a branch named alone', () => {
   it('allows the mapped push under pushToProtected lead, marking it normal', () => {
     const verdict = judge('git push origin t1-x', { ...onBranch(UPSTREAM_MAIN), pushToProtected: 'lead' });
     assert.deepEqual([verdict.decision, verdict.protectedPush, verdict.doubt], ['allow', 'normal', undefined]);
+  });
+});
+
+describe('evaluatePushes: a Git Bash drive path (T2764)', () => {
+  /** A repo git reads only in `dir`, as on a real host: in any other folder every key fails. */
+  function repoOnlyIn(dir: string) {
+    return { ...fakeRepo({ branch: 't1-x' }), config: mock.fn((at: string, _key: string): ConfigValue => (at === dir ? { kind: 'unset' } : { kind: 'unreadable' })) } satisfies RepoState;
+  }
+  const verdictOf = (command: string, cwd: string, home: string, repo: RepoState) =>
+    evaluatePushes(command, { cwd, home, dialect: 'bash', protectedBranches: ['main', 'master'], pushToProtected: 'ask', repo });
+
+  it('reads the repo git -C /c/x and --git-dir=/c/x name on a Windows home, as the picker guard tells sessions to write it', () => {
+    for (const command of ['git -C /c/x push origin t1-x', 'git -C /c/x push -u origin t1-x 2>&1 | tail -8']) {
+      const verdict = verdictOf(command, 'C:\\work', 'C:\\u', repoOnlyIn('C:\\x'));
+      assert.deepEqual([verdict.decision, verdict.doubt], ['allow', undefined], command);
+    }
+    const gitDir = verdictOf('git --git-dir=/c/x/.git push origin t1-x', 'C:\\work', 'C:\\u', repoOnlyIn('C:\\x\\.git'));
+    assert.deepEqual([gitDir.decision, gitDir.doubt], ['allow', undefined]);
+  });
+
+  it('reads the repo a cd to /c/x leads to on a Windows home, so a branch named alone passes', () => {
+    for (const command of ['cd /c/x && git push origin t1-x', 'cd /c/x && git push -u origin t1-x 2>&1 | tail -8', 'env -C /c/x git push origin t1-x']) {
+      const verdict = verdictOf(command, 'C:\\work', 'C:\\u', repoOnlyIn('C:\\x'));
+      assert.deepEqual([verdict.decision, verdict.doubt], ['allow', undefined], command);
+    }
   });
 });
 
