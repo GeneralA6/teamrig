@@ -284,6 +284,10 @@ thanks or progress pings. Silence counts as consent only within the sender's own
 or for a change that breaks a caller you named. A report, a "done" one too, is a line without `--wake`. If a send
 fails, write the line instead.
 
+Anything written for a human (an owner card, a meeting line, a hand step, a turn's last message) names each file by
+its absolute path and each web page by its full URL, never a path relative to the repository or the scratchpad: the
+human opens it from outside your working directory (rule 9).
+
 With `wake.enabled: false` no line wakes anyone, so a message is how to wake a peer: one only for a result it acts on
 now, a decision, a blocker, a same-area conflict or an incident, and everything else an inbox line. Rule 3 of the
 core pack says whichever of the two holds for the team.
