@@ -354,6 +354,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   issue close <owner/name#n> [--comment <text>]   closes one issue or pull request of the team's
       repositories, first posting --comment when given, with the same checks; a failed comment closes
       nothing
+  pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
+      request's head and prints the files it conflicts on against origin's newest base (its default
+      branch unless --base) and the rebase it needs; changes no branch or file of the clone and
+      writes nothing to GitHub; refuses a folder whose origin is another repository
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;

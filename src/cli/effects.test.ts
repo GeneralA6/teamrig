@@ -102,6 +102,7 @@ const EXPECTED = {
   'gh migrate': 'write',
   'issue comment': 'write',
   'issue close': 'write',
+  'pr conflicts': 'write',
   budget: 'read',
   'budget lift': 'write',
   'budget cut': 'write',

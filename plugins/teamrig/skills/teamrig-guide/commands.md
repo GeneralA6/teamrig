@@ -1360,6 +1360,34 @@ COMMENTED acme/web#12
 CLOSED acme/web#12
 ```
 
+### teamrig pr conflicts
+
+Run in a clone of the pull request's repository, it fetches the pull request's head (a fork's too) and the newest
+base from `origin`, then prints each file the two conflict on, without a merge: no branch, file or index of the
+clone changes, and nothing is written to GitHub. Use it to tell an outside author which files to rebase, in a
+comment through `teamrig issue comment`, or to see what to redo before re-shipping a team pull request on the newest
+base under a new branch name. A folder whose `origin` is another repository, or not on GitHub, fails before any
+fetch. Exit 1 when it failed, 2 when refused, else 0, for a clean merge too.
+
+Flags:
+
+- `--base <branch>`: the branch the pull request targets, when it is not `origin`'s default branch.
+
+Example:
+
+```sh
+teamrig pr conflicts acme/web#7
+```
+
+Output:
+
+```text
+CONFLICTS acme/web#7 (head d00d5ee) against origin/main (b4e2a91): 2 files
+  src/a.ts
+  docs/b.md
+To land it: rebase its branch onto origin/main and resolve these files.
+```
+
 ## Inbox
 
 ### teamrig inbox read

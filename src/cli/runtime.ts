@@ -15,6 +15,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
+import type { PullGit } from '../github/pull-conflicts.ts';
 import type { MergeGit } from '../merge/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { HookRunner } from '../deploy/hooks.ts';
@@ -101,6 +102,8 @@ export interface CliRuntime {
   readonly trees: TreeState;
   /** The git steps `teamrig merge` takes. */
   readonly mergeGit: MergeGit;
+  /** The git steps `teamrig pr conflicts` takes: a pull request's head fetched and merged in the object store alone. */
+  readonly pulls: PullGit;
   /** The programs `teamrig deploy` runs, its checks, afterPull hooks and deploy command: no shell, each with a time limit. */
   readonly hooks: HookRunner;
   /** The registry the package guard asks about the versions an install names: their publish times and advisories. */

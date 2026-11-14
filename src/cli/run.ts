@@ -96,6 +96,7 @@ const deployStatusCommand = () => import('./commands/deploy-status.ts');
 const ghCommands = () => import('./commands/gh.ts');
 const ghMigrateCommands = () => import('./commands/gh-migrate.ts');
 const issueCommands = () => import('./commands/issue.ts');
+const prCommands = () => import('./commands/pr.ts');
 const startCommands = () => import('./commands/start.ts');
 const meetingCommands = () => import('./commands/meeting.ts');
 const meetingsCommands = () => import('./commands/meetings.ts');
@@ -217,6 +218,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'gh migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await ghMigrateCommands()).ghMigrate },
   'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
   'issue close': { effect: 'write', flags: ['session', 'comment'], load: async () => (await issueCommands()).issueClose },
+  'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
   budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
   'budget lift': {
     effect: 'write',
@@ -678,6 +680,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   issue close <owner/name#n> [--comment <text>]   closes one issue or pull request of the team's
       repositories, first posting --comment when given, with the same checks; a failed comment closes
       nothing
+  pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
+      request's head and prints the files it conflicts on against origin's newest base (its default
+      branch unless --base) and the rebase it needs; changes no branch or file of the clone and
+      writes nothing to GitHub; refuses a folder whose origin is another repository
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;

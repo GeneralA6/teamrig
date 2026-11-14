@@ -18,6 +18,7 @@ import { nodeProgramRunner, systemCredentials } from '../github/credentials.ts';
 import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
 import { nodeGhRunner } from '../github/gh.ts';
+import { GIT_PULLS } from '../github/pull-conflicts.ts';
 import { GIT_MERGE } from '../merge/git.ts';
 import { nodeProcesses } from '../open/processes.ts';
 import { nodeSessionProcesses } from '../open/session-processes.ts';
@@ -115,6 +116,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
       shortcuts: systemShortcutPlace(process.platform, nodeProgramRunner(SHORTCUT_QUERY_TIMEOUT_MS)),
     },
     mergeGit: GIT_MERGE,
+    pulls: GIT_PULLS,
     trees: GIT_TREES,
     hooks: nodeHookRunner(process.platform),
     packageRegistry: httpPackageRegistry(),

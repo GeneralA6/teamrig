@@ -30,6 +30,7 @@ import type { HostMemory } from '../delivery/memory.ts';
 import type { StarterWatch } from '../delivery/starter-watch.ts';
 import type { StepRunner } from '../delivery/steps.ts';
 import type { HookRunner } from '../deploy/hooks.ts';
+import type { PullGit } from '../github/pull-conflicts.ts';
 import type { MergeGit } from '../merge/git.ts';
 import type { TreeState } from '../delivery/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
@@ -163,6 +164,8 @@ export interface RunOptions {
   readonly starters?: StarterWatch;
   /** The git `teamrig merge` drives; default the fake repository at /w/feat (testing/fake-merge-git.ts). */
   readonly mergeGit?: MergeGit;
+  /** The git `teamrig pr conflicts` drives; default the fake clone of acme/web at /repo/web (testing/fake-pull-git.ts). */
+  readonly pulls?: PullGit;
   /** The working tree `teamrig queue --pre-push` reads; default no repository. */
   readonly trees?: TreeState;
   /** The runner `teamrig deploy` runs its checks, afterPull hooks and deploy command in; default one whose programs print nothing and exit 0. */
@@ -249,6 +252,7 @@ export class CliHarness {
       ...(options.cpu === undefined ? {} : { cpu: options.cpu }),
       ...(options.starters === undefined ? {} : { starters: options.starters }),
       ...(options.mergeGit === undefined ? {} : { mergeGit: options.mergeGit }),
+      ...(options.pulls === undefined ? {} : { pulls: options.pulls }),
       ...(options.trees === undefined ? {} : { trees: options.trees }),
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
       ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),
