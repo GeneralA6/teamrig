@@ -8,7 +8,7 @@ import type { RepoAccess } from './tokens.ts';
 
 const LOGIN: RepoAccess = { via: 'login', env: { HOME: '/u' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
 const TOKEN: RepoAccess = { ...LOGIN, via: 'token', env: { HOME: '/u', GH_TOKEN: 'read-token' } };
-const ALL: PullListRequest = { repo: 'acme/web', since: undefined, limit: 200 };
+const ALL: PullListRequest = { repo: 'acme/web', read: 'changed', since: undefined, limit: 200 };
 
 /** A pull request of acme/web as read from what ghPull gives when a test sets nothing. */
 function readPull(number: number, overrides: Partial<HostPull> = {}): HostPull {
@@ -46,6 +46,12 @@ describe('listPulls', () => {
     assert.equal(list.kind, 'listed');
     assert.deepEqual(list.kind === 'listed' ? list.pulls.map((pull) => pull.number) : [], [3, 2, 1]);
     assert.ok(gh.ran.every((request) => isIssueQuery(request.args)));
+  });
+
+  it('reads only the open ones for the open read', async () => {
+    const gh = new FakeGh().holdsPulls('acme/web', [...changed(2), ghPull('acme/web', 3, { state: 'MERGED' })]);
+    const list = await listPulls(gh, LOGIN, { ...ALL, read: 'open' });
+    assert.deepEqual(list.kind === 'listed' ? list.pulls.map((pull) => pull.number) : [], [2, 1]);
   });
 
   it('stops at the first one changed before since, so a run reads only what changed', async () => {

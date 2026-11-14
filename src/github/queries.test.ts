@@ -10,6 +10,7 @@ import {
   OPEN_ISSUES_QUERY,
   openPageArgs,
   PULL_PAGE_SIZE,
+  OPEN_PULLS_QUERY,
   PULL_REQUESTS_QUERY,
   pullPageArgs,
   QUERY_VARIABLES,
@@ -71,7 +72,14 @@ describe('the shipped queries', () => {
     for (const field of ['updatedAt', 'mergedAt', 'authorAssociation', 'isCrossRepository', 'mergeable', 'reviewDecision', 'statusCheckRollup { state }']) {
       assert.ok(PULL_REQUESTS_QUERY.includes(field), field);
     }
-    assert.deepEqual(pullPageArgs({ ...PAGE, after: 'Y3Vyc29y' }), ['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web', '-f', 'after=Y3Vyc29y']);
+    assert.deepEqual(pullPageArgs({ ...PAGE, after: 'Y3Vyc29y' }, 'changed'), ['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web', '-f', 'after=Y3Vyc29y']);
+  });
+
+  it('read the open pull requests alone, with the same fields', () => {
+    assert.ok(OPEN_PULLS_QUERY.includes('states: [OPEN]'));
+    assert.doesNotMatch(OPEN_PULLS_QUERY, /mutation|body|comments/i);
+    assert.equal(OPEN_PULLS_QUERY.replace('states: [OPEN], ', ''), PULL_REQUESTS_QUERY);
+    assert.deepEqual(pullPageArgs(PAGE, 'open'), ['api', 'graphql', '-f', `query=${OPEN_PULLS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web']);
   });
 
   it('declare exactly the variables gh.ts lets through', () => {

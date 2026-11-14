@@ -53,6 +53,7 @@ import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
 import { latestIssues } from './plan.ts';
 import { listPulls, PULL_LIMIT } from './pulls.ts';
+import { PULL_PAGE_SIZE } from './queries.ts';
 import { TokenReadError, type RepoAccess, type RepoTokens } from './tokens.ts';
 
 /** What each use does with an access, as its ACCESS line words it. */
@@ -110,21 +111,30 @@ export class GitHubIssueHost implements IssueHost {
     return { kind: 'listed', issues: latestIssues(open.issues, closed.issues), notes: [...listNotes('open', open), ...listNotes('closed', closed)] };
   }
 
-  /** The pull requests changed since `since`, as the owner's saved token or the gh login reads them (pulls.ts). */
+  /**
+   * The open pull requests, then those changed since `since`, as the owner's saved token or the gh login reads them
+   * (pulls.ts). With no `since` the second read takes one page, which only dates the next read.
+   */
   async pulls(repo: string, since: string | undefined): Promise<HostPulls> {
     const access = await this.tokens.accessFor(repo);
     if (access instanceof TokenReadError) {
       return { kind: 'failed', reason: access.message };
     }
-    const read = await listPulls(this.gh, access, { repo, since, limit: PULL_LIMIT });
-    if (read.kind === 'failed') {
-      return read;
+    const open = await listPulls(this.gh, access, { repo, read: 'open', since: undefined, limit: PULL_LIMIT });
+    if (open.kind === 'failed') {
+      return open;
     }
+    const changed = await listPulls(this.gh, access, { repo, read: 'changed', since, limit: since === undefined ? PULL_PAGE_SIZE : PULL_LIMIT });
+    if (changed.kind === 'failed') {
+      return changed;
+    }
+    const unreadable = open.unreadable + changed.unreadable;
     const notes = [
-      ...(read.full ? [`the pull request read reached ${PULL_LIMIT}, so it may leave some out`] : []),
-      ...(read.unreadable > 0 ? [`${read.unreadable} item(s) gh printed did not read as pull requests and were left out`] : []),
+      ...(open.full ? [`the open pull request read reached ${PULL_LIMIT}, so it may leave some out`] : []),
+      ...(since !== undefined && changed.full ? [`the changed pull request read reached ${PULL_LIMIT}, so it may leave some out`] : []),
+      ...(unreadable > 0 ? [`${unreadable} item(s) gh printed did not read as pull requests and were left out`] : []),
     ];
-    return { kind: 'listed', pulls: read.pulls, notes };
+    return { kind: 'listed', open: open.pulls, changed: changed.pulls, notes };
   }
 
   /**

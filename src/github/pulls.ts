@@ -2,7 +2,7 @@ import { isRecord, recordField, stringField, type JsonRecord } from '../core/gua
 import type { HostPull, PullChecks, PullMergeable, PullReview, PullState } from '../issues/pull.ts';
 import type { GhRunner } from './gh.ts';
 import { connectionPage, loginOf, plainLine, repoPage, runRead, timeField, WEB_URL, type ReadKind } from './issues.ts';
-import { pullPageArgs } from './queries.ts';
+import { pullPageArgs, type PullRead } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
 /** How a failed pull request read is worded, and the permission a fine-grained token needs for it. */
@@ -11,10 +11,11 @@ export const PULL_READ: ReadKind = { noun: 'pull requests', permission: 'Pull re
 /** The most pull requests one read takes before it stops asking for pages; a read stopped with more on GitHub says so. */
 export const PULL_LIMIT = 200;
 
-/** One read of a repository's pull requests: those changed at or after `since` (an ISO time), at most `limit`. */
+/** One read of a repository's pull requests, the open ones or those in any state, changed at or after `since` (an ISO time), at most `limit`. */
 export interface PullListRequest {
   /** `owner/name`. */
   readonly repo: string;
+  readonly read: PullRead;
   /** Undefined reads from the newest change on until `limit`. */
   readonly since: string | undefined;
   readonly limit: number;
@@ -46,7 +47,7 @@ export async function listPulls(gh: GhRunner, access: RepoAccess, request: PullL
     if (page === null) {
       return { kind: 'failed', reason: `${plainLine(request.repo)} is not owner/name: check github.repos` };
     }
-    const ran = await runRead(gh, access, request.repo, pullPageArgs(page), PULL_READ);
+    const ran = await runRead(gh, access, request.repo, pullPageArgs(page, request.read), PULL_READ);
     if (ran.kind === 'failed') {
       return ran;
     }

@@ -86,11 +86,12 @@ export type HostLinks =
   | { readonly kind: 'failed'; readonly reason: string };
 
 /**
- * A repository's pull requests changed at or after the time a read was given, newest change first, with what a reader
- * should know about the read; or why it could not be read.
+ * A repository's pull requests as one read found them: every open one, and those in any state changed at or after the
+ * time the read was given, each newest change first, with what a reader should know about the read; or why it could
+ * not be read, in which case nothing of it was.
  */
 export type HostPulls =
-  | { readonly kind: 'listed'; readonly pulls: readonly HostPull[]; readonly notes: readonly string[] }
+  | { readonly kind: 'listed'; readonly open: readonly HostPull[]; readonly changed: readonly HostPull[]; readonly notes: readonly string[] }
   | { readonly kind: 'failed'; readonly reason: string };
 
 /** One issue to open: its repository (`owner/name`), title, body and labels. */
@@ -113,8 +114,8 @@ export interface IssueHost {
   /** The open issues of `repo` and those closed on or after `closedSince` (`YYYY-MM-DD`, UTC), the newest state of each. */
   list(repo: string, closedSince: string): Promise<HostList>;
   /**
-   * The pull requests of `repo` changed at or after `since` (an ISO time), newest change first; with no `since`, the
-   * most recently changed ones, as many as one read takes.
+   * The open pull requests of `repo`, and those changed at or after `since` (an ISO time); with no `since`, the most
+   * recently changed ones, a page of them.
    */
   pulls(repo: string, since: string | undefined): Promise<HostPulls>;
   /** Opens one issue. */

@@ -73,7 +73,7 @@ describe('isIssueQuery', () => {
 
   it('takes a page of the shipped issue and pull request queries', () => {
     const page = { owner: 'acme', name: 'web', after: undefined };
-    for (const args of [openPageArgs(page), openPageArgs({ ...page, after: 'Y3Vyc29y' }), closedPageArgs(page, '2030-01-01T00:00:00Z'), pullPageArgs(page), pullPageArgs({ ...page, after: 'Y3Vyc29y' })]) {
+    for (const args of [openPageArgs(page), openPageArgs({ ...page, after: 'Y3Vyc29y' }), closedPageArgs(page, '2030-01-01T00:00:00Z'), pullPageArgs(page, 'changed'), pullPageArgs({ ...page, after: 'Y3Vyc29y' }, 'changed'), pullPageArgs(page, 'open')]) {
       assert.equal(isIssueQuery(args), true, args.slice(4).join(' '));
     }
   });

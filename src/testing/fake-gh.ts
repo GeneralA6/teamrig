@@ -24,7 +24,7 @@ import {
   type WatchPath,
 } from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
-import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, PULL_REQUESTS_QUERY, RAW_FIELD } from '../github/queries.ts';
+import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, OPEN_PULLS_QUERY, PULL_PAGE_SIZE, PULL_REQUESTS_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
 export interface IssueSpec {
@@ -198,7 +198,7 @@ function notVisible(repo: string): GhResult {
 /**
  * A gh that reaches no network: each request is recorded, so a test can hold every one to a read. A page of the
  * open or closed issue query gets the issues `holds` set for the repository in that state, closed ones changed
- * since `since`, and a page of the pull request query the pull requests `holdsPulls` set, newest change first; each
+ * since `since`, and a page of a pull request query the pull requests `holdsPulls` set (the open ones for the open read), newest change first; each
  * `pages` at a time with the offset as the cursor. A repository it holds nothing for answers as GitHub does for one
  * the reader cannot see.
  */
@@ -215,7 +215,8 @@ export class FakeGh implements GhRunner {
   private readonly spellings = new Map<string, string>();
   private userAnswer: GhResult | undefined;
   private commentsAnswer: GhResult | undefined;
-  private pageSize = ISSUE_PAGE_SIZE;
+  /** Set by `pages`; else each query's own page size. */
+  private pageSize: number | undefined;
   /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
   private readonly versions = new Map<string, number>();
   private readonly probeFailures = new Map<string, GhResult>();
@@ -244,7 +245,7 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
-  /** From now on, a page holds at most `size` issues, so a test can read several pages of a few. */
+  /** From now on, a page holds at most `size` issues or pull requests, so a test can read several pages of a few. */
   pages(size: number): this {
     this.pageSize = size;
     return this;
@@ -371,14 +372,17 @@ export class FakeGh implements GhRunner {
             ? (issues ?? [])
             : query === PULL_REQUESTS_QUERY
               ? (pulls ?? [])
-              : undefined;
+              : query === OPEN_PULLS_QUERY
+                ? (pulls ?? []).filter((pull) => pull['state'] === 'OPEN')
+                : undefined;
     if (held === undefined) {
       return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: the fake gh answers only the shipped queries\n' };
     }
     const offset = Number(fieldOf(request.args, 'after') ?? '0');
-    const nodes = held.slice(offset, offset + this.pageSize);
+    const pulled = query === PULL_REQUESTS_QUERY || query === OPEN_PULLS_QUERY;
+    const nodes = held.slice(offset, offset + (this.pageSize ?? (pulled ? PULL_PAGE_SIZE : ISSUE_PAGE_SIZE)));
     const pageInfo = { hasNextPage: offset + nodes.length < held.length, endCursor: nodes.length === 0 ? null : String(offset + nodes.length) };
-    const connection = query === PULL_REQUESTS_QUERY ? 'pullRequests' : 'issues';
+    const connection = pulled ? 'pullRequests' : 'issues';
     return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository: { [connection]: { pageInfo, nodes } } } }), stderr: '' };
   }
 

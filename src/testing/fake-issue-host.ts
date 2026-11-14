@@ -171,7 +171,7 @@ export class FakeIssueHost implements IssueHost {
     return Promise.resolve({ kind: 'listed', issues: [], notes: [] });
   }
 
-  /** From now on, a pull request read of `repo` gives `pulls`, whatever time it was given. */
+  /** From now on, a pull request read of `repo` gives the open ones of `pulls`, and those changed at or after its time. */
   holdsPulls(repo: string, pulls: readonly HostPull[]): this {
     this.pullsOf.set(repo, pulls);
     return this;
@@ -185,7 +185,12 @@ export class FakeIssueHost implements IssueHost {
 
   pulls(repo: string, since: string | undefined): Promise<HostPulls> {
     this.pullReads.push({ repo, since });
-    return Promise.resolve(this.pullsFailure === undefined ? { kind: 'listed', pulls: this.pullsOf.get(repo) ?? [], notes: [] } : { kind: 'failed', reason: this.pullsFailure });
+    if (this.pullsFailure !== undefined) {
+      return Promise.resolve({ kind: 'failed', reason: this.pullsFailure });
+    }
+    const held = this.pullsOf.get(repo) ?? [];
+    const changed = since === undefined ? held : held.filter((pull) => Date.parse(pull.updatedAt) >= Date.parse(since));
+    return Promise.resolve({ kind: 'listed', open: held.filter((pull) => pull.state === 'open'), changed, notes: [] });
   }
 
   open(draft: IssueDraft): Promise<HostOpen> {
