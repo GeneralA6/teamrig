@@ -1203,7 +1203,7 @@ Its old name, gh sync, is refused with this one (exit 64). Setup, tokens and eve
 
 Access, per owner (the `acme` of `acme/web`): the token saved in the system's credential store as
 `teamrig-gh-<owner>` (lowercase), handed to `gh` as `GH_TOKEN` for that run only, else the `gh auth login` account;
-the sync needs only Issues: Read-only. A fine-grained token reaches one owner's repositories, so two owners need two
+the sync needs only Issues: Read-only and Pull requests: Read-only. A fine-grained token reaches one owner's repositories, so two owners need two
 tokens. An `ACCESS` line says, once per owner, which one reads it; the token itself is never printed. A missing or
 refused token gives that repository a `FAILED` line naming the fix, and the other repositories are read on. A saved
 token the store cannot read (a locked keyring) fails that owner's repositories the same way, never read through
@@ -1249,6 +1249,15 @@ A run that writes also times each open issue's wait for an answer of ours (the t
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md#answer-times)): at 75% of its target
 the session that answers it gets one unwoken inbox line from `github` (a `REMINDED` line), and past it `teamrig check`
 shows the lead GH-LATE. A preview times nothing.
+Pull requests: each run also reads every open pull request of each repository, and those changed since the last
+`--auto` read, and compares them with what that read kept. The news is a pull request opened, merged or closed
+unmerged, or one that starts to conflict with its base, to fail its checks, or gets approved or changes requested;
+each is told once, never again while it lasts, and the first read of a repository only marks what is there. It goes
+to the owner of the task the pull request's branch names (`t<id>-...`) when an author inside the repository pushed
+that branch to the repository itself, else to `[github.watcher]` (unset: the lead). A run by hand prints a
+`PULL NEWS <session>` line per session and keeps nothing; `--auto` posts it. Titles are outside input, quoted as data.
+A repository whose pull requests cannot be read gets a `FAILED <repo> pull requests:` line and exit 1; its issues still
+sync. Reading them needs Pull requests: Read-only on the token.
 
 Flags:
 
@@ -1257,7 +1266,9 @@ Flags:
 - `--auto`: what `teamrig issue watch` runs. It writes as `--yes` does, then posts one inbox line, from `github`, to each owner
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
-  ref only, at most ten named). It reads every repository, so it refuses `--repo`. With `github.statusPush` on it
+  ref only, at most ten named), and one to each session with pull request news (at most eight pull requests named;
+  it also wakes the session for a conflict, failing checks, changes requested or an outsider's new pull request,
+  when `wake.enabled`). It reads every repository, so it refuses `--repo`. With `github.statusPush` on it
   then sends the status push (`--push --yes`) too, labels only: a close it plans is printed as a `HELD` line and
   sent only by a session's `--push --yes`. Its writes per run are lowered so an hour of runs sends at most 250
   (4 a run at the default `github.probeSeconds` of 60, 20 at 300); a failed write is told to the lead like a

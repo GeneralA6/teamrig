@@ -10,7 +10,8 @@ writes are all run by hand: `teamrig issue migrate` moves tasks you choose to ne
 `teamrig issue edit` and `teamrig issue close` answer, label, rewrite the description of or close one issue or pull
 request ([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
 task tree on the issues ([Linking issues as the task tree](#linking-issues-as-the-task-tree)). GitHub is the
-only host teamrig writes to so far.
+only host teamrig writes to so far. Each run also reads the repositories' pull requests and tells each session what
+happened to its own ([Pull request news](#pull-request-news)).
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
 write. After that it runs on its own within a minute of a change on GitHub while your sessions work, and reminds you of an issue waiting
@@ -81,7 +82,7 @@ Give the token only what the commands you run need:
 
 | Command | Repository permissions |
 | --- | --- |
-| `teamrig issue sync` | **Issues: Read-only** |
+| `teamrig issue sync` | **Issues: Read-only** and **Pull requests: Read-only** |
 | `teamrig issue migrate` | **Issues: Read and write** |
 | `teamrig issue comment`, `teamrig issue label`, `teamrig issue edit`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels, description and state are written through its issue) |
 | `teamrig issue links` | **Issues: Read-only** for the preview, **Issues: Read and write** with `--yes` |
@@ -173,6 +174,23 @@ reaches its owner within about a minute while an idle repository costs nothing.
   `github: GitHub sync left out 1 new open issue(s) by people outside the repository: gh:acme/web#12; add the
   "teamrig" label to one on GitHub to make it a task at the next sync`.
 
+### Pull request news
+
+Each run also reads every open pull request of each repository, and those changed since the last automatic run, and
+compares them with what that run kept. The news is a pull request opened, merged or closed unmerged, or one that
+starts to conflict with its base, to fail its checks, or gets approved or changes requested. Each is told once, never
+again while it lasts; the first run on a repository only notes what is there.
+
+- It goes to the owner of the task the pull request's branch names (`t42-login` names T42) when someone inside the
+  repository pushed that branch to the repository itself. A fork's or an outsider's pull request, or a branch that
+  names no task, goes to `github.watcher` in the team config, else the lead.
+- Each session gets one inbox line, for example
+  `github: GitHub pull requests: gh:acme/web#20 "Fix the login redirect": conflicts with its base`. A conflict,
+  failing checks, changes requested or an outsider's new pull request also wakes the session (when `wake.enabled`);
+  a merge, a close or an approval waits for its next turn.
+- A run by hand prints the news as `PULL NEWS <session>` lines and keeps nothing, so the automatic run still tells it.
+- A repository whose pull requests cannot be read gets a `FAILED <repo> pull requests:` line; its issues still sync,
+  and what was last read of its pull requests is kept, so nothing is missed once it reads again.
 ## Answer times
 
 Each sync that writes (`--yes` or the automatic one) also times how long each open issue has waited for an answer of
@@ -422,12 +440,13 @@ again.
 
 ## Safety
 
-- **Read-only sync.** The sync runs only the issue queries teamrig ships, word for word, through `gh api graphql`, so
-  a token with **Issues: Read-only** is all it needs. Of an issue's newest 20 comments it reads only when each was
-  posted, its author's login, tie to the repository and whether that author is a bot: never their text. Only with
-  the push on, a claim reads the text of an issue's comments posted since the last run (`.../issues/<number>/comments
-  -X GET` with `since` and `per_page=30` only, one page), for at most ten issues a run, to find a claim line, and
-  keeps no text. Any other `gh` command or query is refused in code, except
+- **Read-only sync.** The sync runs only the issue queries and the pull request queries teamrig ships, word for word,
+  through `gh api graphql`, so a token with **Issues: Read-only** and **Pull requests: Read-only** is all it needs.
+  Of an issue's newest 20 comments it reads only when each was posted, its author's login, tie to the repository and
+  whether that author is a bot: never their text. Only with the push on, a claim reads the text of an issue's comments
+  posted since the last run (`.../issues/<number>/comments -X GET` with `since` and `per_page=30` only, one page),
+  for at most ten issues a run, to find a claim line, and keeps no text. Any other `gh` command or query is refused
+  in code, except
   the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
   one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label
