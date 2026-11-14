@@ -160,7 +160,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
   }
   if (auto) {
-    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut })).forEach(say);
+    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls: new Map() })).forEach(say);
   }
   say(
     write

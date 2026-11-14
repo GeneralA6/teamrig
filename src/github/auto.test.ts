@@ -13,42 +13,88 @@ import {
   type AddedTask,
   type SyncState,
 } from './auto.ts';
+import type { PullWatch } from './pull-news.ts';
 import type { StepOutcome } from './sync.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const MINUTE = 60_000;
 const NONE: ReadonlyMap<string, readonly number[]> = new Map();
+const NO_PULLS: ReadonlyMap<string, PullWatch> = new Map();
+const WATCH: PullWatch = {
+  cursor: '2030-01-08T09:00:00Z',
+  open: [
+    { number: 4, mergeable: 'conflicting', checks: 'failing', review: 'changes-requested' },
+    { number: 7, mergeable: 'unknown', checks: 'none', review: 'none' },
+  ],
+};
 
 function task(id: string, owner: string, title = `Issue ${id}`): AddedTask {
   return { id, owner, ref: `gh:acme/web#${id.slice(1)}`, title };
 }
 
 describe('the sync state file', () => {
-  const full: SyncState = { startedAt: NOW, finishedAt: NOW + MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9, 12]], ['acme/api', [3]]]) };
+  const full: SyncState = {
+    startedAt: NOW,
+    finishedAt: NOW + MINUTE,
+    failing: ['acme/api'],
+    leftOut: new Map([['acme/web', [9, 12]], ['acme/api', [3]]]),
+    pulls: new Map([['acme/web', WATCH], ['acme/api', { cursor: undefined, open: [] }]]),
+  };
 
   it('writes the pinned fields of its format: a field added to the file raises SYNC_STATE_FORMAT', () => {
     const written: Readonly<Record<number, readonly string[]>> = {
-      2: ['failing[]', 'finishedAt', 'leftOut.*[]', 'startedAt', 'v'],
+      3: [
+        'failing[]',
+        'finishedAt',
+        'leftOut.*[]',
+        'pulls.*.cursor',
+        'pulls.*.open[].checks',
+        'pulls.*.open[].mergeable',
+        'pulls.*.open[].number',
+        'pulls.*.open[].review',
+        'startedAt',
+        'v',
+      ],
     };
-    assert.deepEqual(fieldPaths(JSON.parse(formatSyncState(full)), new Set(['leftOut'])), written[SYNC_STATE_FORMAT]);
+    assert.deepEqual(fieldPaths(JSON.parse(formatSyncState(full)), new Set(['leftOut', 'pulls'])), written[SYNC_STATE_FORMAT]);
   });
 
-  it('reads back what it wrote, with or without a finish or a left-out issue', () => {
-    for (const state of [{ startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE }, full] satisfies SyncState[]) {
+  it('reads back what it wrote, with or without a finish, a left-out issue or a pull request watch', () => {
+    for (const state of [{ startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE, pulls: NO_PULLS }, full] satisfies SyncState[]) {
       assert.deepEqual(parseSyncState(formatSyncState(state)), state);
     }
-    assert.ok(!formatSyncState({ ...full, leftOut: NONE }).includes('leftOut'));
+    const bare = formatSyncState({ ...full, leftOut: NONE, pulls: NO_PULLS });
+    assert.ok(!bare.includes('leftOut') && !bare.includes('pulls'), bare);
   });
 
-  it('reads a format-1 file as having left nothing out', () => {
-    assert.deepEqual(parseSyncState('{"v":1,"startedAt":1,"failing":["acme/api"]}'), { startedAt: 1, finishedAt: undefined, failing: ['acme/api'], leftOut: NONE });
+  it('reads a format-1 file as having left nothing out, and formats 1 and 2 as having watched no pull request', () => {
+    assert.deepEqual(parseSyncState('{"v":1,"startedAt":1,"failing":["acme/api"]}'), { startedAt: 1, finishedAt: undefined, failing: ['acme/api'], leftOut: NONE, pulls: NO_PULLS });
+    assert.deepEqual(parseSyncState('{"v":2,"startedAt":1,"failing":[],"leftOut":{"acme/web":[9]},"pulls":{"acme/web":7}}'), {
+      startedAt: 1,
+      finishedAt: undefined,
+      failing: [],
+      leftOut: new Map([['acme/web', [9]]]),
+      pulls: NO_PULLS,
+    });
   });
 
   it('reads a damaged file or one of another format as no sync yet', () => {
+    const mark = '{"number":4,"mergeable":"mergeable","checks":"none","review":"none"}';
     for (const text of [
       '',
       'not json',
-      '{"v":3,"startedAt":1,"failing":[]}',
+      '{"v":4,"startedAt":1,"failing":[]}',
+      '{"v":3,"startedAt":1,"failing":[],"pulls":[]}',
+      '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":7}}',
+      '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"cursor":"x","open":[]}}}',
+      '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"cursor":9,"open":[]}}}',
+      '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"open":{}}}}',
+      `{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"open":[${mark.replace('4', '0')}]}}}`,
+      `{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"open":[${mark.replace('4', '4.5')}]}}}`,
+      `{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"open":[${mark.replace('"mergeable","checks"', '"clean","checks"')}]}}}`,
+      `{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"open":[${mark.replace('"none","review"', '"red","review"')}]}}}`,
+      `{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"open":[${mark.replace('"review":"none"', '"review":"ok"')}]}}}`,
+      '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"open":[7]}}}',
       '{"v":1,"failing":[]}',
       '{"v":1,"startedAt":1,"failing":[3]}',
       '{"v":1,"startedAt":1,"finishedAt":"x","failing":[]}',
@@ -63,17 +109,37 @@ describe('the sync state file', () => {
 });
 
 describe('finishState', () => {
-  it('records the finish and the failures, keeping the recorded start', () => {
-    const claimed: SyncState = { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9]]]) };
-    assert.deepEqual(finishState(claimed, NOW + MINUTE, [], NONE), { startedAt: NOW, finishedAt: NOW + MINUTE, failing: [], leftOut: NONE });
-    assert.deepEqual(finishState(undefined, NOW, [{ repo: 'acme/web', reason: 'gone' }], NONE), { startedAt: NOW, finishedAt: NOW, failing: ['acme/web'], leftOut: NONE });
+  it('records the finish, the failures and the watches, keeping the recorded start', () => {
+    const claimed: SyncState = { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9]]]), pulls: NO_PULLS };
+    assert.deepEqual(finishState(claimed, NOW + MINUTE, { failures: [], leftOut: NONE, pulls: NO_PULLS }), {
+      startedAt: NOW,
+      finishedAt: NOW + MINUTE,
+      failing: [],
+      leftOut: NONE,
+      pulls: NO_PULLS,
+    });
+    assert.deepEqual(finishState(undefined, NOW, { failures: [{ repo: 'acme/web', reason: 'gone' }], leftOut: NONE, pulls: NO_PULLS }), {
+      startedAt: NOW,
+      finishedAt: NOW,
+      failing: ['acme/web'],
+      leftOut: NONE,
+      pulls: NO_PULLS,
+    });
   });
 
   it('keeps what was left out of a repository it could not read, and drops a read one that left nothing out', () => {
-    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: new Map([['acme/web', [9]], ['acme/api', [3]], ['acme/old', [1]]]) };
+    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: new Map([['acme/web', [9]], ['acme/api', [3]], ['acme/old', [1]]]), pulls: NO_PULLS };
     const failed = [{ repo: 'acme/web', reason: 'gone' }];
-    const finished = finishState(before, NOW + MINUTE, failed, new Map([['acme/api', []], ['acme/new', [4, 5]]]));
+    const finished = finishState(before, NOW + MINUTE, { failures: failed, leftOut: new Map([['acme/api', []], ['acme/new', [4, 5]]]), pulls: NO_PULLS });
     assert.deepEqual(finished.leftOut, new Map([['acme/new', [4, 5]], ['acme/web', [9]]]));
+  });
+
+  it('keeps the pull request watch of a repository it could not read, and drops one no longer synced', () => {
+    const empty: PullWatch = { cursor: undefined, open: [] };
+    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE, pulls: new Map([['acme/web', WATCH], ['acme/api', WATCH], ['acme/old', WATCH]]) };
+    const failed = [{ repo: 'acme/web', reason: 'gone' }];
+    const finished = finishState(before, NOW + MINUTE, { failures: failed, leftOut: NONE, pulls: new Map([['acme/api', empty], ['acme/new', empty]]) });
+    assert.deepEqual(finished.pulls, new Map([['acme/api', empty], ['acme/new', empty], ['acme/web', WATCH]]));
   });
 });
 

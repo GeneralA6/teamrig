@@ -60,7 +60,7 @@ export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitC
   const now = runtime.clock.now();
   const { before, after } = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
     const state = await writableState(runtime, kit);
-    const finished = finishState(state, now, run.failures, run.leftOut);
+    const finished = finishState(state, now, run);
     await runtime.files.write(kit.paths.githubSync, formatSyncState(finished));
     return { before: state, after: finished };
   });

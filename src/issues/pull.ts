@@ -8,13 +8,16 @@
 export type PullState = 'open' | 'merged' | 'closed';
 
 /** Whether it merges cleanly into its base; `unknown` while the host has not worked it out yet. */
-export type PullMergeable = 'mergeable' | 'conflicting' | 'unknown';
+export const PULL_MERGEABLE = ['mergeable', 'conflicting', 'unknown'] as const;
+export type PullMergeable = (typeof PULL_MERGEABLE)[number];
 
 /** Its last commit's checks taken together: `failing` once any failed, errored or was cancelled; `none` when it has none. */
-export type PullChecks = 'passing' | 'failing' | 'pending' | 'none';
+export const PULL_CHECKS = ['passing', 'failing', 'pending', 'none'] as const;
+export type PullChecks = (typeof PULL_CHECKS)[number];
 
 /** The review it needs or has: approved, changes asked for, a review still needed, or none asked for. */
-export type PullReview = 'approved' | 'changes-requested' | 'review-required' | 'none';
+export const PULL_REVIEWS = ['approved', 'changes-requested', 'review-required', 'none'] as const;
+export type PullReview = (typeof PULL_REVIEWS)[number];
 
 export interface HostPull {
   readonly repo: string;

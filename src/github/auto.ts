@@ -1,7 +1,9 @@
-import { isRecord } from '../core/guards.ts';
+import { isRecord, stringField } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import { PULL_CHECKS, PULL_MERGEABLE, PULL_REVIEWS } from '../issues/pull.ts';
 import { cut } from '../register/views.ts';
 import { issueRef } from './map.ts';
+import type { PullMark, PullWatch } from './pull-news.ts';
 import type { StepOutcome } from './sync.ts';
 
 /**
@@ -12,12 +14,14 @@ import type { StepOutcome } from './sync.ts';
  */
 
 /**
- * The format of the sync state file this code writes: 2 added `leftOut`. It reads format 1 as having left
- * nothing out; a file in another format reads as no sync yet.
+ * The format of the sync state file this code writes: 2 added `leftOut`, 3 `pulls`. It reads format 1 as having left
+ * nothing out, and formats 1 and 2 as having watched no pull request, so the next read of each is a first read; a
+ * file in another format reads as no sync yet.
  */
-export const SYNC_STATE_FORMAT = 2;
-/** The older format this code still reads. */
+export const SYNC_STATE_FORMAT = 3;
+/** The older formats this code still reads. */
 const NO_LEFT_OUT_FORMAT = 1;
+const NO_PULLS_FORMAT = 2;
 
 /** The new tasks one inbox line names; the rest are counted. */
 const NAMED_TASKS = 5;
@@ -27,21 +31,27 @@ const NAMED_LEFT_OUT = 10;
 const TITLE_CHARS = 60;
 
 /**
- * The team's automatic sync: when the last one started and finished, the repositories it could not read, and by
- * repository the numbers, lowest first, of the open issues the trust rule left out (github/trust.ts).
+ * The team's automatic sync: when the last one started and finished, the repositories it could not read, by
+ * repository the numbers, lowest first, of the open issues the trust rule left out (github/trust.ts), and by
+ * repository what the pull request monitor last read (pull-news.ts).
  */
 export interface SyncState {
   readonly startedAt: number;
   readonly finishedAt: number | undefined;
   readonly failing: readonly string[];
   readonly leftOut: ReadonlyMap<string, readonly number[]>;
+  readonly pulls: ReadonlyMap<string, PullWatch>;
 }
 
-/** What one `issue sync --auto` run did: the tasks it added, the repositories that failed, and the issues it left out of each repository it read. */
+/**
+ * What one `issue sync --auto` run did: the tasks it added, the repositories that failed, the issues it left out of
+ * each repository it read, and what it read of the pull requests of each repository whose pull requests it read.
+ */
 export interface SyncRun {
   readonly added: readonly AddedTask[];
   readonly failures: readonly RepoFailure[];
   readonly leftOut: ReadonlyMap<string, readonly number[]>;
+  readonly pulls: ReadonlyMap<string, PullWatch>;
 }
 
 /** A repository a sync could not read, or whose tasks the task list refused, and why. */
@@ -60,12 +70,12 @@ export interface AddedTask {
 
 /**
  * The state file's content; undefined when it is damaged or from another format, which reads as no sync yet. A
- * format-1 file left nothing out.
+ * format-1 file left nothing out, and neither older format watched a pull request.
  */
 export function parseSyncState(text: string): SyncState | undefined {
   const record = parseObject(text.trim());
   const format = record?.[VERSION_FIELD];
-  if (record === undefined || (format !== SYNC_STATE_FORMAT && format !== NO_LEFT_OUT_FORMAT)) {
+  if (record === undefined || (format !== SYNC_STATE_FORMAT && format !== NO_PULLS_FORMAT && format !== NO_LEFT_OUT_FORMAT)) {
     return undefined;
   }
   const { startedAt, finishedAt, failing } = record;
@@ -74,7 +84,57 @@ export function parseSyncState(text: string): SyncState | undefined {
   }
   const repos = failing.filter((repo): repo is string => typeof repo === 'string');
   const leftOut = format === NO_LEFT_OUT_FORMAT ? new Map<string, readonly number[]>() : parseLeftOut(record['leftOut']);
-  return repos.length === failing.length && leftOut !== undefined ? { startedAt, finishedAt, failing: repos, leftOut } : undefined;
+  const pulls = format === SYNC_STATE_FORMAT ? parsePulls(record['pulls']) : new Map<string, PullWatch>();
+  return repos.length === failing.length && leftOut !== undefined && pulls !== undefined ? { startedAt, finishedAt, failing: repos, leftOut, pulls } : undefined;
+}
+
+/** The stored `pulls` object, which a file holds only once some repository's pull requests were read; undefined when damaged. */
+function parsePulls(value: unknown): Map<string, PullWatch> | undefined {
+  if (value === undefined) {
+    return new Map();
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value);
+  const pulls = new Map(
+    entries.flatMap(([repo, watch]) => {
+      const parsed = parseWatch(watch);
+      return parsed === undefined ? [] : [[repo, parsed] as const];
+    }),
+  );
+  return pulls.size === entries.length ? pulls : undefined;
+}
+
+function parseWatch(value: unknown): PullWatch | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const cursor = stringField(value, 'cursor');
+  const open = value['open'];
+  if ((value['cursor'] !== undefined && (cursor === undefined || Number.isNaN(Date.parse(cursor)))) || !Array.isArray(open)) {
+    return undefined;
+  }
+  const marks = open.flatMap((mark: unknown) => {
+    const parsed = parseMark(mark);
+    return parsed === undefined ? [] : [parsed];
+  });
+  return marks.length === open.length ? { cursor, open: marks } : undefined;
+}
+
+function parseMark(value: unknown): PullMark | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const { number, mergeable, checks, review } = value;
+  if (typeof number !== 'number' || !Number.isSafeInteger(number) || number < 1) {
+    return undefined;
+  }
+  return isOneOf(PULL_MERGEABLE, mergeable) && isOneOf(PULL_CHECKS, checks) && isOneOf(PULL_REVIEWS, review) ? { number, mergeable, checks, review } : undefined;
+}
+
+function isOneOf<T extends string>(list: readonly T[], value: unknown): value is T {
+  return list.some((item) => item === value);
 }
 
 /** The stored `leftOut` object, which a file holds only when some issue was left out; undefined when damaged. */
@@ -101,7 +161,12 @@ export function formatSyncState(state: SyncState): string {
     ...(state.finishedAt === undefined ? {} : { finishedAt: state.finishedAt }),
     failing: [...state.failing],
     ...(state.leftOut.size === 0 ? {} : { leftOut: Object.fromEntries([...state.leftOut].map(([repo, numbers]) => [repo, [...numbers]])) }),
+    ...(state.pulls.size === 0 ? {} : { pulls: Object.fromEntries([...state.pulls].map(([repo, watch]) => [repo, watchRecord(watch)])) }),
   });
+}
+
+function watchRecord(watch: PullWatch): Record<string, unknown> {
+  return { ...(watch.cursor === undefined ? {} : { cursor: watch.cursor }), open: watch.open.map((mark) => ({ ...mark })) };
 }
 
 function isTime(value: unknown): value is number {
@@ -110,22 +175,21 @@ function isTime(value: unknown): value is number {
 
 /**
  * What a finished sync writes: its start as claimed (now, for a sync run by hand), the repositories that failed,
- * and the issues left out of each repository it read. A repository it could not read keeps what was left out
- * of it before, so its issues are not told again once it reads; one that left nothing out is not kept.
+ * the issues left out of each repository it read, and what it read of each one's pull requests. A repository it
+ * could not read keeps what was left out of it before, so its issues are not told again once it reads, and its pull
+ * request watch, so what happened meanwhile is news once it reads; one that left nothing out is not kept, nor the
+ * watch of a repository no longer synced.
  */
-export function finishState(
-  state: SyncState | undefined,
-  now: number,
-  failures: readonly RepoFailure[],
-  leftOut: ReadonlyMap<string, readonly number[]>,
-): SyncState {
-  const failing = failures.map((failure) => failure.repo);
-  const kept = [...(state?.leftOut ?? [])].filter(([repo]) => failing.includes(repo) && !leftOut.has(repo));
+export function finishState(state: SyncState | undefined, now: number, run: Omit<SyncRun, 'added'>): SyncState {
+  const failing = run.failures.map((failure) => failure.repo);
+  const kept = [...(state?.leftOut ?? [])].filter(([repo]) => failing.includes(repo) && !run.leftOut.has(repo));
+  const watched = [...(state?.pulls ?? [])].filter(([repo]) => failing.includes(repo) && !run.pulls.has(repo));
   return {
     startedAt: state?.startedAt ?? now,
     finishedAt: now,
     failing,
-    leftOut: new Map([...leftOut, ...kept].filter(([, numbers]) => numbers.length > 0)),
+    leftOut: new Map([...run.leftOut, ...kept].filter(([, numbers]) => numbers.length > 0)),
+    pulls: new Map([...run.pulls, ...watched]),
   };
 }
 
