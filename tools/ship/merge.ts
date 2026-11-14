@@ -310,20 +310,42 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
   return 1;
 }
 
-/** The merge itself; prints every outcome but a move of main past the head, which it returns to the caller. */
-export async function mergeRun(args: MergeArgs, deps: MergeDeps): Promise<MergeExit> {
+/** A pushed change branch a pull request is made from, read from the repo dir. */
+export interface PushedHead {
+  /** `owner/name`, from the origin remote. */
+  repo: string;
+  profile: RepoProfile;
+  head: string;
+  sha: string;
+  /** The pull request's title and body: the commits main lacks, under the note when there is one. */
+  title: string;
+  body: string;
+}
+
+/**
+ * The branch to make a pull request from (`head`, else the one checked out in the repo dir): never main, pushed as it
+ * is, with commits main lacks, and its note file read. Throws, before any GitHub call, when one of those fails.
+ */
+export function pushedHead(deps: Pick<MergeDeps, 'git' | 'profiles' | 'gate'>, head: string | null, noteFile: string | null): PushedHead {
   const { git } = deps;
   const repo = slugOf(git('remote', 'get-url', 'origin'));
   const profile = profileFor(deps.profiles, repo);
-  const head = args.head ?? checkedOutBranch(git);
-  if (head === profile.main) throw new Error(`${head} is the branch merged into: ship a change branch`);
-  git('fetch', '--quiet', 'origin', head, profile.main);
-  const sha = git('rev-parse', `refs/heads/${head}`);
-  if (git('rev-parse', `refs/remotes/origin/${head}`) !== sha) throw new Error(`${head} ${sha.slice(0, 7)} is not pushed: push it first`);
+  const branch = head ?? checkedOutBranch(git);
+  if (branch === profile.main) throw new Error(`${branch} is the branch merged into: ship a change branch`);
+  git('fetch', '--quiet', 'origin', branch, profile.main);
+  const sha = git('rev-parse', `refs/heads/${branch}`);
+  if (git('rev-parse', `refs/remotes/origin/${branch}`) !== sha) throw new Error(`${branch} ${sha.slice(0, 7)} is not pushed: push it first`);
   const subjects = git('log', '--reverse', '--format=%s', `refs/remotes/origin/${profile.main}..${sha}`).split('\n').filter(line => line !== '');
-  if (subjects.length === 0) throw new Error(`${head} has nothing that ${profile.main} lacks`);
-  const note = args.noteFile === null ? null : deps.gate.readText(args.noteFile);
-  if (args.noteFile !== null && note === null) throw new Error(`--note-file ${args.noteFile}: no such file`);
+  if (subjects.length === 0) throw new Error(`${branch} has nothing that ${profile.main} lacks`);
+  const note = noteFile === null ? null : deps.gate.readText(noteFile);
+  if (noteFile !== null && note === null) throw new Error(`--note-file ${noteFile}: no such file`);
+  return { repo, profile, head: branch, sha, title: `Merge ${branch} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) };
+}
+
+/** The merge itself; prints every outcome but a move of main past the head, which it returns to the caller. */
+export async function mergeRun(args: MergeArgs, deps: MergeDeps): Promise<MergeExit> {
+  const { git } = deps;
+  const { repo, profile, head, sha, title, body } = pushedHead(deps, args.head, args.noteFile);
   const callers = deps.renamedCallers(`refs/remotes/origin/${profile.main}`, sha, repo);
   if (callers !== null) {
     deps.err(`REFUSED ${callers}`);
@@ -341,7 +363,7 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps): Promise<MergeE
       ? ciProof(gh, repo, { names: profile.checks, summary: profile.summary }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
       : localProof(args.dir, profile.local, deps.gate);
   const result = await mergeThroughPull(
-    { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },
+    { repo, head, base: profile.main, sha, title, body },
     gh,
     mainBranchOf(git, profile.main),
     proof,
