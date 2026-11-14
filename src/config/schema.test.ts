@@ -87,7 +87,7 @@ const EVERY_KEY = {
   permissions: { keepAllow: ['Bash(kubectl get *)'] },
   statusLine: { folder: false, branch: false, pace: false },
   decisions: { batchTimesUtc: ['13:03'], batchAt: 3 },
-  github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, probeSeconds: 120 },
+  github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, probeSeconds: 120, watcher: 'charlie' },
   serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] } },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
   exec: { path: ['C:/tools'], webhookEnv: 'EXEC_WEBHOOK_URL' },

@@ -704,6 +704,11 @@ export interface GithubConfig {
    * their TF-IDF word vectors (src/issues/similar.ts). Higher lists fewer, closer candidates.
    */
   readonly similarThreshold: number;
+  /**
+   * The session that hears the pull request news no task owner takes: a pull request from a fork or by an author
+   * outside the repository, or from a branch that names no task. Unset, the lead.
+   */
+  readonly watcher?: string;
 }
 
 /**

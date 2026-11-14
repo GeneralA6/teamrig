@@ -459,6 +459,18 @@ describe('parseConfig', () => {
     }
   });
 
+  it('reads the github watcher as one of the sessions, else leaves it unset for the lead', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, github: { watcher: 'bravo' } });
+    assert.deepEqual(issues, []);
+    assert.equal(config.github.watcher, 'bravo');
+    assert.ok(!('watcher' in parseConfig(ROSTER).config.github));
+    for (const wrong of ['zulu', 'Not A Name', 7]) {
+      const parsed = parseConfig({ ...ROSTER, github: { watcher: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.watcher'], JSON.stringify(wrong));
+      assert.ok(!('watcher' in parsed.config.github), JSON.stringify(wrong));
+    }
+  });
+
   it('reads the github accept label as one line of at most 50 characters, else keeps teamrig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, github: { acceptLabel: 'Accepted by triage' } });
     assert.deepEqual(issues, []);
