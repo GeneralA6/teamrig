@@ -4,7 +4,7 @@ import { customTitleOf } from "../names/title.js";
 import { CARRY_TAIL_BYTES } from "../refresh/carry.js";
 import { resumeFolderOf } from "../sessions/resume-folder.js";
 import { ARCHIVE_KEEP_MS } from "./archive.js";
-import { chooseMode, CLOSED_KEEP_MS, continuePrompt, diedAt, judgeEntry, lastRecordedEffort, lostWorkOf, nearestExistingFolder, selectRestorePlan, summarizeRestore, } from "./plan.js";
+import { chooseMode, CLOSED_KEEP_MS, continuePrompt, diedAt, endFactsOf, judgeEntry, lastRecordedEffort, lostWorkOf, nearestExistingFolder, selectRestorePlan, summarizeRestore, } from "./plan.js";
 import { teamSessionOf } from "./teams.js";
 import { KIND_TAIL_BYTES, transcriptKindOf } from "./transcript-kind.js";
 /** How long the person has to start, idle or cancel the restore before it starts on its own. */
@@ -236,7 +236,8 @@ async function reopenItem(deps, facts, item, items) {
         return 'skipped';
     }
     const { folder, note } = await reopenFolderOf(deps, item);
-    const prompt = item.mode === 'idle' ? undefined : continuePrompt(item.lost, item.team?.isLead === true ? leadSummaryOf(item, items) : undefined);
+    const others = item.team?.isLead === true ? leadSummaryOf(item, items) : undefined;
+    const prompt = item.mode === 'idle' ? undefined : continuePrompt(endFactsOf(current, facts.shutdown), item.lost, others);
     await deps.registry.write({ ...current, transcriptPath: item.transcript ?? current.transcriptPath, restoreAttempts: current.restoreAttempts + 1, restoredAt: deps.clock.now() });
     const outcome = await reopenWithRoom(deps, item, { claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort?.level, prompt });
     if (outcome.kind === 'no-room') {
