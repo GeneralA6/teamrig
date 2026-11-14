@@ -373,7 +373,7 @@ the tree owns, when that team reads the same folder, is left to that team's `che
 | `FORBIDDEN-KEY` | `allowed-tools is not allowed in a team skill: remove it` | Remove that frontmatter key. |
 | `DESCRIPTION` | `no description`, or `N words > 30` | Write or shorten the description. |
 | `SIGNATURE` | `"Signature: <regex>" is not a valid regex, so the scorecard misses its uses` | Fix the pattern: `teamrig skills scorecard` counts the skill's missed uses with it. |
-| `GRANT` | `pod-exec in a.js, which auto mode does not see: with the owner's grant add "Grants: pod-exec", else drop the call`, or `"Grants: x" names no grant kind` | A script at the top of the skill's folder makes that call: get the owner's grant and name its kind on a `Grants:` line, or drop the call from the script. |
+| `GRANT` | `pod-exec in a.js, which auto mode does not see: with the owner's grant add "Grants: pod-exec", else drop the call`, or `"Grants: x" names no grant kind` | A script the skill runs (at the top of its folder, named on a run line of its SKILL.md, or imported by one of those) makes that call: get the owner's grant and name its kind on a `Grants:` line, or drop the call from the script. |
 | `AREA-OVER-LIMIT` | `N skills > 8: merge before adding` | Merge that area's skills. |
 
 The owner column says who fixes it; the lead tells that session in one inbox line.
@@ -412,11 +412,13 @@ every session needs every turn; each item has one home.
   your skill too, name them on a `Used by: <session>, <session>` line in its body and they list it in full. The
   start line counts the skills listed by name only; a restart reads the skills again.
 - **Grants**: auto mode judges a script call by its own command (`node flow.js`), never by what the script runs,
-  so a script beside the SKILL.md can make a privileged call unseen. Name each kind its scripts make on a
-  `Grants: pod-exec, secret-read, auth-header` line (kubectl exec; a cluster secret or a credential env variable;
-  a credential header), each one the owner granted; without the grant, write the call inline or drop it.
-  `teamrig check` reads the scripts beside the SKILL.md, not their specs (`a.test.ts`, `a.spec.mjs`, `test_a.py`,
-  `a_test.py`): the test runner runs a spec, never the skill.
+  so a script the skill runs can make a privileged call unseen. Name each kind its scripts make on a
+  `Grants: pod-exec, secret-read, auth-header` line (kubectl exec; a cluster secret, a credential env variable or
+  a read of an OS credential store such as `gh auth token`; a credential header), each one the owner granted;
+  without the grant, write the call inline or drop it. `teamrig check` reads the scripts beside the SKILL.md, not
+  their specs (`a.test.ts`, `a.spec.mjs`, `test_a.py`, `a_test.py`): the test runner runs a spec, never the skill.
+  It also reads each script the SKILL.md runs by an absolute or `~` path (`node ~/tools/ship.ts`), and every module
+  those scripts import by a relative path, at most 200 per skill; it never opens a `\\host` share.
 - **Upkeep**: re-verify within 30 days [skills.maxVerifiedAgeDays] and bump the date each time its steps held; at
   most 8 skills per area [skills.maxPerArea], so merge before adding. When a command, flag or path changes,
   update every skill that names it in the same change.
