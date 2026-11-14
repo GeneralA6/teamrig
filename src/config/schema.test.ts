@@ -471,6 +471,12 @@ describe('config.schema.json', () => {
     assert.deepEqual([label['minLength'], label['maxLength'], label['pattern']], [1, GITHUB_LABEL_MAX_LENGTH, '^[^\\r\\n]+$']);
   });
 
+  it('takes the github area labels the parser takes', async () => {
+    const names = nodeAt(await loadSchema(), 'github.areaOwners')['propertyNames'];
+    assert.ok(isRecord(names));
+    assert.deepEqual([names['minLength'], names['maxLength'], names['pattern']], [1, GITHUB_LABEL_MAX_LENGTH, '^[^\\r\\n]+$']);
+  });
+
   it('takes the verify gate choices the parser takes', async () => {
     assert.deepEqual(nodeAt(await loadSchema(), 'register.verifyGate')['enum'], [...VERIFY_GATES]);
   });

@@ -744,6 +744,7 @@ function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   return {
     repos,
     owners: readGithubOwners(read, read.section(raw, 'owners', 'github'), sessions),
+    areaOwners: readGithubAreaOwners(read, read.section(raw, 'areaOwners', 'github'), sessions),
     sessions: readGithubSessions(read, read.section(raw, 'sessions', 'github'), repos, sessions),
     closedDays: read.integer(raw, 'closedDays', 'github', DEFAULT_GITHUB.closedDays, CONFIG_LIMITS.closedDays),
     probeSeconds: readProbeSeconds(read, raw),
@@ -919,6 +920,38 @@ function readGithubOwners(read: ConfigReader, raw: JsonRecord, sessions: readonl
     }
     const session = read.optionalString(raw, login, 'github.owners', isSessionName);
     const key = login.toLowerCase();
+    if (session === undefined) {
+      continue;
+    }
+    if (!sessions.includes(session)) {
+      read.report(path, `${describe(session)} is not one of the sessions`);
+    } else if (owners[key] !== undefined) {
+      read.report(path, 'is listed twice');
+    } else {
+      owners[key] = session;
+    }
+  }
+  return owners;
+}
+
+/**
+ * `github.areaOwners`: a session for each label, kept in lowercase as GitHub matches labels, in the config's order; a
+ * label past GitHub's length, one on more than one line, one listed twice or a session not on the team is reported
+ * and left out.
+ */
+const AREA_LABEL = shortLine(GITHUB_LABEL_MAX_LENGTH);
+
+function readGithubAreaOwners(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): Record<string, string> {
+  const owners: Record<string, string> = {};
+  for (const label of Object.keys(raw)) {
+    const path = `github.areaOwners.${label}`;
+    const wrong = label.trim() === '' ? 'expected a label, not blank' : AREA_LABEL(label);
+    if (wrong !== undefined) {
+      read.report(path, wrong);
+      continue;
+    }
+    const session = read.optionalString(raw, label, 'github.areaOwners', isSessionName);
+    const key = label.toLowerCase();
     if (session === undefined) {
       continue;
     }

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_RUSH, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, DEFAULT_BRANCHES } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
+import { GITHUB_LABEL_MAX_LENGTH } from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION, type AccountBudget, type BudgetConfig } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -27,7 +28,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35 });
+    assert.deepEqual(config.github, { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
@@ -414,6 +415,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.github, {
       repos: ['acme/web', 'acme/docs.site'],
       owners: { octocat: 'bravo' },
+      areaOwners: {},
       sessions: {},
       closedDays: 365,
       probeSeconds: 0,
@@ -530,6 +532,30 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parsed.issues), ['serviceRoles']);
     assert.deepEqual(parsed.config.serviceRoles, {});
     assert.equal(Object.keys(parseConfig({ ...ROSTER, serviceRoles: Object.fromEntries(Object.entries(many).slice(0, 16)) }).config.serviceRoles).length, 16);
+  });
+
+  it('reads each area label\'s session with the label in lowercase, in the config\'s order', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, github: { areaOwners: { 'Area:CLI': 'bravo', 'area:docs': 'alpha', bug: 'bravo' } } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(Object.entries(config.github.areaOwners), [
+      ['area:cli', 'bravo'],
+      ['area:docs', 'alpha'],
+      ['bug', 'bravo'],
+    ]);
+    assert.equal(parseConfig({ ...ROSTER, github: { areaOwners: { ['y'.repeat(GITHUB_LABEL_MAX_LENGTH)]: 'alpha' } } }).issues.length, 0);
+  });
+
+  it('reports a blank, multi-line or long area label, an unknown session, a session that is no name and a label listed twice', () => {
+    const long = 'x'.repeat(GITHUB_LABEL_MAX_LENGTH + 1);
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      github: { areaOwners: { ' ': 'alpha', 'area:\ncli': 'alpha', [long]: 'alpha', 'area:web': 'zulu', 'area:api': 7, 'area:cli': 'bravo', 'AREA:CLI': 'alpha' } },
+    });
+    assert.deepEqual(
+      paths(issues),
+      [' ', 'area:\ncli', long, 'area:web', 'area:api', 'AREA:CLI'].map((label) => `github.areaOwners.${label}`),
+    );
+    assert.deepEqual(config.github.areaOwners, { 'area:cli': 'bravo' });
   });
 
   it('reads each listed repository\'s session in lowercase, and reports one not listed, an unknown session or a repeat', () => {

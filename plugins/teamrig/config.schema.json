@@ -1359,8 +1359,20 @@
           "additionalProperties": { "$ref": "#/$defs/sessionName" },
           "default": {}
         },
+        "areaOwners": {
+          "description": "The session that owns an issue carrying each label, such as area:cli for the session of that area; matched without case. Read after the assignees in owners and before sessions; when an issue carries several, the first label listed here wins.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "pattern": "^[^\\r\\n]+$"
+          },
+          "additionalProperties": { "$ref": "#/$defs/sessionName" },
+          "default": {}
+        },
         "sessions": {
-          "description": "The session that owns the issues of each repository (owner/name, one of repos; matched without case) when none of their assignees is in owners. Without one, they go to the lead.",
+          "description": "The session that owns the issues of each repository (owner/name, one of repos; matched without case) when none of their assignees is in owners and none of their labels in areaOwners. Without one, they go to the lead.",
           "type": "object",
           "propertyNames": {
             "type": "string",

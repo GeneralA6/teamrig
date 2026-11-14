@@ -677,7 +677,12 @@ export interface GithubConfig {
   readonly repos: readonly string[];
   /** The session each GitHub login (lowercase) owns imported issues as; an issue with no listed assignee goes to its repository's session. */
   readonly owners: Readonly<Record<string, string>>;
-  /** The session each repository's (lowercase) issues go to when none of their assignees is in `owners`; else the lead. */
+  /**
+   * The session that owns an issue carrying each label (lowercase), such as `area:cli` for the session of that area:
+   * read after the assignees and before `sessions`, the first label in this list the issue carries winning.
+   */
+  readonly areaOwners: Readonly<Record<string, string>>;
+  /** The session each repository's (lowercase) issues go to when none of their assignees is in `owners` and none of their labels in `areaOwners`; else the lead. */
   readonly sessions: Readonly<Record<string, string>>;
   /** How many days back closed issues are read, to finish the tasks they were imported as. */
   readonly closedDays: number;
