@@ -15,7 +15,8 @@ const NO_LOGIN = /gh auth login|not logged in|authentication required|HTTP 401|b
 const NOT_VISIBLE = /could not resolve to a repository|HTTP 404|not found/i;
 /** A token that reaches the repository but was not given the Issues permission. */
 const NO_PERMISSION = /resource not accessible by/i;
-const URL = /^https:\/\/\S+$/;
+/** A web address as a host gives one for an issue or pull request. */
+export const WEB_URL = /^https:\/\/\S+$/;
 
 /** A known cause of a gh run that exited with an error: no login or a refused token, a missing permission, or nothing visible there. */
 export type GhFailureKind = 'no-login' | 'no-permission' | 'not-visible';
@@ -74,12 +75,20 @@ export type IssuePage =
 
 /** The arguments for one page of `request`, starting after the cursor `after`; null when the repository is not `owner/name`. */
 export function issuePageArgs(request: IssueListRequest, after: string | undefined): string[] | null {
-  const [owner, name, ...rest] = request.repo.split('/');
+  const page = repoPage(request.repo, after);
+  if (page === null) {
+    return null;
+  }
+  return request.state === 'open' ? openPageArgs(page) : closedPageArgs(page, sinceTime(request.closedSince));
+}
+
+/** The page of `repo` (`owner/name`) that starts after the cursor `after`; null when the repository is not `owner/name`. */
+export function repoPage(repo: string, after: string | undefined): PageVariables | null {
+  const [owner, name, ...rest] = repo.split('/');
   if (owner === undefined || owner === '' || name === undefined || name === '' || rest.length > 0) {
     return null;
   }
-  const page: PageVariables = { owner, name, after };
-  return request.state === 'open' ? openPageArgs(page) : closedPageArgs(page, sinceTime(request.closedSince));
+  return { owner, name, after };
 }
 
 /** Text from outside on one plain line: control and format characters (escapes, bidi overrides) become spaces. */
@@ -254,7 +263,7 @@ function issueOf(item: unknown, repo: string): HostIssue | null {
   const title = stringField(item, 'title');
   const state = stringField(item, 'state')?.toLowerCase();
   const url = stringField(item, 'url');
-  if (typeof number !== 'number' || !Number.isSafeInteger(number) || number < 1 || title === undefined || url === undefined || !URL.test(url)) {
+  if (typeof number !== 'number' || !Number.isSafeInteger(number) || number < 1 || title === undefined || url === undefined || !WEB_URL.test(url)) {
     return null;
   }
   if (state !== 'open' && state !== 'closed') {
@@ -316,7 +325,7 @@ function latestRename(events: readonly JsonRecord[]): string | undefined {
   return times.reduce<string | undefined>((latest, at) => (latest === undefined || Date.parse(at) > Date.parse(latest) ? at : latest), undefined);
 }
 
-function loginOf(account: JsonRecord | undefined): string {
+export function loginOf(account: JsonRecord | undefined): string {
   return account === undefined ? '' : (stringField(account, 'login') ?? '');
 }
 
@@ -326,7 +335,7 @@ function kindOf(account: JsonRecord | undefined): string {
 }
 
 /** A time GitHub sends (`2030-01-07T09:00:00Z`); undefined when missing or not a time. */
-function timeField(item: JsonRecord, key: string): string | undefined {
+export function timeField(item: JsonRecord, key: string): string | undefined {
   const text = stringField(item, key);
   return text !== undefined && Number.isFinite(Date.parse(text)) ? text : undefined;
 }

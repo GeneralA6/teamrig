@@ -24,7 +24,7 @@ import {
   type WatchPath,
 } from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
-import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
+import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, PULL_REQUESTS_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
 export interface IssueSpec {
@@ -120,6 +120,53 @@ export function renamedEvent(at: string): JsonRecord {
   return { __typename: 'RenamedTitleEvent', createdAt: at };
 }
 
+/** What a test sets on a pull request; the rest takes a plain default. */
+export interface PullSpec {
+  readonly title?: string;
+  readonly state?: 'OPEN' | 'MERGED' | 'CLOSED';
+  readonly isDraft?: boolean;
+  readonly createdAt?: string;
+  readonly updatedAt?: string;
+  /** For a merged or closed one; it ended at its last change unless set. */
+  readonly endedAt?: string;
+  /** The author's tie to the repository; the repository's owner unless set. */
+  readonly authorAssociation?: string;
+  /** The author's login, `maintainer` unless set. */
+  readonly author?: string;
+  /** The head branch, `t1-change` unless set. */
+  readonly head?: string;
+  readonly fork?: boolean;
+  readonly mergeable?: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
+  readonly reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+  /** The last commit's check rollup; null for a commit with no checks. */
+  readonly checks?: 'SUCCESS' | 'FAILURE' | 'ERROR' | 'PENDING' | 'EXPECTED' | null;
+}
+
+/** A pull request as the shipped pull request query (queries.ts) gets it from GitHub, opened and changed on 2030-01-01. */
+export function ghPull(repo: string, number: number, spec: PullSpec = {}): JsonRecord {
+  const state = spec.state ?? 'OPEN';
+  const updatedAt = spec.updatedAt ?? '2030-01-01T00:00:00Z';
+  const endedAt = state === 'OPEN' ? null : (spec.endedAt ?? updatedAt);
+  return {
+    number,
+    title: spec.title ?? `Change ${number}`,
+    url: `https://github.com/${repo}/pull/${number}`,
+    state,
+    isDraft: spec.isDraft ?? false,
+    createdAt: spec.createdAt ?? '2030-01-01T00:00:00Z',
+    updatedAt,
+    closedAt: endedAt,
+    mergedAt: state === 'MERGED' ? endedAt : null,
+    authorAssociation: spec.authorAssociation ?? 'OWNER',
+    author: { __typename: 'User', login: spec.author ?? 'maintainer' },
+    headRefName: spec.head ?? 't1-change',
+    isCrossRepository: spec.fork ?? false,
+    mergeable: spec.mergeable ?? 'MERGEABLE',
+    reviewDecision: spec.reviewDecision ?? null,
+    commits: { nodes: [{ commit: { statusCheckRollup: spec.checks === null || spec.checks === undefined ? null : { state: spec.checks } } }] },
+  };
+}
+
 /** The value of the raw field `key` in a gh command line, or undefined. */
 function fieldOf(args: readonly string[], key: string): string | undefined {
   for (let at = 0; at + 1 < args.length; at += 1) {
@@ -151,12 +198,14 @@ function notVisible(repo: string): GhResult {
 /**
  * A gh that reaches no network: each request is recorded, so a test can hold every one to a read. A page of the
  * open or closed issue query gets the issues `holds` set for the repository in that state, closed ones changed
- * since `since`, `pages` at a time with the offset as the cursor; a repository it holds nothing for answers as
- * GitHub does for one the reader cannot see.
+ * since `since`, and a page of the pull request query the pull requests `holdsPulls` set, newest change first; each
+ * `pages` at a time with the offset as the cursor. A repository it holds nothing for answers as GitHub does for one
+ * the reader cannot see.
  */
 export class FakeGh implements GhRunner {
   readonly ran: GhRequest[] = [];
   private readonly issues = new Map<string, readonly JsonRecord[]>();
+  private readonly pulls = new Map<string, readonly JsonRecord[]>();
   private readonly canned = new Map<string, GhResult>();
   private readonly createFailures = new Map<string, GhResult>();
   private failure: Error | undefined;
@@ -174,6 +223,12 @@ export class FakeGh implements GhRunner {
   /** From now on, `repo` holds these issues (as ghIssue builds them). */
   holds(repo: string, issues: readonly JsonRecord[]): this {
     this.issues.set(repo, issues);
+    return this;
+  }
+
+  /** From now on, `repo` holds these pull requests (as ghPull builds them); a page gives them newest change first. */
+  holdsPulls(repo: string, pulls: readonly JsonRecord[]): this {
+    this.pulls.set(repo, [...pulls].sort((a, b) => Date.parse(stringField(b, 'updatedAt') ?? '') - Date.parse(stringField(a, 'updatedAt') ?? '')));
     return this;
   }
 
@@ -301,26 +356,30 @@ export class FakeGh implements GhRunner {
       return canned;
     }
     const issues = this.issues.get(repo);
-    if (issues === undefined) {
+    const pulls = this.pulls.get(repo);
+    if (issues === undefined && pulls === undefined) {
       return notVisible(repo);
     }
     const query = fieldOf(request.args, 'query');
     const since = Date.parse(fieldOf(request.args, 'since') ?? '');
     const held =
       query === OPEN_ISSUES_QUERY
-        ? issues.filter((issue) => issue['state'] === 'OPEN')
+        ? (issues ?? []).filter((issue) => issue['state'] === 'OPEN')
         : query === CLOSED_ISSUES_QUERY
-          ? issues.filter((issue) => issue['state'] === 'CLOSED' && !(Date.parse(stringField(issue, 'updatedAt') ?? '') < since))
+          ? (issues ?? []).filter((issue) => issue['state'] === 'CLOSED' && !(Date.parse(stringField(issue, 'updatedAt') ?? '') < since))
           : query === ISSUE_LINKS_QUERY
-            ? issues
-            : undefined;
+            ? (issues ?? [])
+            : query === PULL_REQUESTS_QUERY
+              ? (pulls ?? [])
+              : undefined;
     if (held === undefined) {
-      return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: the fake gh answers only the shipped issue queries\n' };
+      return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: the fake gh answers only the shipped queries\n' };
     }
     const offset = Number(fieldOf(request.args, 'after') ?? '0');
     const nodes = held.slice(offset, offset + this.pageSize);
     const pageInfo = { hasNextPage: offset + nodes.length < held.length, endCursor: nodes.length === 0 ? null : String(offset + nodes.length) };
-    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository: { issues: { pageInfo, nodes } } } }), stderr: '' };
+    const connection = query === PULL_REQUESTS_QUERY ? 'pullRequests' : 'issues';
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository: { [connection]: { pageInfo, nodes } } } }), stderr: '' };
   }
 
   /**
