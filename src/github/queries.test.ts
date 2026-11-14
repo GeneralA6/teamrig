@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CLOSED_ISSUES_QUERY, closedPageArgs, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, openPageArgs, QUERY_VARIABLES } from './queries.ts';
+import { BLOCKERS_PER_ISSUE, CLOSED_ISSUES_QUERY, closedPageArgs, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, linksPageArgs, OPEN_ISSUES_QUERY, openPageArgs, QUERY_VARIABLES } from './queries.ts';
 
 const PAGE = { owner: 'acme', name: 'web', after: undefined };
 
@@ -29,6 +29,16 @@ describe('the shipped queries', () => {
         assert.ok(query.includes(field), field);
       }
     }
+  });
+
+  it('read every issue with its id, parent and blockers for the links, and write nothing', () => {
+    assert.match(ISSUE_LINKS_QUERY, /^query\(/);
+    assert.doesNotMatch(ISSUE_LINKS_QUERY, /mutation/i);
+    assert.doesNotMatch(ISSUE_LINKS_QUERY, /states:/);
+    for (const field of [`first: ${ISSUE_PAGE_SIZE}`, 'fullDatabaseId', 'parent { number repository { nameWithOwner } }', `blockedBy(first: ${BLOCKERS_PER_ISSUE})`]) {
+      assert.ok(ISSUE_LINKS_QUERY.includes(field), field);
+    }
+    assert.deepEqual(linksPageArgs({ ...PAGE, after: 'Y3Vyc29y' }), ['api', 'graphql', '-f', `query=${ISSUE_LINKS_QUERY}`, '-f', 'owner=acme', '-f', 'name=web', '-f', 'after=Y3Vyc29y']);
   });
 
   it('declare exactly the variables gh.ts lets through', () => {

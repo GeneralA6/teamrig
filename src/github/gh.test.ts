@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  blockedByAddArgs,
   GhRefusedError,
   isAllowedGh,
   isIssueClose,
@@ -13,6 +14,7 @@ import {
   isLabelAdd,
   isLabelRead,
   isLabelRemove,
+  isLinkAdd,
   issueCloseArgs,
   issueCommentArgs,
   issueCreateArgs,
@@ -20,6 +22,7 @@ import {
   issueLabelRemoveArgs,
   labelReadArgs,
   nodeGhRunner,
+  subIssueAddArgs,
   type IssueNumber,
 } from './gh.ts';
 import type { IssueDraft } from '../issues/host.ts';
@@ -280,6 +283,51 @@ describe('the label calls', () => {
   });
 });
 
+describe('isLinkAdd', () => {
+  const SUB = subIssueAddArgs(ISSUE, 3012345678);
+  const BLOCKED = blockedByAddArgs(ISSUE, 3012345679);
+
+  it('takes the command lines subIssueAddArgs and blockedByAddArgs build, each id a typed field of digits', () => {
+    assert.deepEqual(SUB, ['api', 'repos/acme/web/issues/7/sub_issues', '-X', 'POST', '-F', 'sub_issue_id=3012345678']);
+    assert.deepEqual(BLOCKED, ['api', 'repos/acme/web/issues/7/dependencies/blocked_by', '-X', 'POST', '-F', 'issue_id=3012345679']);
+    assert.equal(isLinkAdd(SUB), true);
+    assert.equal(isLinkAdd(BLOCKED), true);
+    assert.equal(isLinkAdd(subIssueAddArgs({ repo: 'acme-co/web.site_2', number: 1234567890 }, 999999999999999)), true);
+  });
+
+  it("refuses an id of anything but 1 to 15 digits, or another endpoint's key", () => {
+    for (const field of ['sub_issue_id=@file', 'sub_issue_id=', 'sub_issue_id=0', 'sub_issue_id=012', 'sub_issue_id=1e3', 'sub_issue_id=-1', 'sub_issue_id=12 ', 'sub_issue_id=1000000000000000', 'issue_id=12', 'sub_issue_id', '=12', 'replace_parent=true']) {
+      assert.equal(isLinkAdd([...SUB.slice(0, 5), field]), false, field);
+    }
+    assert.equal(isLinkAdd([...BLOCKED.slice(0, 5), 'sub_issue_id=12']), false);
+  });
+
+  it('refuses another method, a raw field, an extra field or flag, and any other path', () => {
+    for (const args of [
+      ['api', SUB[1] ?? '', '-X', 'DELETE', '-F', 'sub_issue_id=12'],
+      ['api', SUB[1] ?? '', '-X', 'PATCH', '-F', 'sub_issue_id=12'],
+      ['api', SUB[1] ?? '', '-X', 'POST', '-f', 'sub_issue_id=12'],
+      ['api', SUB[1] ?? '', '-F', 'sub_issue_id=12'],
+      [...SUB, '-F', 'replace_parent=true'],
+      [...BLOCKED, '--input', 'file.json'],
+      ['graphql', ...SUB.slice(1)],
+    ]) {
+      assert.equal(isLinkAdd(args), false, args.slice(1).join(' '));
+    }
+    for (const path of ['repos/acme/web/issues/7/sub_issues/priority', 'repos/acme/web/issues/7/sub_issue', 'repos/acme/web/issues/7/dependencies/blocking', 'repos/acme/web/issues/7/dependencies/blocked_by/9', 'repos/acme/web/issues/0/sub_issues', 'repos/acme/web/issues/07/sub_issues', 'repos/acme/../issues/7/sub_issues', 'repos/acme/web/pulls/7/sub_issues', 'repos/acme/web/x/issues/7/sub_issues']) {
+      assert.equal(isLinkAdd(['api', path, ...SUB.slice(2)]), false, path);
+    }
+  });
+
+  it('is never taken for a query, create, comment, close or label call, nor they for a link, and the runner starts it', () => {
+    const others = [READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b'), issueCloseArgs(ISSUE), issueLabelAddArgs(ISSUE, ['p1']), issueLabelRemoveArgs(ISSUE, 'p1'), labelReadArgs('acme/web', 'p1')];
+    assert.ok(others.every((args) => !isLinkAdd(args)));
+    assert.ok([SUB, BLOCKED].every((args) => !isIssueQuery(args) && !isIssueCreate(args) && !isIssueComment(args) && !isIssueClose(args)));
+    assert.ok([SUB, BLOCKED].every((args) => !isLabelAdd(args) && !isLabelRemove(args) && !isLabelRead(args)));
+    assert.ok([SUB, BLOCKED].every(isAllowedGh));
+  });
+});
+
 describe('nodeGhRunner', () => {
   it('passes each argument as a list item, never through a shell, and tells gh not to prompt', async () => {
     const gh = script('echo-args.mjs', 'process.stdout.write(JSON.stringify([process.argv.slice(2), process.env.GH_PROMPT_DISABLED]));');
@@ -297,14 +345,14 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries and to open, comment on, label or close an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries and to open, comment on, label, close or link an issue: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });
 
-  it('starts the creation of one issue, and one comment on or the close of one issue', async () => {
+  it('starts the creation of one issue, one comment on or the close of one issue, and one link added', async () => {
     const gh = script('echo-create.mjs', 'process.stdout.write(JSON.stringify(process.argv.slice(2)));');
-    for (const args of [issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'a;b $(x) | y'), issueCloseArgs(ISSUE)]) {
+    for (const args of [issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'a;b $(x) | y'), issueCloseArgs(ISSUE), subIssueAddArgs(ISSUE, 42), blockedByAddArgs(ISSUE, 43)]) {
       const result = await nodeGhRunner(process.execPath, [gh]).run({ args, env: ENV });
       assert.deepEqual(JSON.parse(result.stdout), args);
     }

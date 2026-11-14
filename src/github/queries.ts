@@ -1,5 +1,5 @@
 /**
- * The only GraphQL texts teamrig sends to GitHub: two reads of a repository's issues, a page at a time. gh.ts
+ * The only GraphQL texts teamrig sends to GitHub: three reads of a repository's issues, a page at a time. gh.ts
  * refuses a `gh api graphql` run whose query is not one of these word for word, so a query never writes (no
  * mutation) and never reads past the fields below.
  */
@@ -49,10 +49,32 @@ export const CLOSED_ISSUES_QUERY = `query($owner: String!, $name: String!, $afte
   }
 }`;
 
+/** Blockers read per issue: past this many, a link already there may be added again, which GitHub refuses. */
+export const BLOCKERS_PER_ISSUE = 50;
+
+/**
+ * Every issue in any state, oldest first, with what issue links need: its number, the id a link write names, its
+ * parent and the issues it is blocked by, each with its repository. The id is `fullDatabaseId`, a string: issue ids
+ * passed 2^31, past the 32-bit Int that GraphQL's `databaseId` is typed as.
+ */
+export const ISSUE_LINKS_QUERY = `query($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    issues(first: ${ISSUE_PAGE_SIZE}, after: $after, orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number fullDatabaseId
+        parent { number repository { nameWithOwner } }
+        blockedBy(first: ${BLOCKERS_PER_ISSUE}) { nodes { number repository { nameWithOwner } } }
+      }
+    }
+  }
+}`;
+
 /** Each shipped text with the variables it declares: gh.ts runs a query only with these, each at most once. */
 export const QUERY_VARIABLES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   [OPEN_ISSUES_QUERY, new Set(['owner', 'name', 'after'])],
   [CLOSED_ISSUES_QUERY, new Set(['owner', 'name', 'after', 'since'])],
+  [ISSUE_LINKS_QUERY, new Set(['owner', 'name', 'after'])],
 ]);
 
 /** Which page of which repository a read asks for: `after` is the cursor the page before ended on. */
@@ -65,6 +87,11 @@ export interface PageVariables {
 /** The arguments for one page of open issues. */
 export function openPageArgs(page: PageVariables): string[] {
   return pageArgs(OPEN_ISSUES_QUERY, page, []);
+}
+
+/** The arguments for one page of every issue's links. */
+export function linksPageArgs(page: PageVariables): string[] {
+  return pageArgs(ISSUE_LINKS_QUERY, page, []);
 }
 
 /** The arguments for one page of closed issues changed on or after `since`, an ISO time. */
