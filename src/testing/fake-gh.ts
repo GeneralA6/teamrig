@@ -1,5 +1,5 @@
 import { stringField, type JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
+import { isIssueClose, isIssueComment, isIssueCreate, isLabelAdd, isLabelRead, isLabelRemove, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
 
 /** What a test sets on an issue; the rest takes a plain default. */
@@ -100,6 +100,7 @@ export class FakeGh implements GhRunner {
   private readonly createFailures = new Map<string, GhResult>();
   private failure: Error | undefined;
   private writeFailure: GhResult | undefined;
+  private readonly labels = new Map<string, readonly string[]>();
   private pageSize = ISSUE_PAGE_SIZE;
 
   /** From now on, `repo` holds these issues (as ghIssue builds them). */
@@ -132,7 +133,13 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
-  /** From now on, a comment on or the close of an issue ends as given. */
+  /** From now on, `repo` has these labels, and a read of any other label of it is Not Found. */
+  hasLabels(repo: string, labels: readonly string[]): this {
+    this.labels.set(repo, labels);
+    return this;
+  }
+
+  /** From now on, a comment on, the close of, or a label added to or taken off an issue ends as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
     return this;
@@ -146,7 +153,10 @@ export class FakeGh implements GhRunner {
     if (isIssueCreate(request.args)) {
       return this.create(request.args);
     }
-    if (isIssueComment(request.args) || isIssueClose(request.args)) {
+    if (isLabelRead(request.args)) {
+      return this.labelRead(request.args[1] ?? '');
+    }
+    if (isIssueComment(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
     const repo = ghRepoOf(request.args);
@@ -173,6 +183,19 @@ export class FakeGh implements GhRunner {
     const nodes = held.slice(offset, offset + this.pageSize);
     const pageInfo = { hasNextPage: offset + nodes.length < held.length, endCursor: nodes.length === 0 ? null : String(offset + nodes.length) };
     return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository: { issues: { pageInfo, nodes } } } }), stderr: '' };
+  }
+
+  /** A label read as GitHub answers it: what a test set for the repository, else the label when the repository has it, else Not Found. */
+  private labelRead(path: string): GhResult {
+    const [, owner = '', name = '', , label = ''] = path.split('/');
+    const canned = this.canned.get(`${owner}/${name}`);
+    if (canned !== undefined) {
+      return canned;
+    }
+    if ((this.labels.get(`${owner}/${name}`) ?? []).includes(decodeURIComponent(label))) {
+      return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ name: decodeURIComponent(label) }), stderr: '' };
+    }
+    return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
   }
 
   /**

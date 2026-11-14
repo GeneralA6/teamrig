@@ -5,7 +5,7 @@ import { FakeCredentials } from '../testing/fake-credentials.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
+import { isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, isLabelAdd, isLabelRead, isLabelRemove, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import { GitHubIssueHost } from './host.ts';
 import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import { CLOSED_ISSUES_QUERY } from './queries.ts';
@@ -124,6 +124,52 @@ describe('GitHubIssueHost', () => {
     ]);
     assert.ok(isIssueComment(gh.ran[0]?.args ?? []) && isIssueClose(gh.ran[1]?.args ?? []));
     assert.deepEqual(gh.ran.map((request) => request.env['GH_TOKEN']), ['acme-issues-token', 'acme-issues-token']);
+  });
+
+  it("closes with a reason and adds and takes off labels through the allowlisted calls, with the owner's token", async () => {
+    const gh = new FakeGh();
+    const host = hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'acme-issues-token'));
+    assert.deepEqual(await host.close(TARGET, 'duplicate'), { kind: 'done' });
+    assert.deepEqual(await host.addLabels(TARGET, ['type: bug', 'p1']), { kind: 'done' });
+    assert.deepEqual(await host.removeLabel(TARGET, 'needs triage'), { kind: 'done' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=duplicate'],
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'POST', '-f', 'labels[]=type: bug', '-f', 'labels[]=p1'],
+      ['api', 'repos/acme/web/issues/7/labels/needs%20triage', '-X', 'DELETE'],
+    ]);
+    const [close, add, remove] = gh.ran.map((request) => request.args);
+    assert.ok(isIssueClose(close ?? []) && isLabelAdd(add ?? []) && isLabelRemove(remove ?? []));
+    assert.deepEqual(gh.ran.map((request) => request.env['GH_TOKEN']), ['acme-issues-token', 'acme-issues-token', 'acme-issues-token']);
+  });
+
+  it("reads whether the repository has a label: found, missing on Not Found, else failed with gh's line", async () => {
+    const gh = new FakeGh().hasLabels('acme/web', ['type: bug']);
+    const host = hostWith(gh);
+    assert.deepEqual(await host.labelExists('acme/web', 'type: bug'), { kind: 'found' });
+    assert.deepEqual(await host.labelExists('acme/web', 'typo'), { kind: 'missing' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/labels/type%3A%20bug'], ['api', 'repos/acme/web/labels/typo']]);
+    assert.ok(gh.ran.every((request) => isLabelRead(request.args)));
+    const secret = ['tok', '_abcd1234'].join('');
+    const odd = await hostWith(new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: `gh: HTTP 502 ${secret}\n` })).labelExists('acme/web', 'p1');
+    assert.ok(odd.kind === 'failed' && !odd.reason.includes(secret) && odd.reason.startsWith('gh api to read the label "p1" of acme/web exited with code 1: gh: HTTP 502 [redacted'), JSON.stringify(odd));
+  });
+
+  it('names a label read that gh could not start, was stopped, or had no key to run with', async () => {
+    const absent = new FakeGh().failsWith(Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }));
+    const notInstalled = await hostWith(absent).labelExists('acme/web', 'p1');
+    assert.ok(notInstalled.kind === 'failed' && notInstalled.reason.startsWith('gh, the GitHub CLI, is not installed'));
+    const stopped = new FakeGh().answers('acme/web', { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
+    assert.deepEqual(await hostWith(stopped).labelExists('acme/web', 'p1'), { kind: 'failed', reason: 'gh was stopped (SIGTERM) while reading the label "p1" of acme/web' });
+    const locked = hostWith(new FakeGh(), new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked'));
+    assert.match((await locked.labelExists('acme/web', 'p1')).kind, /^failed$/u);
+  });
+
+  it('says a label taken off is not on the issue when GitHub answers Not Found, and the usual fix for a refused token', async () => {
+    const missing = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Label does not exist (HTTP 404)\n' });
+    assert.deepEqual(await hostWith(missing).removeLabel(TARGET, 'p1'), { kind: 'failed', reason: 'acme/web#7 does not carry the label "p1", or is not there' });
+    const denied = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by personal access token (HTTP 403)\n' });
+    const end = await hostWith(denied, new FakeCredentials().saves('teamrig-gh-acme', 'k')).addLabels(TARGET, ['p1']);
+    assert.ok(end.kind === 'failed' && end.reason.startsWith('the token saved as teamrig-gh-acme may not label acme/web#7'), JSON.stringify(end));
   });
 
   it('writes with the gh login when no token is saved, and says so', async () => {

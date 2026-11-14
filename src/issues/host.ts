@@ -46,6 +46,9 @@ export type HostReach =
 /** How one write to a host ended: done, or one plain line saying why not. */
 export type HostEnd = { readonly kind: 'done' } | { readonly kind: 'failed'; readonly reason: string };
 
+/** Whether a repository has a label: it has, it has not, or the read failed, with one plain line saying why. */
+export type HostLabel = { readonly kind: 'found' } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
 /**
  * A repository's issues as one list read them, the open ones and those closed since the day it was given, with what
  * a reader should know about the read; or why it could not be read, in which case nothing of it was.
@@ -77,8 +80,14 @@ export interface IssueHost {
   open(draft: IssueDraft): Promise<HostOpen>;
   /** Posts `body` as one comment. */
   comment(target: IssueTarget, body: string): Promise<HostEnd>;
-  /** Closes the issue or pull request. */
-  close(target: IssueTarget): Promise<HostEnd>;
+  /** Closes the issue or pull request, giving `reason` when there is one. */
+  close(target: IssueTarget, reason?: CloseReason): Promise<HostEnd>;
+  /** Whether `repo` has the label `label`, so a label is only added once the repository has it. */
+  labelExists(repo: string, label: string): Promise<HostLabel>;
+  /** Adds `labels` to the issue or pull request. */
+  addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd>;
+  /** Takes `label` off the issue or pull request; the repository keeps the label. */
+  removeLabel(target: IssueTarget, label: string): Promise<HostEnd>;
 }
 
 /** The hosts teamrig has an adapter for, by the team config list that names their repositories. */
