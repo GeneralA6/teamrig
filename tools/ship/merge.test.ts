@@ -63,12 +63,14 @@ const RERUN_PATH = `repos/${REPO}/actions/runs/1/rerun-failed-jobs`;
 
 /**
  * GitHub with one workflow run whose jobs move through `rounds`, one round per read of the jobs. A re-run of the run
- * makes its next attempt, or throws `rerun` when given.
+ * makes its next attempt, or throws `rerun` when given. Each merge call answers the next of `merges` (the last
+ * repeats) when given, else `merge`.
  */
-function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; merge?: string | Error; rerun?: Error }): FakeGitHub {
+function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error }): FakeGitHub {
   const writes: string[][] = [];
   let round = 0;
   let attempt = 1;
+  let mergeCalls = 0;
   const pull = (sha: string): string => JSON.stringify({ number: 3, html_url: `https://github.com/${REPO}/pull/3`, head: { ref: 'dev', sha }, base: { ref: 'main' } });
   const gh = mock.fn<Gh>(args => {
     const path = args[1] ?? '';
@@ -76,8 +78,10 @@ function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPul
     if (path.startsWith(`repos/${REPO}/pulls?state=open`)) return options.openPullSha === null || options.openPullSha === undefined ? '[]' : `[${pull(options.openPullSha)}]`;
     if (path === `repos/${REPO}/pulls`) return pull(SHA);
     if (path === `repos/${REPO}/pulls/3/merge`) {
-      if (options.merge instanceof Error) throw options.merge;
-      return options.merge ?? '{"sha":"main999","merged":true,"message":"merged"}';
+      const answer = options.merges === undefined ? options.merge : options.merges[Math.min(mergeCalls, options.merges.length - 1)];
+      mergeCalls += 1;
+      if (answer instanceof Error) throw answer;
+      return answer ?? '{"sha":"main999","merged":true,"message":"merged"}';
     }
     if (path === RERUN_PATH) {
       if (options.rerun !== undefined) throw options.rerun;
@@ -306,6 +310,62 @@ test('reports a merge onto a main that moved after the last read, and one whose 
     const unknown = await mergeOnCi(fakeGitHub({ rounds: [green] }).gh, fakeMain({ treeError }), () => undefined);
     assert.deepEqual(unknown.kind === 'drifted' ? unknown.reason : unknown, `could not compare main999 with the checked abc1234: ${detail}`);
   }
+});
+
+const LANDED = 'landed0ccc';
+const BAD_GATEWAY = new Error('gh api repos/Owner/repo/pulls/3/merge: HTTP 502: Server Error');
+const mergeWrites = (writes: readonly string[][]): number => writes.filter(args => args[1] === `repos/${REPO}/pulls/3/merge`).length;
+
+test('a merge call GitHub answers with a 502 after main took the rebase is merged, not refused (T2709)', async () => {
+  const { gh, writes } = fakeGitHub({ rounds: [green], merge: BAD_GATEWAY });
+  const main = fakeMain({ tips: [BASE, BASE, LANDED] });
+  const log: string[] = [];
+  const result = await mergeOnCi(gh, main, line => log.push(line));
+  assert.deepEqual(result.kind === 'merged' ? [result.pull.number, result.sha] : result, [3, LANDED]);
+  assert.equal(mergeWrites(writes), 1, 'a landed merge is never called again');
+  assert.ok(log.includes(`the merge call failed (${BAD_GATEWAY.message}), but main moved to landed0 holding the checked tree: #3 merged; GitHub may show it open until its head is deleted`), log.join('\n'));
+});
+
+test('a merge call with no answer and main unchanged goes once more, still pinned to the checked head (T2709)', async () => {
+  const { gh, writes } = fakeGitHub({ rounds: [green], merges: [BAD_GATEWAY, '{"sha":"main999","merged":true,"message":"merged"}'] });
+  const log: string[] = [];
+  const result = await mergeOnCi(gh, fakeMain(), line => log.push(line));
+  assert.deepEqual(result.kind === 'merged' ? result.sha : result, 'main999');
+  assert.deepEqual(writes.filter(args => args[1] === `repos/${REPO}/pulls/3/merge`), [0, 1].map(() => ['api', `repos/${REPO}/pulls/3/merge`, '-X', 'PUT', '-f', 'merge_method=rebase', '-f', `sha=${SHA}`]));
+  assert.ok(log.includes(`the merge call failed (${BAD_GATEWAY.message}) and main does not hold the checked tree: trying once more`), log.join('\n'));
+});
+
+test('a second call failing because the first landed late is merged; a main that moved elsewhere comes back as moved (T2709)', async () => {
+  const baseModified = new Error('gh api repos/Owner/repo/pulls/3/merge: HTTP 405: Base branch was modified. Review and try the merge again.');
+  const late = await mergeOnCi(fakeGitHub({ rounds: [green], merges: [BAD_GATEWAY, baseModified] }).gh, fakeMain({ tips: [BASE, BASE, BASE, LANDED] }), () => undefined);
+  assert.deepEqual(late.kind === 'merged' ? late.sha : late, LANDED);
+
+  const elsewhere = await mergeOnCi(fakeGitHub({ rounds: [green], merges: [BAD_GATEWAY, baseModified] }).gh, fakeMain({ tips: [BASE, BASE, MOVED], mergedTree: 'tree-other' }), () => undefined);
+  assert.deepEqual(elsewhere.kind === 'moved' ? [elsewhere.tip, elsewhere.reason] : elsewhere, [MOVED, STALE]);
+});
+
+test('two merge calls with no answer and main never holding the checked tree refuse, naming both and what to check (T2709)', async () => {
+  const reset = new Error('gh api repos/Owner/repo/pulls/3/merge: connection reset by peer');
+  const { gh, writes } = fakeGitHub({ rounds: [green], merges: [BAD_GATEWAY, reset] });
+  const result = await mergeOnCi(gh, fakeMain(), () => undefined);
+  assert.deepEqual(
+    result.kind === 'refused' ? result.reason : result,
+    `GitHub refused the merge: ${BAD_GATEWAY.message}; again: ${reset.message}; main does not hold the checked tree, so check #3 on GitHub before shipping again`,
+  );
+  assert.equal(mergeWrites(writes), 2, 'never a third call');
+
+  const log: string[] = [];
+  const unread = await mergeOnCi(fakeGitHub({ rounds: [green], merge: BAD_GATEWAY }).gh, fakeMain({ tips: [BASE, BASE, LANDED], treeError: 'git exited 128' }), line => log.push(line));
+  assert.equal(unread.kind, 'refused');
+  assert.equal(log.filter(line => line === 'could not read main after the merge call: git exited 128').length, 2);
+});
+
+test("a merge GitHub refuses with a 4xx is not read back from main nor called again (T2709)", async () => {
+  const main = fakeMain();
+  const { gh, writes } = fakeGitHub({ rounds: [green], merge: new Error('gh api repos/Owner/repo/pulls/3/merge: HTTP 409: Head branch was modified') });
+  assert.equal((await mergeOnCi(gh, main, () => undefined)).kind, 'refused');
+  assert.equal(mergeWrites(writes), 1);
+  assert.deepEqual(main.reads, [BASE, BASE]);
 });
 
 test("reads main through git in the repo dir: a fetch then origin's tip, containment by merge-base, a commit's tree", () => {

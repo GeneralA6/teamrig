@@ -166,11 +166,12 @@ export type MergeResult =
   | { kind: 'drifted'; pull: PullRequest; sha: string; reason: string };
 
 /** main's tip and why `head` cannot merge as checked, when that tip is not in its history; null when it is. */
-function behindMain(main: MainBranch, { head, base, sha }: MergeRequest): MainMove | null {
-  const tip = main.tip();
+function behindMain(main: MainBranch, { head, base, sha }: MergeRequest, tip: string = main.tip()): MainMove | null {
   if (main.contains(sha, tip)) return null;
   return { tip, reason: `${base} moved to ${tip.slice(0, 7)}, which ${head} ${sha.slice(0, 7)} does not contain: rebase ${head} onto origin/${base}, push it and run merge again` };
 }
+
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** Why main's merged tip differs from the checked head's tree, or null when it holds that very tree. */
 function driftAfter(main: MainBranch, request: MergeRequest, merged: string): string | null {
@@ -179,7 +180,7 @@ function driftAfter(main: MainBranch, request: MergeRequest, merged: string): st
     if (main.treeOf(merged) === main.treeOf(request.sha)) return null;
     return `${request.base} moved just before the merge: ${merged.slice(0, 7)} is not the tree the checks passed on ${request.sha.slice(0, 7)}; check it (a plugin version bump may be lost) and ship a fix`;
   } catch (error) {
-    return `could not compare ${merged.slice(0, 7)} with the checked ${request.sha.slice(0, 7)}: ${error instanceof Error ? error.message : String(error)}`;
+    return `could not compare ${merged.slice(0, 7)} with the checked ${request.sha.slice(0, 7)}: ${messageOf(error)}`;
   }
 }
 
@@ -188,6 +189,59 @@ const REPO_RULE = /required status check|protected branch|branch protection|repo
 
 /** GitHub's 405 when main moved between the last read and the merge call. */
 const BASE_MODIFIED = /base branch was modified/i;
+
+/** A gh failure carrying GitHub's own refusal; any other (a 5xx, a timeout, a reset) leaves the merge unknown. */
+const REFUSAL = /\bHTTP 4\d\d\b/;
+
+/** The merge call's answer, or the failure that left GitHub's answer unknown. */
+type MergeCall = MergeOutcome | { merged: 'unknown'; message: string };
+
+function callMerge(gh: Gh, repo: string, pull: number, sha: string): MergeCall {
+  try {
+    return rebaseMerge(gh, repo, pull, sha);
+  } catch (error) {
+    // 405 not mergeable (protection, conflict) and 409 head moved come back as a gh failure.
+    const message = messageOf(error);
+    return REFUSAL.test(message) ? { merged: false, message } : { merged: 'unknown', message };
+  }
+}
+
+/** main's tip when it moved past `checkedTip` onto the checked tree, which only this merge lands; null otherwise. */
+function landedTip(main: MainBranch, sha: string, checkedTip: string, log: (line: string) => void): string | null {
+  try {
+    const tip = main.tip();
+    return tip !== checkedTip && main.treeOf(tip) === main.treeOf(sha) ? tip : null;
+  } catch (error) {
+    log(`could not read main after the merge call: ${messageOf(error)}`);
+    return null;
+  }
+}
+
+/**
+ * Rebase-merges the pull request pinned to the checked head. A call with no answer from GitHub may still have
+ * merged (T2709: a 502 while main took the rebase and the pull request stayed open), so main is read: its new tip
+ * holding the checked tree is the merge. Otherwise the call goes once more, still pinned, and main is read again
+ * whatever it answers, since a late landing of the first call makes the second fail.
+ */
+function mergeOrLanded(gh: Gh, main: MainBranch, request: MergeRequest, pull: number, checkedTip: string, log: (line: string) => void): MergeOutcome {
+  const landed = (failure: string): MergeOutcome | null => {
+    const tip = landedTip(main, request.sha, checkedTip, log);
+    if (tip === null) return null;
+    log(`the merge call failed (${failure}), but ${request.base} moved to ${tip.slice(0, 7)} holding the checked tree: #${pull} merged; GitHub may show it open until its head is deleted`);
+    return { merged: true, sha: tip };
+  };
+  const first = callMerge(gh, request.repo, pull, request.sha);
+  if (first.merged !== 'unknown') return first;
+  const late = landed(first.message);
+  if (late !== null) return late;
+  log(`the merge call failed (${first.message}) and ${request.base} does not hold the checked tree: trying once more`);
+  const second = callMerge(gh, request.repo, pull, request.sha);
+  if (second.merged === true) return second;
+  const later = landed(second.message);
+  if (later !== null) return later;
+  if (second.merged === false) return second;
+  return { merged: false, message: `${first.message}; again: ${second.message}; ${request.base} does not hold the checked tree, so check #${pull} on GitHub before shipping again` };
+}
 
 export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: MainBranch, proof: Proof, log: (line: string) => void): Promise<MergeResult> {
   const { repo, head, base, sha } = request;
@@ -203,16 +257,11 @@ export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: Main
   const failed = await proof.prove(sha, log);
   if (failed !== null) return { kind: 'refused', pull, reason: failed };
   // main may have moved while the checks ran.
-  const moved = behindMain(main, request);
+  const checkedTip = main.tip();
+  const moved = behindMain(main, request, checkedTip);
   if (moved !== null) return { kind: 'moved', pull, ...moved };
 
-  let merged: MergeOutcome;
-  try {
-    merged = rebaseMerge(gh, repo, pull.number, sha);
-  } catch (error) {
-    // 405 not mergeable (protection, conflict) and 409 head moved come back as a gh failure.
-    merged = { merged: false, message: error instanceof Error ? error.message : String(error) };
-  }
+  const merged = mergeOrLanded(gh, main, request, pull.number, checkedTip, log);
   if (!merged.merged) {
     // Read main only for this answer: it names main's move, and the head is then simply behind it.
     const raced = BASE_MODIFIED.test(merged.message) ? behindMain(main, request) : null;
