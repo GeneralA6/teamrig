@@ -18,7 +18,7 @@ import { postToolUseContext } from "../../hooks/post-tool-use.js";
 import { passRecordGuardOutput } from "../../hooks/pass-record-guard.js";
 import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { promptOutput } from "../../hooks/prompt-output.js";
-import { liveTasksPointer, showsLiveTasks } from "../../hooks/live-tasks.js";
+import { showsLiveTasks } from "../../hooks/live-tasks.js";
 import { requirementsNoteOnce } from "../../hooks/requirements-note.js";
 import { helperOf } from "../../hooks/helper-start.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
@@ -580,8 +580,8 @@ async function refreshStartOf(runtime, kit, config, roster, payload) {
 }
 /**
  * The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction, after `start`'s
- * first lines, which make it the work block's start (T1529), with its pointer for a start that has no room for it (which
- * names `start` instead); none at another start or for no session.
+ * first lines, which make it the work block's start (T1529), with its shorter forms for a start with less room (T1939);
+ * none at another start or for no session.
  */
 async function liveTasksPartOf(runtime, kit, config, id, payload, refresh) {
     const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
@@ -589,7 +589,7 @@ async function liveTasksPartOf(runtime, kit, config, id, payload, refresh) {
         return undefined;
     }
     const start = await blockStartOf(runtime, kit, config, id);
-    return { text: await liveTasksNoteOf(runtime, kit.paths, config, id, teamZone(config, runtime), start), pointer: liveTasksPointer(id, KIT_NAME) };
+    return liveTasksNoteOf(runtime, kit.paths, config, id, teamZone(config, runtime), start);
 }
 /** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */
 async function stopFactsOf(runtime, scope, store, payload) {

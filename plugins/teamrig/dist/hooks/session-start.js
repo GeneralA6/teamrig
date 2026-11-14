@@ -90,8 +90,9 @@ function treeLine(place, input, isLead) {
  * The context, within CONTEXT_MAX_CHARS: past it Claude Code shows the session only a preview of the start and saves
  * the rest to a file (T1376). The rules and each short note always come; the team rules files fit next, beside each
  * long note's pointer (`teamRulesPart`); then each long note, in order, takes its full text while the room left
- * holds it. A team rules file wins over a long note: a rules pointer costs a read of the file, while a long note's
- * pointer names the `start` the session runs at each work block anyway.
+ * holds it, else the longest of its shorter forms the room holds, else its pointer. A team rules file wins over a long
+ * note: a rules pointer costs a read of the file, while a long note's pointer names the command the session runs at
+ * each work block anyway.
  */
 function fitContext(rules, notes, files, command) {
     const withNotes = (lines) => `${rules}\n\n${lines.join('\n')}`;
@@ -104,10 +105,9 @@ function fitContext(rules, notes, files, command) {
             shown.push(note);
             continue;
         }
-        const grows = note.text.length - note.pointer.length;
-        const fits = grows <= room;
-        shown.push(fits ? note.text : note.pointer);
-        room -= fits ? grows : 0;
+        const form = [note.text, ...(note.shorter ?? [])].find((text) => text.length - note.pointer.length <= room) ?? note.pointer;
+        shown.push(form);
+        room -= form.length - note.pointer.length;
     }
     return `${withNotes(shown)}${team}`;
 }
