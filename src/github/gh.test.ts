@@ -48,7 +48,7 @@ import {
 } from './gh.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
-import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs } from './queries.ts';
+import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs, PULL_REQUESTS_QUERY, pullPageArgs } from './queries.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));
 const ENV = { ...process.env };
@@ -71,9 +71,9 @@ function script(name: string, source: string): string {
 describe('isIssueQuery', () => {
   const OPEN = ['api', 'graphql', '-f', `query=${OPEN_ISSUES_QUERY}`];
 
-  it('takes a page of the shipped issue queries', () => {
+  it('takes a page of the shipped issue and pull request queries', () => {
     const page = { owner: 'acme', name: 'web', after: undefined };
-    for (const args of [openPageArgs(page), openPageArgs({ ...page, after: 'Y3Vyc29y' }), closedPageArgs(page, '2030-01-01T00:00:00Z')]) {
+    for (const args of [openPageArgs(page), openPageArgs({ ...page, after: 'Y3Vyc29y' }), closedPageArgs(page, '2030-01-01T00:00:00Z'), pullPageArgs(page), pullPageArgs({ ...page, after: 'Y3Vyc29y' })]) {
       assert.equal(isIssueQuery(args), true, args.slice(4).join(' '));
     }
   });
@@ -100,6 +100,7 @@ describe('isIssueQuery', () => {
     assert.equal(isIssueQuery([...OPEN, '-f', 'since=2030-01-01T00:00:00Z']), false);
     assert.equal(isIssueQuery([...OPEN, '-f', 'owner=acme', '-f', 'owner=evil']), false);
     assert.equal(isIssueQuery([...OPEN, '-f', `query=${OPEN_ISSUES_QUERY}`]), false);
+    assert.equal(isIssueQuery(['api', 'graphql', '-f', `query=${PULL_REQUESTS_QUERY}`, '-f', 'since=2030-01-01T00:00:00Z']), false);
   });
 
   it('refuses every flag but -f, and a field with no key', () => {

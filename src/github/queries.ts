@@ -1,6 +1,6 @@
 /**
- * The only GraphQL texts teamrig sends to GitHub: three reads of a repository's issues, a page at a time. gh.ts
- * refuses a `gh api graphql` run whose query is not one of these word for word, so a query never writes (no
+ * The only GraphQL texts teamrig sends to GitHub: three reads of a repository's issues and one of its pull requests, a
+ * page at a time. gh.ts refuses a `gh api graphql` run whose query is not one of these word for word, so a query never writes (no
  * mutation) and never reads past the fields below.
  */
 
@@ -80,11 +80,34 @@ export const ISSUE_LINKS_QUERY = `query($owner: String!, $name: String!, $after:
   }
 }`;
 
+/** Pull requests one page reads: fewer than issues, as each also reads its last commit's check rollup. */
+export const PULL_PAGE_SIZE = 50;
+
+/**
+ * Pull requests in any state, the most recently changed first, so a reader stops at the first one it has seen (a
+ * comment, a push, a review or a check moves `updatedAt`). No body and no comment text: only what tells a monitor
+ * that something happened to it, and who opened it from where (`isCrossRepository`: a fork).
+ */
+export const PULL_REQUESTS_QUERY = `query($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: ${PULL_PAGE_SIZE}, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title url state isDraft createdAt updatedAt closedAt mergedAt authorAssociation
+        author { __typename login }
+        headRefName isCrossRepository mergeable reviewDecision
+        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+      }
+    }
+  }
+}`;
+
 /** Each shipped text with the variables it declares: gh.ts runs a query only with these, each at most once. */
 export const QUERY_VARIABLES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   [OPEN_ISSUES_QUERY, new Set(['owner', 'name', 'after'])],
   [CLOSED_ISSUES_QUERY, new Set(['owner', 'name', 'after', 'since'])],
   [ISSUE_LINKS_QUERY, new Set(['owner', 'name', 'after'])],
+  [PULL_REQUESTS_QUERY, new Set(['owner', 'name', 'after'])],
 ]);
 
 /** Which page of which repository a read asks for: `after` is the cursor the page before ended on. */
@@ -107,6 +130,11 @@ export function linksPageArgs(page: PageVariables): string[] {
 /** The arguments for one page of closed issues changed on or after `since`, an ISO time. */
 export function closedPageArgs(page: PageVariables, since: string): string[] {
   return pageArgs(CLOSED_ISSUES_QUERY, page, field('since', since));
+}
+
+/** The arguments for one page of pull requests, the most recently changed first. */
+export function pullPageArgs(page: PageVariables): string[] {
+  return pageArgs(PULL_REQUESTS_QUERY, page, []);
 }
 
 function pageArgs(query: string, page: PageVariables, extra: readonly string[]): string[] {
