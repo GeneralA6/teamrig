@@ -52,7 +52,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       pane: a running idle tab gets an inbox line that wakes it at once to work its list (none more while
       that ask waits), a closed one opens in a new tab; refused on a tab in a turn, at a tool call or with
       a decision put to the person, where wake.enabled is false, and where Claude Code sets $CLAUDECODE
-  restore                      what a restore would do now with each Claude Code session this machine
+  owner github-admin <id|name|none>   the owner names the one session that may close, comment on and
+      delete any issue, pull request or branch of github.repos; every other session acts only on its
+      own; saves a fresh key in the OS credential store and signs the role file with it, so an edited
+      or older file reads as no admin; none removes the role; refused where Claude Code sets $CLAUDECODE
+  restore                     what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask),
       KEEP or DISCARD, and why; it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
@@ -332,10 +336,14 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       nothing but the --out preview of every issue in full; --yes opens each issue through gh and
       sets the task's ref to it, so gh sync adds no second task; stops at the first failure, and a
       rerun skips each task already holding its issue
+  gh admin   the team's GitHub admin (owner github-admin), none, or BROKEN with why the role file or its
+      key does not hold: then no session is admin
   issue comment <owner/name#n> --body <text>   posts one comment on an issue or pull request of the
       team's repositories (github.repos; GitHub is the only host so far), with the token saved for the
       owner, else the gh login; refuses an empty body, a secret shape or a task id in it; a saved token
-      that cannot be read stops it, never the gh login in its place
+      that cannot be read stops it, never the gh login in its place; only the GitHub admin (gh admin)
+      writes on any issue, every other session only on its own: an issue one of its tasks has as its
+      ref, or a pull request from a t<id>- branch of its task; a --session other than the tab's is refused
   issue close <owner/name#n> [--comment <text>]   closes one issue or pull request of the team's
       repositories, first posting --comment when given, with the same checks; a failed comment closes
       nothing

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GhRefusedError, isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, issueCloseArgs, issueCommentArgs, issueCreateArgs, nodeGhRunner, type IssueDraft, type IssueNumber } from './gh.ts';
+import { GhRefusedError, isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, issueCloseArgs, issueCommentArgs, issueCreateArgs, isPullRead, nodeGhRunner, pullReadArgs, type IssueDraft, type IssueNumber } from './gh.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs } from './queries.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));
@@ -167,6 +167,36 @@ describe('isIssueClose', () => {
   });
 });
 
+describe('isPullRead (T2705)', () => {
+  const PULL = pullReadArgs(ISSUE);
+
+  it('takes the command line pullReadArgs builds: a plain GET of one pull request', () => {
+    assert.deepEqual(PULL, ['api', 'repos/acme/web/pulls/7']);
+    assert.equal(isPullRead(PULL), true);
+  });
+
+  it('refuses a method, a field, a flag, a path past the pull request, or a repository name that steps elsewhere', () => {
+    for (const args of [
+      [...PULL, '-X', 'GET'],
+      [...PULL, '-f', 'state=closed'],
+      [...PULL, '--jq', '.head'],
+      ['api', 'repos/acme/web/pulls/7/merge'],
+      ['api', 'repos/acme/web/pulls'],
+      ['api', 'repos/acme/web/pulls/0'],
+      ['api', 'repos/acme/../pulls/7'],
+      ['api', 'repos/acme/web/issues/7'],
+      ['pr', 'view', '7'],
+    ]) {
+      assert.equal(isPullRead(args), false, args.join(' '));
+    }
+  });
+
+  it('is never taken for a write, nor a write for it', () => {
+    assert.ok([READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b'), issueCloseArgs(ISSUE)].every((args) => !isPullRead(args)));
+    assert.ok(!isIssueClose(PULL) && !isIssueComment(PULL) && !isIssueCreate(PULL) && !isIssueQuery(PULL));
+  });
+});
+
 describe('nodeGhRunner', () => {
   it('passes each argument as a list item, never through a shell, and tells gh not to prompt', async () => {
     const gh = script('echo-args.mjs', 'process.stdout.write(JSON.stringify([process.argv.slice(2), process.env.GH_PROMPT_DISABLED]));');
@@ -184,14 +214,14 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries and to open, comment on or close an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries, to open, comment on or close an issue and to read a pull request: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });
 
   it('starts the creation of one issue, and one comment on or the close of one issue', async () => {
     const gh = script('echo-create.mjs', 'process.stdout.write(JSON.stringify(process.argv.slice(2)));');
-    for (const args of [issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'a;b $(x) | y'), issueCloseArgs(ISSUE)]) {
+    for (const args of [issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'a;b $(x) | y'), issueCloseArgs(ISSUE), pullReadArgs(ISSUE)]) {
       const result = await nodeGhRunner(process.execPath, [gh]).run({ args, env: ENV });
       assert.deepEqual(JSON.parse(result.stdout), args);
     }

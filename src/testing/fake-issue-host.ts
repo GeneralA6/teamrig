@@ -1,4 +1,4 @@
-import type { HostEnd, HostReach, IssueHost, IssueTarget } from '../issues/host.ts';
+import type { HeadRead, HostEnd, HostReach, IssueHost, IssueTarget } from '../issues/host.ts';
 
 /** One write a FakeIssueHost took. */
 export type HostCall = { readonly kind: 'comment'; readonly target: IssueTarget; readonly body: string } | { readonly kind: 'close'; readonly target: IssueTarget };
@@ -46,5 +46,10 @@ export class FakeIssueHost implements IssueHost {
   close(target: IssueTarget): Promise<HostEnd> {
     this.calls.push({ kind: 'close', target });
     return Promise.resolve(this.closeEnd);
+  }
+
+  /** Every number is an issue here: a test of a pull request's head uses FakeGh through the GitHub host. */
+  headOf(): Promise<HeadRead> {
+    return Promise.resolve({ kind: 'no-pull' });
   }
 }
