@@ -31,7 +31,8 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   resume too often stays closed. The entry of one the restore drops (`DISCARD`) is not deleted: it moves to
   `restore/archive/` in the kit home and is kept 7 days, so a session judged wrongly can still be found there.
 - How they come back: `restore run` lists them and counts down 60 seconds (Enter starts at once, `i` reopens every
-  one with no prompt, `q` cancels). A team session started by `teamrig open` comes back through `launch` as itself;
+  one with no prompt, `q` cancels). A tab whose Claude Code still runs but froze mid-turn, its transcript unwritten
+  for 3 hours, is listed apart as hung: only `k` ends its process and reopens it, as a live one may still work. A team session started by `teamrig open` comes back through `launch` as itself;
   any other resumes as it ran. One that was mid-turn, hit an API error or had background jobs, cron jobs or a
   wake-up live at the shutdown gets a prompt to re-check the state and carry on, and so does each lead, told how its
   team's sessions came back; the others reopen idle. The prompt names why it ended: the computer restarted only when

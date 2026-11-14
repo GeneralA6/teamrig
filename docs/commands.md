@@ -54,14 +54,16 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       that ask waits), a closed one opens in a new tab; refused on a tab in a turn, at a tool call or with
       a decision put to the person, where wake.enabled is false, and where Claude Code sets $CLAUDECODE
   restore                      what a restore would do now with each Claude Code session this machine
-      recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask),
+      recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask), HUNG
+      (still running but mid-turn with its transcript unwritten 3 h, ended and reopened only on ask),
       KEEP or DISCARD, and why; it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
       sessions the last shutdown killed, after a 60 s countdown (Enter: now, i: all with no prompt,
-      a: also the tabs closed outside a shutdown in the last 48 h, q: cancel), else those closed
-      ones: a team session through launch, any other resumed as it ran, each at the effort its
-      team config sets, else at its last; one mid-turn or with work live at the shutdown, and a
-      lead, get a prompt to carry on; exit 1 when one did not reopen
+      a: also the tabs closed outside a shutdown in the last 48 h, k: also end and reopen the tabs
+      hung mid-turn, q: cancel), else those closed ones: a team session through launch, any other
+      resumed as it ran, each at the effort its team config sets, else at its last; one mid-turn or
+      with work live at the shutdown, and a lead, get a prompt to carry on; exit 1 when one did not
+      reopen
   restore check [--terminal <name>] [--home <dir>]   at logon: drops what no restore needs and, when
       the shutdown killed sessions, opens a tab running restore run for them
   restore install [--yes]      has the system run restore check at each logon (Windows: a Run key
