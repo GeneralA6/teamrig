@@ -2,11 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
-import { SECRET_DENY_LINES } from '../doctor/deny-lines.ts';
+import { secretDenyLines } from '../doctor/deny-lines.ts';
 import { CliHarness, APP, USER_SETTINGS as USER, type RunOptions } from '../testing/cli-harness.ts';
 
 const LOCAL = join(APP, '.claude', 'settings.local.json');
 const OPTIONS: RunOptions = { platform: 'linux' };
+const SECRET_DENY_LINES = secretDenyLines('linux');
 const MISSING = ['Bash(env)', 'Read(//**/*.pem)'];
 const FLAG =
   `WARN deny-missing 2 of ${SECRET_DENY_LINES.length} secret deny line(s) are in no settings file a session reads (read: ${USER}, ${LOCAL}), ` +
@@ -46,5 +47,15 @@ describe('the deny-missing flag', () => {
     assert.ok(!doctor.stdout.some((line) => line.includes('deny-missing')), doctor.stdout.join('\n'));
     const check = await kit.run(['check', '--all', '--session', 'lead'], OPTIONS);
     assert.ok(!check.stdout.some((line) => line.includes('deny-missing')), check.stdout.join('\n'));
+  });
+
+  it("asks for gh's Windows hosts line on Windows, where the Linux one guards nothing, and never the reverse (T2038)", async () => {
+    const kit = new CliHarness();
+    await kit.files.write(USER, formatConfig({ permissions: { deny: [...SECRET_DENY_LINES] } }));
+    const windows = await kit.run(['doctor'], { platform: 'win32' });
+    const flag = windows.stdout.find((line) => line.includes('deny-missing'));
+    assert.ok(flag?.endsWith(`yourself: ${JSON.stringify(['Read(~/AppData/Roaming/GitHub CLI/hosts.yml)'])}`), windows.stdout.join('\n'));
+    const linux = await kit.run(['doctor'], OPTIONS);
+    assert.ok(!linux.stdout.some((line) => line.includes('deny-missing')), linux.stdout.join('\n'));
   });
 });
