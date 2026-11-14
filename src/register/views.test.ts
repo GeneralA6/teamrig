@@ -26,6 +26,7 @@ import {
   formatWatchRow,
   personWaitNotice,
   selectTasks,
+  SHOWN_HISTORY_EVENTS,
   sizeText,
   SUMMARY_VERIFY_ROWS,
   verifySummaryPointer,
@@ -527,6 +528,30 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.deepEqual(detail.slice(1, 6), ['ref: inbox:3', 'note: ok', 'evidence: abc1234', 'skill: none', 'history:']);
     assert.equal(detail.length, 9);
     assert.ok(detail.slice(6).every((line) => !line.includes('owner=bravo')));
+  });
+
+  it('keeps the last 3 history events under a header naming --history, and every one with allHistory (T2535)', () => {
+    const at = (hour: number) => `2030-01-07T${String(hour).padStart(2, '0')}:00:00.000Z`;
+    const notes: RegisterEvent[] = [10, 11, 12, 13, 14].map((hour) => ({ v: 1, type: 'update', id: 'T1', at: at(hour), by: 'lead', changes: {}, note: `n${hour}` }));
+    const history = (extras: DetailExtras) => {
+      const detail = formatTaskDetail(testTask(), notes, TREE, extras).split('\n');
+      return detail.slice(detail.findIndex((line) => line.startsWith('history')));
+    };
+    assert.deepEqual(history(EXTRAS), [
+      'history (last 3 of 5; --history prints all):',
+      '  2030-01-07 12:00 UTC lead update note="n12"',
+      '  2030-01-07 13:00 UTC lead update note="n13"',
+      '  2030-01-07 14:00 UTC lead update note="n14"',
+    ]);
+    assert.deepEqual(history({ ...EXTRAS, allHistory: true }), ['history:', ...notes.map((event) => `  ${formatEvent(event, TimeZone.UTC)}`)]);
+    assert.equal(history({ ...EXTRAS, allHistory: false })[0], 'history (last 3 of 5; --history prints all):');
+    assert.equal(history(EXTRAS).length, SHOWN_HISTORY_EVENTS + 1);
+  });
+
+  it('keeps the plain history header when the last 3 are every event (T2535)', () => {
+    const three = events.filter((event) => event.id === 'T1');
+    assert.equal(three.length, 3);
+    assert.ok(formatTaskDetail(testTask(), three, TREE, EXTRAS).split('\n').includes('history:'));
   });
 
   it('shows the proof of a verifying task and of its status line', () => {
