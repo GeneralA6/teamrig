@@ -8,6 +8,8 @@ import { EXIT } from './runtime.ts';
 
 const STATE = join(TEAM_HOME, 'state');
 const CURSORS = join(STATE, 'leader-digest');
+/** A folder as MemoryFiles keys its paths, with `/` on every OS, so a prefix test holds on Windows too. */
+const under = (folder: string): string => `${folder.replaceAll('\\', '/')}/`;
 const HEADING = /^teamrig: register changes in your tree since your last prompt \((\d+) tasks?\):$/m;
 /** The digest is off by default (register.leaderDigest); these teams turn it on. */
 const ON: JsonRecord = { ...TEAM, register: { leaderDigest: true } };
@@ -53,7 +55,7 @@ describe('the leader digest at UserPromptSubmit', () => {
   it("shows a member's register-only change to the lead at its next prompt, once, after a silent first prompt", async () => {
     const kit = new CliHarness(ON);
     assert.doesNotMatch(await prompt(kit, 'lead'), HEADING, 'the first prompt only sets the cursor');
-    assert.ok(kit.files.paths().includes(join(CURSORS, 'lead.json')));
+    assert.notEqual(kit.files.get(join(CURSORS, 'lead.json')), undefined, 'the first prompt writes the cursor');
     kit.clock.advance(1_000);
     await addTask(kit, 'alpha', 'Ship the signup page');
     await ok(kit, ['set', 'T1', '--status', 'in-progress', '--note', 'spec written;   wave 1\nof 3 running', '--session', 'alpha']);
@@ -131,7 +133,7 @@ describe('the leader digest at UserPromptSubmit', () => {
     assert.deepEqual(digestRows(await prompt(kit, 'lead')), ['- T2 new -> open: Charlie work', '- T1 new -> open: Bravo work']);
     for (const member of ['bravo', 'charlie']) {
       assert.doesNotMatch(await prompt(kit, member), HEADING, `${member} is shown nothing`);
-      assert.ok(!kit.files.paths().includes(join(CURSORS, `${member}.json`)), `${member} gets no cursor`);
+      assert.equal(kit.files.get(join(CURSORS, `${member}.json`)), undefined, `${member} gets no cursor`);
     }
   });
 
@@ -153,17 +155,17 @@ describe('the leader digest at UserPromptSubmit', () => {
     kit.clock.advance(1_000);
     await addTask(kit, 'alpha', 'Ship the signup page');
     await ok(kit, ['update', 'T1', '--note', 'started', '--session', 'alpha']);
-    const before = kit.files.paths().filter((path) => path.startsWith(join(STATE, 'inbox')) || path.startsWith(join(STATE, 'wake-asks')));
+    const before = kit.files.paths().filter((path) => path.startsWith(under(join(STATE, 'inbox'))) || path.startsWith(under(join(STATE, 'wake-asks'))));
     const inboxes = before.map((path) => kit.files.get(path));
     assert.match(await prompt(kit, 'lead'), HEADING);
-    const after = kit.files.paths().filter((path) => path.startsWith(join(STATE, 'inbox')) || path.startsWith(join(STATE, 'wake-asks')));
+    const after = kit.files.paths().filter((path) => path.startsWith(under(join(STATE, 'inbox'))) || path.startsWith(under(join(STATE, 'wake-asks'))));
     assert.deepEqual(after, before, 'no inbox and no wake ask was added');
     assert.deepEqual(
       after.map((path) => kit.files.get(path)),
       inboxes,
       'no inbox line was posted',
     );
-    assert.ok(!after.some((path) => path.startsWith(join(STATE, 'wake-asks'))));
+    assert.ok(!after.some((path) => path.startsWith(under(join(STATE, 'wake-asks')))));
   });
 });
 
