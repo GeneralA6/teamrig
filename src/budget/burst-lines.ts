@@ -93,8 +93,11 @@ function endText(burst: Burst, zone: TimeZone): string {
   return `until ${zone.weekdayMinute(new Date(burst.endsAt))} or ${formatPct(burst.stopPct)} of the week`;
 }
 
-/** Its tasks, as a clause; '' for a surplus burst. */
+/** Its tasks, or a rush's goal, as a clause; '' for a surplus burst. */
 function tasksText(burst: Burst, zone: TimeZone): string {
+  if (burst.goal !== undefined) {
+    return ` for goal ${burst.goal}`;
+  }
   if (burst.tasks.length === 0) {
     return '';
   }
@@ -138,9 +141,20 @@ export function burstStopLines(facts: BurstFacts, marks: BurstMarks): { readonly
   return { lines: [], burstAt: undefined };
 }
 
+/** What the model works first: a deadline burst's tasks, a rush's goal (holds only report then), or nothing. */
+function firstText(burst: Burst): string {
+  if (burst.goal !== undefined) {
+    return (
+      ` Work goal ${burst.goal}'s tasks, and the tasks under them, first (${KIT_NAME} list --goal ${burst.goal}).` +
+      ' While it runs the budget holds only report: the stop %, queue cutoffs, CPU gates and owner gates still hold.'
+    );
+  }
+  return burst.tasks.length === 0 ? '' : ` Work its tasks first: ${burst.tasks.join(', ')}.`;
+}
+
 /** How the model works in a burst: the caps, the split, the gates it keeps. */
 function burstModelLine(burst: Burst, zone: TimeZone): string {
-  const first = burst.tasks.length === 0 ? '' : ` Work its tasks first: ${burst.tasks.join(', ')}.`;
+  const first = firstText(burst);
   const hires = burst.hires === 0 ? '' : ` The lead may hire up to ${plural(burst.hires, 'session')} for it (${KIT_NAME} hire --burst).`;
   return (
     `${BURST_COMMAND}: a ${burst.kind} burst runs ${endText(burst, zone)}.${first} ` +

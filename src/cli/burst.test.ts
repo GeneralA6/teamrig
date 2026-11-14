@@ -6,6 +6,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { ok } from '../testing/hired-team.ts';
 import { teamConfigOf } from '../testing/team-tree.ts';
+import { openKit } from './kit.ts';
 import { EXIT } from './runtime.ts';
 
 /**
@@ -179,12 +180,53 @@ describe('burst start', () => {
     assert.match(refusal(await lead(kit, ...deadline, '--task', 'T1')), /T1 is dropped: a burst works on open tasks only/);
     assert.match(refusal(await lead(kit, ...deadline, '--task', 'T9')), /T9 is not a task of the team/);
     assert.match(usage(await lead(kit, 'burst', 'start', 'surplus', '--task', 'T1', '--reason', 'r')), /a surplus burst takes neither/);
-    assert.match(usage(await lead(kit, 'burst', 'start', 'sprint', '--reason', 'r')), /"sprint" is not a burst kind: surplus or deadline/);
+    assert.match(usage(await lead(kit, 'burst', 'start', 'sprint', '--reason', 'r')), /"sprint" is not a burst kind: surplus, deadline or rush/);
     assert.match(usage(await lead(kit, 'burst', 'start', 'surplus', '--reason', ' ')), /--reason needs a reason/);
     assert.match(usage(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'r', '--helpers', '1.5')), /--helpers "1\.5" is not a whole number of 0 or more/);
     assert.match(usage(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'r', '--hires', '-1')), /--hires "-1" is not a whole number/);
     assert.match(usage(await lead(kit, 'burst', 'start', 'deadline', '--task', 'T1', '--by', 'soon', '--stop-pct', '40', '--reason', 'r')), /--by "soon" is not HH:MM or YYYY-MM-DD HH:MM in UTC/);
     assert.match(refusal(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'r', ...OWNER_OK, '--helpers', '9')), /--helpers 9 is above burst\.maxHelpers \(3\)/);
+  });
+});
+
+describe('burst start rush', () => {
+  const RUSH = ['burst', 'start', 'rush', '--goal', 'PROD', '--by', '2030-01-11 16:00', '--stop-pct', '90', '--reason', 'release', ...OWNER_OK];
+
+  async function withGoal(): Promise<CliHarness> {
+    // A budget that holds (ask-lead, not the default warn), so the rush's overlay is seen to change it and to go.
+    const kit = await team({ budget: { enabled: true, weeklyLimitW: 1_000_000_000, overAction: 'ask-lead' } });
+    ok(await lead(kit, 'goal', 'add', 'PROD', '--title', 'Production', '--target', '2030-02-01'));
+    return kit;
+  }
+
+  it('previews a rush for its goal on the whole team, then starts it, and the config reads with its holds only reporting', async () => {
+    const kit = await withGoal();
+    const configFile = kit.files.get(teamConfigOf('app'));
+    assert.match(ok(await lead(kit, ...RUSH)).stdout[0] ?? '', /^PREVIEW a rush burst for goal PROD until Fri 01-11 16:00 UTC or 90\.0% of the week: app-lead, app-alpha, app-bravo each have/);
+    const before = await openKit(kit.runtime(), 'app');
+    assert.equal(before.rush, undefined);
+    assert.ok(before.load.status === 'loaded' && before.load.config.budget.overAction === 'ask-lead');
+    ok(await lead(kit, ...RUSH, '--yes'));
+    const rushed = await openKit(kit.runtime(), 'app');
+    assert.equal(rushed.rush?.goal, 'PROD');
+    assert.ok(rushed.load.status === 'loaded' && rushed.load.config.budget.overAction === 'warn' && rushed.load.config.focus.wip.mode === 'warn');
+    assert.equal(kit.files.get(teamConfigOf('app')), configFile, 'the rush never writes the config file');
+    assert.match(ok(await kit.run(['burst'])).stdout.join('\n'), /a rush burst for goal PROD/);
+    assert.match(ok(await kit.run(['budget'])).stdout[0] ?? '', /^RUSH goal PROD until Fri 01-11 16:00 UTC or 90\.0% of the week: the budget's holds only report/);
+    assert.match(ok(await kit.run(['statusline'], { stdin: status(5) })).stdout[0] ?? '', /, RUSH PROD to Fri 01-11 16:00 UTC$/);
+    ok(await lead(kit, 'burst', 'end', '--reason', 'shipped'));
+    const ended = await openKit(kit.runtime(), 'app');
+    assert.equal(ended.rush, undefined);
+    assert.deepEqual(ended.load, before.load, 'once the rush ends the config reads as its file again');
+  });
+
+  it('refuses a goal the team does not have, --goal on another kind and --task on a rush', async () => {
+    const kit = await withGoal();
+    assert.match(refusal(await lead(kit, 'burst', 'start', 'rush', '--goal', 'BETA', '--by', '20:00', '--stop-pct', '90', '--reason', 'r', ...OWNER_OK)), /"BETA" is not a goal of the team: PROD/);
+    assert.match(usage(await lead(kit, 'burst', 'start', 'surplus', '--goal', 'PROD', '--reason', 'r')), /--goal names the goal a rush works: only a rush takes it/);
+    await addTask(kit, 'alpha');
+    assert.match(usage(await lead(kit, ...RUSH, '--task', 'T1')), /--task names a deadline burst's work: a rush works its --goal's tasks/);
+    assert.match(refusal(await lead(kit, 'burst', 'start', 'rush', '--by', '20:00', '--stop-pct', '90', '--reason', 'r', ...OWNER_OK)), /a rush needs --goal <tag>/);
   });
 });
 

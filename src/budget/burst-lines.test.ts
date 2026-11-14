@@ -106,6 +106,14 @@ describe('burstPromptLines', () => {
     assert.match(line ?? '', /The lead may hire up to 1 session for it \(teamrig hire --burst\)\./);
   });
 
+  it("puts a rush's goal first and says the budget holds only report while the other gates hold", () => {
+    const rush: Burst = { ...DEADLINE_BURST, kind: 'rush', tasks: [], hires: 0, goal: 'PROD' };
+    const [line] = burstPromptLines(facts({ burst: rush }), NONE).lines;
+    assert.match(line ?? '', /^teamrig burst: a rush burst runs until Tue 01-08 20:00 UTC or 80\.0% of the week\. Work goal PROD's tasks, and the tasks under them, first \(teamrig list --goal PROD\)\. /);
+    assert.match(line ?? '', /While it runs the budget holds only report: the stop %, queue cutoffs, CPU gates and owner gates still hold\./);
+    assert.match(burstText(rush, ['alpha'], TimeZone.UTC, 6), /^a rush burst for goal PROD until Tue 01-08 20:00 UTC or 80\.0% of the week: /);
+  });
+
   it("tells the model the burst's end and the pace end on the team's clock", () => {
     assert.match(burstPromptLines(facts({ burst: SURPLUS_BURST, zone: JERUSALEM }), NONE).lines[0] ?? '', /^teamrig burst: a surplus burst runs until Wed 01-09 02:00 IST or 99\.5% of the week\. /);
     assert.match(burstPromptLines(facts({ surplus: HINT, zone: JERUSALEM }), NONE).lines[0] ?? '', /unused at the pace end \(Wed 01-09 02:00 IST\)\. /);
