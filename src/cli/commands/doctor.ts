@@ -6,7 +6,7 @@ import type { ContextFilesConfig, KitConfig } from '../../config/types.ts';
 import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import type { PathProbe } from '../../core/path-probe.ts';
 import { readContextFiles } from '../../doctor/context-files.ts';
-import { readSettingsDeny } from '../../doctor/deny-lines.ts';
+import { readSettingsDeny, secretDenyLines } from '../../doctor/deny-lines.ts';
 import { doctorFindings, formatFinding, type ConfiguredProject, type ContextInput, type PageProblem, type SecretDeny } from '../../doctor/doctor.ts';
 import { readSessionLists } from '../../doctor/session-lists.ts';
 import { claudeSettingsFiles, readSettingsEnv } from '../../doctor/settings-env.ts';
@@ -57,7 +57,7 @@ async function configuredProjects(probe: PathProbe, config: KitConfig, ids: read
 export async function readSecretDeny(runtime: CliRuntime, project: string): Promise<SecretDeny> {
   const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
   const paths = claudeSettingsFiles(claudeDir, project);
-  return { files: await readSettingsDeny(runtime.files, paths), pasteInto: join(claudeDir, 'settings.json') };
+  return { files: await readSettingsDeny(runtime.files, paths), lines: secretDenyLines(runtime.platform), pasteInto: join(claudeDir, 'settings.json') };
 }
 
 /** The doctor's view of a page check: only a page webhook that gives no URL is a finding. */

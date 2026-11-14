@@ -10,9 +10,23 @@ import { jsonObjectOf } from './settings-env.ts';
  * Verified with canaries on Claude Code 2.1.303 (10-19, skill security-deny-verify): each of the first eleven refuses
  * its call; a Read deny also refuses Write and Edit of the path, and Grep skips the file. The rest are the same rule
  * forms on other paths. A rule ending in `:*` is the legacy prefix form, so `PowerShell(Get-ChildItem env:*)` misses
- * `Get-ChildItem env:X`; `env*` matches both.
+ * `Get-ChildItem env:X`; `env*` matches both. gh's line names its hosts file where gh keeps it on the platform
+ * (`ghHostsDenyLine`); the space in `GitHub CLI` was proven on Claude Code 2.1.318 (11-05, T662).
  */
-export const SECRET_DENY_LINES: readonly string[] = [
+export function secretDenyLines(platform: NodeJS.Platform): readonly string[] {
+  return [...SHARED_DENY_LINES, ghHostsDenyLine(platform), ...KEY_DENY_LINES];
+}
+
+/**
+ * gh's hosts file, which names the account and can hold its token: under the roaming app data folder on Windows,
+ * under `~/.config/gh` elsewhere. A team is told only its own platform's line (T2038: the Linux line alone guarded
+ * nothing on Windows).
+ */
+export function ghHostsDenyLine(platform: NodeJS.Platform): string {
+  return platform === 'win32' ? 'Read(~/AppData/Roaming/GitHub CLI/hosts.yml)' : 'Read(~/.config/gh/hosts.yml)';
+}
+
+const SHARED_DENY_LINES: readonly string[] = [
   'Read(//**/secrets.yaml)',
   'Read(//**/.env)',
   'Read(~/.npmrc)',
@@ -29,10 +43,10 @@ export const SECRET_DENY_LINES: readonly string[] = [
   'Read(~/.kube/config)',
   'Read(~/.docker/config.json)',
   'Read(~/.git-credentials)',
-  'Read(~/.config/gh/hosts.yml)',
-  'Read(//**/*.pem)',
-  'Read(//**/*.key)',
 ];
+
+/** Claude Code's own login (T2007 found no line for it), then the key stores. */
+const KEY_DENY_LINES: readonly string[] = ['Read(~/.claude/.credentials.json)', 'Read(//**/*.pem)', 'Read(//**/*.key)'];
 
 /**
  * A Claude Code settings file, as `readSettingsDeny` finds it: `deny` holds the strings of its `permissions.deny` list
@@ -63,10 +77,10 @@ export async function readSettingsDeny(files: Files, paths: readonly string[]): 
 }
 
 /**
- * The secret deny lines no readable file holds, word for word (spaces at either end aside), in `SECRET_DENY_LINES`
- * order. A deny line in any settings file a session reads applies to it, so the files count as one list.
+ * The secret deny `lines` (the platform's `secretDenyLines`) no readable file holds, word for word (spaces at either end
+ * aside), in their order. A deny line in any settings file a session reads applies to it, so the files count as one list.
  */
-export function missingDenyLines(read: readonly SettingsDeny[]): string[] {
+export function missingDenyLines(read: readonly SettingsDeny[], lines: readonly string[]): string[] {
   const held = new Set(read.flatMap((settings) => (settings.kind === 'deny' ? settings.deny.map((rule) => rule.trim()) : [])));
-  return SECRET_DENY_LINES.filter((line) => !held.has(line));
+  return lines.filter((line) => !held.has(line));
 }
