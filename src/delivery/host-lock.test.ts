@@ -462,6 +462,20 @@ describe('HostLock.acquire in arrival order', () => {
     assert.deepEqual(await lineOf(files), []);
   });
 
+  it("joins again at a step's first arrival, ahead of a waiter that came after it, and never later than now (T2304)", async () => {
+    const [later, text] = ticket(waiterOf('2030-01-08T09:59:00.000Z'));
+    const back = world({ [later]: text });
+    const taking = await back.lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined, { arrivedAt: Date.parse('2030-01-08T09:58:00.000Z') });
+    assert.deepEqual([taking.kind, await lineOf(back.files)], ['taken', [later.slice(QUEUE.length + 1)]]);
+    const seen: string[] = [];
+    const ahead = world({ [later]: text, [PATH]: heldBy() }, (time, store) => async (ms) => {
+      seen.push(...(await store.list(QUEUE)));
+      await time.sleep(ms);
+    });
+    await ahead.lock.acquire('alpha', 'heavy: test', 2_000, 30_000, () => undefined, { arrivedAt: Date.parse('2030-01-09T00:00:00.000Z') });
+    assert.deepEqual(seen, [later.slice(QUEUE.length + 1), `${String(Date.parse('2030-01-08T10:00:00.000Z')).padStart(15, '0')}-t1.json`], 'a time past now joins at now');
+  });
+
   it('never takes a free lock while an earlier live waiter is in line, and leaves that ticket', async () => {
     const [early, text] = ticket(waiterOf('2030-01-08T09:59:00.000Z'));
     const { files, lock } = world({ [early]: text });
