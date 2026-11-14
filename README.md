@@ -19,7 +19,7 @@ Each session is a tab in the terminal you already have (PowerShell, bash or zsh)
 IDE, no desktop app, no server and no account: in our test, Windows Terminal with twelve session tabs used about
 250 MB of memory.
 
-> **Pre-release.** Nothing is stable yet and there is no release; the repository is private until the first one.
+> **Pre-release.** Nothing is stable yet and there is no release.
 
 ## Get started
 
@@ -33,11 +33,12 @@ claude plugin marketplace add GeneralA6/teamrig-pane
 claude plugin install teamrig-pane@teamrig-pane
 ```
 
-While the repositories are private, accept the invites to both first: Claude Code clones a marketplace with your own
-git login, so `git clone https://github.com/GeneralA6/teamrig` must work in your terminal.
+Both repositories are public, so no GitHub account or key is needed: Claude Code clones over SSH when you have a key,
+else over HTTPS. The plugin brings its own `teamrig` command, which every tab's Bash tool finds on its PATH.
 
 Open Claude Code in your project (in a tab already open, type `/reload-plugins` first), ask for a team, and tell your
-lead what you want done. No config files to write.
+lead what you want done. No config files to write. The first session start lists the secret deny lines your Claude
+settings lack, for you to paste: teamrig never writes your permissions.
 
 - **Your tasks in view:** install [teamrig-pane](https://github.com/GeneralA6/teamrig-pane) and run `/teamrig-pane`
   in a tab. It shows the session's tasks beside the conversation and makes no model calls, so it costs no tokens.
@@ -51,7 +52,8 @@ lead what you want done. No config files to write.
 Claude Code 2.1.139 or later and Node.js 22.18 or later. teamrig checks for anything else when you set up a team and
 when a session starts, and tells you in plain words what is missing and how to fix it. Auto mode runs `teamrig` as is;
 in default mode, allow `Bash(teamrig:*)` ([permissions](plugins/teamrig/skills/teamrig-guide/hooks.md#permissions)).
-Windows and Linux: on Linux the tests and a smoke run pass; the tab circles and teamrig-pane are proven on Windows only.
+Windows and Linux: on both, a fresh install from the public repositories, a first team and every plugin hook pass; on
+Linux the tests and a smoke run pass too; the tab circles and teamrig-pane are proven on Windows only.
 
 ## How it works
 
