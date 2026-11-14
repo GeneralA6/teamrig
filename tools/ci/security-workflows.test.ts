@@ -58,6 +58,10 @@ describe('codeql.yml', () => {
     assert.match(codeql, /^ {12}paths-ignore:\n {14}- plugins\/teamrig\/dist$/m);
   });
 
+  it('cancels only an older pull request scan, never a scan of main', () => {
+    assert.match(codeql, /^concurrency:\n {2}group: codeql-\$\{\{ github\.ref \}\}\n {2}cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\n/m);
+  });
+
   it('stops after at most 20 minutes', () => {
     const minutes = /^ {4}timeout-minutes: (\d+)$/m.exec(codeql)?.[1];
     assert.ok(minutes !== undefined && Number(minutes) <= 20, `timeout-minutes: ${minutes}`);
