@@ -31,6 +31,7 @@ import type { CliRuntime } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { sessionFoldersOf } from './setup.ts';
 import { fileLockOf } from '../file-locks.ts';
+import { sweepDeadDetachedRuns } from '../detached-sweep.ts';
 
 /** The pass's steps and the hookless reopens now, or the error it failed with. */
 type PassRun =
@@ -153,7 +154,8 @@ async function passOnce(runtime: CliRuntime, kit: Kit, config: KitConfig, roster
  * pass record is an hour old, with the host's commit charge;
  * a failed pass logs its error once until the error changes. It logs once each reopened tab no teamrig hook started
  * in (src/cli/hookless-reopen.ts). In dry-run it changes nothing else; in `on` it starts the closes and the reopen
- * its steps ask for, and tells the lead of each hookless reopen with an urgent line. With mode off it reads nothing.
+ * its steps ask for, and tells the lead of each hookless reopen with an urgent line. In both it tells each of the team's
+ * detached queue runs that died with no end of its own (src/cli/detached-sweep.ts). With mode off it reads nothing.
  */
 export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, from: string): Promise<void> {
   if (config.open.idle.mode === 'off') {
@@ -170,6 +172,7 @@ export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConf
       const previous = await readIdlePassState(runtime.files, kit.paths);
       if (isPassDue(previous, now)) {
         await files.write(kit.paths.idlePass, formatIdlePassState(await passOnce(runtime, kit, config, roster, from, previous, now)));
+        (await sweepDeadDetachedRuns(runtime, kit, config)).problems.forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
       }
     });
   } catch (error) {

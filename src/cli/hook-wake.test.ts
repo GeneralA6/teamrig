@@ -6,6 +6,7 @@ import { BurstLog } from '../budget/burst-log.ts';
 import { MeterLog } from '../budget/calibration.ts';
 import { formatConfig } from '../config/load.ts';
 import type { Files } from '../core/files.ts';
+import { formatRunRecord, runRecordPathOf } from '../delivery/detached-runs.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { inboxLineOf } from '../inbox/inbox.ts';
@@ -804,6 +805,17 @@ describe('hook wake-check runs the idle pass', () => {
     kit.clock.advance(MINUTE);
     await passCheck(kit);
     assert.deepEqual(await logLines(kit, PASS_LOG), [failed, pass(kit.clock.now(), [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO])]);
+  });
+
+  it('tells, on a due pass, the session of a detached queue run that died with no end of its own (T2742)', async () => {
+    const kit = await idleTeam();
+    const dir = join(STATE, 'deploys', 'detached');
+    const record = runRecordPathOf(dir, 'r1');
+    await kit.files.write(record, formatRunRecord({ v: 1, id: 'r1', team: 'app', session: 'bravo', what: 'build api', log: join(dir, 'r1.log'), pid: 5150, startedAt: '2030-01-08T09:30:00.000Z' }));
+    assert.deepEqual(answerOf(await passCheck(kit)), WAIT);
+    const told = (await new WakeAsks(kit.files, ASKS).read('bravo')).map((stored) => stored.ask?.text);
+    assert.equal(kit.files.get(record), undefined);
+    assert.deepEqual(told.map((text) => text?.startsWith('queue r1 died while it waited for its turn: build api: ')), [true]);
   });
 
   it('names once a reopened tab no teamrig hook started in, to the lead with a wake in mode on, and drops the mark once a hook started', async () => {

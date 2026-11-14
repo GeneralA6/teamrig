@@ -12,6 +12,7 @@ import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
 import { lineRequests } from '../testing/line-tickets.ts';
 import { ROOMY_FREE_MB } from '../testing/quiet-world.ts';
@@ -895,6 +896,7 @@ describe('teamrig queue --pre-push', () => {
 /** The id `--detach` gives a run started at the harness clock's 10:00:00 UTC by the CLI's pid. */
 const DETACHED_ID = '20300108-100000-4242';
 const DETACHED_LOG = join(TEAM_HOME, 'state', 'deploys', 'detached', `${DETACHED_ID}.log`);
+const DETACHED_RECORD = join(TEAM_HOME, 'state', 'deploys', 'detached', `${DETACHED_ID}.run.json`);
 const ALPHA_INBOX = join(TEAM_HOME, 'state', 'inbox', 'alpha.md');
 const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
 const DETACH_BUILD = ['queue', '--what', 'build api', '--max-minutes', '90', '--exclusive', '--detach', '--', 'npm', 'run', 'build'];
@@ -994,7 +996,7 @@ describe('teamrig queue --detached-run (T2227)', () => {
     const starters = new FakeStarterWatch();
     steps.ends(0, MINUTE).whileRunning(async () => starters.end());
     const result = await kit.run(hiddenArgs, { steps, starters });
-    assert.deepEqual(result, { code: 0, stdout: ['2030-01-08 10:00:02 UTC running: build api (killed after 1h30m)', 'DONE exit 0'], stderr: [] });
+    assert.deepEqual(result, { code: 0, stdout: [`2030-01-08 10:00:00 UTC detached run ${DETACHED_ID}: pid 4242`, '2030-01-08 10:00:02 UTC running: build api (killed after 1h30m)', 'DONE exit 0'], stderr: [] });
     assert.deepEqual([steps.ran[0]?.stop?.aborted, starters.openWatches], [false, 0], 'the shell that ran --detach ended long ago: it stops nothing');
     assert.deepEqual(await alphaLines(kit), [`queue ${DETACHED_ID} started: build api; log ${DETACHED_LOG}`, `queue ${DETACHED_ID} ended: build api: DONE exit 0; log ${DETACHED_LOG}`]);
     assert.deepEqual(await alphaWakes(kit), [`alpha: queue ${DETACHED_ID} ended: build api: DONE exit 0; log ${DETACHED_LOG}`], 'only the end wakes it');
@@ -1016,5 +1018,27 @@ describe('teamrig queue --detached-run (T2227)', () => {
     assert.deepEqual([result.code, result.stdout.at(-1)], [2, refusal]);
     const ended = `queue ${DETACHED_ID} ended: build api: ${refusal}; log ${DETACHED_LOG}`;
     assert.deepEqual([await alphaLines(kit), await alphaWakes(kit), steps.ran], [[ended], [`alpha: ${ended}`], []]);
+    assert.equal(kit.files.get(DETACHED_RECORD), undefined, 'a refused run ends its record too');
+  });
+
+  it('keeps its run record from its start, marked running once its step runs, and removes it before its end line (T2742)', async () => {
+    const { kit, steps } = harness();
+    const seen: unknown[] = [];
+    steps.ends(0, MINUTE).whileRunning(async () => {
+      seen.push(JSON.parse(kit.files.get(DETACHED_RECORD) ?? 'null'));
+    });
+    assert.equal((await kit.run(DETACHED_BUILD, { steps })).code, 0);
+    assert.deepEqual(seen, [{ v: 1, id: DETACHED_ID, team: 'app', session: 'alpha', what: 'build api', log: DETACHED_LOG, pid: 4242, startedAt: '2030-01-08T10:00:00.000Z', runningAt: '2030-01-08T10:00:02.000Z' }]);
+    assert.equal(kit.files.get(DETACHED_RECORD), undefined);
+    assert.equal((await kit.run(['start'], { env: { TEAMRIG_SESSION: 'bravo' } })).code, 0);
+    assert.equal((await alphaWakes(kit)).length, 1, 'a sweep after its own end tells nothing more');
+  });
+
+  it('runs on when its record cannot be written, saying so in its log', async () => {
+    const { kit, steps } = harness();
+    const files = new FaultyFiles(kit.files).fail('write', DETACHED_RECORD, systemError('EACCES', 'EACCES: permission denied'));
+    const result = await kit.run(DETACHED_BUILD, { steps: steps.ends(0), files });
+    const unwritten = (at: string): string => `2030-01-08 ${at} UTC its run record was not written, so a death of this run goes untold: EACCES: permission denied`;
+    assert.deepEqual([result.code, result.stdout.filter((line) => line.includes('run record'))], [0, [unwritten('10:00:00'), unwritten('10:00:02')]], 'at its start and when its step runs');
   });
 });
