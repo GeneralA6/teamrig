@@ -1,10 +1,13 @@
 import { extname, join } from 'node:path';
-import { migrationBackupName } from '../../config/load.ts';
+import { isDeepStrictEqual } from 'node:util';
+import { migrationBackupName, type ConfigLoad } from '../../config/load.ts';
+import { settingAt, settingValueOf, withSetting } from '../../config/setting-edit.ts';
 import { rowsUnder, settingRows, type SettingRow } from '../../config/settings.ts';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { clientRootOf } from '../../exec/client-integrity.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
-import { configLockOf, issueText, openTeamKit, reloadTeamConfig, requireConfig } from '../kit.ts';
+import { callerOf } from '../inputs.ts';
+import { checkedNextConfig, configFileJson, configLockOf, issueText, leadOnly, openTeamKit, reloadTeamConfig, requireConfig, rosterOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -32,15 +35,7 @@ export async function get(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (load.status === 'unreadable') {
     throw new RefusedError(`${load.path} cannot be read: ${issueText(load.issue)}; teamrig config validate shows it`);
   }
-  const schemaPath = configSchemaPathOf(runtime.self.script);
-  const schema = parsedRecord(await runtime.files.read(schemaPath));
-  if (schema === undefined) {
-    throw new RefusedError(`no config schema at ${schemaPath}; reinstall teamrig`);
-  }
-  // The file as written, so a row shows what the team set, not the parsed value; an older format is read migrated, as
-  // every command reads it.
-  const raw = load.pending?.migrated ?? parsedRecord(await runtime.files.read(load.path)) ?? {};
-  const all = settingRows(schema, raw, load.issues);
+  const all = await settingRowsOf(runtime, load);
   const rows = key === undefined ? all : rowsUnder(all, key);
   if (rows.length === 0) {
     throw new RefusedError(`the config has no key ${key ?? ''}; teamrig config get lists them`);
@@ -51,6 +46,106 @@ export async function get(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   }
   rows.forEach((row) => runtime.out.stdout(settingLine(row)));
   return EXIT.ok;
+}
+
+type LoadedConfig = Extract<ConfigLoad, { readonly status: 'loaded' }>;
+
+/** Every key the schema beside this CLI describes, read against the team's file. */
+async function settingRowsOf(runtime: CliRuntime, load: LoadedConfig): Promise<readonly SettingRow[]> {
+  const schemaPath = configSchemaPathOf(runtime.self.script);
+  const schema = parsedRecord(await runtime.files.read(schemaPath));
+  if (schema === undefined) {
+    throw new RefusedError(`no config schema at ${schemaPath}; reinstall teamrig`);
+  }
+  // The file as written, so a row shows what the team set, not the parsed value; an older format is read migrated, as
+  // every command reads it.
+  const raw = load.pending?.migrated ?? parsedRecord(await runtime.files.read(load.path)) ?? {};
+  return settingRows(schema, raw, load.issues);
+}
+
+export const SET_BACKUP_NAME = 'config.set';
+
+/**
+ * `config set <key> <value> | <key> --unset [--yes]`, the lead only: one key `config get` marks editable, its value
+ * read by the key's type; --unset removes it so it reads its default. Without --yes it shows the change. The loader
+ * checks the whole new config before it is written, so a config with a problem elsewhere is refused until fixed, and a
+ * set that fixes the only problem goes through; the old file is kept in the backups folder.
+ */
+export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const [key, text, extra] = args.positionals;
+  const unset = args.switches.has('unset');
+  if (key === undefined) {
+    throw new UsageError('config set needs <key> <value>, or <key> --unset');
+  }
+  if (unset && text !== undefined) {
+    throw new UsageError(`--unset takes no value, not "${text}"`);
+  }
+  if (!unset && text === undefined) {
+    throw new UsageError(`config set ${key} needs a value, or --unset to read its default`);
+  }
+  if (extra !== undefined) {
+    throw new UsageError(`unexpected "${extra}"; quote a value with spaces`);
+  }
+  const kit = await openTeamKit(runtime);
+  const config = requireConfig(kit, runtime, 'read');
+  const { load } = kit;
+  if (load.status !== 'loaded') {
+    throw new RefusedError(`no team config at ${load.path}`);
+  }
+  if (load.newerVersion !== undefined) {
+    throw new RefusedError(`${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig before writing`);
+  }
+  if (load.pending !== undefined) {
+    throw new RefusedError(`${load.path} is config version ${load.pending.fromVersion}; write the current format first: teamrig config migrate`);
+  }
+  leadOnly(await rosterOf(runtime, kit, config), callerOf(args.flags, runtime.env), 'changes the team config');
+  const row = editableRowOf(await settingRowsOf(runtime, load), key);
+  const typed = text === undefined ? undefined : settingValueOf(row, text);
+  if (typed !== undefined && !typed.ok) {
+    throw new RefusedError(typed.problem);
+  }
+  const value = typed?.value;
+  return configLockOf(runtime, kit, config).run(async (writer) => {
+    // Read under the lock, so a change written meanwhile is kept.
+    const file = await configFileJson(runtime, load.path);
+    const old = settingAt(file, key);
+    if (isDeepStrictEqual(old, value)) {
+      runtime.out.stdout(`UNCHANGED ${key} ${shownSetting(old, row)}`);
+      return EXIT.ok;
+    }
+    const next = withSetting(file, key, value);
+    checkedNextConfig(next);
+    const what = `${key} ${shownSetting(old, row)} -> ${shownSetting(value, row)}`;
+    if (!args.switches.has('yes')) {
+      runtime.out.stdout(`PREVIEW set ${what}; nothing written (add --yes to write)`);
+      return EXIT.ok;
+    }
+    const backup = await writer.write(next, SET_BACKUP_NAME);
+    runtime.out.stdout(`SET ${what}; the old config is at ${backup}`);
+    return EXIT.ok;
+  });
+}
+
+/** The row of `key` when `config set` may change it; refused for an unknown key, a group or a read-only key. */
+function editableRowOf(rows: readonly SettingRow[], key: string): SettingRow {
+  const row = rows.find((candidate) => candidate.path === key);
+  if (row === undefined) {
+    const under = rowsUnder(rows, key);
+    throw new RefusedError(
+      under.length === 0 ? `the config has no key ${key}; teamrig config get lists them` : `${key} holds ${under.length} keys; set one: ${under.map((one) => one.path).join(', ')}`,
+    );
+  }
+  if (row.readOnly !== undefined) {
+    throw new RefusedError(`${key} is read-only: ${row.readOnly}`);
+  }
+  return row;
+}
+
+function shownSetting(value: unknown, row: SettingRow): string {
+  if (value !== undefined) {
+    return JSON.stringify(value);
+  }
+  return row.default === undefined ? '(unset)' : `(unset: default ${JSON.stringify(row.default)})`;
 }
 
 function settingLine(row: SettingRow): string {

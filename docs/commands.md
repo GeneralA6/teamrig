@@ -504,6 +504,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       backup, or NO BACKUP; works before a team exists; it only reads
   config get [<key>] [--json]   every key of the team config, or those at and under <key>: its value
       against its default, and read-only with why (the roster, an owner gate, a map); --json for a screen
+  config set <key> <value> | config set <key> --unset [--yes] [--session <id|name>]   the lead only:
+      changes one key config get marks editable, the value read by the key's type (a list as JSON or
+      a,b); --unset removes it to read its default; without --yes it shows the change; the whole new
+      config is checked before it is written, the old one kept as a backup; REFUSED for a read-only key
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule

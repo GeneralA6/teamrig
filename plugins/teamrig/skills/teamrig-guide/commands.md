@@ -4077,8 +4077,8 @@ Lists every key of the team config, or with `<key>` those at and under it (`mess
 value as the team's file holds it, or its default when unset, the default beside a changed one, and why a key is
 read-only. The roster (`team`, `sessions`, `names`, `leads`, `roles`) changes only through hire, retire, rename,
 promote and demote; `configVersion` only through `config migrate`; maps and lists of records only in config.json or
-their own command; and the budget, `focus.allocation`, permissions, `ownerGates`, `leadBoundary`, `exec`,
-`readonlyShell` and every guard are owner gates the owner decides. A value `config validate` finds wrong is named
+their own command; and the budget, `focus.allocation`, `burst`, permissions, `prompts`, `ownerGates`,
+`leadBoundary`, `exec`, `readonlyShell` and every guard (each `<name>Guard`) are owner gates the owner decides. A value `config validate` finds wrong is named
 with its problem, read as its default meanwhile.
 
 Flags:
@@ -4101,6 +4101,36 @@ messages.coldAfterMinutes 60
 ```
 
 It refuses a key the config does not have, and a config it cannot read.
+
+### teamrig config set
+
+The lead changes one key of the team config that `config get` marks editable. The value is read by the key's type:
+`12` for a number, `true` or `false`, the text for a string, and a list as JSON (`["a","b"]`) or comma-separated
+(`a,b`, empty for none); it must be one of the key's choices and within its bounds. Without `--yes` it shows the
+change and writes nothing. The whole new config is checked before it is written, and the old file is kept in
+`backups/`.
+
+Flags:
+
+- `--unset`: removes the key, so it reads its default; takes no value.
+- `--yes`: writes the change.
+- `--session <id|name>`: the caller, who must be the lead (default `$TEAMRIG_SESSION`).
+
+Example:
+
+```sh
+teamrig config set messages.maxLines 20 --yes
+```
+
+Output:
+
+```text
+SET messages.maxLines 12 -> 20; the old config is at /home/you/.teamrig/teams/shop/backups/config.set.json
+```
+
+It refuses anyone but the lead, a key that is read-only (the roster, an owner gate, a map), a key that holds other
+keys, a value the key does not take, an older config until `config migrate` writes it, and a change that would leave
+the config with a problem; a set that fixes the config's only problem goes through.
 
 ### teamrig config migrate
 

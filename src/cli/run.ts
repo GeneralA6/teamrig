@@ -266,6 +266,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'setup restore': { effect: 'write', flags: [], switches: ['yes', 'remove-new'], load: async () => (await setupBackupCommands()).restore },
   'setup scan': { effect: 'read', flags: ['project', 'days', 'max-mb'], switches: [], load: async () => (await setupScanCommand()).scan },
   'config get': { effect: 'read', flags: [], switches: ['json'], load: async () => (await configCommands()).get },
+  'config set': { effect: 'write', flags: ['session'], switches: ['unset', 'yes'], load: async () => (await configCommands()).set },
   'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -842,6 +843,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       backup, or NO BACKUP; works before a team exists; it only reads
   config get [<key>] [--json]   every key of the team config, or those at and under <key>: its value
       against its default, and read-only with why (the roster, an owner gate, a map); --json for a screen
+  config set <key> <value> | config set <key> --unset [--yes] [--session <id|name>]   the lead only:
+      changes one key config get marks editable, the value read by the key's type (a list as JSON or
+      a,b); --unset removes it to read its default; without --yes it shows the change; the whole new
+      config is checked before it is written, the old one kept as a backup; REFUSED for a read-only key
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
