@@ -93,6 +93,10 @@ function namedProblem(config: KitConfig, id: string): string | undefined {
   if (login !== undefined) {
     return `github.owners names ${id} for ${login[0]}: point it at another session first`;
   }
+  const area = Object.entries(config.github.areaOwners).find(([, session]) => session === id);
+  if (area !== undefined) {
+    return `github.areaOwners names ${id} for ${area[0]}: point it at another session first`;
+  }
   const repo = Object.entries(config.github.sessions).find(([, session]) => session === id);
   if (repo !== undefined) {
     return `github.sessions names ${id} for ${repo[0]}: point it at another session first`;

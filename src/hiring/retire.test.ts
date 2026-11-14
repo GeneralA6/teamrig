@@ -100,6 +100,7 @@ describe('planRetire', () => {
     const github = { repos: ['acme/app'], owners: { octo: 'helper' } };
     assert.match(problem({ ...FILE, github }), /github\.owners names helper for octo/);
     assert.match(problem({ ...FILE, github: { repos: ['acme/app'], sessions: { 'acme/app': 'helper' } } }), /github\.sessions names helper for acme\/app/);
+    assert.match(problem({ ...FILE, github: { areaOwners: { 'area:cli': 'helper' } } }), /github\.areaOwners names helper for area:cli/);
   });
 
   it('refuses a config with no sessions list to take it from', () => {
