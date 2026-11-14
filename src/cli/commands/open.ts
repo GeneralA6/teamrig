@@ -196,7 +196,8 @@ export type OpenResult =
  * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
  * session or fresh (always fresh with `fresh`), refused (`RefusedError`) while it runs in a Claude Code and, for any
  * session but the lead, when the host has no room, its tab held while it loads (admitTab, so the next opens of every
- * team count it before free memory shows it), and a closed one's reopen logged once its tab opened. A home close
+ * team count it before free memory shows it), and a closed one's reopen logged once its tab opened (fresh on its
+ * handover while its refresh is ready, T2354). A home close
  * (a hire that never ran, T1364) opens as a new hire does, its reopen logged too.
  */
 export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, request: OpenRequest): Promise<OpenResult> {
@@ -207,13 +208,16 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
   const closed = closedOf((await sessionLog.read()).records, id);
   const fresh = request.fresh === true;
-  const closedIn = closed?.claudeSession === undefined || fresh ? undefined : await reopenOf(runtime, config, closed, project);
+  // A closed session whose refresh is ready starts from its handover: a resume keeps the old context, and a start
+  // takes a ready handover only when fresh, so a resume would lose it (T2354).
+  const handover = closed === undefined || fresh ? undefined : await readyHandoverOf(new RefreshStore(runtime.files, kit.paths), id);
+  const closedIn = closed?.claudeSession === undefined || fresh ? undefined : handover === undefined ? await reopenOf(runtime, config, closed, project) : { verdict: READY_FRESH, folder: project };
   const reopen = closedIn?.verdict;
   // A closed session opened fresh still logs its reopen below, so the idle pass knows it runs again.
   const resume = fresh ? undefined : await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
   // Claude Code finds a session to resume only in the folder it ran in (T1408); a new one starts in the project.
   const folder = resume === undefined ? project : (closedIn?.folder ?? project);
-  const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
+  const own = request.prompt ?? (handover === undefined ? firstPromptOf(team, id, from, resume, reopen) : refreshPrompt(team, id, handover));
   const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
   const what = `open ${name} (session ${id})`;
   // The lead opens whatever the room: it is the session that decides which others run. Its tab is held all the same.
@@ -240,6 +244,14 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   const unnoted = resume !== undefined && request.prompt === undefined ? await noteResumedTab(runtime, kit, config, id, resume) : undefined;
   const wakeNote = unnoted === undefined ? '' : `; its wake state was not written, so its tab may wake once more for work it reads now: ${unnoted}`;
   return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${folder}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}${wakeNote}` };
+}
+
+/** A closed session's reopen while its refresh is ready: fresh, so its start takes the handover (T2354). */
+const READY_FRESH: ResumeVerdict = { kind: 'fresh', detail: 'its refresh is ready: it starts from its handover' };
+
+/** The handover of a session whose refresh is ready, else undefined. */
+async function readyHandoverOf(store: RefreshStore, id: string): Promise<string | undefined> {
+  return (await store.state(id))?.phase === 'ready' ? store.handoverPath(id) : undefined;
 }
 
 /** Whether a closed session resumes, and in which folder: the one its close recorded, else the project. */
