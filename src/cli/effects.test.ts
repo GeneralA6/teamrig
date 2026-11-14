@@ -120,6 +120,7 @@ const EXPECTED = {
   'setup backup': 'write',
   'setup restore': 'write',
   'setup scan': 'read',
+  'config get': 'read',
   'config validate': 'read',
   'config migrate': 'write',
   'commits check': 'read',
