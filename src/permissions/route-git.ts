@@ -131,7 +131,8 @@ const BRANCH_NAME = /^[\w./-]+$/;
 
 /**
  * C5: `git push [-u|--set-upstream] [-q|--quiet] <remote> <branch>`, the remote one the repository names, the branch
- * one of a task the caller owns (`t<id>-...`) and no protected branch, and git's config pushing it to the remote
+ * one of a task the caller owns (`t<id>-...`, or `feat/t<id>-...` with the id starting a part: owner.ts `branchTaskOf`)
+ * and no protected branch, and git's config pushing it to the remote
  * branch of its own name (else a protected branch could be where it lands).
  */
 export async function matchesGitPush(words: readonly string[], context: GitContext): Promise<boolean> {
@@ -159,7 +160,7 @@ function isPushOption(word: string): boolean {
   return letters.length > 0 && letters.every((letter) => PUSH_FLAGS.has(letter));
 }
 
-/** The task of a plain task branch (`t<id>-...`) that is no protected branch, whatever its case; else undefined. */
+/** The task of a plain task branch (`t<id>-...`, `feat/t<id>-...`) that is no protected branch, whatever its case; else undefined. */
 function taskBranchOf(branch: string, protectedBranches: readonly string[]): string | undefined {
   const plain = BRANCH_NAME.test(branch) && !branch.includes('..') && !branch.toLowerCase().startsWith('refs/') && branch.toLowerCase() !== 'head';
   const unprotected = !protectedBranches.some((name) => name.toLowerCase() === branch.toLowerCase());
