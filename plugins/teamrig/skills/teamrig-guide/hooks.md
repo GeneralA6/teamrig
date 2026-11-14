@@ -19,7 +19,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
-| `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, and to a sub-team's lead, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
+| `PreToolUse` on `AskUserQuestion` and `Bash` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, and to a sub-team's lead, with the reason to decide it if it is the session's own, else record it on its task and go on, and a session's Bash `cd` compound Claude Code would hold on a permission prompt, quoting its form to rerun ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that runs a sanctioned route or provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
@@ -835,6 +835,13 @@ keeps the picker. With tab status on, a
 refused picker leaves the tab's circle as it was, since no question waits. The refusal is the hook's PreToolUse
 `deny`, not a permission rule; outside a team, with the guard off or on any error the hook prints nothing, so the
 picker opens.
+
+The same switch covers a Bash line that leads with `cd D &&` (since 0.375.0). Claude Code asks a person before such a
+line when git runs after the move or `D` lies outside the session's folder, in auto mode too, and that prompt holds the
+session until someone answers. In a team session the hook refuses the line before the prompt opens, and its reason
+quotes the line's rerun form, which runs the same commands in the same folder with no `cd` (`git -C D ...`,
+`env -C D ...`). A line that stays in the folder and runs no git, or has no rerun form, is left to Claude Code; a
+PowerShell line too.
 
 ## After a tool call: the loop nudge
 

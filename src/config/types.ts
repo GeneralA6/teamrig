@@ -1575,8 +1575,10 @@ export interface KitConfig {
   /**
    * Refuses Claude Code's question picker (AskUserQuestion), which would stop the session until the person answers,
    * to every session and helper, the lead included, in the owner's daily meeting too; the reason says to decide it if it
-   * is the session's own, else record it on its task and go on (hook-picker-guard.ts). On by default (T2256): a team
-   * that never named the key had no guard, and one session's picker held its other tasks for hours.
+   * is the session's own, else record it on its task and go on (hook-picker-guard.ts). It also refuses a session's
+   * Bash `cd` compound that Claude Code would hold on a permission prompt, quoting its rerun form (T2730). On by
+   * default (T2256): a team that never named the key had no guard, and one session's picker held its other tasks for
+   * hours.
    */
   readonly pickerGuard: { readonly enabled: boolean };
   readonly meeting: MeetingConfig;

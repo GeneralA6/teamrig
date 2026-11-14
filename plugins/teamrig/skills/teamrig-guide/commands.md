@@ -6101,7 +6101,9 @@ gives the session's own `teamrig set <id> --status waiting --waits decision:owne
 `--default` included, says to go on with the next task, and only with none left to end the turn with the question and
 a `Decision needed:` line. A sub-team's lead is refused even in a meeting, and its reason says to pass the card to its
 parent lead in one inbox line instead of asking the owner. A helper's reason says to end its report with the decision
-instead. See
+instead. Before a Bash line, the same switch refuses a team session's line that leads with `cd D &&` and runs git or
+leaves the session's folder, which Claude Code would hold on a permission prompt, and its reason quotes the line's
+`git -C` / `env -C` form to rerun. See
 [Hooks and permissions](hooks.md#before-a-question-the-picker-guard).
 
 Flags: none.
