@@ -98,7 +98,7 @@ const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
-    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit'], load: async () => (await registerCommands()).set },
+    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'affects', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit'], load: async () => (await registerCommands()).set },
     update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
     'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
     // No register changes, but --out writes the path the line names: a line no person typed must not reach that.
@@ -432,7 +432,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --source owner: the lead of a team above <team> relays the owner's order, sourced owner there
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
-      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]
+      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".." --affects ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
       [--ask <session> --text "<the work>"] [--one-commit] [--run <path>]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
@@ -463,6 +463,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a wait on the owner's decision names what makes it the owner's: --gate "<an owner gate (ownerGates)
       or business>"; any other question is yours or your leader's: decide it, or wait on your leader;
       check flags it UNGATED without one
+      a card asking the owner about a test, measure or proof (a back-test, trial, dry run, benchmark) asks
+      only with --affects "<the approved number it changes, the money it spends or the data it writes>":
+      one of approved work that does none of those goes ahead, and you tell your leader; check flags it
+      OWNER-PROOF without one
       --run <path> (with a wait on the owner's decision or approval): the hand step file the owner runs,
       refused unless an audit (teamrig audit) pins it at its sha256 now; the card prints its run line
       a bug gives its review (register.review): --cause "<the root cause, at its source>"
