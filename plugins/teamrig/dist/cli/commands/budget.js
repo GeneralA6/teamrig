@@ -19,6 +19,7 @@ import { formatPct, formatUsd } from "../../budget/format.js";
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, outsideUsageDir } from "../../budget/measure.js";
 import { paceLineOfWeek } from "../../budget/pace.js";
+import { resetStockLines } from "../../budget/resets.js";
 import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, teamPartOf } from "../../budget/parts.js";
 import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
 import { nextPeriod, sightOf } from "../../budget/period.js";
@@ -268,7 +269,10 @@ export async function budget(args, runtime) {
         if (recountDay === undefined) {
             const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
             const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
-            lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone });
+            lines = [
+                ...todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone }),
+                ...resetStockLines(config.budget.resets, now, zone),
+            ];
         }
         else {
             lines = recountLines(today, { week, sessions, outside, all });

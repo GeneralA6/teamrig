@@ -3,7 +3,7 @@ import { deployTargetsOf } from "../delivery/targets.js";
 import { ADDRESS_PATTERN, splitAddress } from "../core/address.js";
 import { isRecord } from "../core/guards.js";
 import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from "../core/ids.js";
-import { isMinuteInSpan, utcMinuteOf } from "../core/time.js";
+import { isMinuteInSpan, parseUtcDeadline, utcMinuteOf } from "../core/time.js";
 import { TimeZone } from "../core/zone.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, REVIEW_STATUSES, SESSION_NAME, TASK_STATUSES, WORK_CLASS_NAME } from "../register/model.js";
 import { KEEP_RULE_PATTERN } from "../permissions/allow-rules.js";
@@ -15,7 +15,7 @@ import { isEffort, isModel } from "./launch.js";
 import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, } from "./limits.js";
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from "./migrate.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, GOALS_MODES, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isReviewMode, isVerifyGate, isWeekday, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
+import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, GOALS_MODES, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isResetKind, isReviewMode, isVerifyGate, isWeekday, RESET_KINDS, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 /** A role a team may leave to a team above it (ANCESTOR_ROLES): one of its sessions, or `<team>/<id>` (T1143). */
 const isRoleHolder = (holder) => SESSION_NAME.test(holder) || ADDRESS_PATTERN.test(holder) ? undefined : 'expected a session id of the team, or <team>/<id> of a team above it';
@@ -730,6 +730,7 @@ function parseBudget(read, raw, sessions, above) {
     const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW) ?? inherited?.weeklyLimitW;
     const extraWPerUsd = read.optionalInteger(raw, 'extraWPerUsd', path, CONFIG_LIMITS.extraWPerUsd) ?? inherited?.extraWPerUsd;
     const reset = parseBudgetReset(read, raw) ?? inherited?.reset;
+    const resets = raw['resets'] === undefined ? (inherited?.resets ?? defaults.resets) : parseResetStocks(read, raw, defaults.resets);
     const why = "the team's daily budget is the pace, recomputed at every reading from what is left of the week";
     read.dropped(raw, 'dailyPct', path, why);
     read.dropped(raw, 'maxDailyPct', path, why);
@@ -745,6 +746,7 @@ function parseBudget(read, raw, sessions, above) {
         subagentWeight: read.number(raw, 'subagentWeight', path, inherited?.subagentWeight ?? defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
         ...(extraWPerUsd === undefined ? {} : { extraWPerUsd }),
         ...(reset === undefined ? {} : { reset }),
+        resets,
         targetPct,
         reservePct,
         shareFloorPct: read.integer(raw, 'shareFloorPct', path, defaults.shareFloorPct, CONFIG_LIMITS.shareFloorPct),
@@ -775,6 +777,36 @@ function parseBudgetReset(read, raw) {
     const weekday = read.requiredString(section, 'weekday', path, oneOf(WEEKDAYS));
     const timeUtc = read.requiredString(section, 'timeUtc', path, isUtcTime);
     return isWeekday(weekday) && timeUtc !== '' ? { weekday, timeUtc } : undefined;
+}
+/** A reset grant's note: one short line, such as where it came from. */
+const RESET_NOTE_MAX_LENGTH = 100;
+/** A UTC minute as YYYY-MM-DD HH:MM, a real day and time. */
+const isUtcMinute = (text) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text) && parseUtcDeadline(text) !== undefined ? undefined : 'expected a UTC time as YYYY-MM-DD HH:MM';
+/** `budget.resets`: each grant read whole, or dropped with its issues; more uses than the grant holds is an issue. */
+function parseResetStocks(read, raw, fallback) {
+    return read.list(raw, 'resets', 'budget', fallback, (value, itemPath) => parseResetStock(read, value, itemPath), CONFIG_LIMITS.budgetResets.maxItems);
+}
+function parseResetStock(read, value, path) {
+    const section = read.objectItem(value, path);
+    if (section === undefined) {
+        return undefined;
+    }
+    const issues = read.issues.length;
+    const kind = read.requiredString(section, 'kind', path, oneOf(RESET_KINDS));
+    const count = read.optionalInteger(section, 'count', path, CONFIG_LIMITS.budgetResetCount);
+    if (section['count'] === undefined) {
+        read.report(`${path}.count`, 'is required');
+    }
+    const expiresUtc = read.requiredString(section, 'expiresUtc', path, isUtcMinute);
+    const usedUtc = read.stringList(section, 'usedUtc', path, [], isUtcMinute, CONFIG_LIMITS.budgetResetCount.max);
+    const note = read.optionalString(section, 'note', path, shortLine(RESET_NOTE_MAX_LENGTH));
+    if (count !== undefined && usedUtc.length > count) {
+        read.report(`${path}.usedUtc`, `lists ${usedUtc.length} uses of a grant of ${count}`);
+    }
+    if (read.issues.length > issues || !isResetKind(kind) || count === undefined) {
+        return undefined;
+    }
+    return { kind, count, expiresUtc, usedUtc, ...(note === undefined ? {} : { note }) };
 }
 /** `budget.quietHours`: a start, an end and the action, or nothing. */
 function parseQuietHours(read, raw) {
