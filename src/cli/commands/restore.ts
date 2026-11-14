@@ -152,7 +152,7 @@ async function openRestoredTab(runtime: CliRuntime, tab: ReopenTab, terminal: Te
     ...(tab.prompt === undefined ? [] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
   ];
   const window = team === undefined ? undefined : teamWindowOf(team.teamWindow, team.team);
-  const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv, window });
+  const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv, window, focus: 'take' });
   return reopenOutcomeOf(runtime, outcome, tab.folder, argv);
 }
 
@@ -226,7 +226,7 @@ export async function restoreCheck(args: ParsedArgs, runtime: CliRuntime): Promi
     ...(terminal === undefined ? [] : ['--terminal', terminal]),
     ...homeArgs(homeRuntime),
   ];
-  const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined });
+  const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined, focus: 'take' });
   if (outcome.kind === 'opened') {
     await restoreLogOf(homeRuntime)(`check: opened the restore tab; ${launchWords(outcome.terminal, outcome.end)}`);
     runtime.out.stdout(`OPENED the restore of ${count} Claude Code session${count === 1 ? '' : 's'} in a new ${TERMINAL_LABELS[outcome.terminal]}`);
