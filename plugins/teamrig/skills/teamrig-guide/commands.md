@@ -6342,7 +6342,9 @@ instead); nothing outside a team session.
 
 ### teamrig hook stop
 At the end of each turn, first sends you back once to a skill edit of the turn that Claude Code refused and you never
-redid ([a dropped skill edit](hooks.md#end-of-a-turn-or-a-helper-a-dropped-skill-edit)). It asks for a handover when your context is at or over the refresh threshold or the lead
+redid ([a dropped skill edit](hooks.md#end-of-a-turn-or-a-helper-a-dropped-skill-edit)), then once to a reply that
+handed the human a shell or JSON block or a call line with no sha256 ([a hand step typed into the
+reply](hooks.md#end-of-a-turn-a-hand-step-typed-into-the-reply)). It asks for a handover when your context is at or over the refresh threshold or the lead
 asked for a refresh, and at a task end also after enough tasks. With the budget on, it also shows the budget lines and posts the
 lead's inbox line when one is due.
 

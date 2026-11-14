@@ -296,7 +296,10 @@ Some steps only you can take: a line pasted into a settings or guard file, a gra
 the chat for you to paste is code nobody reviewed, and it can change between the review and your paste. So the core
 rules (rule 11) give you such a step only as a file the security reviewer audited (another session, when the team has
 no reviewer), with its sha256 recorded on the task and run by one line; an edit to the file needs a new audit. The
-rule is in every session's start today; a check that refuses an unpinned hand step is still coming.
+rule is in every session's start. A card that types the step is refused, and a reply that hands you a shell or JSON
+block or a `& '<path>'` line with no sha256 beside it sends its session back once, to tell you not to run it and hand
+you the audited file instead ([a hand step typed into the
+reply](../../plugins/teamrig/skills/teamrig-guide/hooks.md#end-of-a-turn-a-hand-step-typed-into-the-reply)).
 
 ## Reads without a prompt
 

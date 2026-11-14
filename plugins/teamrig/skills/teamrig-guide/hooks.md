@@ -33,7 +33,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's meeting is open, shows its cards in a pane beside the root team lead's chat, in sections (on the table, up next, decided), each with a one-line summary and a decided one with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
 | The mod, a minute after a tab starts and every 10 minutes, and when an install changes `installed_plugins.json` | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
-| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), once to [a hand step typed into its reply](#end-of-a-turn-a-hand-step-typed-into-the-reply), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SubagentStop` (a helper about to hand back) | `hook subagent-stop` | Sends the helper back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit) |
 | `SessionEnd` (a tab closes) | `hook effort-writeback` | Writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) with no turn after it to the session's `launch` entry |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
@@ -936,6 +936,24 @@ It asks once per stop (never on a stop it already sent back), and the rest of th
 stop. A shell edit (`sed`) is not read. Outside a team it says nothing. `check` flags the line that made such
 collisions common: a `Last verified:` line with a note after its date (`VERIFIED-NOTE`), which every run rewrote at
 its end; with the date alone, two runs agree, and a lesson goes on its own line.
+
+## End of a turn: a hand step typed into the reply
+
+Core rule 11 hands the human a step to run by hand only as a file the security reviewer audited, run by one line
+with its sha256 ([the hand-step skill](../hand-step/SKILL.md)). A decision card is refused at `set` when it types the
+step; a reply is read here. At the end of a turn of a team session, when the turn's reply holds a fenced shell block
+(`bash`, `sh`, `powershell`, `cmd` and the like), a fenced JSON block, or a PowerShell call line (`& '<path>'`, in a
+fence with no language or in the text), and nowhere a sha256 (a whole one, or `sha256` and 8 or more hex just after,
+as the card's run line `(sha256 7a0d9294, audited by security)` shows it), `hook stop` sends the session back once:
+
+```text
+teamrig: your reply handed the human a shell block with no pinned sha256. Core rule 11: a step the human runs by hand that changes anything or touches a secret reaches them only as a file the security reviewer audited, run by one line with its sha256 (skill hand-step). If it is such a step, tell the human now not to run it from chat, and hand it as an audited file. If it only reads (changes nothing, touches no secret), say so in one line; write read-only on the line before such a block next time.
+```
+
+A block or call line whose line before, or own line, says `read-only` is let by. A backticked short hex alone pins
+nothing: a commit id would match it. It asks once per stop (never on a stop a hook already sent back), after a
+dropped skill edit and before the rest of the turn's end. Outside a team, and in a tab that is no session of it, it
+says nothing.
 
 ## End of a turn: keep working while a task waits
 
