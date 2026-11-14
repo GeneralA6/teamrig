@@ -5411,6 +5411,11 @@ budget already reads this way` when nothing would change. `NOTE no status line r
 silent` means no hook can tell the week's use: run `teamrig statusline install`
 ([requirements.md](requirements.md#the-status-line-optional)), or set `budget.weeklyLimitW`.
 
+A written change that frees held sessions (`--off`, or `--over warn` after a holding action) wakes each session
+held past its daily budget today with an inbox line saying who freed it: a held session takes no turns, so no hook
+of its own would see the release. `WOKE <names>: held past the daily budget, now free` names them, and `NOTE <name>
+is still held and was not woken: <why>` one whose line was not posted; the change stands either way.
+
 A caller who is not the lead, or a value the config checks reject (`nothing written: <key>: <why>`), is `REFUSED`
 (exit 2). A flag value it cannot read, `--quiet` without `--quiet-action` (or the reverse) on a team with no quiet
 hours yet, and `--quiet-action` with `--quiet off` are usage errors (exit 64).
@@ -5530,6 +5535,11 @@ Output:
 ```text
 LIFTED docs/docs-writer to 18.0% of team app's daily budget (1.8% of the week now) on top of its own budget today until 03:00 IDT (the end of the budget day) or 50.0% of the week, whichever comes first.
 ```
+
+A lift wakes what it frees: the lifted session, or each session of a lifted group, held past its daily budget
+today gets an inbox line and a wake, and a `WOKE <names>: held past the daily budget, now free` line follows the
+`LIFTED` line. A session not held gets nothing. `NOTE <name> is still held and was not woken: <why>` names one
+whose line was not posted; the lift stands either way.
 
 A caller that leads no group over the session, a `--group` of the lead or of a session that leads no group, a
 missing stop %, a stop % above the bounds, a part that with the other lifts in force under the same parent would
