@@ -22,6 +22,7 @@ const fields = (owner: string, title = 'Ship it'): TaskFields => ({
   critical: false,
   pin: null,
   workClass: null,
+  prepares: null,
 });
 
 const at = (minute: number): string => new Date(Date.UTC(2030, 0, 8, 10, minute)).toISOString();
