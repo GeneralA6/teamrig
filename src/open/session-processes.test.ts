@@ -43,6 +43,11 @@ describe('runsClaude', () => {
 
 const NODE = process.execPath;
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-session-processes-'));
+/**
+ * A node program that runs until a spec ends it. A child with a timer of its own exited first on a loaded host: the
+ * describe and list calls took 43 s against a 30 s timer, and the end then rightly found it gone (T2821).
+ */
+const RUNS_UNTIL_ENDED = 'setInterval(() => {}, 60_000)';
 const WINDOWS = process.platform === 'win32';
 
 after(() => rmSync(DIR, { recursive: true, force: true }));
@@ -345,19 +350,27 @@ describe('nodeSessionProcesses on this machine', () => {
   // the spec only checks the pid no longer describes its own child, and never ends that pid again (T626).
   it('ends a running program, and then finds it gone', async () => {
     const marker = `teamrig-spec-${process.pid}-${Date.now()}`;
-    const child = spawn(NODE, ['-e', 'setTimeout(() => {}, 30000)', marker], { stdio: 'ignore' });
+    const child = spawn(NODE, ['-e', RUNS_UNTIL_ENDED, marker], { stdio: 'ignore' });
     const exit = new Promise((resolve) => child.once('exit', resolve));
     const pid = child.pid ?? 0;
-    assert.equal(processes.alive(pid), true);
-    assert.match((await processes.describe(pid))?.commandLine ?? '', new RegExp(marker));
-    assert.deepEqual(await processes.end(pid, 'ask'), { kind: 'ended' });
-    await exit;
-    const later = await processes.describe(pid);
-    assert.equal(later?.commandLine.includes(marker) ?? false, false, `pid ${pid} still runs the child: ${later?.commandLine ?? ''}`);
+    try {
+      assert.equal(processes.alive(pid), true);
+      assert.match((await processes.describe(pid))?.commandLine ?? '', new RegExp(marker));
+      assert.deepEqual(await processes.end(pid, 'ask'), { kind: 'ended' });
+      await exit;
+      const later = await processes.describe(pid);
+      assert.equal(later?.commandLine.includes(marker) ?? false, false, `pid ${pid} still runs the child: ${later?.commandLine ?? ''}`);
+    } finally {
+      // Through the child's own handle, which never names a later process given its pid.
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill();
+        await exit;
+      }
+    }
   });
 
   it('lists a program it started', async () => {
-    const child = spawn(NODE, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    const child = spawn(NODE, ['-e', RUNS_UNTIL_ENDED], { stdio: 'ignore' });
     const exit = new Promise((resolve) => child.once('exit', resolve));
     try {
       const listed = await processes.children(process.pid);
