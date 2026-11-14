@@ -2837,6 +2837,15 @@ team and name, `[shop] web`; Claude Code's own session name stays `shop-web`, th
 `$TEAMRIG_TEAM`, the session's model and effort from the config's `launch`, and a first prompt that reads its inbox
 and list. A rehired session's first prompt reads the handover its retire left first.
 
+The new tab takes the focus only when you typed the command yourself, outside Claude Code (no `$CLAUDECODE`), and no
+team of the tree has its meeting open. An `open` a session runs (a hire, say), `owner wake` during a meeting, the
+idle pass's reopen, the context refresh's restart and [teamrig restore](#teamrig-restore) all leave the focus on the
+tab you were in: tmux opens the window behind (`new-window -d`), macOS Terminal opens the tab without coming to the
+front, and Windows Terminal, which has no such flag, reselects the tabs that were selected and gives the window you
+were in the focus back (Windows may still refuse that last step; the tab selection holds). gnome-terminal, konsole
+and x-terminal-emulator have no way to keep it: their new tab comes to the front. `meet` and the meeting's own tab
+always take the focus.
+
 It refuses any session but the lead when the host has no room for one more: its free memory, less what the tabs
 still loading hold, must stay over the floor a new tab keeps free with the session counted, and its commit charge,
 with those tabs counted, within `open.headroom.commitMaxPct` (92%; Windows, and Linux under strict overcommit). The floor is
