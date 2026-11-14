@@ -95,6 +95,8 @@ test('takes back an earlier run first, then syncs, typechecks, runs the coverage
   assert.deepEqual(events, [
     'take back 2 chunk(s) since origin/main',
     'sync',
+    'git status --porcelain -- src/a.ts',
+    'git status --porcelain -- src/b.ts src/b.test.ts',
     TSC,
     'node tools/ci/coverage-cli.ts',
     'git add -- src/a.ts',
@@ -148,11 +150,30 @@ test('keeps the plan as written when the files set the version it names', async 
   assert.ok(events.includes(committed('plugin: version 0.134.0, a', 'raises 0.134.0')));
 });
 
+test('a version chunk whose files hold no raise is refused before the typecheck, naming the fix (T2823)', async () => {
+  const { deps, events } = fake({ answers: { 'status --porcelain -- plugins/teamrig/.claude-plugin/plugin.json src/core/version.ts': '' } });
+  await assert.rejects(
+    shipCommits(ARGS, RAISING, deps),
+    /^Error: REFUSED the plan's chunk "plugin: version 0\.134\.0, a" commits nothing: plugins\/teamrig\/\.claude-plugin\/plugin\.json, src\/core\/version\.ts hold no uncommitted change; raise the version in plugins\/teamrig\/\.claude-plugin\/plugin\.json and src\/core\/version\.ts, left uncommitted, then ship again$/,
+  );
+  assert.ok(!events.includes(TSC));
+  assert.ok(!events.some((event) => event.startsWith('git add') || event.startsWith('git commit')));
+});
+
+test('any other chunk with nothing to commit is refused before the typecheck too (T2823)', async () => {
+  const { deps, events } = fake({ answers: { 'status --porcelain -- src/a.ts': ' \n' } });
+  await assert.rejects(
+    shipCommits(ARGS, CHUNKS, deps),
+    /^Error: REFUSED the plan's chunk "core: a" commits nothing: src\/a\.ts hold no uncommitted change; leave its change uncommitted, or take the chunk out of the plan, then ship again$/,
+  );
+  assert.ok(!events.includes(TSC));
+});
+
 test('a failed typecheck or coverage gate stops before any commit', async () => {
   for (const failOn of [TSC, 'node tools/ci/coverage-cli.ts']) {
     const { deps, events } = fake({ failOn });
     await assert.rejects(shipCommits(ARGS, CHUNKS, deps), new RegExp(`^Error: ${failOn} failed$`));
-    assert.ok(!events.some((event) => event.startsWith('git ')), failOn);
+    assert.ok(!events.some((event) => event.startsWith('git add') || event.startsWith('git commit')), failOn);
   }
 });
 
@@ -200,7 +221,13 @@ test('when main moved past the branch touching other files, renames the branch a
   const rename = events.indexOf('git branch -m t827-ship-tool-2');
   assert.ok(rename > events.indexOf('merge t827-ship-tool'));
   const again = events.slice(rename + 1);
-  assert.deepEqual(again.slice(0, 3), ['take back 2 chunk(s) since origin/main', 'sync', TSC]);
+  assert.deepEqual(again.slice(0, 5), [
+    'take back 2 chunk(s) since origin/main',
+    'sync',
+    'git status --porcelain -- src/a.ts',
+    'git status --porcelain -- src/b.ts src/b.test.ts',
+    TSC,
+  ]);
   assert.deepEqual(again.slice(-2), ['push', 'merge t827-ship-tool']);
   assert.equal(events.filter((event) => event === 'sync').length, 2);
   assert.ok(logs.includes('\nmain moved to fedcba9, touching no file this change touches: shipping again as t827-ship-tool-2'));
