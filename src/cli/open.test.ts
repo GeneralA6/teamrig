@@ -11,10 +11,11 @@ import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
+import { MeetingStore } from '../meeting/state.ts';
 import { SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, KIT, SKILLS_DIR, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
-import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
+import { teamConfigOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { CLOSE_LOG_WAIT_MS } from './commands/open.ts';
 import { EXIT } from './runtime.ts';
 
@@ -68,6 +69,41 @@ describe('teamrig open', () => {
     const result = await new CliHarness({ ...TEAM, open: { teamWindow: true } }).run(['open', 'alpha'], { probe: FOLDERS, processes, platform: 'win32' });
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
     assert.deepEqual(processes.started[0]?.args.slice(0, 3), ['-w', 'teamrig-app', 'new-tab']);
+  });
+
+  describe('focus (T2510)', () => {
+    const OPEN_MEETING = { startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null };
+
+    it('gives the new tab the focus when a person typed open outside any meeting', async () => {
+      const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+      const result = await openAlpha(processes, { platform: 'win32', env: { CLAUDECODE: '' } });
+      assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+      assert.equal(processes.started.length, 1);
+      assert.deepEqual(processes.keptFocus, []);
+    });
+
+    it('keeps the focus where it was when open runs inside Claude Code', async () => {
+      const processes = new FakeProcesses().onRun('powershell.exe', { kind: 'exited', code: 0 });
+      const result = await openAlpha(processes, { platform: 'win32', env: { CLAUDECODE: '1' } });
+      assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+      assert.deepEqual(processes.started, []);
+      assert.deepEqual(processes.keptFocus, ['wt.exe']);
+    });
+
+    it('keeps the focus while the meeting of any team of the tree is open, and gives it once that meeting ended', async () => {
+      const kit = await treeHarness();
+      const meeting = new MeetingStore(kit.files, join(teamHomeOf('web'), 'state', 'meeting.json'));
+      await meeting.write(OPEN_MEETING);
+      const during = new FakeProcesses().onRun('powershell.exe', { kind: 'exited', code: 0 });
+      assert.equal((await kit.run(['open', 'alpha'], { probe: FOLDERS, processes: during, platform: 'win32' })).code, EXIT.ok);
+      assert.deepEqual(during.keptFocus, ['wt.exe']);
+
+      await meeting.write({ ...OPEN_MEETING, endedAt: '2030-01-08T09:50:00.000Z' });
+      const after = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+      assert.equal((await kit.run(['open', 'bravo'], { probe: FOLDERS, processes: after, platform: 'win32' })).code, EXIT.ok);
+      assert.deepEqual(after.keptFocus, []);
+      assert.equal(after.started.length, 1);
+    });
   });
 
   it('refuses a session the host has no room for, and opens the lead whatever the room', async () => {

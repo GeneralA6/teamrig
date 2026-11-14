@@ -9,7 +9,7 @@ import { askFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, clearAskDir } from '../refresh/clear-asks.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { FakeProcesses } from '../testing/fake-processes.ts';
+import { FakeProcesses, NO_POWERSHELL } from '../testing/fake-processes.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { EXIT } from './runtime.ts';
@@ -85,9 +85,10 @@ describe('teamrig restart', () => {
 
   it('opens a new tab that launches the session, then closes the old tab', async () => {
     const { kit, store, processes } = await armed(false);
-    const tabs = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const tabs = new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL).onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: tabs, platform: 'win32' });
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in a new tab'], stderr: [] });
+    assert.deepEqual(tabs.keptFocus, ['wt.exe'], 'a restart never takes the focus (T2510)');
     const [tab] = tabs.started;
     assert.ok(tab);
     assert.deepEqual(tab.args.slice(0, 7), ['-w', '0', 'new-tab', '--title', '[app] alpha', '-d', APP]);
@@ -100,7 +101,7 @@ describe('teamrig restart', () => {
 
   it("opens the new tab in the team's own Windows Terminal window when open.teamWindow is on (T1427)", async () => {
     const { kit, processes } = await armed(false, { ...AUTO_RESTART_TEAM, open: { teamWindow: true } });
-    const tabs = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const tabs = new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL).onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: tabs, platform: 'win32' });
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in a new tab'], stderr: [] });
     assert.deepEqual(tabs.started[0]?.args.slice(0, 3), ['-w', 'teamrig-app', 'new-tab']);
@@ -108,7 +109,7 @@ describe('teamrig restart', () => {
 
   it('tells the session in its inbox when no restart happened, and exits 1', async () => {
     const { kit, processes } = await armed(false);
-    const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses(), platform: 'win32' });
+    const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL), platform: 'win32' });
     assert.equal(result.code, EXIT.failed);
     assert.match(result.stdout[0] ?? '', /^FAILED the restart of app-alpha: no new tab opened/);
     assert.deepEqual(processes.ends, []);
@@ -148,7 +149,7 @@ describe('teamrig restart', () => {
   for (const outcome of outcomes) {
     it(`logs ${outcome.name} to the restart log`, async () => {
       const { kit, processes } = await armed(outcome.supervised, outcome.config);
-      await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses(), platform: 'win32' });
+      await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL), platform: 'win32' });
       const lines = (kit.files.get(RESTART_LOG) ?? '').split('\n').filter((line) => line !== '');
       assert.equal(lines.length, 1);
       const entry: unknown = JSON.parse(lines[0] ?? '');

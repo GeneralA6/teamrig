@@ -14,7 +14,7 @@ import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../arg
 import { openKit, reloadTeamConfig, requireConfig, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
-import { idFlag, openSessionTab } from './open.ts';
+import { idFlag, openSessionTab, type SessionTab } from './open.ts';
 
 /** What the session must know about its restart, as an inbox line: why none happened, or what failed after it. */
 function inboxLineOf(result: RestartResult): string | undefined {
@@ -90,7 +90,8 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
       asks: new ClearAsks(runtime.files, clearAskDir(kit.paths.kitHome)),
       restore: new RestoreRegistry(runtime.files, restoreSessionsDir(kit.paths.kitHome)),
       openTab: async () => {
-        const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal, teamWindow: config.open.teamWindow };
+        // A restart is never typed by a person: its tab keeps the focus where the owner left it (T2510).
+        const tab: SessionTab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal, teamWindow: config.open.teamWindow, focus: 'keep' };
         const { outcome } = await openSessionTab(runtime, tab);
         return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
       },

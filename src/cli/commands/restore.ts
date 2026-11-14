@@ -122,6 +122,7 @@ async function reopen(runtime: CliRuntime, teams: ReadonlyMap<string, TreeTeam>,
 /**
  * Opens the tab of one restored session. A session `launch` ran comes back through `launch` again, as its team
  * session, on its effort; any other resumes through `restore resume`, outside any team, as it ran before.
+ * Every restored tab keeps the focus (T2510): the tabs come back one by one while the owner works in another.
  */
 async function openRestoredTab(runtime: CliRuntime, tab: ReopenTab, terminal: TerminalChoice | undefined): Promise<ReopenOutcome> {
   const { team } = tab;
@@ -134,6 +135,7 @@ async function openRestoredTab(runtime: CliRuntime, tab: ReopenTab, terminal: Te
       prompt: tab.prompt,
       terminal: terminal ?? team.terminal,
       teamWindow: team.teamWindow,
+      focus: 'keep',
       resume: tab.claudeSession,
       ...(tab.effort === undefined ? {} : { effort: tab.effort }),
     });
@@ -152,7 +154,7 @@ async function openRestoredTab(runtime: CliRuntime, tab: ReopenTab, terminal: Te
     ...(tab.prompt === undefined ? [] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
   ];
   const window = team === undefined ? undefined : teamWindowOf(team.teamWindow, team.team);
-  const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv, window, focus: 'take' });
+  const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv, window, focus: 'keep' });
   return reopenOutcomeOf(runtime, outcome, tab.folder, argv);
 }
 
@@ -226,7 +228,8 @@ export async function restoreCheck(args: ParsedArgs, runtime: CliRuntime): Promi
     ...(terminal === undefined ? [] : ['--terminal', terminal]),
     ...homeArgs(homeRuntime),
   ];
-  const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined, focus: 'take' });
+  // Opened at login, unasked: the owner's first window keeps the focus (T2510).
+  const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined, focus: 'keep' });
   if (outcome.kind === 'opened') {
     await restoreLogOf(homeRuntime)(`check: opened the restore tab; ${launchWords(outcome.terminal, outcome.end)}`);
     runtime.out.stdout(`OPENED the restore of ${count} Claude Code session${count === 1 ? '' : 's'} in a new ${TERMINAL_LABELS[outcome.terminal]}`);
