@@ -572,7 +572,8 @@ secret-like name, a match of `register.secretPatterns`, and the value of a secre
 `.env` file or `docker inspect` prints it: `NAME=value`, an upper-case name the guard's names judge secret, with no
 space around `=`. A value found once goes from every part of the result, `stdout` and `stderr` alike. A value that
 only names or points to a secret stays: a placeholder or a reference, a number (`TOKEN_LIMIT=200000`), a path
-(`KEY_FILE=~/.ssh/id`) or one lower-case word (`AUTH_MODE=oauth`); source code (`token = x`, `token: string`) is no
+(`KEY_FILE=~/.ssh/id`), one lower-case word (`AUTH_MODE=oauth`) or a function's name right before `(`
+(`TOKEN=makeToken(`, a call no dump prints; a token-shaped value before `(` is still a hit); source code (`token = x`, `token: string`) is no
 such assignment. A URL value (`DB_URL=scheme://...`) is judged by the parts that carry a secret: a login or password,
 a parameter with a secret name (`?access_token=`) or a token-shaped path segment (a webhook's) takes the whole URL,
 and one with none of them (a connection string naming only a certificate file) stays. The model then gets one line
