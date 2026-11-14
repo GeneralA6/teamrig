@@ -969,7 +969,11 @@ T1 waits (decision owner), and you own work that does not come after it: T2 "Fix
 A task it can start is its own task it can go on with, other than the waiting one, most urgent first: open or
 in-progress, or waiting or verifying with every wait cleared, and, when never started, past every `after` task. A
 task not started that comes after the waiting one, directly or through another unfinished task, stays untouched,
-and so do its closed tasks and those still waiting or verifying on a reason not cleared. It asks at one stop only, never on a stop already sent back or while a context
+and so do its closed tasks, those still waiting or verifying on a reason not cleared, and an unstarted one the
+[WIP rule](commands.md#teamrig-set) would hold at its start (Improvements behind Roadmap work that can move, or a class past its
+share of the week [focus.allocation]), so the push never sends a session past the team's ranking. The lead, while
+`leadBoundary` is on, is asked to hand code work to the session owning its area (`teamrig update <id> --owner
+<session>`) and work the rest. It asks at one stop only, never on a stop already sent back or while a context
 refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or while its
 budget holds it or a short day pauses it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
 it would, and a turn that asks the user to decide shows [the decision circle](#every-event-tab-status). A hired
