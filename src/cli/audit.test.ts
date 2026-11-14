@@ -131,6 +131,18 @@ describe("runCli: audit --verdict, the security reviewer's verdict on a task's c
     assert.match(shown.stdout.join('\n'), /\n {2}gate: permissions\n {2}security: Pass: read only, no secret \(verdict by bravo\)\n/);
   });
 
+  it('takes --security on set, and holds the marked card to the verdict on any gate', async () => {
+    const kit = await carded();
+    const marked = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:lead', '--security', '--note', 'marks it', '--session', 'alpha']);
+    assert.equal(marked.code, EXIT.ok, marked.stdout.join('\n'));
+    const toOwner = ['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--gate', 'budget', '--note', 'the owner decides', '--session', 'alpha'];
+    const early = await kit.run(toOwner);
+    assert.equal(early.code, EXIT.refused);
+    assert.match(early.stdout[0] ?? '', /^REFUSED T1's card is marked --security and has no security verdict/);
+    assert.equal((await kit.run(['audit', 'T1', '--verdict', 'Pass: no secret reaches the log', '--session', 'bravo'])).code, EXIT.ok);
+    assert.equal((await kit.run(toOwner)).code, EXIT.ok);
+  });
+
   it('refuses both --file and --verdict, and a task with no card, writing nothing', async () => {
     const kit = await reviewed();
     const before = filesOf(kit);

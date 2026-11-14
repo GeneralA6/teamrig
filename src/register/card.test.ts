@@ -74,6 +74,7 @@ describe('the decision card', () => {
     assert.equal(sameCard(TEST_CARD, TEST_OWNER_CARD), false);
     assert.equal(sameCard(TEST_OWNER_CARD, { ...TEST_OWNER_CARD, gate: 'permissions' }), false);
     assert.equal(sameCard(TEST_OWNER_CARD, { ...TEST_CARD, gate: TEST_GATE }), true);
+    assert.equal(sameCard(TEST_CARD, { ...TEST_CARD, security: true }), false, 'the --security mark (T2761)');
     assert.equal(sameCard(null, null), true);
     assert.equal(sameCard(TEST_CARD, null), false);
   });
@@ -117,6 +118,14 @@ describe('the decision card', () => {
     );
     assert.equal(cardLines({ ...TEST_OWNER_CARD, byDefault: 'Pro ships on the due date' }, '  ', [], NO_FILES, verdict)[2], '  security: Pass: read only (verdict by bravo)', 'the default is not what it read');
     assert.equal(cardLines(TEST_OWNER_CARD, '  ', [], NO_FILES, null).length, cardLines(TEST_OWNER_CARD, '  ', [], NO_FILES, verdict).length - 1, 'no verdict, no line');
+    assert.equal(cardLines({ ...TEST_OWNER_CARD, security: true }, '  ', [], NO_FILES, null)[2], "  security: no verdict yet; it reaches the owner only with the security reviewer's", 'a card marked --security says it waits on one');
+  });
+
+  it('reads and keeps the --security mark as long as the card, and refuses any other value (T2761)', () => {
+    const marked = { ...TEST_OWNER_CARD, security: true as const };
+    assert.deepEqual(parseCard(marked), marked);
+    assert.equal(parseCard({ ...TEST_CARD, security: 'yes' }), 'card security is not true');
+    assert.deepEqual(keptCard(marked, { whyAsk: false, gate: false, run: false, affects: false }), { ...TEST_CARD, security: true });
   });
 
   it('prints why the owner is asked under the question, and drops it on request', () => {

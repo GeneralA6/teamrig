@@ -9,7 +9,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { waitAnswerersOf } from './approval.ts';
 import type { SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
-import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
+import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, SECURITY_FLAG, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
 import { verdictIsCurrent, verdictReadOf, type SecurityVerdictPin } from './security-verdict.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
@@ -682,6 +682,7 @@ export class RegisterPolicy {
       ...(parts.gate === undefined ? {} : { gate: parts.gate }),
       ...(parts.run === undefined ? {} : { run: parts.run }),
       ...(parts.affects === undefined ? {} : { affects: parts.affects }),
+      ...(parts.security === true ? { security: true } : {}),
     };
     const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
     return problem === undefined ? this.ownerAsk(task, owners, card) : refuse(problem);
@@ -746,15 +747,17 @@ export class RegisterPolicy {
 
   /**
    * A security-related ask reaches the owner only with the security reviewer's verdict on its card (T2761, core rule
-   * 9): a card asking the owner to decide on a gate in `securityGates` is refused while the task holds no verdict, or
-   * one given on another question, options or recommendation (verdictIsCurrent). A card handing a hand step (`run`) is
+   * 9): a card asking the owner to decide on a gate in `securityGates`, or one marked `security` on any wait on the
+   * owner, is refused while the task holds no verdict, or one given on another question, options or recommendation
+   * (verdictIsCurrent). A card handing a hand step (`run`) is
    * reviewed already, as its audit is the reviewer's read of it (runProblem). A card kept from an older row is held to
    * it too, as it still reaches the owner. The reviewer reads the card before the owner does, so the card goes first
    * on a wait on the session's leader, and keeps its parts when the wait moves to the owner.
    */
   private securityProblem(task: Task, card: DecisionCard): string | undefined {
     const gate = card.gate?.toLowerCase();
-    if (card.run !== undefined || gate === undefined || !this.config.securityGates.some((security) => security.toLowerCase() === gate)) {
+    const gated = gate !== undefined && this.config.securityGates.some((security) => security.toLowerCase() === gate);
+    if (card.run !== undefined || (!gated && card.security !== true)) {
       return undefined;
     }
     const verdict = task.securityVerdict;
@@ -767,7 +770,7 @@ export class RegisterPolicy {
     const route = `${first}, have it read (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --verdict "<what the review found>"), then wait on ${ownerSource} with the card unchanged`;
     const why =
       verdict === null
-        ? `${task.id}'s card asks ${ownerSource} about ${card.gate}, a security gate [securityGates], and has no security verdict: it reaches ${ownerSource} only with one (core rule 9)`
+        ? `${task.id}'s card ${gated ? `asks ${ownerSource} about ${card.gate}, a security gate [securityGates],` : `is marked ${SECURITY_FLAG}`} and has no security verdict: it reaches ${ownerSource} only with one (core rule 9)`
         : `the security verdict ${verdict.by} gave on ${task.id}'s card read another question, options or recommendation: an edit needs a new verdict (core rule 9)`;
     return `${why}; ${route}`;
   }

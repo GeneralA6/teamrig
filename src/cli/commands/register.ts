@@ -50,7 +50,7 @@ import { readWideAllow, teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { handStepPin, readRunFiles } from '../hand-step-file.ts';
 import { KitTreeGoals } from '../tree-goals.ts';
-import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, withSecurityCard, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { fiveHourWarnings } from '../five-hour-check.ts';
@@ -462,7 +462,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
   const { config, paths, register, roster } = team;
   const by = sessionIdOf(roster, caller);
-  const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches), ...(await runOf(args.flags, runtime)) });
+  const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, withSecurityCard(typed.status, args.switches)), ...oneCommitOf(args.switches), ...(await runOf(args.flags, runtime)) });
   if (typed.ask !== null) {
     return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
   }

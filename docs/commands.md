@@ -140,7 +140,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".." --affects ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
-      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>]
+      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
@@ -175,6 +175,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       OWNER-PROOF without one
       --run <path> (with a wait on the owner's decision or approval): the hand step file the owner runs,
       refused unless an audit (teamrig audit) pins it at its sha256 now; the card prints its run line
+      a card on a gate in securityGates (permissions by default), or marked --security, reaches the owner
+      only with the security verdict on it (teamrig audit --verdict): set it on your leader's wait first,
+      then move the wait to the owner with the card unchanged; the card prints the verdict
       a bug gives its review (register.review): --cause "<the root cause, at its source>"
       --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and
       --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";

@@ -38,6 +38,12 @@ export interface DecisionCard {
    * writes; one that does none of those is approved with the work it tests, and goes ahead.
    */
   readonly affects?: string;
+  /**
+   * On any card (T2761, core rule 9): the question is security-related whatever its gate, a guard line, a secret or
+   * a grant say, so it reaches the owner only with the security reviewer's verdict on it, as a card on a gate in
+   * `securityGates` does. Kept as long as the card is, as the reviewer reads the card before the owner does.
+   */
+  readonly security?: true;
 }
 
 /** The CLI flags that write a card's parts, for the refusals that name them. */
@@ -54,6 +60,9 @@ export const RUN_FLAG = '--run';
 
 /** The CLI flag that writes a card's `affects`. */
 export const AFFECTS_FLAG = '--affects';
+
+/** The CLI switch that writes a card's `security`. */
+export const SECURITY_FLAG = '--security';
 
 /** How `--affects` is typed. */
 export const AFFECTS_USAGE = `${AFFECTS_FLAG} "<the approved number it changes, the money it spends or the data it writes>"`;
@@ -178,6 +187,7 @@ export function keptCard(card: DecisionCard, keep: KeptOwnerParts): DecisionCard
     ...(keep.gate && card.gate !== undefined ? { gate: card.gate } : {}),
     ...(keep.run && card.run !== undefined ? { run: card.run } : {}),
     ...(keep.affects && card.affects !== undefined ? { affects: card.affects } : {}),
+    ...(card.security === true ? { security: true } : {}),
   };
 }
 
@@ -264,6 +274,7 @@ export function sameCard(a: DecisionCard | null, b: DecisionCard | null): boolea
     a.gate === b.gate &&
     a.run === b.run &&
     a.affects === b.affects &&
+    a.security === b.security &&
     a.options.length === b.options.length &&
     a.options.every((option, index) => option === b.options[index])
   );
@@ -280,7 +291,7 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (!isRecord(value)) {
     return 'card is not an object';
   }
-  const { question, options, recommend, byDefault, whyAsk, gate, run, affects } = value;
+  const { question, options, recommend, byDefault, whyAsk, gate, run, affects, security } = value;
   if (typeof question !== 'string' || typeof recommend !== 'string' || typeof byDefault !== 'string') {
     return 'card needs question, recommend and byDefault as text';
   }
@@ -299,6 +310,9 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (affects !== undefined && typeof affects !== 'string') {
     return 'card affects is not text';
   }
+  if (security !== undefined && security !== true) {
+    return 'card security is not true';
+  }
   return {
     question,
     options,
@@ -308,6 +322,7 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
     ...(gate === undefined ? {} : { gate }),
     ...(run === undefined ? {} : { run }),
     ...(affects === undefined ? {} : { affects }),
+    ...(security === true ? { security } : {}),
   };
 }
 
@@ -322,7 +337,7 @@ export function cardLines(card: DecisionCard, indent: string, audits: readonly H
   return [
     `${indent}decide: ${card.question}`,
     ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
-    ...(verdict === null ? [] : [`${indent}security: ${verdictText(verdict, card)}`]),
+    ...(verdict === null ? (card.security === true ? [`${indent}security: no verdict yet; it reaches the owner only with the security reviewer's`] : []) : [`${indent}security: ${verdictText(verdict, card)}`]),
     ...(card.whyAsk === undefined ? [] : [`${indent}why asked: ${card.whyAsk}`]),
     ...(card.affects === undefined ? [] : [`${indent}affects: ${card.affects}`]),
     ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),

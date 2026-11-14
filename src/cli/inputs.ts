@@ -182,6 +182,15 @@ export function criticalOf(switches: ReadonlySet<string>): { readonly critical?:
   return switches.has('critical') ? { critical: true } : switches.has('not-critical') ? { critical: false } : {};
 }
 
+/**
+ * `--security`: the status change's card is security-related whatever its gate (T2761), so it reaches the owner only
+ * with the security reviewer's verdict; the status as typed without it. With no other card part, the policy builds
+ * on the card the task has, or refuses a card with no question.
+ */
+export function withSecurityCard(status: StatusInput, switches: ReadonlySet<string>): StatusInput {
+  return switches.has('security') ? { ...status, card: { ...status.card, security: true } } : status;
+}
+
 /** `--one-commit`: the start is a one-commit fix, which the WIP rule lets through; nothing without it. */
 export function oneCommitOf(switches: ReadonlySet<string>): { readonly oneCommit?: boolean } {
   return switches.has('one-commit') ? { oneCommit: true } : {};

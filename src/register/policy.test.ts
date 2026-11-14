@@ -1830,6 +1830,17 @@ describe("RegisterPolicy.setStatus: a card on a security gate reaches the owner 
     assert.equal(error(set(audited, { waits: OWNER_DECISION, card: GATED, run: { path: step, sha256 } })), 'allowed', 'the audit of its file is the reviewer\'s read');
   });
 
+  it('holds a card marked --security to it on any gate and on an approval too, kept from the leader\'s wait', () => {
+    const marked: DecisionCard = { ...TEST_OWNER_CARD, security: true };
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: marked })), `T1's card is marked --security and has no security verdict: it reaches owner only with one (core rule 9); ${route}`);
+    assert.match(error(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, options: [], security: true } })), /^T1's card is marked --security/);
+    const onLead = set(TASK, { waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, security: true } });
+    assert.deepEqual(onLead.ok ? onLead.value.card : undefined, { ...TEST_CARD, security: true }, "taken on the leader's wait, where the reviewer reads it");
+    const asked: Task = { ...TASK, status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, security: true } };
+    assert.match(error(set(asked, { waits: OWNER_DECISION, card: { gate: 'budget' } })), /^T1's card is marked --security/, 'kept when the wait moves to the owner');
+    assert.deepEqual(set({ ...asked, securityVerdict: VERDICT }, { waits: OWNER_DECISION, card: { gate: 'budget' } }).ok, true);
+  });
+
   it("routes the lead, who has no leader to wait on, through the security reviewer's wait", () => {
     const lead = testTask({ status: 'in-progress', startedAt: TASK.startedAt, owner: 'lead' });
     assert.match(

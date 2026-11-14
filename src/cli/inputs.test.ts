@@ -4,7 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { TASK_STATUSES } from '../register/model.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, goalsOf, instantOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, typeOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, goalsOf, instantOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, typeOf, waitsOf, weekOf, withSecurityCard, type TypedTimes } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -258,6 +258,15 @@ describe('statusInputOf', () => {
 
   it('refuses an unknown status', () => {
     assert.throws(() => statusInputOf(flags({ status: 'finished' }), TIMES), /--status "finished" is not open\|/);
+  });
+});
+
+describe('withSecurityCard (T2761)', () => {
+  it('marks the card security-related with --security, beside the parts typed or alone, and leaves it be without', () => {
+    const typed = { status: 'waiting' as const, card: { question: 'Grant the read' } };
+    assert.deepEqual(withSecurityCard(typed, new Set(['security'])), { status: 'waiting', card: { question: 'Grant the read', security: true } });
+    assert.deepEqual(withSecurityCard({ status: 'waiting' }, new Set(['security'])), { status: 'waiting', card: { security: true } });
+    assert.equal(withSecurityCard(typed, new Set(['one-commit'])), typed);
   });
 });
 

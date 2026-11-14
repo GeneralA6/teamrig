@@ -177,6 +177,12 @@ Flags:
   file again, and one that changed or went since its audit prints `do not run` in place of the run line (`check`
   flags it `RUN-CHANGED`). A card asking the owner that types a step into a part (a backticked span, PowerShell's
   call operator, a write cmdlet, a JSON object, or an ask to paste) is refused unless it hands the step with `--run`.
+- `--security`: marks the card security-related whatever its gate (a guard line, a secret, a grant), kept as long as
+  the card is. Such a card, like one whose `--gate` is in [securityGates] (permissions by default), reaches the owner
+  only with the security reviewer's verdict on it (core rule 9): set the card on your leader's wait first, have the
+  reviewer give `teamrig audit T<n> --verdict "<what the review found>"`, then move the wait to the owner with the
+  card unchanged. An edit to its question, options or recommendation needs a new verdict. The card prints the verdict
+  after its gate, or `STALE` once it asks something else; a card handing an audited `--run` file counts as reviewed.
 - `--ask <id|name>`: allowed only with `waiting`, and needs `--text`: adds the work you need as that session's task
   (from you, at your task's priority and goals, its description naming your task), tells that session, and sets
   your task waiting on it, in one write. `--note` defaults to the text, and other `--waits` reasons come first.
