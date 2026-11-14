@@ -9,11 +9,13 @@ import type { Rename } from '../names/rename.ts';
 import { CONTEXT_MAX_CHARS, renderCorePack, renderLeadRules, teamRulesPart, type KeptRule, type RulesClock, type TeamRules } from '../rules/pack.ts';
 
 /**
- * A long start note: shown in full when the context has room for it, else as `pointer`, one line naming the command
- * that prints it, so the context stays inside CONTEXT_MAX_CHARS (T1376).
+ * A long start note: shown in full when the context has room for it, else as the longest of its `shorter` forms that
+ * fits, else as `pointer`, which names the command that prints it, so the context stays inside CONTEXT_MAX_CHARS (T1376).
  */
 export interface CuttableNote {
   readonly text: string;
+  /** Cut forms of `text`, longest first, each longer than `pointer` (T1939). */
+  readonly shorter?: readonly string[];
   readonly pointer: string;
 }
 
@@ -161,8 +163,9 @@ function treeLine(place: TreePlace, input: SessionStartInput, isLead: boolean): 
  * The context, within CONTEXT_MAX_CHARS: past it Claude Code shows the session only a preview of the start and saves
  * the rest to a file (T1376). The rules and each short note always come; the team rules files fit next, beside each
  * long note's pointer (`teamRulesPart`); then each long note, in order, takes its full text while the room left
- * holds it. A team rules file wins over a long note: a rules pointer costs a read of the file, while a long note's
- * pointer names the `start` the session runs at each work block anyway.
+ * holds it, else the longest of its shorter forms the room holds, else its pointer. A team rules file wins over a long
+ * note: a rules pointer costs a read of the file, while a long note's pointer names the command the session runs at
+ * each work block anyway.
  */
 function fitContext(rules: string, notes: readonly StartNote[], files: readonly TeamRules[], command: string): string {
   const withNotes = (lines: readonly string[]): string => `${rules}\n\n${lines.join('\n')}`;
@@ -175,10 +178,9 @@ function fitContext(rules: string, notes: readonly StartNote[], files: readonly 
       shown.push(note);
       continue;
     }
-    const grows = note.text.length - note.pointer.length;
-    const fits = grows <= room;
-    shown.push(fits ? note.text : note.pointer);
-    room -= fits ? grows : 0;
+    const form = [note.text, ...(note.shorter ?? [])].find((text) => text.length - note.pointer.length <= room) ?? note.pointer;
+    shown.push(form);
+    room -= form.length - note.pointer.length;
   }
   return `${withNotes(shown)}${team}`;
 }

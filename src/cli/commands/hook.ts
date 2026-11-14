@@ -20,7 +20,7 @@ import { postToolUseContext } from '../../hooks/post-tool-use.ts';
 import { passRecordGuardOutput } from '../../hooks/pass-record-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
-import { liveTasksPointer, showsLiveTasks } from '../../hooks/live-tasks.ts';
+import { showsLiveTasks } from '../../hooks/live-tasks.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
 import { sessionStartContext, sessionStartOutput, type CuttableNote, type SessionStartInput } from '../../hooks/session-start.ts';
@@ -638,8 +638,8 @@ async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, 
 
 /**
  * The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction, after `start`'s
- * first lines, which make it the work block's start (T1529), with its pointer for a start that has no room for it (which
- * names `start` instead); none at another start or for no session.
+ * first lines, which make it the work block's start (T1529), with its shorter forms for a start with less room (T1939);
+ * none at another start or for no session.
  */
 async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, id: string | undefined, payload: unknown, refresh: RefreshStart): Promise<CuttableNote | undefined> {
   const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
@@ -647,7 +647,7 @@ async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig,
     return undefined;
   }
   const start = await blockStartOf(runtime, kit, config, id);
-  return { text: await liveTasksNoteOf(runtime, kit.paths, config, id, teamZone(config, runtime), start), pointer: liveTasksPointer(id, KIT_NAME) };
+  return liveTasksNoteOf(runtime, kit.paths, config, id, teamZone(config, runtime), start);
 }
 
 /** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */

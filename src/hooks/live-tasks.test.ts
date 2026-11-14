@@ -4,8 +4,9 @@ import type { Task } from '../register/fold.ts';
 import { TaskTree, type TreeRanking } from '../register/tree.ts';
 import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
-import { blockStartLines, COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksNote, liveTasksPointer, showsLiveTasks } from './live-tasks.ts';
+import { blockStartLines, COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksForms, liveTasksNote, showsLiveTasks } from './live-tasks.ts';
 import { TimeZone } from '../core/zone.ts';
+import type { CuttableNote } from './session-start.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 const HEAD = 'LIVE TASKS of alpha, read from the register at this start';
@@ -30,9 +31,51 @@ describe('showsLiveTasks', () => {
   });
 });
 
-describe('liveTasksPointer', () => {
-  it('names the start command that lists the tasks, and that the register wins (T1376)', () => {
-    assert.equal(liveTasksPointer('alpha', 'teamrig'), `LIVE TASKS of alpha: this start has no room for them; run \`teamrig start --session alpha\` first, and ${WINS}.`);
+describe('liveTasksForms (T1939)', () => {
+  const HEAD_LINES = ['START alpha, Tue 01-08 10:00 UTC: the start.', 'Week: 50.0% used.'];
+  /** The forms for alpha over `tasks`, judged at NOW against those same tasks. */
+  const formsOf = (tasks: readonly Task[]): CuttableNote => {
+    const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
+    return liveTasksForms(HEAD_LINES, { tasks, owner: 'alpha', tree, waiting: tree.waitingOn('alpha'), command: 'teamrig' });
+  };
+
+  it("keeps start's first lines in every form, one task row fewer each time, down to a pointer with none", () => {
+    const tasks = Array.from({ length: LIVE_TASK_ROWS + 2 }, (_, index) => testTask({ id: `T${index + 1}`, title: `Task ${index + 1}` }));
+    const { text, shorter, pointer } = formsOf(tasks);
+    const forms = [text, ...(shorter ?? []), pointer];
+    assert.equal(forms.length, LIVE_TASK_ROWS + 1);
+    for (const [index, form] of forms.entries()) {
+      const lines = form.split('\n');
+      assert.deepEqual(lines.slice(0, 3), [...HEAD_LINES, `${HEAD} (8 active; ${WINS}):`], form);
+      const rows = tasks.slice(0, LIVE_TASK_ROWS - index).map((task) => `  ${task.id} open, p2 | ${task.title}`);
+      assert.deepEqual(lines.slice(3), [...rows, `  +${2 + index} more: \`teamrig list --session alpha\``], form);
+    }
+  });
+
+  it('cuts the waiting-on-you rows only in the pointer, and keeps only forms shorter than the whole block, each once', () => {
+    const mine = testTask({ id: 'T1', title: `Mine ${'m'.repeat(50)}` });
+    const needer = testTask({ id: 'T2', owner: 'bravo', title: `Theirs ${'t'.repeat(50)}`, after: ['T1'] });
+    const { text, shorter, pointer } = formsOf([mine, needer]);
+    const lines = text.split('\n');
+    assert.deepEqual(lines.slice(2, 5), [`${HEAD} (1 active; ${WINS}):`, `  T1 open, p2 | ${mine.title}`, 'WAITING ON YOU 1 task(s) of other sessions:']);
+    assert.match(lines.at(-1) ?? '', /^ {2}T2 .*\| Theirs t+ · needs your T1$/);
+    assert.deepEqual(shorter, [[...HEAD_LINES, `${HEAD} (1 active; ${WINS}):`, '  +1 more: `teamrig list --session alpha`', ...lines.slice(4)].join('\n')]);
+    assert.deepEqual(pointer.split('\n'), [
+      ...HEAD_LINES,
+      `${HEAD} (1 active; ${WINS}):`,
+      '  +1 more: `teamrig list --session alpha`',
+      'WAITING ON YOU 1 task(s) of other sessions:',
+      '  +1 more: `teamrig start --session alpha --all`',
+    ]);
+    const short = formsOf([testTask({ id: 'T1', title: 'Mine' })]);
+    assert.deepEqual([short.shorter, short.pointer], [[], short.text], 'the `+1 more` line is longer than the one short row it would stand for');
+  });
+
+  it('gives the one line of an owner with none active as text and pointer, with no shorter form', () => {
+    const { text, shorter, pointer } = formsOf([]);
+    assert.equal(text, [...HEAD_LINES, `${HEAD}: none active; ${WINS}.`].join('\n'));
+    assert.equal(pointer, text);
+    assert.deepEqual(shorter, []);
   });
 });
 

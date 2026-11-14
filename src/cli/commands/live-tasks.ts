@@ -5,7 +5,8 @@ import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
-import { blockStartLines, liveTasksNote, type BlockStart } from '../../hooks/live-tasks.ts';
+import { blockStartLines, liveTasksForms, type BlockStart } from '../../hooks/live-tasks.ts';
+import type { CuttableNote } from '../../hooks/session-start.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { heldFirst } from '../../register/leader-wait.ts';
 import { JsonlEventLog } from '../../register/store.ts';
@@ -25,9 +26,9 @@ import { startMeetingLine } from './meetings.ts';
  * agree on the order: that reads the use as last stored, as `blockStartOf` does, with no transcript measured. A register
  * it cannot read gives one line that says so and names the command that lists the tasks, never a throw: the handover no
  * longer restates statuses, so the session must learn where to read them, and the note must still reach it; that note
- * is no work block's start.
+ * is no work block's start. The block comes with its shorter forms for a start with less room (liveTasksForms).
  */
-export async function liveTasksNoteOf(runtime: CliRuntime, paths: TeamPaths, config: KitConfig, id: string, zone: TimeZone, start: BlockStart): Promise<string> {
+export async function liveTasksNoteOf(runtime: CliRuntime, paths: TeamPaths, config: KitConfig, id: string, zone: TimeZone, start: BlockStart): Promise<CuttableNote> {
   try {
     const [{ state }, elsewhere] = await Promise.all([new JsonlEventLog(runtime.files, paths.events).read(), new KitTreeTasks(runtime, paths.team).read()]);
     const ranking = await teamRanking(runtime, paths, config, state.tasks.values());
@@ -35,9 +36,10 @@ export async function liveTasksNoteOf(runtime: CliRuntime, paths: TeamPaths, con
     const tree = new TaskTree(state.tasks, new Date(now), zone, undefined, elsewhere, ranking);
     // No parent lead here: a hold counts only when it names this session, and a wait on the team above never does.
     const waiting = heldFirst(tree.waitingOn(id), id, new LeadTree(config), config.focus, now);
-    return [...blockStartLines(id, start, KIT_NAME), liveTasksNote({ tasks: state.tasks.values(), owner: id, tree, waiting, command: KIT_NAME })].join('\n');
+    return liveTasksForms(blockStartLines(id, start, KIT_NAME), { tasks: [...state.tasks.values()], owner: id, tree, waiting, command: KIT_NAME });
   } catch (error) {
-    return `LIVE TASKS: ${KIT_NAME} could not read the register (${errorMessage(error)}); run \`${KIT_NAME} list --session ${id}\` for your tasks.`;
+    const unread = `LIVE TASKS: ${KIT_NAME} could not read the register (${errorMessage(error)}); run \`${KIT_NAME} list --session ${id}\` for your tasks.`;
+    return { text: unread, pointer: unread };
   }
 }
 

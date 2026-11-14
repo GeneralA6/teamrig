@@ -792,7 +792,7 @@ describe('runCli: live tasks in the start note', () => {
     assert.ok(lead.endsWith('LIVE TASKS of lead, read from the register at this start: none active; where your handover or a compaction summary says otherwise, the register wins.'), lead);
   });
 
-  it('gives them as a pointer when they and a team rules file would overflow the context cap (T1376)', async () => {
+  it("drops task rows, never start's first lines, when they and a team rules file would overflow the context cap (T1376, T1939)", async () => {
     const kit = new CliHarness(LONG_RULES_TEAM);
     for (const title of ['Write the docs of the long start note', 'Ship the docs of the long start note', 'Plan the week around the release', 'Review the plan of the long start note', 'Merge the fix of the long start note', 'Prove the fix of the long start note']) {
       const added = await kit.run(['add', '--title', title, '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
@@ -807,8 +807,11 @@ describe('runCli: live tasks in the start note', () => {
     const cut = contextOf(await kit.run(['hook', 'session-start'], asLead));
     assert.ok(cut.length <= CONTEXT_MAX_CHARS, String(cut.length));
     assert.ok(cut.endsWith(`# Your team's rules\n${rules}`));
-    assert.ok(cut.includes('\nLIVE TASKS of lead: this start has no room for them; run `teamrig start --session lead` first,'), cut.slice(0, -rules.length).slice(-600));
-    assert.ok(!cut.includes('\nSTART lead,'), 'the pointer names start, so the note is no work block start');
+    const live = cut.slice(0, -rules.length).slice(-1_500);
+    assert.ok(cut.includes('\nSTART lead,'), `the note stays the work block's start: ${live}`);
+    assert.ok(cut.includes('\nLIVE TASKS of lead, read from the register at this start (6 active;'), live);
+    assert.ok(!cut.includes('| Prove the fix of the long start note'), `the sixth row gave way: ${live}`);
+    assert.ok(cut.includes('| Merge the fix of the long start note\n  +1 more: `teamrig list --session lead`\n'), live);
   });
 
   it('names the command that lists the tasks when the register cannot be read', async () => {
