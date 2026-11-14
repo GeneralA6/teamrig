@@ -1,4 +1,5 @@
 import { planBudgetSetup } from "../../budget/setup.js";
+import { policyReleaseOf } from "../../budget/release.js";
 import { readSnapshots, snapshotDirOf } from "../../budget/snapshot.js";
 import { DEFAULT_BUDGET } from "../../config/defaults.js";
 import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS } from "../../config/types.js";
@@ -6,6 +7,7 @@ import { isRecord } from "../../core/guards.js";
 import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, configLockOf, leadOnly, openTeamKit, requireConfig, rosterOf } from "../kit.js";
+import { wakeReleased } from "../release-wake.js";
 import { EXIT } from "../runtime.js";
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only
@@ -85,8 +87,8 @@ export async function setup(args, runtime) {
     const config = requireConfig(kit, runtime, 'write');
     const { load } = kit;
     const roster = await rosterOf(runtime, kit, config);
-    leadOnly(roster, caller, "sets the team's budget");
-    const next = await configLockOf(runtime, kit, config).run(async (writer) => {
+    const by = leadOnly(roster, caller, "sets the team's budget");
+    const { next, written } = await configLockOf(runtime, kit, config).run(async (writer) => {
         // Planned on the file as it reads under the lock, so a hire or retire written meanwhile is kept.
         const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
         if (!plan.ok) {
@@ -96,6 +98,7 @@ export async function setup(args, runtime) {
         const { keys } = plan.value;
         const changed = keys.filter((key) => key.changed).length;
         const counts = `${changed} to change, ${keys.length - changed} unchanged`;
+        let wrote = false;
         if (!args.switches.has('yes')) {
             runtime.out.stdout(`PREVIEW ${load.path}: ${counts}; nothing written (add --yes to write)`);
         }
@@ -105,11 +108,17 @@ export async function setup(args, runtime) {
         else {
             const backup = await writer.write(plan.value.config, BUDGET_BACKUP_NAME);
             runtime.out.stdout(`WROTE ${load.path}: ${counts}; the old file is at ${backup}`);
+            wrote = true;
         }
         keys.forEach((key) => runtime.out.stdout(keyLine(key)));
-        return planned;
+        return { next: planned, written: wrote };
     });
     const budget = next.budget;
+    const release = written ? policyReleaseOf(config.budget, budget) : undefined;
+    if (release !== undefined) {
+        const how = release === 'off' ? 'turned the team budget off' : 'set the team budget to warn only';
+        await wakeReleased(runtime, { kit, config: next, from: by, how, ids: roster.ids }, (id) => roster.nameOf(id) ?? id);
+    }
     if (budget.enabled && budget.weeklyLimitW === undefined && (await readSnapshots(runtime.files, snapshotDirOf(budget, kit.paths))).length === 0) {
         runtime.out.stdout("NOTE no status line reading yet, so the budget stays silent: run `teamrig statusline install`, or set budget.weeklyLimitW");
     }

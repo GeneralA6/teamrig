@@ -1,6 +1,8 @@
 import { basename, join } from 'node:path';
 import { DEFAULT_STATUS_LINE } from "../../config/defaults.js";
 import { LeadTree } from "../../config/lead-tree.js";
+import { sessionNameOn } from "../holder-team.js";
+import { wakeReleased } from "../release-wake.js";
 import { formatAddress, splitAddress } from "../../core/address.js";
 import { errorMessage } from "../../core/guards.js";
 import { resolveKitHome } from "../../core/home.js";
@@ -411,6 +413,8 @@ export async function lift(args, runtime) {
     }
     await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
     runtime.out.stdout(`LIFTED ${liftText(decision.lift, name, parent, liftWeekPctOf(week.allowancePct, place.parent, partPct, funded.split, funded.others), zone)}`);
+    const ids = group ? [...new Set([id, ...tree.groupOf(id)])] : [id];
+    await wakeReleased(runtime, { kit, config, from: by, how: group ? "lifted your group's daily budget" : 'lifted your daily budget', ids }, nameOf);
     return EXIT.ok;
 }
 /**
@@ -454,6 +458,8 @@ async function crossTeamLift(runtime, lifting, target, ask) {
     const funded = fundForDay({ split, others }, reading.week);
     const weekPct = liftWeekPctOf(reading.week.allowancePct, undefined, ask.partPct, funded.split, funded.others);
     runtime.out.stdout(`LIFTED ${liftText(decision.lift, `${target.team}/${below.roster.nameOf(found.id) ?? found.id}`, parent, weekPct, zone)}`);
+    const release = { kit: below.kit, config: below.config, from: sessionNameOn(target.team, own, by), how: 'lifted your daily budget', ids: [found.id] };
+    await wakeReleased(runtime, release, (id) => `${target.team}/${below.roster.nameOf(id) ?? id}`);
     return EXIT.ok;
 }
 /**
