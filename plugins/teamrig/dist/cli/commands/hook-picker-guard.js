@@ -1,5 +1,6 @@
-import { isRecord } from "../../core/guards.js";
+import { isRecord, stringField } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
+import { cdCompoundFormOf, cdCompoundReason, guardsCdCompound } from "../../hooks/cd-compound.js";
 import { helperOf } from "../../hooks/helper-start.js";
 import { refusalOutput } from "../../hooks/permission.js";
 import { askerOf, guardsPicker, pickerReason } from "../../hooks/picker-guard.js";
@@ -45,23 +46,43 @@ export async function pickerRefusal(runtime, kit, config, payload) {
     const meeting = { open: asker.role === 'lead' && (await meetingOpen(runtime, kit)) };
     return pickerReason(KIT_NAME, asker, meeting);
 }
-/** What the hook prints for this payload: the refusal with its reason, or '' when the picker opens. */
+/**
+ * Why the guard refuses this payload's Bash `cd` compound (hooks/cd-compound.ts); undefined lets the line go: the
+ * switch is off, the line needs no rerun or has no rerun form, or no team session runs it.
+ */
+async function cdCompoundRefusal(runtime, kit, config, payload, form) {
+    if (!config.pickerGuard.enabled) {
+        return undefined;
+    }
+    const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), sessionIdOf(payload));
+    return session === undefined ? undefined : cdCompoundReason(form);
+}
+/** What the hook prints for this payload: the refusal with its reason, or '' when the call goes on. */
 async function pickerGuardOutputOf(runtime, payload) {
+    // Every Bash line reaches this hook, so a line with no cd compound to rerun returns before any file is read.
+    const bash = guardsCdCompound(true, payload);
+    const form = bash ? cdCompoundFormOf(payload, { cwd: stringField(payload, 'cwd') ?? runtime.cwd, home: runtime.userHome }) : undefined;
+    if (bash && form === undefined) {
+        return '';
+    }
     const found = await sessionTeam(payload, runtime);
     const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
     if (kit?.load.status !== 'loaded') {
         return '';
     }
-    const reason = await pickerRefusal(runtime, kit, kit.load.config, payload);
+    const config = kit.load.config;
+    const reason = form === undefined ? await pickerRefusal(runtime, kit, config, payload) : await cdCompoundRefusal(runtime, kit, config, payload, form);
     return reason === undefined ? '' : refusalOutput(reason);
 }
 /**
- * PreToolUse on AskUserQuestion: with `pickerGuard.enabled`, refuses the question picker in every team session and
- * every helper, the lead's own thread and a sub-team's lead included, with a reason that says to decide it if it is
- * the caller's own, else record it as a decision card (a sub-team's lead also tells its parent lead) and go on with
- * the next task; the lead in the owner's daily meeting is told to ask the card in plain text. Outside a team, with the
- * guard off, for a tab that is no team session, input that is not a hook payload or on any error, it prints nothing,
- * so the picker opens.
+ * PreToolUse on AskUserQuestion and Bash, with `pickerGuard.enabled`. On AskUserQuestion it refuses the question
+ * picker in every team session and every helper, the lead's own thread and a sub-team's lead included, with a reason
+ * that says to decide it if it is the caller's own, else record it as a decision card (a sub-team's lead also tells its
+ * parent lead) and go on with the next task; the lead in the owner's daily meeting is told to ask the card in plain
+ * text. On Bash it refuses a team session's line that leads with `cd D &&` and runs git or leaves the session's folder,
+ * which Claude Code would hold on a permission prompt, quoting its git -C / env -C rerun form (T2730). Outside a team,
+ * with the guard off, for a tab that is no team session, input that is not a hook payload or on any error, it prints
+ * nothing, so the call goes on.
  */
 export async function pickerGuard(args, runtime) {
     noPositionals(args);
