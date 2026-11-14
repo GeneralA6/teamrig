@@ -36,6 +36,7 @@ async function withRun(record: DetachedRunRecord, path: string = RECORD): Promis
 }
 
 describe('the sweep of detached queue runs that died (T2742)', () => {
+  // A run that died mid-wait for the host share, as one seen 11-14 whose log stopped first in line, with no end line.
   it("tells a session's start of its run whose process ended with no end: a DIED line in the log and a wake, once", async () => {
     const kit = await withRun(DEAD);
     const started = await kit.run(['start'], AS_ALPHA);
