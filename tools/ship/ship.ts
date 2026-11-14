@@ -5,6 +5,7 @@ import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { leftoversCommand } from './leftovers.ts';
 import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
 import { mergeBranch, mergeCommand } from './merge.ts';
+import { openCommand } from './open.ts';
 import { pushOwnBranch } from './push.ts';
 import { profileFor, readProfiles, slugOf } from './repos.ts';
 import { takeBackEarlierRun } from './rerun.ts';
@@ -23,6 +24,8 @@ import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
  *   node ship.ts check <repo dir>
  * And merges a pushed change branch into main (merge.ts: PR, its head proven by the repo's gate, rebase):
  *   node ship.ts merge <repo dir> [--head <branch>, default the checked-out one] [--timeout-min 45] [--interval-s 30]
+ * And opens a pushed change branch's pull request for review, merging nothing (open.ts; merge merges it later):
+ *   node ship.ts open <repo dir> [--head <branch>, default the checked-out one] [--note-file <path>]
  * And deletes the heads of closed, unmerged pull requests on origin, then lists the other branches against main (leftovers.ts):
  *   node ship.ts leftovers <repo dir>
  * This file only wires the real git, sync, local gate, push and GitHub merge into those commands; ship.test.ts
@@ -60,6 +63,7 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
 
 const argv = process.argv.slice(2);
 if (argv[0] === 'merge') process.exitCode = await mergeCommand(argv.slice(1));
+else if (argv[0] === 'open') process.exitCode = openCommand(argv.slice(1));
 else if (argv[0] === 'check') process.exitCode = checkCommand(argv.slice(1));
 else if (argv[0] === 'leftovers') process.exitCode = leftoversCommand(argv.slice(1));
 else process.exitCode = await shipCommand(argv, realShipDeps, (line) => console.error(line));
