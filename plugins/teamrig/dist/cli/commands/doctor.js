@@ -4,7 +4,7 @@ import { launchOf } from "../../config/launch.js";
 import { Roster } from "../../config/roster.js";
 import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
 import { readContextFiles } from "../../doctor/context-files.js";
-import { readSettingsDeny } from "../../doctor/deny-lines.js";
+import { readSettingsDeny, secretDenyLines } from "../../doctor/deny-lines.js";
 import { doctorFindings, formatFinding } from "../../doctor/doctor.js";
 import { readSessionLists } from "../../doctor/session-lists.js";
 import { claudeSettingsFiles, readSettingsEnv } from "../../doctor/settings-env.js";
@@ -52,7 +52,7 @@ async function configuredProjects(probe, config, ids) {
 export async function readSecretDeny(runtime, project) {
     const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
     const paths = claudeSettingsFiles(claudeDir, project);
-    return { files: await readSettingsDeny(runtime.files, paths), pasteInto: join(claudeDir, 'settings.json') };
+    return { files: await readSettingsDeny(runtime.files, paths), lines: secretDenyLines(runtime.platform), pasteInto: join(claudeDir, 'settings.json') };
 }
 /** The doctor's view of a page check: only a page webhook that gives no URL is a finding. */
 function pageProblemOf(check) {

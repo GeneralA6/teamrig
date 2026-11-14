@@ -8,7 +8,7 @@ import { unreadSince } from "../inbox/inbox.js";
 import { wideAllowText } from "../permissions/report.js";
 import { describeRequirement } from "../requirements/requirements.js";
 import { TEAM_RULES_MAX_CHARS } from "../rules/pack.js";
-import { missingDenyLines, SECRET_DENY_LINES } from "./deny-lines.js";
+import { missingDenyLines } from "./deny-lines.js";
 /**
  * Days an inbox may wait with unread lines and no read before doctor flags it. Hard-coded for now;
  * a candidate config key if teams want it tighter or looser.
@@ -256,8 +256,8 @@ export function allowFindings(wide) {
  * One finding while a secret deny line is in no settings file a session reads, with the missing lines as a JSON list to
  * paste; `check` shows it the lead too. A file that is not a JSON object counts as holding none, and is named.
  */
-export function denyFindings({ files, pasteInto }) {
-    const missing = missingDenyLines(files);
+export function denyFindings({ files, lines, pasteInto }) {
+    const missing = missingDenyLines(files, lines);
     if (missing.length === 0) {
         return [];
     }
@@ -265,7 +265,7 @@ export function denyFindings({ files, pasteInto }) {
     const unreadable = files.flatMap((settings) => (settings.kind === 'unreadable' ? [settings.path] : []));
     const where = read.length === 0 ? 'no settings file exists' : `read: ${read.join(', ')}`;
     const skipped = unreadable.length === 0 ? '' : `; ${unreadable.join(', ')} ${plural(unreadable.length, 'is', 'are')} not a JSON object, so its deny lines went unread`;
-    const detail = `${missing.length} of ${SECRET_DENY_LINES.length} secret deny line(s) are in no settings file a session reads (${where}${skipped}), ` +
+    const detail = `${missing.length} of ${lines.length} secret deny line(s) are in no settings file a session reads (${where}${skipped}), ` +
         "so a hook's allow or auto mode can approve reading a credential file or printing the environment; a deny line beats both, and teamrig never writes permissions: " +
         `paste these into the permissions.deny list of ${pasteInto} yourself: ${JSON.stringify(missing)}`;
     return [{ kind: 'deny-missing', detail }];
