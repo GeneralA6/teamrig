@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { commandLine, endOf, nodeShellRunner } from './shell.ts';
+import { commandLine, endOf, nodeShellRunner, unrunnableReason } from './shell.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-shell-'));
 const ENV = { ...process.env, TEAMRIG_PROBE: 'probe value' };
@@ -32,6 +32,28 @@ describe('commandLine', () => {
   it('double-quotes each of several words cmd.exe would read, and leaves globs for the program', () => {
     assert.equal(commandLine(['node', '--test', 'src/**/*.test.ts'], 'win32'), 'node --test src/**/*.test.ts');
     assert.equal(commandLine(['C:\\Program Files\\nodejs\\node.exe', 'a&b', 'say "hi"', '50%', ''], 'win32'), '"C:\\Program Files\\nodejs\\node.exe" "a&b" "say \\"hi\\"" "50%" ""');
+  });
+});
+
+describe('unrunnableReason', () => {
+  it('refuses a blank command on every platform', () => {
+    for (const platform of ['linux', 'win32'] as const) {
+      for (const words of [[''], [' '], ['\n', '\t']]) {
+        assert.match(unrunnableReason(words, platform) ?? '', /^the command after -- is empty/u);
+      }
+    }
+  });
+
+  it('refuses a word with a line break on Windows, where cmd.exe stops reading at it', () => {
+    for (const words of [['bash', '-c', '\necho ran'], ['bash', '-c', 'echo one\necho two'], ['node -e "1"\r\nnode -e "2"']]) {
+      assert.match(unrunnableReason(words, 'win32') ?? '', /line break, and cmd\.exe/u);
+    }
+  });
+
+  it('lets a POSIX shell run a quoted line break, and Windows a command on one line', () => {
+    assert.equal(unrunnableReason(['bash', '-c', '\necho ran'], 'linux'), undefined);
+    assert.equal(unrunnableReason(['bash', '-c', 'echo ran'], 'win32'), undefined);
+    assert.equal(unrunnableReason(['npm', 'test', ''], 'win32'), undefined);
   });
 });
 

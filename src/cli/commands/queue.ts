@@ -25,7 +25,7 @@ import { JsonlEventLog } from '../../register/store.ts';
 import { commandLine } from '../../test-run/shell.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLineOf, type Say } from '../delivery-ports.ts';
-import { commandWordsOf, sessionRef } from '../inputs.ts';
+import { sessionRef, shellWordsOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { parentLockOf } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -451,7 +451,7 @@ interface Step {
  * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
 export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const words = commandWordsOf(args);
+  const words = shellWordsOf(args, runtime.platform);
   const what = requiredFlag(args.flags, 'what');
   const request = requestOf(args, words, what);
   const declaredMb = declaredMbOf(args);

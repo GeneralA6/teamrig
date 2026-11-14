@@ -8,7 +8,7 @@ import { cleanOutput, parseTestOutput } from '../../test-run/parse.ts';
 import { labelOf, reportLines } from '../../test-run/report.ts';
 import { commandLine, type ShellResult } from '../../test-run/shell.ts';
 import type { ParsedArgs } from '../args.ts';
-import { commandWordsOf, sessionRef } from '../inputs.ts';
+import { sessionRef, shellWordsOf } from '../inputs.ts';
 import { openKit, rosterOf, teamFolders } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
@@ -66,7 +66,7 @@ async function runLogged(runtime: CliRuntime, command: string, log: string): Pro
  * command passed, 1 otherwise.
  */
 export async function test(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const words = commandWordsOf(args);
+  const words = shellWordsOf(args, runtime.platform);
   const place = await logPlace(runtime, givenSession(args, runtime));
   const command = commandLine(words, runtime.platform);
   const log = await reserveLog(runtime.files, place.dir, place.session, commandHeader(command));
