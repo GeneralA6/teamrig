@@ -7,7 +7,7 @@ import { OUTSIDE_ID } from '../budget/measure.ts';
 import { emptyPatterns } from '../budget/patterns.ts';
 import { formatPeriod, parsePeriod } from '../budget/period.ts';
 import { FIVE_HOUR_SUMMARY_FILE } from '../budget/five-hour-summary.ts';
-import { OVER_BUDGET_ADVICE, W_EXPLAINED } from '../budget/report.ts';
+import { OVER_BUDGET_ADVICE, W_EXPLAINED, WARN_ONLY_ADVICE } from '../budget/report.ts';
 import { formatSnapshot, parseSnapshot, snapshotOfStatus, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
 import { EMPTY_USAGE, UsageStore } from '../budget/store.ts';
 import { emptyWarnState } from '../budget/warn.ts';
@@ -720,16 +720,27 @@ describe('teamrig budget cut', () => {
     ]);
   });
 
-  it('names a cut session past its part held while the team has room, as the Stop hook holds it (T1875)', async () => {
-    const { run } = await world();
+  /** The report's past lines before and after a cut, once bravo's lift leaves alpha past its part, under `overAction`. */
+  async function cutPastLines(overAction: string): Promise<{ uncut: string[]; cut: string[] }> {
+    const { run } = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, overAction } });
     // bravo lifted to 80% leaves alpha part of the other 20% of the team's 12.4%: its 2.0% today is past that.
     ok(await run(['budget', 'lift', 'bravo', '--part', '80', '--stop-pct', '97', '--reason', 'release', '--session', 'lead']));
     const past = (lines: readonly string[]): string[] => lines.filter((line) => line.startsWith('Past'));
     const uncut = past(ok(await run(['budget'])));
+    ok(await run([...CUT, '--session', 'lead']));
+    return { uncut, cut: past(ok(await run(['budget']))) };
+  }
+
+  it('names a cut session past its part held while the team has room, as the Stop hook holds it (T1875)', async () => {
+    const { uncut, cut } = await cutPastLines('ask-lead');
     assert.equal(uncut.length, 1, uncut.join('\n'));
     assert.match(uncut[0] ?? '', /^Past their part, not held while the team has room today \(.+\): app-alpha\.$/);
-    ok(await run([...CUT, '--session', 'lead']));
-    assert.deepEqual(past(ok(await run(['budget']))), [`Past the daily budget, held by a leader's cut whatever room the team has: app-alpha. ${OVER_BUDGET_ADVICE}`]);
+    assert.deepEqual(cut, [`Past the daily budget, held by a leader's cut whatever room the team has: app-alpha. ${OVER_BUDGET_ADVICE}`]);
+  });
+
+  it('names a cut session past its part held by nobody when the budget only warns, as the hooks hold nobody then (T2784)', async () => {
+    const { cut } = await cutPastLines('warn');
+    assert.deepEqual(cut, [`Past the daily budget: app-alpha. ${WARN_ONLY_ADVICE}`]);
   });
 
   it("reads --until on the team's clock, and refuses one that has passed, writing nothing", async () => {
