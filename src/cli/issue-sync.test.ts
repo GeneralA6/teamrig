@@ -1,12 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { isIssueQuery } from '../github/gh.ts';
 import { foldEvents, type Task } from '../register/fold.ts';
 import { readEvents } from '../register/snapshot.ts';
-import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
+import { CliHarness, EVENTS_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
-import { FakeGh, ghIssue, ghRepoOf } from '../testing/fake-gh.ts';
+import { FakeGh, ghIssue, ghPull, ghRepoOf } from '../testing/fake-gh.ts';
 import { EXIT } from './runtime.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' } } };
@@ -58,7 +59,8 @@ describe('teamrig issue sync', () => {
       'PREVIEW nothing was written; teamrig issue sync --yes writes the above as github',
     ]);
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
-    assert.equal(gh.ran.length, 4);
+    // Per repository: the open and the closed issue reads, the open and the changed pull request reads.
+    assert.equal(gh.ran.length, 8);
   });
 
   it('writes the tasks as github with --yes, and a second run writes nothing', async () => {
@@ -113,7 +115,7 @@ describe('teamrig issue sync', () => {
       'REPO acme/web: 0 added, 1 changed, 1 unchanged',
       'SET T1 gh:acme/web#7 open: open on GitHub, changed there since this task closed',
     ]);
-    assert.equal(reopened.ran.length, 2);
+    assert.equal(reopened.ran.length, 4);
   });
 
   it('keeps a task the team dropped while its issue is open, until the issue changes on GitHub', async () => {
@@ -231,7 +233,11 @@ describe('teamrig issue sync', () => {
     );
     assert.deepEqual(
       gh.ran.map((request) => [ghRepoOf(request.args), request.env['GH_TOKEN']]),
-      [['acme/web', 'acme-read-token'], ['acme/web', 'acme-read-token'], ['acme/api', 'acme-read-token'], ['acme/api', 'acme-read-token'], ['globex/site', undefined], ['globex/site', undefined]],
+      [
+        ...Array.from({ length: 4 }, () => ['acme/web', 'acme-read-token']),
+        ...Array.from({ length: 4 }, () => ['acme/api', 'acme-read-token']),
+        ...Array.from({ length: 4 }, () => ['globex/site', undefined]),
+      ],
     );
     assert.deepEqual(credentials.reads, ['teamrig-gh-acme', 'teamrig-gh-globex']);
     assert.ok(![...result.stdout, ...result.stderr].some((line) => line.includes('acme-read-token')), 'the token was printed');
@@ -266,6 +272,31 @@ describe('teamrig issue sync', () => {
       'ADD new gh:globex/site#4 p2 lead: "Issue 4"',
       'PREVIEW nothing was written; teamrig issue sync --yes writes the above as github',
     ]);
+  });
+
+  it('names the pull request news since the last automatic read, and by hand keeps no watch and tells no inbox', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const state = join(TEAM_HOME, 'state', 'github-sync.json');
+    const watched = '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"cursor":"2030-01-01T00:00:00Z","open":[{"number":20,"mergeable":"mergeable","checks":"none","review":"none"}]}}}\n';
+    await kit.files.write(state, watched);
+    const gh = twoIssues().holdsPulls('acme/web', [ghPull('acme/web', 20, { mergeable: 'CONFLICTING', updatedAt: '2030-01-02T00:00:00Z' })]);
+    const lines = await expectRun(kit, ['issue', 'sync'], gh, EXIT.ok);
+    assert.deepEqual(lines.slice(-3), [
+      'PULL NEWS lead (wakes): GitHub pull requests: gh:acme/web#20 "Change 20": conflicts with its base',
+      'NOTE only teamrig issue sync --auto tells the pull request news and keeps what it read, so the next run names it again',
+      'PREVIEW nothing was written; teamrig issue sync --yes writes the above as github',
+    ]);
+    assert.equal(kit.files.get(state), watched);
+    assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'inbox', 'lead.md')), undefined);
+  });
+
+  it("writes a repository's issues when its pull requests cannot be read, and fails the run for it", async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const gh = twoIssues().failsPulls('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 502: Bad gateway\n' });
+    const lines = await expectRun(kit, ['issue', 'sync', '--yes'], gh, EXIT.failed);
+    assert.equal(lines[0], 'REPO acme/web: 2 added, 0 changed, 0 unchanged');
+    assert.match(lines.find((line) => line.startsWith('FAILED')) ?? '', /^FAILED acme\/web pull requests: .*HTTP 502.*; what was last read of them stays$/);
+    assert.equal(register(kit).tasks.size, 2);
   });
 
   it("gives an issue no listed login is assigned to its repository's session", async () => {

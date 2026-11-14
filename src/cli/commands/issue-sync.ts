@@ -3,7 +3,9 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
 import { importRules } from '../../github/map.ts';
 import { importedTasks, linkedRefs, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
+import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
+import type { IssueHost } from '../../issues/host.ts';
 import { autoPushWrites, sessionLogins } from '../../issues/status-push.ts';
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
@@ -17,7 +19,7 @@ import type { HostIssue } from '../../issues/issue.ts';
 import { claimBudget, recordClaims } from './issue-claim.ts';
 import { recordClocks, repoThreads } from './issue-clock.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
-import { GITHUB_OFF, githubOff, reportAutoSync } from './issue-sync-auto.ts';
+import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from './issue-sync-auto.ts';
 
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
@@ -38,8 +40,11 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
  * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the watch runs when GitHub changed (issue-watch.ts), writes as
  * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
- * an issue is newly left out. Exit 1 when a repository could not be read (its tasks stay
- * as they are), 2 when the register refused a step, else 0.
+ * an issue is newly left out. Each repository's pull requests are read too and compared with what the last
+ * `--auto` read of them (pull-news.ts): a PULL NEWS line per session names what happened since, but only `--auto`
+ * keeps what it read and tells each session's inbox, so a run by hand changes nothing there. Exit 1 when a
+ * repository could not be read (its tasks stay as they are, and its pull request watch), 2 when the register
+ * refused a step, else 0.
  */
 export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -77,6 +82,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const failures: RepoFailure[] = [];
   const leftOut = new Map<string, readonly number[]>();
   const unread = new Set<string>();
+  const watched = (await readSyncState(runtime, kit))?.pulls ?? new Map<string, PullWatch>();
+  const pulls = new Map<string, PullWatch>();
+  const pullNews: PullEvent[] = [];
   let written = 0;
   /** The open threads of the repositories read, for the response clock, and those repositories. */
   const threads: Thread[] = [];
@@ -107,24 +115,43 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     const plan = planSync(read.issues, importedTasks(tasks), rules, linkedRefs(tasks));
     leftOut.set(repo, plan.leftOut);
     const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
-    if (!write) {
+    let end: RepoEnd = 'ok';
+    if (write) {
+      const outcomes = await applySteps(register, plan.steps);
+      // Against the tasks as written, so an issue the import just took is held by its new task.
+      threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
+      clocked.add(repo);
+      claimRead.set(repo, read.issues);
+      [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
+      written += outcomes.filter((outcome) => outcome.result.ok).length;
+      added.push(...addedTasks(outcomes));
+      const refused = refusedReason(outcomes);
+      if (refused !== undefined) {
+        failures.push({ repo, reason: refused });
+        end = 'refused';
+      }
+    } else {
       [...previewLines(repo, plan), ...leftOutText].forEach(say);
-      ends.push('ok');
+    }
+    const watch = await readPulls(host, repo, watched.get(repo));
+    watch.lines.forEach(say);
+    if (watch.kind === 'failed') {
+      if (end === 'ok') {
+        failures.push({ repo, reason: watch.reason });
+      }
+      ends.push('failed');
       continue;
     }
-    const outcomes = await applySteps(register, plan.steps);
-    // Against the tasks as written, so an issue the import just took is held by its new task.
-    threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
-    clocked.add(repo);
-    claimRead.set(repo, read.issues);
-    [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
-    written += outcomes.filter((outcome) => outcome.result.ok).length;
-    added.push(...addedTasks(outcomes));
-    const refused = refusedReason(outcomes);
-    if (refused !== undefined) {
-      failures.push({ repo, reason: refused });
-    }
-    ends.push(refused === undefined ? 'ok' : 'refused');
+    pulls.set(repo, watch.after);
+    pullNews.push(...watch.events);
+    ends.push(end);
+  }
+  const owners = new Map([...(await register.snapshot()).state.tasks.values()].map((task) => [task.id, task.owner]));
+  const watcher = config.github.watcher ?? config.roles.lead;
+  const news = eventsByRecipient(pullNews, (pull) => pullRecipient(pull, (task) => owners.get(task), watcher));
+  for (const [to, events] of news) {
+    const { text, wake } = pullNewsText(events);
+    say(`PULL NEWS ${to}${wake ? ' (wakes)' : ''}: ${text}`);
   }
   if (write) {
     (await recordClocks(runtime, kit, config, clocked, threads)).forEach(say);
@@ -160,7 +187,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
   }
   if (auto) {
-    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls: new Map() })).forEach(say);
+    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news })).forEach(say);
+  } else if (news.size > 0) {
+    say(`NOTE only ${KIT_NAME} issue sync --auto tells the pull request news and keeps what it read, so the next run names it again`);
   }
   say(
     write
@@ -168,6 +197,25 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
       : `PREVIEW nothing was written; ${KIT_NAME} issue sync --yes writes the above as ${GITHUB_ACTOR}`,
   );
   return ends.includes('failed') ? EXIT.failed : ends.includes('refused') ? EXIT.refused : EXIT.ok;
+}
+
+/** One repository's pull request read: the lines it prints, and why it failed or what it read and the events since the last read. */
+type PullRead =
+  | { readonly kind: 'failed'; readonly reason: string; readonly lines: readonly string[] }
+  | { readonly kind: 'read'; readonly after: PullWatch; readonly events: readonly PullEvent[]; readonly lines: readonly string[] };
+
+/**
+ * Reads `repo`'s pull requests and compares them with `before`, the watch the last `--auto` run kept (pull-news.ts).
+ * The first read of a repository only marks, so the news starts with the next one.
+ */
+async function readPulls(host: IssueHost, repo: string, before: PullWatch | undefined): Promise<PullRead> {
+  const read = await host.pulls(repo, before?.cursor);
+  if (read.kind === 'failed') {
+    const reason = `pull requests: ${read.reason}`;
+    return { kind: 'failed', reason, lines: [`FAILED ${repo} ${reason}; what was last read of them stays`] };
+  }
+  const step = pullEvents(before, read.open, read.changed);
+  return { kind: 'read', after: step.after, events: step.events, lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
 }
 
 /** Why the task list refused some of a repository's steps: how many, and the first one's error; undefined when none was. */

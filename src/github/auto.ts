@@ -3,14 +3,15 @@ import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { PULL_CHECKS, PULL_MERGEABLE, PULL_REVIEWS } from '../issues/pull.ts';
 import { cut } from '../register/views.ts';
 import { issueRef } from './map.ts';
-import type { PullMark, PullWatch } from './pull-news.ts';
+import type { PullEvent, PullMark, PullWatch } from './pull-news.ts';
 import type { StepOutcome } from './sync.ts';
 
 /**
  * The automatic GitHub sync's decisions, kept pure (`issue watch` decides when one runs, github/watch.ts): what the
  * owners hear about the tasks it added (`addedLines`), what the lead hears about the repositories it
  * could not read (`failureNews`, only when that set changes, so a lasting failure is told once) and about the
- * outsiders' issues it left out (`leftOutNews`, only for a number not left out before).
+ * outsiders' issues it left out (`leftOutNews`, only for a number not left out before). Pull request news is
+ * decided in pull-news.ts.
  */
 
 /**
@@ -45,13 +46,15 @@ export interface SyncState {
 
 /**
  * What one `issue sync --auto` run did: the tasks it added, the repositories that failed, the issues it left out of
- * each repository it read, and what it read of the pull requests of each repository whose pull requests it read.
+ * each repository it read, what it read of the pull requests of each repository whose pull requests it read, and
+ * the pull request events each session hears about (pull-news.ts).
  */
 export interface SyncRun {
   readonly added: readonly AddedTask[];
   readonly failures: readonly RepoFailure[];
   readonly leftOut: ReadonlyMap<string, readonly number[]>;
   readonly pulls: ReadonlyMap<string, PullWatch>;
+  readonly pullNews: ReadonlyMap<string, readonly PullEvent[]>;
 }
 
 /** A repository a sync could not read, or whose tasks the task list refused, and why. */
@@ -180,7 +183,7 @@ function isTime(value: unknown): value is number {
  * request watch, so what happened meanwhile is news once it reads; one that left nothing out is not kept, nor the
  * watch of a repository no longer synced.
  */
-export function finishState(state: SyncState | undefined, now: number, run: Omit<SyncRun, 'added'>): SyncState {
+export function finishState(state: SyncState | undefined, now: number, run: Pick<SyncRun, 'failures' | 'leftOut' | 'pulls'>): SyncState {
   const failing = run.failures.map((failure) => failure.repo);
   const kept = [...(state?.leftOut ?? [])].filter(([repo]) => failing.includes(repo) && !run.leftOut.has(repo));
   const watched = [...(state?.pulls ?? [])].filter(([repo]) => failing.includes(repo) && !run.pulls.has(repo));

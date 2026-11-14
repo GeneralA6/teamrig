@@ -5,12 +5,16 @@ import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
 import { isIssueQuery } from '../github/gh.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
+import { FakeProcesses } from '../testing/fake-processes.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' } } };
 const STATE = join(TEAM_HOME, 'state', 'github-sync.json');
 const MINUTE = 60_000;
+/** What the sync keeps of a repository that has no pull request. */
+const NO_PULLS = { cursor: undefined, open: [] };
 const REFUSED = { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 401: Bad credentials (https://api.github.com/graphql)\n' } as const;
 
 /** The lines of a session's inbox the sync posted, without their date. */
@@ -42,7 +46,7 @@ describe('teamrig issue sync --auto', () => {
     kit.clock.advance(15 * MINUTE);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
     assert.equal(githubLines(kit, 'lead')[2], 'GitHub sync reads every repository again (acme/api failed before)');
-    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map() });
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]) });
   });
 
   it("tells the lead an outsider's issue it left out once, again only for a new one, also across a failed read", async () => {
@@ -68,6 +72,32 @@ describe('teamrig issue sync --auto', () => {
     assert.equal(lines.length, 5);
     assert.ok(!lines.join('\n').includes('evil.test'));
     assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? '')?.leftOut, new Map([['acme/web', [9, 10]], ['acme/api', [3]]]));
+  });
+
+  it("tells the owner of the task a pull request's branch names and the watcher the rest, once, waking for what needs a hand", async () => {
+    for (const wake of [true, false]) {
+      const kit = new CliHarness({ ...TEAM, wake: { enabled: wake }, github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' }, watcher: 'alpha' } });
+      const issues = [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] })];
+      const before = [ghPull('acme/web', 20, { head: 't1-login' }), ghPull('acme/web', 21, { head: 'feature' })];
+      const after = [
+        ghPull('acme/web', 20, { head: 't1-login', mergeable: 'CONFLICTING', updatedAt: '2030-01-02T00:00:00Z' }),
+        ghPull('acme/web', 21, { head: 'feature', state: 'MERGED', updatedAt: '2030-01-02T00:00:00Z' }),
+        ghPull('acme/web', 22, { head: 't1-login', author: 'stranger', authorAssociation: 'NONE', fork: true, createdAt: '2030-01-03T00:00:00Z', updatedAt: '2030-01-03T00:00:00Z' }),
+      ];
+      for (const pulls of [before, after, after]) {
+        kit.clock.advance(15 * MINUTE);
+        const result = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holdsPulls('acme/web', pulls).holds('acme/api', []) });
+        assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+      }
+      assert.deepEqual(githubLines(kit, 'bravo'), [
+        'GitHub sync added 1 task(s) for you: T1 gh:acme/web#7 "Fix login"',
+        'GitHub pull requests: gh:acme/web#20 "Change 20": conflicts with its base',
+      ]);
+      assert.deepEqual(githubLines(kit, 'alpha'), ['GitHub pull requests: gh:acme/web#22 "Change 22": opened by stranger (outside, fork); gh:acme/web#21 "Change 21": merged']);
+      assert.deepEqual(githubLines(kit, 'lead'), []);
+      const asks = new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks'));
+      assert.deepEqual([(await asks.read('bravo')).length, (await asks.read('alpha')).length], wake ? [1, 1] : [0, 0], `wake ${wake}`);
+    }
   });
 
   it('never overwrites a state file a newer teamrig wrote: --auto fails', async () => {

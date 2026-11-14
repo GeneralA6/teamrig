@@ -207,6 +207,7 @@ export class FakeGh implements GhRunner {
   private readonly issues = new Map<string, readonly JsonRecord[]>();
   private readonly pulls = new Map<string, readonly JsonRecord[]>();
   private readonly canned = new Map<string, GhResult>();
+  private readonly pullFailures = new Map<string, GhResult>();
   private readonly createFailures = new Map<string, GhResult>();
   private failure: Error | undefined;
   private writeFailure: GhResult | undefined;
@@ -236,6 +237,12 @@ export class FakeGh implements GhRunner {
   /** From now on, every run for `repo` ends as given, whatever it holds. */
   answers(repo: string, result: GhResult): this {
     this.canned.set(repo, result);
+    return this;
+  }
+
+  /** From now on, a pull request query for `repo` ends as given, while its issue queries still answer. */
+  failsPulls(repo: string, result: GhResult): this {
+    this.pullFailures.set(repo, result);
     return this;
   }
 
@@ -356,12 +363,17 @@ export class FakeGh implements GhRunner {
     if (canned !== undefined) {
       return canned;
     }
+    const query = fieldOf(request.args, 'query');
+    const pulled = query === PULL_REQUESTS_QUERY || query === OPEN_PULLS_QUERY;
+    const pullFailure = pulled ? this.pullFailures.get(repo) : undefined;
+    if (pullFailure !== undefined) {
+      return pullFailure;
+    }
     const issues = this.issues.get(repo);
     const pulls = this.pulls.get(repo);
     if (issues === undefined && pulls === undefined) {
       return notVisible(repo);
     }
-    const query = fieldOf(request.args, 'query');
     const since = Date.parse(fieldOf(request.args, 'since') ?? '');
     const held =
       query === OPEN_ISSUES_QUERY
@@ -379,7 +391,6 @@ export class FakeGh implements GhRunner {
       return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: the fake gh answers only the shipped queries\n' };
     }
     const offset = Number(fieldOf(request.args, 'after') ?? '0');
-    const pulled = query === PULL_REQUESTS_QUERY || query === OPEN_PULLS_QUERY;
     const nodes = held.slice(offset, offset + (this.pageSize ?? (pulled ? PULL_PAGE_SIZE : ISSUE_PAGE_SIZE)));
     const pageInfo = { hasNextPage: offset + nodes.length < held.length, endCursor: nodes.length === 0 ? null : String(offset + nodes.length) };
     const connection = pulled ? 'pullRequests' : 'issues';
