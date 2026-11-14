@@ -87,7 +87,7 @@ describe('README.md', () => {
     assert.match(requirements, /teamrig checks for anything else when you set up a team and\nwhen a session starts/);
     assert.match(requirements, /in default mode, allow `Bash\(teamrig:\*\)` \(\[permissions\]\(plugins\/teamrig\/skills\/teamrig-guide\/hooks\.md#permissions\)\)/);
     assert.doesNotMatch(requirements, /^\*Coming: /m);
-    assert.match(requirements, /^Windows and Linux: on Linux the tests and a smoke run pass; /m, 'names the systems it is proven on (T1175)');
+    assert.match(requirements, /^Windows and Linux: a fresh install, a first team and every hook pass on both; /m, 'names the systems it is proven on (T1175, T1176)');
     assert.ok(requirements.split('\n').length <= 4, `Requirements is ${requirements.split('\n').length} lines; keep it to the major needs`);
   });
 
