@@ -35,7 +35,8 @@ import { approvalNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTr
 import { isPeerWait, sameWait, waitContext } from "../../register/waits.js";
 import { wipHold } from "../../register/wip.js";
 import { lintSkills } from "../../skills/lint.js";
-import { SKILL_FILE, SkillDir } from "../../skills/store.js";
+import { skillsToLint } from "../../skills/run-scripts.js";
+import { SKILL_FILE } from "../../skills/store.js";
 import { weekUseOnAccount } from "../account-teams.js";
 import { readWideAllow, teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
@@ -918,7 +919,7 @@ export async function checkReport(args, runtime) {
     const now = new Date(runtime.clock.now());
     const tree = args.switches.has('tree');
     const read = await readRegisters(args, runtime);
-    const skillFiles = await new SkillDir(runtime.files, read.own.paths.skills).readAll();
+    const skillFiles = await skillsToLint(runtime.files, read.own.paths.skills, runtime.userHome);
     const project = await projectFolder(runtime, read.own.config);
     const tags = [
         ...(await readStopgapTags(runtime.files, project, read.own.config.register.check.stopgapFiles)),

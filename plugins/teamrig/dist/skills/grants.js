@@ -44,11 +44,31 @@ function readsSecretEnv(script) {
 function runsKubectl(text, subcommand) {
     return /\bkubectl\b/.test(text) && subcommand.test(text);
 }
+/**
+ * Reads of an OS credential store, each of which hands the script a saved password or token (T1401: the ship's GitHub
+ * token read through `CredReadW` went unflagged): Windows Credential Manager through P/Invoke (`CredRead`,
+ * `CredEnumerate`), WinRT's `PasswordVault` or the CredentialManager module; the macOS keychain (`security
+ * find-generic-password`); the Linux secret service (`secret-tool lookup`); keytar and Python's keyring; and the
+ * stores git and gh keep their tokens in (`git credential fill`, `gh auth token`), inline or as argv items. `cmdkey`
+ * is left out: it adds, lists and deletes entries but never prints a password.
+ */
+const KEYCHAIN_READS = [
+    (text) => /\bCred(?:Read|Enumerate)[AW]?\b|\bPasswordVault\b|\bGet-StoredCredential\b/i.test(text),
+    (text) => /\bfind-(?:generic|internet)-password\b/.test(text),
+    (text) => /\bsecret-tool\b/.test(text) && /\bsecret-tool\b[^\n]*?\s(?:lookup|search)\b|['"`](?:lookup|search)['"`]/.test(text),
+    (text) => /\bkeytar\b/.test(text) && /\b(?:getPassword|findPassword|findCredentials)\s*\(/.test(text),
+    (text) => /\bkeyring\.get_(?:password|credential)\s*\(/.test(text),
+    (text) => /\bgit\b[^\n]*?\scredential\s+fill\b|['"`]credential['"`]\s*,\s*['"`]fill['"`]/.test(text),
+    (text) => /\bgh\b[^\n]*?\sauth\s+token\b|['"`]auth['"`]\s*,\s*['"`]token['"`]/.test(text),
+];
+function readsKeychain(text) {
+    return KEYCHAIN_READS.some((reads) => reads(text));
+}
 const DETECTORS = [
     { kind: 'pod-exec', makes: ({ text }) => runsKubectl(text, /\bkubectl\b[^\n]*?\sexec\b|['"`]exec['"`]/) },
     {
         kind: 'secret-read',
-        makes: (script) => runsKubectl(script.text, /\bget\s+secrets?\b|['"`]get['"`]\s*,\s*['"`]secrets?['"`]/) || readsSecretEnv(script),
+        makes: (script) => runsKubectl(script.text, /\bget\s+secrets?\b|['"`]get['"`]\s*,\s*['"`]secrets?['"`]/) || readsSecretEnv(script) || readsKeychain(script.text),
     },
     { kind: 'auth-header', makes: ({ text }) => /\bauthorization\s*['"`]?\s*:|\bBearer\s|\bx-[a-z0-9-]*(?:key|token|secret|auth)\s*['"`]?\s*:/i.test(text) },
 ];
