@@ -340,6 +340,8 @@ export interface StatusLineView {
   readonly commit?: string;
   /** Where the team's pace line stands now, in % of the week, shown beside the week's use. */
   readonly pacePct?: number;
+  /** A rush in force (src/budget/rush.ts `rushSegment`), after the plan's use: every tab sees the team runs past its holds. */
+  readonly rush?: string;
   /** An open meeting's mark: the meeting tab's whole line in its colour, any other tab's held text last. */
   readonly meeting?: StatusLineMeeting;
 }
@@ -374,6 +376,9 @@ export function statusLineText(snapshot: StatusSnapshot, view: StatusLineView): 
   }
   if (fiveHour !== null) {
     parts.push(`5h ${Math.round(fiveHour.usedPct)}%`);
+  }
+  if (view.rush !== undefined) {
+    parts.push(view.rush);
   }
   const meeting = view.meeting;
   if (meeting?.kind === 'held') {

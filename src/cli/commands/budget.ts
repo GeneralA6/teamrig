@@ -73,6 +73,7 @@ import { TASK_ID } from '../../register/model.ts';
 import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
+import { rushLine, rushSegment } from '../../budget/rush.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import type { LoadedTeam } from '../root-team.ts';
 import { statusLineMeetingFor } from '../statusline-meeting.ts';
@@ -351,6 +352,8 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
       const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
       const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
       lines = [
+        // A rush first: while it runs every hold the lines below report is report only (`openKit`'s overlay).
+        ...(kit.rush === undefined ? [] : [rushLine(kit.rush, zone)]),
         ...todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone, overAction: config.budget.overAction }),
         ...resetStockLines(config.budget.resets, now, zone),
       ];
@@ -710,6 +713,7 @@ interface StatusLineReading {
   readonly effort: string | undefined;
   readonly pacePct: number | undefined;
   readonly meeting: StatusLineMeeting | undefined;
+  readonly rush: string | undefined;
 }
 
 /** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
@@ -784,7 +788,14 @@ function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, sh
     ...(commit === undefined ? {} : { commit }),
     ...(reading.pacePct === undefined ? {} : { pacePct: reading.pacePct }),
     ...(reading.meeting === undefined ? {} : { meeting: reading.meeting }),
+    ...(reading.rush === undefined ? {} : { rush: reading.rush }),
   };
+}
+
+/** The rush segment of the team's status line; the kit read the rush when it opened (`openKit`), so this reads nothing. */
+function rushSegmentOf(runtime: CliRuntime, team: LoadedTeam | undefined): string | undefined {
+  const rush = team?.kit.rush;
+  return rush === undefined || team === undefined ? undefined : rushSegment(rush, teamZone(team.config, runtime));
 }
 
 /**
@@ -861,6 +872,7 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     effort: effortOfStatus(input),
     pacePct: await pacePctOf(runtime, snapshot, shown),
     meeting: await meetingMarkOf(runtime, shown.team, snapshot.sessionId),
+    rush: rushSegmentOf(runtime, shown.team),
   };
   runtime.out.stdout(statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
   return EXIT.ok;

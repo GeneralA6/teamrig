@@ -314,6 +314,10 @@ describe('statusLineText', () => {
     assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), {}), 'Claude');
   });
 
+  it('shows a rush in force after the plan windows', () => {
+    assert.equal(statusLineText(both, { folder: 'app', rush: 'RUSH PROD to Fri 01-11 18:00 IST' }), 'Opus 5.5, app, week 57%, 5h 6%, RUSH PROD to Fri 01-11 18:00 IST');
+  });
+
   it('shows the pace line only beside a week reading', () => {
     const fiveHourOnly = snapshot({ rateLimits: { fiveHour: { usedPct: 5.6, resetsAt: NOW }, sevenDay: null } });
     assert.equal(statusLineText(fiveHourOnly, { pacePct: 53.4 }), 'Opus 5.5, 5h 6%');
