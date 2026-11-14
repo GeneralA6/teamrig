@@ -676,6 +676,10 @@ the task, read or not, in the order posted, each once with the sessions that got
 the password needs 12 characters`) stays with the task, even after the handover of the session that read it is
 rewritten.
 
+Name several ids to read them in one call (`teamrig show T4 T9`): each prints in full, in the order given, an id named
+twice once. An unknown id refuses the whole call before anything prints (`REFUSED no task T8`), so what prints is
+never a part read as the whole.
+
 Flags:
 
 - `--session <id|name>`: the caller (optional).
