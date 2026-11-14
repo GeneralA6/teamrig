@@ -36,12 +36,14 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
 | `repos` | The repositories to read, as `owner/name` (at most 20). Empty turns the sync off. |
 | `sessions` | Optional. The session that owns each repository's issues, so each session sees the issues of its own repositories. One session can own several. |
 | `owners` | Optional. A GitHub login to a session: an issue assigned to that login goes to that session, whatever its repository. |
+| `areaOwners` | Optional. A label to a session, such as `"area:cli": "cli"`: an issue with that label goes to the session of its area, whatever its repository. Matched without case; when an issue carries several, the first listed here wins. |
 | `closedDays` | How many days back closed issues are read, to finish their tasks. Default 14. |
 | `probeSeconds` | How often it asks GitHub whether a repository changed, in seconds: 0, or 30 to 3600. Default 60; 0 leaves the sync to `teamrig issue sync --yes`. |
 | `acceptLabel` | Optional. The label that lets an issue by someone outside the repository become a task ([below](#whose-issues-become-tasks)). Default `teamrig`. |
 
-Who owns a new issue's task: the session of its first assignee listed in `owners`; else its repository's session in
-`sessions`; else the lead. After the import the owner is the team's: reassigning the task in teamrig sticks. So is
+Who owns a new issue's task: the session of its first assignee listed in `owners`; else the session of its first
+label listed in `areaOwners`, so a person's pick beats the area; else its repository's session in `sessions`; else
+the lead. After the import the owner is the team's: reassigning the task in teamrig sticks. So is
 closing it: a task the team sets done or dropped while its issue is open stays closed until the issue changes on
 GitHub after that (reopened, edited or commented on).
 

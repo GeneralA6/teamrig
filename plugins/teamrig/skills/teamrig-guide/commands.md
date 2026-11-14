@@ -1212,7 +1212,8 @@ the `gh` login in its place.
 - An open issue with no task becomes one, with the source `github` and the ref `gh:<owner>/<name>#<number>`. Its
   title is the issue's on one plain line, cut to `register.maxTitle`; its priority is its most urgent `p<n>` label
   (else `p2`); its owner is the session `github.owners` maps its first listed assignee's login to, else the
-  repository's session in `github.sessions`, else the lead.
+  session `[github.areaOwners]` maps its first area label to (in the config's order), else the repository's session
+  in `github.sessions`, else the lead.
   Its description is the issue's body: control characters become spaces, blank lines close up, and past 2,000
   characters it is cut, ending with `…`. An empty body gives none; a body that looks like it holds a secret
   gives a line saying it was left out, to be read on GitHub.
@@ -2329,8 +2330,8 @@ the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they
 - It refuses while the session owns open tasks, unless `--to <heir>` hands them over.
 - It refuses without the session's handover (`<handover>/<id>.md`, the file a refresh writes: open work, next
   steps, branches, traps), unless `--no-handover "<why>"` says why there is none.
-- It refuses while a role (`roles.lead`, `roles.deliveryOwner`, `roles.securityReviewer`), `github.owners` or `github.sessions` names
-  the session: point those at another session first.
+- It refuses while a role (`roles.lead`, `roles.deliveryOwner`, `roles.securityReviewer`), `github.owners`, `github.areaOwners` or
+  `github.sessions` names the session: point those at another session first.
 - `check` flags a burst hire to retire once its burst is over (RETIRE-DUE), and each hired session past its review
   day (REVIEW-DUE), which a keep clears ([teamrig hire](#teamrig-hire)). A hire with no task is never due to retire
   for it: the idle pass deactivates it.

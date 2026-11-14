@@ -117,7 +117,7 @@ or take it to the lead.
 | `REFUSED <id> owns open task(s) T1: pass --to <heir> to hand them over, or close them first` | Retire it with `--to <heir>`, or let it close its tasks first. |
 | `REFUSED no handover at <path>: write it (open work, next steps, branches, traps) or pass --no-handover "<why>"` | Ask the session to write its handover there, or retire it with `--no-handover "<why>"`. |
 | `REFUSED <id> holds roles.<role>: give the role to another session first` | Set the role to another session in the team config, then retire it. |
-| `REFUSED github.owners names <id> for <login>: point it at another session first` | Point that login (or the repository in `github.sessions`) at another session, then retire it. |
+| `REFUSED github.owners names <id> for <login>: point it at another session first` | Point that login (or the area label in `github.areaOwners`, or the repository in `github.sessions`) at another session, then retire it. |
 | `REFUSED only a lead over the session retires it (the lead, or its sub-lead): the leader decides which workers the team needs` | Ask the session's leader (its sub-lead, else the lead) to retire it. |
 | `REFUSED <sub-lead> hands work only within its group: the heir <id> is not led by <sub-lead>; the lead (<id>) moves work between groups` | Pass an heir in your group (or yourself), or ask the lead to retire it. |
 | `REFUSED <id> is already on the team: a hired session is kept with --review <YYYY-MM-DD> --reason "<why>"` | To keep a hired session to a new review day, pass both; to hire another session, give a new id. |
