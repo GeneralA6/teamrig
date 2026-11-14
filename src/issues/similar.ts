@@ -140,6 +140,11 @@ export function similarIssues(target: SimilarDoc, corpus: readonly SimilarDoc[],
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** The issue `ref`'s task as the scorer reads it: a body the import left out as a likely secret counts as none. */
+export function issueDoc(ref: string, task: Pick<Task, 'title' | 'description'>): SimilarDoc {
+  return { ref, title: task.title, body: task.description === null || task.description === SECRET_BODY ? '' : task.description };
+}
+
 /**
  * The issues the register mirrors, as the scorer reads them: each task an issue made (its ref starts with
  * ISSUE_REF_PREFIX) still active, or done or dropped within `closedDays` of `now`, the window a sync reads closed
@@ -153,7 +158,7 @@ export function mirroredIssues(tasks: Iterable<Task>, now: Date, closedDays: num
       continue;
     }
     if (ACTIVE_STATUSES.includes(task.status) || Date.parse(task.statusAt) >= since) {
-      docs.push({ ref: task.ref, title: task.title, body: task.description === null || task.description === SECRET_BODY ? '' : task.description });
+      docs.push(issueDoc(task.ref, task));
     }
   }
   return docs;

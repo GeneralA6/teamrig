@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SECRET_BODY } from '../github/map.ts';
 import { testTask } from '../testing/task.ts';
-import { mirroredIssues, similarIssues, tokens, type SimilarDoc } from './similar.ts';
+import { issueDoc, mirroredIssues, similarIssues, tokens, type SimilarDoc } from './similar.ts';
 
 const NOW = new Date('2030-01-20T12:00:00.000Z');
 
@@ -121,5 +121,13 @@ describe('mirroredIssues', () => {
   it('reads a body left out as a likely secret as none', () => {
     const secret = testTask({ ref: 'gh:acme/kit#1', title: 'leaked', description: SECRET_BODY });
     assert.deepEqual(mirroredIssues([secret], NOW, 14), [{ ref: 'gh:acme/kit#1', title: 'leaked', body: '' }]);
+  });
+});
+
+describe('issueDoc', () => {
+  it("reads a task's title and description as an issue, a missing or secret body as none", () => {
+    assert.deepEqual(issueDoc('gh:acme/kit#1', { title: 'Crash', description: 'On submit.' }), { ref: 'gh:acme/kit#1', title: 'Crash', body: 'On submit.' });
+    assert.equal(issueDoc('gh:acme/kit#1', { title: 'Crash', description: null }).body, '');
+    assert.equal(issueDoc('gh:acme/kit#1', { title: 'Crash', description: SECRET_BODY }).body, '');
   });
 });
