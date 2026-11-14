@@ -6,11 +6,13 @@ import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from "../core
 import { isMinuteInSpan, parseUtcDeadline, utcMinuteOf } from "../core/time.js";
 import { TimeZone } from "../core/zone.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, REVIEW_STATUSES, SESSION_NAME, TASK_STATUSES, WORK_CLASS_NAME } from "../register/model.js";
+import { isItemType, ITEM_TYPES } from "../register/events.js";
+import { branchPatternProblem, isBranchType } from "../worktree/branch-name.js";
 import { KEEP_RULE_PATTERN } from "../permissions/allow-rules.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
 import { isNeedKind, NEED_KINDS } from "../tabs/need-kind.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_DB_WRITE_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_DB_WRITE_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_BRANCHES, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { APPLY_FLAG_PATTERN, BUDGET_ACCOUNT_MAX_LENGTH, CLIENT_RECEIVER_PATTERN, CONFIG_LIMITS, DB_PROGRAM_NAME_PATTERN, DB_WRITE_ENTRYPOINT_LIMITS, DB_WRITE_NAME_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, NODE_MODULE_PATTERN, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, } from "./limits.js";
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from "./migrate.js";
@@ -550,8 +552,53 @@ function parseDelivery(read, raw) {
         checkTimeoutSeconds: read.integer(raw, 'checkTimeoutSeconds', path, DEFAULT_CHECK_TIMEOUT_SECONDS, CONFIG_LIMITS.checkTimeoutSeconds),
         freezes: { maxMinutes: read.integer(freezes, 'maxMinutes', `${path}.freezes`, DEFAULT_FREEZES.maxMinutes, CONFIG_LIMITS.freezeMaxMinutes) },
         stablePeriods: parseStablePeriods(read, read.section(raw, 'stablePeriods', path), deployTargetsOf(repos)),
+        branches: parseBranches(read, read.section(raw, 'branches', path)),
         repos,
     };
+}
+const isBranchPattern = (pattern) => branchPatternProblem(pattern);
+const isBranchTypeText = (type) => (isBranchType(type) ? undefined : 'expected a branch type: a lowercase letter, then lowercase letters and digits');
+/**
+ * `delivery.branches` (T2690). A bad pattern, slug cap or branch type is reported and its default kept; an entry keyed
+ * by no branch type, item type or work class name is reported and left out. The item types merge over the defaults,
+ * so naming `bug` alone keeps a task's `feat`.
+ */
+function parseBranches(read, raw) {
+    const path = 'delivery.branches';
+    const typePatterns = parseBranchMap(read, read.section(raw, 'typePatterns', path), `${path}.typePatterns`, isBranchTypeText, isBranchPattern);
+    const itemTypes = { ...DEFAULT_BRANCHES.itemTypes };
+    for (const [itemType, value] of Object.entries(read.section(raw, 'itemTypes', path))) {
+        const itemPath = `${path}.itemTypes.${itemType}`;
+        if (!isItemType(itemType)) {
+            read.report(itemPath, `is no item type (${ITEM_TYPES.join(', ')})`);
+            continue;
+        }
+        itemTypes[itemType] = read.stringItem(value, itemPath, isBranchTypeText) ?? itemTypes[itemType];
+    }
+    return {
+        pattern: read.string(raw, 'pattern', path, DEFAULT_BRANCHES.pattern, isBranchPattern),
+        typePatterns,
+        itemTypes,
+        classes: parseBranchMap(read, read.section(raw, 'classes', path), `${path}.classes`, isWorkClassName, isBranchTypeText),
+        slugMax: read.integer(raw, 'slugMax', path, DEFAULT_BRANCHES.slugMax, CONFIG_LIMITS.branchSlugMax),
+    };
+}
+/** A map of string values, each key and value checked; a bad entry is reported and left out. */
+function parseBranchMap(read, raw, path, keyCheck, valueCheck) {
+    const entries = {};
+    for (const [key, value] of Object.entries(raw)) {
+        const itemPath = `${path}.${key}`;
+        const badKey = keyCheck(key);
+        if (badKey !== undefined) {
+            read.report(itemPath, badKey);
+            continue;
+        }
+        const checked = read.stringItem(value, itemPath, valueCheck);
+        if (checked !== undefined) {
+            entries[key] = checked;
+        }
+    }
+    return entries;
 }
 /** When a deploy target's measurement is clean; a settle time for a target no repository deploys, or out of bounds, is reported and left out. */
 function parseStablePeriods(read, raw, knownTargets) {

@@ -115,6 +115,7 @@ export const CONFIG_LIMITS = {
     deliveryWaitMaxMinutes: { min: 0, max: 1440 },
     checkTimeoutSeconds: { min: 1, max: 600 },
     freezeMaxMinutes: { min: 1, max: 1440 },
+    branchSlugMax: { min: 8, max: 100 },
     settleMinutes: { min: 0, max: 1440 },
     assumedDeployMinutes: { min: 0, max: 1440 },
     stablePeriodMinMinutes: { min: 1, max: 1440 },

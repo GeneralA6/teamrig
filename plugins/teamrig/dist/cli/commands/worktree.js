@@ -5,24 +5,30 @@ import { teamPlace } from "../../delivery/places.js";
 import { ENV } from "../../core/home.js";
 import { samePath } from "../../core/paths.js";
 import { resolveTeam } from "../../core/team.js";
+import { classOf } from "../../register/focus.js";
+import { itemTypeOf } from "../../register/item-types.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { createWorktree } from "../../worktree/add.js";
+import { isBranchType, taskBranchName } from "../../worktree/branch-name.js";
 import { removalRefusal } from "../../worktree/owner.js";
 import { carryOut, clearLeftover, describeLeftover, describePlan, planRemoval } from "../../worktree/remove.js";
 import { onePositional, UsageError } from "../args.js";
+import { taskIdOf } from "../inputs.js";
 import { openKit, requireConfig, rosterOf, teamFolders } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { tabSessionOf } from "./tab-session.js";
 /**
- * `worktree add <branch> [--repo <name>]`: makes a session's worktree the same way every time (worktree/add.ts): a new
- * branch from the remote's newest default branch, in the repository's worktree folder, then its setup run there. The
- * repository is the one `--repo` names in delivery.repos, else the one the folder it runs in belongs to, with the
- * folder and setup of the delivery.repos entry that lists its main checkout. REFUSED, exit 2, before any change; a
- * fetch, a `git worktree add` or a setup that fails is FAILED, exit 1.
+ * `worktree add <branch> | --task <T id> [--type <branch type>] [--repo <name>]`: makes a session's worktree the same
+ * way every time (worktree/add.ts): a new branch from the remote's newest default branch, in the repository's worktree
+ * folder, then its setup run there. With `--task` the branch is named from the task by the team's delivery.branches
+ * (worktree/branch-name.ts, T2690). The repository is the one `--repo` names in delivery.repos, else the one the folder
+ * it runs in belongs to, with the folder and setup of the delivery.repos entry that lists its main checkout. REFUSED,
+ * exit 2, before any change; a fetch, a `git worktree add` or a setup that fails is FAILED, exit 1.
  */
 export async function add(args, runtime) {
-    const branch = onePositional(args, 'branch');
-    const place = await addPlace(args.flags.get('repo'), runtime);
+    const team = await teamAt(runtime);
+    const branch = await branchToAdd(args, runtime, team);
+    const place = addPlace(args.flags.get('repo'), runtime, team);
     const { git, files } = runtime.worktrees;
     const end = await createWorktree({ branch, ...place, env: runtime.env }, { git, files, hooks: runtime.hooks }, (line) => runtime.out.stdout(line));
     switch (end.kind) {
@@ -36,8 +42,40 @@ export async function add(args, runtime) {
             return EXIT.ok;
     }
 }
-async function addPlace(repo, runtime) {
-    const team = await teamAt(runtime);
+/** The branch `worktree add` makes: the one given, or with `--task` the one the team's delivery.branches names for that task. */
+async function branchToAdd(args, runtime, team) {
+    const taskText = args.flags.get('task');
+    const type = args.flags.get('type');
+    if (taskText === undefined) {
+        if (type !== undefined) {
+            throw new UsageError('--type sets the branch type of the branch --task names: give --task too');
+        }
+        return onePositional(args, 'branch');
+    }
+    const [given] = args.positionals;
+    if (given !== undefined) {
+        throw new UsageError(`give a branch name or --task, not both ("${given}")`);
+    }
+    if (type !== undefined && !isBranchType(type)) {
+        throw new UsageError(`--type ${type}: expected a branch type, a lowercase letter then lowercase letters and digits, such as feat or fix`);
+    }
+    const id = taskIdOf(taskText);
+    if (team === undefined) {
+        throw new RefusedError(`--task names a task on a team's register, and ${runtime.cwd} is in no team: give a branch name instead`);
+    }
+    const { state } = await new JsonlEventLog(runtime.files, team.kit.paths.events).read();
+    const task = state.tasks.get(id);
+    if (task === undefined) {
+        throw new RefusedError(`team ${team.name}'s register has no ${id}`);
+    }
+    const { config } = team;
+    const named = taskBranchName({ id, title: task.title, owner: task.owner, ref: task.ref, itemType: itemTypeOf(task), workClass: classOf(task, config.focus) }, config.delivery.branches, type);
+    if (named.kind === 'refused') {
+        throw new RefusedError(named.reason);
+    }
+    return named.branch;
+}
+function addPlace(repo, runtime, team) {
     const repos = reposOf(team);
     if (repo !== undefined) {
         if (team === undefined) {

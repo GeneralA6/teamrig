@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { hookEndText, succeeded } from "../deploy/hooks.js";
+import { branchNameProblem } from "./branch-name.js";
 /**
  * `teamrig worktree add`: a session's new worktree, made the same way every time. The new branch starts from the
  * remote's newest default branch, fetched first, in a folder named after the branch, and the repository's setup
@@ -11,13 +12,6 @@ import { hookEndText, succeeded } from "../deploy/hooks.js";
 export const MAIN_CHECKOUT_ENV = 'TEAMRIG_MAIN_CHECKOUT';
 /** Long enough for a setup that installs packages; past it the setup is killed with every process it started. */
 const SETUP_TIMEOUT_MS = 10 * 60_000;
-/** A new branch's name, which also names its folder: from a letter or digit, then letters, digits, `.`, `_`, `-` and `/`. */
-const BRANCH_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
-/** Why `branch` cannot name a new branch and its folder, or undefined when it can; git refuses what this lets through. */
-export function branchNameProblem(branch) {
-    const bad = !BRANCH_NAME.test(branch) || ['..', '//', '/.'].some((part) => branch.includes(part)) || ['/', '.', '.lock'].some((end) => branch.endsWith(end));
-    return bad ? 'expected a branch name: letters, digits, ., _, - and /, from a letter or digit, without .., // or a part that starts with ., and not ending in /, . or .lock' : undefined;
-}
 /** Makes the worktree, says each step done, and runs the setup in it. */
 export async function createWorktree(request, ports, say) {
     const { branch, mainDir, setup } = request;

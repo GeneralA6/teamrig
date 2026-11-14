@@ -340,6 +340,8 @@ export const DEFAULT_CHECK_TIMEOUT_SECONDS = 20;
 export const DEFAULT_FREEZES = { maxMinutes: 120 };
 /** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line ran for 20 minutes; a stable period under 15 minutes is left out. */
 export const DEFAULT_STABLE_PERIODS = { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 };
+/** Conventional Branch names (`feat/t12-parser`, `fix/t13-login-loop`): a task's branch is a feat, a bug's a fix, its slug at most 40 characters. */
+export const DEFAULT_BRANCHES = { pattern: '{type}/{id}-{slug}', typePatterns: {}, itemTypes: { task: 'feat', bug: 'fix' }, classes: {}, slugMax: 40 };
 /**
  * A burst spends more of the week, so the owner approves each one. A surplus burst may start from 48 hours before
  * the reset once at least 5% of the week is projected unused; each burst session runs at most 3 helpers at once,

@@ -236,7 +236,7 @@ const COMMANDS = {
     'secrets staged': { effect: 'read', flags: [], load: async () => (await secretsCommands()).staged },
     'secrets message': { effect: 'read', flags: [], load: async () => (await secretsCommands()).message },
     'secrets pushed': { effect: 'read', flags: [], load: async () => (await secretsCommands()).pushed },
-    'worktree add': { effect: 'write', flags: ['repo'], load: async () => (await worktreeCommands()).add },
+    'worktree add': { effect: 'write', flags: ['repo', 'task', 'type'], load: async () => (await worktreeCommands()).add },
     'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
     test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
     queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
@@ -718,13 +718,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       pre-push hooks: a secret the staged change, the message or the pushed commits and tags add is REFUSED,
       named by place and shape, never by value; default shapes and paths outside a team, plus the team's own
       inside one
-  worktree add <branch> [--repo <name>]   makes a session's new worktree the same way every time: fetches
+  worktree add <branch> | --task <T id> [--type <branch type>] [--repo <name>]   makes a session's new worktree the same way every time: fetches
       the default branch origin/HEAD names, adds the worktree on the new branch from it, in a folder
       named after the branch (each / as -) in delivery.repos.<name>.worktreeFolder (default
       .claude/worktrees in the main checkout), then runs its worktreeSetup there, without a shell and
       with the main checkout's folder in TEAMRIG_MAIN_CHECKOUT; the repository is --repo's, else the
-      one it runs in; REFUSED before any change for a branch or folder already there; FAILED when its
-      setup fails, the worktree kept
+      one it runs in. --task: names the branch from the task by delivery.branches (default
+      {type}/{id}-{slug}, such as feat/t12-parse-input: a task's feat, a bug's fix); --type: its
+      branch type instead, such as docs or chore. REFUSED before any change for a branch or folder
+      already there, a task the register lacks, or a pattern word the task has none of; FAILED when
+      its setup fails, the worktree kept
   worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run] [--session <id|name>]   removes a linked git worktree:
       unlinks each link in it (such as a node_modules junction) and sees it gone, so git cannot follow
       one and empty its target, then runs git worktree remove; a folder git no longer lists, directly in
