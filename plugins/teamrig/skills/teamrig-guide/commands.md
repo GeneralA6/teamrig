@@ -5188,7 +5188,7 @@ subagent W: the ratio of their W per 1% is the weight (one team measured about 2
 metering on; `--day <YYYY-MM-DD>` recounts a past day at the new weight.
 
 Every call's W is also multiplied by its model's weight in `budget.modelWeights` (a list of `{ model, weight }`, empty
-by default, since 0.378.0), for a model that moves the weekly limit faster per W than the others: `model` is a prefix
+by default, since 0.386.0), for a model that moves the weekly limit faster per W than the others: `model` is a prefix
 of the model id a transcript line names, such as `claude-fable`, and the longest listed match wins; an unlisted model,
 or a line naming none, counts 1. Fit it as the subagent weight: the ratio of the other models' W per 1% to this
 model's. The learned W per % shifts once as the listed model's W is re-weighted.
