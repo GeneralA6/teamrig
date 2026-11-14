@@ -1271,7 +1271,8 @@ issues and those closed in the last `github.closedDays` days (14 by default) thr
 ever lists issues: it never creates, edits, comments on, labels, assigns or closes anything on GitHub, and a task
 added with `teamrig add` stays in the task list and never goes to GitHub. Only commands run by hand write:
 `teamrig issue migrate` opens issues, `teamrig issue comment`, `teamrig issue edit` and `teamrig issue close`
-comment on, rewrite and close them, and `teamrig issue links` links them as the task tree does.
+comment on, rewrite and close them, and `teamrig issue links` links them as the task tree does;
+`teamrig issue similar` lists likely duplicates from the task list alone.
 Its old name, gh sync, is refused with this one (exit 64). Setup, tokens and every failure's fix:
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md).
 
@@ -1627,6 +1628,32 @@ Output:
 ACCESS acme: writes with the token saved as teamrig-gh-acme
 LABELED acme/web#12: "type: bug", "p1"
 UNLABELED acme/web#12: "needs triage"
+```
+
+### teamrig issue similar
+
+Lists the issues the task list mirrors that may be duplicates of the one named as `owner/name#number`, best first,
+with no model and no GitHub call. It scores TF-IDF over each issue's title (counted twice) and the first 1,000
+characters of its body, and keeps at most 3 whose cosine is at or above `github.similarThreshold` (0.35 by
+default), among the issues still open in the task list or closed within `github.closedDays` days. It reads the task
+list only, so the issue must be in it: REFUSED (exit 2) until `teamrig issue sync` adds it. The first line names the
+issue's task and how many candidates it found; each candidate line gives its score, issue, task and title. Exit 0,
+with or without candidates.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig issue similar acme/web#31
+```
+
+Output:
+
+```text
+SIMILAR acme/web#31 (T412): 2 of 18 mirrored issues at or above 0.35 (github.similarThreshold)
+0.71 acme/web#12 T388 Login fails after a password reset
+0.41 acme/web#27 T405 Reset email never arrives
 ```
 
 ### teamrig pr conflicts
