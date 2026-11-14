@@ -23,10 +23,19 @@ describe('branchTaskOf', () => {
     assert.equal(branchTaskOf('t12'), 'T12');
   });
 
+  it('reads a task id that starts a later part of the name, the first one counting', () => {
+    assert.equal(branchTaskOf('feat/t4-parser'), 'T4');
+    assert.equal(branchTaskOf('lead/fix/T5-routes'), 'T5');
+    assert.equal(branchTaskOf('feat/t4/parser'), 'T4');
+    assert.equal(branchTaskOf('fix/t4-a/t5-b'), 'T4');
+  });
+
   it('finds none in a branch named for no task', () => {
     assert.equal(branchTaskOf('main'), undefined);
     assert.equal(branchTaskOf('tools-t4'), undefined);
     assert.equal(branchTaskOf('t4parser'), undefined);
+    assert.equal(branchTaskOf('feat/xt4-parser'), undefined);
+    assert.equal(branchTaskOf('feat/parser-t4'), undefined);
     assert.equal(branchTaskOf(undefined), undefined);
   });
 });
@@ -51,7 +60,7 @@ describe('removalRefusal', () => {
   });
 
   it('leaves a worktree whose branch names no task on the register to the lead', () => {
-    assert.equal(refusal('ui', 'scratch'), "the worktree's branch scratch names no task (t<id>-<name>), so only the lead (lead) removes it");
+    assert.equal(refusal('ui', 'scratch'), "the worktree's branch scratch names no task (t<id>-<name>, or a part starting t<id>-), so only the lead (lead) removes it");
     assert.equal(refusal('ui', 't9-gone'), "the worktree's branch t9-gone names T9, which the register lacks, so only the lead (lead) removes it");
     assert.equal(
       refusal('ui', undefined),
