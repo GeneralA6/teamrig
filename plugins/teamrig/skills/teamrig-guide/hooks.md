@@ -413,7 +413,8 @@ allow, in a mode that asks, or a check of its own that always asks): `hook promp
   `upstream` or `tracking` (which sends it to its upstream, `origin/main` for a branch cut from it), keeps the
   prompt. One plain
   command: no `;`, `&`, `|`, `<`, `>` but a lone `2>&1`, no substitution, variable, `$'`, `$"` or `#`, inside quotes
-  too, so a commit message holding one of them gets the cases below.
+  too, so a commit message holding one of them gets the cases below. On Windows the line must be that same route
+  both as written and with its backslash runs halved, as Claude Code's Bash tool hands it to bash (since 0.370.0).
 - **A line that provably only reads runs**, by the [read-only allow](#before-a-shell-command-the-read-only-allow)'s
   check and its trusted prefixes, even with `readonlyShell.enabled` off; one that would print a secret does not. This
   allow also answers a prompt a settings `ask` rule raised, which a `PreToolUse` allow never overrides: keep a line
