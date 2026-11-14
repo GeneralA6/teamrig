@@ -64,6 +64,9 @@ Flags:
   Only with `--type bug`.
 - `--class <name>`: the work class, one of the team's `focus.classes` (`Roadmap`, `Maintenance`, `Improvements` by
   default); any other name is refused. A task without one counts as `focus.defaultClass`.
+- `--local "<reason>"`: keeps the task off the issue tracker, with one line saying why (security, team operations).
+  Its `list` row shows `local`, `show` prints the reason, and `teamrig gh migrate` opens no issue for it. Refused
+  on a task with an issue ref (`--ref gh:...`) and with an empty reason.
 - `--team <team>`: asks another team of your tree for the work: the task lands in that team's register from you,
   owned by `--owner` (a session of that team, by id or name) or else that team's lead. The owner gets an inbox line
   and the team's lead, when it is not the owner, a copy. A team of a separate tree is refused. Its one `--source`
@@ -322,6 +325,9 @@ Flags:
 - `--class <name>|none`: a new work class, one of `focus.classes`, or `none` to clear it (it then counts as
   `focus.defaultClass`); a leader above the owner may set it too. A class the team since renamed out of
   `focus.classes` stays on the task until changed.
+- `--local <reason>|none`: keeps the task off the issue tracker with that reason, or `none` to put it back under the
+  team's placement; a leader above the owner may set it too. Refused while the task holds an issue ref: clear it
+  first with `--ref none`.
 - `--critical`: marks a bug critical; only on a bug.
 - `--not-critical`: clears a bug's critical mark.
 - `--pin`: pins the task to the top of its owner's list; the pin names who set it, which `show` prints
