@@ -113,6 +113,7 @@ const EXPECTED = {
   'issue edit': 'write',
   'issue close': 'write',
   'issue label': 'write',
+  'issue similar': 'read',
   'pr conflicts': 'write',
   'issue links': 'write',
   follow: 'write',
