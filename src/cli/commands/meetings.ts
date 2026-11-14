@@ -464,13 +464,18 @@ async function liftSpotlight(runtime: CliRuntime, mk: MeetingsKit, id: string): 
   await new SpotlitStore(runtime.files, mk.kit.paths.meetingSpotlit).end(id, new Date(mk.now).toISOString());
 }
 
-/** `meeting end <id>`: the meeting was held; scheduled or started, it is done. */
+/**
+ * `meeting end <id>`: the meeting was held; scheduled or started, it is done. Those it met are told, with what came of
+ * it, as a move or a drop tells them (T2775).
+ */
 export async function meetingEndScheduled(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const mk = await meetingsKit(args, runtime, 'write');
   const note = noteOf(args.flags.get('note'), new SecretScanner(mk.config.register.secretPatterns));
   const ended = await change(args, mk, 'end', ['scheduled', 'started'], (meeting) => ({ ...meeting, status: 'done', note: note ?? meeting.note }));
   await liftSpotlight(runtime, mk, ended.id);
   runtime.out.stdout(`ENDED ${meetingLine(ended, mk.zone, mk.now)}`);
+  const cameOf = note === null ? '' : `: ${note}`;
+  await tell(runtime, mk, ended, `Meeting ${ended.id} with the owner (${mk.zone.weekdayMinute(new Date(ended.at))}) ended${cameOf}`);
   return EXIT.ok;
 }
 
