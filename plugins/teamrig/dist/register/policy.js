@@ -6,8 +6,9 @@ import { SecretScanner } from "../core/secrets.js";
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
 import { waitAnswerersOf } from "./approval.js";
 import { NO_GOAL_TAGS } from "./goals.js";
-import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
+import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, SECURITY_FLAG, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256 } from "./hand-step.js";
+import { verdictIsCurrent, verdictReadOf } from "./security-verdict.js";
 import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { isRepark, taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
@@ -46,6 +47,11 @@ export const WAITS_USAGE = 'decision:<who>, approval:<who>, task:T<id> or time:<
 export const PROOF_WAITS_USAGE = 'time:<YYYY-MM-DD HH:MM> when it runs, or task:T<id> for a task in progress or verifying whose end runs it';
 /** The statuses of a task a proof may wait on: one under way, whose end runs the proof. */
 const PROOF_TASK_STATUSES = ['in-progress', 'verifying'];
+/** How the refusals about an audit name what it reads, and the core rule behind it. */
+const AUDITED = {
+    file: { own: 'audit its own hand step', other: (owner) => `audit a hand step of ${owner}'s`, rule: 'core rule 11' },
+    verdict: { own: 'give the security verdict on its own card', other: (owner) => `give the security verdict on a card of ${owner}'s`, rule: 'core rule 9' },
+};
 function ok(value) {
     return { ok: true, value };
 }
@@ -461,6 +467,7 @@ export class RegisterPolicy {
             ...(parts.gate === undefined ? {} : { gate: parts.gate }),
             ...(parts.run === undefined ? {} : { run: parts.run }),
             ...(parts.affects === undefined ? {} : { affects: parts.affects }),
+            ...(parts.security === true ? { security: true } : {}),
         };
         const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
         return problem === undefined ? this.ownerAsk(task, owners, card) : refuse(problem);
@@ -490,11 +497,11 @@ export class RegisterPolicy {
     }
     /**
      * What a card asking the owner (`owners`) must say besides its parts, and must not: no hand step in its text
-     * (typedStepProblem); what it changes, on a test, measure or proof (proofProblem); why, on an owner's order; its
-     * gate, on a decision.
+     * (typedStepProblem); what it changes, on a test, measure or proof (proofProblem); the security verdict on it, on a
+     * security gate (securityProblem); why, on an owner's order; its gate, on a decision.
      */
     ownerAsk(task, owners, card) {
-        const problem = owners.length === 0 || card === null ? undefined : (this.typedStepProblem(task, card) ?? this.proofProblem(task, owners, card));
+        const problem = owners.length === 0 || card === null ? undefined : (this.typedStepProblem(task, card) ?? this.proofProblem(task, owners, card) ?? this.securityProblem(task, card));
         if (problem !== undefined) {
             return refuse(problem);
         }
@@ -515,6 +522,34 @@ export class RegisterPolicy {
         return (`${typed.flag} hands ${ownerSource} a step as text (${typed.shape}): core rule 11 hands ${ownerSource} a step only as a file its auditor read. ` +
             `Write the step to a ${HAND_STEP_KINDS.join(', ')} file, have it audited (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --file <path>) and give ${RUN_FLAG} <path>; ` +
             `a card that hands no step says so without code or an ask to paste ("the line is in")`);
+    }
+    /**
+     * A security-related ask reaches the owner only with the security reviewer's verdict on its card (T2761, core rule
+     * 9): a card asking the owner to decide on a gate in `securityGates`, or one marked `security` on any wait on the
+     * owner, is refused while the task holds no verdict, or one given on another question, options or recommendation
+     * (verdictIsCurrent). A card handing a hand step (`run`) is
+     * reviewed already, as its audit is the reviewer's read of it (runProblem). A card kept from an older row is held to
+     * it too, as it still reaches the owner. The reviewer reads the card before the owner does, so the card goes first
+     * on a wait on the session's leader, and keeps its parts when the wait moves to the owner.
+     */
+    securityProblem(task, card) {
+        const gate = card.gate?.toLowerCase();
+        const gated = gate !== undefined && this.config.securityGates.some((security) => security.toLowerCase() === gate);
+        if (card.run !== undefined || (!gated && card.security !== true)) {
+            return undefined;
+        }
+        const verdict = task.securityVerdict;
+        if (verdict !== null && verdictIsCurrent(verdict, card)) {
+            return undefined;
+        }
+        const { ownerSource } = this.config.register;
+        const leader = this.leaderOf(task);
+        const first = leader === undefined ? 'set the card on a wait on the security reviewer first' : `set the card on a wait on your leader first (--waits decision:${leader})`;
+        const route = `${first}, have it read (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --verdict "<what the review found>"), then wait on ${ownerSource} with the card unchanged`;
+        const why = verdict === null
+            ? `${task.id}'s card ${gated ? `asks ${ownerSource} about ${card.gate}, a security gate [securityGates],` : `is marked ${SECURITY_FLAG}`} and has no security verdict: it reaches ${ownerSource} only with one (core rule 9)`
+            : `the security verdict ${verdict.by} gave on ${task.id}'s card read another question, options or recommendation: an edit needs a new verdict (core rule 9)`;
+        return `${why}; ${route}`;
     }
     /** Who leads the task's owner: its sub-lead or the lead, and for the lead, the parent team's lead; undefined at the root. */
     leaderOf(task) {
@@ -720,46 +755,62 @@ export class RegisterPolicy {
         return this.auditorsOf(owner) === undefined ? `any session of this team but ${owner}` : `${this.approversText(owner)}, as ${owner} is the security reviewer`;
     }
     /**
-     * An audit (T2312, core rule 11): `caller`, a session of this team, read the hand step file `pin` names and pins it
-     * for the task at its sha256, so the task's card may hand it to the owner. Only an auditor of the owner's may
-     * (auditorsOf), never the task's own owner, as {@link auditFrom} judges the rest.
+     * An audit: `caller`, a session of this team, read what `subject` names and pins it for the task: a hand step file
+     * at its sha256, so the task's card may hand it to the owner (T2312, core rule 11), or the task's card with its
+     * security verdict, so a security-related card may reach the owner (T2761, core rule 9). Only an auditor of the
+     * owner's may (auditorsOf), never the task's own owner, as {@link auditFrom} judges the rest.
      */
-    audit(task, caller, pin, note) {
+    audit(task, caller, subject, note) {
         if (caller === task.owner) {
-            return refuse(`${caller} owns ${task.id}, so it does not audit its own hand step (core rule 11); who audits it: ${this.auditorsText(task.owner)}`);
+            const audited = AUDITED[subject.kind];
+            return refuse(`${caller} owns ${task.id}, so it does not ${audited.own} (${audited.rule}); who audits it: ${this.auditorsText(task.owner)}`);
         }
         const auditors = this.auditorsOf(task.owner);
         if (auditors !== undefined && !auditors.includes(caller)) {
-            return this.notAuditor(task, caller);
+            return this.notAuditor(task, caller, subject);
         }
-        return this.auditContent(task, pin, note);
+        return this.auditContent(task, subject, note);
     }
-    notAuditor(task, caller) {
-        return refuse(`${caller} does not audit a hand step of ${task.owner}'s; who audits it: ${this.auditorsText(task.owner)}`);
+    notAuditor(task, caller, subject) {
+        return refuse(`${caller} does not ${AUDITED[subject.kind].other(task.owner)}; who audits it: ${this.auditorsText(task.owner)}`);
     }
     /**
      * An audit from a team above (T2312), `asker` being its `<team>/<id>`, as the tree decides: only an auditor of the
      * owner's that this team's roles name there may. A team with no security reviewer audits its hand steps itself.
      */
-    auditFrom(task, asker, pin, note) {
+    auditFrom(task, asker, subject, note) {
         const auditors = this.auditorsOf(task.owner);
         if (auditors === undefined || !auditors.includes(asker)) {
-            return this.notAuditor(task, asker);
+            return this.notAuditor(task, asker, subject);
         }
-        return this.auditContent(task, pin, note);
+        return this.auditContent(task, subject, note);
     }
-    /** An audit's content: a task still to finish, a hand step file of a kind with a run line, and an optional note. */
-    auditContent(task, pin, note) {
+    /**
+     * An audit's content: a task still to finish and an optional note; for a file, a hand step file of a kind with a
+     * run line; for a verdict, a card on the task to give it on and a verdict in words, pinned with the card parts read.
+     */
+    auditContent(task, subject, note) {
         if (!ACTIVE_STATUSES.includes(task.status)) {
-            return refuse(`${task.id} is ${task.status}: a hand step is audited for a task still to finish`);
-        }
-        const kindProblem = handStepFileProblem(pin.path);
-        if (kindProblem !== undefined) {
-            return refuse(kindProblem);
+            return refuse(`${task.id} is ${task.status}: ${subject.kind === 'file' ? 'a hand step' : 'a card'} is audited for a task still to finish`);
         }
         const text = blankToNull(note);
-        const problem = this.checkText('note', text);
-        return problem === undefined ? ok({ changes: {}, note: text, audit: pin }) : refuse(problem);
+        const noteProblem = this.checkText('note', text);
+        if (noteProblem !== undefined) {
+            return refuse(noteProblem);
+        }
+        if (subject.kind === 'file') {
+            const kindProblem = handStepFileProblem(subject.pin.path);
+            return kindProblem === undefined ? ok({ changes: {}, note: text, audit: subject.pin }) : refuse(kindProblem);
+        }
+        if (task.card === null) {
+            return refuse(`${task.id} has no card: a security verdict is given on the card the owner reads, so its owner sets the card first (${CARD_FLAGS})`);
+        }
+        const verdict = blankToNull(subject.text);
+        if (verdict === null) {
+            return refuse('--verdict is blank: say what the review found and whether the owner may approve it');
+        }
+        const verdictProblem = this.checkText('verdict', verdict);
+        return verdictProblem === undefined ? ok({ changes: {}, note: text, securityVerdict: { text: verdict, read: verdictReadOf(task.card) } }) : refuse(verdictProblem);
     }
     /**
      * The owner's Note from the pane (T1298): free text for the task's session, kept in its history as the owner's and

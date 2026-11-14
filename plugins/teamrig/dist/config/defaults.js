@@ -6,6 +6,11 @@ export const DEFAULT_OWNER_GATES = [
     'budget',
     'resource changes',
 ];
+/**
+ * The owner gates whose cards reach the owner only with the security reviewer's verdict on them (T2761): a
+ * permission is a grant, a guard or a settings line, so the owner decides it from the reviewer's view.
+ */
+export const DEFAULT_SECURITY_GATES = ['permissions'];
 export const DEFAULT_MESSAGES = { maxLines: 10, coldAfterMinutes: 60 };
 /**
  * The most characters a task's description holds, beside `maxTitle` and `maxText` (the note, ref, evidence and

@@ -80,7 +80,7 @@ export function cardFacts(task, tree, runFiles, team) {
     return [
         rowOf(task, tree, team),
         ...(task.description === null ? [] : [`    what and why: ${cut(oneLine(task.description), DESCRIPTION_CHARS)}`]),
-        ...(task.card === null ? [noCardLine(task, team)] : cardLines(task.card, '    ', task.audits, runFiles)),
+        ...(task.card === null ? [noCardLine(task, team)] : cardLines(task.card, '    ', task.audits, runFiles, task.securityVerdict)),
         `    waiting since ${tree.zone.shortMinute(new Date(task.statusAt))}${note}`,
         ...(task.ref === null ? [] : [`    asked at: ${task.ref}`]),
         ...namedLines(task, texts, tree, team),

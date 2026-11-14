@@ -87,6 +87,7 @@ function created(id, fields, at, by) {
         review: {},
         sizeBase: null,
         audits: [],
+        securityVerdict: null,
         startedAt: null,
         createdAt: at,
         createdBy: by,
@@ -145,7 +146,7 @@ function reparksAfter(task, event) {
  * gives its size base too (T649). An update with an `audit` pins a hand step file for the task, by the session that
  * wrote it (T2312).
  */
-function withChanges(task, { changes, note, at, by, verdict, waits, decided, sizeBase, audit }) {
+function withChanges(task, { changes, note, at, by, verdict, waits, decided, sizeBase, audit, securityVerdict }) {
     const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
     const shown = note !== null && by === task.owner ? note : task.note;
     const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
@@ -163,6 +164,7 @@ function withChanges(task, { changes, note, at, by, verdict, waits, decided, siz
         waitsAt: namesNewWait(task.waits, kept) ? at : task.waitsAt,
         sizeBase: base,
         audits: audit === undefined ? task.audits : withAudit(task.audits, { ...audit, by, at }),
+        securityVerdict: securityVerdict === undefined ? task.securityVerdict : { ...securityVerdict, by, at },
         updatedAt: at,
         updatedBy: by,
         priorityAt,

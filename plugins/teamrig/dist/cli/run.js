@@ -100,7 +100,7 @@ const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
-    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'affects', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit'], load: async () => (await registerCommands()).set },
+    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'affects', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit', 'security'], load: async () => (await registerCommands()).set },
     // --prepares only here: a lead marks a task that exists, so `add` (which shares TASK_FIELDS) never takes it.
     update: { effect: 'write', flags: ['session', 'note', 'later', 'prepares', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
     'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
@@ -108,7 +108,7 @@ const COMMANDS = {
     sweep: { effect: 'write', flags: ['session', 'out'], switches: ['tree'], load: async () => (await sweepCommands()).sweep },
     'sweep apply': { effect: 'write', flags: ['session'], switches: ['apply'], load: async () => (await sweepCommands()).apply },
     approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
-    audit: { effect: 'write', flags: ['session', 'file', 'note', 'team'], load: async () => (await auditCommand()).audit },
+    audit: { effect: 'write', flags: ['session', 'file', 'verdict', 'note', 'team'], load: async () => (await auditCommand()).audit },
     list: {
         effect: 'read',
         flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal', 'type'],
@@ -443,7 +443,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".." --affects ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
-      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>]
+      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
@@ -478,6 +478,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       OWNER-PROOF without one
       --run <path> (with a wait on the owner's decision or approval): the hand step file the owner runs,
       refused unless an audit (teamrig audit) pins it at its sha256 now; the card prints its run line
+      a card on a gate in securityGates (permissions by default), or marked --security, reaches the owner
+      only with the security verdict on it (teamrig audit --verdict): set it on your leader's wait first,
+      then move the wait to the owner with the card unchanged; the card prints the verdict; check flags
+      SECURITY-UNREVIEWED an owner card naming a guard, permission, secret or the like with no verdict
       a bug gives its review (register.review): --cause "<the root cause, at its source>"
       --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and
       --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";
@@ -524,6 +528,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (.ps1, .sh or .md) for a task still to finish at the sha256 of its bytes now (core rule 11), so a
       card may hand it to the owner; an edit needs a new audit; the task's owner gets an inbox line;
       --team <child>: the reviewer on a team above audits a task of that team below
+  audit T<n> --verdict "<what the review found>" [--note ..] [--team <child>]   the security reviewer
+      gives its verdict on the task's card (core rule 9), pinned with the question, options and
+      recommendation it read; a card edited after it prints the verdict stale; the owner gets an inbox line
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--type task,bug] [--parked|--untriaged] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due

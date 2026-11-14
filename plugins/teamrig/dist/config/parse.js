@@ -10,7 +10,7 @@ import { KEEP_RULE_PATTERN } from "../permissions/allow-rules.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
 import { isNeedKind, NEED_KINDS } from "../tabs/need-kind.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_DB_WRITE_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_SECURITY_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_DB_WRITE_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { APPLY_FLAG_PATTERN, BUDGET_ACCOUNT_MAX_LENGTH, CLIENT_RECEIVER_PATTERN, CONFIG_LIMITS, DB_PROGRAM_NAME_PATTERN, DB_WRITE_ENTRYPOINT_LIMITS, DB_WRITE_NAME_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, NODE_MODULE_PATTERN, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, } from "./limits.js";
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from "./migrate.js";
@@ -154,6 +154,31 @@ function readLeads(read, raw, sessions, lead) {
 const isAbsoluteFolder = (text) => (/[\r\n]/.test(text) || !ABSOLUTE_PATH.test(text) ? 'expected an absolute folder path on one line' : undefined);
 /** A file named in full, on one line: a hook reads it from whichever folder its session runs in. */
 const isAbsoluteFile = (text) => (/[\r\n]/.test(text) || !ABSOLUTE_PATH.test(text) ? 'expected an absolute file path on one line' : undefined);
+/** The owner gate `typed` names, as `ownerGates` spells it, case aside; undefined when it names none. */
+function ownerGateNamed(typed, ownerGates) {
+    const key = typed.trim().toLowerCase();
+    return ownerGates.find((gate) => gate.toLowerCase() === key);
+}
+/**
+ * `securityGates` (T2761): the owner gates whose cards need the security reviewer's verdict, each spelt as
+ * `ownerGates` spells it. A gate that is no owner gate is an issue and dropped; with the key absent, the default
+ * gates the team's ownerGates names, so a team that renamed its gates is not reported for a key it never wrote.
+ */
+function readSecurityGates(read, raw, ownerGates) {
+    const fallback = DEFAULT_SECURITY_GATES.map((gate) => ownerGateNamed(gate, ownerGates)).filter((gate) => gate !== undefined);
+    const { maxItems, maxLength } = CONFIG_LIMITS.securityGates;
+    return read.list(raw, 'securityGates', '', fallback, (value, itemPath) => {
+        const typed = read.stringItem(value, itemPath, shortLine(maxLength));
+        if (typed === undefined) {
+            return undefined;
+        }
+        const gate = ownerGateNamed(typed, ownerGates);
+        if (gate === undefined) {
+            read.report(itemPath, `"${typed}" is not one of ownerGates`);
+        }
+        return gate;
+    }, maxItems);
+}
 /**
  * `launch`: a model, an effort and a project folder for sessions on the team. A wrong field is reported and
  * left out, so the session starts on Claude Code's own choice (or, for the lead, the lead's default) for it,
@@ -258,6 +283,7 @@ export function parseConfig(raw, above) {
     // T2256: the question picker stopped the lead's session in the meeting too; the meeting asks only in plain text.
     read.dropped(decisions, 'askWith', 'decisions', 'the daily meeting asks the owner each decision in plain text, the picker guard refusing the question picker to the lead too');
     reportRenamedKey(read, raw, '', 'coordinator', 'delivery');
+    const ownerGates = read.stringList(raw, 'ownerGates', '', DEFAULT_OWNER_GATES, shortLine(CONFIG_LIMITS.ownerGates.maxLength), CONFIG_LIMITS.ownerGates.maxItems);
     const config = {
         configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
         ...(team === undefined ? {} : { team }),
@@ -270,7 +296,8 @@ export function parseConfig(raw, above) {
             ...(securityReviewer === undefined ? {} : { securityReviewer }),
         },
         leads,
-        ownerGates: read.stringList(raw, 'ownerGates', '', DEFAULT_OWNER_GATES, shortLine(CONFIG_LIMITS.ownerGates.maxLength), CONFIG_LIMITS.ownerGates.maxItems),
+        ownerGates,
+        securityGates: readSecurityGates(read, raw, ownerGates),
         ruleConflicts: read.list(raw, 'ruleConflicts', '', [], (value, itemPath) => parseRuleConflict(read, value, itemPath), CONFIG_LIMITS.ruleConflicts.maxItems),
         messages: {
             maxLines: read.integer(messages, 'maxLines', 'messages', DEFAULT_MESSAGES.maxLines, CONFIG_LIMITS.maxLines),

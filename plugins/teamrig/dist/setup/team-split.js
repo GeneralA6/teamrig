@@ -30,6 +30,7 @@ const CHILD_TAKES = {
     paths: 'own',
     timeZone: 'copy',
     ownerGates: 'copy',
+    securityGates: 'copy',
     ruleConflicts: 'copy',
     messages: 'copy',
     register: 'copy',

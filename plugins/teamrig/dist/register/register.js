@@ -272,19 +272,20 @@ export class Register {
         return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.decideFrom(task, note)))));
     }
     /**
-     * `audit <id> --file <path>`: a session of this team pins a hand step file for the task at its sha256 (T2312), an
-     * update that changes no field, so the task's card may hand the file to the owner.
+     * `audit <id> --file <path>` or `--verdict "<text>"`: a session of this team pins a hand step file for the task at
+     * its sha256 (T2312), so the task's card may hand the file to the owner, or its security verdict on the task's card
+     * (T2761), so a security-related card may reach the owner; an update that changes no field.
      */
-    audit(caller, id, pin, note) {
-        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.audit(task, caller, pin, note)))));
+    audit(caller, id, subject, note) {
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.audit(task, caller, subject, note)))));
     }
     /**
-     * `audit <id> --file <path> --team <child>`: an audit from a team above, `asker` being its `<team>/<id>`, as in
-     * approveFrom: the tree decides who that may be, so this team's roster check is skipped; the policy still holds the
-     * audit to the task owner's auditors.
+     * `audit <id> --file <path>|--verdict "<text>" --team <child>`: an audit from a team above, `asker` being its
+     * `<team>/<id>`, as in approveFrom: the tree decides who that may be, so this team's roster check is skipped; the
+     * policy still holds the audit to the task owner's auditors.
      */
-    auditFrom(asker, id, pin, note) {
-        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.auditFrom(task, asker, pin, note)))));
+    auditFrom(asker, id, subject, note) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.auditFrom(task, asker, subject, note)))));
     }
     /** The update a Later, a Decided or an audit writes: no field changed; the task's waits from then on, or the file pinned. */
     noFieldEvent(task, by, change) {
