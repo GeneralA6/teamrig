@@ -21,6 +21,11 @@ function call(tool: string, fields: JsonRecord = {}): string {
   return JSON.stringify({ hook_event_name: 'PreToolUse', session_id: CLAUDE_SESSION, cwd: APP, tool_name: tool, tool_input: { questions: [] }, ...fields });
 }
 
+/** A PreToolUse payload of a Bash `command` run in the app folder. */
+function bash(command: string): string {
+  return call('Bash', { tool_input: { command } });
+}
+
 /** The reason of a PreToolUse decision the hook printed, or undefined. */
 function reasonOf(result: CliResult): string | undefined {
   const [line] = result.stdout;
@@ -109,8 +114,33 @@ describe('hook picker-guard', () => {
   it('lets plan mode end and every other call go', async () => {
     const kit = new CliHarness(ON_TEAM);
     assert.deepEqual(await kit.run(HOOK, { stdin: call('ExitPlanMode'), env: ALPHA }), NOTHING);
-    assert.deepEqual(await kit.run(HOOK, { stdin: call('Bash'), env: ALPHA }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call('Bash'), env: ALPHA }), NOTHING, 'a Bash call with no command');
     assert.deepEqual(await kit.run(HOOK, { stdin: call('AskUserQuestion', { hook_event_name: 'PostToolUse' }), env: ALPHA }), NOTHING);
+  });
+
+  // T2730: Claude Code holds such a line on a permission prompt, in auto mode too; overnight one held a p0 for 9 hours.
+  it("refuses a team session's cd compound that runs git or leaves its folder, quoting the rerun form", async () => {
+    const kit = new CliHarness(ON_TEAM);
+    const git = await kit.run(HOOK, { stdin: bash('cd sub && git status'), env: ALPHA });
+    assert.equal(decisionOf(git), 'deny');
+    assert.match(reasonOf(git) ?? '', /^teamrig picker guard: Claude Code asks a person before a `cd` compound/);
+    assert.match(reasonOf(git) ?? '', /rerun it as: git -C sub status$/);
+    const away = await kit.run(HOOK, { stdin: bash('cd .. && npm test'), env: ALPHA });
+    assert.match(reasonOf(away) ?? '', /rerun it as: env -C \.\. npm test$/);
+  });
+
+  it('lets a cd compound go that stays in the folder and runs no git, or has no rerun form', async () => {
+    const kit = new CliHarness(ON_TEAM);
+    assert.deepEqual(await kit.run(HOOK, { stdin: bash('cd sub && npm test'), env: ALPHA }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: bash('git status'), env: ALPHA }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call('PowerShell', { tool_input: { command: 'cd .. && git status' } }), env: ALPHA }), NOTHING);
+  });
+
+  it('lets a cd compound go with the guard off or in a tab that is no team session', async () => {
+    const line = bash('cd sub && git status');
+    assert.deepEqual(await new CliHarness({ ...TEAM, pickerGuard: { enabled: false } }).run(HOOK, { stdin: line, env: ALPHA }), NOTHING);
+    assert.deepEqual(await new CliHarness(ON_TEAM).run(HOOK, { stdin: line }), NOTHING);
+    assert.deepEqual(await new CliHarness(ON_TEAM).run(HOOK, { stdin: line, env: { TEAMRIG_SESSION: 'nobody' } }), NOTHING);
   });
 
   // T2256: a team that never names the key is guarded; only `enabled: false` turns the guard off.
