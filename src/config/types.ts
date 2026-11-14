@@ -675,6 +675,11 @@ export interface GithubConfig {
   /** How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to `issue sync --yes`. */
   readonly everyMinutes: number;
   /**
+   * Whether the automatic sync also sends the status push (`issue sync --push --yes`), so each issue a task holds
+   * shows the task's status without a session running it. Off by default: read the push's dry run first.
+   */
+  readonly statusPush: boolean;
+  /**
    * The label that lets an issue by an author outside the repository (not its owner, an organization member or a
    * collaborator) become a task: it counts when someone other than the author added it last and the title and body
    * were not edited after that. Matched without case.
