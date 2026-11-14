@@ -1,5 +1,6 @@
 import { NOW_PRIORITY } from '../config/priorities.ts';
 import type { LineRequest } from './process-request.ts';
+import type { WaitCause } from './wait-log.ts';
 
 /**
  * How the host lock's line is ordered (`delivery.queue.admission`): `pipeline` orders it by urgency, class turn, aged
@@ -19,6 +20,11 @@ export interface AdmissionRules {
   readonly mode: AdmissionMode;
   /** A waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. */
   readonly agingMinutes: number;
+  /**
+   * A later step passes one waiting on the host's memory or commit charge: always while no queued step runs, and for
+   * this many minutes of that wait while some do; 0 passes no one ({@link placeInLine}).
+   */
+  readonly memoryPassMinutes: number;
   /** A session with this many steps running (the lock or a share) waits for one to end, and later steps pass it; 0 caps nothing. */
   readonly perSessionRunning: number;
   /** In pipeline mode, how many heavy steps share the host at once, memory allowing; serial mode runs one at a time. */
@@ -59,6 +65,8 @@ export interface InLine {
     readonly session: string;
     readonly arrivedAt: string;
     readonly request?: Pick<LineRequest, 'priority' | 'class'>;
+    /** What its last look found it waiting on, and since when; left out before its first look. */
+    readonly waitingOn?: { readonly reason: WaitCause; readonly since: string };
   };
 }
 
@@ -128,25 +136,46 @@ export type Place<T> =
   | { readonly kind: 'inLine'; readonly ahead: readonly T[] }
   | { readonly kind: 'sessionCap'; readonly ahead: readonly T[]; readonly running: number; readonly cap: number };
 
+/** The waits on the host's room a step that fits may pass: its free memory, or its commit charge, too short. */
+const ROOM_CAUSES: ReadonlySet<WaitCause> = new Set<WaitCause>(['memory', 'commit']);
+
 /**
- * The place of the ticket named `name` in `order` (from {@link admissionOrder}), given the steps each session runs now
- * (`running`); undefined when it is not in line. In `pipeline` mode a waiter whose session runs `perSessionRunning`
- * steps is passed, as it may not start anyway; the first waiter not passed is the one that may take its turn, and when
- * it waits on memory or the lock, it holds every later one back. `serial` passes no one.
+ * Whether a later step may pass `waiter`, which its last look found waiting on the host's room: always while no queued
+ * step runs (`idle`), as only memory outside the queue holds it then and no queued step's end frees room for it; while
+ * some run, only for the first `memoryPassMinutes` of that wait, after which it holds the line so that the room their
+ * ends free goes to it, and a long wait is not passed for ever. 0 passes no one.
  */
-export function placeInLine<T extends InLine>(order: readonly T[], name: string, running: ReadonlyMap<string, number>, rules: AdmissionRules | undefined): Place<T> | undefined {
+function passesOnRoom(waiter: InLine['waiter'], idle: boolean, now: number, memoryPassMinutes: number): boolean {
+  const wait = waiter.waitingOn;
+  if (memoryPassMinutes === 0 || wait === undefined || !ROOM_CAUSES.has(wait.reason)) {
+    return false;
+  }
+  return idle || now - Date.parse(wait.since) < memoryPassMinutes * MINUTE_MS;
+}
+
+/**
+ * The place of the ticket named `name` in `order` (from {@link admissionOrder}) at `now`, given the steps each session
+ * runs now (`running`); undefined when it is not in line. In `pipeline` mode two waiters are passed: one whose session
+ * runs `perSessionRunning` steps, as it may not start anyway, and one waiting on the host's memory while it may be
+ * passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757). The first waiter
+ * not passed is the one that may take its turn, and while it waits on the lock or memory, it holds every later one
+ * back. A step that passes still waits on its own memory gate. `serial` passes no one.
+ */
+export function placeInLine<T extends InLine>(order: readonly T[], name: string, running: ReadonlyMap<string, number>, rules: AdmissionRules | undefined, now: number): Place<T> | undefined {
   const index = order.findIndex((ticket) => ticket.name === name);
   const mine = order[index];
   if (mine === undefined) {
     return undefined;
   }
   const before = order.slice(0, index);
-  if (rules === undefined || rules.mode === 'serial' || rules.perSessionRunning === 0) {
+  if (rules === undefined || rules.mode === 'serial') {
     return { kind: 'inLine', ahead: before };
   }
   const cap = rules.perSessionRunning;
   const runs = (session: string): number => running.get(session) ?? 0;
-  const ahead = before.filter((ticket) => runs(ticket.waiter.session) < cap);
+  const capped = (session: string): boolean => cap > 0 && runs(session) >= cap;
+  const idle = [...running.values()].every((count) => count === 0);
+  const ahead = before.filter(({ waiter }) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes));
   const own = runs(mine.waiter.session);
-  return own < cap ? { kind: 'inLine', ahead } : { kind: 'sessionCap', ahead, running: own, cap };
+  return capped(mine.waiter.session) ? { kind: 'sessionCap', ahead, running: own, cap } : { kind: 'inLine', ahead };
 }

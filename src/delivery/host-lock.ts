@@ -707,7 +707,7 @@ class Patience {
  * take the lock; a ticket whose process is gone or whose wait ran out is removed by the next waiter that sees it.
  * The line is in arrival order; with admission rules in `pipeline` mode it is in admission order (`admissionOrder`:
  * p0 first, then class turn, aged priority, arrival), and a waiter whose session already runs its cap of steps is
- * passed (`placeInLine`). As that order moves with the clock, a waiter that finds itself first looks again and takes
+ * passed, as is one waiting on the host's memory while `memoryPassMinutes` lets it be passed (`placeInLine`). As that order moves with the clock, a waiter that finds itself first looks again and takes
  * its turn under the admit file, `<lock>.admit` ({@link AdmitFile}), so two waiters never both take a turn as first.
  * A wait runs out only once the line has not moved for its whole length (see `Patience`), so a step far back in a line
  * that keeps moving is not refused; its ticket's expiry moves on with its wait each time the line moves.
@@ -725,7 +725,8 @@ class Patience {
  * deploy) and every heavy step in `serial` mode take the lock file instead, which waits for every share to end.
  * With a memory gate in its ports, the first in line takes the lock or a share only once the gate finds the host's
  * memory has room for it, the MB held for the small steps sharing the host counted as taken; until then it waits in
- * its place, so a later step never passes a step waiting on memory, and a lone step is gated as much as one beside others.
+ * its place, and a lone step is gated as much as one beside others. In arrival order a later step never passes a step
+ * waiting on memory; in admission order it does while `placeInLine` lets it, then waits on its own memory gate.
  */
 export class HostLock {
   static readonly UNREADABLE_GRACE_MS = 10_000;
@@ -1029,7 +1030,8 @@ export class HostLock {
     for (const { session } of running) {
       counts.set(session, (counts.get(session) ?? 0) + 1);
     }
-    const place = placeInLine(admissionOrder(line, this.ports.clock.now(), rules, turnsFor(turns.state, waiting)), ticket.name, counts, rules);
+    const now = this.ports.clock.now();
+    const place = placeInLine(admissionOrder(line, now, rules, turnsFor(turns.state, waiting)), ticket.name, counts, rules, now);
     if (place === undefined) {
       return undefined;
     }

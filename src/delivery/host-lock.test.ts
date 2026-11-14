@@ -1257,8 +1257,8 @@ describe("HostLock tickets and shares: what the step asks (T2210)", () => {
   });
 });
 
-/** Admission in `pipeline` mode, as the config defaults set it: 15 minutes a priority step, two steps a session. */
-const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, defaultClass: 'Improvements' };
+/** Admission in `pipeline` mode, as the config defaults set it: 15 minutes a priority step and a memory pass, two steps a session. */
+const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, defaultClass: 'Improvements' };
 
 const ADMIT = `${PATH}.admit`;
 
@@ -1316,6 +1316,39 @@ describe('HostLock admission (T2210)', () => {
     }
     const share = shareOf({ id: 't1', pid: ME, session: 'alpha', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', request: { ...REQUEST, priority: 3, needMb: 2048, heavy: false, exclusive: false } });
     assert.deepEqual(results, [{ kind: 'taken', lock: share, sharing: { freeMb: 10_240, others: running, heavy: false } }, 'queued']);
+  });
+
+  describe('a later step that fits and an earlier heavy one waiting on memory (T2757)', () => {
+    /** Bravo's heavy p1 ticket from 08:00, its last look waiting on memory since `since`. */
+    const memoryWaiter = (since: string): [string, string] =>
+      ticket(waiterOf('2030-01-08T08:00:00.000Z', { request: { ...REQUEST, priority: 1, needMb: 6144, heavy: true, exclusive: false }, waitingOn: { reason: 'memory', text: 'memory short', since } }));
+    const charlie = shareOf({ id: 'c1', session: 'charlie' });
+    /** What alpha's small p3 step gets with 10 240 MB free: room for the floor, charlie's share and its own. */
+    const smallStep = async (initial: Readonly<Record<string, string>>, admission: AdmissionRules): Promise<string> => {
+      const { lock } = world(initial, undefined, new FakeHostMemory(10_240), admission);
+      const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: { ...REQUEST, priority: 3 } });
+      return taking.kind === 'busy' ? (taking.holder.kind === 'queued' ? `queued behind ${taking.holder.first.id}` : taking.holder.kind) : taking.kind;
+    };
+
+    it('passes it while no queued step runs, however long it waited', async () => {
+      assert.equal(await smallStep(Object.fromEntries([memoryWaiter('2030-01-08T08:00:00.000Z')]), PIPELINE), 'taken');
+    });
+
+    it('passes it beside a running share for its first memoryPassMinutes, then holds behind it', async () => {
+      const withShare = (since: string): Record<string, string> => Object.fromEntries([shareFile(charlie), memoryWaiter(since)]);
+      assert.deepEqual(
+        [await smallStep(withShare('2030-01-08T09:46:00.000Z'), PIPELINE), await smallStep(withShare('2030-01-08T09:45:00.000Z'), PIPELINE)],
+        ['taken', 'queued behind bravo'],
+      );
+    });
+
+    it('keeps it ahead with memoryPassMinutes 0 and with serial rules', async () => {
+      const initial = Object.fromEntries([memoryWaiter('2030-01-08T09:59:00.000Z')]);
+      assert.deepEqual(
+        [await smallStep(initial, { ...PIPELINE, memoryPassMinutes: 0 }), await smallStep(initial, { ...PIPELINE, mode: 'serial' })],
+        ['queued behind bravo', 'queued behind bravo'],
+      );
+    });
   });
 
   it('waits while its own session runs its cap of steps, the lock its holder takes counted, naming them', async () => {
