@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG_LIMITS } from '../config/limits.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import { CONTEXT_MAX_CHARS, renderCorePack, TEAM_RULES_MAX_CHARS, type TeamRules } from '../rules/pack.ts';
+import { CONTEXT_MAX_CHARS, renderCorePack, TEAM_RULES_FLOOR_CHARS, TEAM_RULES_MAX_CHARS, type TeamRules } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
 import { RULES_CLOCK } from '../testing/zone.ts';
 import { renameOf } from '../testing/rename.ts';
@@ -263,14 +263,11 @@ describe('sessionStartContext: long notes within the context cap (T1376)', () =>
     assert.ok(context({ liveTasksNote: { ...live, shorter: [`${fits}lll`] }, verifyNote: { text: 'VV', pointer: 'V' } }).endsWith(`\nL\nVV`), 'no shorter form fits: the pointer');
   });
 
-  it('keeps the worst start a lead gets inside the cap: every note, a long live and verify note and a full rules file', () => {
+  it('keeps TEAM_RULES_FLOOR_CHARS for the team rules in a large lead start: every note, a long live and verify note and a full rules file (T2231)', () => {
     const own: TeamRules = { ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'x'.repeat(TEAM_RULES_MAX_CHARS) };
-    // The largest parent rules file a lead's worst start still shows in full, with a line on its own file after it:
-    // the lead's lines come before any rules file (fitContext), so each one a lead gets takes this room. On the
-    // budget, the owner decisions that hold a slice, the week split and the appeal line (T2215) cut it from 2,339
-    // characters to 1,520, rule 11's hand-step sentence (T2309) to 1,247, and the security reviewer rule 1 names (a
-    // team above's, `<team>/<id>`, prints longest) to 1,091; past it the file comes as its pointer.
-    const parent: TeamRules = { ...ROOT_RULES, text: '- Root rule.\n'.repeat(84).trim() };
+    // A parent rules file at the floor still shows in full, with a line on its own file after it: the lead's lines
+    // and the short notes come before any rules file (fitContext), so a line added to them takes this room.
+    const parent: TeamRules = { ...ROOT_RULES, text: 'r'.repeat(TEAM_RULES_FLOOR_CHARS) };
     const text = context({
       load: loaded({ config: testConfig({ names: { lead: 'captain' }, roles: { lead: 'lead', securityReviewer: `${'t'.repeat(32)}/${'r'.repeat(32)}` }, budget: { enabled: true, accountLead: 'a'.repeat(32), shareFloorPct: CONFIG_LIMITS.shareFloorPct.max } }) }),
       session: 'captain',
