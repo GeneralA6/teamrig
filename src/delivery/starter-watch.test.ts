@@ -9,7 +9,7 @@ import { gitEnvironment } from '../core/git-run.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { endingOf, livenessOf } from '../testing/process-liveness.ts';
-import { endedText, LAUNCHER_PID_ENV, launchingShellsOf, nodeEvery, SHELLS_PID_ENV, STARTER_CHECK_MS, starterWatch, startersOf, type Every } from './starter-watch.ts';
+import { endedText, LAUNCHER_PID_ENV, launchingShellsOf, nodeEvery, SHELLS_PID_ENV, STARTER_CHECK_MS, startedByGit, starterWatch, startersOf, type Every } from './starter-watch.ts';
 
 const TERMINAL: ProcessInfo = { pid: 10, parentPid: 1, name: 'WindowsTerminal.exe', commandLine: 'wt' };
 const CLAUDE: ProcessInfo = { pid: 11, parentPid: 10, name: 'claude.exe', commandLine: 'claude' };
@@ -199,6 +199,30 @@ describe('starterWatch', () => {
     const watching = await starterWatch(tab(), { pid: SELF.pid, shells: [] }, manual.every).watch();
     watching.close();
     assert.equal(manual.cancelled, true);
+  });
+
+  it("tells whether the tab's Claude Code still runs, looked up at each call: the reaper ended the shell alone (T2304)", async () => {
+    const processes = tab();
+    const watching = await starterWatch(processes, { pid: SELF.pid, shells: [] }, new ManualEvery().every).watch();
+    processes.exit(SHELL.pid);
+    assert.equal(watching.tabAlive(), true);
+    processes.exit(CLAUDE.pid);
+    assert.equal(watching.tabAlive(), false);
+  });
+
+  it("never finds a tab alive with no Claude Code among the starters, as in a person's own terminal (T2304)", async () => {
+    const own = new FakeSessionProcesses().add(TERMINAL).add({ ...SHELL, parentPid: TERMINAL.pid }).add(SELF);
+    const watching = await starterWatch(own, { pid: SELF.pid, shells: [] }, new ManualEvery().every).watch();
+    assert.deepEqual([watching.starters.map((starter) => starter.pid), watching.tabAlive()], [[SHELL.pid, TERMINAL.pid], false]);
+  });
+});
+
+describe('startedByGit', () => {
+  it("finds a git command among a hook's starters, and none among a tab's own (T2304)", () => {
+    assert.equal(startedByGit([HOOK_STUB, HOOK, HOOK_RUNNER, GIT, SHELL, CLAUDE]), true);
+    assert.equal(startedByGit([{ ...GIT, name: 'git' }]), true, 'as Linux and macOS name it');
+    assert.equal(startedByGit([SHELL, CLAUDE]), false);
+    assert.equal(startedByGit([{ ...SHELL, name: 'gitk.exe' }]), false);
   });
 });
 

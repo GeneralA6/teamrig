@@ -65,8 +65,20 @@ export interface StarterWatching {
   readonly stop: AbortSignal;
   /** The starter found ended; undefined while every one runs. */
   ended(): ProcessInfo | undefined;
+  /**
+   * Whether the tab's Claude Code among the starters still runs, looked up now: a starter that ended under it was a
+   * shell its reaper ended alone. False with no Claude Code among them, as in a person's own terminal.
+   */
+  tabAlive(): boolean;
   /** Ends the checks. */
   close(): void;
+}
+
+const GIT_NAME = /^git(?:\.exe)?$/iu;
+
+/** Whether a git command is among `starters`: the step is a git hook's, and that git command waits for its result. */
+export function startedByGit(starters: readonly ProcessInfo[]): boolean {
+  return starters.some((starter) => GIT_NAME.test(starter.name));
 }
 
 /** The starter a watch found ended, as `bash.exe 4100`; while every one runs, `a process that started it`. */
@@ -114,7 +126,9 @@ export function starterWatch(processes: Pick<SessionProcesses, 'lineage' | 'aliv
           }
         });
       }
-      return { starters, stop: controller.signal, ended: () => ended, close: () => cancel() };
+      const claude = starters.find(isClaudeProcess);
+      const tabAlive = (): boolean => claude !== undefined && processes.alive(claude.pid);
+      return { starters, stop: controller.signal, ended: () => ended, tabAlive, close: () => cancel() };
     },
   };
 }

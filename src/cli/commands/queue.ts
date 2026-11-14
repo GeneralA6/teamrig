@@ -269,7 +269,7 @@ async function detachedReporting(runtime: CliRuntime, kit: Kit, config: KitConfi
 
 /** A detached run has no shell to watch: `--detach`'s returned at once, so nothing stops it but its time limit. */
 function unwatched(): StarterWatching {
-  return { starters: [], stop: new AbortController().signal, ended: () => undefined, close: () => undefined };
+  return { starters: [], stop: new AbortController().signal, ended: () => undefined, tabAlive: () => false, close: () => undefined };
 }
 
 /** The id `--detach` gives its run: the UTC second it started and the caller's process id, so two starts differ. */
