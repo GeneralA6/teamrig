@@ -13,7 +13,7 @@ import { homeCloseOf, SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
+import { FakePathProbe, FakeProcesses, NO_POWERSHELL } from '../testing/fake-processes.ts';
 import { ok } from '../testing/hired-team.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { WakeAsks } from '../wake/asks.ts';
@@ -169,8 +169,10 @@ async function handWork(alpha: ClosedAlpha): Promise<void> {
 
 /** Runs the idle pass's reopen of alpha on a host whose memory is `memory`, over `files` when given. */
 async function idleOpen(alpha: ClosedAlpha, memory = new FakeHostMemory().lists([], CHARGE), files?: Files): Promise<{ result: CliResult; argv: readonly string[] }> {
-  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+  // No Windows PowerShell, so the tab, which keeps the focus (T2510), starts plainly and its arguments show.
+  const processes = new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL).onStart('wt.exe', { kind: 'started', end: 'exited' });
   const result = await alpha.kit.run(['idle-open', 'alpha', '--team', 'app', '--project', APP], { ...alpha.options, processes, memory, ...(files === undefined ? {} : { files }) });
+  assert.deepEqual(processes.keptFocus, processes.started.length === 0 ? [] : ['wt.exe'], 'the idle pass never takes the focus');
   return { result, argv: processes.started[0]?.args ?? [] };
 }
 

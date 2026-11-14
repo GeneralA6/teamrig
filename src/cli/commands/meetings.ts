@@ -406,7 +406,8 @@ async function deliver(runtime: CliRuntime, mk: MeetingsKit, meeting: ScheduledM
   }
   const project = await sessionProjectOf(runtime, mk.config, id, undefined, mk.from);
   try {
-    const opened = await openSession(runtime, mk.kit, mk.config, mk.roster, { team: mk.kit.paths.team, id, project, terminal: mk.config.open.terminal, asked: false, urgent: [ask] });
+    // The meeting's own tab takes the focus, as focusTab gives it to a running one above (T2510).
+    const opened = await openSession(runtime, mk.kit, mk.config, mk.roster, { team: mk.kit.paths.team, id, project, terminal: mk.config.open.terminal, asked: false, focus: 'take', urgent: [ask] });
     if (opened.kind === 'opened') {
       return [`${opened.line}; its first prompt opens the meeting`];
     }

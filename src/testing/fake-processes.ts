@@ -1,6 +1,13 @@
 import { resolve } from 'node:path';
 import type { PathKind, PathProbe } from '../core/path-probe.ts';
 import type { HiddenRequest, Processes, RunOutcome, RunRequest, StartOutcome, StartRequest } from '../open/processes.ts';
+import { KEEP_FOCUS_PROGRAM_VAR } from '../open/keep-focus.ts';
+
+/**
+ * A host without Windows PowerShell, for `onRun('powershell.exe', NO_POWERSHELL)`: the script that keeps the focus cannot
+ * run, so a Windows Terminal launcher then starts plainly and a spec sees its arguments in `started` (T2510).
+ */
+export const NO_POWERSHELL: RunOutcome = { kind: 'missing' };
 
 /**
  * Processes that start nothing: each request is recorded, and the outcome is the one set for its
@@ -12,6 +19,11 @@ export class FakeProcesses implements Processes {
   readonly hidden: HiddenRequest[] = [];
   private readonly startOutcomes = new Map<string, StartOutcome>();
   private readonly runOutcomes = new Map<string, RunOutcome>();
+
+  /** The launchers started through the script that keeps the focus where it was (T2510), in order. */
+  get keptFocus(): string[] {
+    return this.ran.flatMap((request) => request.env[KEEP_FOCUS_PROGRAM_VAR] ?? []);
+  }
 
   /** From now on, starting `command` gives `outcome`. */
   onStart(command: string, outcome: StartOutcome): this {

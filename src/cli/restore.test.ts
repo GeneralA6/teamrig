@@ -10,7 +10,7 @@ import { continuePrompt } from '../restore/plan.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
 import { ROOM_POLL_MS, TAB_STAGGER_MS } from '../restore/run.ts';
 import { APP, CliHarness, KIT, TEAM, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
-import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
+import { FakePathProbe, FakeProcesses, NO_POWERSHELL } from '../testing/fake-processes.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -83,6 +83,8 @@ function machine(
   memory: FakeHostMemory = new FakeHostMemory(ROOMY_MB),
 ): RunOptions & { readonly countdown: FakeCountdown } {
   const countdown = new FakeCountdown(choice);
+  // No Windows PowerShell on this machine: the restored tabs, which keep the focus (T2510), start plainly, args seen.
+  processes.onRun('powershell.exe', NO_POWERSHELL);
   const sessionProcesses = new FakeSessionProcesses()
     .add({ pid: LIVE_PID, parentPid: 1, name: 'claude.exe', commandLine: 'claude' })
     .add({ pid: REUSED_PID, parentPid: 1, name: 'notepad.exe', commandLine: 'notepad.exe' });
@@ -138,6 +140,7 @@ describe('teamrig restore check', () => {
     const result = await kit.run(['restore', 'check'], machine(kit, processes));
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['OPENED the restore of 2 Claude Code sessions in a new Windows Terminal tab'], stderr: [] });
     assert.deepEqual(processes.started[0]?.args, windowsTab(RESTORE_TAB_TITLE, USER_HOME, RUN));
+    assert.deepEqual(processes.keptFocus, ['wt.exe'], 'the restore tab opened at login never takes the focus (T2510)');
     assert.equal(await logOf(kit), [
       '2030-01-08T10:00:00.000Z check: started',
       '2030-01-08T10:00:00.000Z check: 2 to restore, 1 kept, 0 closed',
@@ -181,6 +184,7 @@ describe('teamrig restore run', () => {
       processes.started.map((request) => request.args),
       [windowsTab('[app] alpha', APP, ALPHA_LAUNCH), windowsTab('notes', APP, NOTES_RESUME)],
     );
+    assert.deepEqual(processes.keptFocus, ['wt.exe', 'wt.exe'], 'restored tabs never take the focus (T2510)');
     assert.deepEqual(kit.clock.sleeps, [TAB_STAGGER_MS]);
     assert.ok(result.stdout.includes('Opened app-alpha (idle)'));
     assert.ok(result.stdout.includes('Opened notes (continue: mid-turn)'));

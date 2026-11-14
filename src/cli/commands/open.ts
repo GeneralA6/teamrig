@@ -20,7 +20,7 @@ import type { RunOutcome } from '../../open/processes.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { noRoomText } from '../../sessions/headroom.ts';
 import { closedOf, SessionLog, type CloseRecord } from '../../sessions/log.ts';
-import { teamWindowOf, type Terminal } from '../../open/terminals.ts';
+import { teamWindowOf, type TabFocus, type Terminal } from '../../open/terminals.ts';
 import { urgentFirstPrompt, type WakeAsk } from '../../wake/asks.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { admitBusyText, admitTab, dropTabHold } from '../headroom.ts';
@@ -28,6 +28,7 @@ import { findTeam, openKit, reloadTeamConfig, requireConfig, rosterOf, sessionId
 import { liveRunOf, liveRunText } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { launchListing } from '../skill-listing.ts';
+import { tabFocusOf } from '../tab-focus.ts';
 import { loadTree } from '../tree.ts';
 import { noteResumedTab } from '../wake-opened.ts';
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from './rehire.ts';
@@ -96,6 +97,8 @@ export interface SessionTab {
   readonly teamWindow: boolean;
   /** The Claude Code session to resume (`open --resume`); the automatic restart never resumes one. */
   readonly resume?: string;
+  /** Whether the new tab takes the focus (T2510): only one the human asked for, outside a meeting. */
+  readonly focus: TabFocus;
   /** The effort to start on instead of the configured one: the restore after a reboot reopens a session at its last. */
   readonly effort?: EffortLevel;
 }
@@ -126,7 +129,7 @@ export async function openSessionTab(runtime: CliRuntime, tab: SessionTab): Prom
     ...(tab.prompt === undefined ? ['--no-prompt'] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
   ];
   const window = teamWindowOf(tab.teamWindow, tab.team);
-  return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window, focus: 'take' }), argv };
+  return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window, focus: tab.focus }), argv };
 }
 
 /**
@@ -151,7 +154,7 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
   const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
   const prompt = args.flags.get('prompt');
-  const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), ...(prompt === undefined ? {} : { prompt }) });
+  const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), focus: await tabFocusOf(runtime), ...(prompt === undefined ? {} : { prompt }) });
   return printOpenResult(runtime, opened);
 }
 
@@ -176,6 +179,8 @@ export interface OpenRequest {
   /** The first prompt in place of the one the session's state gives. */
   readonly prompt?: string;
   readonly asked: boolean;
+  /** Whether the tab takes the focus (T2510): tabFocusOf for an open a person may have typed. */
+  readonly focus: TabFocus;
   /** Urgent lines posted while the session was closed, quoted ahead of its first prompt (the idle pass's reopen). */
   readonly urgent?: readonly WakeAsk[];
   /** A new Claude Code session whatever the session's state, never a resumed one: `meet`'s small context (T1295). */
@@ -195,7 +200,7 @@ export type OpenResult =
  * (a hire that never ran, T1364) opens as a new hire does, its reopen logged too.
  */
 export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, request: OpenRequest): Promise<OpenResult> {
-  const { team, id, project, terminal, asked } = request;
+  const { team, id, project, terminal, asked, focus } = request;
   const name = roster.nameOf(id) ?? id;
   await refuseLiveRun(runtime, kit, roster, id, name);
   const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
@@ -219,7 +224,7 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   if (admission.kind === 'busy') {
     throw new RefusedError(admitBusyText(what));
   }
-  const opening = openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, ...(resume === undefined ? {} : { resume }) });
+  const opening = openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, focus, ...(resume === undefined ? {} : { resume }) });
   const { outcome, argv } = await opening.catch(async (error: unknown) => {
     await dropTabHold(runtime, kit.paths, config, admission.holdId);
     throw error;
