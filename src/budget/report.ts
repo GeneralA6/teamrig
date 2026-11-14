@@ -1,3 +1,4 @@
+import type { OverAction } from '../config/types.ts';
 import { MS_PER_HOUR } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { ruleLabel, ruleNumberOf } from '../rules/keys.ts';
@@ -26,6 +27,12 @@ export const OUTSIDE_TITLES_SHOWN = 5;
 /** What a session past its daily budget does: never skip a test or check (G-B1 wording). */
 export const OVER_BUDGET_ADVICE =
   "Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. A session's leader can lift its budget.";
+
+/**
+ * What a session past its daily budget does when the budget only warns (`budget.overAction` warn): the hooks hold
+ * nobody then (src/budget/warn.ts), so the report must not tell anyone to stop either (T2784).
+ */
+export const WARN_ONLY_ADVICE = 'The budget only warns (budget.overAction warn), so nothing is held: go on with your task list.';
 
 export const W_EXPLAINED = 'W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5.';
 
@@ -110,6 +117,8 @@ export interface TodayReport {
   readonly all: boolean;
   /** The team's zone, which the lines print their times in. */
   readonly zone: TimeZone;
+  /** What the hooks do past a daily budget (`budget.overAction`): under warn the past line holds nobody. */
+  readonly overAction: OverAction;
 }
 
 function pctOf(w: number, week: WeekReading): number | undefined {
@@ -370,14 +379,15 @@ function pastLines(report: TodayReport, teamPast: boolean): string[] {
     );
   }
   if (held.length > 0) {
-    lines.push(`${heldLead(teamDay)}: ${held.join(', ')}${heldWhy(teamDay)}. ${OVER_BUDGET_ADVICE}`);
+    const warnOnly = report.overAction === 'warn';
+    lines.push(`${heldLead(teamDay, warnOnly)}: ${held.join(', ')}${heldWhy(teamDay)}. ${warnOnly ? WARN_ONLY_ADVICE : OVER_BUDGET_ADVICE}`);
   }
   return lines;
 }
 
-/** How the held line starts: while the team has room, only a leader's cut holds a session. */
-function heldLead(teamDay: TeamDay | undefined): string {
-  return teamDay !== undefined && !holdsPastPart(teamDay, false) ? "Past the daily budget, held by a leader's cut whatever room the team has" : 'Past the daily budget';
+/** How the held line starts: while the team has room, only a leader's cut holds a session, and nothing does under warn. */
+function heldLead(teamDay: TeamDay | undefined, warnOnly: boolean): string {
+  return !warnOnly && teamDay !== undefined && !holdsPastPart(teamDay, false) ? "Past the daily budget, held by a leader's cut whatever room the team has" : 'Past the daily budget';
 }
 
 /** Why the held line holds for want of room: the team's use today against its in-day pace, when known and past it. */
