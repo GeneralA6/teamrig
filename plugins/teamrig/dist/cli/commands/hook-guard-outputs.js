@@ -3,6 +3,7 @@ import { formatAddress } from "../../core/address.js";
 import { errorMessage } from "../../core/guards.js";
 import { checkClient, clientRootOf } from "../../exec/client-integrity.js";
 import { ClientInstalls, ShellPathSearch } from "../../exec/client-launch.js";
+import { dbWriteGuardOf, dbWriteGuardOutput } from "../../hooks/db-write-guard.js";
 import { execGuardOutput } from "../../hooks/exec-guard.js";
 import { packageGuardOf, packageGuardOutput } from "../../hooks/package-guard.js";
 import { hookAsksOf } from "../../hooks/permission.js";
@@ -107,6 +108,20 @@ export function packageGuardOutputOf(runtime, guard, payload) {
         tree: runtime.worktrees.files,
         registry: runtime.packageRegistry,
         clock: runtime.clock,
+        hookAsks: hookAsksOf(guard.load),
+        platform: runtime.platform,
+    });
+}
+/**
+ * The db-write guard's answer: it asks about, or refuses as `dbWriteGuard.writes` says, a line that writes to a database
+ * by hand, so the owner sees counts or a preview first.
+ */
+export function dbWriteGuardOutputOf(runtime, guard, payload) {
+    return dbWriteGuardOutput(payload, {
+        ...dbWriteGuardOf(guard.load),
+        cwd: runtime.cwd,
+        home: runtime.userHome,
+        files: runtime.files,
         hookAsks: hookAsksOf(guard.load),
         platform: runtime.platform,
     });
