@@ -351,7 +351,7 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
       const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
       const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
       lines = [
-        ...todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone }),
+        ...todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone, overAction: config.budget.overAction }),
         ...resetStockLines(config.budget.resets, now, zone),
       ];
     } else {
