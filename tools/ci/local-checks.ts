@@ -27,6 +27,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
     { name: 'build: integrity', argv: ['node', 'tools/build/integrity.ts'] },
     { name: 'dist matches the source', argv: ['node', 'tools/ci/dist-fresh-cli.ts'] },
     { name: 'dist smoke', argv: ['node', 'tools/ci/dist-smoke-cli.ts'] },
+    { name: 'fresh install', argv: ['node', 'tools/ci/fresh-install-cli.ts'] },
     // After the build: the mod's hooks load the built dist. An empty home: no account, settings or other plugins.
     { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true },
     { name: 'doc pictures', argv: ['node', 'tools/docs/images-cli.ts', '--check'] },
