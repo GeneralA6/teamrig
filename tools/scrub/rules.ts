@@ -1,3 +1,4 @@
+import { PRIVATE_SHAPES } from '../../src/core/private-shapes.ts';
 import type { SecretPattern } from '../../src/core/secret-patterns.ts';
 import { isFramedPlaceholder, WRITE_TIME_SHAPES } from '../../src/core/secret-shapes.ts';
 
@@ -10,21 +11,6 @@ export interface ScrubRule {
   readonly isAllowed?: (match: RegExpExecArray) => boolean;
   /** Print the matched text in findings. Off for generic rules, whose output may land in public CI logs. */
   readonly revealMatch: boolean;
-}
-
-const PLACEHOLDER_USERS = new Set(['you', 'user', 'username', 'me', 'name', 'runner', 'example', 'someone']);
-const ALLOWED_EMAILS = new Set(['noreply@anthropic.com', 'git@github.com', 'noreply@github.com']);
-const ALLOWED_EMAIL_DOMAINS = ['example.com', 'example.org', 'example.net', 'users.noreply.github.com'];
-const ALLOWED_IPV4 = /^(?:127\.0\.0\.1|0\.0\.0\.0|192\.0\.2\.\d+|198\.51\.100\.\d+|203\.0\.113\.\d+)$/;
-const OCTET = '(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
-
-function isAllowedEmail(match: RegExpExecArray): boolean {
-  const address = match[0].toLowerCase();
-  const domain = (match[1] ?? '').toLowerCase();
-  return (
-    ALLOWED_EMAILS.has(address) ||
-    ALLOWED_EMAIL_DOMAINS.some((allowed) => domain === allowed || domain.endsWith(`.${allowed}`))
-  );
 }
 
 /**
@@ -51,32 +37,6 @@ function secret(shape: SecretPattern): ScrubRule {
 
 /** Checks that are safe to publish: they name no private term, only shapes of private data. */
 export const GENERIC_RULES: readonly ScrubRule[] = [
-  {
-    id: 'home-path',
-    description: 'absolute path inside a user home folder',
-    pattern: /(?:\b[A-Za-z]:[\\/]+Users[\\/]+|(?<![\w.~$])\/(?:Users|home)\/)([^\\/\s"'`<>{}$%*]+)/g,
-    isAllowed: (match) => PLACEHOLDER_USERS.has((match[1] ?? '').toLowerCase()),
-    revealMatch: false,
-  },
-  {
-    id: 'email',
-    description: 'e-mail address',
-    pattern: /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})\b/g,
-    isAllowed: isAllowedEmail,
-    revealMatch: false,
-  },
-  {
-    id: 'ipv4',
-    description: 'IPv4 address outside the loopback and documentation ranges',
-    pattern: new RegExp(`(?<!\\w|\\d\\.)${OCTET}(?:\\.${OCTET}){3}(?!\\w|\\.\\d)`, 'g'),
-    isAllowed: (match) => ALLOWED_IPV4.test(match[0]),
-    revealMatch: false,
-  },
-  {
-    id: 'internal-host',
-    description: 'internal host name',
-    pattern: /\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:internal|intranet|corp)\b/g,
-    revealMatch: false,
-  },
+  ...PRIVATE_SHAPES.map((shape): ScrubRule => ({ ...shape, revealMatch: false })),
   ...WRITE_TIME_SHAPES.map(secret),
 ];
