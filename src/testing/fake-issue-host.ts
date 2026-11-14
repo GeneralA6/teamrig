@@ -24,6 +24,7 @@ export class FakeIssueHost implements IssueHost {
   private commentEnd: HostEnd = { kind: 'done' };
   private closeEnd: HostEnd = { kind: 'done' };
   private labelEnd: HostEnd = { kind: 'done' };
+  private readonly removeEnds = new Map<string, HostEnd>();
   private labelReadFailure: string | undefined;
   private readonly labels = new Set<string>();
 
@@ -36,6 +37,12 @@ export class FakeIssueHost implements IssueHost {
   /** From now on, a label add or remove fails for `reason`. */
   failsLabel(reason: string): this {
     this.labelEnd = { kind: 'failed', reason };
+    return this;
+  }
+
+  /** From now on, taking `label` off fails for `reason`, while other labels come off. */
+  failsRemove(label: string, reason: string): this {
+    this.removeEnds.set(label, { kind: 'failed', reason });
     return this;
   }
 
@@ -104,6 +111,6 @@ export class FakeIssueHost implements IssueHost {
 
   removeLabel(target: IssueTarget, label: string): Promise<HostEnd> {
     this.calls.push({ kind: 'label-remove', target, label });
-    return Promise.resolve(this.labelEnd);
+    return Promise.resolve(this.removeEnds.get(label) ?? this.labelEnd);
   }
 }
