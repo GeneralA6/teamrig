@@ -236,7 +236,7 @@ describe('renderCorePack', () => {
 
   it('has each session work its list in order, gate self-made work and repeating runs, and stop when it loops or drifts', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /^5\. Work your own task list in plan order \(`teamrig list --session <you>`\); self-made work is a task too, added with `teamrig add` before you start it,/m);
+    assert.match(pack, /^5\. Work your own task list in plan order \(`teamrig list --session <you>`\); self-made work is a task too, added with `teamrig add` first,/m);
     assert.match(pack, /and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting \(one-commit fixes exempt\)\./);
     assert.match(pack, /A loop, cron or scheduled wake-up needs the lead's OK and a written stop\./);
     assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask your leader\.$/m);
@@ -460,10 +460,17 @@ describe('renderCorePack', () => {
 
   it('has owner questions stand alone, and carry the decision marker line only while tab status shows it', () => {
     const on = renderCorePack(testConfig({ tabStatus: { enabled: true } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.ok(on.includes('stand alone, no bare ids; options, numbers, your pick, a `Decision needed:` line.'), on);
+    assert.ok(on.includes("stand alone, no bare ids; options, numbers, your pick, a security ask's verdict, a `Decision needed:` line."), on);
     const off = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.ok(off.includes('each question stands alone, no bare task ids, with options, numbers and a recommendation.'), off);
+    assert.ok(off.includes("each stands alone, no bare ids; options, numbers, your pick and a security ask's verdict."), off);
     assert.ok(!off.includes('Decision needed'), off);
+  });
+
+  // T2761: the owner never weighs a guard, permission or secret change without the security reviewer's read.
+  it("has a security-related owner ask carry the security verdict, in either owner-ask wording", () => {
+    for (const enabled of [true, false]) {
+      assert.match(renderCorePack(testConfig({ tabStatus: { enabled } }), COMMAND, 'win32', RULES_CLOCK), /^9\. .* a security ask's verdict[,.]/m);
+    }
   });
 
   it('asks the owner only on an owner gate or a business decision, however many good answers the rest has, and names staffing the leader\'s (T1194)', () => {
@@ -480,7 +487,7 @@ describe('renderCorePack', () => {
   it('has every path written to a human absolute, a web file its full URL, in either owner-ask wording (T2607)', () => {
     for (const enabled of [true, false]) {
       const pack = renderCorePack(testConfig({ tabStatus: { enabled } }), COMMAND, 'win32', RULES_CLOCK);
-      assert.match(pack, /^9\. Investigate first: frequency × impact, the cheapest fix for the visible symptom\. Give humans absolute paths and full URLs\. Ask the owner only /m);
+      assert.match(pack, /^9\. Investigate first: frequency × impact, the cheapest fix for the symptom\. Humans get absolute paths, full URLs\. Ask the owner only /m);
     }
   });
 

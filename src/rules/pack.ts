@@ -254,7 +254,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       ' Wait on a peer by its task.' +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
-      `Work your own task list in plan order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` before you start it,` +
+      `Work your own task list in plan order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` first,` +
       ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
       " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask your leader.",
     'owner-gates':
@@ -278,19 +278,22 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
         ? ` Pace the week to ${percent(budget.targetPct)} of the limit, ${percent(budget.reservePct)} kept for incidents [budget]; waited-on answers are blockers, never budget-held.`
         : ''),
     investigate:
-      'Investigate first: frequency × impact, the cheapest fix for the visible symptom.' +
+      'Investigate first: frequency × impact, the cheapest fix for the symptom.' +
       // Owner order 11-13 (T2607): a hand step named its files repo-relative and the owner had to ask for full paths.
       // A human reads a path from another folder, so a relative one leads nowhere; a web file is its full URL. To fit
       // CORE_PACK_MAX_CHARS, rules 4, 8, 13 and 15 took shorter words.
-      ' Give humans absolute paths and full URLs.' +
+      ' Humans get absolute paths, full URLs.' +
       // An owner question names no task by its number alone (the register refuses an owner wait without its
       // decision card, register/card.ts). With tab status on, the marker line ends the turn on the decision circle
       // (tabs/status.ts); the words are shorter there so the worst-case pack still fits CORE_PACK_MAX_CHARS. Who
       // decides is an authority test, not a count of good answers (T1194): a question that is no owner gate and no
       // business decision is the leader's however many good answers it has, and rule 1 names staffing the leader's.
+      // T2761: a security-related ask carries the security reviewer's verdict, so the owner never weighs a guard,
+      // permission or secret change alone; the register refuses a card on a security gate without one (policy.ts).
+      // To fit CORE_PACK_MAX_CHARS, rules 5 and 9 took shorter words for it.
       (config.tabStatus.enabled
-        ? ` Ask the owner only gates and business calls: stand alone, no bare ids; options, numbers, your pick, a \`${DECISION_MARKER}\` line.`
-        : ' Ask the owner only on owner gates and business decisions: each question stands alone, no bare task ids, with options, numbers and a recommendation.'),
+        ? ` Ask the owner only gates and business calls: stand alone, no bare ids; options, numbers, your pick, a security ask's verdict, a \`${DECISION_MARKER}\` line.`
+        : " Ask the owner only on owner gates and business decisions: each stands alone, no bare ids; options, numbers, your pick and a security ask's verdict."),
     resources:
       'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement: `stopgap T<id>`.',
     data:
