@@ -1,5 +1,6 @@
 import { isAssignment, launch, programName, staticWord } from "./launchers.js";
 import { Location, resolveDir } from "./location.js";
+import { splitGitAlias } from "./program-split.js";
 import { redirectsInput, stdinUse } from "./stdin.js";
 import { parseHeldText, parseShell } from "./tokenizer.js";
 import { resolveLiteralVariables } from "./variables.js";
@@ -502,8 +503,12 @@ class GitInvocationFinder {
             this.inheriting(state.hooksOverride, false, () => this.visitScript(staticWord(script), 'bash', new Location(repoDir, this.context.home), depth + 1));
             return;
         }
-        const expanded = parseShell(value, 'bash').commands.flatMap((command) => command.words);
-        this.visitGit([...expanded, ...args], state, depth, aliasDepth + 1);
+        const expanded = splitGitAlias(value);
+        if (expanded.kind === 'refused') {
+            this.doubt(expanded.reason, true);
+            return;
+        }
+        this.visitGit([...expanded.words, ...args], state, depth, aliasDepth + 1);
     }
     /** Records `git config [set] alias.x value`, so a later `git x` in the same line expands. */
     registerAlias(args) {
