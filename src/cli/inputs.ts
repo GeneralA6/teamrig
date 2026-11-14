@@ -10,6 +10,7 @@ import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../
 import { REVIEW_FLAGS, REVIEW_ORDER, type ProblemReview } from '../register/review.ts';
 import { isWaitKind, waitOf, type WaitReason } from '../register/waits.ts';
 import type { ListFilter } from '../register/views.ts';
+import { unrunnableReason } from '../test-run/shell.ts';
 import { requiredFlag, UsageError, type Flags, type ParsedArgs } from './args.ts';
 
 /**
@@ -50,6 +51,16 @@ export function commandWordsOf(args: ParsedArgs): readonly string[] {
     throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
   }
   return args.rest;
+}
+
+/** The command to run in the platform's shell (`commandWordsOf`), refused when that shell would not run it as given. */
+export function shellWordsOf(args: ParsedArgs, platform: NodeJS.Platform): readonly string[] {
+  const words = commandWordsOf(args);
+  const reason = unrunnableReason(words, platform);
+  if (reason !== undefined) {
+    throw new UsageError(reason);
+  }
+  return words;
 }
 
 /** A task as typed: its id, and the team when the id is written as a roll-up over a team tree prints it. */

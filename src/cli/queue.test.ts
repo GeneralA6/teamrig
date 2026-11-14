@@ -491,8 +491,27 @@ describe('teamrig queue', () => {
     assert.deepEqual([steps.ran, kit.files.get(LOCK)], [[], undefined]);
   });
 
+  it('refuses on Windows a command with a line break, which cmd.exe would cut, before it queues (T2156)', async () => {
+    const { kit, steps } = harness();
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'build', '--', 'bash', '-c', '\nnpm test'], { steps, platform: 'win32' });
+    assert.deepEqual([result.code, result.stdout], [EXIT.usage, []]);
+    assert.match(result.stderr[0] ?? '', /^a word of the command holds a line break, and cmd\.exe/u);
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
+  });
+
+  it('runs the same command on Linux, whose shell keeps a quoted line break', async () => {
+    const { kit, steps } = harness();
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'build', '--', 'bash', '-c', '\nnpm test'], { steps });
+    assert.equal(result.code, 0);
+    assert.deepEqual(
+      steps.ran.map((request) => request.command),
+      ["bash -c '\nnpm test'"],
+    );
+  });
+
   for (const [label, argv] of [
     ['no session', ['queue', '--what', 'build', '--', 'npm', 'test']],
+    ['an empty command', ['queue', '--session', 'alpha', '--what', 'build', '--', ' ']],
     ['no label', ['queue', '--session', 'alpha', '--', 'npm', 'test']],
     ['no command', ['queue', '--session', 'alpha', '--what', 'build', '--']],
     ['a word before --', ['queue', '--session', 'alpha', '--what', 'build', 'npm', '--', 'test']],
