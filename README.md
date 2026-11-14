@@ -149,9 +149,10 @@ you or teamrig closed on purpose, and prompts the ones that were mid-turn to car
 it at each logon on Windows and adds a Start-menu shortcut, `Restore Claude Sessions`, that runs it by hand from
 anywhere. Tabs an expired Claude
 login stopped carry on by themselves once you `/login` in any tab, and a turn cut off by a server error or an
-overloaded API is sent on by itself, up to 3 times. When a member's context
-runs long, it writes a handover; once it has work to go on with and is idle while you're away,
-teamrig restarts it after a 20-second countdown you can hold, and it carries on from the handover by itself.
+overloaded API is sent on by itself, up to 3 times. When a session's context
+runs long, it writes a handover. The lead (by default; every session with `refresh.autoRestart: true`), once it has work
+to go on with and is idle while you're away, is restarted after a 20-second countdown you can hold, and it carries
+on from the handover by itself; any other session asks you to type `/clear`.
 
 *Coming: reopening sessions at logon on macOS and Linux.*
 
