@@ -4265,7 +4265,11 @@ waiting or running is lifted to the least virtual time of the classes in play, s
 turns file reads as none and is written whole again. A step whose
 session already runs `delivery.queue.perSessionRunning` (2) steps, under the lock or sharing the host, waits for one to
 end while later steps pass it (`2 steps of its session running, its cap 2: ...`, refused with `session cap still
-reached: ...`). That `pipeline` order is the default; with `serial` (for a team whose own deploy tool takes the lock
+reached: ...`). A step waiting on host memory or the commit charge lets later steps that fit pass it too: always while
+no queued step runs, as only memory outside the queue holds it then, and for its first
+`delivery.queue.memoryPassMinutes` (15) of that wait while some run; past them it holds its place, so the memory their
+ends free goes to it (0 passes no one). A step that passes still waits on its own memory. That `pipeline` order is
+the default; with `serial` (for a team whose own deploy tool takes the lock
 file without first waiting for the shares to end) the line is in arrival order with no cap. It
 prints a line for each new holder or place in line (`...; 2 ahead in line`). Its ticket says what it waits on and
 since when (`waitingOn`: the holder and place in line, or the memory numbers), rewritten only when that changes, so
