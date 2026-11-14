@@ -127,7 +127,8 @@ the repository is public.
 - **Dependabot** (`.github/dependabot.yml`) proposes npm and GitHub Actions updates weekly, one grouped pull
   request per ecosystem, and never a release younger than 14 days. A proposal is never merged as it comes: check
   the exact version against the advisories and its publish date, land it as your own signed-off commit (its
-  commits carry no `Signed-off-by:` line, so the DCO gate fails its pull request), and close the proposal.
+  commits carry no `Signed-off-by:` line, so the DCO gate fails its pull request), and close the proposal. The
+  14 days hold version updates only: a security update for an advisory comes at once, and is landed the same way.
 - **Every action is pinned** to a full commit SHA with its version in a comment (`tools/ci/security-workflows.test.ts`
   holds every workflow to it), so a moved tag cannot change what runs.
 - **A vulnerability** is reported privately, never in an issue: [SECURITY.md](SECURITY.md).
