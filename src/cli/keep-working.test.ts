@@ -62,6 +62,21 @@ describe('the keep-working ask', () => {
     assert.equal(blockReason(await stop(kit)), undefined);
   });
 
+  it('asks the lead to hand code work out rather than start it, unless its boundary is off (T2822)', async () => {
+    const leadStop = async (config: JsonRecord): Promise<string | undefined> => {
+      const kit = new CliHarness(config);
+      for (const title of ['Pick the plan', 'Fix the login']) {
+        ok(await kit.run(['add', '--owner', 'lead', '--title', title, '--description', 'the job', '--priority', 'p2', '--session', 'lead']));
+      }
+      ok(await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two plans', ...TEST_OWNER_CARD_FLAGS, '--session', 'lead']));
+      return blockReason(await stop(kit, 'lead'));
+    };
+    const handsOut = await leadStop(TEAM);
+    assert.ok(handsOut?.includes('Hand code work to the session owning its area (`teamrig update <id> --owner <session>`)'), handsOut);
+    const works = await leadStop({ ...TEAM, leadBoundary: { enabled: false } });
+    assert.ok(works?.includes('Work it now in plan order (`teamrig list --session lead`)'), works);
+  });
+
   it('records the ask for the caller of set --ask, whose task now waits on a peer', async () => {
     const kit = await teamOf(TEAM, [['Fix the login', 'p2']]);
     ok(await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']));
