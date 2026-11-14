@@ -89,12 +89,43 @@ describe('teamrig issue sync --push', () => {
     assert.equal(lines[SHOWN_CHANGES + 1], '... and 2 more');
   });
 
-  it('refuses --yes and --auto, as this version only plans', async () => {
+  it('refuses --auto, as the push is run by hand', async () => {
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'sync', '--push', '--auto'], { gh: issues(), ...AS_LEAD });
+    assert.equal(result.code, EXIT.refused, result.stdout.join('\n'));
+  });
+
+  it('with --yes sends the plan through the shipped label and close calls', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
-    for (const flag of ['--yes', '--auto']) {
-      const result = await kit.run(['issue', 'sync', '--push', flag], { gh: issues(), ...AS_LEAD });
-      assert.equal(result.code, EXIT.refused, result.stdout.join('\n'));
-    }
+    await expectRun(kit, ['issue', 'sync', '--yes'], issues(), EXIT.ok);
+    await step(kit, ['set', 'T1', '--status', 'in-progress', '--note', 'on it'], AS_BRAVO);
+    await step(kit, ['set', 'T2', '--status', 'dropped', '--note', 'not planned'], AS_LEAD);
+    const gh = issues().hasLabels('acme/web', ['status:in-progress']);
+    const lines = await expectRun(kit, ['issue', 'sync', '--push', '--yes'], gh, EXIT.ok);
+    assert.deepEqual(lines.filter((line) => /^(SET|PUSHED) /u.test(line)), [
+      'SET acme/web#7 T1 in-progress: add status:in-progress',
+      'SET acme/web#8 T2 dropped: close as not-planned, take off status:triaged',
+      `PUSHED 2 change(s), 3 write(s); at most ${PUSH_WRITES_PER_RUN} a run, the rest planned again on the next`,
+    ]);
+    assert.deepEqual(
+      gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' ')),
+      [
+        'api repos/acme/web/labels/status%3Ain-progress',
+        'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:in-progress',
+        'api repos/acme/web/issues/8/labels/status%3Atriaged -X DELETE',
+        'api repos/acme/web/issues/8 -X PATCH -f state=closed -f state_reason=not_planned',
+      ],
+    );
+  });
+
+  it('with --yes fails the run on a refused write and refuses a caller not on the team', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    await expectRun(kit, ['issue', 'sync', '--yes'], issues(), EXIT.ok);
+    await step(kit, ['set', 'T2', '--status', 'dropped', '--note', 'not planned'], AS_LEAD);
+    const gh = issues().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
+    const lines = await expectRun(kit, ['issue', 'sync', '--push', '--yes', '--repo', 'acme/web'], gh, EXIT.failed);
+    assert.ok(lines.some((line) => line.startsWith('FAILED acme/web#8 T2: ') && line.endsWith('; the rest of acme/web waits for the next run')), lines.join('\n'));
+    const stranger = await kit.run(['issue', 'sync', '--push', '--yes'], { gh, env: { TEAMRIG_SESSION: 'stranger' } });
+    assert.equal(stranger.code, EXIT.refused, stranger.stdout.join('\n'));
   });
 
   it('reads nothing when the machine or the team has GitHub off', async () => {

@@ -1,6 +1,6 @@
 import type { Task } from '../register/fold.ts';
 import { GITHUB_SOURCE, ISSUE_REF_PREFIX, type TaskStatus } from '../register/model.ts';
-import { parseIssueTarget, targetText, type IssueTarget } from './host.ts';
+import { parseIssueTarget, targetText, type CloseReason, type IssueTarget } from './host.ts';
 import type { HostIssue } from './issue.ts';
 
 /**
@@ -29,9 +29,6 @@ export const STATUS_LABELS: Readonly<Record<'open' | 'in-progress' | 'waiting' |
  * plan waits for the next run, which plans it again from the issues as they are then.
  */
 export const PUSH_WRITES_PER_RUN = 40;
-
-/** Why a closed issue closed, in the host-neutral words the push uses. */
-export type CloseReason = 'completed' | 'not-planned';
 
 /** What an issue should show for its task: open with one status label, or closed for a reason. */
 export type IssueGoal = { readonly open: true; readonly label: string } | { readonly open: false; readonly reason: CloseReason };
