@@ -605,10 +605,11 @@ marked `ready` has cleared: its task is done or dropped, or its time has passed.
 ### teamrig show
 
 Prints one task with its description, pointer, latest note, decision card (while it waits), evidence, skill, its
-files and full history. The description comes right under the task line; its later lines are indented two spaces.
-The files line names the task's folder (the one [`teamrig files`](#teamrig-files) gives) and what it holds, a folder
-marked with a slash, or `none yet`; for a task another team of your tree holds, the folder is in that team. The
-history prints a changed description on one line, cut to 80 characters. Last come the team's inbox lines that name
+files and its last 3 history events. The description comes right under the task line; its later lines are indented
+two spaces. The files line names the task's folder (the one [`teamrig files`](#teamrig-files) gives) and what it
+holds, a folder marked with a slash, or `none yet`; for a task another team of your tree holds, the folder is in that
+team. A task with more events heads them `history (last 3 of 9; --history prints all):`. The history prints a changed
+description on one line, cut to 80 characters. Last come the team's inbox lines that name
 the task, read or not, in the order posted, each once with the sessions that got it. A correction sent by line (`T1:
 the password needs 12 characters`) stays with the task, even after the handover of the session that read it is
 rewritten.
@@ -616,6 +617,7 @@ rewritten.
 Flags:
 
 - `--session <id|name>`: the caller (optional).
+- `--history`: every history event, not only the last 3.
 - `--tree`: instead of the fields and the history, the task line, what it needs and what needs it, then the next
   move (below).
 
