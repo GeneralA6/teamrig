@@ -125,8 +125,7 @@ or take it to the lead.
 | `REFUSED <id> is set up with the team, not hired: it has no review day to keep` | Nothing to keep: only a hired session has a review day. |
 | `REFUSED the review day <day> has passed` (or `is not a YYYY-MM-DD date`) | Give a future day, `YYYY-MM-DD`. |
 | `--scope: a keep of <id> changes only its review day` (exit 2; also `--name`, `--model`, `--effort`, `--approved-by`, `--burst`) | Drop the flag: a keep leaves the hire's job and launch as they are. |
-| `REFUSED <id> was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session` | Open it without `--resume`. |
-| `REFUSED not resumed: <why>; open it fresh on its handover: teamrig open <id>` | Its last Claude Code session is gone, too big or too long idle: open it fresh with the command shown. |
+| `REFUSED not resumed: <why>; open it fresh[ on its handover]: teamrig open <id>` | Its last Claude Code session is gone, too big or too long idle: open it fresh with the command shown. |
 | `--resume "<value>" is not a Claude Code session id` (exit 2) | `launch` was given something other than a session id; open the session again with `teamrig open <id>`. |
 | `REFUSED team X has N child teams (...), and a team has at most 8: hang some under another team` | Put the new team under another team with `--parent`. |
 | `REFUSED only web itself or the lead may record its new name` | Ask that session or the lead to run `rename`. |
