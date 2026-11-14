@@ -1,3 +1,4 @@
+import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { matchesGitCommit, matchesGitPush } from "./route-git.js";
 import { KIT_SHAPES, matchesKit } from "./route-kit.js";
 import { plainWordsOf } from "./route-line.js";
@@ -66,4 +67,13 @@ export async function routeOf(line, context) {
         }
     }
     return undefined;
+}
+/**
+ * The route a shell tool call runs: one only when each text its shell may run (`toolCommandReadings`) is that route.
+ * A Bash line on Windows reaches bash with its backslash runs halved, which can split or join its words, so a line
+ * that is a route only as written is judged as bash runs it (T2332).
+ */
+export async function toolRouteOf(tool, line, platform, context) {
+    const [first, ...rest] = await Promise.all(toolCommandReadings(tool, line, platform).map((reading) => routeOf(reading, context)));
+    return first !== undefined && rest.every((route) => route === first) ? first : undefined;
 }
