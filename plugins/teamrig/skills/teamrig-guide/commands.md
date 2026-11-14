@@ -5334,7 +5334,9 @@ account's day holds nobody by itself: the teams on one account share one pool, s
 has room. While the team has room, they are named apart as not held: `Past their part, not held while the team has
 room today (3.0% of the week used, below its in-day pace of 4.7%): the team, api.` A session a leader cut ([teamrig
 budget cut](#teamrig-budget-cut)) is held past its part whatever room the team has, named on a line of its own:
-`Past the daily budget, held by a leader's cut whatever room the team has: web.` A session id or name shows that
+`Past the daily budget, held by a leader's cut whatever room the team has: web.` Under `budget.overAction` warn the
+hooks hold nobody, so the line names who is past and ends `The budget only warns (budget.overAction warn), so nothing
+is held: go on with your task list.` in place of the advice to stop (since 0.378.0). A session id or name shows that
 session by day.
 
 Flags:
