@@ -380,6 +380,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
       writes nothing to GitHub; refuses a folder whose origin is another repository
+  issue links [--repo <owner/name>] [--yes]   puts the task tree on the issues of github.repos: each
+      task planned after another, both mirrored in one repository, is marked blocked by it on GitHub,
+      and a part of one whole becomes its sub-issue; without --yes it reads the links GitHub has and
+      shows what it would add, writing nothing; adds only, never removes or moves a link a person set;
+      stops a repository at its first failure, and a rerun adds only what is still missing
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;

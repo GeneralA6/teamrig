@@ -6,9 +6,10 @@ becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its titl
 priority and open or closed state follow GitHub on every run. The sync never goes the other way: it never creates,
 edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The
 writes are all run by hand: `teamrig issue migrate` moves tasks you choose to new issues, once
-([Moving your tasks to issues](#moving-your-tasks-to-issues)), and `teamrig issue comment`, `teamrig issue label`
+([Moving your tasks to issues](#moving-your-tasks-to-issues)), `teamrig issue comment`, `teamrig issue label`
 and `teamrig issue close` answer, label or close one issue or pull request
-([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)). GitHub is the
+([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
+task tree on the issues ([Linking issues as the task tree](#linking-issues-as-the-task-tree)). GitHub is the
 only host teamrig writes to so far.
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
@@ -82,6 +83,7 @@ Give the token only what the commands you run need:
 | `teamrig issue sync` | **Issues: Read-only** |
 | `teamrig issue migrate` | **Issues: Read and write** |
 | `teamrig issue comment`, `teamrig issue label`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels and state are written through its issue) |
+| `teamrig issue links` | **Issues: Read-only** for the preview, **Issues: Read and write** with `--yes` |
 
 ### Why one token per owner
 
@@ -284,6 +286,34 @@ PREVIEW nothing was written; a push would send 4 write(s) now, at most 40 a run,
   so the automatic push prints it as a `HELD` line and leaves it to a session's `teamrig issue sync --push --yes`.
   A failed write is told to the lead's inbox like a repository that cannot be read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
 
+## Linking issues as the task tree
+
+`teamrig issue links` puts the task tree on the issues of `github.repos`. A task planned after another (`--after`),
+both mirrored in one repository, makes its issue blocked by the other's on GitHub. A whole is planned after its
+parts, so a part planned before exactly one whole becomes that whole's sub-issue as well. Without `--yes` it reads
+the links GitHub has and shows what it would add:
+
+```sh
+teamrig issue links
+teamrig issue links --yes
+```
+
+```text
+ACCESS acme: read with the token saved as teamrig-gh-acme
+REPO acme/web: 1 issue(s) to change, 2 link(s) to add, 0 already there
+LEFT acme/web: 1 edge(s) to another repository are left for a person
+BLOCKED-BY #9 by #10
+SUB-ISSUE #10 under #9
+PREVIEW nothing was written; teamrig issue links --yes adds the links above
+```
+
+- **Adds only.** It never removes or moves a link. A part GitHub already shows under another parent gets only its
+  blocker, and a part of several wholes gets only blockers, as an issue has one parent. The `LEFT` line counts what
+  it leaves for a person, an edge to another repository among them.
+- **Rerun to finish.** It stops a repository at its first failed link (a refused token or a rate limit would refuse
+  the rest too); a rerun reads GitHub again and adds only what is still missing.
+- **The task list is only read.** The links live on GitHub; nothing changes in teamrig.
+
 ## Renewing a token
 
 When a token expires, GitHub refuses it and the `FAILED` line says so. Regenerate it on GitHub (the token's page has
@@ -305,14 +335,16 @@ again.
 
 ## Safety
 
-- **Read-only sync.** The sync runs only the two issue queries it ships, word for word, through `gh api graphql`, so
+- **Read-only sync.** The sync runs only the issue queries teamrig ships, word for word, through `gh api graphql`, so
   a token with **Issues: Read-only** is all it needs. Any other `gh` command or query is refused in code, except
   the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
   one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label
   (`repos/<owner>/<name>/labels/<label>`), add (`.../issues/<number>/labels -X POST` with its labels only) and take
-  off (`.../issues/<number>/labels/<label> -X DELETE`), and `teamrig issue close`'s close
-  (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only).
+  off (`.../issues/<number>/labels/<label> -X DELETE`), `teamrig issue close`'s close
+  (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only), and `teamrig issue links`'s one
+  link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST` with one issue id only). No link
+  is ever removed.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
   is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
   that one run.

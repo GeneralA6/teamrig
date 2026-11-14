@@ -1184,7 +1184,8 @@ Imports GitHub issues into the task list, inbound only. For each repository in `
 issues and those closed in the last `github.closedDays` days (14 by default) through the GitHub CLI, `gh`. It only
 ever lists issues: it never creates, edits, comments on, labels, assigns or closes anything on GitHub, and a task
 added with `teamrig add` stays in the task list and never goes to GitHub. Only commands run by hand write:
-`teamrig issue migrate` opens issues, `teamrig issue comment` and `teamrig issue close` comment on and close them.
+`teamrig issue migrate` opens issues, `teamrig issue comment` and `teamrig issue close` comment on and close them,
+and `teamrig issue links` links them as the task tree does.
 Its old name, gh sync, is refused with this one (exit 64). Setup, tokens and every failure's fix:
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md).
 
@@ -1449,6 +1450,37 @@ CONFLICTS acme/web#7 (head d00d5ee) against origin/main (b4e2a91): 2 files
   src/a.ts
   docs/b.md
 To land it: rebase its branch onto origin/main and resolve these files.
+```
+
+### teamrig issue links
+
+Puts the task tree on the issues of `github.repos`. A task planned after another, both mirrored in one repository
+(their `ref`s are `gh:owner/name#n`), becomes blocked by it on GitHub; a part of exactly one whole (a task planned
+after its parts) becomes its sub-issue too. Without `--yes` it reads the links GitHub has and shows what it would
+add, writing nothing. It only adds: a link a person set, or a part under another parent, stays as it is, and an edge
+to another repository is left for a person (the `LEFT` line counts them). It stops a repository at its first failed
+link; a rerun reads again and adds only what is still missing. The task list is only read. Exit 1 when a repository
+could not be read or a link not added, 2 when refused, else 0.
+
+Flags:
+
+- `--repo <owner/name>`: only that repository, one of `github.repos`.
+- `--yes`: add the links shown.
+
+Example:
+
+```sh
+teamrig issue links --yes
+```
+
+Output:
+
+```text
+ACCESS acme: writes with the token saved as teamrig-gh-acme
+REPO acme/web: 1 issue(s) to change, 2 link(s) to add, 0 already there
+BLOCKED-BY #9 by #10
+SUB-ISSUE #10 under #9
+WROTE 2 link(s) on GitHub; the task list was only read
 ```
 
 ## Inbox
