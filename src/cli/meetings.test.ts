@@ -154,13 +154,15 @@ describe('runCli: meeting move, end and drop', () => {
     assert.ok(lines.some((line) => line.endsWith('Meeting M1 with the owner moved: Tue 01-08 16:00 UTC (30 min) with alpha: the release plan (the owner is out at two)')), lines.join('\n'));
   });
 
-  it('ends a meeting with what came of it, and refuses to move or end it again', async () => {
+  it('ends a meeting with what came of it, tells those it met (T2775), and refuses to move or end it again', async () => {
     const kit = await team();
     await booked(kit, '--session', 'lead');
     const ended = await kit.run(['meeting', 'end', 'M1', '--note', 'ship on Friday', '--session', 'lead']);
     assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
-    assert.deepEqual(ended.stdout, ['ENDED M1 done, Tue 01-08 14:00 UTC, 30 min, alpha | the release plan']);
+    assert.deepEqual(ended.stdout, ['ENDED M1 done, Tue 01-08 14:00 UTC, 30 min, alpha | the release plan', 'TOLD alpha']);
     assert.equal((await stored(kit, 'M1'))?.note, 'ship on Friday');
+    const lines = await inboxOf(kit, 'alpha');
+    assert.ok(lines.some((line) => line.endsWith('Meeting M1 with the owner (Tue 01-08 14:00 UTC) ended: ship on Friday')), lines.join('\n'));
 
     const again = await kit.run(['meeting', 'end', 'M1', '--session', 'lead']);
     assert.equal(again.code, EXIT.refused);
@@ -168,6 +170,14 @@ describe('runCli: meeting move, end and drop', () => {
     const move = await kit.run(['meeting', 'move', 'M1', '--at', '2030-01-09 10:00', '--session', 'lead']);
     assert.equal(move.code, EXIT.refused);
     assert.match(said(move), /M1 is done: meeting move takes a scheduled meeting/);
+  });
+
+  it('tells no one when the session met ends its own meeting with no one joining (T2775)', async () => {
+    const kit = await team();
+    await booked(kit, '--session', 'lead');
+    const ended = await kit.run(['meeting', 'end', 'M1', '--session', 'alpha']);
+    assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
+    assert.deepEqual(ended.stdout, ['ENDED M1 done, Tue 01-08 14:00 UTC, 30 min, alpha | the release plan']);
   });
 
   it('drops a meeting only with a note, tells those it meets why, and refuses another session', async () => {
