@@ -1480,7 +1480,9 @@ While escalated, the model is told with the next prompt, once per level: `teamri
 budget and the team has no room left today, and it is ahead of its pace line. Finish the step in hand and start
 no new work items or helpers.
 Never skip a test or check to save budget. The lead can lift it.` A sub-lead's session reads `Your leader <name> can
-lift it.` instead, and the lead `As the lead, lift it only with a stop %.` A session with an open or in-progress p0 task
+lift it.` instead, and the lead `As the lead, lift it only with a stop %.` Under `budget.overAction` `warn` the line
+only reports the overrun and says no stop, a cut session's too: `... The budget only warns (budget.overAction warn),
+so nothing is held: go on with your task list.` A session with an open or in-progress p0 task
 reads `start no new work items or helpers, except your p0 work (T5): it goes on past the daily stop.`, and its
 leader's line says it goes on with that work past the stop. An answer another session waits on is a blocker, so it
 goes on the same way: the session's own open or in-progress task that another owner's waiting task names
