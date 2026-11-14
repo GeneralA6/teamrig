@@ -519,10 +519,18 @@ audits from its own team with `--team web`, and the audit lands in that team's r
 that is not below the caller's, a reviewer the child team does not name, and `--team` naming your own team are
 refused.
 
+With `--verdict` in place of `--file`, the reviewer gives its security verdict on the task's card (core rule 9):
+the card the owner will decide from, set on the task first. The verdict is pinned with the card's question, options
+and recommendation as read, so an edit to any of them needs a new verdict; the latest verdict wins, it stays through
+status changes, and the task's owner gets one inbox line. The same callers audit as for a file; a task with no card,
+a blank verdict and a finished task are refused.
+
 Flags:
 
 - `--session <id|name>`: the caller, the security reviewer.
-- `--file <path>`: the hand step file, read from the caller's folder; required.
+- `--file <path>`: the hand step file, read from the caller's folder; one of `--file` or `--verdict` is required.
+- `--verdict "<what the review found>"`: the security verdict on the task's card, and whether the owner may
+  approve it.
 - `--note "<text>"`: what you checked.
 - `--team <child>`: audit a task of that team below yours.
 
