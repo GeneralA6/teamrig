@@ -102,6 +102,7 @@ const EXPECTED = {
   'issue migrate': 'write',
   'issue comment': 'write',
   'issue close': 'write',
+  'issue label': 'write',
   'pr conflicts': 'write',
   budget: 'read',
   'budget lift': 'write',

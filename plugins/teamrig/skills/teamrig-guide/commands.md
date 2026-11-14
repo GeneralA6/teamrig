@@ -1369,6 +1369,8 @@ Flags:
 
 - `--session <id|name>`: the caller, a session of the team.
 - `--comment <text>`: a comment posted before the close.
+- `--reason <completed|not-planned|duplicate>`: why it closes, which the host shows beside it (GitHub keeps it on an
+  issue only, not on a pull request); refused when it is none of the three.
 
 Example:
 
@@ -1382,6 +1384,35 @@ Output:
 ACCESS acme: writes with the token saved as teamrig-gh-acme
 COMMENTED acme/web#12
 CLOSED acme/web#12
+```
+
+### teamrig issue label
+
+Adds labels to and takes labels off one issue or pull request of the team's repositories, with the same access as
+`teamrig issue comment`. `--add` and `--remove` are comma-separated lists; give at least one, and no label in both.
+Each label to add must already be one of the repository's, read before any change, so a typo never makes a new
+label: make it on the host first. Labels to add go in one call, then each label to remove comes off in turn; the
+first failure stops it, and a `FAILED` line after a change says what it already did. Exit 1 when it failed, 2 when
+refused, else 0.
+
+Flags:
+
+- `--session <id|name>`: the caller, a session of the team.
+- `--add <label,...>`: the labels to add, each already one of the repository's.
+- `--remove <label,...>`: the labels to take off.
+
+Example:
+
+```sh
+teamrig issue label acme/web#12 --add "type: bug,p1" --remove "needs triage"
+```
+
+Output:
+
+```text
+ACCESS acme: writes with the token saved as teamrig-gh-acme
+LABELED acme/web#12: "type: bug", "p1"
+UNLABELED acme/web#12: "needs triage"
 ```
 
 ### teamrig pr conflicts

@@ -217,7 +217,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
   'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
   'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
-  'issue close': { effect: 'write', flags: ['session', 'comment'], load: async () => (await issueCommands()).issueClose },
+  'issue close': { effect: 'write', flags: ['session', 'comment', 'reason'], load: async () => (await issueCommands()).issueClose },
+  'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
   'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
   budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
   'budget lift': {
@@ -693,9 +694,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       owner, else the gh login; refuses an empty body, a secret shape, private data (a home folder
       path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
       gh login in its place
-  issue close <owner/name#n> [--comment <text>]   closes one issue or pull request of the team's
-      repositories, first posting --comment when given, with the same checks; a failed comment closes
-      nothing
+  issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
+      closes one issue or pull request of the team's repositories, first posting --comment when
+      given, with the same checks; a failed comment closes nothing; --reason is the one the host shows
+  issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
+      labels off one issue or pull request of the team's repositories, with the same access; each
+      label to add must already be one of the repository's, and the first failure stops it
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and

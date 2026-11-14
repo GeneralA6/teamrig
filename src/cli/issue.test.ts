@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment } from '../github/gh.ts';
+import { isIssueClose, isIssueComment, isLabelAdd, isLabelRead, isLabelRemove } from '../github/gh.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh } from '../testing/fake-gh.ts';
@@ -70,6 +70,18 @@ describe('teamrig issue close', () => {
     assert.ok(![...result.stdout, ...result.stderr].some((line) => line.includes('acme-issues-token')));
   });
 
+  it('closes with the reason given, in the word GitHub uses, and refuses one it does not know', async () => {
+    const gh = new FakeGh();
+    const kit = new CliHarness(GITHUB_TEAM);
+    const result = await kit.run(['issue', 'close', 'acme/web#7', '--reason', 'not-planned'], { ...AS_LEAD, gh });
+    assert.deepEqual(result.stdout, [LOGIN, 'CLOSED acme/web#7 as not-planned']);
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=not_planned']]);
+    const refused = await kit.run(['issue', 'close', 'acme/web#7', '--reason', 'reopened'], { ...AS_LEAD, gh });
+    assert.equal(refused.code, EXIT.refused);
+    assert.match([...refused.stdout, ...refused.stderr].join('\n'), /--reason takes completed, not-planned, duplicate, not "reopened"/u);
+    assert.equal(gh.ran.length, 1);
+  });
+
   it('closes with no comment when none is given', async () => {
     const gh = new FakeGh();
     const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'close', 'acme/web#7'], { ...AS_LEAD, gh });
@@ -96,5 +108,51 @@ describe('teamrig issue close', () => {
       'FAILED acme/web#7: the gh login may not comment on acme/web#7: save a token for acme with Issues and Pull requests read and write, with: save teamrig-gh-acme; it was not closed',
     ]);
     assert.equal(gh.ran.length, 1);
+  });
+});
+
+describe('teamrig issue label', () => {
+  it('reads that each label to add is the repository, adds them, then takes off each to remove, by allowlisted calls', async () => {
+    const gh = new FakeGh().hasLabels('acme/web', ['type: bug', 'p1']);
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'label', 'acme/web#7', '--add', 'type: bug, p1,p1', '--remove', 'needs triage'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(result.stdout, [LOGIN, 'LABELED acme/web#7: "type: bug", "p1"', 'UNLABELED acme/web#7: "needs triage"']);
+    const [first, second, add, remove] = gh.ran.map((request) => request.args);
+    assert.ok(isLabelRead(first ?? []) && isLabelRead(second ?? []) && isLabelAdd(add ?? []) && isLabelRemove(remove ?? []));
+    assert.equal(gh.ran.length, 4);
+  });
+
+  it('fails, changing nothing, when a label to add is not one of the repository', async () => {
+    const gh = new FakeGh().hasLabels('acme/web', ['p1']);
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'label', 'acme/web#7', '--add', 'tpye: bug'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.failed);
+    assert.deepEqual(result.stdout.slice(1), ['FAILED acme/web#7: acme/web has no label "tpye: bug": make it there first, as adding it here would make a new one; nothing was changed']);
+    assert.ok(gh.ran.every((request) => isLabelRead(request.args)));
+  });
+
+  it('refuses, running no gh, no list, a label in both, an empty or control-character label, and a repository not listed', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const gh = new FakeGh();
+    const cases: Array<[readonly string[], RegExp]> = [
+      [['issue', 'label', 'acme/web#7'], /^REFUSED issue label needs --add or --remove/u],
+      [['issue', 'label', 'acme/web#7', '--add', 'p1', '--remove', 'p2,p1'], /^REFUSED the label "p1" is in both --add and --remove/u],
+      [['issue', 'label', 'acme/web#7', '--add', 'p1,,p2'], /^REFUSED --add: a label name is empty/u],
+      [['issue', 'label', 'acme/web#7', '--remove', 'p\u00071'], /^REFUSED --remove: the label "p\\u00071" holds a control character/u],
+      [['issue', 'label', 'acme/api#7', '--add', 'p1'], /^REFUSED acme\/api is not one of the team's repositories/u],
+    ];
+    for (const [argv, error] of cases) {
+      const result = await kit.run(argv, { ...AS_LEAD, gh });
+      assert.equal(result.code, EXIT.refused, argv.join(' '));
+      assert.match([...result.stdout, ...result.stderr].join('\n'), error, argv.join(' '));
+    }
+    assert.deepEqual(gh.ran, []);
+  });
+
+  it('writes nothing while GitHub is off on the machine', async () => {
+    const gh = new FakeGh();
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'label', 'acme/web#7', '--remove', 'p1'], { gh, env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' } });
+    assert.equal(result.code, EXIT.ok);
+    assert.match(result.stdout.join('\n'), /^OFF /u);
+    assert.deepEqual(gh.ran, []);
   });
 });
