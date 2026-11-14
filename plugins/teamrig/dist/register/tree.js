@@ -1,4 +1,5 @@
 import { parseDeadline } from "../core/time.js";
+import { answerTo } from "./approval.js";
 import { canMove } from "./can-move.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES } from "./model.js";
@@ -323,7 +324,8 @@ export class TaskTree {
     /**
      * What waits on `session`: every active task of another owner that directly needs an unfinished task of the
      * session, or waits on its decision or approval, in plan order. A parked task is left out: `list` hides it, so a row
-     * here would name work its owner cannot see.
+     * here would name work its owner cannot see. An approval the session already answered, either way, is left out too
+     * (T1422): its owner goes on (`waitsLetGoOn`), so the row would ask the session for an answer it gave.
      */
     waitingOn(session) {
         const waiting = [...this.tasks.values()].flatMap((task) => {
@@ -331,7 +333,7 @@ export class TaskTree {
                 return [];
             }
             const needs = this.inPlanOrder(this.unfinishedNeeds(task).filter((need) => need.owner === session));
-            const asks = task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === session);
+            const asks = task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === session && answerTo({ answer: task.answer ?? null }, reason) === undefined);
             return needs.length === 0 && asks.length === 0 ? [] : [{ task, needs, asks }];
         });
         return waiting.sort((a, b) => this.byPlanOrder(a.task, b.task));
