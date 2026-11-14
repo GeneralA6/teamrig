@@ -36,6 +36,7 @@ import {
   DEFAULT_IDLE,
   DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
+  DEFAULT_SECURITY_GATES,
   DEFAULT_COMMIT_GUARD,
   DEFAULT_DB_WRITE_GUARD,
   DEFAULT_SECRET_GUARD,
@@ -361,6 +362,40 @@ const isAbsoluteFolder: Check<string> = (text) => (/[\r\n]/.test(text) || !ABSOL
 /** A file named in full, on one line: a hook reads it from whichever folder its session runs in. */
 const isAbsoluteFile: Check<string> = (text) => (/[\r\n]/.test(text) || !ABSOLUTE_PATH.test(text) ? 'expected an absolute file path on one line' : undefined);
 
+/** The owner gate `typed` names, as `ownerGates` spells it, case aside; undefined when it names none. */
+function ownerGateNamed(typed: string, ownerGates: readonly string[]): string | undefined {
+  const key = typed.trim().toLowerCase();
+  return ownerGates.find((gate) => gate.toLowerCase() === key);
+}
+
+/**
+ * `securityGates` (T2761): the owner gates whose cards need the security reviewer's verdict, each spelt as
+ * `ownerGates` spells it. A gate that is no owner gate is an issue and dropped; with the key absent, the default
+ * gates the team's ownerGates names, so a team that renamed its gates is not reported for a key it never wrote.
+ */
+function readSecurityGates(read: ConfigReader, raw: JsonRecord, ownerGates: readonly string[]): readonly string[] {
+  const fallback = DEFAULT_SECURITY_GATES.map((gate) => ownerGateNamed(gate, ownerGates)).filter((gate): gate is string => gate !== undefined);
+  const { maxItems, maxLength } = CONFIG_LIMITS.securityGates;
+  return read.list(
+    raw,
+    'securityGates',
+    '',
+    fallback,
+    (value, itemPath) => {
+      const typed = read.stringItem(value, itemPath, shortLine(maxLength));
+      if (typed === undefined) {
+        return undefined;
+      }
+      const gate = ownerGateNamed(typed, ownerGates);
+      if (gate === undefined) {
+        read.report(itemPath, `"${typed}" is not one of ownerGates`);
+      }
+      return gate;
+    },
+    maxItems,
+  );
+}
+
 /**
  * `launch`: a model, an effort and a project folder for sessions on the team. A wrong field is reported and
  * left out, so the session starts on Claude Code's own choice (or, for the lead, the lead's default) for it,
@@ -468,6 +503,14 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
   // T2256: the question picker stopped the lead's session in the meeting too; the meeting asks only in plain text.
   read.dropped(decisions, 'askWith', 'decisions', 'the daily meeting asks the owner each decision in plain text, the picker guard refusing the question picker to the lead too');
   reportRenamedKey(read, raw, '', 'coordinator', 'delivery');
+  const ownerGates = read.stringList(
+    raw,
+    'ownerGates',
+    '',
+    DEFAULT_OWNER_GATES,
+    shortLine(CONFIG_LIMITS.ownerGates.maxLength),
+    CONFIG_LIMITS.ownerGates.maxItems,
+  );
 
   const config: KitConfig = {
     configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
@@ -481,14 +524,8 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
       ...(securityReviewer === undefined ? {} : { securityReviewer }),
     },
     leads,
-    ownerGates: read.stringList(
-      raw,
-      'ownerGates',
-      '',
-      DEFAULT_OWNER_GATES,
-      shortLine(CONFIG_LIMITS.ownerGates.maxLength),
-      CONFIG_LIMITS.ownerGates.maxItems,
-    ),
+    ownerGates,
+    securityGates: readSecurityGates(read, raw, ownerGates),
     ruleConflicts: read.list(
       raw,
       'ruleConflicts',

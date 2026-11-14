@@ -15,6 +15,7 @@ export const CONFIG_LIMITS = {
   skillListingChars: { min: 500, max: 500_000 },
   sessionListsChars: { min: 500, max: 500_000 },
   ownerGates: { maxItems: 8, maxLength: 60 },
+  securityGates: { maxItems: 8, maxLength: 60 },
   ruleConflicts: { maxItems: 40 },
   protectedBranches: { maxItems: 8, maxLength: 64 },
   reviewPaths: { maxItems: 128 },

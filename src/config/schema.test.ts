@@ -131,6 +131,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   skillListingChars: 'contextFiles.maxSkillListingChars',
   sessionListsChars: 'contextFiles.maxSessionListsChars',
   ownerGates: 'ownerGates',
+  securityGates: 'securityGates',
   ruleConflicts: 'ruleConflicts',
   protectedBranches: 'pushGuard.protectedBranches',
   reviewPaths: 'pushGuard.reviewPaths',

@@ -1312,6 +1312,29 @@ describe('parseConfig', () => {
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
   });
 
+  it('gates permissions cards on the security verdict by default, and none when ownerGates lacks permissions', () => {
+    const plain = parseConfig(ROSTER);
+    assert.deepEqual(plain.config.securityGates, ['permissions']);
+    const renamed = parseConfig({ ...ROSTER, ownerGates: ['money', 'hiring'] });
+    assert.deepEqual(renamed.issues, []);
+    assert.deepEqual(renamed.config.securityGates, []);
+  });
+
+  it('spells each security gate as ownerGates does, and drops one that is no owner gate', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, ownerGates: ['Money', 'Permissions'], securityGates: [' permissions ', 'MONEY', 'hiring'] });
+    assert.deepEqual(config.securityGates, ['Permissions', 'Money']);
+    assert.deepEqual(paths(issues), ['securityGates[2]']);
+    assert.equal(issues[0]?.message, '"hiring" is not one of ownerGates');
+  });
+
+  it('refuses more than 8 security gates, keeping the default', () => {
+    const gates = Array.from({ length: 9 }, (_, index) => `gate ${index}`);
+    const { config, issues } = parseConfig({ ...ROSTER, ownerGates: [...gates.slice(0, 7), 'permissions'], securityGates: gates });
+    assert.deepEqual(paths(issues), ['securityGates']);
+    assert.match(issues[0]?.message ?? '', /^expected a list of at most 8 items/);
+    assert.deepEqual(config.securityGates, ['permissions']);
+  });
+
   it('reads the recorded rule conflicts, dropping each bad one with its issue', () => {
     assert.deepEqual(parseConfig(ROSTER).config.ruleConflicts, []);
     const kept = { file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local' };

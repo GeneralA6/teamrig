@@ -50,6 +50,12 @@ export const DEFAULT_OWNER_GATES: readonly string[] = [
   'resource changes',
 ];
 
+/**
+ * The owner gates whose cards reach the owner only with the security reviewer's verdict on them (T2761): a
+ * permission is a grant, a guard or a settings line, so the owner decides it from the reviewer's view.
+ */
+export const DEFAULT_SECURITY_GATES: readonly string[] = ['permissions'];
+
 export const DEFAULT_MESSAGES = { maxLines: 10, coldAfterMinutes: 60 } as const;
 
 /**

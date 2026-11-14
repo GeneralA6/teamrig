@@ -1547,6 +1547,11 @@ export interface KitConfig {
   readonly leads: Readonly<Record<string, readonly string[]>>;
   /** Decision areas only the human owner can approve; silence never counts as consent for them. */
   readonly ownerGates: readonly string[];
+  /**
+   * The owner gates whose cards reach the owner only with the security reviewer's verdict on the card (T2761), each
+   * spelt as ownerGates spells it.
+   */
+  readonly securityGates: readonly string[];
   /** The local rules kept although they conflict with a core rule, each with the side that wins (`rules keep`). */
   readonly ruleConflicts: readonly RuleConflict[];
   readonly messages: MessagesConfig;

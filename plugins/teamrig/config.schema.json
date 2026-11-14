@@ -92,6 +92,13 @@
         "resource changes"
       ]
     },
+    "securityGates": {
+      "description": "The owner gates (each one of ownerGates) whose cards reach the owner only with the security reviewer's verdict on the card, recorded by teamrig audit --verdict. A card edited after the verdict waits for a new one. With the key absent, permissions where ownerGates names it.",
+      "type": "array",
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[^\\r\\n]+$" },
+      "default": ["permissions"]
+    },
     "ruleConflicts": {
       "description": "Local rules (a line of a CLAUDE.md, rules file, skill, memory file, hook or settings file) kept although they conflict with a core rule, each with the side that wins. teamrig rules scan finds them; teamrig rules keep records one, teamrig rules forget drops one. The core pack lists them.",
       "type": "array",
