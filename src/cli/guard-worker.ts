@@ -15,6 +15,7 @@ async function answer(main: GuardMain, run: GuardThreadRun, post: (message: Guar
   const entry: NodeEntry = {
     out: { stdout: (line) => post({ kind: 'stdout', line }), stderr: (line) => post({ kind: 'stderr', line }) },
     script: run.script,
+    readStdin: () => Promise.resolve(run.input),
   };
   try {
     post({ kind: 'answered', code: await main(run.argv, entry) });

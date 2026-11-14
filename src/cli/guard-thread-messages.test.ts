@@ -32,12 +32,14 @@ describe('isGuardThreadMessage', () => {
 });
 
 describe('isGuardThreadRun', () => {
-  it('takes string arguments and a script, and refuses anything else', () => {
-    assert.equal(isGuardThreadRun({ argv: ['hook', 'push-guard'], script: 'main.js' }), true);
-    assert.equal(isGuardThreadRun({ argv: [], script: 'main.js' }), true);
-    assert.equal(isGuardThreadRun({ argv: ['hook', 2], script: 'main.js' }), false);
-    assert.equal(isGuardThreadRun({ argv: 'hook', script: 'main.js' }), false);
-    assert.equal(isGuardThreadRun({ argv: ['hook'] }), false);
+  it('takes string arguments, a script and the input, and refuses anything else', () => {
+    assert.equal(isGuardThreadRun({ argv: ['hook', 'push-guard'], script: 'main.js', input: '{}' }), true);
+    assert.equal(isGuardThreadRun({ argv: [], script: 'main.js', input: '' }), true);
+    assert.equal(isGuardThreadRun({ argv: ['hook', 2], script: 'main.js', input: '{}' }), false);
+    assert.equal(isGuardThreadRun({ argv: 'hook', script: 'main.js', input: '{}' }), false);
+    assert.equal(isGuardThreadRun({ argv: ['hook'], input: '{}' }), false);
+    assert.equal(isGuardThreadRun({ argv: ['hook'], script: 'main.js' }), false);
+    assert.equal(isGuardThreadRun({ argv: ['hook'], script: 'main.js', input: Buffer.from('{}') }), false);
     assert.equal(isGuardThreadRun(undefined), false);
   });
 });

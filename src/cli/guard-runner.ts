@@ -53,6 +53,8 @@ export interface GuardHost {
   exit(code: number): void;
   /** The code the process ends with once its work drains. */
   setExitCode(code: number): void;
+  /** The hook's input, the process's whole stdin. */
+  readStdin(): Promise<string>;
 }
 
 /** What a thrown value says, on one line. */
@@ -147,7 +149,7 @@ export async function runGuard(argv: readonly string[], script: string, load: ()
     return;
   }
   const stdout: string[] = [];
-  const entry: NodeEntry = { out: { stdout: (line) => stdout.push(line), stderr: (line) => host.writeError(`${line}\n`) }, script };
+  const entry: NodeEntry = { out: { stdout: (line) => stdout.push(line), stderr: (line) => host.writeError(`${line}\n`) }, script, readStdin: () => host.readStdin() };
   try {
     const code = await main(argv, entry);
     host.setExitCode(settle({ kind: 'answered', code, stdout }).exitCode);

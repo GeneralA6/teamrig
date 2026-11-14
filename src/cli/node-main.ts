@@ -46,6 +46,11 @@ export interface NodeEntry {
   readonly out: Output;
   /** The CLI's entry script, `main.js`, which `teamrig open`, the idle pass and the restart start again. */
   readonly script: string;
+  /**
+   * The run's whole stdin, such as a hook's JSON: the process's (`main.ts`), or the text the guard entry read and sent
+   * its guard thread, which is given none: a thread with a stdin stream it never reads stays alive (T2433).
+   */
+  readonly readStdin: () => Promise<string>;
 }
 
 /** The process's own stdout and stderr, a line at a time. */
@@ -123,7 +128,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT },
     webhook: httpWebhook(),
     cmdShimLine,
-    readStdin: () => text(process.stdin),
+    readStdin: entry.readStdin,
     newId: () => randomUUID(),
   });
 }

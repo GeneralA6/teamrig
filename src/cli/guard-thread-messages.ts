@@ -13,10 +13,11 @@ export type GuardThreadMessage =
   | { readonly kind: 'answered'; readonly code: number }
   | { readonly kind: 'crashed'; readonly message: string };
 
-/** The one run the entry asks of the guard thread: the CLI's arguments and its entry script. */
+/** The one run the entry asks of the guard thread: the CLI's arguments, its entry script and the hook's input. */
 export interface GuardThreadRun {
   readonly argv: readonly string[];
   readonly script: string;
+  readonly input: string;
 }
 
 function isFields(value: unknown): value is { readonly [key: string]: unknown } {
@@ -48,7 +49,7 @@ export function isGuardThreadRun(value: unknown): value is GuardThreadRun {
     return false;
   }
   const argv = value['argv'];
-  return Array.isArray(argv) && argv.every((arg) => typeof arg === 'string') && typeof value['script'] === 'string';
+  return Array.isArray(argv) && argv.every((arg) => typeof arg === 'string') && typeof value['script'] === 'string' && typeof value['input'] === 'string';
 }
 
 /** What a thrown value says, to carry across the thread as text. */

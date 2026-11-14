@@ -1,5 +1,6 @@
 import { writeSync } from 'node:fs';
 import { extname } from 'node:path';
+import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 import { runGuard, type GuardHost } from './guard-runner.ts';
 import { threadGuardLoad } from './guard-thread.ts';
@@ -25,6 +26,7 @@ const host: GuardHost = {
   setExitCode: (code) => {
     process.exitCode = code;
   },
+  readStdin: () => text(process.stdin),
 };
 
 /** `.ts` in a checkout, `.js` in the build: the scripts beside this one carry the same. */
@@ -32,4 +34,4 @@ const extension = extname(fileURLToPath(import.meta.url));
 /** The CLI's own entry beside this one, which `teamrig open` starts. */
 const script = fileURLToPath(new URL(`./main${extension}`, import.meta.url));
 
-void runGuard(process.argv.slice(2), script, threadGuardLoad(new URL(`./guard-worker${extension}`, import.meta.url), process.stdin), host);
+void runGuard(process.argv.slice(2), script, threadGuardLoad(new URL(`./guard-worker${extension}`, import.meta.url)), host);
