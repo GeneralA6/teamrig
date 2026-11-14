@@ -171,6 +171,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   packageCooldownDays: 'packageGuard.cooldownDays',
   searchNudgeAt: 'leadBoundary.searchNudgeAt',
   turnLogKeepHours: 'turnLog.keepHours',
+  rushPokeAfterMinutes: 'rush.pokeAfterMinutes',
   meetingBeforeMinutes: 'meetingNotices.beforeMinutes',
   meetingMissedMinutes: 'meetingNotices.missedAfterMinutes',
   wakePriority: 'wake.priority',

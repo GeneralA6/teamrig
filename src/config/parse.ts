@@ -16,6 +16,7 @@ import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,
   DEFAULT_BURST,
+  DEFAULT_RUSH,
   DEFAULT_COMMITS,
   DEFAULT_CONTEXT_FILES,
   DEFAULT_FREEZES,
@@ -149,6 +150,7 @@ import {
   type BudgetReset,
   type BurstConfig,
   type BranchesConfig,
+  type RushConfig,
   type DeliveryConfig,
   type DeliveryRepoConfig,
   type QueueConfig,
@@ -605,6 +607,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     hiring: parseHiring(read, read.section(raw, 'hiring', '')),
     burst: parseBurst(read, read.section(raw, 'burst', '')),
+    rush: parseRush(read, read.section(raw, 'rush', '')),
     open: parseOpen(read, read.section(raw, 'open', ''), sessions),
     statusLine: parseStatusLine(read, read.section(raw, 'statusLine', '')),
     focus: parseFocus(read, read.section(raw, 'focus', '')),
@@ -1969,6 +1972,11 @@ function parseBurst(read: ConfigReader, raw: JsonRecord): BurstConfig {
     maxHelpers: read.integer(raw, 'maxHelpers', path, defaults.maxHelpers, CONFIG_LIMITS.burstMaxHelpers),
     maxHires: read.integer(raw, 'maxHires', path, defaults.maxHires, CONFIG_LIMITS.burstMaxHires),
   };
+}
+
+/** `rush`: when a rush pokes an idle tab. */
+function parseRush(read: ConfigReader, raw: JsonRecord): RushConfig {
+  return { pokeAfterMinutes: read.integer(raw, 'pokeAfterMinutes', 'rush', DEFAULT_RUSH.pokeAfterMinutes, CONFIG_LIMITS.rushPokeAfterMinutes) };
 }
 
 function parsePaths(read: ConfigReader, raw: JsonRecord): PathsConfig {

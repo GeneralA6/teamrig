@@ -1333,6 +1333,16 @@ export interface BurstConfig {
   readonly maxHires: number;
 }
 
+/** A rush (`teamrig burst start rush`): how it keeps the team's tabs on its work. */
+export interface RushConfig {
+  /**
+   * The poke: while a rush is on, a tab idle this many minutes since its last turn, with a task of its own it can go
+   * on with and no queued step of its own running, is woken once to start or continue its top task
+   * (src/wake/rush-poke.ts).
+   */
+  readonly pokeAfterMinutes: number;
+}
+
 /**
  * Where `teamrig open` opens a session's tab: `auto` picks tmux inside tmux, else the platform's
  * terminal; `print` opens nothing and prints the command to run.
@@ -1655,6 +1665,7 @@ export interface KitConfig {
   readonly refresh: RefreshConfig;
   readonly hiring: HiringConfig;
   readonly burst: BurstConfig;
+  readonly rush: RushConfig;
   /** How `teamrig open` starts a session in a new terminal tab. */
   readonly open: OpenConfig;
   /** What `teamrig statusline` shows. */

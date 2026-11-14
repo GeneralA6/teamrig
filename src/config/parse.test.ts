@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, DEFAULT_BRANCHES } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_RUSH, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, DEFAULT_BRANCHES } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION, type AccountBudget, type BudgetConfig } from './types.ts';
@@ -1522,6 +1522,19 @@ describe('parseConfig', () => {
     const bad = parseConfig({ ...ROSTER, burst: { policy: 'automatic', surplusHours: 168, minSparePct: 0, maxHelpers: 21, maxHires: -1 } });
     assert.deepEqual(paths(bad.issues).sort(), ['burst.maxHelpers', 'burst.maxHires', 'burst.minSparePct', 'burst.policy', 'burst.surplusHours']);
     assert.deepEqual(bad.config.burst, DEFAULT_BURST);
+  });
+
+  it('reads rush.pokeAfterMinutes, 5 by default, and refuses one under a minute or past two hours', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.rush, DEFAULT_RUSH);
+    assert.equal(DEFAULT_RUSH.pokeAfterMinutes, 5);
+    const set = parseConfig({ ...ROSTER, rush: { pokeAfterMinutes: 12 } });
+    assert.deepEqual(set.issues, []);
+    assert.equal(set.config.rush.pokeAfterMinutes, 12);
+    for (const pokeAfterMinutes of [0, 121, 'soon']) {
+      const bad = parseConfig({ ...ROSTER, rush: { pokeAfterMinutes } });
+      assert.deepEqual(paths(bad.issues), ['rush.pokeAfterMinutes'], String(pokeAfterMinutes));
+      assert.deepEqual(bad.config.rush, DEFAULT_RUSH);
+    }
   });
 
   it('flags the fixed hiring daily budgets this format no longer reads, instead of ignoring them', () => {

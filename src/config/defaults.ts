@@ -5,6 +5,7 @@ import type {
   QueueConfig,
   BudgetConfig,
   BurstConfig,
+  RushConfig,
   CommitGuardConfig,
   CommitsConfig,
   ContextFilesConfig,
@@ -448,6 +449,9 @@ export const DEFAULT_BRANCHES: BranchesConfig = { pattern: '{type}/{id}-{slug}',
  * and one burst hires at most 2 sessions.
  */
 export const DEFAULT_BURST: BurstConfig = { policy: 'owner', surplusHours: 48, minSparePct: 5, maxHelpers: 3, maxHires: 2 };
+
+/** The owner's bar for a rush: a tab with work left that sits idle 5 minutes is poked. */
+export const DEFAULT_RUSH: RushConfig = { pokeAfterMinutes: 5 };
 
 /**
  * An area's pace is the tasks it finished over the last week, counted once it finished at least 3; the dated
