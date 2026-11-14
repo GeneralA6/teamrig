@@ -112,19 +112,20 @@ describe("runCli: a child team's owner decisions go up to the lead at its tree's
     assert.deepEqual(rowIds(started.stdout), ['T1', 'web/T2', 'ui/T3'], 'its own first, then the teams under it depth first');
 
     for (const [label, note] of [['T1', 'human decided: basic'], ['web/T2', 'human decided: ship it']] as const) {
-      const noted = await kit.run(['update', label, '--note', note, '--session', 'lead']);
+      const noted = await kit.run(['update', label, '--decided', '--note', note, '--session', 'lead']);
       assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
     }
     const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
     assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
     assert.match(ended.stdout[0] ?? '', /told 2 session\(s\) the decisions on their tasks$/);
-    assert.ok(ended.stdout.includes('  alpha T1: human decided: basic'), ended.stdout.join('\n'));
-    assert.ok(ended.stdout.includes('  web/front T2: human decided: ship it'), ended.stdout.join('\n'));
+    const cleared = ' (its wait on the owner cleared: act on it, set its next status)';
+    assert.ok(ended.stdout.includes(`  alpha T1: human decided: basic${cleared}`), ended.stdout.join('\n'));
+    assert.ok(ended.stdout.includes(`  web/front T2: human decided: ship it${cleared}`), ended.stdout.join('\n'));
 
     const front = (await kit.run(['inbox', 'read', '--session', 'front'], { env: WEB })).stdout;
     const told = front.filter((line) => line.includes('Decided on your tasks:'));
     assert.equal(told.length, 1, front.join('\n'));
-    assert.match(told[0] ?? '', /app\/lead: the owner's daily meeting with app-lead ended .*\. Decided on your tasks: T2: human decided: ship it\.$/);
+    assert.match(told[0] ?? '', /app\/lead: the owner's daily meeting with app-lead ended .*\. Decided on your tasks: T2: human decided: ship it \(its wait on the owner cleared: act on it, set its next status\)\.$/);
     const pixel = (await kit.run(['inbox', 'read', '--session', 'pixel'], { env: UI })).stdout;
     assert.ok(!pixel.some((line) => line.includes('Decided on your tasks:')), "a team's session with nothing decided gets no line");
   });

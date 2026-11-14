@@ -36,28 +36,44 @@ describe('the meeting notices', () => {
     assert.equal(decisionText(update('T1', '2030-01-08T09:10:00Z', { decided: true })), 'T1: owner decided: go (its wait on the owner cleared: act on it, set its next status)');
   });
 
-  it("groups the lead's updates during the meeting by each task's owner, leaving out the rest", () => {
+  it('says when a Later brings the card back (T1295)', () => {
+    const later = update('T1', '2030-01-08T09:10:00Z', { note: 'owner put it off: after the release', waits: [{ kind: 'time', at: '2030-01-12' }] });
+    assert.equal(decisionText(later), 'T1: owner put it off: after the release (put off to 2030-01-12: it waits on the owner until then)');
+  });
+
+  it("groups the owner's answers recorded during the meeting by each task's owner, leaving out the rest", () => {
     const tasks = new Map<string, Task>([
       ['T1', testTask({ id: 'T1', owner: 'alpha' })],
       ['T2', testTask({ id: 'T2', owner: 'bravo' })],
       ['T3', testTask({ id: 'T3', owner: 'lead' })],
     ]);
+    const decided = ' (its wait on the owner cleared: act on it, set its next status)';
     const events: RegisterEvent[] = [
-      update('T1', '2030-01-08T08:59:00Z', { note: 'before the meeting' }),
-      update('T1', '2030-01-08T09:10:00Z', { note: 'owner: ship it' }),
-      update('T2', '2030-01-08T09:12:00Z', { note: 'owner: hold' }),
-      update('T2', '2030-01-08T09:13:00Z', { by: 'alpha', note: 'not the lead' }),
-      update('T3', '2030-01-08T09:14:00Z', { note: "the lead's own task" }),
-      update('T9', '2030-01-08T09:15:00Z', { note: 'retired by a compaction' }),
+      update('T1', '2030-01-08T08:59:00Z', { note: 'before the meeting', decided: true }),
+      update('T1', '2030-01-08T09:10:00Z', { note: 'owner: ship it', decided: true }),
+      update('T2', '2030-01-08T09:12:00Z', { note: 'owner: hold', waits: [{ kind: 'time', at: '2030-01-12' }] }),
+      update('T2', '2030-01-08T09:13:00Z', { by: 'alpha', note: 'not the lead', decided: true }),
+      update('T3', '2030-01-08T09:14:00Z', { note: "the lead's own task", decided: true }),
+      update('T9', '2030-01-08T09:15:00Z', { note: 'retired by a compaction', decided: true }),
       { v: 1, type: 'status', id: 'T1', at: '2030-01-08T09:16:00Z', by: 'lead', status: 'done', note: 'a status change', evidence: null, skill: null },
-      update('T1', '2030-01-08T09:20:00Z', { note: 'owner: and the docs' }),
+      update('T1', '2030-01-08T09:20:00Z', { note: 'owner: and the docs', decided: true }),
     ];
     assert.deepEqual(
       [...decisionsByOwner(events, tasks, 'lead', SINCE)],
       [
-        ['alpha', ['T1: owner: ship it', 'T1: owner: and the docs']],
-        ['bravo', ['T2: owner: hold']],
+        ['alpha', [`T1: owner: ship it${decided}`, `T1: owner: and the docs${decided}`]],
+        ['bravo', ['T2: owner: hold (put off to 2030-01-12: it waits on the owner until then)']],
       ],
     );
+  });
+
+  it('sends no plain note, changed field or Later brought back as a decision (T2775)', () => {
+    const tasks = new Map<string, Task>([['T1', testTask({ id: 'T1', owner: 'alpha' })]]);
+    const events: RegisterEvent[] = [
+      update('T1', '2030-01-08T09:10:00Z', { note: 'lead: asked, the owner wants numbers first' }),
+      update('T1', '2030-01-08T09:11:00Z', { note: null, changes: { priority: 1 } }),
+      update('T1', '2030-01-08T09:12:00Z', { note: 'owner brought it back', waits: [] }),
+    ];
+    assert.deepEqual([...decisionsByOwner(events, tasks, 'lead', SINCE)], []);
   });
 });
