@@ -50,3 +50,13 @@ export interface HostIssue {
   /** When its title last changed, among those same timeline events; undefined when none of them is a change of title. */
   readonly renamedAt: string | undefined;
 }
+
+/** One issue of a repository with the links the host has on it. `hostId` is the host's own id, which a link write names. */
+export interface LinkedIssue {
+  readonly number: number;
+  readonly hostId: number;
+  /** Its parent issue, in this repository or another (`owner/name` in lowercase); undefined for none. */
+  readonly parent: { readonly repo: string; readonly number: number } | undefined;
+  /** The issues of the same repository it is blocked by. */
+  readonly blockedBy: readonly number[];
+}
