@@ -4105,20 +4105,36 @@ The repository is the one `--repo` names, else the one the current folder belong
 the delivery.repos entry whose `mainCheckout` is its main checkout; outside a team, or with no entry, it uses the
 default folder and runs no setup.
 
+With `--task <T id>` in place of a branch name, the branch is named from that task on the team's register by the
+team's pattern, [delivery.branches] (default `{type}/{id}-{slug}`, after Conventional Branch): `feat/t12-parse-input`
+for task T12 "Parse input". The pattern's placeholders are `{type}`, `{id}` (the task id in lowercase, which must
+start a part of the name: it tells whose branch it is), `{issue}` (the number of the task's `gh:` issue ref),
+`{slug}` (the title in lowercase words joined by `-`, task ids left out, cut at a word to
+[delivery.branches.slugMax], default 40) and `{session}` (the task's owner). The branch type is `--type` when
+given, else the one [delivery.branches.classes] maps the task's work class to, else the one
+[delivery.branches.itemTypes] maps its item type to (default: a task `feat`, a bug `fix`);
+[delivery.branches.typePatterns] gives a branch type its own pattern. Branches named before keep their names. To
+ship a branch again under a new name, add `-b` to it (`feat/t12-parse-input-b`), never a force-push.
+
 It refuses (exit 2) before any change for: a name that is no branch name; a folder already there; an `origin/HEAD`
 that names no default branch (`git remote set-head origin --auto` sets it); a branch that already exists; `--repo`
-outside a team or naming a repository the team does not list; and a folder in no git repository without `--repo`. A
-fetch or `git worktree add` that fails is FAILED (exit 1). A setup that fails is FAILED too, and the worktree stays,
-so you can finish its setup by hand or remove it with `teamrig worktree remove <path> --delete-branch`.
+outside a team or naming a repository the team does not list; and a folder in no git repository without `--repo`.
+With `--task` it also refuses a task the register lacks, `--task` outside a team, and a pattern naming a word the
+task has none of, such as `{issue}` for a task with no issue ref. A fetch or `git worktree add` that fails is FAILED
+(exit 1). A setup that fails is FAILED too, and the worktree stays, so you can finish its setup by hand or remove it
+with `teamrig worktree remove <path> --delete-branch`.
 
 Flags:
 
+- `--task <T id>`: names the new branch from this task by [delivery.branches], in place of a branch name.
+- `--type <branch type>`: with `--task`, the branch type to use, a lowercase word such as `docs` or `chore`.
 - `--repo <name>`: the repository in the team's delivery.repos to add it to, from any folder.
 
 Example:
 
 ```sh
 teamrig worktree add t12-parser
+teamrig worktree add --task T12 --type docs
 ```
 
 Output:
