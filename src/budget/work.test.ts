@@ -214,7 +214,7 @@ describe('cachedWork', () => {
   type SizeTask = (id: string, base: SizeBase) => Promise<void>;
   /** Sets a task of the register over `files` done, by its owner, at the register's clock. */
   type FinishTask = (owner: string, id: string) => Promise<void>;
-  /** Sets a task of the register over `files` waiting, by its owner, on the task `on`. */
+  /** Starts a task of the register over `files` and sets it waiting, by its owner, on the task `on`. */
   type WaitTask = (owner: string, id: string, on: string) => Promise<void>;
 
   interface Team {
@@ -254,6 +254,9 @@ describe('cachedWork', () => {
         assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
       },
       wait: async (owner, id, on) => {
+        // The register lets only a started task wait on another; an open one is planned after it instead.
+        const started = await register.setStatus(owner, id, { status: 'in-progress' });
+        assert.ok(started.ok, started.ok ? '' : started.error);
         const verdict = await register.setStatus(owner, id, { status: 'waiting', note: 'needs it first', waits: [{ kind: 'task', id: on }] });
         assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
       },
