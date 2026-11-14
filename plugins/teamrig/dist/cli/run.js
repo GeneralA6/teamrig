@@ -101,7 +101,8 @@ const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'misse
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
     set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'affects', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit'], load: async () => (await registerCommands()).set },
-    update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
+    // --prepares only here: a lead marks a task that exists, so `add` (which shares TASK_FIELDS) never takes it.
+    update: { effect: 'write', flags: ['session', 'note', 'later', 'prepares', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
     'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
     // No register changes, but --out writes the path the line names: a line no person typed must not reach that.
     sweep: { effect: 'write', flags: ['session', 'out'], switches: ['tree'], load: async () => (await sweepCommands()).sweep },
@@ -122,7 +123,7 @@ const COMMANDS = {
     stats: { effect: 'read', flags: ['session', 'range'], switches: ['tree'], load: async () => (await statsCommands()).stats },
     'report done': { effect: 'read', flags: ['session', 'day'], switches: ['all'], load: async () => (await reportCommands()).reportDone },
     'goal add': { effect: 'write', flags: ['session', 'title', 'start', 'target', 'parent'], load: async () => (await goalCommands()).goalAdd },
-    'goal set': { effect: 'write', flags: ['session', 'target', 'title', 'note'], load: async () => (await goalCommands()).goalSet },
+    'goal set': { effect: 'write', flags: ['session', 'target', 'title', 'slice', 'note'], load: async () => (await goalCommands()).goalSet },
     'goal rank': { effect: 'write', flags: ['session'], load: async () => (await goalCommands()).goalRank },
     'goal list': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalList },
     'goal show': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalShow },
@@ -484,10 +485,14 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --followups; verifying and done need every part (requireOn; mode refuse, warn or off)
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
-      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin] [--note ..]
+      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin]
+      [--prepares <goal>:<slice>|none] [--note ..]
       the lead may change owner, priority, due, week, after, size, type, class, critical and pin on any task
       --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
       on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
+      --prepares <goal>:<slice>|none: marks a design, study or prep plan for that slice of a goal, set only by
+      a leader above the owner (the lead on its own tasks too); while the slice is the goal's open one or the
+      next, the task runs outside the slice cap; none clears it
       a --note from the task's owner also replaces the note show and the waiting text print
   update <id> --later <date>|none --note ..   puts a card waiting on the owner off to that time, out of the
       meeting's DECISIONS and the batches until then (its owner or a leader above it); none brings it back
@@ -543,8 +548,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the lead adds one of the team's goals: a tag (A1, A2.1), a title and its planned window from
       --start (default today) to --target; --parent: the goal it is part of (a key result, refused past
       focus.maxActiveKeyResults ones with a target of today or later)
-  goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] --note "<why>"   the lead moves a goal's
-      target (a slip, kept with its note) or renames it
+  goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] [--slice <n>] --note "<why>"   the lead
+      moves a goal's target (a slip, kept with its note), renames it or opens its next slice (1 first)
   goal rank <tag> <n>|none   the lead ranks a goal, 1 first, or takes it off the ranking; goal-first
       ranking gives a task the best rank of its goals and the goals they are part of
   goal list   the team's goals, the ranked ones first, then the rest as a tree, each with its window,

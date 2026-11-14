@@ -40,6 +40,7 @@ import { weekUseOnAccount } from "../account-teams.js";
 import { readWideAllow, teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { handStepPin, readRunFiles } from "../hand-step-file.js";
+import { KitTreeGoals } from "../tree-goals.js";
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
@@ -415,7 +416,7 @@ export async function set(args, runtime) {
     if (typed.ask !== null) {
         return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
     }
-    const { held, due, wip } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config);
+    const { held, due, wip } = await startGatesOf(register, new KitTreeGoals(runtime, paths, config), by, id, input, new Date(runtime.clock.now()), team.zone, config);
     const verdict = await register.setStatus(by, id, input);
     const warned = config.register.verifyGate === 'warn';
     // The start as written: one that named its held proof as met asks the verifying owners to confirm it.
@@ -479,7 +480,7 @@ const OPEN_START = { held: undefined, due: undefined, wip: undefined };
  * What holds the caller's start of its own task, read before the write: the policy refuses that start (or lets
  * it through in warn mode); the owners of the verifying tasks it needs hear of it either way.
  */
-async function startGatesOf(register, caller, id, input, now, zone, config) {
+async function startGatesOf(register, goalRecords, caller, id, input, now, zone, config) {
     if (input.status !== 'in-progress') {
         return OPEN_START;
     }
@@ -491,7 +492,9 @@ async function startGatesOf(register, caller, id, input, now, zone, config) {
     }
     const holds = startHolds(task, input.status, tasks);
     const due = dueStartHolds(task, input.status, tasks, now, zone, config.register.maxVerifying);
-    const wip = wipHold({ ...input, task }, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
+    // The goal records count only for a task with a prep marker, so no other start reads them.
+    const goals = task.prepares === null ? undefined : await goalRecords.sliced();
+    const wip = wipHold({ ...input, task, ...(goals === undefined ? {} : { goals }) }, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
     return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due }, wip };
 }
 /**

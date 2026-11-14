@@ -3,6 +3,7 @@ import { ID_PATTERN } from "../core/ids.js";
 import { parseUtcDeadline } from "../core/time.js";
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, WORK_CLASS_NAME } from "./model.js";
 import { parseCard } from "./card.js";
+import { GOAL_TAG, isSlice } from "./goals.js";
 import { parseAuditPin } from "./hand-step.js";
 import { parseReview } from "./review.js";
 import { parseWaits } from "./waits.js";
@@ -18,8 +19,8 @@ import { parseWaits } from "./waits.js";
  * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637), a status line's
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
  * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
- * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110) and an update's hand step `audit`
- * (T2312) and a card's `affects` (T2623), which an older reader ignores:
+ * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110), an update's hand step `audit`
+ * (T2312), a card's `affects` (T2623) and a task's `prepares` marker (T2453), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -33,6 +34,10 @@ export const EVENT_VERSION = 3;
 export const TASK_LINE_VERSION = 2;
 /** The name lines before version 2 gave the `priority` field; still read, never written. */
 export const LEGACY_PRIORITY_FIELD = 'tier';
+/** True for a prep marker as a line holds it: a goal tag and a slice from FIRST_SLICE. */
+export function isTaskPrep(value) {
+    return isRecord(value) && typeof value['goal'] === 'string' && GOAL_TAG.test(value['goal']) && isSlice(value['slice']);
+}
 /**
  * What a register item is (`--type`): a `task`, the default, or a `bug`, such as a fix, an incident, the investigation
  * of a failure, a bug's design or the decision about one. What each type does is its row in item-types.ts.
@@ -51,7 +56,7 @@ const LEGACY_KINDS = new Map([
     ['problem', { type: 'bug', critical: false }],
     ['critical', { type: 'bug', critical: true }],
 ]);
-export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'noGoal', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'];
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'noGoal', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass', 'prepares'];
 /** The lead's answer to the approval a waiting task asks of it (T684): given, or declined with the note saying why. */
 export const APPROVAL_VERDICTS = ['approved', 'declined'];
 export function isApprovalVerdict(value) {
@@ -79,8 +84,8 @@ export function sizeProblem(value) {
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 /**
  * The record an event is written as. A create line leaves out an empty `after`, a null `description`, `size`, `type`,
- * `pin` or `workClass` and a false `critical` or `noGoal`, which read back as none, so a task without them costs no bytes and its
- * line is the one an older teamrig wrote.
+ * `pin`, `workClass` or `prepares` and a false `critical` or `noGoal`, which read back as none, so a task without them costs
+ * no bytes and its line is the one an older teamrig wrote.
  */
 export function eventRecord(event) {
     if (event.type !== 'create') {
@@ -94,7 +99,8 @@ export function eventRecord(event) {
         (name === 'critical' && !task.critical) ||
         (name === 'noGoal' && !task.noGoal) ||
         (name === 'pin' && task.pin === null) ||
-        (name === 'workClass' && task.workClass === null);
+        (name === 'workClass' && task.workClass === null) ||
+        (name === 'prepares' && task.prepares === null);
     return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
 /** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
@@ -385,6 +391,12 @@ function readField(fields, name, value) {
                 return `bad workClass ${JSON.stringify(value)}`;
             }
             fields.workClass = typeof value === 'string' ? value : null;
+            return undefined;
+        case 'prepares':
+            if (value !== undefined && value !== null && !isTaskPrep(value)) {
+                return `bad prepares ${JSON.stringify(value)}`;
+            }
+            fields.prepares = isTaskPrep(value) ? { goal: value.goal, slice: value.slice } : null;
             return undefined;
     }
 }

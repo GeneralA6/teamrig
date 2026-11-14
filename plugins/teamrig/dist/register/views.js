@@ -1,5 +1,6 @@
 import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
+import { isTaskPrep } from "./events.js";
 import { shortSha256 } from "./hand-step.js";
 import { itemTypeOf } from "./item-types.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
@@ -234,6 +235,9 @@ export function formatTask(task, team, tree) {
     if (task.workClass !== null && tree.rankedOf(task) === undefined) {
         parts.push(`class ${task.workClass}`);
     }
+    if (task.prepares !== null) {
+        parts.push(`prepares ${prepText(task.prepares)}`);
+    }
     return `${parts.join(', ')} | ${task.title}${statusNote(task, tree)}${neededByText(task, tree)}`;
 }
 /**
@@ -287,10 +291,17 @@ function changeText(name, value, zone) {
     if (name === 'workClass') {
         return typeof value === 'string' ? value : 'none';
     }
+    if (name === 'prepares') {
+        return isTaskPrep(value) ? prepText(value) : 'none';
+    }
     if (name === 'goals' && Array.isArray(value) && value.length === 0) {
         return 'none';
     }
     return Array.isArray(value) ? value.join(',') : String(value);
+}
+/** A prep marker as rows print it (T2453): `G1:2`, the goal and the slice the task prepares, as `--prepares` takes it. */
+function prepText(prep) {
+    return `${prep.goal}:${prep.slice}`;
 }
 /** A hand step file an audit pins on its task (T2312), as `show` prints it: path, short sha256, auditor and when. */
 function auditText(audit, zone) {
@@ -317,6 +328,7 @@ export function formatEvent(event, zone) {
                 task.type === null ? undefined : `type=${task.type}`,
                 task.critical ? 'critical=true' : undefined,
                 task.workClass === null ? undefined : `workClass=${task.workClass}`,
+                task.prepares === null ? undefined : `prepares=${prepText(task.prepares)}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');

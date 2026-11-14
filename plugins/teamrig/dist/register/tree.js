@@ -59,9 +59,24 @@ export function loopFix(id, other, owner, byWait) {
     return `make the step ${id} needs from ${other} its own task: ${command}`;
 }
 /**
+ * The band plan order ranks a place by: band 0 (expedite) stays first, near-term prep comes right after it, ahead of
+ * the rest of its own band, as a design for the current or next slice must be ready before that slice's build; every
+ * other band moves one down.
+ */
+export function planBand(ranked) {
+    if (ranked.band === 0) {
+        return 0;
+    }
+    return ranked.prep ? 1 : ranked.band + 1;
+}
+/** {@link planBand} of a place, undefined with no ranking. */
+function placeBand(place) {
+    return place.ranked === undefined ? undefined : planBand(place.ranked);
+}
+/**
  * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `pinned` (a task the
- * owner's leader pinned, above every other key); `band` (expedite, then Roadmap and Maintenance, then the rest;
- * score.ts); `ready` (a task that can move before one that cannot, whose value still reaches any need of it through
+ * owner's leader pinned, above every other key); `band` (expedite, then near-term prep, then Roadmap and Maintenance,
+ * then the rest; score.ts, {@link planBand}); `ready` (a task that can move before one that cannot, whose value still reaches any need of it through
  * that need's score); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of
  * its equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
  * tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size` (the smallest
@@ -70,7 +85,7 @@ export function loopFix(id, other, owner, byWait) {
 export const PLAN_KEYS = ['pinned', 'band', 'ready', 'score', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
 const BY_KEY = {
     pinned: (a, b) => trueFirst(a.pinned, b.pinned),
-    band: (a, b) => lowFirst(a.ranked?.band, b.ranked?.band),
+    band: (a, b) => lowFirst(placeBand(a), placeBand(b)),
     ready: (a, b) => trueFirst(b.blocked, a.blocked),
     score: (a, b) => highFirst(a.ranked?.score, b.ranked?.score),
     started: (a, b) => trueFirst(a.started, b.started),
@@ -284,9 +299,13 @@ export class TaskTree {
         const needers = this.isActiveId(task.id) ? this.neededBy(task.id) : [];
         const neededValue = needers.length === 0 ? undefined : Math.max(...needers.map((needer) => valueOf(valueFacts(needer, ranking), ranking.focus)));
         const score = scoreOf({ ...facts, priority: task.priority, ownerSourced: task.source === ranking.ownerSource, dueAt: this.dueTime(task), neededValue, sizing: ranking.sizingOf(task) }, ranking.focus, this.now);
-        const place = { ...score, workClass: facts.workClass, goal: ranking.goalOf(task) };
+        const place = { ...score, workClass: facts.workClass, goal: ranking.goalOf(task), prep: ranking.prepOf(task)?.standing === 'near' };
         this.ranked.set(task.id, place);
         return place;
+    }
+    /** Where a task's prep marker stands ({@link TreeRanking.prepOf}); null with no marker or no ranking. */
+    prepOf(task) {
+        return this.ranking?.prepOf(task) ?? null;
     }
     /** The tasks in plan order ({@link byPlanOrder}). */
     inPlanOrder(tasks) {
