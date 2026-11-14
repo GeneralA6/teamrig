@@ -1,3 +1,4 @@
+import type { ModelWeight } from '../config/types.ts';
 import type { Clock } from '../core/lock.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY } from '../core/time.ts';
 import { findLineAtOrAfter, readLines, type TranscriptBytes } from './cursor.ts';
@@ -16,7 +17,7 @@ import {
   type UsageStorage,
 } from './store.ts';
 import { NO_TURN, TurnTasks } from './tasks.ts';
-import { contextTokens, WEIGHTS, weightOf } from './weights.ts';
+import { contextTokens, modelWeightOf, WEIGHTS, weightOf } from './weights.ts';
 
 /** What the meter reads with and where it keeps its totals. */
 export interface MeterDeps {
@@ -32,6 +33,8 @@ export interface MeterRun {
   readonly transcripts: TranscriptSet;
   /** What one W of a subagent's transcript costs, in W of a main session (`budget.subagentWeight`). */
   readonly subagentWeight: number;
+  /** What one W of each model costs against the weekly meter (`budget.modelWeights`); an unlisted model counts 1. */
+  readonly modelWeights: readonly ModelWeight[];
   /** The most bytes this run reads; what is left is read by the next run. */
   readonly maxBytes: number;
 }
@@ -145,6 +148,7 @@ interface WeightedTranscript {
   readonly path: string;
   readonly weight: number;
   readonly own: boolean;
+  readonly modelWeights: readonly ModelWeight[];
 }
 
 function dayOf(at: number): string {
@@ -167,6 +171,7 @@ class TranscriptFold {
   private readonly turn: TurnTasks | undefined;
   private readonly tally: Tally;
   private readonly weight: number;
+  private readonly modelWeights: readonly ModelWeight[];
 
   constructor(cursor: TranscriptCursor, tally: Tally, transcript: WeightedTranscript) {
     this.call = cursor.call;
@@ -175,6 +180,12 @@ class TranscriptFold {
     this.turn = transcript.own ? new TurnTasks(cursor.turn, (day, task, w) => tally.chargeTask(day, task, w)) : undefined;
     this.tally = tally;
     this.weight = transcript.weight;
+    this.modelWeights = transcript.modelWeights;
+  }
+
+  /** The W multiplier of one line: the transcript's (a subagent's) times its model's. */
+  private multiplier(line: CallLine): number {
+    return this.weight * modelWeightOf(line.model, this.modelWeights);
   }
 
   line(raw: string): void {
@@ -207,7 +218,7 @@ class TranscriptFold {
   private reply(line: CallLine): void {
     const open = this.call;
     if (open !== null && line.key !== undefined && line.key === open.key) {
-      const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.weight;
+      const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.multiplier(line);
       this.turn?.named(line.tools);
       this.turn?.charged(open.day, added);
       this.tally.day(open.day).w += added;
@@ -224,7 +235,7 @@ class TranscriptFold {
     }
     const day = dayOf(line.at);
     const hour = formatUtcHour(new Date(line.at));
-    const w = weightOf(line.usage) * this.weight;
+    const w = weightOf(line.usage) * this.multiplier(line);
     const context = contextTokens(line.usage);
     const totals = this.tally.day(day);
     totals.w += w;
@@ -254,7 +265,7 @@ class TranscriptFold {
  * hour and per task, calls, loop patterns and rule misses, and saves the totals with each transcript's read position. A transcript
  * seen for the first time (or that shrank, so it was replaced, its held turn ending) is read from today's first line, found
  * by a binary search. One run reads at most `maxBytes`; the rest waits for the next run. A subagent's W
- * is multiplied by `subagentWeight`.
+ * is multiplied by `subagentWeight`, and every call's by its model's weight (`modelWeights`).
  */
 export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterResult> {
   const { rev, state } = await deps.store.load(run.session);
@@ -267,8 +278,8 @@ export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterRes
   let bytesRead = 0;
   let catchingUp = false;
   const weighted: readonly WeightedTranscript[] = [
-    ...run.transcripts.main.map((path) => ({ path, weight: 1, own: true })),
-    ...run.transcripts.subagents.map((path) => ({ path, weight: run.subagentWeight, own: false })),
+    ...run.transcripts.main.map((path) => ({ path, weight: 1, own: true, modelWeights: run.modelWeights })),
+    ...run.transcripts.subagents.map((path) => ({ path, weight: run.subagentWeight, own: false, modelWeights: run.modelWeights })),
   ];
   for (const transcript of weighted) {
     const { path } = transcript;

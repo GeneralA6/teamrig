@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import type { Roster } from '../config/roster.ts';
+import type { ModelWeight } from '../config/types.ts';
 import type { Clock } from '../core/lock.ts';
 import { attribute, type OutsideSession, type PeerTeam } from './attribute.ts';
 import { discoverTranscripts, type TranscriptSet, type TranscriptSource } from './discover.ts';
@@ -52,6 +53,8 @@ export interface MeasureInput {
   readonly peers: readonly PeerTeam[];
   /** What one W of a subagent's transcript costs, in W of a main session (`budget.subagentWeight`). */
   readonly subagentWeight: number;
+  /** What one W of each model costs against the weekly meter (`budget.modelWeights`). */
+  readonly modelWeights: readonly ModelWeight[];
   readonly chunkBytes: number;
   readonly maxRuns: number;
 }
@@ -83,7 +86,7 @@ interface Metered {
 async function meterSession(deps: MeasureDeps, store: UsageStorage, session: string, transcripts: TranscriptSet, input: MeasureInput): Promise<Metered> {
   let state = (await store.load(session)).state;
   for (let run = 0; run < input.maxRuns; run += 1) {
-    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, maxBytes: input.chunkBytes });
+    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, modelWeights: input.modelWeights, maxBytes: input.chunkBytes });
     if (result.saved) {
       state = result.state;
       if (!result.catchingUp) {

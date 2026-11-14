@@ -65,7 +65,7 @@ async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, tran
   const transcripts = { main: [transcript], subagents: await subagentsOf(runtime.transcripts, transcript) };
   await runMeter(
     { bytes: runtime.transcripts, store, clock: runtime.clock },
-    { session: id, transcripts, subagentWeight: budget.subagentWeight, maxBytes: budget.maxBytesPerHook },
+    { session: id, transcripts, subagentWeight: budget.subagentWeight, modelWeights: budget.modelWeights, maxBytes: budget.maxBytesPerHook },
   );
 }
 

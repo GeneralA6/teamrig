@@ -7,7 +7,8 @@ import { WEIGHTS, weightOf } from './weights.ts';
 
 /**
  * The fold of a team's transcripts into rows per UTC day, by T1995's classes: what keeps the team running against what
- * does its work. W here is raw, with no `budget.subagentWeight`, so a reader can apply whichever weight it needs.
+ * does its work. W here is raw, with no `budget.subagentWeight` and no `budget.modelWeights`, so a reader can apply
+ * whichever weight it needs.
  */
 
 /** The classes that do a task's work, so the only ones charged to a task: coordination stays its own class (T2077). */

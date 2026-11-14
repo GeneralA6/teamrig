@@ -141,6 +141,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       areaBySession: indexMarks(marks).areaBySession,
       peers,
       subagentWeight: config.budget.subagentWeight,
+      modelWeights: config.budget.modelWeights,
       chunkBytes: CATCH_UP_CHUNK_BYTES,
       maxRuns: MAX_RUNS_PER_SESSION,
     },

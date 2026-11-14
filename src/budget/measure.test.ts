@@ -66,6 +66,7 @@ function world(input: Partial<MeasureInput> = {}): World {
       areaBySession: new Map([[MARKED_BRAVO, 'bravo']]),
       peers: [],
       subagentWeight: 1,
+      modelWeights: [],
       chunkBytes: 1_000_000,
       maxRuns: 4,
       ...input,

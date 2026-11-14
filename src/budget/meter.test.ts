@@ -16,6 +16,7 @@ import {
   type FixtureResult,
   type FixtureTool,
 } from '../testing/transcript-lines.ts';
+import type { ModelWeight } from '../config/types.ts';
 import type { TranscriptSet } from './discover.ts';
 import { runMeter, type MeterResult } from './meter.ts';
 import { PATTERN_FIELDS } from './patterns.ts';
@@ -47,7 +48,7 @@ function world(now: string, transcripts: Readonly<Record<string, string>> = {}):
   bytes: MemoryTranscripts;
   files: MemoryFiles;
   clock: FakeClock;
-  run: (maxBytes?: number, transcripts?: TranscriptSet, subagentWeight?: number) => Promise<MeterResult>;
+  run: (maxBytes?: number, transcripts?: TranscriptSet, subagentWeight?: number, modelWeights?: readonly ModelWeight[]) => Promise<MeterResult>;
 } {
   const bytes = new MemoryTranscripts(transcripts);
   const files = new MemoryFiles();
@@ -57,8 +58,8 @@ function world(now: string, transcripts: Readonly<Record<string, string>> = {}):
     bytes,
     files,
     clock,
-    run: (maxBytes = 10_000_000, transcripts = BOTH, subagentWeight = 1) =>
-      runMeter({ bytes, store, clock }, { session: SESSION, transcripts, subagentWeight, maxBytes }),
+    run: (maxBytes = 10_000_000, transcripts = BOTH, subagentWeight = 1, modelWeights = []) =>
+      runMeter({ bytes, store, clock }, { session: SESSION, transcripts, subagentWeight, modelWeights, maxBytes }),
   };
 }
 
@@ -106,6 +107,18 @@ describe('runMeter', () => {
     near(day(state, DAY)?.w, R1_W + R2_W + subagentW);
     near(day(state, DAY)?.patterns.otherW, R1_W + R2_W, 'main thread W');
     near(day(state, DAY)?.patterns.subagentW, subagentW, 'subagent W');
+  });
+
+  it("counts a call's W, its added output too, at its model's weight; an unlisted model and a line naming none at 1 (T2454)", async () => {
+    const fable: FixtureReply = { ...R1, model: 'claude-fable-5-1' };
+    const meter = world(at(12), {
+      [MAIN]: transcript([promptLine(at(9)), replyLine(fable), replyLine({ ...R1_MORE, model: 'claude-fable-5-1' }), replyLine({ ...R2, model: 'claude-opus-5-5' })]),
+      [SUB]: transcript([promptLine(at(9, 2), 'task', true), replyLine(S1)]),
+    });
+    const weights: readonly ModelWeight[] = [{ model: 'claude-fable', weight: 4.4 }];
+    const state = (await meter.run(10_000_000, BOTH, 2, weights)).state;
+    near(day(state, DAY)?.w, 4.4 * R1_W + R2_W + 2 * S1_W);
+    near(day(state, DAY)?.patterns.otherW, 4.4 * R1_W + R2_W, 'main thread W');
   });
 
   it("splits a turn's W equally over the tasks its calls name once the next prompt ends it; a turn naming none stays unattributed", async () => {
@@ -309,7 +322,7 @@ describe('runMeter', () => {
     const bytes = new MemoryTranscripts({ [MAIN]: transcript([replyLine(R1)]) });
     const clock = new FakeClock(at(12));
     const store = new UsageStore(files, DIR);
-    const run = (): Promise<MeterResult> => runMeter({ bytes, store, clock }, { session: SESSION, transcripts: { main: [MAIN], subagents: [] }, subagentWeight: 1, maxBytes: 10_000 });
+    const run = (): Promise<MeterResult> => runMeter({ bytes, store, clock }, { session: SESSION, transcripts: { main: [MAIN], subagents: [] }, subagentWeight: 1, modelWeights: [], maxBytes: 10_000 });
     files.race = async () => {
       await run();
       bytes.append(MAIN, transcript([replyLine(R2)]));

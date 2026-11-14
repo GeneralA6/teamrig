@@ -1,3 +1,4 @@
+import type { ModelWeight } from '../config/types.ts';
 import { isNonNegativeInteger, recordField, type JsonRecord } from '../core/guards.ts';
 
 /**
@@ -78,6 +79,24 @@ export function usageOf(message: JsonRecord): Usage | undefined {
 /** The context the model read for the call: its input, cache-write and cache-read tokens. */
 export function contextTokens(usage: Usage): number {
   return usage.input + usage.cacheWrite5m + usage.cacheWrite1h + usage.cacheWriteUnsplit + usage.cacheRead;
+}
+
+/**
+ * What one W of `model` costs against the weekly meter (`budget.modelWeights`): the weight of the longest listed
+ * prefix of the model id, else 1. A line naming no model counts 1, since its cost cannot be told apart. The longest
+ * prefix wins so a listed `claude-fable-5-1` can price one release apart from a broader `claude-fable`.
+ */
+export function modelWeightOf(model: string | undefined, weights: readonly ModelWeight[]): number {
+  if (model === undefined) {
+    return 1;
+  }
+  let best: ModelWeight | undefined;
+  for (const entry of weights) {
+    if (model.startsWith(entry.model) && (best === undefined || entry.model.length > best.model.length)) {
+      best = entry;
+    }
+  }
+  return best?.weight ?? 1;
 }
 
 /** The call's weighted tokens. */
