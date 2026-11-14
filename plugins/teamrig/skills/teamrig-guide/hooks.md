@@ -1597,7 +1597,7 @@ The poke: while a rush is in force, the mod's wake check ([the wake on urgent wo
 wakes a tab of a session in the rush, other than the lead, that has sat idle `[rush.pokeAfterMinutes]` minutes (5 by
 default) since its last turn with a task of its own it can go on with (open or in progress, not waiting). The prompt
 reads `Rush on PROD: this tab sat idle 5 min with work left ... Start or continue T12 (...) now`, naming the session's
-top task of the goal, else its top task; the toast reads `teamrig poked this tab (rush on PROD, idle 5 min): ...` and
+top task of the goal, else its top task; the toast says the tab was poked, with the rush's goal, the idle minutes and the task, and
 the wake log marks the line `poke`. A tab gets one poke per idle stretch: none again until it has a new turn. While a
 queued step of the session runs (`teamrig queue`), the poke waits for it to end; a step only waiting in line counts as
 idle. A shell the tab runs in the background is not seen. No poke once the rush ends.
