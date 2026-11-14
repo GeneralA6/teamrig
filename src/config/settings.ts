@@ -35,18 +35,16 @@ export interface SettingRow {
 }
 
 /**
- * Keys whose change is an owner gate (core rule 6): the budget and everything that grants, guards or takes away what a
- * session may do. A path matches its own entry or the nearest one above it.
+ * Keys whose change is an owner gate (core rule 6): the budget, what spends more of it, and everything that grants,
+ * guards or takes away what a session may do. A path matches its own entry or the nearest one above it; every
+ * top-level `<name>Guard` is a permissions gate too (GUARD_KEY), so a guard added later is gated without a new entry.
  */
 const GATED_KEYS: ReadonlyMap<string, string> = new Map([
   ['budget', 'budget'],
   ['focus.allocation', 'budget'],
+  ['burst', 'budget'],
   ['permissions', 'permissions'],
-  ['pushGuard', 'permissions'],
-  ['secretGuard', 'permissions'],
-  ['packageGuard', 'permissions'],
-  ['commitGuard', 'permissions'],
-  ['pickerGuard', 'permissions'],
+  ['prompts', 'permissions'],
   ['exec', 'permissions'],
   ['readonlyShell', 'permissions'],
   ['leadBoundary', 'permissions'],
@@ -131,8 +129,13 @@ function readOnlyNote(path: string, group: string, type: string, items: string |
   return undefined;
 }
 
+const GUARD_KEY = /^[a-z][A-Za-z]*Guard$/;
+
 function gateOf(path: string): string | undefined {
   const parts = path.split('.');
+  if (GUARD_KEY.test(parts[0] ?? '')) {
+    return 'permissions';
+  }
   for (let length = parts.length; length > 0; length -= 1) {
     const gate = GATED_KEYS.get(parts.slice(0, length).join('.'));
     if (gate !== undefined) {

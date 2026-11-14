@@ -152,9 +152,10 @@ describe('settingRows over the shipped schema', async () => {
 
   it('gives every row a meaning and keeps every guard, the budget and the permissions owner-gated', () => {
     assert.deepEqual(rows.filter((row) => row.meaning === '').map((row) => row.path), []);
-    const gatedGroups = ['budget', 'permissions', 'pushGuard', 'secretGuard', 'packageGuard', 'commitGuard', 'pickerGuard', 'exec', 'readonlyShell', 'leadBoundary', 'ownerGates'];
-    const gated = rows.filter((row) => gatedGroups.includes(row.group));
-    assert.ok(gated.length > 0);
+    // Every guard by its name, not a list of today's guards: dbWriteGuard was once left off such a list and read editable.
+    const gatedGroups = ['budget', 'burst', 'permissions', 'prompts', 'exec', 'readonlyShell', 'leadBoundary', 'ownerGates'];
+    const gated = rows.filter((row) => gatedGroups.includes(row.group) || row.group.endsWith('Guard'));
+    assert.ok(gated.some((row) => row.group === 'dbWriteGuard'));
     assert.deepEqual(gated.filter((row) => row.editable || row.gatedBy === undefined).map((row) => row.path), []);
     assert.equal(rowAt(rows, 'focus.allocation').gatedBy, 'budget');
   });
