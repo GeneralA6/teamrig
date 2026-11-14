@@ -38,7 +38,9 @@ DONE exit 0
 Waiting steps go in admission order, each told its place in line: an incident's (p0) step first, then the
 work class whose turn it is, so each class gets its `focus.allocation` share of the host's run time, then the task's
 priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, then arrival. A session runs at most
-`delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it.
+`delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it. A step waiting on
+host memory is passed by later steps that fit: always while no queued step runs, else for its first
+`delivery.queue.memoryPassMinutes` (15) of that wait, after which it holds its place so the memory freed goes to it.
 That is the default `delivery.queue.admission: pipeline`; `serial` keeps the line in arrival order with no cap and one
 heavy step at a time. A step is refused once its line has not
 moved for `delivery.queue.waitMinutes` (60), and one that runs is killed, with every process it started, after
