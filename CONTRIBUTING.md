@@ -118,6 +118,10 @@ the repository is public.
 ## Branches and releases
 - Every change is its own branch off `main` and lands through a pull request once every check
   passes on its head (the local gate until the repository is public); it is rebase-merged and the branch is deleted.
+- A branch is named `<type>/<id>-<slug>` (Conventional Branch): `feat`, `fix`, `docs`, `chore`, `refactor`,
+  `hotfix` or `release`, the task or issue id, then a short lowercase kebab slug, such as `fix/t12-login-loop`.
+  `teamrig worktree add --task <id>` names it so. To ship a branch again after its commits reached origin, rename
+  it with `-b` added (`fix/t12-login-loop-b`), never a force-push. Branches named before keep their names.
 - Each commit is one logical change. The `size rule` (`tools/ci/size-rule-cli.ts`, run by the local gate, CI
   and `npm run check`) fails a commit over 400 changed non-test lines or 15 non-test files whose message has
   no `Large-commit: <reason>` line: the push guard's rule at its defaults, so a pull request meets it too.

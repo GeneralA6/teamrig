@@ -5,8 +5,10 @@ description: Land a finished teamrig change through small signed commits, a dist
 
 # Ship a change
 
-1. Work on a branch cut from the newest main: `git fetch origin && git switch -c <branch> origin/main`. A worktree
-   works too (`git worktree add -b <branch> <path> origin/main`, then `npm ci` in it).
+1. Work on a branch cut from the newest main: `git fetch origin && git switch -c <branch> origin/main`, named
+   `<type>/<id>-<slug>` such as `feat/t12-parse-input` (CONTRIBUTING.md, Branches and releases). A worktree works
+   too: `teamrig worktree add --task <id>` names the branch and runs the setup, or `git worktree add -b <branch>
+   <path> origin/main`, then `npm ci` in it.
 2. Commit each logical change once its step passes, with `git commit -s`. Subjects follow the log, `area: what`
    (`cli:`, `config:`, `hooks:`, `docs:`, `test:`, `ci:`, `tools:`). A commit past 400 changed non-test lines or 15
    non-test files carries a `Large-commit: <reason>` line.
