@@ -228,6 +228,17 @@ describe('the label calls', () => {
     }
   });
 
+  it('takes a label segment only in the spelling encodeURIComponent gives, so no escape decodes to a step up the path', () => {
+    for (const segment of ['%2E%2E', '%2E', '.%2E', '%41', '%E0%A4', '%2e%2E']) {
+      assert.equal(isLabelRemove(['api', `repos/acme/web/issues/7/labels/${segment}`, '-X', 'DELETE']), false, segment);
+      assert.equal(isLabelRead(['api', `repos/acme/web/labels/${segment}`]), false, segment);
+    }
+    for (const name of ['needs triage', 'type: bug', 'a/b', 'ü', '..x']) {
+      assert.ok(isLabelRemove(issueLabelRemoveArgs({ repo: 'acme/web', number: 7 }, name)), name);
+      assert.ok(isLabelRead(labelReadArgs('acme/web', name)), name);
+    }
+  });
+
   it("refuses a remove that steps out of the label's segment, carries a field or flag, or deletes the repository's label", () => {
     for (const args of [
       ['api', 'repos/acme/web/issues/7/labels/..', '-X', 'DELETE'],

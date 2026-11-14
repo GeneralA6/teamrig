@@ -105,10 +105,28 @@ export function labelReadArgs(repo: string, label: string): string[] {
 }
 
 /**
- * A label name as encodeURIComponent writes it in a path: its unreserved characters and %XX escapes, so a `/`, `?`
- * or `#` in a name stays inside the one segment, and never `.` or `..` alone, which would step up the path.
+ * The characters encodeURIComponent leaves in a path segment, and its %XX escapes, so a `/`, `?` or `#` in a label
+ * name stays inside the one segment.
  */
-const LABEL_SEGMENT = /^(?!\.\.?$)(?:[A-Za-z0-9_.!~*'()-]|%[0-9A-F]{2})+$/;
+const LABEL_SEGMENT = /^(?:[A-Za-z0-9_.!~*'()-]|%[0-9A-F]{2})+$/;
+
+/**
+ * Whether `segment` is exactly what encodeURIComponent writes for a label name other than `.` or `..`, which would
+ * step up the path. The shape alone would take an escape the encoder never writes, such as `%2E%2E`, which a server
+ * may decode to `..`; requiring the encoder's one spelling closes that.
+ */
+function isLabelSegment(segment: string): boolean {
+  if (!LABEL_SEGMENT.test(segment)) {
+    return false;
+  }
+  let name: string;
+  try {
+    name = decodeURIComponent(segment);
+  } catch {
+    return false;
+  }
+  return name !== '.' && name !== '..' && encodeURIComponent(name) === segment;
+}
 
 /** `repos/<owner>/<name>/issues/<number>`, then `/comments`, `/labels`, `/labels/<label>` or nothing. */
 const ISSUE_PATH = /^repos\/([^/]+\/[^/]+)\/issues\/([1-9][0-9]{0,9})(\/comments|\/labels|\/labels\/[^/]+)?$/;
@@ -131,7 +149,7 @@ function issueCall(args: readonly string[]): { readonly method: string; readonly
   if (tail === '/comments' || tail === '/labels') {
     return { method, part: tail === '/comments' ? 'comments' : 'labels' };
   }
-  return LABEL_SEGMENT.test(tail.slice('/labels/'.length)) ? { method, part: 'label' } : undefined;
+  return isLabelSegment(tail.slice('/labels/'.length)) ? { method, part: 'label' } : undefined;
 }
 
 /**
@@ -188,7 +206,7 @@ const LABEL_PATH = /^repos\/([^/]+\/[^/]+)\/labels\/([^/]+)$/;
  */
 export function isLabelRead(args: readonly string[]): boolean {
   const match = LABEL_PATH.exec(args[1] ?? '');
-  return args[0] === 'api' && args.length === 2 && match !== null && REPO_NAME.test(match[1] ?? '') && LABEL_SEGMENT.test(match[2] ?? '');
+  return args[0] === 'api' && args.length === 2 && match !== null && REPO_NAME.test(match[1] ?? '') && isLabelSegment(match[2] ?? '');
 }
 
 /** `-f key=value` pairs in order; null when anything else is there. */
