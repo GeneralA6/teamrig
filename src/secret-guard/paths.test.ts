@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bashDrivePath, DEFAULT_SECRET_PATHS, normalisePath, SecretPaths, wordPath, type WordPlace } from './paths.ts';
+import { DEFAULT_SECRET_PATHS, normalisePath, SecretPaths, wordPath, type WordPlace } from './paths.ts';
 
 const HOME = 'C:/u';
 const REPO = 'C:/work/app';
@@ -140,14 +140,6 @@ describe('wordPath', () => {
 
   it('reads Git Bash drive paths on a Windows host', () => {
     assert.equal(at('/c/u/.npmrc'), `C:/u/.npmrc`);
-  });
-
-  it('names a Git Bash drive path as Windows does only on a host whose home names a drive, and any other path as it is', () => {
-    assert.equal(bashDrivePath('/c/kit/bin/teamrig', 'C:/u'), 'C:/kit/bin/teamrig');
-    assert.equal(bashDrivePath('/d', 'C:/u'), 'D:/');
-    assert.equal(bashDrivePath('/usr/bin/git', 'C:/u'), '/usr/bin/git');
-    assert.equal(bashDrivePath('kit/bin/teamrig', 'C:/u'), 'kit/bin/teamrig');
-    assert.equal(bashDrivePath('/c/kit', '/u'), '/c/kit', 'a POSIX host has no drives');
   });
 
   it('keeps a part only known when the line runs out of every name a glob spells out', () => {

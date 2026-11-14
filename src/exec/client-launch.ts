@@ -1,8 +1,7 @@
 import { posix, win32 } from 'node:path';
 import { envVariable, pathList, type PathSearchDeps } from '../core/path-search.ts';
-import { resolveDir } from '../push-guard/location.ts';
+import { bashDrivePath, resolveDir } from '../push-guard/location.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
-import { bashDrivePath } from '../secret-guard/paths.ts';
 
 /**
  * Which teamrig client a line's call starts (T803). The exec guard runs `teamrig exec` only through an install of
