@@ -29,8 +29,9 @@ test('a failed gh call throws its first error line and never the token', () => {
 });
 
 test('parses runs, jobs and statuses, and refuses a body of the wrong shape', () => {
-  assert.deepEqual(parseRuns('{"workflow_runs":[{"id":7,"workflow_id":1,"event":"push","run_number":3,"run_attempt":2}]}'), [
-    { id: 7, workflowId: 1, event: 'push', runNumber: 3, runAttempt: 2 },
+  assert.deepEqual(parseRuns('{"workflow_runs":[{"id":7,"workflow_id":1,"event":"push","run_number":3,"run_attempt":2,"head_branch":"t9-x"},{"id":8,"workflow_id":1,"event":"push","run_number":4,"run_attempt":1,"head_branch":null}]}'), [
+    { id: 7, workflowId: 1, event: 'push', runNumber: 3, runAttempt: 2, branch: 't9-x' },
+    { id: 8, workflowId: 1, event: 'push', runNumber: 4, runAttempt: 1, branch: null },
   ]);
   assert.deepEqual(parseJobs('{"jobs":[{"name":"a","status":"completed","conclusion":"success","steps":[{"name":"x"}]},{"name":"b","status":"queued","conclusion":null}]}', { id: 9, runAttempt: 2 }), [
     { name: 'a', status: 'completed', conclusion: 'success', runId: 9, runAttempt: 2, started: true },
@@ -43,7 +44,7 @@ test('parses runs, jobs and statuses, and refuses a body of the wrong shape', ()
 });
 
 test('keeps the newest run of each workflow and event, so an older cancelled run does not count', () => {
-  const run = (id: number, workflowId: number, event: string, runNumber: number, runAttempt = 1): Run => ({ id, workflowId, event, runNumber, runAttempt });
+  const run = (id: number, workflowId: number, event: string, runNumber: number, runAttempt = 1): Run => ({ id, workflowId, event, runNumber, runAttempt, branch: 'dev' });
   const kept = newestRuns([run(1, 1, 'push', 4), run(2, 1, 'push', 5), run(3, 1, 'pull_request', 6), run(4, 1, 'pull_request', 6, 2), run(5, 2, 'push', 1)]);
   assert.deepEqual(kept.map(({ id }) => id).sort(), [2, 4, 5]);
 });
@@ -121,12 +122,42 @@ test('reads the newest runs\' latest jobs and the commit statuses of the sha', (
   const gh = mock.fn<Gh>(args => {
     const path = args[1] ?? '';
     if (path.startsWith(`repos/${REPO}/actions/runs?head_sha=${SHA}`)) {
-      return JSON.stringify({ workflow_runs: [{ id: 10, workflow_id: 1, event: 'push', run_number: 1, run_attempt: 1 }, { id: 11, workflow_id: 1, event: 'push', run_number: 2, run_attempt: 1 }] });
+      return JSON.stringify({ workflow_runs: [{ id: 10, workflow_id: 1, event: 'push', run_number: 1, run_attempt: 1, head_branch: 'dev' }, { id: 11, workflow_id: 1, event: 'push', run_number: 2, run_attempt: 1, head_branch: 'dev' }] });
     }
     if (path === `repos/${REPO}/actions/runs/11/jobs?filter=latest&per_page=100`) return JSON.stringify({ jobs: [{ name: 'gates', status: 'completed', conclusion: 'success' }] });
     if (path === `repos/${REPO}/commits/${SHA}/status`) return JSON.stringify({ statuses: [{ context: 'ext/ci', state: 'success' }] });
     throw new Error(`unexpected ${path}`);
   });
-  assert.deepEqual(readChecks(gh, REPO, SHA, { names: ['gates', 'ext/ci'], summary: null }).map(({ state }) => state), ['passed', 'passed']);
+  assert.deepEqual(readChecks(gh, REPO, SHA, 'dev', { names: ['gates', 'ext/ci'], summary: null }).map(({ state }) => state), ['passed', 'passed']);
   assert.equal(gh.mock.callCount(), 3);
+});
+
+test('reads only the runs of the merged branch, so a cancelled run of the same sha on an earlier branch waits, not fails (T2749)', () => {
+  // T2657: the sha re-pushed as t2657-b after t2657's Windows job was cancelled; the first merge read came before
+  // t2657-b's run existed, so the only run was t2657's cancelled one, and the merge was refused at once.
+  const runsOf = (withNew: boolean): string =>
+    JSON.stringify({
+      workflow_runs: [
+        { id: 620, workflow_id: 1, event: 'pull_request', run_number: 620, run_attempt: 1, head_branch: 't2657' },
+        ...(withNew ? [{ id: 621, workflow_id: 1, event: 'pull_request', run_number: 621, run_attempt: 1, head_branch: 't2657-b' }] : []),
+      ],
+    });
+  const jobsOf: Readonly<Record<string, string>> = {
+    [`repos/${REPO}/actions/runs/620/jobs?filter=latest&per_page=100`]: JSON.stringify({ jobs: [{ name: 'windows', status: 'completed', conclusion: 'cancelled', steps: [{ name: 'test' }] }] }),
+    [`repos/${REPO}/actions/runs/621/jobs?filter=latest&per_page=100`]: JSON.stringify({ jobs: [{ name: 'windows', status: 'in_progress', conclusion: null, steps: [{ name: 'test' }] }] }),
+  };
+  const ghFor = (withNew: boolean): Gh => args => {
+    const path = args[1] ?? '';
+    if (path.startsWith(`repos/${REPO}/actions/runs?head_sha=${SHA}`)) return runsOf(withNew);
+    if (path === `repos/${REPO}/commits/${SHA}/status`) return '{"statuses":[]}';
+    const jobs = jobsOf[path];
+    if (jobs === undefined) throw new Error(`unexpected ${path}`);
+    return jobs;
+  };
+  const required = { names: ['windows'], summary: null };
+  const before = readChecks(ghFor(false), REPO, SHA, 't2657-b', required);
+  assert.deepEqual(before.map(({ state }) => state), ['missing']);
+  assert.equal(verdictOf(before), 'waiting');
+  assert.deepEqual(readChecks(ghFor(true), REPO, SHA, 't2657-b', required).map(({ state, detail }) => `${state}: ${detail}`), ['pending: in_progress']);
+  assert.deepEqual(readChecks(ghFor(true), REPO, SHA, 't2657', required).map(({ state }) => state), ['failed'], 'the earlier branch keeps its own verdict');
 });

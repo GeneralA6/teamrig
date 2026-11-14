@@ -10,6 +10,8 @@ import { parseProfiles } from './repos.ts';
 const REPO = 'Owner/repo';
 const GH_SECRET = ['github', '_pat_', 'x'].join('');
 const SHA = 'abc1234def';
+/** The branch mergeThroughPull merges in these tests, and the one the fake GitHub's run checked. */
+const HEAD = 'dev';
 /** The main SHA was cut from; MOVED is a later main that SHA does not contain. */
 const BASE = 'base000aaa';
 const MOVED = 'moved00bbb';
@@ -66,7 +68,7 @@ const RERUN_PATH = `repos/${REPO}/actions/runs/1/rerun-failed-jobs`;
  * makes its next attempt, or throws `rerun` when given. Each merge call answers the next of `merges` (the last
  * repeats) when given, else `merge`.
  */
-function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error }): FakeGitHub {
+function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error; branch?: string }): FakeGitHub {
   const writes: string[][] = [];
   let round = 0;
   let attempt = 1;
@@ -88,7 +90,9 @@ function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPul
       attempt += 1;
       return '';
     }
-    if (path.includes('/actions/runs?head_sha=')) return JSON.stringify({ workflow_runs: [{ id: 1, workflow_id: 1, event: 'pull_request', run_number: 1, run_attempt: attempt }] });
+    if (path.includes('/actions/runs?head_sha=')) {
+      return JSON.stringify({ workflow_runs: [{ id: 1, workflow_id: 1, event: 'pull_request', run_number: 1, run_attempt: attempt, head_branch: options.branch ?? HEAD }] });
+    }
     if (path.includes('/actions/runs/1/jobs')) {
       const jobs = options.rounds[Math.min(round, options.rounds.length - 1)] ?? [];
       round += 1;
@@ -102,7 +106,7 @@ function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPul
 
 const request = (overrides: Partial<MergeRequest> = {}): MergeRequest => ({
   repo: REPO,
-  head: 'dev',
+  head: HEAD,
   base: 'main',
   sha: SHA,
   title: 'Merge dev into main: 2 commit(s)',
@@ -115,7 +119,7 @@ const CHECKS: RequiredChecks = { names: ['gates', 'test'], summary: null };
 
 /** mergeThroughPull on the `ci` gate: checks gates and test on GitHub. */
 const mergeOnCi = (gh: Gh, main: MainBranch, log: (line: string) => void): Promise<MergeResult> =>
-  mergeThroughPull(request(), gh, main, ciProof(gh, REPO, CHECKS, fakeWaiter(), POLLING), log);
+  mergeThroughPull(request(), gh, main, ciProof(gh, REPO, HEAD, CHECKS, fakeWaiter(), POLLING), log);
 
 const green: readonly JobState[] = [
   ['gates', 'completed', 'success'],
@@ -125,7 +129,7 @@ const green: readonly JobState[] = [
 test('waits while checks run and returns once all are green', async () => {
   const { gh } = fakeGitHub({ rounds: [[['gates', 'queued', null]], [['gates', 'completed', 'success'], ['test', 'in_progress', null]], green] });
   const waiter = fakeWaiter();
-  const result = await waitForChecks(gh, REPO, SHA, CHECKS, waiter, { timeoutMs: 10 * MINUTE, intervalMs: MINUTE });
+  const result = await waitForChecks(gh, REPO, SHA, HEAD, CHECKS,waiter, { timeoutMs: 10 * MINUTE, intervalMs: MINUTE });
   assert.equal(result.verdict, 'passed');
   assert.deepEqual(waiter.slept, [MINUTE, MINUTE]);
 });
@@ -133,14 +137,14 @@ test('waits while checks run and returns once all are green', async () => {
 test('a failed check stops the wait at once', async () => {
   const { gh } = fakeGitHub({ rounds: [[['gates', 'completed', 'failure'], ['test', 'queued', null]]] });
   const waiter = fakeWaiter();
-  assert.equal((await waitForChecks(gh, REPO, SHA, CHECKS, waiter, { timeoutMs: 10 * MINUTE, intervalMs: MINUTE })).verdict, 'failed');
+  assert.equal((await waitForChecks(gh, REPO, SHA, HEAD, CHECKS,waiter, { timeoutMs: 10 * MINUTE, intervalMs: MINUTE })).verdict, 'failed');
   assert.deepEqual(waiter.slept, []);
 });
 
 test('a check still missing at the deadline times out, and the last sleep stops at the deadline', async () => {
   const { gh } = fakeGitHub({ rounds: [[['gates', 'completed', 'success']]] });
   const waiter = fakeWaiter();
-  const result = await waitForChecks(gh, REPO, SHA, CHECKS, waiter, { timeoutMs: 150_000, intervalMs: MINUTE });
+  const result = await waitForChecks(gh, REPO, SHA, HEAD, CHECKS,waiter, { timeoutMs: 150_000, intervalMs: MINUTE });
   assert.equal(result.verdict, 'timeout');
   assert.deepEqual(waiter.slept, [MINUTE, MINUTE, 30_000]);
   assert.deepEqual(result.outcomes.map(({ state }) => state), ['passed', 'missing']);
@@ -215,7 +219,7 @@ test('a job cancelled after a step ran, or a failure beside an unstarted job, re
 test('an unstarted job waits for the rest of the run before its re-run (T2675)', async () => {
   const { gh, writes } = fakeGitHub({ rounds: [[['gates', 'in_progress', null], macosUnstarted], [['gates', 'completed', 'success'], macosUnstarted], green] });
   const waiter = fakeWaiter();
-  const result = await waitForChecks(gh, REPO, SHA, CHECKS, waiter, POLLING);
+  const result = await waitForChecks(gh, REPO, SHA, HEAD, CHECKS,waiter, POLLING);
   assert.equal(result.verdict, 'passed');
   assert.equal(writes.filter(args => args[1] === RERUN_PATH).length, 1);
   assert.equal(gh.mock.calls.findIndex(call => call.arguments[0][1] === RERUN_PATH) > gh.mock.calls.findIndex(call => (call.arguments[0][1] ?? '').includes('/jobs')), true);
@@ -232,11 +236,11 @@ test('a re-run GitHub refuses fails the unstarted check with its error; one stil
 
   // GitHub has not started the new attempt yet: the same run is not re-run twice, and the deadline names it.
   const stuck = fakeGitHub({ rounds: [[['gates', 'completed', 'success'], macosUnstarted]] });
-  const sameAttempt: Gh = args => (args[1]?.includes('/actions/runs?head_sha=') === true ? '{"workflow_runs":[{"id":1,"workflow_id":1,"event":"pull_request","run_number":1,"run_attempt":1}]}' : stuck.gh(args));
-  const result = await waitForChecks(sameAttempt, REPO, SHA, CHECKS, fakeWaiter(), { timeoutMs: 2 * MINUTE, intervalMs: MINUTE });
+  const sameAttempt: Gh = args => (args[1]?.includes('/actions/runs?head_sha=') === true ? '{"workflow_runs":[{"id":1,"workflow_id":1,"event":"pull_request","run_number":1,"run_attempt":1,"head_branch":"dev"}]}' : stuck.gh(args));
+  const result = await waitForChecks(sameAttempt, REPO, SHA, HEAD, CHECKS,fakeWaiter(), { timeoutMs: 2 * MINUTE, intervalMs: MINUTE });
   assert.equal(result.verdict, 'timeout');
   assert.equal(stuck.writes.filter(args => args[1] === RERUN_PATH).length, 1);
-  const timedOut = await ciProof(sameAttempt, REPO, CHECKS, fakeWaiter(), { timeoutMs: MINUTE, intervalMs: MINUTE }).prove(SHA, () => undefined);
+  const timedOut = await ciProof(sameAttempt, REPO, HEAD, CHECKS,fakeWaiter(), { timeoutMs: MINUTE, intervalMs: MINUTE }).prove(SHA, () => undefined);
   assert.equal(timedOut, 'not green after 1 min: test (cancelled before any step ran)');
 });
 
@@ -244,11 +248,11 @@ test('the summary job failing beside an unstarted leg is re-run with it; failing
   const withSummary: RequiredChecks = { names: ['gates', 'test', 'all'], summary: 'all' };
   const echo: readonly JobState[] = [['gates', 'completed', 'success'], macosUnstarted, ['all', 'completed', 'failure']];
   const recovers = fakeGitHub({ rounds: [echo, [...green, ['all', 'completed', 'success']]] });
-  const passed = await waitForChecks(recovers.gh, REPO, SHA, withSummary, fakeWaiter(), POLLING);
+  const passed = await waitForChecks(recovers.gh, REPO, SHA, HEAD, withSummary,fakeWaiter(), POLLING);
   assert.equal(passed.verdict, 'passed');
   assert.equal(recovers.writes.filter(args => args[1] === RERUN_PATH).length, 1);
 
-  const again = await waitForChecks(fakeGitHub({ rounds: [echo] }).gh, REPO, SHA, withSummary, fakeWaiter(), POLLING);
+  const again = await waitForChecks(fakeGitHub({ rounds: [echo] }).gh, REPO, SHA, HEAD, withSummary,fakeWaiter(), POLLING);
   assert.equal(again.verdict, 'failed');
   assert.deepEqual(again.outcomes.filter(({ state }) => state === 'failed').map(({ name, detail }) => `${name}: ${detail}`), [
     'test: cancelled before any step ran, again on attempt 2',
@@ -486,7 +490,7 @@ function runFixture(fixture: RunFixture = {}): {
   };
   const out: string[] = [];
   const err: string[] = [];
-  const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green] });
+  const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green], branch: BRANCH });
   const local = fakeGate(fixture.local ?? {}, line => out.push(line));
   const ghFor = mock.fn((_token: string): Gh => gh);
   const renamedCallers = mock.fn((_base: string, _tip: string, _repo: string): string | null => fixture.renamedCallers ?? null);
