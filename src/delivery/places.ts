@@ -48,9 +48,14 @@ export function deliveryDirOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<T
   return config.dir === undefined ? join(paths.state, 'deploys') : teamPlace(paths, config.dir);
 }
 
+/** The folder of the detached queue runs' logs and records (detached-runs.ts). */
+export function detachedDirOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>): string {
+  return join(deliveryDirOf(config, paths), DETACHED_DIR);
+}
+
 /** The log of the detached queue run `id`: its step's output, and the queue's own lines, since no shell waits for them. */
 export function detachedLogOf(config: Pick<DeliveryConfig, 'dir'>, paths: Pick<TeamPaths, 'home' | 'state'>, id: string): string {
-  return join(deliveryDirOf(config, paths), DETACHED_DIR, `${id}.log`);
+  return join(detachedDirOf(config, paths), `${id}.log`);
 }
 
 /**
