@@ -202,6 +202,10 @@ From `teamrig burst start`, `teamrig burst end` ([commands.md](commands.md#teamr
 | `REFUSED the burst allows 1 hire, and 1 is on the team` | Retire a burst hire whose job is done, or work without another. |
 | `REFUSED --model haiku: a burst hire runs on the lead's model (opus), never another` (or `--effort medium is below the lead's high`) | Drop `--model`, or give the lead's model and at least its effort. |
 | `--task and --by name a deadline burst's work: a surplus burst takes neither` (exit 64) | Drop them, or start a deadline burst. |
+| `REFUSED a rush needs --goal <tag>: the goal the team works at full speed` (or `--by <time>`, `--stop-pct <n>`) | Add the flag the line names. |
+| `REFUSED "SHIP" is not a goal of the team: PROD, SPEED` | Name one of the goals listed: the team's own or a team's above it. |
+| `--goal names the goal a rush works: only a rush takes it` (exit 64) | Drop `--goal`, or start a rush. |
+| `--task names a deadline burst's work: a rush works its --goal's tasks` (exit 64) | Drop `--task`: tag the tasks with the goal instead. |
 
 ## Status line
 

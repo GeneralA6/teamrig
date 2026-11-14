@@ -5818,6 +5818,12 @@ Starts a burst, the lead only. Without `--yes` it shows the burst and writes not
   `--task` and `--by` are refused.
 - `deadline`: for work due by a time. The owners of its `--task` tasks (or `--sessions`), until `--by`, at the
   latest the reset; it needs `--stop-pct`. Its tasks must still be open: open, in progress, verifying or waiting.
+- `rush`: for a goal the team works at full speed. The whole team (or `--sessions`) until `--by`, at the latest the
+  reset; it needs `--goal` (a goal of the team or of a team above it) and `--stop-pct`, and `--task` is refused. Its
+  models work the goal's tasks, and the tasks under them, first. While it runs the team's budget holds only report:
+  `budget.overAction` and quiet hours' action read as `warn`, no session is paused by priority, and the WIP rule
+  warns. The config file is not changed, so nothing needs restoring when it ends. The stop %, queue cutoffs, CPU
+  gates and owner gates still hold. `teamrig budget` and every tab's status line show `RUSH <goal> to <end>`.
 
 Each session in it gets a daily budget of at least an even share of today's part of what is left to the stop %,
 recomputed at every reading over the active time to the burst's end, as the week's daily budget is; the preview
@@ -5839,9 +5845,10 @@ Flags:
 - `--sessions <ids>`: the sessions in it, comma-separated, instead of the whole team or its tasks' owners.
 - `--helpers <n>`: the most helpers each of its sessions runs at once; at most `burst.maxHelpers`.
 - `--hires <n>`: the most sessions the lead may hire for it; at most `burst.maxHires`.
-- `--stop-pct <pct>`: the week's use at which it ends; required for a deadline burst, else `budget.targetPct`.
-- `--by <HH:MM|date>`: a deadline burst's deadline: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, on the team's clock unless marked `UTC`.
+- `--stop-pct <pct>`: the week's use at which it ends; required for a deadline burst and a rush, else `budget.targetPct`.
+- `--by <HH:MM|date>`: a deadline burst's deadline or a rush's end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, on the team's clock unless marked `UTC`.
 - `--task <ids>`: a deadline burst's tasks, comma-separated; worked first.
+- `--goal <tag>`: a rush's goal; required for a rush, refused on the other kinds.
 - `--approved-by "<who>"`: who approved it; needed under `burst.policy` `owner`.
 - `--yes`: start it.
 
@@ -5859,10 +5866,17 @@ STARTED a surplus burst until Mon 01-14 02:00 IST or 99.5% of the week: shop-lea
 NEXT its sessions read it at their next turn; end it early: teamrig burst end --reason "<why>"; hire for it: teamrig hire <id> --burst --scope "<its job>" --reason "<why>"
 ```
 
+A rush for a goal due on Friday, ending at 90% of the week at the latest:
+
+```sh
+teamrig burst start rush --goal PROD --by "2027-01-18 18:00" --stop-pct 90 --reason "PROD due Friday" --approved-by "the owner" --session lead --yes
+```
+
 A caller who is not the lead, a burst the policy refuses, another burst in force, a surplus burst outside its
-window or with too little projected unused, a deadline burst without a stop % or a deadline ahead, a task that is
-not open, caps above the team's, or an unknown week is `REFUSED` (exit 2). An unknown kind, a bad count or time,
-or `--task` on a surplus burst is a usage error (exit 64).
+window or with too little projected unused, a deadline burst or a rush without a stop % or a time ahead, a rush
+without a goal or with a goal the team does not have, a task that is not open, caps above the team's, or an
+unknown week is `REFUSED` (exit 2). An unknown kind, a bad count or time, `--task` on a surplus burst or a rush, or
+`--goal` on a kind other than a rush is a usage error (exit 64).
 
 ### teamrig burst end
 
@@ -5903,7 +5917,9 @@ team, or once the reading's week reset, no pace is shown. The team config's `sta
 on by default; with `branch` off, git is never asked). While the owner's daily meeting is open on the root team
 (`teamrig meeting start`, until `meeting end` or its lapse), the lead's tab that started it prints its whole line
 in `meeting.statusLine.colour` (`#d75fd7` by default) and every other tab, a sub-team's too, adds
-`meeting.statusLine.heldText` (`meeting on: held`) last; `meeting.statusLine.enabled: false` turns both off. The
+`meeting.statusLine.heldText` (`meeting on: held`) last; `meeting.statusLine.enabled: false` turns both off. While
+a rush is in force ([teamrig burst start](#teamrig-burst-start)), every tab of the team adds `RUSH <goal> to <end>`
+after the five-hour use. The
 tab is known by `$TEAMRIG_SESSION` or its inbox mark, and the root team's meeting file is read once a tick. To go on in a session by hand,
 [teamrig restore](#teamrig-restore) brings it back by its recorded Claude session. It also removes the folder's snapshots written more than
 8 days ago, which hold no reading of the current week, and the temporary files over an hour old that a status line

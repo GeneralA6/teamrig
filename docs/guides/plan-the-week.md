@@ -143,6 +143,11 @@ fast gives less a day and one that spends slowly gives more. The floor at its st
   which the other teams' use already lowers.
 - A deadline burst covers the owners of its `--task` tasks (or `--sessions`) until `--by`, at the latest the reset,
   and needs a `--stop-pct`.
+- A rush (`teamrig burst start rush --goal <tag> --by <time> --stop-pct <pct>`) puts the whole team on one goal at
+  full speed until `--by`: its models work the goal's tasks first, and while it runs the budget's holds only report
+  (no over-budget stop, no quiet-hours stop, no pause by priority, the WIP rule warns). The stop %, queue cutoffs,
+  CPU gates and owner gates still hold. The team config file is not touched, so nothing needs restoring when it
+  ends; `teamrig budget` and every tab's status line show `RUSH <goal> to <end>` while it runs.
 - Its bounds: the stop % is at most `budget.targetPct`, so a burst never spends the incident reserve; it ends at its
   time, when the week reaches its stop %, or by `teamrig burst end --reason "<why>"`. It runs up to `--helpers`
   (`burst.maxHelpers`, 3) at once per session and `--hires` hired sessions (`burst.maxHires`, 2; none unless set).

@@ -405,14 +405,15 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       idle sessions it names once; refuses a past day, a name outside the tree and a start in quiet hours
   burst                     the burst policy, the week's use, its projected surplus at the pace end,
       the burst in force and its hires; it only reads
-  burst start surplus|deadline --reason "<why>" [--sessions <ids>] [--helpers <n>] [--hires <n>]
-      [--stop-pct <pct>] [--by <HH:MM|date>] [--task <ids>] [--approved-by "<who>"] [--yes]
+  burst start surplus|deadline|rush --reason "<why>" [--sessions <ids>] [--helpers <n>] [--hires <n>]
+      [--stop-pct <pct>] [--by <HH:MM|date>] [--task <ids>] [--goal <tag>] [--approved-by "<who>"] [--yes]
       (the lead only, under burst.policy owner with the owner's approval) a time-boxed scale-out: each
       session in it gets at least its share of what is left to --stop-pct (at most budget.targetPct) a day
       and runs up to --helpers at once; surplus: the whole team, from burst.surplusHours before the reset
       until the pace end, once the team's part of the week projected unused is burst.minSparePct or more;
-      deadline: --task by --by, the tasks' owners unless --sessions, needs --stop-pct; without --yes it
-      shows the burst and writes nothing
+      deadline: --task by --by, the tasks' owners unless --sessions, needs --stop-pct; rush: the whole
+      team works --goal's tasks first until --by, needs --stop-pct, and the budget's holds only report
+      while it runs; without --yes it shows the burst and writes nothing
   burst end --reason "<why>"   (the lead only) ends the burst in force early; its hires are due to retire
   statusline [--pass]          Claude Code's status line (status JSON on stdin): saves the week's use
       for budget and prints the model and its effort, folder, branch, and week's use beside its

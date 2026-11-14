@@ -1586,6 +1586,12 @@ unused at the pace end ...; preview one: teamrig burst start surplus --reason "<
 Claude account, `about 5.2% of the week, this team's part of the account's 10.3%, is projected unused ...`). The
 hooks only suggest a burst; a person starts it.
 
+A rush's model line adds its goal: `Work goal PROD's tasks, and the tasks under them, first (teamrig list --goal
+PROD). While it runs the budget holds only report: the stop %, queue cutoffs, CPU gates and owner gates still
+hold.` While a rush is in force the budget hook reads the team's holds as warnings, and once the week reaches the
+rush's stop % it writes the rush's end record (`the week reached its stop %`), so the holds are back from the next
+turn.
+
 ## Every session: the restore tracker
 
 `hook restore-track` runs at each session start, prompt, turn end, API error (`StopFailure`) and session end,
