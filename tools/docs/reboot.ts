@@ -81,11 +81,12 @@ export const CONTINUE_NOTE = [
 /** One space for each run of spaces: a browser draws a run as one space anyway. */
 const singleSpaced = (words: string): string => words.trim().replace(/ {2,}/g, ' ');
 
-/** The reboot the picture shows left no tab closed outside a shutdown, so its countdown offers no `[a]`. */
+/** The reboot the picture shows left no tab closed outside a shutdown and none hung, so its countdown offers no `[a]` or `[k]`. */
 const CLOSED_TABS = 0;
+const HUNG_TABS = 0;
 
 /** The countdown as it starts, before anyone presses a key. */
-export const COUNTDOWN = singleSpaced(countdownLine(COUNTDOWN_SECONDS, CLOSED_TABS).replace('\r', ''));
+export const COUNTDOWN = singleSpaced(countdownLine(COUNTDOWN_SECONDS, CLOSED_TABS, HUNG_TABS).replace('\r', ''));
 
 /** What the restore's tab prints, in time order: its list, its note, its countdown, then each tab it opens. */
 export const PRINTED: readonly Printed[] = [

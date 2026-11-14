@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { claudeProjectSlug } from '../budget/discover.ts';
+import type { EndOutcome } from '../open/session-processes.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeCountdown, FakeShutdownLog, FakeStopWatch } from '../testing/fake-restore.ts';
 import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
@@ -22,6 +23,7 @@ const LIVE = '50000000-2222-4333-8444-555555555555';
 const JOB = '60000000-2222-4333-8444-555555555555';
 const MOVED = '70000000-2222-4333-8444-555555555555';
 const WENT_IN = '80000000-2222-4333-8444-555555555555';
+const HUNG = 'a0000000-2222-4333-8444-555555555555';
 const PROJECTS = '/p';
 const WORKTREE = '/work/app/.claude/worktrees/fix';
 const NOTHING_LOST: LostWork = { background: 0, crons: 0, wake: false };
@@ -88,6 +90,9 @@ interface World {
   readonly reopened: ReopenTab[];
   readonly printed: string[];
   readonly logged: string[];
+  /** The sessions whose process the restore ended, and what each end comes back as. */
+  readonly ended: string[];
+  readonly ending: { outcome: EndOutcome };
 }
 
 const OPENED: ReopenOutcome = { kind: 'opened', launch: 'windows-terminal exited 0' };
@@ -127,6 +132,8 @@ async function world(
   const reopened: ReopenTab[] = [];
   const printed: string[] = [];
   const logged: string[] = [];
+  const ended: string[] = [];
+  const ending: { outcome: EndOutcome } = { outcome: { kind: 'ended' } };
   const self: World = {
     registry,
     archive,
@@ -136,6 +143,8 @@ async function world(
     reopened,
     printed,
     logged,
+    ended,
+    ending,
     deps: {
       registry,
       archive,
@@ -150,9 +159,15 @@ async function world(
       projectsDir: PROJECTS,
       platform: 'linux',
       roomWaitMs: ROOM_WAIT_MS,
-      stillRunning: async (recorded) => recorded.claudeSession === LIVE,
+      stillRunning: async (recorded) => recorded.claudeSession === LIVE || recorded.claudeSession === HUNG,
       transcriptOf: async ({ transcriptPath }) => (transcriptPath !== undefined && (await probe.kind(transcriptPath)) === 'file' ? transcriptPath : undefined),
       readTail: (path, maxBytes) => files.readTail(path, maxBytes),
+      // MemoryFiles dates every file at the epoch: each transcript reads as long unwritten.
+      modifiedAt: (path) => files.modifiedAt(path),
+      end: async (recorded) => {
+        ended.push(recorded.claudeSession);
+        return ending.outcome;
+      },
       reopen: async (tab) => {
         reopened.push(tab);
         return reopen(tab, self);
@@ -206,7 +221,7 @@ describe('checkRestore', () => {
     const { deps, registry, logged, clock } = await world();
     assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 3 });
     assert.equal(await registry.read(SDK), undefined);
-    assert.deepEqual(logged, [`archived ${SDK} (not a terminal session (sdk-cli))`, 'check: 3 to restore, 1 kept, 0 closed']);
+    assert.deepEqual(logged, [`archived ${SDK} (not a terminal session (sdk-cli))`, 'check: 3 to restore, 1 kept, 0 closed, 0 hung']);
   });
 
   it('moves a dropped entry to the archive with when and why, so a session judged wrongly is never lost (T1747)', async () => {
@@ -224,21 +239,21 @@ describe('checkRestore', () => {
       (await archive.list()).map(({ entry: kept }) => kept.claudeSession),
       [MOVED],
     );
-    assert.deepEqual(logged, ['archive: deleted 1 archived 7 days ago or earlier', 'check: 1 to restore, 0 kept, 0 closed']);
+    assert.deepEqual(logged, ['archive: deleted 1 archived 7 days ago or earlier', 'check: 1 to restore, 0 kept, 0 closed, 0 hung']);
   });
 
   it('keeps a tab closed outside the shutdown and leaves it out of the count, so it opens no restore tab (T1747)', async () => {
     const { deps, registry, logged, clock } = await world('go', undefined, [CLOSED_ENTRY], CLOSED_TRANSCRIPT);
     assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 0 });
     assert.deepEqual(await registry.read(CLOSED), CLOSED_ENTRY);
-    assert.deepEqual(logged, ['check: 0 to restore, 0 kept, 1 closed']);
+    assert.deepEqual(logged, ['check: 0 to restore, 0 kept, 1 closed, 0 hung']);
   });
 
   it('drops a background job and a tab continued in it, which the tracker recorded as tabs with no end', async () => {
     const { deps, registry, logged, clock } = await world('go', undefined, [LEAD_ENTRY, entry(JOB, 6), entry(MOVED, 7)]);
     assert.deepEqual(await checkRestore(deps), { since: clock.now(), count: 1 });
     assert.deepEqual((await registry.list()).map(({ claudeSession }) => claudeSession), [LEAD]);
-    assert.deepEqual(logged, [`archived ${JOB} (background session)`, `archived ${MOVED} (continued in 60000000)`, 'check: 1 to restore, 0 kept, 0 closed']);
+    assert.deepEqual(logged, [`archived ${JOB} (background session)`, `archived ${MOVED} (continued in 60000000)`, 'check: 1 to restore, 0 kept, 0 closed, 0 hung']);
   });
 });
 
@@ -417,6 +432,53 @@ describe('runRestore', () => {
       [CLOSED],
     );
     assert.equal(printed[0], 'Claude Code sessions closed outside a shutdown in the last 48 h (1):');
+  });
+
+  // 10-31: tabs frozen mid-turn with Claude Code still running were kept as `still running` and never offered.
+  const HUNG_ENTRY = entry(HUNG, 7, { state: 'working', pid: 7777 });
+  const HUNG_TRANSCRIPT: Readonly<Record<string, string>> = { [`/t/${HUNG}.jsonl`]: `${turn('high')}\n` };
+  const HUNG_HEADING = 'Still running but hung mid-turn (1), ended and reopened only with [k]:';
+
+  it('lists a live tab hung mid-turn apart and leaves it running unless k is pressed (T1744)', async () => {
+    const { deps, countdown, reopened, printed, ended, registry } = await world('go', undefined, [...ENTRIES, HUNG_ENTRY], HUNG_TRANSCRIPT);
+    assert.deepEqual(await runRestore(deps, LOGON), { opened: 3, failed: 0 });
+    assert.deepEqual(countdown.offeredHung, [1]);
+    assert.ok(printed.includes(HUNG_HEADING), printed.join('\n'));
+    assert.deepEqual(ended, []);
+    assert.ok(!reopened.some(({ claudeSession }) => claudeSession === HUNG));
+    assert.deepEqual(await registry.read(HUNG), HUNG_ENTRY);
+  });
+
+  it('with k ends the hung tab, then resumes it with a prompt to carry on (T1744)', async () => {
+    const { deps, reopened, ended, logged } = await world('kill', undefined, [...ENTRIES, HUNG_ENTRY], HUNG_TRANSCRIPT);
+    assert.deepEqual(await runRestore(deps, LOGON), { opened: 4, failed: 0 });
+    assert.deepEqual(ended, [HUNG]);
+    assert.equal(reopened.at(-1)?.claudeSession, HUNG);
+    assert.notEqual(reopened.at(-1)?.prompt, undefined);
+    assert.ok(logged.includes('run: started, 4 to reopen, the 1 hung too'), logged.join('\n'));
+    assert.ok(logged.includes(`run: ended hung ${HUNG} (ended)`), logged.join('\n'));
+  });
+
+  it('offers a hung tab alone, and reopens nothing it could not end (T1744)', async () => {
+    const { deps, countdown, reopened, printed, ended, ending, registry } = await world('kill', undefined, [HUNG_ENTRY], HUNG_TRANSCRIPT);
+    ending.outcome = { kind: 'failed', error: 'access denied' };
+    assert.deepEqual(await runRestore(deps, LOGON), { opened: 0, failed: 1 });
+    assert.deepEqual(countdown.offeredHung, [1]);
+    assert.equal(printed[0], HUNG_HEADING);
+    assert.deepEqual(ended, [HUNG]);
+    assert.deepEqual(reopened, []);
+    assert.ok(printed.includes('FAILED to end hung Claude a0000000: access denied'), printed.join('\n'));
+    assert.equal((await registry.read(HUNG))?.restoreAttempts, 0);
+  });
+
+  it('keeps a live tab mid-turn whose transcript is still being written, and one whose turn ended (T1744)', async () => {
+    const writing = await world('kill', undefined, [HUNG_ENTRY], HUNG_TRANSCRIPT);
+    const fresh: RestoreDeps = { ...writing.deps, modifiedAt: async () => writing.clock.now() - 60_000 };
+    assert.deepEqual(await runRestore(fresh, LOGON), { opened: 0, failed: 0 });
+    assert.deepEqual(writing.printed, ['No Claude Code sessions to restore.']);
+    const idle = await world('kill', undefined, [HUNG_ENTRY], { [`/t/${HUNG}.jsonl`]: `${turn('high')}\n${JSON.stringify({ type: 'system', subtype: 'turn_duration' })}\n` });
+    assert.deepEqual(await runRestore(idle.deps, LOGON), { opened: 0, failed: 0 });
+    assert.deepEqual(idle.ended, []);
   });
 
   it('starts no countdown when nothing is to restore', async () => {

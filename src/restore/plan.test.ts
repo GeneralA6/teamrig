@@ -13,6 +13,7 @@ import {
   diedAt,
   endFactsOf,
   LOGIN_ERROR,
+  HUNG_AFTER_MS,
   judgeEntry,
   lastRecordedEffort,
   lostWorkOf,
@@ -60,6 +61,7 @@ function facts(overrides: Partial<JudgeFacts> = {}): JudgeFacts {
     since: LOGON,
     shutdown: { start: SHUTDOWN, end: SHUTDOWN + 60_000 },
     running: new Set(),
+    stalled: new Set(),
     transcripts: new Map([[SESSION, '/claude/projects/app/s.jsonl']]),
     kinds: new Map(),
     ...overrides,
@@ -159,6 +161,16 @@ describe('judgeEntry', () => {
     assert.equal(judgeEntry(entry(), facts({ running: new Set([SESSION]) })).reason, 'still running');
   });
 
+  it('offers a live session stalled mid-turn as hung, even one active since logon, and keeps a live one that is not (T1744)', () => {
+    const stalled = facts({ running: new Set([SESSION]), stalled: new Set([SESSION]) });
+    const hung = { verdict: 'hung', reason: `hung: mid-turn, its transcript unwritten for ${HUNG_AFTER_MS / 3_600_000} h` };
+    assert.deepEqual(judgeEntry(entry({ state: 'working' }), stalled), hung);
+    assert.deepEqual(judgeEntry(entry({ state: 'working', updatedAt: LOGON }), stalled), hung);
+    assert.equal(judgeEntry(entry({ state: 'working' }), facts({ running: new Set([SESSION]) })).reason, 'still running');
+    // A stalled mark on a session whose process is gone is no hang: it is judged as any dead session.
+    assert.equal(judgeEntry(entry(), facts({ stalled: new Set([SESSION]) })).verdict, 'restore');
+  });
+
   it('discards a session with no transcript left to resume', () => {
     assert.deepEqual(judgeEntry(entry(), facts({ transcripts: new Map() })), { verdict: 'discard', reason: 'no transcript' });
   });
@@ -181,6 +193,7 @@ describe('selectRestorePlan', () => {
     assert.deepEqual(plan.closed.map((judged) => judged.entry.claudeSession), [shut]);
     assert.deepEqual(plan.discard.map((judged) => judged.reason), ['no transcript']);
     assert.deepEqual(plan.keep, []);
+    assert.deepEqual(plan.hung, []);
   });
 });
 

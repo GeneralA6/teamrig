@@ -13,8 +13,9 @@ import { teamWindowOf } from '../../open/terminals.ts';
 import { encodePrompt } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { plainSessionEnv } from '../../open/session-env.ts';
-import { runsClaude } from '../../open/session-processes.ts';
+import { runsClaude, type EndOutcome } from '../../open/session-processes.ts';
 import { RestoreArchive, restoreArchiveDir } from '../../restore/archive.ts';
+import type { RestoreEntry } from '../../restore/entry.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../../restore/registry.ts';
 import { checkRestore, previewRestore, runRestore, type ReopenOutcome, type ReopenTab, type RestoreDeps, type RestoreRun } from '../../restore/run.ts';
 import type { RestoreTeam } from '../../restore/teams.ts';
@@ -167,6 +168,18 @@ function roomWaitMsOf(teams: ReadonlyMap<string, TreeTeam>): number {
   return Math.max(DEFAULT_HEADROOM.loadMinutes, ...minutes) * 60_000;
 }
 
+/**
+ * Ends a hung session's Claude Code at once. Its pid is checked to still run Claude Code first, so a pid the system
+ * gave another program since is never ended (`gone`).
+ */
+async function endSession(runtime: CliRuntime, entry: RestoreEntry): Promise<EndOutcome> {
+  const { pid } = entry;
+  if (pid === undefined || !(await runsClaude(runtime.sessionProcesses, pid))) {
+    return { kind: 'gone' };
+  }
+  return runtime.sessionProcesses.end(pid, 'force');
+}
+
 /** The restore over this machine: the kit home's sessions folder, every team on it, its processes and terminals. */
 async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | undefined): Promise<RestoreDeps> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
@@ -189,6 +202,8 @@ async function restoreDepsOf(runtime: CliRuntime, terminal: TerminalChoice | und
     roomWaitMs: roomWaitMsOf(teams),
     stillRunning: (entry) => runsClaude(runtime.sessionProcesses, entry.pid),
     transcriptOf: (entry) => finder.find(entry),
+    modifiedAt: (path) => runtime.files.modifiedAt(path),
+    end: (entry) => endSession(runtime, entry),
     readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
     reopen: (tab) => reopen(runtime, teams, tab, terminal),
     print: (line) => runtime.out.stdout(line),

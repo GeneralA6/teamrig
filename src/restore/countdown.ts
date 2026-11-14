@@ -1,21 +1,22 @@
 /**
  * What the person chose at the restore's countdown: reopen now, reopen every session with no prompt, reopen the
- * tabs closed outside a shutdown too, or nothing.
+ * tabs closed outside a shutdown too, end the hung tabs and reopen them too, or nothing.
  */
-export type RestoreChoice = 'go' | 'idle' | 'all' | 'cancel';
+export type RestoreChoice = 'go' | 'idle' | 'all' | 'kill' | 'cancel';
 
 /** The countdown before the restore reopens its tabs, which lets the person change their mind. */
 export interface Countdown {
   /**
    * Counts `seconds` down on the terminal; resolves with the key pressed, or `go` when time runs out. `closed` is
-   * how many tabs closed outside a shutdown are on offer: only then does `a` take them too.
+   * how many tabs closed outside a shutdown are on offer: only then does `a` take them too; `hung` how many live tabs
+   * hung mid-turn are: only then does `k` end and reopen them too.
    */
-  choose(seconds: number, closed: number): Promise<RestoreChoice>;
+  choose(seconds: number, closed: number, hung: number): Promise<RestoreChoice>;
 }
 
 /**
- * The choice a key makes: Enter starts now, `i` reopens idle, `a` reopens the closed tabs too, `q`, Escape or
- * Ctrl+C cancels; any other none.
+ * The choice a key makes: Enter starts now, `i` reopens idle, `a` reopens the closed tabs too, `k` ends the hung
+ * tabs and reopens them too, `q`, Escape or Ctrl+C cancels; any other none.
  */
 export function keyChoice(key: string): RestoreChoice | undefined {
   if (key === '\r' || key === '\n') {
@@ -25,16 +26,20 @@ export function keyChoice(key: string): RestoreChoice | undefined {
   if (lower === 'i') {
     return 'idle';
   }
+  if (lower === 'k') {
+    return 'kill';
+  }
   if (lower === 'a') {
     return 'all';
   }
   return lower === 'q' || key === '\u0003' || key === '\u001b' ? 'cancel' : undefined;
 }
 
-/** The countdown's line, redrawn in place each second; it offers `a` only when there are closed tabs to take. */
-export function countdownLine(remaining: number, closed: number): string {
+/** The countdown's line, redrawn in place each second; it offers `a` and `k` only when there are tabs for them. */
+export function countdownLine(remaining: number, closed: number, hung: number): string {
   const all = closed > 0 ? `   [a] also reopen the ${closed} closed` : '';
-  return `\rStarting in ${String(remaining).padStart(2)}s   [Enter] start now   [i] reopen all with no prompt${all}   [q] cancel `;
+  const kill = hung > 0 ? `   [k] also end and reopen the ${hung} hung` : '';
+  return `\rStarting in ${String(remaining).padStart(2)}s   [Enter] start now   [i] reopen all with no prompt${all}${kill}   [q] cancel `;
 }
 
 /** The terminal a countdown runs on. */
@@ -48,7 +53,7 @@ export interface CountdownTerminal {
 
 export function terminalCountdown(terminal: CountdownTerminal): Countdown {
   return {
-    choose(seconds, closed) {
+    choose(seconds, closed, hung) {
       return new Promise((resolve) => {
         let remaining = seconds;
         let done = false;
@@ -62,11 +67,11 @@ export function terminalCountdown(terminal: CountdownTerminal): Countdown {
           terminal.write('\n');
           resolve(choice);
         };
-        terminal.write(countdownLine(remaining, closed));
+        terminal.write(countdownLine(remaining, closed, hung));
         stops.push(
           terminal.listen((key) => {
             const choice = keyChoice(key);
-            if (choice !== undefined && (choice !== 'all' || closed > 0)) {
+            if (choice !== undefined && (choice !== 'all' || closed > 0) && (choice !== 'kill' || hung > 0)) {
               finish(choice);
             }
           }),
@@ -77,7 +82,7 @@ export function terminalCountdown(terminal: CountdownTerminal): Countdown {
             if (remaining <= 0) {
               finish('go');
             } else {
-              terminal.write(countdownLine(remaining, closed));
+              terminal.write(countdownLine(remaining, closed, hung));
             }
           }),
         );

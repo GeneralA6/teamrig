@@ -6,7 +6,7 @@ import { encodePrompt } from '../open/prompt.ts';
 import { shellCommand } from '../open/quote.ts';
 import type { RestoreChoice } from '../restore/countdown.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
-import { continuePrompt } from '../restore/plan.ts';
+import { continuePrompt, HUNG_AFTER_MS } from '../restore/plan.ts';
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from '../restore/registry.ts';
 import { ROOM_POLL_MS, TAB_STAGGER_MS } from '../restore/run.ts';
 import { APP, CliHarness, KIT, TEAM, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
@@ -81,7 +81,7 @@ function machine(
   processes: FakeProcesses,
   choice: RestoreChoice = 'go',
   memory: FakeHostMemory = new FakeHostMemory(ROOMY_MB),
-): RunOptions & { readonly countdown: FakeCountdown } {
+): RunOptions & { readonly countdown: FakeCountdown; readonly sessionProcesses: FakeSessionProcesses } {
   const countdown = new FakeCountdown(choice);
   // No Windows PowerShell on this machine: the restored tabs, which keep the focus (T2510), start plainly, args seen.
   processes.onRun('powershell.exe', NO_POWERSHELL);
@@ -143,7 +143,7 @@ describe('teamrig restore check', () => {
     assert.deepEqual(processes.keptFocus, ['wt.exe'], 'the restore tab opened at login never takes the focus (T2510)');
     assert.equal(await logOf(kit), [
       '2030-01-08T10:00:00.000Z check: started',
-      '2030-01-08T10:00:00.000Z check: 2 to restore, 1 kept, 0 closed',
+      '2030-01-08T10:00:00.000Z check: 2 to restore, 1 kept, 0 closed, 0 hung',
       '2030-01-08T10:00:00.000Z check: opened the restore tab; windows-terminal exited 0',
       '',
     ].join('\n'));
@@ -173,6 +173,19 @@ describe('teamrig restore check', () => {
 });
 
 describe('teamrig restore run', () => {
+  it('with k ends the Claude Code of a live tab hung mid-turn for 3 h at once, then resumes it (T1744)', async () => {
+    const kit = await restoreKit();
+    kit.clock.advance(HUNG_AFTER_MS);
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const options = machine(kit, processes, 'kill');
+    const result = await kit.run(['restore', 'run'], options);
+    okResult(result);
+    assert.ok(result.stdout.includes('Still running but hung mid-turn (1), ended and reopened only with [k]:'), result.stdout.join('\n'));
+    assert.deepEqual(options.sessionProcesses.ends, [{ pid: LIVE_PID, how: 'force' }]);
+    assert.equal(processes.started.length, 3);
+    assert.match(await logOf(kit), new RegExp(`run: ended hung ${LIVE} \\(ended\\)\n`));
+  });
+
   it('reopens a launched team session through launch and any other through restore resume, each at its last effort', async () => {
     const kit = await restoreKit();
     const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });

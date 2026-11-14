@@ -18,7 +18,8 @@ import type { TranscriptKind } from './transcript-kind.ts';
  * mid-turn or on an API error; else it is `closed`: kept CLOSED_KEEP_MS and offered apart, never reopened unasked
  * and never lost (11-01, T1747). The verdict reads only the entry and that span, so a reboot after the restore
  * never turns a kept entry into a discarded one (T1737). An entry is kept when it still runs, was active since this
- * logon, or was reopened moments ago and has not started yet, so a second run never opens it twice. Every other
+ * logon, or was reopened moments ago and has not started yet, so a second run never opens it twice, unless it is `hung`
+ * (still running mid-turn, its transcript unwritten for HUNG_AFTER_MS): then it is offered apart. Every other
  * entry is discarded: an end the person chose, a session that is no tab (`claude -p`, background), no transcript
  * left to resume, one its transcript shows running as a background job or continued in another session, a closed
  * tab past CLOSED_KEEP_MS, an entry older than MAX_ENTRY_AGE_MS, or one that failed MAX_RESTORE_ATTEMPTS restores.
@@ -33,9 +34,19 @@ export const MAX_RESTORE_ATTEMPTS = 2;
 export const RESTORE_IN_FLIGHT_MS = 10 * 60_000;
 /** How long a tab closed outside a shutdown, with no reason of its own, stays on offer before it is discarded. */
 export const CLOSED_KEEP_MS = 48 * 60 * 60_000;
+/**
+ * How long a live session mid-turn may leave its transcript unwritten before it counts as hung (T1744). A foreground
+ * command stops at 10 minutes, but a helper writes its own transcript and may run longer, so the span is wide and a
+ * hung tab is only offered, never ended unasked.
+ */
+export const HUNG_AFTER_MS = 3 * 60 * 60_000;
 
-/** `closed`: a tab closed outside a shutdown, kept and offered apart, reopened only when the person asks. */
-export type Verdict = 'restore' | 'closed' | 'keep' | 'discard';
+/**
+ * `closed`: a tab closed outside a shutdown, kept and offered apart, reopened only when the person asks. `hung`: a tab
+ * whose Claude Code still runs mid-turn with its transcript unwritten for HUNG_AFTER_MS, offered apart and ended then
+ * reopened only when the person asks, as a live process may still be working.
+ */
+export type Verdict = 'restore' | 'closed' | 'hung' | 'keep' | 'discard';
 
 export interface Judgement {
   readonly verdict: Verdict;
@@ -49,6 +60,7 @@ export interface Judged extends Judgement {
 export interface RestorePlan {
   readonly restore: readonly Judged[];
   readonly closed: readonly Judged[];
+  readonly hung: readonly Judged[];
   readonly keep: readonly Judged[];
   readonly discard: readonly Judged[];
 }
@@ -62,6 +74,8 @@ export interface JudgeFacts {
   readonly shutdown: ShutdownWindow | undefined;
   /** The Claude Code sessions whose recorded process still runs Claude Code. */
   readonly running: ReadonlySet<string>;
+  /** The running sessions whose transcript shows a turn still open and was last written HUNG_AFTER_MS ago or more. */
+  readonly stalled: ReadonlySet<string>;
   /** Each session's transcript where it is found now; a session missing here has none left to resume. */
   readonly transcripts: ReadonlyMap<string, string>;
   /** What each session's transcript says of where it runs now; a session missing here reads as a tab. */
@@ -83,6 +97,10 @@ export function judgeEntry(entry: RestoreEntry, facts: JudgeFacts): Judgement {
   }
   if (facts.now - entry.updatedAt > MAX_ENTRY_AGE_MS) {
     return { verdict: 'discard', reason: 'stale' };
+  }
+  // Before `active since logon`: a tab that hung after this logon began is still hung (10-31, T1744).
+  if (facts.running.has(entry.claudeSession) && facts.stalled.has(entry.claudeSession)) {
+    return { verdict: 'hung', reason: `hung: mid-turn, its transcript unwritten for ${HUNG_AFTER_MS / 3_600_000} h` };
   }
   if (entry.updatedAt >= facts.since) {
     return { verdict: 'keep', reason: 'active since logon' };
@@ -128,14 +146,15 @@ export function judgeEntry(entry: RestoreEntry, facts: JudgeFacts): Judgement {
 export function selectRestorePlan(entries: readonly RestoreEntry[], facts: JudgeFacts): RestorePlan {
   const restore: Judged[] = [];
   const closed: Judged[] = [];
+  const hung: Judged[] = [];
   const keep: Judged[] = [];
   const discard: Judged[] = [];
-  const lists: Record<Verdict, Judged[]> = { restore, closed, keep, discard };
+  const lists: Record<Verdict, Judged[]> = { restore, closed, hung, keep, discard };
   for (const entry of [...entries].sort((a, b) => a.createdAt - b.createdAt)) {
     const judgement = judgeEntry(entry, facts);
     lists[judgement.verdict].push({ entry, ...judgement });
   }
-  return { restore, closed, keep, discard };
+  return { restore, closed, hung, keep, discard };
 }
 
 /** When the session's Claude Code died: its own end, else the shutdown's start, else its last event. */
