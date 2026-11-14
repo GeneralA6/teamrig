@@ -51,6 +51,12 @@ describe('installSteps', () => {
       request: { file: 'git', args: ['clone', '-q', '--depth', '1', 'file:///work/teamrig', clone], input: '' },
       cwd: HOME,
     });
+    // The new project holds no file, so its first commit is an empty one: a plain commit there exits 1.
+    assert.deepEqual(steps.find((step) => step.label === 'git commit the project'), {
+      label: 'git commit the project',
+      request: { file: 'git', args: ['commit', '-q', '--allow-empty', '-m', 'init'], input: '' },
+      cwd: project,
+    });
     const create = steps.find((step) => step.label === 'team create');
     assert.deepEqual(create, {
       label: 'team create',
@@ -64,7 +70,6 @@ describe('installSteps', () => {
         'git clone, no login',
         'teamrig --version, bare on the PATH',
         'git init the project',
-        'git add the project',
         'git commit the project',
         'team create',
         'start',
@@ -143,10 +148,10 @@ describe('freshInstall', () => {
     });
     assert.deepEqual(report.findings, []);
     assert.deepEqual(read, [plugin]);
-    assert.equal(report.log.length, 13);
+    assert.equal(report.log.length, 12);
     assert.equal(report.log[0], 'exit 0 git clone, no login');
-    assert.equal(report.log[12], 'exit 0 PreToolUse hook (hook push-guard)');
-    const hook = calls[12];
+    assert.equal(report.log[11], 'exit 0 PreToolUse hook (hook push-guard)');
+    const hook = calls[11];
     assert.deepEqual(hook?.request.args, [`${plugin}/dist/hooks/main.js`, 'hook', 'push-guard']);
     assert.equal(hook?.request.file, 'node');
     assert.equal(hook?.cwd, project);
@@ -171,7 +176,7 @@ describe('freshInstall', () => {
     const report = freshInstall(input, run, () => assert.fail('no hook runs after a failed step'));
     assert.deepEqual(report.findings, ['team create: exit 1: no such project']);
     assert.equal(report.log.at(-1), 'exit 1 team create');
-    assert.equal(calls.length, 6);
+    assert.equal(calls.length, 5);
   });
 
   it('fails a step that exits 0 without the text it must print, and one that could not start', () => {

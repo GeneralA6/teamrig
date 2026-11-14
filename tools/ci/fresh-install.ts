@@ -119,8 +119,8 @@ export function installSteps(input: InstallInput): readonly InstallStep[] {
     { label: 'git clone, no login', request: git(['clone', '-q', '--depth', '1', input.source, clone]), cwd: input.home },
     { label: 'teamrig --version, bare on the PATH', request: teamrigRequest(input, ['--version']), cwd: input.home, expect: 'teamrig ' },
     { label: 'git init the project', request: git(['init', '-q', project]), cwd: input.home },
-    { label: 'git add the project', request: git(['add', '-A']), cwd: project },
-    { label: 'git commit the project', request: git(['commit', '-q', '-m', 'init']), cwd: project },
+    // A new project holds no file yet, and team create needs a first commit to cut worktrees from.
+    { label: 'git commit the project', request: git(['commit', '-q', '--allow-empty', '-m', 'init']), cwd: project },
     teamrig('team create', ['team', 'create', TEAM, '--sessions', `${LEAD},${WORKER}`, '--project', project], 'ADDED T1 Set up the team'),
     teamrig('start', ['start', '--session', LEAD], `START ${LEAD}`),
     teamrig(
