@@ -3,7 +3,7 @@ import { SecretScanner } from "../core/secrets.js";
 import { taskIdIn } from "../issues/posted.js";
 import { ACTIVE_STATUSES, ISSUE_REF_PREFIX } from "../register/model.js";
 /**
- * Moving a team's tasks to GitHub issues (`teamrig gh migrate`): a file of rows, one per task, says for each task
+ * Moving a team's tasks to GitHub issues (`teamrig issue migrate`): a file of rows, one per task, says for each task
  * whether it becomes an issue, with the public wording the team wrote for it, or stays on the team's own list
  * with a reason. Each issue row opens one issue and points the task's ref at it, so the sync (plan.ts) knows the
  * issue is that task's and adds no second one; the task keeps its own text, owner, priority and status. A ref that
@@ -200,7 +200,7 @@ export function previewMarkdown(plan) {
     ]);
     const list = (items) => (items.length === 0 ? ['None.', ''] : [...items.map((item) => `- ${item}`), '']);
     return [
-        '# gh migrate preview',
+        '# issue migrate preview',
         '',
         countsLine(plan),
         '',

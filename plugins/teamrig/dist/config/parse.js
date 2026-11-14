@@ -423,7 +423,7 @@ function parseWake(read, raw, quietHours) {
     return { ...wake, dayStartUtc };
 }
 /**
- * `github`: the repositories `gh sync` reads and who owns their issues. Repositories and logins are
+ * `github`: the repositories `issue sync` reads and who owns their issues. Repositories and logins are
  * kept in lowercase, as GitHub matches them, so an imported task's ref stays the same however the
  * config spells them; a repository listed twice is reported and read once.
  */
