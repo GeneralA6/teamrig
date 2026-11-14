@@ -26,6 +26,21 @@ const GIT_CONFIG_KEY = /^GIT_CONFIG_KEY_\d+$/;
 /** A section and a dot, which git requires of every setting's name (`core.hooksPath`). */
 const GIT_SETTING = /^[A-Za-z][A-Za-z0-9-]*\./;
 /**
+ * A function's name: camelCase or PascalCase words of letters, each with a vowel (`buildSessionHelper`). An env dump, a
+ * `.env` file or `docker inspect` never prints `NAME=value(`, so such a name right before `(` is a call in code or
+ * notes (T1924: `TOKEN=makeToken(` in a handover). A token-shaped run (`Qx7mRt`, `RtwLpwZn`) has a digit or a hump
+ * with no vowel, so it stays a hit before `(` too.
+ */
+const CALLEE = /^(?:[a-z]+|[A-Z][a-z]+)(?:[A-Z][a-z]+)*$/;
+const CALLEE_HUMP = /[A-Z]?[a-z]+/g;
+const VOWEL = /[aeiouy]/;
+/** True when `value`, followed in the text by `next`, is the name of a function the text calls. */
+function isCall(value, next) {
+    if (next !== '(' || !CALLEE.test(value))
+        return false;
+    return Array.from(value.matchAll(CALLEE_HUMP), ([hump]) => hump).every((hump) => VOWEL.test(hump));
+}
+/**
  * The output-only shape of T1369 R7: the value of a secret variable, the name judged by the team's `SecretNames`.
  * Output is not prose, so the unquoted form is in here; prompts and notes stay without it.
  */
@@ -37,8 +52,11 @@ export class EnvAssignments {
     /** Every secret variable's value in `text`, in the order found; a value that only names or points to one passes. */
     hitsIn(text) {
         const hits = [];
-        for (const [, name = '', value = ''] of text.matchAll(ASSIGNMENT)) {
+        for (const match of text.matchAll(ASSIGNMENT)) {
+            const [whole, name = '', value = ''] = match;
             if (!this.names.secret(name) || !this.holdsSecret(name, value))
+                continue;
+            if (isCall(value, text[match.index + whole.length]))
                 continue;
             hits.push({ id: 'env-assignment', description: 'value of a secret variable', value });
         }
