@@ -24,7 +24,12 @@ export interface ImportRules {
   readonly priorities: readonly number[];
   /** Each GitHub login, in lowercase, to its session. */
   readonly owners: ReadonlyMap<string, string>;
-  /** Each repository, `owner/name` in lowercase, to the session its issues go to when no assignee is in `owners`. */
+  /**
+   * Each area label, in lowercase, to the session its issues go to when no assignee is in `owners`, in the team
+   * config's order: an issue with two of them goes to the first.
+   */
+  readonly areaOwners: ReadonlyMap<string, string>;
+  /** Each repository, `owner/name` in lowercase, to the session its issues go to when neither an assignee nor a label routes it. */
   readonly repoSessions: ReadonlyMap<string, string>;
   readonly lead: string;
   /** The secret shapes, the team's `register.secretPatterns` among them: a body that matches one is left out. */
@@ -55,6 +60,7 @@ export function importRules(config: KitConfig): ImportRules {
     maxTitle: config.register.maxTitle,
     priorities: config.register.priorities.map((level) => level.id),
     owners: new Map(Object.entries(config.github.owners)),
+    areaOwners: new Map(Object.entries(config.github.areaOwners)),
     repoSessions: new Map(Object.entries(config.github.sessions)),
     lead: config.roles.lead,
     secrets: new SecretScanner(config.register.secretPatterns),
@@ -127,13 +133,20 @@ export function issuePriority(labels: readonly string[], priorities: readonly nu
 }
 
 /**
- * Who an issue's task goes to: the session of its first assignee `github.owners` lists, in GitHub's order;
- * else its repository's session in `github.sessions`; else the lead.
+ * Who an issue's task goes to: the session of its first assignee `github.owners` lists, in GitHub's order; else
+ * the session of the first label in `github.areaOwners` the issue carries, in the config's order (a person's pick
+ * beats the area); else its repository's session in `github.sessions`; else the lead.
  */
-export function issueOwner(issue: Pick<HostIssue, 'repo' | 'assignees'>, rules: ImportRules): string {
+export function issueOwner(issue: Pick<HostIssue, 'repo' | 'assignees' | 'labels'>, rules: ImportRules): string {
   for (const login of issue.assignees) {
     const session = rules.owners.get(login.toLowerCase());
     if (session !== undefined) {
+      return session;
+    }
+  }
+  const labels = new Set(issue.labels.map((label) => label.toLowerCase()));
+  for (const [label, session] of rules.areaOwners) {
+    if (labels.has(label)) {
       return session;
     }
   }

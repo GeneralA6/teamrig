@@ -47,6 +47,7 @@ describe('importRules', () => {
       maxTitle: 140,
       priorities: [1, 2, 3, 4, 5],
       owners: new Map([['octocat', 'bravo'], ['hubot', 'alpha']]),
+      areaOwners: new Map(),
       repoSessions: new Map(),
       lead: 'lead',
       acceptLabel: 'teamrig',
@@ -132,16 +133,26 @@ describe('issuePriority', () => {
 
 describe('issueOwner', () => {
   it('gives the issue to the first listed assignee, in any case, else to the lead', () => {
-    assert.equal(issueOwner({ repo: 'acme/web', assignees: ['monalisa', 'HuBot', 'octocat'] }, RULES), 'alpha');
-    assert.equal(issueOwner({ repo: 'acme/web', assignees: ['monalisa', 'constructor'] }, RULES), 'lead');
-    assert.equal(issueOwner({ repo: 'acme/web', assignees: [] }, RULES), 'lead');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: ['monalisa', 'HuBot', 'octocat'], labels: [] }, RULES), 'alpha');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: ['monalisa', 'constructor'], labels: [] }, RULES), 'lead');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: [], labels: [] }, RULES), 'lead');
   });
 
   it("gives an issue no listed login is assigned to its repository's session, before the lead", () => {
     const rules = importRules(testConfig({ github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' }, sessions: { 'acme/api': 'alpha' } } }));
-    assert.equal(issueOwner({ repo: 'acme/api', assignees: ['monalisa'] }, rules), 'alpha');
-    assert.equal(issueOwner({ repo: 'acme/api', assignees: ['octocat'] }, rules), 'bravo');
-    assert.equal(issueOwner({ repo: 'acme/web', assignees: [] }, rules), 'lead');
+    assert.equal(issueOwner({ repo: 'acme/api', assignees: ['monalisa'], labels: [] }, rules), 'alpha');
+    assert.equal(issueOwner({ repo: 'acme/api', assignees: ['octocat'], labels: [] }, rules), 'bravo');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: [], labels: [] }, rules), 'lead');
+  });
+
+  it("gives an issue no listed login is assigned to the session of its first area label, in the config's order, before its repository's session", () => {
+    const rules = importRules(
+      testConfig({ github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' }, areaOwners: { 'area:docs': 'alpha', 'area:cli': 'lead' }, sessions: { 'acme/api': 'bravo' } } }),
+    );
+    assert.equal(issueOwner({ repo: 'acme/api', assignees: [], labels: ['bug', 'Area:CLI', 'area:docs'] }, rules), 'alpha');
+    assert.equal(issueOwner({ repo: 'acme/api', assignees: ['monalisa'], labels: ['area:cli'] }, rules), 'lead');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: ['octocat'], labels: ['area:docs'] }, rules), 'bravo');
+    assert.equal(issueOwner({ repo: 'acme/api', assignees: [], labels: ['area:web', 'bug'] }, rules), 'bravo');
   });
 });
 
