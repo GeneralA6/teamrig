@@ -1,4 +1,4 @@
-import type { NodeEntry, runWithNode } from './node-main.ts';
+import type { NodeEntry } from './node-main.ts';
 
 /**
  * The fail-closed runner around teamrig's guard hooks (T1818). Claude Code lets a tool call through when a PreToolUse
@@ -7,8 +7,9 @@ import type { NodeEntry, runWithNode } from './node-main.ts';
  * which blocks the call and shows the model a line naming the guard, what went wrong and the fix.
  *
  * It imports nothing at run time (the import above is a type), so the code that can break under it is the CLI it loads.
- * Not caught: a synchronous endless loop (it never yields to the time limit, and Claude Code's timeout lets the call
- * through), the process running out of memory, a broken runner or entry script, and a missing Node.js.
+ * The time limit fires only while this thread is free: guard-main.ts runs the CLI on a worker thread (guard-thread.ts,
+ * T2433), so a guard stuck in synchronous work is blocked at the limit too. Not caught: the process running out of
+ * memory, a broken runner or entry script, and a missing Node.js.
  */
 
 /**
@@ -17,8 +18,11 @@ import type { NodeEntry, runWithNode } from './node-main.ts';
  */
 export const GUARD_LIMIT_MS = 12_000;
 
-/** The CLI run the runner loads and judges: `runWithNode` in `node-main.ts`. */
-export type GuardMain = typeof runWithNode;
+/**
+ * The CLI run the runner loads and judges: `runWithNode` in `node-main.ts`, run on the guard thread. Its exit code is
+ * a plain number, since it comes back across the thread and the runner judges any code.
+ */
+export type GuardMain = (argv: readonly string[], entry: NodeEntry) => Promise<number>;
 
 /** What a guard run ended with. */
 export type GuardOutcome =

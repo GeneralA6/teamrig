@@ -12,6 +12,10 @@ const DENY = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse',
 const FORCE_PUSH = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push --force origin main' } });
 /** The limit the copies run with, so a hang ends the spec in half a second, not 12. */
 const COPY_LIMIT = 'export const GUARD_LIMIT_MS = 500;';
+/** When a run that never ends is killed, so a guard the runner cannot stop fails its spec instead of hanging it. */
+const KILL_MS = 8_000;
+/** The modules the entry runs on, copied beside it as they are. */
+const COPIED = ['guard-main.ts', 'guard-thread.ts', 'guard-thread-messages.ts', 'guard-worker.ts'];
 
 interface Ended {
   readonly status: number | null;
@@ -24,12 +28,16 @@ function run(script: string, args: readonly string[], input: string, env: NodeJS
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, ...args], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const kill = setTimeout(() => child.kill(), KILL_MS);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
     child.on('error', reject);
-    child.on('close', (status) => resolve({ status, stdout, stderr, ms: Date.now() - started }));
+    child.on('close', (status) => {
+      clearTimeout(kill);
+      resolve({ status, stdout, stderr, ms: Date.now() - started });
+    });
     child.stdin.end(input);
   });
 }
@@ -42,7 +50,9 @@ async function throughCopy(nodeMain: string): Promise<Ended> {
     const shortened = runner.replace(/^export const GUARD_LIMIT_MS = 12_000;$/m, COPY_LIMIT);
     assert.ok(shortened.includes(COPY_LIMIT), 'guard-runner.ts declares GUARD_LIMIT_MS = 12_000');
     writeFileSync(join(folder, 'package.json'), '{ "type": "module" }\n');
-    copyFileSync(GUARD_MAIN, join(folder, 'guard-main.ts'));
+    for (const name of COPIED) {
+      copyFileSync(join(HERE, name), join(folder, name));
+    }
     writeFileSync(join(folder, 'guard-runner.ts'), shortened);
     writeFileSync(join(folder, 'node-main.ts'), nodeMain);
     return await run(join(folder, 'guard-main.ts'), ['hook', 'push-guard'], FORCE_PUSH);
@@ -66,11 +76,22 @@ describe('guard-main, on broken copies of the CLI', () => {
     assertBlocked(await throughCopy('export const other = 1;\n'), /crashed \(main is not a function\)/);
   });
 
-  it('blocks a run that hangs, with or without work pending, at the limit', async () => {
-    const idle = await throughCopy('export function runWithNode() { return new Promise(() => {}); }\n');
-    assertBlocked(idle, /gave no answer within 0\.5 s/);
-    assert.ok(idle.ms >= 450, `${idle.ms} ms`);
-    assertBlocked(await throughCopy('export function runWithNode() { setInterval(() => {}, 1000); return new Promise(() => {}); }\n'), /gave no answer within 0\.5 s/);
+  it('blocks a run that hangs with work pending at the limit, and one with nothing left to do at once', async () => {
+    const pending = await throughCopy('export function runWithNode() { setInterval(() => {}, 1000); return new Promise(() => {}); }\n');
+    assertBlocked(pending, /gave no answer within 0\.5 s/);
+    assert.ok(pending.ms >= 450, `${pending.ms} ms`);
+    assertBlocked(await throughCopy('export function runWithNode() { return new Promise(() => {}); }\n'), /crashed \(its thread ended with exit 0 before it answered\)/);
+  });
+
+  it('blocks synchronous work that never yields, in the run or while the CLI loads, at the limit (T2433)', async () => {
+    const spinning = await throughCopy('export function runWithNode() { for (;;) {} }\n');
+    assertBlocked(spinning, /gave no answer within 0\.5 s/);
+    assert.ok(spinning.ms < KILL_MS, `${spinning.ms} ms`);
+    assertBlocked(await throughCopy('for (;;) {}\nexport async function runWithNode() { return 0; }\n'), /gave no answer within 0\.5 s/);
+  });
+
+  it('blocks a guard thread that ends itself before it answers', async () => {
+    assertBlocked(await throughCopy('export function runWithNode() { process.exit(0); }\n'), /crashed \(its thread ended with exit 0 before it answered\)/);
   });
 
   it('blocks a throw or a rejection nobody handles', async () => {
