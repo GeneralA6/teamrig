@@ -4407,8 +4407,14 @@ deploy tool for its own use, is read as none.
 
 It checks the processes that started it, up to the tab's Claude Code, every 5 seconds: Claude Code may end a Bash
 tool's shell alone (its low-memory reaper does), and on Windows what that shell started runs on. Once one of them
-ends, no one waits for the step. Still waiting, it stops and runs nothing (`STOPPED before the host lock was free:
-nothing ran`); running, it kills the step with every process it started, records exit 129 and frees the lock
+ends, no one waits for the step there. Still waiting, while the tab's Claude Code runs (its reaper or the Bash tool's
+time limit ended the shell alone), it hands the step over to a detached run (see `--detach` below) that joins the line
+at the step's first arrival, so it keeps its place: it prints `QUEUED <id>`, records no refusal, and posts the session
+a waking line, `queue <id> kept <what>'s place in line: its launching shell ended (<process>) while it waited, so it
+runs on detached; do not run it again; log <path>; teamrig withdraw --session <s> --what "<what>" stops it`. Do not
+re-run it: the detached run tells its start and end as any `--detach` run does. A git hook's step, a `--pre-push`
+check, a step whose Claude Code ended and one in a person's own terminal stop instead and run nothing (`STOPPED before
+the host lock was free: nothing ran`), as does a step whose detached run did not start (its refusal says why); running, it kills the step with every process it started, records exit 129 and frees the lock
 (`STOPPED killed, recorded as exit 129`). When the system will not list them, it says so and the step runs on.
 Both lines go on to say what to do: re-run the same command in the background with no human's OK, unless you or the
 human stopped it on purpose, or (a killed step) its part run changed stored data, whose hand-run change is the
@@ -4428,7 +4434,7 @@ while it waited or ran) is told by the next `teamrig start` of any session of th
 line in its log and a waking line, `queue <id> died while it waited for its turn|while its step ran: <what>: ...; re-run
 it; log <path>`, told once. From the cutoff on, `--detach` is REFUSED at
 once, as a plain step is. It is refused (exit 64) with `--pre-push`, whose push waits on the checks' result, and under
-a live host lock, where the parent step waits for it. `--detached-run` is set by `--detach` only.
+a live host lock, where the parent step waits for it. `--detached-run` is set by `--detach` and the hand-over only.
 
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig queue ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
@@ -4483,8 +4489,10 @@ Flags:
   whose checks waited over a minute for the lock (see above).
 - `--detach`: return at once with `QUEUED <id>` and run the step hidden, its output in a log and its start and end in
   the session's inbox (see above); refused with `--pre-push` and under a live host lock (exit 64).
-- `--detached-run <id>`: the hidden run `--detach` starts, `<id>` its `<UTC yyyymmdd-hhmmss>-<pid>`; set by `--detach`
-  only, so another value is refused (exit 64), as is `--detach` with it.
+- `--detached-run <id>`: the hidden run `--detach` or a hand-over starts, `<id>` its `<UTC yyyymmdd-hhmmss>-<pid>`; set
+  by them only, so another value is refused (exit 64), as is `--detach` with it.
+- `--arrived-at <ms>`: the epoch milliseconds a handed-over step first joined the line, so its detached run keeps that
+  place; set by the hand-over only, with `--detached-run`; refused (exit 64) by hand or past now.
 
 Example:
 
