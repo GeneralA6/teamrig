@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import * as nodePath from 'node:path';
-import { cdCompoundForm, cdCompoundFormOf, cdCompoundReason, guardsCdCompound, type SessionPlace } from './cd-compound.ts';
+import { cdCompoundForm, cdCompoundOf, cdCompoundOfPayload, cdCompoundReason, guardsCdCompound, type SessionPlace } from './cd-compound.ts';
 
 const WINDOWS: SessionPlace = { cwd: 'C:\\Work\\app', home: 'C:\\Users\\me', host: nodePath.win32 };
 const POSIX: SessionPlace = { cwd: '/work/app', home: '/home/me', host: nodePath.posix };
@@ -47,11 +47,80 @@ describe('cdCompoundForm', () => {
   });
 });
 
-describe('cdCompoundFormOf', () => {
+/**
+ * The shape of the line that held the lead's tab at Claude Code's prompt for 14 hours (T1749): no leading `cd D &&`,
+ * a folder only known when it runs, a second `cd` mid-line, `;` between them, so no rerun form.
+ */
+const HELD = [
+  'set -e; S=/c/Users/me/scratch/t1545; rm -rf "${S:?}"; mkdir -p "$S"; cd "$S"',
+  'git init -q --bare origin.git; git clone -q origin.git work; cd work',
+  'git config user.name t; git commit -q --allow-empty -m one; git tag v0.1',
+  'git push origin main v0.1',
+].join('\n');
+
+describe('cdCompoundOf', () => {
+  it('gives the rerun form when the line has one', () => {
+    assert.deepEqual(cdCompoundOf('cd sub && git status', POSIX), { kind: 'rerun', form: 'git -C sub status' });
+    assert.deepEqual(cdCompoundOf(STALLED, WINDOWS), { kind: 'rerun', form: STALLED_FORM });
+  });
+
+  // T2802: with no form the line went on to Claude Code's prompt, which held the lead's tab 14 hours.
+  it('tells the session to drop the cd of the line that held the lead tab, which has no rerun form', () => {
+    assert.equal(cdCompoundForm(HELD, POSIX), undefined);
+    assert.deepEqual(cdCompoundOf(HELD, POSIX), { kind: 'drop-cd' });
+    assert.deepEqual(cdCompoundOf(HELD, WINDOWS), { kind: 'drop-cd' });
+  });
+
+  it('refuses a line with no form whose cd runs git after it, inside the folder too', () => {
+    for (const command of ['set -e; cd sub; git status', 'npm ci && cd sub && git log -1', 'cd sub && git status > out.txt', '(cd sub && git status)']) {
+      assert.deepEqual(cdCompoundOf(command, POSIX), { kind: 'drop-cd' }, command);
+    }
+  });
+
+  it('refuses a line with no form whose cd may leave the folder: a run-time folder, home, -, an option, or out', () => {
+    for (const command of [
+      'cd "$S" && npm test',
+      'cd $(mktemp -d) && npm test',
+      'cd && ls',
+      'cd ~/w && ls',
+      'cd - && ls',
+      'cd -P /other && ls',
+      'ls; cd /other && npm test',
+      'cd /other && ls *.ts',
+      'cd sub && cd ../.. && ls',
+      '(cd /other && make)',
+      'npm test; cd ..',
+    ]) {
+      assert.deepEqual(cdCompoundOf(command, POSIX), { kind: 'drop-cd' }, command);
+    }
+    assert.deepEqual(cdCompoundOf('npm ci; cd /c/Projects/other; npm test', WINDOWS), { kind: 'drop-cd' });
+  });
+
+  it('lets go a cd alone, a line with no cd, and one whose cds stay in the folder and run no git', () => {
+    for (const command of [
+      'cd /other',
+      'cd "$S"',
+      'git status',
+      'echo cd /other && git status',
+      'git status; cd sub',
+      'cd sub && npm test',
+      'cd sub; npm test | tail -5',
+      'cd sub && cd .. && npm test',
+      'cd sub/deeper && cd ../.. && ls',
+      '(cd sub && npm test); ls',
+    ]) {
+      assert.equal(cdCompoundOf(command, POSIX), undefined, command);
+    }
+    assert.equal(cdCompoundOf('npm ci; cd /c/work/APP/src; npm test', WINDOWS), undefined, 'Windows names folders in any case');
+  });
+});
+
+describe('cdCompoundOfPayload', () => {
   it('reads the command of a hook payload, and gives none without one', () => {
-    assert.equal(cdCompoundFormOf({ tool_input: { command: 'cd sub && git status' } }, POSIX), 'git -C sub status');
-    assert.equal(cdCompoundFormOf({ tool_input: {} }, POSIX), undefined);
-    assert.equal(cdCompoundFormOf({}, POSIX), undefined);
+    assert.deepEqual(cdCompoundOfPayload({ tool_input: { command: 'cd sub && git status' } }, POSIX), { kind: 'rerun', form: 'git -C sub status' });
+    assert.deepEqual(cdCompoundOfPayload({ tool_input: { command: 'cd "$S" && npm test' } }, POSIX), { kind: 'drop-cd' });
+    assert.equal(cdCompoundOfPayload({ tool_input: {} }, POSIX), undefined);
+    assert.equal(cdCompoundOfPayload({}, POSIX), undefined);
   });
 });
 
@@ -67,8 +136,15 @@ describe('guardsCdCompound', () => {
 
 describe('cdCompoundReason', () => {
   it('says why and quotes the form to rerun', () => {
-    const reason = cdCompoundReason('git -C /w status');
+    const reason = cdCompoundReason({ kind: 'rerun', form: 'git -C /w status' });
     assert.match(reason, /^teamrig picker guard: Claude Code asks a person before a `cd` compound/);
     assert.match(reason, /Do not retry this line; rerun it as: git -C \/w status$/);
+  });
+
+  it('says why and how to run the line with no cd when it has no form', () => {
+    const reason = cdCompoundReason({ kind: 'drop-cd' });
+    assert.match(reason, /^teamrig picker guard: Claude Code asks a person before a `cd` compound/);
+    assert.match(reason, /Do not retry this line; a folder only known when it runs counts as leaving\. Drop the `cd`: run git as `git -C <dir> \.\.\.`/);
+    assert.match(reason, /`env -C <dir> <command>`, name files by absolute path, or put the steps in a script file and run that\.$/);
   });
 });

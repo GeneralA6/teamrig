@@ -145,9 +145,21 @@ describe('hook picker-guard', () => {
     assert.match(reasonOf(away) ?? '', /rerun it as: env -C \.\. npm test$/);
   });
 
-  it('lets a cd compound go that stays in the folder and runs no git, or has no rerun form', async () => {
+  // T2802: a line with no rerun form went on to that prompt, which held the lead's tab 14 hours (T1749).
+  it("refuses a team session's cd compound with no rerun form, saying to drop the cd", async () => {
+    const kit = new CliHarness(ON_TEAM);
+    const held = await kit.run(HOOK, { stdin: bash('set -e; S=/tmp/s; mkdir -p "$S"; cd "$S"; git init -q; git push origin main'), env: ALPHA });
+    assert.equal(decisionOf(held), 'deny');
+    assert.match(reasonOf(held) ?? '', /^teamrig picker guard: Claude Code asks a person before a `cd` compound/);
+    assert.match(reasonOf(held) ?? '', /Drop the `cd`: run git as `git -C <dir> \.\.\.`/);
+    const midLine = await kit.run(HOOK, { stdin: bash('npm ci; cd sub; git status'), env: ALPHA });
+    assert.match(reasonOf(midLine) ?? '', /Drop the `cd`/);
+  });
+
+  it('lets a cd compound go that stays in the folder and runs no git', async () => {
     const kit = new CliHarness(ON_TEAM);
     assert.deepEqual(await kit.run(HOOK, { stdin: bash('cd sub && npm test'), env: ALPHA }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: bash('npm ci; cd sub; npm test'), env: ALPHA }), NOTHING);
     assert.deepEqual(await kit.run(HOOK, { stdin: bash('git status'), env: ALPHA }), NOTHING);
     assert.deepEqual(await kit.run(HOOK, { stdin: call('PowerShell', { tool_input: { command: 'cd .. && git status' } }), env: ALPHA }), NOTHING);
   });

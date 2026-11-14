@@ -1,7 +1,7 @@
 import type { KitConfig } from '../../config/types.ts';
 import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { cdCompoundFormOf, cdCompoundReason, guardsCdCompound } from '../../hooks/cd-compound.ts';
+import { cdCompoundOfPayload, cdCompoundReason, guardsCdCompound, type CdCompound } from '../../hooks/cd-compound.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
 import { refusalOutput } from '../../hooks/permission.ts';
 import { askerOf, guardsPicker, pickerReason, type LeadMeeting, type ParentLead } from '../../hooks/picker-guard.ts';
@@ -56,22 +56,22 @@ export async function pickerRefusal(runtime: CliRuntime, kit: Kit, config: KitCo
 
 /**
  * Why the guard refuses this payload's Bash `cd` compound (hooks/cd-compound.ts); undefined lets the line go: the
- * switch is off, the line needs no rerun or has no rerun form, or no team session runs it.
+ * switch is off, the line has no cd compound Claude Code asks about, or no team session runs it.
  */
-async function cdCompoundRefusal(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord, form: string): Promise<string | undefined> {
+async function cdCompoundRefusal(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord, compound: CdCompound): Promise<string | undefined> {
   if (!config.pickerGuard.enabled) {
     return undefined;
   }
   const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, config), sessionIdOf(payload));
-  return session === undefined ? undefined : cdCompoundReason(form);
+  return session === undefined ? undefined : cdCompoundReason(compound);
 }
 
 /** What the hook prints for this payload: the refusal with its reason, or '' when the call goes on. */
 async function pickerGuardOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
-  // Every Bash line reaches this hook, so a line with no cd compound to rerun returns before any file is read.
+  // Every Bash line reaches this hook, so a line with no cd compound to refuse returns before any file is read.
   const bash = guardsCdCompound(true, payload);
-  const form = bash ? cdCompoundFormOf(payload, { cwd: stringField(payload, 'cwd') ?? runtime.cwd, home: runtime.userHome }) : undefined;
-  if (bash && form === undefined) {
+  const compound = bash ? cdCompoundOfPayload(payload, { cwd: stringField(payload, 'cwd') ?? runtime.cwd, home: runtime.userHome }) : undefined;
+  if (bash && compound === undefined) {
     return '';
   }
   const found = await sessionTeam(payload, runtime);
@@ -80,7 +80,7 @@ async function pickerGuardOutputOf(runtime: CliRuntime, payload: JsonRecord): Pr
     return '';
   }
   const config = kit.load.config;
-  const reason = form === undefined ? await pickerRefusal(runtime, kit, config, payload) : await cdCompoundRefusal(runtime, kit, config, payload, form);
+  const reason = compound === undefined ? await pickerRefusal(runtime, kit, config, payload) : await cdCompoundRefusal(runtime, kit, config, payload, compound);
   return reason === undefined ? '' : refusalOutput(reason);
 }
 
@@ -89,8 +89,9 @@ async function pickerGuardOutputOf(runtime: CliRuntime, payload: JsonRecord): Pr
  * picker in every team session and every helper, the lead's own thread and a sub-team's lead included, with a reason
  * that says to decide it if it is the caller's own, else record it as a decision card (a sub-team's lead also tells its
  * parent lead) and go on with the next task; the lead in the owner's daily meeting is told to ask the card in plain
- * text. On Bash it refuses a team session's line that leads with `cd D &&` and runs git or leaves the session's folder,
- * which Claude Code would hold on a permission prompt, quoting its git -C / env -C rerun form (T2730). Outside a team,
+ * text. On Bash it refuses a team session's line with a `cd` that runs git or leaves the session's folder, which Claude
+ * Code would hold on a permission prompt, quoting its git -C / env -C rerun form (T2730), or with none, saying to drop
+ * the `cd` (T2802). Outside a team,
  * with the guard off, for a tab that is no team session, input that is not a hook payload or on any error, it prints
  * nothing, so the call goes on.
  */
