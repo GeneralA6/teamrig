@@ -6,25 +6,31 @@ import { teamPlace } from '../../delivery/places.ts';
 import { ENV } from '../../core/home.ts';
 import { samePath } from '../../core/paths.ts';
 import { resolveTeam } from '../../core/team.ts';
+import { classOf } from '../../register/focus.ts';
+import { itemTypeOf } from '../../register/item-types.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { createWorktree, type AddRequest } from '../../worktree/add.ts';
+import { isBranchType, taskBranchName } from '../../worktree/branch-name.ts';
 import { removalRefusal } from '../../worktree/owner.ts';
 import { carryOut, clearLeftover, describeLeftover, describePlan, planRemoval, type RemovalPlan, type WorktreeFolder } from '../../worktree/remove.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
+import { taskIdOf } from '../inputs.ts';
 import { openKit, requireConfig, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { tabSessionOf } from './tab-session.ts';
 
 /**
- * `worktree add <branch> [--repo <name>]`: makes a session's worktree the same way every time (worktree/add.ts): a new
- * branch from the remote's newest default branch, in the repository's worktree folder, then its setup run there. The
- * repository is the one `--repo` names in delivery.repos, else the one the folder it runs in belongs to, with the
- * folder and setup of the delivery.repos entry that lists its main checkout. REFUSED, exit 2, before any change; a
- * fetch, a `git worktree add` or a setup that fails is FAILED, exit 1.
+ * `worktree add <branch> | --task <T id> [--type <branch type>] [--repo <name>]`: makes a session's worktree the same
+ * way every time (worktree/add.ts): a new branch from the remote's newest default branch, in the repository's worktree
+ * folder, then its setup run there. With `--task` the branch is named from the task by the team's delivery.branches
+ * (worktree/branch-name.ts, T2690). The repository is the one `--repo` names in delivery.repos, else the one the folder
+ * it runs in belongs to, with the folder and setup of the delivery.repos entry that lists its main checkout. REFUSED,
+ * exit 2, before any change; a fetch, a `git worktree add` or a setup that fails is FAILED, exit 1.
  */
 export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const branch = onePositional(args, 'branch');
-  const place = await addPlace(args.flags.get('repo'), runtime);
+  const team = await teamAt(runtime);
+  const branch = await branchToAdd(args, runtime, team);
+  const place = addPlace(args.flags.get('repo'), runtime, team);
   const { git, files } = runtime.worktrees;
   const end = await createWorktree({ branch, ...place, env: runtime.env }, { git, files, hooks: runtime.hooks }, (line) => runtime.out.stdout(line));
   switch (end.kind) {
@@ -42,8 +48,45 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
 /** Where `worktree add` makes a worktree: the main checkout git runs in, the folder, and the setup run in it. */
 type AddPlace = Pick<AddRequest, 'mainDir' | 'folder' | 'setup'>;
 
-async function addPlace(repo: string | undefined, runtime: CliRuntime): Promise<AddPlace> {
-  const team = await teamAt(runtime);
+/** The branch `worktree add` makes: the one given, or with `--task` the one the team's delivery.branches names for that task. */
+async function branchToAdd(args: ParsedArgs, runtime: CliRuntime, team: TeamAt | undefined): Promise<string> {
+  const taskText = args.flags.get('task');
+  const type = args.flags.get('type');
+  if (taskText === undefined) {
+    if (type !== undefined) {
+      throw new UsageError('--type sets the branch type of the branch --task names: give --task too');
+    }
+    return onePositional(args, 'branch');
+  }
+  const [given] = args.positionals;
+  if (given !== undefined) {
+    throw new UsageError(`give a branch name or --task, not both ("${given}")`);
+  }
+  if (type !== undefined && !isBranchType(type)) {
+    throw new UsageError(`--type ${type}: expected a branch type, a lowercase letter then lowercase letters and digits, such as feat or fix`);
+  }
+  const id = taskIdOf(taskText);
+  if (team === undefined) {
+    throw new RefusedError(`--task names a task on a team's register, and ${runtime.cwd} is in no team: give a branch name instead`);
+  }
+  const { state } = await new JsonlEventLog(runtime.files, team.kit.paths.events).read();
+  const task = state.tasks.get(id);
+  if (task === undefined) {
+    throw new RefusedError(`team ${team.name}'s register has no ${id}`);
+  }
+  const { config } = team;
+  const named = taskBranchName(
+    { id, title: task.title, owner: task.owner, ref: task.ref, itemType: itemTypeOf(task), workClass: classOf(task, config.focus) },
+    config.delivery.branches,
+    type,
+  );
+  if (named.kind === 'refused') {
+    throw new RefusedError(named.reason);
+  }
+  return named.branch;
+}
+
+function addPlace(repo: string | undefined, runtime: CliRuntime, team: TeamAt | undefined): AddPlace {
   const repos = reposOf(team);
   if (repo !== undefined) {
     if (team === undefined) {
