@@ -1,4 +1,5 @@
 import { KIT_NAME } from '../core/home.ts';
+import { privateShapeIn } from '../core/private-shapes.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { targetText, type IssueHost, type IssueTarget } from './host.ts';
 import { taskIdIn } from './posted.ts';
@@ -15,7 +16,8 @@ export interface IssueWrite {
 
 /**
  * Why `text` may not be posted as `subject`, or undefined when it may: it is empty, too long, carries a secret
- * shape, or names a task id (a team's own number, which means nothing on the host: posted.ts).
+ * shape or private data (a home folder path, an e-mail address: core/private-shapes.ts), or names a task id (a team's
+ * own number, which means nothing on the host: posted.ts). A refusal names the shape, never the text.
  */
 export function postRefusal(subject: string, text: string, scanner: SecretScanner): string | undefined {
   if (text.trim() === '') {
@@ -27,6 +29,10 @@ export function postRefusal(subject: string, text: string, scanner: SecretScanne
   const secret = scanner.refusal(subject, text);
   if (secret !== undefined) {
     return secret;
+  }
+  const shape = privateShapeIn(text);
+  if (shape !== undefined) {
+    return `${subject} holds private data (${shape.description}): take it out, as a post may be read by anyone`;
   }
   const named = taskIdIn(text);
   return named === undefined ? undefined : `${subject} names the task id ${named}: a task id is the team's own, so nothing posted shows one (name issues by #number)`;

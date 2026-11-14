@@ -1287,8 +1287,9 @@ the only host so far: the repository must be in `github.repos`, and the comment 
 token saved for the owner as `teamrig-gh-<owner>`, else the `gh auth login` account (an `ACCESS` line says which).
 The token needs Issues and Pull requests: Read and write. It refuses, posting nothing, a caller not on the team, a
 target that is not `owner/name#number`, a repository not in `github.repos`, and a body that is empty, past 65,536
-characters, looks like it holds a secret, or names a task id (`T12`: ids are the team's own, so link issues by
-`#number`). A saved token the store cannot read stops it, never the `gh` login in its place. `TEAMRIG_GITHUB=off`
+characters, looks like it holds a secret, holds private data (a path inside a home folder, an e-mail address, an
+IPv4 address or an internal host name: the refusal names the shape, never the text), or names a task id (`T12`: ids
+are the team's own, so link issues by `#number`). A saved token the store cannot read stops it, never the `gh` login in its place. `TEAMRIG_GITHUB=off`
 prints an `OFF` line and posts nothing. It prints `COMMENTED <target>`, or `FAILED <target>: <reason>` with the fix
 (a token without the permission, an issue not there). Exit 1 when it failed, 2 when refused, else 0.
 

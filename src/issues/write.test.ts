@@ -30,6 +30,16 @@ describe('postRefusal', () => {
     assert.ok(!refused.includes(secret));
     assert.match(postRefusal('--body', 'Done in T12.', scanner) ?? '', /^--body names the task id T12/u);
   });
+
+  it('refuses private data, naming its shape but never the text', () => {
+    /** Built at runtime so no private-shaped literal sits in the source. */
+    const home = ['/', 'home/dana/notes'].join('');
+    const mail = ['dana', '@', 'acme.io'].join('');
+    assert.equal(postRefusal('--body', `see ${home}`, scanner), '--body holds private data (absolute path inside a user home folder): take it out, as a post may be read by anyone');
+    const refused = postRefusal('--comment', `write to ${mail}`, scanner) ?? '';
+    assert.equal(refused, '--comment holds private data (e-mail address): take it out, as a post may be read by anyone');
+    assert.ok(!refused.includes(mail));
+  });
 });
 
 describe('writeIssue', () => {

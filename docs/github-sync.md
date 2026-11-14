@@ -213,8 +213,10 @@ CLOSED acme/web#12
 ```
 
 - **Only the team's repositories.** A repository not in `github.repos` is refused before anything runs.
-- **Checked text.** An empty text, one past 65,536 characters, one that looks like it holds a secret, or one that
-  names a task id (`T12`: link issues by `#number`) is refused, and nothing is posted.
+- **Checked text.** An empty text, one past 65,536 characters, one that looks like it holds a secret, one that holds
+  private data (a path inside a home folder, an e-mail address, an IPv4 address or an internal host name, the shapes
+  teamrig's own commits are scrubbed for), or one that names a task id (`T12`: link issues by `#number`) is refused,
+  and nothing is posted.
 - **Nothing half done.** When the comment fails, nothing is closed. When the close fails after the comment was
   posted, the `FAILED` line says so: rerun `teamrig issue close` without `--comment`, so the comment is not posted
   twice.
