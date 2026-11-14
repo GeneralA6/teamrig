@@ -977,6 +977,7 @@ function parseQueue(read: ConfigReader, raw: JsonRecord): QueueConfig {
     heavyReserveMb: read.integer(raw, 'heavyReserveMb', path, DEFAULT_QUEUE.heavyReserveMb, CONFIG_LIMITS.queueHeavyReserveMb),
     admission: isAdmissionMode(admission) ? admission : DEFAULT_QUEUE.admission,
     agingMinutes: read.integer(raw, 'agingMinutes', path, DEFAULT_QUEUE.agingMinutes, CONFIG_LIMITS.queueAgingMinutes),
+    memoryPassMinutes: read.integer(raw, 'memoryPassMinutes', path, DEFAULT_QUEUE.memoryPassMinutes, CONFIG_LIMITS.queueMemoryPassMinutes),
     perSessionRunning: read.integer(raw, 'perSessionRunning', path, DEFAULT_QUEUE.perSessionRunning, CONFIG_LIMITS.queuePerSessionRunning),
     maxHeavyParallel: read.integer(raw, 'maxHeavyParallel', path, DEFAULT_QUEUE.maxHeavyParallel, CONFIG_LIMITS.queueMaxHeavyParallel),
     heavyIdleCpuPct: read.integer(raw, 'heavyIdleCpuPct', path, DEFAULT_QUEUE.heavyIdleCpuPct, CONFIG_LIMITS.queueHeavyIdleCpuPct),

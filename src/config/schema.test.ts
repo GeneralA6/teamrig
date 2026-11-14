@@ -215,6 +215,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   queueSmallReserveMb: 'delivery.queue.smallReserveMb',
   queueHeavyReserveMb: 'delivery.queue.heavyReserveMb',
   queueAgingMinutes: 'delivery.queue.agingMinutes',
+  queueMemoryPassMinutes: 'delivery.queue.memoryPassMinutes',
   queuePerSessionRunning: 'delivery.queue.perSessionRunning',
   queueMaxHeavyParallel: 'delivery.queue.maxHeavyParallel',
   queueHeavyIdleCpuPct: 'delivery.queue.heavyIdleCpuPct',

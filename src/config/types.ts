@@ -928,6 +928,13 @@ export interface QueueConfig {
   readonly admission: AdmissionMode;
   /** In `pipeline` admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. */
   readonly agingMinutes: number;
+  /**
+   * In `pipeline` admission, a later step may pass one waiting on the host's memory or commit charge, as a step that
+   * fits need not wait behind one that does not: always while no queued step runs (only memory outside the queue
+   * holds it then), and for this many minutes of its memory wait while queued steps run; past them it holds the line
+   * so that the room they free goes to it; 0 passes no one.
+   */
+  readonly memoryPassMinutes: number;
   /** In `pipeline` admission, a session with this many steps running (the host lock or a share of the host) waits for one to end, and later steps pass it; 0 caps nothing. */
   readonly perSessionRunning: number;
   /**
