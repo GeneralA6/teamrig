@@ -1,7 +1,7 @@
 import type { Task } from '../register/fold.ts';
 import { cut } from '../register/views.ts';
 import { oneLine } from './agenda.ts';
-import type { Decision } from './decision-order.ts';
+import { cardLabel, type Decision } from './decision-order.ts';
 import type { Meeting } from './state.ts';
 
 /**
@@ -54,10 +54,6 @@ export interface PanelInput {
 /** The longest summary a card shows: two lines of a 60-column pane, the full card being in the agenda the lead reads. */
 export const SUMMARY_CHARS = 120;
 
-function labelOf(team: string | undefined, id: string): string {
-  return team === undefined ? id : `${team}/${id}`;
-}
-
 /** A card's summary: what its card asks, else what the task is; null when it has neither, or only blanks. */
 export function summaryOf(task: Task): string | null {
   const text = oneLine(task.card?.question ?? task.description ?? '');
@@ -65,7 +61,7 @@ export function summaryOf(task: Task): string | null {
 }
 
 function itemOf(team: string | undefined, task: Task, decision: string | null, settled: boolean): PanelItem {
-  return { id: labelOf(team, task.id), title: oneLine(task.title), summary: summaryOf(task), settled, decision };
+  return { id: cardLabel(team, task.id), title: oneLine(task.title), summary: summaryOf(task), settled, decision };
 }
 
 /** The decision a recorded note gives, its `<marker> decided:` lead-in dropped. */

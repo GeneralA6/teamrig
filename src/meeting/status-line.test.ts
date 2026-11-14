@@ -6,7 +6,7 @@ import type { Meeting } from './state.ts';
 import { coloured, statusLineMeetingOf } from './status-line.ts';
 
 const START = Date.parse('2030-01-08T08:00:00Z');
-const OPEN: Meeting = { startedAt: new Date(START).toISOString(), by: 'lead', endedAt: null, since: null };
+const OPEN: Meeting = { startedAt: new Date(START).toISOString(), by: 'lead', endedAt: null, since: null, carried: [] };
 const SHOWN = DEFAULT_MEETING.statusLine;
 
 describe('statusLineMeetingOf', () => {

@@ -9,7 +9,8 @@ import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { postLine } from '../../inbox/inbox.ts';
-import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
+import { agendaLines, agendaSince, askedDecisions } from '../../meeting/agenda.ts';
+import { answeredKeys, carriedKeys } from '../../meeting/carried.ts';
 import { mergeDigestLines, type MergeDigestInput, type MergeLogAt } from '../../meeting/merges.ts';
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
@@ -221,7 +222,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   const { snapshot } = own;
   const since = agendaSince(previousEnd(phase), mk.now);
   const lines = agendaLines({
-    ...decisionAgendaOf(rolled, runtime, mk.now),
+    ...decisionAgendaOf(rolled, runtime, mk.now, phase.kind === 'none' ? [] : phase.meeting.carried),
     since,
     lead: mk.lead,
     command: KIT_NAME,
@@ -266,7 +267,13 @@ export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promi
     return EXIT.ok;
   }
   const before = stoppedAt(phase);
-  const meeting: Meeting = { startedAt: new Date(mk.now).toISOString(), by: mk.lead, endedAt: null, since: before === undefined ? null : new Date(before).toISOString() };
+  const meeting: Meeting = {
+    startedAt: new Date(mk.now).toISOString(),
+    by: mk.lead,
+    endedAt: null,
+    since: before === undefined ? null : new Date(before).toISOString(),
+    carried: phase.kind === 'none' ? [] : phase.meeting.carried,
+  };
   await mk.store.write(meeting);
   runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
   const spotlit: SpotlightPlace = {
@@ -299,7 +306,9 @@ export async function meetingAgenda(args: ParsedArgs, runtime: CliRuntime): Prom
 /**
  * `meeting end`: closes the open meeting, or one that lapsed unended, and tells each session whose tasks the lead
  * updated during the meeting those updates (the decisions recorded) by one inbox line, in a team under the lead's
- * too (T1018); a session with none gets no line. `meeting end <id>` ends a scheduled meeting instead (meetings.ts).
+ * too (T1018); a session with none gets no line. Every card the agenda asked that got no answer (a Decided or a Later)
+ * carries over (carried.ts): recorded on the meeting, the next agenda asks it first (T2775). `meeting end <id>` ends a
+ * scheduled meeting instead (meetings.ts).
  */
 export async function meetingEnd(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   if (args.positionals.length > 0) {
@@ -314,9 +323,16 @@ export async function meetingEnd(args: ParsedArgs, runtime: CliRuntime): Promise
     throw new RefusedError(`no meeting is open; ${KIT_NAME} meeting start opens one`);
   }
   const { meeting } = phase;
-  await mk.store.write({ ...meeting, endedAt: new Date(mk.now).toISOString() });
-  const { own, teams } = await meetingRegisters(runtime, mk);
+  const rollUp = await meetingRegisters(runtime, mk);
+  const { own, teams } = rollUp;
   const startedAt = Date.parse(meeting.startedAt);
+  const asked = askedDecisions(decisionAgendaOf(rollUp, runtime, mk.now, meeting.carried));
+  const answered = answeredKeys(
+    teams.map((rolled) => ({ events: rolled.snapshot.read.events, decidedBy: decidedByOf(rolled, own, mk.lead), team: rolled.team === own.team ? undefined : rolled.team })),
+    startedAt,
+  );
+  const carried = carriedKeys([...asked.daily, ...asked.batch], answered);
+  await mk.store.write({ ...meeting, endedAt: new Date(mk.now).toISOString(), carried });
   const decided: Decided[] = teams.map((rolled) => {
     const below = rolled.team === own.team ? undefined : rolled.team;
     const { events } = rolled.snapshot.read;
@@ -335,5 +351,8 @@ export async function meetingEnd(args: ParsedArgs, runtime: CliRuntime): Promise
       : `RECORDED ${recorded.length} decision(s), each told to its task's owner`,
   );
   recorded.forEach((line) => runtime.out.stdout(line));
+  if (carried.length > 0) {
+    runtime.out.stdout(`CARRIED ${carried.length} card(s) with no answer to the next meeting, asked there first: ${carried.join(', ')}`);
+  }
   return EXIT.ok;
 }
