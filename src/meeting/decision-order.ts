@@ -29,6 +29,19 @@ export interface Decision {
   readonly team: string | undefined;
 }
 
+/**
+ * A card's key across the registers a meeting covers: its task's id in the lead's own register (`team` undefined),
+ * `<team>/<id>` in a team under it, as the agenda's rows and the panel's items name it.
+ */
+export function cardLabel(team: string | undefined, id: string): string {
+  return team === undefined ? id : `${team}/${id}`;
+}
+
+/** A decision's key (cardLabel). */
+export function decisionKey({ task, team }: Pick<Decision, 'task' | 'team'>): string {
+  return cardLabel(team, task.id);
+}
+
 export interface DecisionOrder {
   readonly daily: readonly Decision[];
   /** What waits for the weekly batch, in the same order. */

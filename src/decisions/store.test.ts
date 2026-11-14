@@ -5,7 +5,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { askedAtOf, AskedStore, formatAskedBatch, parseAskedBatch, type AskedBatch } from './store.ts';
 
 const ASKED: AskedBatch = { askedAt: '2030-01-08T13:10:00.000Z', by: 'lead', ids: ['T4', 'T9'] };
-const MEETING: Meeting = { startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: '2030-01-08T09:50:00.000Z', since: null };
+const MEETING: Meeting = { startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: '2030-01-08T09:50:00.000Z', since: null, carried: [] };
 
 describe('the asked batch file', () => {
   it('reads back what it writes', () => {

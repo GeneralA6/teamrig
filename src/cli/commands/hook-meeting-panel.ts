@@ -60,7 +60,7 @@ export async function meetingPanel(args: ParsedArgs, runtime: CliRuntime): Promi
       tasks: [...rolled.snapshot.state.tasks.values()],
       decidedBy: decidedByOf(rolled, own, id),
     })),
-    asked: askedDecisions(decisionAgendaOf(rollUp, runtime, now)),
+    asked: askedDecisions(decisionAgendaOf(rollUp, runtime, now, meeting.carried)),
     ownerMarker: config.register.ownerSource,
   });
   return answer(runtime, { kind: 'open', ...panel, watch: [kit.paths.meeting, ...teams.map((rolled) => rolled.paths.events)] });

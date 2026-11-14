@@ -220,6 +220,49 @@ describe('runCli: the daily meeting', () => {
     assert.ok(!bravo.some((line) => line.includes('daily meeting')), bravo.join('\n'));
   });
 
+  it('carries every card with no answer to the next meeting, which asks it first; a Decided or a Later is done (T2775)', async () => {
+    const kit = await teamBeforeTheMeeting();
+    for (const title of ['Pick the launch date', 'Pick the support plan']) {
+      await kit.run(['add', '--title', title, '--description', 'which one', '--priority', 'p1', '--session', 'alpha']);
+    }
+    for (const id of ['T3', 'T4']) {
+      const waiting = await kit.run(['set', id, '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
+      assert.equal(waiting.code, EXIT.ok, waiting.stderr.join('\n'));
+    }
+    await kit.run(['meeting', 'start', '--session', 'lead']);
+    await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: the middle tier', '--session', 'lead']);
+    await kit.run(['update', 'T3', '--later', '2030-01-12 09:00', '--note', 'owner: after the demo', '--session', 'lead']);
+    const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
+    assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
+    assert.equal(ended.stdout.at(-1), 'CARRIED 1 card(s) with no answer to the next meeting, asked there first: T4');
+
+    kit.clock.advance(24 * 60 * MINUTE);
+    await kit.run(['add', '--title', 'Pick the logo', '--description', 'which one', '--priority', 'p1', '--session', 'alpha']);
+    await kit.run(['set', 'T5', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
+    const next = (await kit.run(['meeting', 'start', '--session', 'lead'])).stdout;
+    const head = next.indexOf('DECISIONS 2 waiting on owner (decision or approval)');
+    assert.ok(head > 0, next.join('\n'));
+    assert.equal(next[head + 1], '  Carried over 1, asked at the last meeting and still open, first:');
+    assert.match(next[head + 2] ?? '', /^ {2}T4 /);
+    const fresh = next.indexOf('  New since the last meeting 1:');
+    assert.ok(fresh > head + 2 && fresh < next.findIndex((line) => /^ {2}T5 /.test(line)), next.join('\n'));
+    assert.ok(!next.some((line) => /^ {2}T1 /.test(line)), 'a Decided card is asked no more');
+  });
+
+  it('carries nothing once each card got an answer, and drops a carried card whose wait cleared (T2775)', async () => {
+    const kit = await teamBeforeTheMeeting();
+    await kit.run(['meeting', 'start', '--session', 'lead']);
+    const first = await kit.run(['meeting', 'end', '--session', 'lead']);
+    assert.equal(first.stdout.at(-1), 'CARRIED 1 card(s) with no answer to the next meeting, asked there first: T1');
+    await kit.run(['set', 'T1', '--status', 'in-progress', '--note', 'the owner answered in chat', '--session', 'alpha']);
+    kit.clock.advance(24 * 60 * MINUTE);
+    const next = (await kit.run(['meeting', 'start', '--session', 'lead'])).stdout;
+    assert.ok(next.includes('DECISIONS 0 waiting on owner (decision or approval)'), next.join('\n'));
+    assert.ok(!next.some((line) => line.includes('Carried over')), next.join('\n'));
+    const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
+    assert.ok(!ended.stdout.some((line) => line.startsWith('CARRIED')), ended.stdout.join('\n'));
+  });
+
   it('ends a meeting with nothing recorded: posts no line, and says a decision the register lacks reaches no one', async () => {
     const kit = await teamBeforeTheMeeting();
     await kit.run(['meeting', 'start', '--session', 'lead']);

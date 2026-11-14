@@ -40,6 +40,7 @@ function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY, requireGate =
     dedicatedOwners: [],
     improvementsDay: 'wed',
     runFiles: new Map(),
+    carried: [],
   };
 }
 
@@ -422,6 +423,38 @@ describe('the meeting agenda: decisions by what they unblock (T2092)', () => {
     assert.deepEqual(ids(tuesday.daily), ['web/T7', 'T1']);
     assert.deepEqual(ids(tuesday.batch), ['T9']);
     assert.deepEqual(askedDecisions(rankedInputOf([own, IMPROVEMENT], below)).batch, []);
+  });
+
+  it('asks the cards the last meeting left unanswered first, under their own line, a batch card too off its day (T2775)', () => {
+    const lines = section(agendaLines({ ...inputOf([DECIDE, IMPROVEMENT]), carried: ['T9'] }), 'DECISIONS');
+    assert.equal(lines[0], 'DECISIONS 2 waiting on owner (decision or approval)');
+    assert.equal(lines[1], '  Carried over 1, asked at the last meeting and still open, first:');
+    assert.deepEqual(rowIds(lines), ['T9', 'T4']);
+    const fresh = lines.indexOf('  New since the last meeting 1:');
+    assert.ok(fresh > lines.findIndex((line) => line.startsWith('  T9 ')), lines.join('\n'));
+    assert.ok(fresh < lines.findIndex((line) => line.startsWith('  T4 ')), lines.join('\n'));
+  });
+
+  it('prints no new line when every card is carried, and no carried line for a carried card no longer waiting (T2775)', () => {
+    const all = section(agendaLines({ ...inputOf([DECIDE]), carried: ['T4'] }), 'DECISIONS');
+    assert.equal(all[1], '  Carried over 1, asked at the last meeting and still open, first:');
+    assert.ok(!all.some((line) => line.startsWith('  New since')), all.join('\n'));
+    const cleared = section(agendaLines({ ...inputOf([DECIDE]), carried: ['T5'] }), 'DECISIONS');
+    assert.ok(!cleared.some((line) => /Carried over|New since/.test(line)), cleared.join('\n'));
+    assert.deepEqual(rowIds(cleared), ['T4']);
+  });
+
+  it('hands the carried cards out first, by <team>/<id>, and never again in the batch (T2775)', () => {
+    const own = { ...DECIDE, id: 'T1', workClass: 'Maintenance' };
+    const roadmap = { ...DECIDE, id: 'T7', workClass: 'Roadmap' };
+    const below = [teamOf('web', [roadmap], rankedTreeOf([roadmap]))];
+    const ids = (cards: readonly { readonly task: Task; readonly team: string | undefined }[]): string[] =>
+      cards.map((card) => (card.team === undefined ? card.task.id : `${card.team}/${card.task.id}`));
+    const asked = askedDecisions({ ...rankedInputOf([own, IMPROVEMENT], below), improvementsDay: 'tue', carried: ['T9', 'T1'] });
+    assert.deepEqual(ids(asked.daily), ['T1', 'T9', 'web/T7']);
+    assert.deepEqual(ids(asked.batch), []);
+    const team = askedDecisions({ ...rankedInputOf([own], below), carried: ['web/T7', 'T7'] });
+    assert.deepEqual(ids(team.daily), ['web/T7', 'T1'], 'a key names its team: T7 alone is no card of the lead');
   });
 
   it("names no team in the how-to lines when a team's only decision waits for the batch", () => {

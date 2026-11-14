@@ -6,7 +6,7 @@ import { formatMeeting, inMeeting, MEETING_LAPSE_MS, MeetingStore, parseMeeting,
 
 const STARTED = '2030-01-08T09:00:00.000Z';
 const START = Date.parse(STARTED);
-const OPEN: Meeting = { startedAt: STARTED, by: 'lead', endedAt: null, since: null };
+const OPEN: Meeting = { startedAt: STARTED, by: 'lead', endedAt: null, since: null, carried: [] };
 
 describe('the meeting phase', () => {
   it('is none before any meeting, open while one runs, closed once ended', () => {
@@ -41,8 +41,12 @@ describe('the meeting phase', () => {
 describe('the meeting file', () => {
   it('reads back what it writes, open or ended', () => {
     assert.deepEqual(parseMeeting(formatMeeting(OPEN)), OPEN);
-    const ended: Meeting = { startedAt: STARTED, by: 'lead', endedAt: '2030-01-08T09:40:00.000Z', since: '2030-01-07T09:30:00.000Z' };
+    const ended: Meeting = { startedAt: STARTED, by: 'lead', endedAt: '2030-01-08T09:40:00.000Z', since: '2030-01-07T09:30:00.000Z', carried: ['T4', 'web/T2'] };
     assert.deepEqual(parseMeeting(formatMeeting(ended)), ended);
+  });
+
+  it('reads a file written before carry-over (T2775) as carrying nothing', () => {
+    assert.deepEqual(parseMeeting(JSON.stringify({ v: 1, startedAt: STARTED, by: 'lead', endedAt: null, since: null })), OPEN);
   });
 
   it('reads a damaged file, another format or a bad field as no meeting', () => {
@@ -53,6 +57,8 @@ describe('the meeting file', () => {
     assert.equal(parseMeeting(JSON.stringify({ v: 1, startedAt: STARTED, endedAt: null, since: null })), undefined);
     assert.equal(parseMeeting(JSON.stringify({ v: 1, startedAt: STARTED, by: 'lead', endedAt: 5, since: null })), undefined);
     assert.equal(parseMeeting(JSON.stringify({ v: 1, startedAt: STARTED, by: 'lead', endedAt: null, since: false })), undefined);
+    assert.equal(parseMeeting(JSON.stringify({ v: 1, startedAt: STARTED, by: 'lead', endedAt: null, since: null, carried: 'T4' })), undefined);
+    assert.equal(parseMeeting(JSON.stringify({ v: 1, startedAt: STARTED, by: 'lead', endedAt: null, since: null, carried: [4] })), undefined);
   });
 
   it('stores the latest meeting in one file, none before the first', async () => {

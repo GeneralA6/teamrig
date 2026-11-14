@@ -72,7 +72,7 @@ describe('teamrig open', () => {
   });
 
   describe('focus (T2510)', () => {
-    const OPEN_MEETING = { startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null };
+    const OPEN_MEETING = { startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null, carried: [] };
 
     it('gives the new tab the focus when a person typed open outside any meeting', async () => {
       const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });

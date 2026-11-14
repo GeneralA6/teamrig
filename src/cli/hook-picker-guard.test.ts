@@ -65,7 +65,7 @@ describe('hook picker-guard', () => {
   it("refuses the lead's picker in an open meeting of a team whose config still names askWith: picker", async () => {
     const kit = new CliHarness(PICKER_TEAM);
     // A config with a problem refuses the writing meeting start, so seed a meeting opened half an hour ago.
-    await new MeetingStore(kit.files, join(TEAM_HOME, 'state', 'meeting.json')).write({ startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null });
+    await new MeetingStore(kit.files, join(TEAM_HOME, 'state', 'meeting.json')).write({ startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null, carried: [] });
     const inMeeting = await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: LEAD });
     assert.equal(decisionOf(inMeeting), 'deny');
     assert.match(reasonOf(inMeeting) ?? '', /^teamrig picker guard: the owner's daily meeting asks in plain text\. Read the card as it stands/);
@@ -89,7 +89,7 @@ describe('hook picker-guard', () => {
     await kit.files.write(teamConfigOf('web'), formatConfig({ ...SUB_TEAMS['web'], pickerGuard: { enabled: true } }));
     const web = { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' };
     // A child team's lead holds no meeting (T1018), so seed one it opened before that, still open half an hour on.
-    await new MeetingStore(kit.files, join(teamHomeOf('web'), 'state', 'meeting.json')).write({ startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null });
+    await new MeetingStore(kit.files, join(teamHomeOf('web'), 'state', 'meeting.json')).write({ startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null, carried: [] });
     const result = await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: web });
     assert.equal(decisionOf(result), 'deny', 'the user talks only to the root lead');
     assert.match(reasonOf(result) ?? '', /then tell your parent lead app\/lead \(name `[^`]+`\) in one inbox line, `teamrig inbox add --to app\/lead /);
