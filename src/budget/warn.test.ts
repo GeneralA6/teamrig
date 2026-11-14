@@ -410,6 +410,17 @@ describe('promptWarning', () => {
     assert.ok(promptWarning(facts(1.3, AHEAD), BUDGET, first.state).line !== undefined);
   });
 
+  it('only reports the overrun under warn, never telling the model to stop, a cut session too (T2783)', () => {
+    const warn: WarnBudget = { ...BUDGET, overAction: 'warn' };
+    assert.equal(
+      promptWarning(facts(1.1, AHEAD), warn, undefined).line,
+      "teamrig budget: you are past today's budget and the team has no room left today, and it is ahead of its pace line. " +
+        'The budget only warns (budget.overAction warn), so nothing is held: go on with your task list.',
+    );
+    assert.doesNotMatch(promptWarning(facts(1.1, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD }), warn, undefined).line ?? '', /start no new work/);
+    assert.match(promptWarning(facts(1.1, AHEAD), { ...BUDGET, overAction: 'ask-lead' }, undefined).line ?? '', /start no new work items or helpers/);
+  });
+
   it("tells a sub-lead's member that its own leader can lift it", () => {
     assert.match(promptWarning(facts(1.1, AHEAD, DAY, { leader: SUB_LEAD }), BUDGET, undefined).line ?? '', /Never skip a test or check to save budget\. Your leader app-bravo can lift it\.$/);
   });

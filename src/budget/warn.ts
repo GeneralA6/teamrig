@@ -419,8 +419,12 @@ export interface PromptWarning {
   readonly state: WarnState;
 }
 
-/** The model's past-budget line, once per warning level while escalated; undefined when none is due. */
-function escalationLine(facts: BudgetFacts, standing: Standing, state: WarnState): string | undefined {
+/**
+ * The model's past-budget line, once per warning level while escalated; undefined when none is due. Under `warn` it
+ * only reports the overrun: the model obeys a stop sentence as an order, so saying one there held the team as `block`
+ * would (T2783), while the person's line and the helper gate already hold nothing.
+ */
+function escalationLine(facts: BudgetFacts, budget: WarnBudget, standing: Standing, state: WarnState): string | undefined {
   if (!standing.escalated || standing.level <= state.modelLevel) {
     return undefined;
   }
@@ -428,6 +432,9 @@ function escalationLine(facts: BudgetFacts, standing: Standing, state: WarnState
     facts.cut === undefined
       ? `the team has no room left today${standing.ahead ? ', and it is ahead of its pace line' : ''}`
       : `${leaderText(facts.cutBy, 'your')} cut you to it until ${formatEndTime(facts.cut.endsAt, facts.zone)}`;
+  if (budget.overAction === 'warn') {
+    return `${BUDGET_COMMAND}: you are past today's budget and ${why}. The budget only warns (budget.overAction warn), so nothing is held: go on with your task list.`;
+  }
   const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : `${capitalized(leaderText(facts.leader, 'your'))} can lift it.`;
   const goesOn = pastStopWork(facts, 'your');
   const except = goesOn === undefined ? '' : `, except ${goesOn.text}: ${goesOn.plural ? 'they go' : 'it goes'} on past the daily stop`;
@@ -446,7 +453,7 @@ export function promptWarning(facts: BudgetFacts, budget: WarnBudget, previous: 
   const state = stateFor(previous, facts.now);
   const standing = standingOf(facts, budget);
   const burst = burstPromptLines(facts, state);
-  const escalation = escalationLine(facts, standing, state);
+  const escalation = escalationLine(facts, budget, standing, state);
   const lines = escalation === undefined ? burst.lines : [...burst.lines, escalation];
   if (lines.length === 0) {
     return { line: undefined, state };
