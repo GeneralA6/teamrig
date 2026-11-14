@@ -209,14 +209,14 @@ describe('renderCorePack', () => {
 
   it('has a new task carry a plain-words description, naming the register keys once while any demand is on', () => {
     const on = renderCorePack(testConfig({ register: { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(on, /else by the receiver, with a plain-words description of what and why; only the owning session sets its status \(`teamrig set`\) \[register\]\. /);
+    assert.match(on, /else by the receiver, with a plain description of what and why; only the owning session sets its status \(`teamrig set`\) \[register\]\. /);
     const off = renderCorePack(
       testConfig({ register: { requireDescription: false, requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] } }),
       COMMAND,
       'win32',
       RULES_CLOCK,
     );
-    assert.match(off, /else by the receiver, with a plain-words description of what and why; only the owning session sets its status \(`teamrig set`\)\. /);
+    assert.match(off, /else by the receiver, with a plain description of what and why; only the owning session sets its status \(`teamrig set`\)\. /);
     assert.doesNotMatch(off, /\[register/);
   });
 
@@ -313,7 +313,7 @@ describe('renderCorePack', () => {
   it('states what the push guard does with a push to a protected branch', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND, 'win32', RULES_CLOCK);
     const keys = String.raw`\[pushGuard\]`;
-    const routed = ' A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed to another session.';
+    const routed = ' A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed off.';
     assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
     assert.match(
       pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),
@@ -392,7 +392,7 @@ describe('renderCorePack', () => {
 
   it("points a new skill to the guide's limits, which check enforces, instead of printing each one", () => {
     const pack = renderCorePack(testConfig({ skills: { sharedPrefix: 'crew', forbidFrontmatter: ['allowed-tools'] } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /^13\. A procedure you investigated and will run again becomes a skill in the same turn: `<area>-<name>\/SKILL\.md`, shared ones `crew-<name>` \[skills\.sharedPrefix\],/m);
+    assert.match(pack, /^13\. A procedure you investigated and will rerun becomes a skill in the same turn: `<area>-<name>\/SKILL\.md`, shared ones `crew-<name>` \[skills\.sharedPrefix\],/m);
     assert.match(pack, / within the guide's skill limits\. Memory holds facts, skills how-tos, CLAUDE\.md every-turn rules\.$/m);
     assert.doesNotMatch(pack, /maxDescriptionWords|maxVerifiedAgeDays|maxPerArea|forbidFrontmatter|allowed-tools/);
   });
@@ -477,6 +477,13 @@ describe('renderCorePack', () => {
     }
   });
 
+  it('has every path written to a human absolute, a web file its full URL, in either owner-ask wording (T2607)', () => {
+    for (const enabled of [true, false]) {
+      const pack = renderCorePack(testConfig({ tabStatus: { enabled } }), COMMAND, 'win32', RULES_CLOCK);
+      assert.match(pack, /^9\. Investigate first: frequency × impact, the cheapest fix for the visible symptom\. Give humans absolute paths and full URLs\. Ask the owner only /m);
+    }
+  });
+
   it('prints budget percentages with at most two decimals', () => {
     const pack = renderCorePack(
       testConfig({ budget: { enabled: true, targetPct: 1.0000000000000002, reservePct: 1e-7 } }),
@@ -491,7 +498,7 @@ describe('renderCorePack', () => {
     const weighted = renderCorePack(testConfig({ budget: { subagentWeight: 2.15 } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       weighted,
-      /^8\. Lean calls: batch related shell steps in one call \(each re-reads context\)\. A helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only for parallel work or an independent review, never to save tokens or for a build or test you wait on; run helpers on your model and effort\. Task files go in `teamrig files T<id>`, other notes in `--notes`\.$/m,
+      /^8\. Lean calls: batch related shell steps in one call\. A helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only for parallel work or an independent review, never to save tokens or for a build or test you wait on; run helpers on your model and effort\. Task files go in `teamrig files T<id>`, other notes in `--notes`\.$/m,
     );
     const even = renderCorePack(testConfig({ budget: { subagentWeight: 1 } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(even, /^8\. .* Start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel,/m);
