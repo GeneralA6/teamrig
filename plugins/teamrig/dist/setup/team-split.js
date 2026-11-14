@@ -42,6 +42,7 @@ const CHILD_TAKES = {
     commitGuard: 'copy',
     prompts: 'copy',
     secretGuard: 'copy',
+    dbWriteGuard: 'copy',
     commits: 'copy',
     leadBoundary: 'copy',
     loops: 'copy',

@@ -10,12 +10,12 @@ import { KEEP_RULE_PATTERN } from "../permissions/allow-rules.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
 import { isNeedKind, NEED_KINDS } from "../tabs/need-kind.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_DB_WRITE_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
-import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, } from "./limits.js";
+import { APPLY_FLAG_PATTERN, BUDGET_ACCOUNT_MAX_LENGTH, CLIENT_RECEIVER_PATTERN, CONFIG_LIMITS, DB_PROGRAM_NAME_PATTERN, DB_WRITE_ENTRYPOINT_LIMITS, DB_WRITE_NAME_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, NODE_MODULE_PATTERN, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, } from "./limits.js";
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from "./migrate.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, GOALS_MODES, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isResetKind, isReviewMode, isVerifyGate, isWeekday, RESET_KINDS, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
+import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, DB_CLIENT_VOCABULARIES, DB_PROGRAM_SHAPES, DB_WRITES, ESCALATIONS, GOALS_MODES, isDbClientVocabulary, isDbProgramShape, isDbWrites, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isResetKind, isReviewMode, isVerifyGate, isWeekday, RESET_KINDS, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 /** A role a team may leave to a team above it (ANCESTOR_ROLES): one of its sessions, or `<team>/<id>` (T1143). */
 const isRoleHolder = (holder) => SESSION_NAME.test(holder) || ADDRESS_PATTERN.test(holder) ? undefined : 'expected a session id of the team, or <team>/<id> of a team above it';
@@ -294,6 +294,7 @@ export function parseConfig(raw, above) {
         commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
         prompts: parsePrompts(read, read.section(raw, 'prompts', '')),
         secretGuard: parseSecretGuard(read, read.section(raw, 'secretGuard', '')),
+        dbWriteGuard: parseDbWriteGuard(read, read.section(raw, 'dbWriteGuard', '')),
         commits: parseCommits(read, read.section(raw, 'commits', '')),
         delivery: parseDelivery(read, read.section(raw, 'delivery', '')),
         budget,
@@ -1276,6 +1277,63 @@ function keepablePattern(keeps) {
         const body = value.replace(/^!/, '');
         return body === '' ? `expected a regular expression, with a leading ! to ${keeps}` : isValidRegex(body);
     };
+}
+function parseDbWriteGuard(read, raw) {
+    const path = 'dbWriteGuard';
+    const defaults = DEFAULT_DB_WRITE_GUARD;
+    const writes = read.string(raw, 'writes', path, defaults.writes, oneOf(DB_WRITES));
+    const { dbWriteEntrypoints, dbWritePrograms, dbWriteNodeClients, dbWriteClientReceivers } = CONFIG_LIMITS;
+    return {
+        writes: isDbWrites(writes) ? writes : defaults.writes,
+        entrypoints: read.list(raw, 'entrypoints', path, defaults.entrypoints, (value, itemPath) => parseDbWriteEntrypoint(read, value, itemPath), dbWriteEntrypoints.maxItems),
+        programs: read.list(raw, 'programs', path, defaults.programs, (value, itemPath) => parseDbWriteProgram(read, value, itemPath), dbWritePrograms.maxItems),
+        nodeClients: read.list(raw, 'nodeClients', path, defaults.nodeClients, (value, itemPath) => parseDbWriteNodeClient(read, value, itemPath), dbWriteNodeClients.maxItems),
+        clientReceivers: read.stringList(raw, 'clientReceivers', path, defaults.clientReceivers, shortLine(dbWriteClientReceivers.maxLength, matching(CLIENT_RECEIVER_PATTERN, 'expected a word of letters, digits, _ or $, such as cache')), dbWriteClientReceivers.maxItems),
+    };
+}
+/** A check that `pattern` matches the whole value, else `expected`. */
+function matching(pattern, expected) {
+    return (value) => (pattern.test(value) ? undefined : expected);
+}
+function parseDbWriteEntrypoint(read, value, path) {
+    const entrypoint = read.objectItem(value, path);
+    if (entrypoint === undefined) {
+        return undefined;
+    }
+    const before = read.issues.length;
+    const { pathMaxLength, applyFlagsMaxItems, applyFlagMaxLength } = DB_WRITE_ENTRYPOINT_LIMITS;
+    const scriptPath = read.requiredString(entrypoint, 'path', path, shortLine(pathMaxLength));
+    if (entrypoint['applyFlags'] === undefined) {
+        read.report(`${path}.applyFlags`, 'is required');
+    }
+    const isApplyFlag = matching(APPLY_FLAG_PATTERN, 'expected a flag such as --apply');
+    const applyFlags = read.stringList(entrypoint, 'applyFlags', path, [], shortLine(applyFlagMaxLength, isApplyFlag), applyFlagsMaxItems);
+    if (Array.isArray(entrypoint['applyFlags']) && entrypoint['applyFlags'].length === 0) {
+        read.report(`${path}.applyFlags`, 'expected at least one flag, such as --apply');
+    }
+    return read.issues.length === before ? { path: scriptPath, applyFlags } : undefined;
+}
+function parseDbWriteProgram(read, value, path) {
+    const program = read.objectItem(value, path);
+    if (program === undefined) {
+        return undefined;
+    }
+    const before = read.issues.length;
+    const isName = matching(DB_PROGRAM_NAME_PATTERN, 'expected a program name such as my-cli, no path');
+    const name = read.requiredString(program, 'name', path, shortLine(DB_WRITE_NAME_LIMITS.programNameMaxLength, isName));
+    const reads = read.requiredString(program, 'reads', path, oneOf(DB_PROGRAM_SHAPES));
+    return read.issues.length === before && isDbProgramShape(reads) ? { name, reads } : undefined;
+}
+function parseDbWriteNodeClient(read, value, path) {
+    const client = read.objectItem(value, path);
+    if (client === undefined) {
+        return undefined;
+    }
+    const before = read.issues.length;
+    const isModule = matching(NODE_MODULE_PATTERN, 'expected a package name such as store or @scope/store');
+    const module = read.requiredString(client, 'module', path, shortLine(DB_WRITE_NAME_LIMITS.nodeModuleMaxLength, isModule));
+    const vocabulary = read.requiredString(client, 'vocabulary', path, oneOf(DB_CLIENT_VOCABULARIES));
+    return read.issues.length === before && isDbClientVocabulary(vocabulary) ? { module, vocabulary } : undefined;
 }
 function parseReadonlyShell(read, raw) {
     const { maxItems, maxLength } = CONFIG_LIMITS.readonlyShellPrefixes;

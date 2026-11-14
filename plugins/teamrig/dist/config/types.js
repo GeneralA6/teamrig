@@ -37,6 +37,15 @@ export const REVIEW_CLASSES = ['security', 'leader'];
 export function isReviewClass(value) {
     return REVIEW_CLASSES.some((reviewer) => reviewer === value);
 }
+/**
+ * How a database program takes the code it runs: `document-shell` (`--eval` code, `-f` files, a positional script
+ * file; document methods), `key-value-cli` (a command word, `EVAL` scripts, `--eval` files, stdin lines),
+ * `sql-command` (`-c`, `-f`, stdin), `sql-execute` (`-e`, stdin) or `sql-database-file` (a database file, then SQL;
+ * `-cmd`, stdin).
+ */
+export const DB_PROGRAM_SHAPES = ['document-shell', 'key-value-cli', 'sql-command', 'sql-execute', 'sql-database-file'];
+/** The write vocabulary of a Node client: a document store's methods, or a key-value store's commands. */
+export const DB_CLIENT_VOCABULARIES = ['document', 'key-value'];
 export const AD_HOC_RUNNERS = ['deny', 'ask', 'allow'];
 export function isAdHocRunners(value) {
     return AD_HOC_RUNNERS.some((choice) => choice === value);
@@ -64,6 +73,16 @@ export function isSecretReads(value) {
 export const SECRET_WRITES = ['deny', 'ask', 'allow'];
 export function isSecretWrites(value) {
     return SECRET_WRITES.some((choice) => choice === value);
+}
+export const DB_WRITES = ['deny', 'ask', 'allow'];
+export function isDbWrites(value) {
+    return DB_WRITES.some((choice) => choice === value);
+}
+export function isDbProgramShape(value) {
+    return DB_PROGRAM_SHAPES.some((shape) => shape === value);
+}
+export function isDbClientVocabulary(value) {
+    return DB_CLIENT_VOCABULARIES.some((vocabulary) => vocabulary === value);
 }
 export const COMMIT_GATES = ['off', 'warn', 'refuse'];
 export function isCommitGate(value) {

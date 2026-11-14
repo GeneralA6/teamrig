@@ -49,6 +49,10 @@ export const CONFIG_LIMITS = {
     secretPaths: { maxItems: 32, maxLength: 200 },
     secretEnvNames: { maxItems: 16, maxLength: 120 },
     secretCommands: { maxItems: 16, maxLength: 200 },
+    dbWriteEntrypoints: { maxItems: 32 },
+    dbWritePrograms: { maxItems: 16 },
+    dbWriteNodeClients: { maxItems: 16 },
+    dbWriteClientReceivers: { maxItems: 8, maxLength: 40 },
     packageCooldownDays: { min: 0, max: 365 },
     searchNudgeAt: { min: 0, max: 50 },
     turnLogKeepHours: { min: 1, max: 168 },
@@ -137,6 +141,28 @@ export const RULE_CONFLICT_LIMITS = {
 export const MEETING_HELD_TEXT_MAX_LENGTH = 40;
 /** `meeting.statusLine.colour`: a 24-bit `#rrggbb` colour, the form the status line's ANSI foreground code takes. */
 export const MEETING_COLOUR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+/** Bounds on one data script the db-write guard knows (`dbWriteGuard.entrypoints`). */
+export const DB_WRITE_ENTRYPOINT_LIMITS = {
+    pathMaxLength: 260,
+    applyFlagsMaxItems: 4,
+    applyFlagMaxLength: 40,
+};
+/**
+ * Bounds on the names in the db-write guard's object lists (`dbWriteGuard.programs[].name`,
+ * `dbWriteGuard.nodeClients[].module`); a `maxLength` in CONFIG_LIMITS bounds a list's string items instead.
+ */
+export const DB_WRITE_NAME_LIMITS = {
+    programNameMaxLength: 60,
+    nodeModuleMaxLength: 120,
+};
+/** An entrypoint's apply flag as a line spells it: `--apply`, `-y`. */
+export const APPLY_FLAG_PATTERN = /^--?[A-Za-z][\w-]*$/;
+/** A database program's name as a line runs it (`dbWriteGuard.programs[].name`): `psql`, `my-cli`, `tool.exe`. */
+export const DB_PROGRAM_NAME_PATTERN = /^[A-Za-z0-9][\w.+-]*$/;
+/** A Node client module as code loads it (`dbWriteGuard.nodeClients[].module`): `store`, `@scope/store`. */
+export const NODE_MODULE_PATTERN = /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/;
+/** A word inside a receiver's name that marks a key-value client (`dbWriteGuard.clientReceivers`): `cache`. */
+export const CLIENT_RECEIVER_PATTERN = /^[A-Za-z_$][\w$]*$/;
 /** The longest `budget.account` name, on one line. */
 export const BUDGET_ACCOUNT_MAX_LENGTH = 100;
 /** The longest `github.acceptLabel`: GitHub caps a label name at 50 characters. */
