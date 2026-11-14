@@ -11,7 +11,7 @@ import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { findClaude } from "../../open/claude.js";
 import { launchFlags } from "../../open/launch-flags.js";
 import { openTab } from "../../open/open-tab.js";
-import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from "../../open/prompt.js";
+import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, recoverPrompt, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
 import { sessionEnv } from "../../open/session-env.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -202,8 +202,9 @@ async function refuseLiveRun(runtime, kit, roster, id, name) {
 }
 /**
  * The Claude Code session the tab resumes, undefined for a new one. A closed session resumes its last one when that
- * is small and recent enough, else opens fresh (and `--resume` refuses); any other resumes only with `--resume`, and
- * only a rehired session's.
+ * is small and recent enough, else opens fresh (and `--resume` refuses); any other resumes only with `--resume`, by
+ * the same limits: a rehired one's, or one whose tab ended outside teamrig (T1743: a crash or reboot left sessions
+ * neither closed nor rehired, and only the internal `launch` could bring them back in their own Claude Code session).
  */
 async function resumeOf(runtime, paths, config, facts) {
     const { id, project, from, reopen, asked } = facts;
@@ -218,9 +219,6 @@ async function resumeOf(runtime, paths, config, facts) {
     }
     if (!asked) {
         return undefined;
-    }
-    if (from === undefined) {
-        throw new RefusedError(`${id} was neither hired back after a retire nor closed: --resume resumes only a rehired session's last Claude Code session`);
     }
     const verdict = await resumeVerdictOf(runtime, paths, config.hiring, id, project);
     if (verdict.kind === 'fresh') {
@@ -244,7 +242,7 @@ function firstPromptOf(team, id, from, resume, reopen) {
         return resume === undefined ? defaultPrompt(team, id) : reopenPrompt(team, id);
     }
     if (resume !== undefined) {
-        return resumePrompt(team, id);
+        return from === undefined ? recoverPrompt(team, id) : resumePrompt(team, id);
     }
     return from?.handover === undefined ? defaultPrompt(team, id) : rehirePrompt(team, id, from.handover);
 }
