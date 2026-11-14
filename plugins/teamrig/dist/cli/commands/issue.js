@@ -1,21 +1,26 @@
-import { ENV } from "../../core/home.js";
+import { ENV, KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
+import { readAdminRole } from "../../github/admin-store.js";
 import { GitHubIssueHost } from "../../github/host.js";
+import { issueRef } from "../../github/map.js";
 import { RepoTokens } from "../../github/tokens.js";
 import { hostKindOf, parseIssueTarget } from "../../issues/host.js";
+import { adminText, writeRight } from "../../issues/ownership.js";
 import { postRefusal, writeIssue } from "../../issues/write.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { adminStoreOf } from "./gh-admin.js";
 import { GITHUB_OFF, githubOff } from "./gh-auto.js";
 import { openTeam } from "./register-team.js";
 /**
  * `issue comment <owner/name#n> --body <text>` (T2660): posts one comment on an issue or pull request of the team's
  * repositories, through the host whose config list names the repository (issues/host.ts; GitHub, github.repos, is
- * the only one so far). The caller must be on the team; the body may not be empty, carry a secret shape or name a
- * task id. Exit 1 when the host failed, else 0.
+ * the only one so far). The caller must be on the team and may write only on its own issue or pull request unless it
+ * is the team's GitHub admin (T2705, issues/ownership.ts); the body may not be empty, carry a secret shape or name a
+ * task id. Exit 1 when the host failed or could not say whose the target is, else 0.
  */
 export async function issueComment(args, runtime) {
     const target = targetOf(args);
@@ -40,10 +45,23 @@ function targetOf(args) {
     }
     return target;
 }
-/** Checks the caller, the repository and the text, then writes through the repository's host. */
+/**
+ * The session the write is made as. A `--session` other than the tab's own `$TEAMRIG_SESSION` is refused: the
+ * rights differ by session (T2705), so a session may not borrow another's by naming it.
+ */
+function writerOf(args, runtime, team) {
+    const caller = sessionIdOf(team.roster, callerOf(args.flags, runtime.env));
+    const tab = runtime.env[ENV.session]?.trim();
+    if (tab !== undefined && tab !== '' && sessionIdOf(team.roster, tab) !== caller) {
+        throw new RefusedError(`--session ${caller} is not this tab's session (${tab}): ${KIT_NAME} issue writes only as the tab's own session`);
+    }
+    return caller;
+}
+/** Checks the caller, the repository and the text, then the caller's right to the target, then writes through the repository's host. */
 async function writeOn(args, runtime, write, textFlag) {
     const team = await openTeam(runtime, 'read');
-    const notOnTeam = new RegisterPolicy(team.config, team.above).checkCaller(sessionIdOf(team.roster, callerOf(args.flags, runtime.env)));
+    const caller = writerOf(args, runtime, team);
+    const notOnTeam = new RegisterPolicy(team.config, team.above).checkCaller(caller);
     if (notOnTeam !== undefined) {
         throw new RefusedError(notOnTeam);
     }
@@ -62,7 +80,43 @@ async function writeOn(args, runtime, write, textFlag) {
         say(`OFF ${ENV.github}=${GITHUB_OFF} turns GitHub off on this machine; nothing was written`);
         return EXIT.ok;
     }
-    return (await writeIssue(hostOf(kind, runtime, scanner), write, say)) ? EXIT.ok : EXIT.failed;
+    const host = hostOf(kind, runtime, scanner);
+    const right = await writeRight({
+        caller,
+        target: write.target,
+        ref: refOf(kind, write.target),
+        tasks: [...(await team.register.snapshot()).state.tasks.values()],
+        admin: () => adminOf(runtime, team),
+        head: () => host.headOf(write.target),
+    });
+    switch (right.kind) {
+        case 'refused':
+            throw new RefusedError(right.reason);
+        case 'unknown':
+            say(`FAILED ${right.reason}; nothing was written`);
+            return EXIT.failed;
+        case 'allowed':
+            return (await writeIssue(host, write, say)) ? EXIT.ok : EXIT.failed;
+    }
+}
+/** The team's GitHub admin as the signed role reads now: a broken role names no admin. */
+async function adminOf(runtime, team) {
+    const read = await readAdminRole(adminStoreOf(runtime, team));
+    switch (read.kind) {
+        case 'admin':
+            return { session: read.role.session, text: adminText(read.role.session, undefined) };
+        case 'none':
+            return { session: undefined, text: adminText(undefined, undefined) };
+        case 'broken':
+            return { session: undefined, text: adminText(undefined, read.reason) };
+    }
+}
+/** The task ref that names `target` on its host. */
+function refOf(kind, target) {
+    switch (kind) {
+        case 'github':
+            return issueRef(target.repo, target.number);
+    }
 }
 /** The adapter for a host kind. */
 function hostOf(kind, runtime, scanner) {

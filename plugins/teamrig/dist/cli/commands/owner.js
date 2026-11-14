@@ -13,11 +13,16 @@ export function namesOf(label) {
         ? { task: (id) => id, session: (id) => id }
         : { task: (id) => `${label}/${id}`, session: (id) => formatAddress({ team: label, id }) };
 }
-/** The pane button that runs each owner action. */
-const BUTTON = { note: 'Note', next: 'Next', wake: 'Wake' };
+/** How the owner runs each owner action: a pane button, else their own terminal. */
+const OWNER_ROUTE = {
+    note: 'presses Note in the pane',
+    next: 'presses Next in the pane',
+    wake: 'presses Wake in the pane',
+    'github-admin': 'runs it in their own terminal',
+};
 /**
- * Refuses an owner action (note, next, wake) where Claude Code set CLAUDECODE: an agent's tool call, a script one
- * runs, a hook command (T1780). The exec guard reads only the tool call's own line, so a script the agent writes slips past it; this
+ * Refuses an owner action where Claude Code set CLAUDECODE: an agent's tool call, a script one runs, a hook command
+ * (T1780). The exec guard reads only the tool call's own line, so a script the agent writes slips past it; this
  * refusal holds there too. The pane's buttons and a typed `/teamrig owner ..` run through the plugin's mod with Claude
  * Code's own environment, which lacks the variable, so the owner's routes still write. A script that unsets it still
  * passes: every session runs as the same OS user as the owner.
@@ -25,7 +30,7 @@ const BUTTON = { note: 'Note', next: 'Next', wake: 'Wake' };
 export function refuseUnderClaudeCode(runtime, command) {
     const set = runtime.env[ENV.claudeCode];
     if (set !== undefined && set !== '') {
-        throw new RefusedError(`${KIT_NAME} owner ${command} acts as the owner, so it is refused where Claude Code runs it (${ENV.claudeCode} is set: an agent's tool call, a script it runs or a hook); the owner presses ${BUTTON[command]} in the pane or types /${KIT_NAME} owner ${command} in a tab`);
+        throw new RefusedError(`${KIT_NAME} owner ${command} acts as the owner, so it is refused where Claude Code runs it (${ENV.claudeCode} is set: an agent's tool call, a script it runs or a hook); the owner ${OWNER_ROUTE[command]} or types /${KIT_NAME} owner ${command} in a tab`);
     }
 }
 /** The team holding the task `text` names: the caller's own for `T12`, another team of the tree for `web/T12`. */
