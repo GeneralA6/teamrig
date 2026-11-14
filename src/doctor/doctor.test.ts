@@ -10,7 +10,7 @@ import { lineHash } from '../inbox/line-hash.ts';
 import type { InboxMark } from '../inbox/marks.ts';
 import { unreadOf } from '../inbox/unread.ts';
 import type { Rename } from '../names/rename.ts';
-import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
+import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
 import { renameOf } from '../testing/rename.ts';
 import { JERUSALEM } from '../testing/zone.ts';
@@ -35,6 +35,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     inboxes: [],
     retired: new Set(),
     teamRules: [],
+    leadStart: { lead: 'lead', chars: 6_000, room: 4_000, pointed: [] },
     contextFiles: { read: { claudeMd: [], memoryIndex: undefined, skills: { folders: [], count: 0, chars: 0 } }, budgets: DEFAULT_CONTEXT_FILES },
     sessionLists: undefined,
     tree: { problems: [], clashes: [] },
@@ -239,6 +240,40 @@ describe('doctorFindings', () => {
     assert.deepEqual(lines(input({ teamRules })), [
       `WARN rules-long app/rules.md is ${TEAM_RULES_MAX_CHARS + 1} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`,
     ]);
+  });
+});
+
+describe('doctorFindings of the lead start (T2231)', () => {
+  it('flags a lead start past the cap Claude Code shows', () => {
+    assert.deepEqual(lines(input({ leadStart: { lead: 'lead', chars: CONTEXT_MAX_CHARS + 1, room: 0, pointed: [] } })), [
+      "WARN lead-start the lead lead's start is 10,001 characters, more than the 10,000 Claude Code shows at start, so the lead sees only a preview of it: shorten the team's rules.md files or the config values the lead's lines quote",
+    ]);
+  });
+
+  it('flags a rules file the share holds that the lead start points to, with the room the start keeps', () => {
+    const teamRules = [{ path: 'app/rules.md', chars: 1_500 }];
+    assert.deepEqual(lines(input({ teamRules, leadStart: { lead: 'lead', chars: 9_000, room: 1_091, pointed: ['app/rules.md'] } })), [
+      "WARN lead-start app/rules.md reaches the lead lead only as a pointer: its start keeps 1,091 characters for the team rules files beside the core rules, the lead's lines and its notes, so the lead reads the file only when it follows the pointer: shorten the team's rules.md files",
+    ]);
+  });
+
+  it('leaves a file the share already points to to rules-long, and says no room below zero', () => {
+    const teamRules = [
+      { path: 'app/rules.md', chars: TEAM_RULES_MAX_CHARS + 1 },
+      { path: 'own/rules.md', chars: 10 },
+    ];
+    const found = lines(input({ teamRules, leadStart: { lead: 'lead', chars: 9_990, room: -5, pointed: ['app/rules.md', 'own/rules.md'] } }));
+    assert.deepEqual(
+      found.filter((line) => line.startsWith('WARN lead-start')),
+      [
+        "WARN lead-start own/rules.md reaches the lead lead only as a pointer: its start keeps 0 characters for the team rules files beside the core rules, the lead's lines and its notes, so the lead reads the file only when it follows the pointer: shorten the team's rules.md files",
+      ],
+    );
+    assert.equal(found.filter((line) => line.startsWith('WARN rules-long')).length, 1);
+  });
+
+  it('says nothing for a lead start within the cap that shows every file', () => {
+    assert.deepEqual(lines(input({ teamRules: [{ path: 'app/rules.md', chars: 900 }], leadStart: { lead: 'lead', chars: CONTEXT_MAX_CHARS, room: 900, pointed: [] } })), []);
   });
 });
 

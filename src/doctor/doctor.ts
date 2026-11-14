@@ -14,7 +14,7 @@ import type { RenameLogRead } from '../names/rename.ts';
 import { wideAllowText } from '../permissions/report.ts';
 import type { WideAllow } from '../permissions/trim.ts';
 import { describeRequirement, type RequirementProblem } from '../requirements/requirements.ts';
-import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
+import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ContextFiles } from './context-files.ts';
 import { missingDenyLines, type SettingsDeny } from './deny-lines.ts';
 import type { SessionList, SessionListKind, SessionLists } from './session-lists.ts';
@@ -38,6 +38,8 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `inbox-orphan`: an inbox no session on the team reads;
  * - `inbox-unread`: unread lines and no read for over `UNREAD_INBOX_DAYS` days;
  * - `rules-long`: a rules.md longer than a session is shown at start;
+ * - `lead-start`: the lead's real start past Claude Code's cap, or a rules.md that fits the team rules share yet reaches
+ *   the lead only as a pointer, as the core rules, the lead's lines and its notes leave too little room (T2231);
  * - `context-size`: CLAUDE.md files, a memory index or a skill listing over its `contextFiles` budget, re-read every call;
  * - `context-lists`: the lists the newest session's context holds (skills, deferred tools, agent types, MCP server
  *   instructions) over their `contextFiles` budget, re-read every call;
@@ -72,6 +74,7 @@ export type FindingKind =
   | 'inbox-orphan'
   | 'inbox-unread'
   | 'rules-long'
+  | 'lead-start'
   | 'context-size'
   | 'context-lists'
   | TreeProblem['kind']
@@ -140,6 +143,16 @@ export interface SessionLaunch {
   readonly launch: LaunchConfig;
 }
 
+/** The lead's start as the SessionStart hook gives it after a compaction, its live tasks block too. */
+export interface LeadStart {
+  readonly lead: string;
+  readonly chars: number;
+  /** What the start leaves the team rules files beside the parts it never cuts and its notes' shortest forms. */
+  readonly room: number;
+  /** The rules.md files with text the start shows only as a pointer, in the order it gives them. */
+  readonly pointed: readonly string[];
+}
+
 export interface DoctorInput {
   /** What teamrig lacks on this machine (`RequirementsCheck`). */
   readonly requirements: readonly RequirementProblem[];
@@ -159,6 +172,8 @@ export interface DoctorInput {
    * then its own; those that exist.
    */
   readonly teamRules: readonly { readonly path: string; readonly chars: number }[];
+  /** The lead's start as the SessionStart hook renders it after a compaction (`readLeadStart`). */
+  readonly leadStart: LeadStart;
   /** What every call of a session in the project re-reads, and the team's budgets for it. */
   readonly contextFiles: { readonly read: ContextFiles; readonly budgets: ContextFilesConfig };
   /** The lists the newest session in the project holds in its context (`readSessionLists`); undefined with no transcript. */
@@ -292,15 +307,23 @@ function inboxFindings(input: DoctorInput): Finding[] {
   });
 }
 
+/** A team rules file a session gets only a pointer to, and the files shown before it with their length. */
+interface PointedRules {
+  readonly path: string;
+  readonly chars: number;
+  readonly shown: readonly string[];
+  readonly used: number;
+}
+
 /**
  * Each team rules file a session gets only a pointer to, as `renderSessionContext` shares TEAM_RULES_MAX_CHARS: in
  * order, a file is shown while it fits beside the files shown before it, so a file that fits alone is named with them.
  */
-function rulesFindings(input: DoctorInput): Finding[] {
+function pointedByShare(teamRules: DoctorInput['teamRules']): PointedRules[] {
   const shown: string[] = [];
   let used = 0;
-  const findings: Finding[] = [];
-  for (const rules of input.teamRules) {
+  const pointed: PointedRules[] = [];
+  for (const rules of teamRules) {
     if (rules.chars === 0) {
       continue;
     }
@@ -309,11 +332,41 @@ function rulesFindings(input: DoctorInput): Finding[] {
       used += rules.chars;
       continue;
     }
-    const detail =
-      rules.chars > TEAM_RULES_MAX_CHARS
-        ? `${rules.path} is ${rules.chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`
-        : `${rules.path} is ${rules.chars} characters, but the team rules shown before it (${shown.join(', ')}) take ${used} of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`;
-    findings.push({ kind: 'rules-long', detail });
+    pointed.push({ path: rules.path, chars: rules.chars, shown: [...shown], used });
+  }
+  return pointed;
+}
+
+function rulesFindings(input: DoctorInput): Finding[] {
+  return pointedByShare(input.teamRules).map(({ path, chars, shown, used }): Finding => ({
+    kind: 'rules-long',
+    detail:
+      chars > TEAM_RULES_MAX_CHARS
+        ? `${path} is ${chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`
+        : `${path} is ${chars} characters, but the team rules shown before it (${shown.join(', ')}) take ${used} of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`,
+  }));
+}
+
+/**
+ * The lead's real start, which holds more than any other session's (its lines, the resets): past CONTEXT_MAX_CHARS
+ * Claude Code shows it only a preview, and a rules file the TEAM_RULES_MAX_CHARS share holds (else `rules-long` names
+ * it) can still reach it only as a pointer, as the parts no start cuts grew into the room the rules files had (T2231).
+ */
+function leadStartFindings(input: DoctorInput): Finding[] {
+  const { lead, chars, room, pointed } = input.leadStart;
+  const findings: Finding[] = [];
+  if (chars > CONTEXT_MAX_CHARS) {
+    findings.push({
+      kind: 'lead-start',
+      detail: `the lead ${lead}'s start is ${count(chars)} characters, more than the ${count(CONTEXT_MAX_CHARS)} Claude Code shows at start, so the lead sees only a preview of it: shorten the team's rules.md files or the config values the lead's lines quote`,
+    });
+  }
+  const byShare = new Set(pointedByShare(input.teamRules).map((rules) => rules.path));
+  for (const path of pointed.filter((file) => !byShare.has(file))) {
+    findings.push({
+      kind: 'lead-start',
+      detail: `${path} reaches the lead ${lead} only as a pointer: its start keeps ${count(Math.max(0, room))} characters for the team rules files beside the core rules, the lead's lines and its notes, so the lead reads the file only when it follows the pointer: shorten the team's rules.md files`,
+    });
   }
   return findings;
 }
@@ -549,7 +602,7 @@ function quietHoursFindings({ budget, now, zone }: DoctorInput): Finding[] {
 
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
+ * inboxes nobody reads, rules too long to show, a lead's start past the cap or with a rules file cut to a pointer, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
  * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential,
  * quiet hours that ask before a helper launch nobody answers at night, secret deny lines no settings file holds, a configured project folder that is no folder here, a PowerShell history no profile keeps credentials out of, and a page webhook that gives no URL.
@@ -563,6 +616,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...renameLogFindings(input),
     ...inboxFindings(input),
     ...rulesFindings(input),
+    ...leadStartFindings(input),
     ...contextSizeFindings(input),
     ...treeFindings(input),
     ...routingEnvFindings(input),

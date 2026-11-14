@@ -18,6 +18,7 @@ import { JsonlRenameLog } from '../../names/log.ts';
 import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openTeamKit, projectFolder, requireConfig, teamZone } from '../kit.ts';
+import { readLeadStart } from '../lead-start.ts';
 import { pageCheckOf, type PageCheck } from '../login-page.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { readTeamRules } from '../team-rules.ts';
@@ -67,7 +68,7 @@ function pageProblemOf(check: PageCheck): PageProblem | undefined {
 
 /**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
- * (names, the rename log, inboxes, its rules.md beside those of the teams above it, its tree of teams and session names shared with other teams,
+ * (names, the rename log, inboxes, its rules.md beside those of the teams above it, the lead's real start (lead-start.ts), its tree of teams and session names shared with other teams,
  * read from every team config of the kit home), and the text every call of a session in the project re-reads
  * (CLAUDE.md files, the memory index, the skill listing, and the lists of skills, deferred tools, agent types and
  * MCP server instructions the project's newest session transcript announced) against the team's `contextFiles` budgets. Last, what
@@ -101,6 +102,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     inboxes: (await inboxStatus(inboxDepsOf(runtime, paths))).map((status) => status.unread),
     retired: new Set(retiredSessions(records).map((record) => record.session)),
     teamRules: (await readTeamRules(runtime, kit, kitTree)).map((rules) => ({ path: rules.path, chars: rules.text.trim().length })),
+    leadStart: await readLeadStart(runtime, kit, kitTree, config, renameLog.renames),
     ...(await readContextInput(runtime, project, paths.skills, config.contextFiles)),
     tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
     env: runtime.env,
