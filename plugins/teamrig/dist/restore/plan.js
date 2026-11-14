@@ -69,7 +69,7 @@ export function judgeEntry(entry, facts) {
         return { verdict: 'discard', reason: `exited (${entry.endReason})` };
     }
     const { shutdown } = facts;
-    if (shutdown !== undefined && entry.endedAt >= shutdown.start - SHUTDOWN_GRACE_MS && entry.endedAt <= shutdown.end) {
+    if (endedInShutdown(entry.endedAt, shutdown)) {
         return { verdict: 'restore', reason: 'closed by the shutdown' };
     }
     if (facts.now - entry.endedAt > CLOSED_KEEP_MS) {
@@ -140,21 +140,55 @@ export function chooseMode(entry, lost, isLead) {
 export function summarizeRestore(sessions) {
     return sessions.map(({ label, mode, why }) => `${label} ${mode === 'continue' ? `continue (${why})` : 'idle'}`).join(', ');
 }
-export const CONTINUE_PROMPT = 'The computer restarted (update or power loss) and this session was restored automatically. ' +
-    'If your last task was already finished, or you were told to pause or stay idle, just reply in one line and wait. ' +
+/** The cause, from the same facts the verdict read: no end recorded, else an end inside the shutdown's span. */
+export function endCauseOf(entry, shutdown) {
+    if (entry.endedAt === undefined) {
+        return 'killed';
+    }
+    return endedInShutdown(entry.endedAt, shutdown) ? 'shutdown' : 'closed';
+}
+/** Whether an end falls in the shutdown's span, from SHUTDOWN_GRACE_MS before it began to when the event log stopped. */
+function endedInShutdown(endedAt, shutdown) {
+    return shutdown !== undefined && endedAt >= shutdown.start - SHUTDOWN_GRACE_MS && endedAt <= shutdown.end;
+}
+const CAUSE_WORDS = {
+    shutdown: 'The computer restarted (an update or a shutdown) and this session was restored automatically.',
+    killed: "This session's Claude Code ended without exiting (a power loss, a crash or a forced close of its window) and was reopened by teamrig restore.",
+    closed: "This session's tab was closed while it still had work and was reopened by teamrig restore.",
+};
+/** The error code Claude Code names for an expired or missing login (src/restore/turn-error.ts). */
+export const LOGIN_ERROR = 'authentication_failed';
+/** The end facts of an entry: its cause, and its API error while its last turn ended on one. */
+export function endFactsOf(entry, shutdown) {
+    return { cause: endCauseOf(entry, shutdown), apiError: entry.state === 'error' ? (entry.apiError?.code ?? 'unknown') : undefined };
+}
+function apiErrorWords(code) {
+    if (code === undefined) {
+        return undefined;
+    }
+    return code === LOGIN_ERROR
+        ? 'Your last turn ended on a login error: if a command still answers "Please run /login", stop and say so in one line, as only the person can log in again.'
+        : `Your last turn ended on an API error (${code}): run it again once.`;
+}
+const CONTINUE_RULES = 'If your last task was already finished, or you were told to pause or stay idle, just reply in one line and wait. ' +
     'If you were waiting for my decision or permission, ask again instead of proceeding. ' +
     'Otherwise, before doing anything, re-check the current state: services, containers, port-forwards and builds ' +
     'may still be starting, the last step you ran may or may not have completed, and background jobs, monitors, ' +
-    'loops and scheduled wake-ups from before the restart are gone. ' +
+    'loops and scheduled wake-ups from before it ended are gone. ' +
     'Then continue the task you were working on from where you left off, restarting any background work it still needs.';
+/** The prompt's fixed part for an end: its cause, its API error when there was one, then what to do. */
+export function continueBase(end) {
+    return [CAUSE_WORDS[end.cause], apiErrorWords(end.apiError), CONTINUE_RULES].filter((part) => part !== undefined).join(' ');
+}
 const ELLIPSIS = '...';
 /**
- * The first prompt of a session restored to continue: CONTINUE_PROMPT, the work it lost, and for the lead how
- * every other session came back, cut so the whole stays within PROMPT_MAX.
+ * The first prompt of a session restored to continue: why it ended, the work it lost, and for the lead how every
+ * other session came back, cut so the whole stays within PROMPT_MAX.
  */
-export function continuePrompt(lost, othersSummary) {
+export function continuePrompt(end, lost, othersSummary) {
     const lostWords = describeLostWork(lost);
-    const base = lostWords === undefined ? CONTINUE_PROMPT : `${CONTINUE_PROMPT} At the shutdown you had ${lostWords} live.`;
+    const fixed = continueBase(end);
+    const base = lostWords === undefined ? fixed : `${fixed} When it ended you had ${lostWords} live.`;
     if (othersSummary === undefined || othersSummary === '') {
         return base;
     }

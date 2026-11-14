@@ -96,7 +96,7 @@ function windowsTab(title: string, folder: string, argv: readonly string[]): str
 }
 
 const ALPHA_LAUNCH = [NODE, SCRIPT, 'launch', 'alpha', '--team', 'app', '--project', APP, ...HOME_ARGS, '--resume', ALPHA, '--effort', 'high', '--no-prompt'];
-const NOTES_RESUME = [NODE, SCRIPT, 'restore', 'resume', NOTES, '--project', APP, ...HOME_ARGS, '--encoded-prompt', encodePrompt(continuePrompt({ background: 0, crons: 0, wake: false }, undefined))];
+const NOTES_RESUME = [NODE, SCRIPT, 'restore', 'resume', NOTES, '--project', APP, ...HOME_ARGS, '--encoded-prompt', encodePrompt(continuePrompt({ cause: 'killed', apiError: undefined }, { background: 0, crons: 0, wake: false }, undefined))];
 
 async function logOf(kit: CliHarness): Promise<string> {
   return (await kit.files.read(restoreLogPath(KIT))) ?? '';

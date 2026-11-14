@@ -14,6 +14,7 @@ import {
   CLOSED_KEEP_MS,
   continuePrompt,
   diedAt,
+  endFactsOf,
   judgeEntry,
   lastRecordedEffort,
   lostWorkOf,
@@ -390,7 +391,8 @@ async function reopenItem(deps: RestoreDeps, facts: JudgeFacts, item: RestoreIte
     return 'skipped';
   }
   const { folder, note } = await reopenFolderOf(deps, item);
-  const prompt = item.mode === 'idle' ? undefined : continuePrompt(item.lost, item.team?.isLead === true ? leadSummaryOf(item, items) : undefined);
+  const others = item.team?.isLead === true ? leadSummaryOf(item, items) : undefined;
+  const prompt = item.mode === 'idle' ? undefined : continuePrompt(endFactsOf(current, facts.shutdown), item.lost, others);
   await deps.registry.write({ ...current, transcriptPath: item.transcript ?? current.transcriptPath, restoreAttempts: current.restoreAttempts + 1, restoredAt: deps.clock.now() });
   const outcome = await reopenWithRoom(deps, item, { claudeSession: id, title: item.label, folder, team: item.team, effort: item.effort?.level, prompt });
   if (outcome.kind === 'no-room') {
