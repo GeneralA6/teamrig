@@ -315,8 +315,8 @@ hands it to bash ([what it cannot see](../../plugins/teamrig/skills/teamrig-guid
 ## A guard that breaks
 
 Claude Code runs a tool call whose hook crashed or timed out, so a broken guard would let through the very line it
-exists to stop. teamrig's guards fail closed instead: when one cannot load, throws, hangs or answers wrongly, the
-call is blocked and Claude reads `teamrig blocked this call: its <name> guard ...` with the fix. A broken install
+exists to stop. teamrig's guards fail closed instead: when one cannot load, throws, hangs (even in a loop that never
+waits, since each guard runs on its own thread) or answers wrongly, the call is blocked and Claude reads `teamrig blocked this call: its <name> guard ...` with the fix. A broken install
 therefore blocks the guarded calls (shell lines, reads, edits, sends and helper launches) until you run
 `claude plugin update teamrig@teamrig` and restart the session; a block for a guard that gave no answer in time
 clears on a retry once the host is less loaded

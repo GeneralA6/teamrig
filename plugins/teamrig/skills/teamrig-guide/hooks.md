@@ -1666,13 +1666,14 @@ Claude Code lets a tool call through when a `PreToolUse` command hook ends with 
 outlives its timeout, so a guard that breaks would stop guarding with no sign. The guards that can refuse a call
 (`push-guard`, `package-guard`, `secret-guard`, `db-write-guard`, `exec-guard`, `pass-record-guard`, `cold-send`,
 `helper-gate` and
-`picker-guard`) therefore run through `dist/cli/guard-main.js`, a runner that loads the CLI itself and blocks the
-call (exit 2) when the guard:
+`picker-guard`) therefore run through `dist/cli/guard-main.js`, a runner that loads the CLI itself on a worker
+thread and blocks the call (exit 2) when the guard:
 
 - cannot load, from a missing or broken file of the install;
-- throws, or leaves an error unhandled;
+- throws, leaves an error unhandled, or its thread ends;
 - gives no answer within 12 seconds, under the hooks' 15 second timeout, so the runner answers before Claude Code
-  lets the call through;
+  lets the call through. This holds for a guard stuck in work that never waits, such as an endless loop: the guard
+  runs on its own thread, so the runner's clock keeps running;
 - ends with an exit code but 0 or 2, or prints something other than its one JSON answer.
 
 The model then reads `teamrig blocked this call: its <hook> guard <what went wrong>, and a guard that cannot answer
@@ -1682,8 +1683,8 @@ call those guards see (shell lines, reads, searches, edits, sends, helper launch
 `hook tab-status` run through the plain CLI: when an allow fails, the call gets Claude Code's own check, and tab
 status never answers for a call.
 
-The runner cannot catch a guard stuck in an endless loop that never waits (Claude Code's timeout then lets the call
-through), the process running out of memory, a broken `guard-main.js` or runner file, and a missing Node.js.
+The runner cannot catch the process running out of memory, a broken `guard-main.js` or runner file, and a missing
+Node.js.
 
 ## Permissions
 
