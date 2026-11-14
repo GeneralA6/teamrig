@@ -120,7 +120,8 @@ The injected context holds:
    The `START` line, a `MEETINGS` line on a day with a meeting and the week line are what `teamrig start` prints
    first, so the note is the session's work-block start: it runs `teamrig start` at its next work block, which adds
    only the check flags and the rest of the list, and `teamrig budget --misses` counts the note as that block's
-   start. A note that could not read the register, or has no room for the task block, has no `START` line.
+   start. A note that could not read the register has no `START` line; one with little room keeps it and drops task
+   rows instead (see the cap below).
    Work in hand comes first (in progress, verifying, waiting), then the tasks not started, each in plan order
    (band, a task that can move, score, then effective due date); at most 6 rows, the rest one `+N more` line. A row names the due date (the
    earlier one of a task that needs it, as `due 10-17 (from T21)`), the plan dependencies not finished yet
@@ -146,11 +147,22 @@ The injected context holds:
 Claude Code shows a session a start context of at most 10,000 characters whole; a longer one it saves to a file and
 shows only its first 2 KB, so the team rules and the lines after them never reach the session. teamrig keeps the whole
 start within that cap. The team rules files take their room first, then the live tasks, then the verify queue, each
-whole while it fits in the room left. One that does not fit leaves that room to the next and comes as one line naming
-the command that prints it:
+whole while it fits in the room left. The live tasks that do not fit give up one task row at a time, the `+N more`
+line taking in each row left out, and at the least keep the `START`, `MEETINGS` and week lines with no row at all, so
+the note stays the work block's start however long the rules are:
 
 ```text
-LIVE TASKS of web: this start has no room for them; run `teamrig start --session web` first, and where your handover or a compaction summary says otherwise, the register wins.
+START web, Tue 10-17 09:12 IST: this note is your work block's start, so run no `teamrig start` now; ...
+Week: 61.0% used at 09:05 IST (status line); ...
+LIVE TASKS of web, read from the register at this start (8 active; where your handover or a compaction summary says otherwise, the register wins):
+  +8 more: `teamrig list --session web`
+WAITING ON YOU 1 task(s) of other sessions:
+  +1 more: `teamrig start --session web --all`
+```
+
+A verify queue that does not fit leaves its room to the next and comes as one line naming the command that prints it:
+
+```text
 VERIFY: this start has no room for your verifying and watched tasks; `teamrig verify --session web` lists them.
 ```
 
