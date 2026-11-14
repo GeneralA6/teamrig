@@ -3,7 +3,7 @@
   "total": { "lines": 97, "branches": 93, "functions": 96 },
   "perFile": { "lines": 90, "branches": 80, "functions": 85 },
   "testSupport": ["src/testing/", "tools/lib/fake-git.ts", "tools/lib/temp-repo.ts"],
-  "typeOnly": { "src/restore/ports.ts": "the RestorePorts interface only", "src/exec/ports.ts": "the ExecPorts interface only" },
+  "typeOnly": { "src/issues/issue.ts": "the HostIssue and LabelEvent types only", "src/restore/ports.ts": "the RestorePorts interface only", "src/exec/ports.ts": "the ExecPorts interface only" },
   "exceptions": {
     "tools/ship/ship.ts": {
       "lines": 56,
