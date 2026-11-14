@@ -6,8 +6,9 @@ becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its titl
 priority and open or closed state follow GitHub on every run. The sync never goes the other way: it never creates,
 edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The
 writes are all run by hand: `teamrig issue migrate` moves tasks you choose to new issues, once
-([Moving your tasks to issues](#moving-your-tasks-to-issues)), and `teamrig issue comment` and `teamrig issue close`
-answer or close one issue or pull request ([Commenting on and closing](#commenting-on-and-closing)). GitHub is the
+([Moving your tasks to issues](#moving-your-tasks-to-issues)), and `teamrig issue comment`, `teamrig issue label`
+and `teamrig issue close` answer, label or close one issue or pull request
+([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)). GitHub is the
 only host teamrig writes to so far.
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
@@ -80,7 +81,7 @@ Give the token only what the commands you run need:
 | --- | --- |
 | `teamrig issue sync` | **Issues: Read-only** |
 | `teamrig issue migrate` | **Issues: Read and write** |
-| `teamrig issue comment`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments and state are written through its issue) |
+| `teamrig issue comment`, `teamrig issue label`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels and state are written through its issue) |
 
 ### Why one token per owner
 
@@ -192,16 +193,21 @@ teamrig issue migrate rows.jsonl --yes               # opens the issues
   again: a task that holds its issue already is skipped, and so is a finished task or a repository not in
   `github.repos`.
 - **Write access, for this run only.** The token of each owner needs **Issues: Read and write**. Set it back to
-  Read-only once the issues are open, unless you comment on or close issues with it; the sync needs nothing more.
+  Read-only once the issues are open, unless you comment on, label or close issues with it; the sync needs nothing
+  more.
 
-## Commenting on and closing
+## Commenting on, labelling and closing
 
-`teamrig issue comment` posts one comment on an issue or pull request, and `teamrig issue close` closes one, first
-posting its `--comment` when given; a pull request closes unmerged. Each names its target as `owner/name#number`:
+`teamrig issue comment` posts one comment on an issue or pull request, `teamrig issue label` adds and takes off its
+labels, and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
+unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only).
+Each names its target as `owner/name#number`:
 
 ```sh
 teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."
+teamrig issue label acme/web#7 --add "type: bug,p1" --remove "needs triage"
 teamrig issue close acme/web#12 --comment "Merged as #14 with your commits credited. Thank you!"
+teamrig issue close acme/web#15 --reason duplicate --comment "Same as #7."
 ```
 
 ```text
@@ -218,6 +224,9 @@ CLOSED acme/web#12
 - **Nothing half done.** When the comment fails, nothing is closed. When the close fails after the comment was
   posted, the `FAILED` line says so: rerun `teamrig issue close` without `--comment`, so the comment is not posted
   twice.
+- **No new labels.** Each label to add must already be one of the repository's: teamrig reads it first and changes
+  nothing when one is missing, as GitHub would make a new label from a typo. Make it on GitHub first. Labels to add
+  go in one call, then each to take off in turn; the first failure stops it and says what it already changed.
 - **Access.** The same token or `gh` login as the sync, which needs the [write permissions](#what-each-command-needs);
   a `FAILED` line names the permission a token lacks. `TEAMRIG_GITHUB=off` writes nothing.
 
@@ -291,10 +300,12 @@ again.
 
 - **Read-only sync.** The sync runs only the two issue queries it ships, word for word, through `gh api graphql`, so
   a token with **Issues: Read-only** is all it needs. Any other `gh` command or query is refused in code, except
-  the three writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
+  the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
-  one comment (`.../issues/<number>/comments -X POST` with its body only) and `teamrig issue close`'s close
-  (`.../issues/<number> -X PATCH` with `state=closed` only).
+  one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label
+  (`repos/<owner>/<name>/labels/<label>`), add (`.../issues/<number>/labels -X POST` with its labels only) and take
+  off (`.../issues/<number>/labels/<label> -X DELETE`), and `teamrig issue close`'s close
+  (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only).
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
   is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
   that one run.
