@@ -4362,7 +4362,11 @@ a line when it starts and when it ends` and returns at once (exit 0). The hidden
 no shell; it waits for memory and the lock like any step, and its output and the queue's own lines go to
 `<delivery dir>/detached/<id>.log`. Its session's inbox gets `queue <id> started: <what>; log <path>` when it takes its
 turn, and a line that wakes the session, `queue <id> ended: <what>: <last line>; log <path>`, when it ends (`DONE exit
-0`, `FAILED exit <n>`, `TIMED OUT ...`) or is refused (`REFUSED ...`). From the cutoff on, `--detach` is REFUSED at
+0`, `FAILED exit <n>`, `TIMED OUT ...`) or is refused (`REFUSED ...`). The run keeps a record,
+`<delivery dir>/detached/<id>.run.json`, until its end line; a run whose process ended with no end of its own (killed
+while it waited or ran) is told by the next `teamrig start` of any session of the team or the next idle pass: a `DIED`
+line in its log and a waking line, `queue <id> died while it waited for its turn|while its step ran: <what>: ...; re-run
+it; log <path>`, told once. From the cutoff on, `--detach` is REFUSED at
 once, as a plain step is. It is refused (exit 64) with `--pre-push`, whose push waits on the checks' result, and under
 a live host lock, where the parent step waits for it. `--detached-run` is set by `--detach` only.
 
