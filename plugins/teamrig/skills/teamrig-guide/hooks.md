@@ -296,7 +296,8 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,
-wrappers and git aliases, but it does not see a push inside a script or program the command runs, `gh pr merge`,
+wrappers and git aliases (an `env -S` string and an alias value split by env's and git's own rules, a CR a plain
+space in both), but it does not see a push inside a script or program the command runs, `gh pr merge`,
 git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
 branch on your git host too.
 
