@@ -11,8 +11,8 @@ import { parseUtcDay } from "../core/time.js";
  * - `v`: `ROLLUP_FORMAT`;
  * - `day`: the UTC day, `YYYY-MM-DD`;
  * - `team`: the team's id;
- * - `rows`: per session, class, model and effort: `w` (raw, before `budget.subagentWeight`), the four token counts,
- *   `turns`, `calls` and `seconds`;
+ * - `rows`: per session, class, model and effort: `w` (raw, before `budget.subagentWeight` and `budget.modelWeights`),
+ *   the four token counts, `turns`, `calls` and `seconds`;
  * - `tasks`: per session and task, a null task for a turn that named none: `w` and `seconds` of task work only, so
  *   coordination stays its own class and the `w` here adds up to the rows of `work`, `lead-work` and `helper`.
  */

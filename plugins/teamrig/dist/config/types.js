@@ -113,7 +113,7 @@ export function isResetKind(value) {
  * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
  * a tree read one week alike without a copy that drifts.
  */
-export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset', 'resets'];
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'modelWeights', 'extraWPerUsd', 'reset', 'resets'];
 /** `refresh.autoRestart`: on or off for every session, or on for the team's lead only. */
 export const AUTO_RESTART_LEAD = 'lead';
 /**

@@ -23,7 +23,7 @@ export const MAX_RUNS_PER_SESSION = 64;
 async function meterSession(deps, store, session, transcripts, input) {
     let state = (await store.load(session)).state;
     for (let run = 0; run < input.maxRuns; run += 1) {
-        const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, maxBytes: input.chunkBytes });
+        const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, modelWeights: input.modelWeights, maxBytes: input.chunkBytes });
         if (result.saved) {
             state = result.state;
             if (!result.catchingUp) {

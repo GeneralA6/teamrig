@@ -761,6 +761,7 @@ function parseBudget(read, raw, sessions, above) {
     const extraWPerUsd = read.optionalInteger(raw, 'extraWPerUsd', path, CONFIG_LIMITS.extraWPerUsd) ?? inherited?.extraWPerUsd;
     const reset = parseBudgetReset(read, raw) ?? inherited?.reset;
     const resets = raw['resets'] === undefined ? (inherited?.resets ?? defaults.resets) : parseResetStocks(read, raw, defaults.resets);
+    const modelWeights = raw['modelWeights'] === undefined ? (inherited?.modelWeights ?? defaults.modelWeights) : parseModelWeights(read, raw, defaults.modelWeights);
     const why = "the team's daily budget is the pace, recomputed at every reading from what is left of the week";
     read.dropped(raw, 'dailyPct', path, why);
     read.dropped(raw, 'maxDailyPct', path, why);
@@ -774,6 +775,7 @@ function parseBudget(read, raw, sessions, above) {
         ...(accountLead === undefined ? {} : { accountLead }),
         ...(weeklyLimitW === undefined ? {} : { weeklyLimitW }),
         subagentWeight: read.number(raw, 'subagentWeight', path, inherited?.subagentWeight ?? defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
+        modelWeights,
         ...(extraWPerUsd === undefined ? {} : { extraWPerUsd }),
         ...(reset === undefined ? {} : { reset }),
         resets,
@@ -837,6 +839,33 @@ function parseResetStock(read, value, path) {
         return undefined;
     }
     return { kind, count, expiresUtc, usedUtc, ...(note === undefined ? {} : { note }) };
+}
+/** A model prefix: one short line, as model ids are. */
+const MODEL_PREFIX_MAX_LENGTH = 60;
+/** `budget.modelWeights`: each entry read whole, or dropped with its issues; a model listed twice is an issue. */
+function parseModelWeights(read, raw, fallback) {
+    const weights = read.list(raw, 'modelWeights', 'budget', fallback, (value, itemPath) => parseModelWeight(read, value, itemPath), CONFIG_LIMITS.budgetModelWeights.maxItems);
+    const seen = new Set();
+    weights.forEach((entry, index) => {
+        if (seen.has(entry.model)) {
+            read.report(`budget.modelWeights[${index}].model`, `lists ${entry.model} a second time`);
+        }
+        seen.add(entry.model);
+    });
+    return weights;
+}
+function parseModelWeight(read, value, path) {
+    const section = read.objectItem(value, path);
+    if (section === undefined) {
+        return undefined;
+    }
+    const issues = read.issues.length;
+    const model = read.requiredString(section, 'model', path, shortLine(MODEL_PREFIX_MAX_LENGTH));
+    const weight = read.optionalNumber(section, 'weight', path, CONFIG_LIMITS.modelWeight);
+    if (section['weight'] === undefined) {
+        read.report(`${path}.weight`, 'is required');
+    }
+    return read.issues.length > issues || weight === undefined ? undefined : { model, weight };
 }
 /** `budget.quietHours`: a start, an end and the action, or nothing. */
 function parseQuietHours(read, raw) {

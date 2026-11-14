@@ -159,6 +159,7 @@ export const DEFAULT_COMMITS = {
 export const DEFAULT_BUDGET = {
     enabled: false,
     subagentWeight: 1,
+    modelWeights: [],
     resets: [],
     targetPct: 99.5,
     reservePct: 0.5,

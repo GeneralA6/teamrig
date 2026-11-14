@@ -73,6 +73,8 @@ export const CONFIG_LIMITS = {
     shareFloorPct: { min: 0, max: 50 },
     weeklyLimitW: { min: 1_000_000, max: 1_000_000_000_000 },
     subagentWeight: { min: 0.1, max: 10 },
+    budgetModelWeights: { maxItems: 10 },
+    modelWeight: { min: 0.1, max: 20 },
     extraWPerUsd: { min: 1_000, max: 1_000_000_000 },
     paceEndHoursBeforeReset: { min: 0, max: 48 },
     sessionShare: { min: 0, max: 100 },
