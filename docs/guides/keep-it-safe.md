@@ -79,7 +79,9 @@ PowerShell or cmd, each measured on the real shell), so it finds a push wherever
   `cat <<EOF | bash`); one that any other command reads is that command's input, not commands;
 - git aliases (from `-c alias.x=`, from a `git config alias.x` earlier in the line, or from git config, `!` shell
   aliases included) and the commands git runs itself (`submodule foreach`, `rebase --exec`, `bisect run`);
-- folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`;
+- folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`; on Windows a
+  Git Bash drive folder (`cd /c/work && git push`, `git -C /c/work push`, `env -C /c/work`) is the folder `C:\work`
+  (since 0.379.0);
 - a branch named alone, which goes where git sends it: under `push.default upstream`, `git push origin t1-x` asks
   when that branch's upstream is protected, and is refused with `--force`. It asks in doubt when `remote.<name>.push`
   is set for that remote, or when an earlier command in the line changes that config, makes a branch or gives one an
@@ -104,7 +106,9 @@ When it cannot read part of a line with confidence, it asks and says why: a quot
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
 too deep, a push held in quoted text as a command substitution (`x='a[$(git push origin main)]'`), which bash runs
 if an expansion reads the text again (`${x@P}`, `${!x}`, `$((x))`, `let`, `[[ -eq ]]`, or `read`, `printf -v`,
-`unset` or `declare` given it as a name), in this line or a later one. A line whose words depend on the shell's
+`unset` or `declare` given it as a name), in this line or a later one. Quoted text whose backticks never close, as
+when an escaped backtick sits inside one (`` echo 'x `\` git push' ``), holds no command, as bash runs nothing there
+(since 0.379.0). A line whose words depend on the shell's
 version, its host or how it is started also counts: a NUL or a `` `u{2d} `` in PowerShell, a CR in bash, a caret
 before a line end in cmd, or a `"`, a `\`, an empty value, a bare comma or a `--%` handed to a program from
 PowerShell, as Windows PowerShell 5.1 rebuilds that program's line and the words it gets can differ from the words

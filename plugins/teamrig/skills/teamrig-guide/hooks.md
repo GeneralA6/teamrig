@@ -282,7 +282,7 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
 - **Asks, in doubt**: when it cannot read part of the line (an unclosed quote, a branch or alias only known when
   the line runs, a push held in quoted text such as `x='$(git push)'`, which bash runs if `${x@P}` or `$((x))`
-  reads it again; a bash variable counts as known when the line set it earlier to text and other known variables,
+  reads it again, though not quoted backticks that never close, which run nothing; a bash variable counts as known when the line set it earlier to text and other known variables,
   as in `B=feat; git push -u origin $B` or `G="git -C /w"; $G push`, and never set it otherwise; `$HOME` and a
   value's leading `~` count as your home folder in the line's own shell, as in `T=~/bin/teamrig; $T list`): "The guard
   cannot tell whether this command pushes to a protected branch (...): <why>. Confirm, or write the push out
@@ -295,7 +295,8 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
   a path such as `src/push-guard`.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
-can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,
+can read it. Never route around a refusal; report it to the lead. On Windows a Git Bash drive folder (`cd /c/work`,
+`git -C /c/work`) is read as `C:\work` (since 0.379.0). The guard reads chains, subshells, nested shells,
 wrappers and git aliases (an `env -S` string and an alias value split by env's and git's own rules, a CR a plain
 space in both), but it does not see a push inside a script or program the command runs, `gh pr merge`,
 git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
