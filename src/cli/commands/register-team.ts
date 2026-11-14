@@ -1,13 +1,15 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import type { SessionAddress } from '../../core/address.ts';
-import type { TeamPaths } from '../../core/home.ts';
+import { errorMessage } from '../../core/guards.ts';
+import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import type { Task } from '../../register/fold.ts';
 import type { Register } from '../../register/register.ts';
 import { assignedNotice } from '../../register/views.ts';
+import { WakeAsks } from '../../wake/asks.ts';
 import { HELD_PRIORITY } from '../../wake/decide.ts';
 import { openTeamKit, requireConfig, rosterOf, teamZone, type Access, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
@@ -46,6 +48,23 @@ export async function tellAssigned(runtime: CliRuntime, team: Team, by: string, 
   const posted = await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
   if (posted && task.priority === HELD_PRIORITY && team.config.wake.enabled) {
     runtime.out.stderr(`NOTE ${shown} is woken at its idle prompt for ${task.id}, a p0, so no --wake now is needed`);
+  }
+}
+
+/**
+ * The answer to a task's approval wait, told to its owner (T1422): the inbox line, and with the team's wakes on a wake
+ * ask too (src/wake/asks.ts), as an `inbox add --wake now` line gets, so an idle tab wakes on it and the idle pass's
+ * reopen of a closed one quotes it. A plain line is read only at the owner's next prompt, and an idle owner has none:
+ * approved work sat 14 h. An ask that cannot be posted is a WARN, the line already told.
+ */
+export async function tellAnswer(runtime: CliRuntime, team: Team, by: string, to: string, text: string, unsent: string, shown = to): Promise<void> {
+  if (!(await tellLine(runtime, team, by, to, text, unsent, shown)) || !team.config.wake.enabled) {
+    return;
+  }
+  try {
+    await new WakeAsks(runtime.files, team.paths.wakeAsks).post(to, { from: by, text, at: runtime.clock.now() });
+  } catch (error) {
+    runtime.out.stderr(`WARN ${shown} has the line, but its idle tab is not woken for it (${errorMessage(error)}): ${KIT_NAME} inbox add --to ${shown} --text "..." --wake now`);
   }
 }
 

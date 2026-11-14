@@ -77,7 +77,7 @@ import { markBoundary } from './refresh.ts';
 import { markKeepWorkingAsk } from './keep-working.ts';
 import { markLastTaskAsk } from './last-task-ask.ts';
 import { readSpentClasses } from '../class-share.ts';
-import { openTeam, postNamed, teamOf, tellAssigned, tellLine, type Team } from './register-team.ts';
+import { openTeam, postNamed, teamOf, tellAnswer, tellAssigned, tellLine, type Team } from './register-team.ts';
 import { askTeam, treeCallerOf } from './team-ask.ts';
 
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
@@ -726,7 +726,7 @@ async function approveBelow(args: ParsedArgs, runtime: CliRuntime, caller: strin
   const answered = written.ok ? written.value.task : null;
   if (answered !== null && answered.answer !== null) {
     const shown = formatAddress({ team: below, id: answered.owner });
-    await tellLine(runtime, target, from, answered.owner, approvalNotice({ id: `${below}/${answered.id}` }, answered.answer), `${shown} was not told of the answer on ${below}/${answered.id}`, shown);
+    await tellAnswer(runtime, target, from, answered.owner, approvalNotice({ id: `${below}/${answered.id}` }, answered.answer), `${shown} was not told of the answer on ${below}/${answered.id}`, shown);
   }
   return code;
 }
@@ -751,7 +751,7 @@ export async function approve(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   if (written.ok) {
     const { task } = written.value;
     if (task.answer !== null && task.owner !== by) {
-      await tellLine(runtime, team, by, task.owner, approvalNotice(task, task.answer), `${task.owner} was not told of the answer on ${task.id}`);
+      await tellAnswer(runtime, team, by, task.owner, approvalNotice(task, task.answer), `${task.owner} was not told of the answer on ${task.id}`);
     }
   }
   return code;

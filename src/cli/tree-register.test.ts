@@ -460,6 +460,8 @@ describe("leaders across the tree: the parent team's lead approves a child team'
     const event = readEvents(kit.files.get(teamEventsOf('web')) ?? '').events.at(-1);
     assert.deepEqual([event?.by, event?.type], ['app/lead', 'update']);
     assert.match(kit.files.get(teamInboxOf('web', 'lead')) ?? '', /app\/lead: app\/lead approved web\/T1: tests green; push or merge it now/);
+    const asks = (await new WakeAsks(kit.files, wakeAsksOf('web')).read('lead')).map((stored) => stored.ask?.from);
+    assert.deepEqual(asks, ['app/lead'], "the answer wakes web's lead in its own team (T1422)");
   });
 
   it("keeps a wait on the parent team's lead off the child lead's PEER-WAIT flags", async () => {
