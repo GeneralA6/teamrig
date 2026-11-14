@@ -4,6 +4,7 @@ import type { Files } from '../core/files.ts';
 import { isNonNegativeInteger, stringField } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import { plainLine } from '../github/issues.ts';
 import type { RegisterEvent } from '../register/events.ts';
 import { foldEvents, type Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';
@@ -102,7 +103,9 @@ function noteOf(event: RegisterEvent): string | undefined {
   if (event.type !== 'status' && event.type !== 'update') {
     return undefined;
   }
-  const note = event.note?.replace(/\s+/g, ' ').trim() ?? '';
+  // A note or title may hold text from outside (an imported issue's words): control and format characters, ESC and
+  // bidi overrides among them, would reach the leader's prompt as they are, so each becomes a space.
+  const note = plainLine(event.note ?? '');
   return note === '' ? undefined : note;
 }
 
@@ -122,7 +125,7 @@ function changesOf(input: DigestInput): TaskChange[] {
       return [];
     }
     const before = atCursor.get(id)?.status;
-    const text = others.map(noteOf).findLast((written) => written !== undefined) ?? (before === undefined ? task.title.replace(/\s+/g, ' ').trim() : undefined);
+    const text = others.map(noteOf).findLast((written) => written !== undefined) ?? (before === undefined ? plainLine(task.title) : undefined);
     const note = text !== undefined && input.isSecret(text) ? WITHHELD_NOTE : text;
     return [{ id, before, after: task.status, note, at: Math.max(...events.map((event) => timeOf(event.at))) }];
   });

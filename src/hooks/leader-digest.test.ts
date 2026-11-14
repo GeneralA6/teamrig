@@ -83,6 +83,11 @@ describe('digestLines', () => {
     assert.equal(line, `- T1 open: ${`first second ${'y'.repeat(100)}`.slice(0, 77)}...`);
   });
 
+  it('turns control and format characters in a note or a new title into spaces, ESC and bidi overrides among them', () => {
+    const events = [...before, note('T1', 2, 'alpha', 'ok\u001b[2J now‮evil\u0085done'), create('T3', 3, 'alpha', 'alpha', 'Fix⁦ it\u0007')];
+    assert.deepEqual(digest(events, cursor).slice(1), ['- T3 new -> open: Fix it', '- T1 open: ok [2J now evil done']);
+  });
+
   it('withholds a note or a new title that matches a secret shape, keeping the status change', () => {
     const events = [...before, status('T1', 2, 'alpha', 'in-progress', 'the key is hunter2'), create('T3', 3, 'alpha', 'alpha', 'Rotate hunter2')];
     assert.deepEqual(digest(events, cursor).slice(1), [`- T3 new -> open: ${WITHHELD_NOTE}`, `- T1 open -> in-progress: ${WITHHELD_NOTE}`]);
