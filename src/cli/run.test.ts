@@ -13,7 +13,7 @@ import { quietWorld } from '../testing/quiet-world.ts';
 import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
-import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { cutLineMessage } from './cmd-shim.ts';
 import { FULL_HELP_POINTER } from './help.ts';
 import { SHORT_FORM_CHARS } from './reports.ts';
@@ -379,6 +379,23 @@ describe('runCli: the task register', () => {
     await empty.holdSecretDeny();
     const nothing = await empty.run(['check', '--session', 'alpha']);
     assert.deepEqual(nothing.stdout[0], 'CHECK 0 flag(s), no week plan tagged yet, so the week checks are skipped');
+  });
+
+  it('flags a grant a script makes that the SKILL.md runs from outside its folder, and its imports (T1401)', async () => {
+    const kit = new CliHarness();
+    await kit.holdSecretDeny();
+    const skill = '---\nname: alpha-ship\ndescription: Ship a change.\n---\nOwner: alpha\nLast verified: 2030-01-05\n\nRun `node ~/tools/ship.ts`.\n';
+    await kit.files.write(join(SKILLS_DIR, 'alpha-ship', 'SKILL.md'), skill);
+    await kit.files.write(join(USER_HOME, 'tools', 'ship.ts'), "import { token } from './token.ts';\n");
+    await kit.files.write(join(USER_HOME, 'tools', 'token.ts'), "export const token = execFileSync('gh', ['auth', 'token']);\n");
+    const flagged = await kit.run(['check', '--session', 'alpha', '--all']);
+    assert.ok(
+      flagged.stdout.some((line) => /^SKILL GRANT \(secret-read in ~\/tools\/token\.ts, which auto mode does not see: .*\) alpha alpha-ship$/.test(line)),
+      flagged.stdout.join('\n'),
+    );
+    await kit.files.write(join(SKILLS_DIR, 'alpha-ship', 'SKILL.md'), skill.replace('Owner: alpha\n', 'Owner: alpha\nGrants: secret-read\n'));
+    const granted = await kit.run(['check', '--session', 'alpha', '--all']);
+    assert.ok(!granted.stdout.some((line) => line.startsWith('SKILL GRANT')), granted.stdout.join('\n'));
   });
 
   it('plans the newest started week, or the one given, and refuses before any plan', async () => {
