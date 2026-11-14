@@ -301,3 +301,52 @@ describe('teamrig issue edit', () => {
     assert.deepEqual(gh.ran, []);
   });
 });
+
+describe('teamrig issue similar', () => {
+  /** Three mirrored issues (T1-T3), two of them about the same crash, and one task with no issue (T4). */
+  async function seeded(team: JsonRecord = GITHUB_TEAM): Promise<CliHarness> {
+    const kit = new CliHarness(team);
+    const tasks: ReadonlyArray<readonly [string, string, string | undefined]> = [
+      ['Login page crashes on submit', 'The login page crashes when the form is submitted with an empty password.', 'gh:acme/web#7'],
+      ['Login crashes on submit with an empty password', 'Submitting the login form with no password crashes the page.', 'gh:acme/web#8'],
+      ['Dark theme colours for the settings menu', 'The settings menu needs its own dark theme colours.', 'gh:acme/web#9'],
+      ['The login page crashes on submit', 'A team task with no issue behind it: the login page crashes on submit.', undefined],
+    ];
+    for (const [title, description, ref] of tasks) {
+      const added = await kit.run(['add', '--title', title, '--description', description, '--priority', 'p1', ...(ref === undefined ? [] : ['--ref', ref])], AS_LEAD);
+      assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
+    }
+    return kit;
+  }
+
+  it("lists the issue's likely duplicates among the mirrored ones, best first, reading only the task list", async () => {
+    const kit = await seeded();
+    const log = kit.files.get(EVENTS_PATH);
+    const gh = new FakeGh();
+    const result = await kit.run(['issue', 'similar', 'Acme/Web#7'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.equal(result.stdout[0], 'SIMILAR acme/web#7 (T1): 1 of 2 mirrored issues at or above 0.35 (github.similarThreshold)');
+    assert.match(result.stdout[1] ?? '', /^(?:0\.(?:3[5-9]|[4-9]\d)|1\.00) acme\/web#8 T2 Login crashes on submit with an empty password$/u);
+    assert.equal(result.stdout.length, 2);
+    assert.deepEqual(gh.ran, []);
+    assert.equal(kit.files.get(EVENTS_PATH), log);
+  });
+
+  it('says none when no mirrored issue reaches github.similarThreshold', async () => {
+    const unrelated = await (await seeded()).run(['issue', 'similar', 'acme/web#9'], AS_LEAD);
+    assert.equal(unrelated.code, EXIT.ok);
+    assert.deepEqual(unrelated.stdout, ['SIMILAR acme/web#9 (T3): none of 2 mirrored issues at or above 0.35 (github.similarThreshold)']);
+    const strict = await (await seeded({ ...TEAM, github: { repos: ['acme/web'], similarThreshold: 0.99 } })).run(['issue', 'similar', 'acme/web#7'], AS_LEAD);
+    assert.deepEqual(strict.stdout, ['SIMILAR acme/web#7 (T1): none of 2 mirrored issues at or above 0.99 (github.similarThreshold)']);
+  });
+
+  it('refuses an issue the task list does not mirror, and a bad target', async () => {
+    const kit = await seeded();
+    const missing = await kit.run(['issue', 'similar', 'acme/web#99'], AS_LEAD);
+    assert.equal(missing.code, EXIT.refused);
+    assert.match([...missing.stdout, ...missing.stderr].join('\n'), /^REFUSED acme\/web#99 is not in the task list: teamrig gh sync adds a task for each open issue of github\.repos/u);
+    const bad = await kit.run(['issue', 'similar', 'web#7'], AS_LEAD);
+    assert.equal(bad.code, EXIT.refused);
+    assert.match([...bad.stdout, ...bad.stderr].join('\n'), /^REFUSED web#7 names no issue or pull request/u);
+  });
+});

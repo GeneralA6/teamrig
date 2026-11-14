@@ -2,8 +2,11 @@ import { resolve } from 'node:path';
 import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { issueRef } from '../../github/map.ts';
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type HostKind, type IssueHost, type IssueTarget } from '../../issues/host.ts';
+import { issueDoc, mirroredIssues, similarIssues } from '../../issues/similar.ts';
 import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
+import { ISSUE_REF_PREFIX } from '../../register/model.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
@@ -159,6 +162,33 @@ function duplicateOfFlag(text: string | undefined, target: IssueTarget, reason: 
     throw new RefusedError(`--duplicate-of names ${targetText(target)} itself: name the issue it duplicates`);
   }
   return original;
+}
+
+/**
+ * `issue similar <owner/name#n>` (T2695): the issues the register mirrors that may be duplicates of the one named, best
+ * first (issues/similar.ts): TF-IDF over the mirrored titles and bodies, at most SIMILAR_TOP at or above
+ * `github.similarThreshold`. It reads the register only, never the host, so the issue must be in it (`gh sync` adds
+ * it). Exit 0, with or without candidates.
+ */
+export async function issueSimilar(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const target = targetOf(args);
+  const { config, register } = await openTeam(runtime, 'read');
+  const tasks = [...(await register.snapshot()).state.tasks.values()];
+  const ref = issueRef(target.repo, target.number);
+  const own = tasks.find((task) => task.ref?.toLowerCase() === ref);
+  if (own === undefined || own.ref === null) {
+    throw new RefusedError(`${targetText(target)} is not in the task list: teamrig gh sync adds a task for each open issue of github.repos`);
+  }
+  const corpus = mirroredIssues(tasks, new Date(runtime.clock.now()), config.github.closedDays).filter((doc) => doc.ref !== own.ref);
+  const threshold = config.github.similarThreshold;
+  const matches = similarIssues(issueDoc(own.ref, own), corpus, threshold);
+  const ids = new Map(tasks.flatMap((task) => (task.ref === null ? [] : [[task.ref, task.id] as const])));
+  const found = matches.length === 0 ? 'none' : String(matches.length);
+  runtime.out.stdout(`SIMILAR ${targetText(target)} (${own.id}): ${found} of ${corpus.length} mirrored issues at or above ${threshold} (github.similarThreshold)`);
+  for (const match of matches) {
+    runtime.out.stdout(`${match.score.toFixed(2)} ${match.ref.slice(ISSUE_REF_PREFIX.length)} ${ids.get(match.ref) ?? '-'} ${match.title}`);
+  }
+  return EXIT.ok;
 }
 
 /** The issue or pull request the one positional names; refused when it names none. */

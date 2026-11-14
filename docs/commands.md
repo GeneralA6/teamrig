@@ -433,6 +433,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       label to add must already be one of the repository's, but design (talk only, not work to take
       until agreed) and a label the repository's .github/labels.json defines, which it makes first
       (MADE); the first failure stops it
+  issue similar <owner/name#n>   the issues the task list mirrors that may be duplicates of this one,
+      best first: at most 3 at or above github.similarThreshold by TF-IDF over their titles and bodies,
+      with no model and no GitHub call; reads the task list only, so gh sync must have added the issue
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
