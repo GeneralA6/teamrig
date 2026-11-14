@@ -19,6 +19,8 @@ export const DEFAULT_SECRET_PATHS = [
     '~/.docker/config.json',
     '**/.git-credentials',
     '~/.config/gh/hosts.yml',
+    // gh's hosts file on Windows, under the roaming app data folder; the line above guarded nothing there (T2038).
+    '~/AppData/Roaming/GitHub CLI/hosts.yml',
     '~/.claude/.credentials.json',
     '~/.claude/history.jsonl',
     '**/.claude/settings.local.json',
