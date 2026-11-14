@@ -2,8 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
+import type { Sleep } from '../../src/core/lock.ts';
+import { CpuGate } from '../../src/delivery/cpu.ts';
 import { nodeTreeKill, type TreeKill } from '../../src/delivery/tree-kill.ts';
-import { hangFinding, hasRunnerHangBug, runSuite, watchSuite, type SuiteChild, type SuiteEcho, type SuiteEnd } from './suite-run.ts';
+import { FakeClock } from '../../src/testing/fake-clock.ts';
+import { FakeHostCpu } from '../../src/testing/fake-host-cpu.ts';
+import { BUSY_STRETCH, hangFinding, hasRunnerHangBug, runSuite, watchSuite, type SuiteChild, type SuiteEcho, type SuiteEnd, type SuiteHostCpu } from './suite-run.ts';
 
 /** A suite the test drives: it writes to its streams and emits `close` or `error` itself. */
 class FakeSuiteChild extends EventEmitter implements SuiteChild {
@@ -59,6 +63,26 @@ function heldKill(): { readonly kill: TreeKill; readonly pids: (number | undefin
   };
 }
 
+/** The queue's CPU gate over a host whose idle share the test sets, 25% needed; its reads cost no time. */
+function hostCpu(cpu: FakeHostCpu): CpuGate {
+  return new CpuGate(cpu, new FakeClock().sleep, 25);
+}
+
+/** A host with CPU to spare: the silence limit stays as set. */
+const calm = (): CpuGate => hostCpu(new FakeHostCpu(80));
+
+/** A sleep between the gate's two CPU reads that ends only when the test wakes it, to land output during the read. */
+function heldSleep(): { readonly sleep: Sleep; wake(): void } {
+  let wake = (): void => {};
+  return {
+    sleep: () =>
+      new Promise<void>((resolve) => {
+        wake = resolve;
+      }),
+    wake: () => wake(),
+  };
+}
+
 /** Lets stream events and settled promises run; immediates are not faked by the timers mock. */
 const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
@@ -77,7 +101,7 @@ describe('watchSuite', () => {
     const child = new FakeSuiteChild(4321);
     const echo = echoes();
     const held = heldKill();
-    const end = watchSuite(child, 1_000, held.kill, echo);
+    const end = watchSuite(child, 1_000, held.kill, echo, calm());
     child.stdout.write('▶ files\n');
     child.stderr.write('a warning\n');
     await flush();
@@ -92,31 +116,118 @@ describe('watchSuite', () => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const child = new FakeSuiteChild(77);
     const held = heldKill();
-    const end = watchSuite(child, 1_000, held.kill, echoes());
+    const end = watchSuite(child, 1_000, held.kill, echoes(), calm());
     t.mock.timers.tick(999);
     child.stderr.write('still running\n');
     await flush();
     t.mock.timers.tick(999);
+    await flush();
     assert.deepEqual(held.pids, [], 'output 999 ms ago keeps the suite alive');
     t.mock.timers.tick(1);
+    await flush();
     assert.deepEqual(held.pids, [77]);
     child.stdout.write('a last line while it dies\n');
     await flush();
     t.mock.timers.tick(1_000);
+    await flush();
     assert.deepEqual(held.pids, [77], 'output after the kill starts no second one');
     child.emit('close', null);
     assert.equal(await settled(end), false, 'the end waits for the kill to finish');
     held.release();
-    assert.deepEqual(await end, { kind: 'idle', idleMs: 1_000 });
+    assert.deepEqual(await end, { kind: 'idle', silentMs: 1_000 });
+  });
+
+  it('gives the limit again while the host is busy, and kills once BUSY_STRETCH limits passed without reading it again', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const child = new FakeSuiteChild(77);
+    const held = heldKill();
+    const cpu = new FakeHostCpu(5);
+    const end = watchSuite(child, 1_000, held.kill, echoes(), hostCpu(cpu));
+    for (let limit = 1; limit < BUSY_STRETCH; limit += 1) {
+      t.mock.timers.tick(1_000);
+      await flush();
+      assert.deepEqual(held.pids, [], `a busy host after limit ${limit} keeps the suite alive`);
+    }
+    t.mock.timers.tick(1_000);
+    await flush();
+    assert.deepEqual(held.pids, [77]);
+    assert.equal(cpu.reads, 2 * (BUSY_STRETCH - 1), 'the last limit kills unread');
+    child.emit('close', null);
+    held.release();
+    assert.deepEqual(await end, { kind: 'idle', silentMs: BUSY_STRETCH * 1_000 });
+  });
+
+  it('kills at the first limit that finds the host calm again', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const child = new FakeSuiteChild(77);
+    const held = heldKill();
+    const end = watchSuite(child, 1_000, held.kill, echoes(), hostCpu(new FakeHostCpu(80).idles(5)));
+    t.mock.timers.tick(1_000);
+    await flush();
+    assert.deepEqual(held.pids, []);
+    t.mock.timers.tick(1_000);
+    await flush();
+    assert.deepEqual(held.pids, [77]);
+    child.emit('close', null);
+    held.release();
+    assert.deepEqual(await end, { kind: 'idle', silentMs: 2_000 });
+  });
+
+  it('starts the limit again on output that comes while the host is read, dropping that reading', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const child = new FakeSuiteChild(77);
+    const held = heldKill();
+    const read = heldSleep();
+    const end = watchSuite(child, 1_000, held.kill, echoes(), new CpuGate(new FakeHostCpu(80), read.sleep, 25));
+    t.mock.timers.tick(1_000);
+    child.stdout.write('a slow test passed\n');
+    await flush();
+    read.wake();
+    await flush();
+    assert.deepEqual(held.pids, [], 'a calm reading begun before the output kills nothing');
+    t.mock.timers.tick(999);
+    await flush();
+    assert.deepEqual(held.pids, []);
+    child.emit('close', 0);
+    assert.deepEqual(await end, { kind: 'exited', status: 0 });
+  });
+
+  it('reports the exit of a suite that ends while the host is read, and kills nothing', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const child = new FakeSuiteChild(77);
+    const held = heldKill();
+    const read = heldSleep();
+    const end = watchSuite(child, 1_000, held.kill, echoes(), new CpuGate(new FakeHostCpu(80), read.sleep, 25));
+    t.mock.timers.tick(1_000);
+    child.emit('close', 0);
+    read.wake();
+    assert.deepEqual(await end, { kind: 'exited', status: 0 });
+    await flush();
+    assert.deepEqual(held.pids, []);
+  });
+
+  it('keeps the plain limit when the host cannot be read', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const child = new FakeSuiteChild(77);
+    const held = heldKill();
+    const unreadable: SuiteHostCpu = { look: () => Promise.reject(new Error('no CPU times')) };
+    const end = watchSuite(child, 1_000, held.kill, echoes(), unreadable);
+    t.mock.timers.tick(1_000);
+    await flush();
+    assert.deepEqual(held.pids, [77]);
+    child.emit('close', null);
+    held.release();
+    assert.deepEqual(await end, { kind: 'idle', silentMs: 1_000 });
   });
 
   it('hands a silent suite that has no pid to the kill, which ends nothing, and reports it idle', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const child = new FakeSuiteChild(undefined);
-    const end = watchSuite(child, 500, nodeTreeKill(process.platform), echoes());
+    const end = watchSuite(child, 500, nodeTreeKill(process.platform), echoes(), calm());
     t.mock.timers.tick(500);
+    await flush();
     child.emit('close', null);
-    assert.deepEqual(await end, { kind: 'idle', idleMs: 500 });
+    assert.deepEqual(await end, { kind: 'idle', silentMs: 500 });
     assert.deepEqual(child.signals, []);
   });
 
@@ -124,7 +235,7 @@ describe('watchSuite', () => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const child = new FakeSuiteChild(4321);
     const held = heldKill();
-    const end = watchSuite(child, 500, held.kill, echoes());
+    const end = watchSuite(child, 500, held.kill, echoes(), calm());
     child.emit('error', new Error('spawn ENOENT'));
     await assert.rejects(end, /spawn ENOENT/);
     t.mock.timers.tick(500);
@@ -135,6 +246,7 @@ describe('watchSuite', () => {
 describe('runSuite', () => {
   const kill = nodeTreeKill(process.platform);
 
+  // The default host reading: the program ends long before its limit, so the host is never read.
   it('runs a real program, echoes its output and reports its exit status', async () => {
     const echo = echoes();
     const script = "process.stdout.write('out'); process.stderr.write('err'); process.exitCode = 3;";
@@ -147,8 +259,8 @@ describe('runSuite', () => {
   it('kills a real program that prints once and then never ends', async () => {
     const echo = echoes();
     const script = "process.stdout.write('started'); setInterval(() => {}, 1000);";
-    const end = await runSuite({ program: process.execPath, args: ['-e', script], cwd: process.cwd(), env: process.env, idleMs: 500 }, process.platform, kill, echo);
-    assert.deepEqual(end, { kind: 'idle', idleMs: 500 });
+    const end = await runSuite({ program: process.execPath, args: ['-e', script], cwd: process.cwd(), env: process.env, idleMs: 500 }, process.platform, kill, echo, calm());
+    assert.deepEqual(end, { kind: 'idle', silentMs: 500 });
     assert.equal(echo.out.text(), 'started');
   });
 });

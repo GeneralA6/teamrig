@@ -69,7 +69,9 @@ which the git hooks `npm ci` sets do before each commit. Its coverage gate (`npm
 - a file, or the total, falls below the floors in `tools/ci/coverage.json`;
 - a test file is named or placed so `npm test` would never run it;
 - the run prints nothing for `suiteIdleSeconds` in `tools/ci/coverage.json` (300 when unset): it is stopped with every
-  process it started, so a test that never ends cannot hold the host.
+  process it started, so a test that never ends cannot hold the host. On a busy host (under 25% of its CPU idle when
+  the limit passes) the run gets the limit again, up to three limits in all, as other steps' test runs can slow it
+  that long.
 
 Never lower a floor to pass a change. A file that truly cannot reach one (for example an error
 path that needs a real disk failure) gets an entry under `exceptions` in `tools/ci/coverage.json`
