@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, it, test } from 'node:test';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { type SyncDeps, type SyncOptions, syncToMain } from './sync.ts';
+import { mainMovedPast, type SyncDeps, type SyncOptions, syncToMain } from './sync.ts';
 import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 const TIP = '9f0e1d2c3b4a59687766554433221100ffeeddcc';
@@ -278,6 +278,13 @@ describe('on a real clone', () => {
     assert.equal(readFileSync(join(clone.repo.dir, 'plugins/teamrig/dist/teamrig.js'), 'utf8'), 'b\n', "main's dist, which the build then writes again");
     assert.equal(clone.repo.has('plugins/teamrig/dist/new.js'), false);
   });
+});
+
+test('mainMovedPast fetches main and names its tip only when the branch does not contain it (T2725)', () => {
+  const moved = sceneDeps({});
+  assert.deepEqual(mainMovedPast(moved.deps.git, 'main'), { tip: TIP, reason: 'origin/main moved to 9f0e1d2, which the branch does not contain' });
+  assert.equal(moved.calls[0], 'fetch --quiet origin main');
+  assert.equal(mainMovedPast(sceneDeps({ mergeBase: TIP }).deps.git, 'main'), null);
 });
 
 test('needs at least one version file', () => {
