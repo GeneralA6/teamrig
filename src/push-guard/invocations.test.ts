@@ -147,6 +147,23 @@ describe('findGitInvocations: aliases', () => {
     expectDoubt('git broken', '!:git could not read whether "git broken" is an alias');
     expectDoubt('git loop', '!:git aliases nest too deep to read');
   });
+
+  it("splits an alias value by git's own rules, one reading, a CR a plain separator (T2016)", () => {
+    expectInvocations([
+      ["git -c alias.q=$'push\\r--no-verify origin' q", [`${CWD}|push|--no-verify origin`]],
+      ["git -c 'alias.q=push $R;x' q", [`${CWD}|push|$R;x`]],
+      ["git -c 'alias.q=commit -m \"a b\"' q", [`${CWD}|commit|-m a b`]],
+    ]);
+    const git = new FakeConfig({ 'alias.pv': 'push\r--no-verify' });
+    assert.deepEqual(
+      find('git pv origin main', 'bash', git).invocations.map((found) => `${found.subcommand}|${found.args.map(show).join(' ')}`),
+      ['push|--no-verify origin main'],
+    );
+  });
+
+  it('doubts an alias whose value git refuses, on a line that mentions a push', () => {
+    expectDoubt(`git -c 'alias.q=push "origin' q`, 'g:git refuses an alias value whose quote never closes');
+  });
 });
 
 describe('findGitInvocations: commands git runs', () => {

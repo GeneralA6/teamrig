@@ -96,6 +96,19 @@ describe('launch: programs and wrappers', () => {
     ]);
   });
 
+  it("splits env -S by env's own rules, then reads env's options on from the split words (T2016)", () => {
+    expectLaunches([
+      ["env -S $'git push\\r--no-verify'", 'program git push --no-verify'],
+      ["env -S 'git\\_push\\_--no-verify'", 'program git push --no-verify'],
+      ["env -S 'git status #; git push'", 'program git status'],
+      ["env -S '-u X A=1 git push' -x", 'program git push -x env=A=1'],
+      ["env -S '-C sub git push'", 'program git push cd=sub'],
+      ["env -S 'git push ${R}'", 'program git push ~${R}'],
+      ["env -S 'git push $R'", 'opaque: env -S expands only ${NAME}'],
+      ["env -S 'git push \"origin'", 'opaque: env -S refuses a quote that never closes'],
+    ]);
+  });
+
   it('runs nothing under an inspecting option', () => {
     expectLaunches([
       ['command -v git', 'nothing'],
