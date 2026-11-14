@@ -2,7 +2,7 @@ import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { GateVerdict } from './local-gate.ts';
-import type { MergeExit } from './merge.ts';
+import type { MainMove, MergeExit } from './merge.ts';
 import { withRaisedVersion, type Chunk, type ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
 import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
@@ -36,6 +36,8 @@ export interface ShipDeps {
   push: () => string;
   /** Merges the pushed branch into main (merge.ts): its exit code, or main's move past the branch, not yet reported. */
   merge: (branch: string) => Promise<MergeExit>;
+  /** main's tip on origin, fetched now, when the branch does not contain it; null when it does (sync.ts). */
+  mainMove: () => MainMove | null;
 }
 
 /** How many runs a ship makes in all when main keeps moving past it before it merges (T2696). */
@@ -90,6 +92,7 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  * run sets those again), the ship renames the branch `<branch>-N` (a pushed branch is never rewritten, the
  * lead's ruling of 11-06) and goes again from step 0, at most SHIP_ATTEMPTS runs in all; the older pushed name
  * is deleted by the merge's sweep (leftovers.ts). A move that changed the same files is refused, naming them.
+ * With --merge, local checks that fail on a branch main moved past go again the same way (T2725).
  * A refusal throws `REFUSED <reason>`; a failed step throws its own error.
  */
 export async function shipCommits(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps): Promise<number> {
@@ -150,7 +153,14 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
   deps.log('\nlocal checks:');
   const verdict = deps.proveTree();
   deps.log(deps.git(['log', '--oneline', `${args.base}..HEAD`]));
-  if (!verdict.passed) throw new Error(`REFUSED ${verdict.reason}`);
+  if (!verdict.passed) {
+    // The plugin version gate fails once another ship merged the same raise meanwhile (T2725); a run on the moved
+    // main sets the raise again, and a failure of the change's own fails that run too.
+    const move = args.merge ? deps.mainMove() : null;
+    if (move === null) throw new Error(`REFUSED ${verdict.reason}`);
+    deps.log(`\nlocal checks: ${verdict.reason}, and ${move.reason}`);
+    return { kind: 'moved', ...move };
+  }
   if (!args.merge) return { kind: 'done', code: 0 };
 
   const branch = deps.push();

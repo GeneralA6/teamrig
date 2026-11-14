@@ -1,3 +1,4 @@
+import type { MainMove } from './merge.ts';
 import { type Version, type VersionFile, bumpKindOf, bumped, formatVersion, versionIn, versionMention, withVersion } from './version-bump.ts';
 
 /**
@@ -38,6 +39,18 @@ export type SyncResult = { readonly kind: 'current'; readonly sets: string } | {
 const refuse = (reason: string): never => {
   throw new Error(`REFUSED ${reason}`);
 };
+
+/**
+ * main's tip on origin, fetched now, when the branch does not contain it; null when it does. A ship asks once its
+ * local checks failed: the plugin version gate compares with origin/main, which any worktree's fetch moves, so a
+ * raise another ship took meanwhile fails it, and only a run on the moved main can tell (T2725).
+ */
+export function mainMovedPast(git: SyncDeps['git'], main: string): MainMove | null {
+  git('fetch', '--quiet', 'origin', main);
+  const tip = git('rev-parse', `refs/remotes/origin/${main}`);
+  if (git('merge-base', 'HEAD', tip) === tip) return null;
+  return { tip, reason: `origin/${main} moved to ${tip.slice(0, 7)}, which the branch does not contain` };
+}
 
 export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
   const { git } = deps;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { GateVerdict } from './local-gate.ts';
-import type { MergeExit } from './merge.ts';
+import type { MainMove, MergeExit } from './merge.ts';
 import { DIST, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
 import type { Chunk, ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
@@ -25,6 +25,8 @@ interface FakeOptions {
   readonly mergeExits?: readonly MergeExit[];
   /** git's stdout by its args joined with spaces, before the defaults. */
   readonly answers?: Readonly<Record<string, string>>;
+  /** What each look at main after failed local checks finds, in turn; the last one repeats; none by default. */
+  readonly moves?: readonly (MainMove | null)[];
 }
 
 interface Fake {
@@ -38,6 +40,7 @@ function fake(options: FakeOptions = {}): Fake {
   const events: string[] = [];
   const logs: string[] = [];
   let merges = 0;
+  let looks = 0;
   const step = (event: string): void => {
     events.push(event);
     if (options.failOn !== undefined && event.startsWith(options.failOn)) throw new Error(`${event} failed`);
@@ -73,6 +76,11 @@ function fake(options: FakeOptions = {}): Fake {
       events.push(`merge ${branch}`);
       const exits = options.mergeExits ?? [];
       return Promise.resolve(exits[merges++] ?? exits.at(-1) ?? { kind: 'done', code: 0 });
+    },
+    mainMove: () => {
+      events.push('look at main');
+      const moves = options.moves ?? [];
+      return moves[looks++] ?? moves.at(-1) ?? null;
     },
   };
   return { deps, events, logs };
@@ -152,7 +160,8 @@ test('a tree the gate does not pass is refused before any push, with --merge too
   const { deps, events } = fake({ verdict: { passed: false, reason: 'tools/ci/local.ts failed on tree tree000' } });
   await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), /^Error: REFUSED tools\/ci\/local\.ts failed on tree tree000$/);
   assert.ok(!events.includes('push'));
-  assert.equal(events.at(-1), 'git log --oneline origin/main..HEAD');
+  // With --merge a failed gate first asks whether main moved past the branch (T2725); here it did not.
+  assert.deepEqual(events.slice(-2), ['git log --oneline origin/main..HEAD', 'look at main']);
 });
 
 test('with --merge, pushes the change branch after the gate and returns the merge exit code', async () => {
@@ -228,6 +237,32 @@ test(`gives up after ${SHIP_ATTEMPTS} runs when main keeps moving, keeping the f
   assert.equal(events.filter((event) => event.startsWith('merge ')).length, SHIP_ATTEMPTS);
   assert.equal(events.filter((event) => event.startsWith('git branch -m')).length, SHIP_ATTEMPTS - 1);
   assert.equal(events.filter((event) => event === 'git rev-parse --abbrev-ref HEAD').length, 1);
+});
+
+const FAILED_GATE: GateVerdict = { passed: false, reason: 'plugin version gate failed on tree tree000' };
+
+test('with --merge, local checks that fail on a branch main moved past ship again on the moved main (T2725)', async () => {
+  const { deps, events, logs } = fake({
+    verdict: FAILED_GATE,
+    moves: [{ tip: TIP, reason: 'origin/main moved to fedcba9, which the branch does not contain' }, null],
+    answers: moveAnswers(`src/a.ts\n${VERSION_AND_DIST}`, `src/other.ts\n${VERSION_AND_DIST}`),
+  });
+  await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), /^Error: REFUSED plugin version gate failed on tree tree000$/);
+  assert.ok(logs.includes('\nlocal checks: plugin version gate failed on tree tree000, and origin/main moved to fedcba9, which the branch does not contain'));
+  const rename = events.indexOf('git branch -m t827-ship-tool-2');
+  assert.ok(rename > events.indexOf('look at main'));
+  assert.equal(events.filter((event) => event === 'sync').length, 2);
+  assert.equal(events.filter((event) => event === 'look at main').length, 2);
+  assert.ok(!events.includes('push'));
+});
+
+test('local checks that fail on a branch main has not moved past, or without --merge, are refused at once', async () => {
+  const unmoved = fake({ verdict: FAILED_GATE });
+  await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, unmoved.deps), /^Error: REFUSED plugin version gate failed/);
+  assert.equal(unmoved.events.filter((event) => event === 'sync').length, 1);
+  const unmerged = fake({ verdict: FAILED_GATE, moves: [{ tip: TIP, reason: 'moved' }] });
+  await assert.rejects(shipCommits(ARGS, CHUNKS, unmerged.deps), /^Error: REFUSED plugin version gate failed/);
+  assert.ok(!unmerged.events.includes('look at main'));
 });
 
 test('parseNumstat reads counts, keeps a binary file uncounted and a path with a tab whole', () => {

@@ -10,7 +10,7 @@ import { profileFor, readProfiles, slugOf } from './repos.ts';
 import { takeBackEarlierRun } from './rerun.ts';
 import { shipCommand } from './ship-command.ts';
 import { DIST, type ShipDeps } from './ship-commits.ts';
-import { syncToMain } from './sync.ts';
+import { mainMovedPast, syncToMain } from './sync.ts';
 import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 /**
@@ -55,6 +55,7 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     proveTree: () => proveTree(repo, profile.local, realGateDeps(repo, log)),
     push: () => pushOwnBranch(gitLine, profile.main),
     merge: (branch) => mergeBranch([repo, '--head', branch, ...(noteFile === null ? [] : ['--note-file', noteFile])]),
+    mainMove: () => mainMovedPast(gitLine, profile.main),
   };
 }
 
