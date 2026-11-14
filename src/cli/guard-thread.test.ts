@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { KIT_VERSION } from '../core/version.ts';
+import { MessageChannel } from 'node:worker_threads';
+import { isGuardThreadMessage } from './guard-thread-messages.ts';
+import type { GuardMain } from './guard-runner.ts';
 import { threadGuardLoad } from './guard-thread.ts';
+import { serveGuard } from './guard-worker.ts';
 import type { NodeEntry } from './node-main.ts';
 
 const folder = mkdtempSync(join(tmpdir(), 'teamrig-guard-thread-'));
@@ -83,5 +87,58 @@ describe('threadGuardLoad', () => {
     const kept = keptEntry();
     assert.equal(await main(['--version'], kept.entry), 0);
     assert.match(kept.stdout.join('\n'), new RegExp(KIT_VERSION.replaceAll('.', '\\.')));
+  });
+});
+
+/** What serveGuard posts on a MessageChannel: `run` goes once it says loaded, up to its answer, crash or failed load. */
+async function served(load: () => Promise<GuardMain>, run: unknown): Promise<unknown[]> {
+  const { port1, port2 } = new MessageChannel();
+  const seen: unknown[] = [];
+  try {
+    return await new Promise((resolve) => {
+      port2.on('message', (value: unknown) => {
+        seen.push(value);
+        if (!isGuardThreadMessage(value)) {
+          resolve(seen);
+        } else if (value.kind === 'loaded') {
+          port2.postMessage(run);
+        } else if (value.kind !== 'stdout' && value.kind !== 'stderr') {
+          resolve(seen);
+        }
+      });
+      void serveGuard(port1, load);
+    });
+  } finally {
+    port1.close();
+    port2.close();
+  }
+}
+
+const RUN = { argv: ['hook', 'push-guard'], script: 'main.js', input: '{"tool_name":"Bash"}' };
+
+describe('serveGuard', () => {
+  it("runs the one run with its arguments, script and input, relaying the guard's lines and exit code", async () => {
+    const main: GuardMain = async (argv, entry) => {
+      entry.out.stderr(`${argv.join(' ')} from ${entry.script}`);
+      entry.out.stdout(`read ${await entry.readStdin()}`);
+      return 3;
+    };
+    assert.deepEqual(await served(() => Promise.resolve(main), RUN), [
+      { kind: 'loaded' },
+      { kind: 'stderr', line: 'hook push-guard from main.js' },
+      { kind: 'stdout', line: 'read {"tool_name":"Bash"}' },
+      { kind: 'answered', code: 3 },
+    ]);
+  });
+
+  it('says the load failed, a guard crashed on a throw, and a run it cannot read crashed', async () => {
+    assert.deepEqual(await served(() => Promise.reject(new Error('gone')), RUN), [{ kind: 'load-failed', message: 'gone' }]);
+    const throwing: GuardMain = () => Promise.reject(new Error('boom'));
+    assert.deepEqual(await served(() => Promise.resolve(throwing), RUN), [{ kind: 'loaded' }, { kind: 'crashed', message: 'boom' }]);
+    const unused: GuardMain = () => Promise.resolve(0);
+    assert.deepEqual(await served(() => Promise.resolve(unused), { argv: 'hook' }), [
+      { kind: 'loaded' },
+      { kind: 'crashed', message: 'the guard thread got a run it cannot read' },
+    ]);
   });
 });

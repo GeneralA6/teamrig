@@ -24,11 +24,15 @@ async function answer(main: GuardMain, run: GuardThreadRun, post: (message: Guar
   }
 }
 
-async function serve(port: MessagePort): Promise<void> {
+/**
+ * Serves one run on `port`: loads the CLI's main with `load`, says loaded or load-failed, then answers the one run the
+ * entry sends. Exported so a spec drives it on a MessageChannel, where the coverage run sees it.
+ */
+export async function serveGuard(port: MessagePort, load: () => Promise<GuardMain>): Promise<void> {
   const post = (message: GuardThreadMessage): void => port.postMessage(message);
   let main: GuardMain;
   try {
-    main = (await import('./node-main.ts')).runWithNode;
+    main = await load();
   } catch (cause) {
     post({ kind: 'load-failed', message: messageOf(cause) });
     return;
@@ -46,5 +50,5 @@ async function serve(port: MessagePort): Promise<void> {
 
 // Outside a worker there is no entry to answer; guard-thread.ts blocks a thread that ends without loading.
 if (parentPort !== null) {
-  void serve(parentPort);
+  void serveGuard(parentPort, async () => (await import('./node-main.ts')).runWithNode);
 }
