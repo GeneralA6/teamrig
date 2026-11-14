@@ -3530,7 +3530,10 @@ are idle, or asks the user to type /clear` instead.
 Reads the team's names, rename log, inboxes, `rules.md` and tree of teams, weighs the text every call of a session
 re-reads, checks what would silently override the model or effort a session or helper is given, and prints each
 problem with its fix. `rules-long` weighs the team's `rules.md` after those of the teams above, which share its
-budget, and names the file that reaches sessions only as a pointer.
+budget, and names the file that reaches sessions only as a pointer. `lead-start` renders the lead's start as the
+SessionStart hook gives it after a compaction, its live tasks too: it warns when that start is past the 10,000
+characters Claude Code shows, or when a `rules.md` the budget holds still reaches the lead only as a pointer, because
+the core rules, the lead's lines and its notes leave too little room.
 It only reads.
 
 Flags: none.
@@ -3550,7 +3553,7 @@ DOCTOR clean, team shop
 Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each. Kinds: `requirement` (git,
 Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
 `name-shared`, `name-config`, `name-reserved` (a name Claude Code keeps for itself: `main`, `team-lead`, `user`,
-`system`), `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`,
+`system`), `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `lead-start`, `context-size`,
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `tree-role` (a
 `roles.securityReviewer` or `roles.deliveryOwner` of `<team>/<id>` whose team is not above this one, or whose
 session does not hold that role there), `name-two-teams`, `effort-env`, `model-env`, `settings-json`, `launch-effort`,
