@@ -22,6 +22,12 @@ export interface Kit {
   readonly load: ConfigLoad;
 }
 
+/**
+ * What reading a team's config, roster and register takes: a tool outside the CLI (tools/ship) builds one from its
+ * own process without a whole `CliRuntime`.
+ */
+export type KitReader = Pick<CliRuntime, 'env' | 'userHome' | 'files' | 'configFormat'>;
+
 /** The lock every change to the team's config is read and written under (config-lock.ts). */
 export function configLockOf(runtime: CliRuntime, kit: Kit, config: KitConfig): ConfigLock {
   const place = { configPath: kit.load.path, backupsDir: kit.paths.backups };
@@ -43,7 +49,7 @@ export function renameDepsOf(runtime: CliRuntime, kit: Kit, config: KitConfig): 
  * The team's sessions with every rename applied, so a name any session has had resolves. A damaged
  * or newer line in the rename log is skipped here; `doctor` reports it.
  */
-export async function rosterOf(runtime: CliRuntime, kit: Kit, config: KitConfig): Promise<Roster> {
+export async function rosterOf(runtime: Pick<CliRuntime, 'files'>, kit: Kit, config: KitConfig): Promise<Roster> {
   const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
   return new Roster(config, kit.paths.team, renames);
 }
@@ -110,7 +116,7 @@ function overridesOf(config: KitConfig): PathOverrides {
  * The team's folder under the kit home, its config and the paths the config moves. A team under another takes the
  * budget keys of the account's week it leaves unset from the team above (`AccountBudget`).
  */
-export async function openKit(runtime: CliRuntime, team: string): Promise<Kit> {
+export async function openKit(runtime: KitReader, team: string): Promise<Kit> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
   const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
   const load = await teamConfigOf(runtime, team, []);
@@ -118,7 +124,7 @@ export async function openKit(runtime: CliRuntime, team: string): Promise<Kit> {
 }
 
 /** The team's config as its file reads now, read the way `openTeamKit` read it: for a change made under the config lock. */
-export function reloadTeamConfig(runtime: CliRuntime, kit: Kit): Promise<ConfigLoad> {
+export function reloadTeamConfig(runtime: KitReader, kit: Kit): Promise<ConfigLoad> {
   return teamConfigOf(runtime, kit.paths.team, []);
 }
 
@@ -126,7 +132,7 @@ export function reloadTeamConfig(runtime: CliRuntime, kit: Kit): Promise<ConfigL
  * A team's config over the team above's (`openKit`); `below` holds the teams it is read for, so parent links that go
  * round in a loop end at the first team met again, which `doctor` names (tree-loop).
  */
-async function teamConfigOf(runtime: CliRuntime, team: string, below: readonly string[]): Promise<ConfigLoad> {
+async function teamConfigOf(runtime: KitReader, team: string, below: readonly string[]): Promise<ConfigLoad> {
   const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
   const path = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, claudeConfigDir(runtime.env, runtime.userHome)).config;
   const chain = [...below, team];

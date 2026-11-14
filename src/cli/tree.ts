@@ -5,8 +5,7 @@ import type { KitConfig } from '../config/types.ts';
 import type { SessionAddress } from '../core/address.ts';
 import { resolveKitHome, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
-import { openKit, rosterOf, type Kit } from './kit.ts';
-import type { CliRuntime } from './runtime.ts';
+import { openKit, rosterOf, type Kit, type KitReader } from './kit.ts';
 
 /** A team the tree loaded: its folder and paths, its config and its roster with renames applied. */
 export interface TreeTeam {
@@ -26,7 +25,7 @@ export interface KitTree {
  * cannot be read is left out: that team's own commands report it, and `doctor` names a parent left
  * out this way as missing.
  */
-export async function loadTree(runtime: CliRuntime): Promise<KitTree> {
+export async function loadTree(runtime: KitReader): Promise<KitTree> {
   const folders = await runtime.files.list(join(resolveKitHome(runtime.env, runtime.userHome), 'teams'));
   const teams = new Map<string, TreeTeam>();
   for (const team of folders.filter((folder) => ID_PATTERN.test(folder)).sort()) {
@@ -56,7 +55,7 @@ export function skillOwnersElsewhere(loaded: KitTree, paths: Pick<TeamPaths, 'te
  * The parent team's lead, who approves the team's lead's own work (T1140); undefined for a root team, read without the
  * tree, or for a team whose parent has no config, which `doctor` names.
  */
-export async function leadAboveOf(runtime: CliRuntime, team: string, config: KitConfig): Promise<SessionAddress | undefined> {
+export async function leadAboveOf(runtime: KitReader, team: string, config: KitConfig): Promise<SessionAddress | undefined> {
   if (config.team?.parent === undefined) {
     return undefined;
   }
