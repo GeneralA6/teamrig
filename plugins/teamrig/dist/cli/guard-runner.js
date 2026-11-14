@@ -5,8 +5,9 @@
  * which blocks the call and shows the model a line naming the guard, what went wrong and the fix.
  *
  * It imports nothing at run time (the import above is a type), so the code that can break under it is the CLI it loads.
- * Not caught: a synchronous endless loop (it never yields to the time limit, and Claude Code's timeout lets the call
- * through), the process running out of memory, a broken runner or entry script, and a missing Node.js.
+ * The time limit fires only while this thread is free: guard-main.ts runs the CLI on a worker thread (guard-thread.ts,
+ * T2433), so a guard stuck in synchronous work is blocked at the limit too. Not caught: the process running out of
+ * memory, a broken runner or entry script, and a missing Node.js.
  */
 /**
  * How long a guard may run before the runner blocks the call. Under hooks.json's 15 s for the guards, so the runner
@@ -101,7 +102,7 @@ export async function runGuard(argv, script, load, host, limitMs = GUARD_LIMIT_M
         return;
     }
     const stdout = [];
-    const entry = { out: { stdout: (line) => stdout.push(line), stderr: (line) => host.writeError(`${line}\n`) }, script };
+    const entry = { out: { stdout: (line) => stdout.push(line), stderr: (line) => host.writeError(`${line}\n`) }, script, readStdin: () => host.readStdin() };
     try {
         const code = await main(argv, entry);
         host.setExitCode(settle({ kind: 'answered', code, stdout }).exitCode);

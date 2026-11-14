@@ -111,7 +111,7 @@ export async function runWithNode(argv, entry) {
         exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT },
         webhook: httpWebhook(),
         cmdShimLine,
-        readStdin: () => text(process.stdin),
+        readStdin: entry.readStdin,
         newId: () => randomUUID(),
     });
 }
