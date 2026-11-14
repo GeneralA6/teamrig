@@ -4,6 +4,7 @@ import { readFolderWeek } from "../budget/week-summary.js";
 import { FREEZES_LOCK_TTL_MS } from "../delivery/freeze-store.js";
 import { HostLock } from "../delivery/host-lock.js";
 import { MemoryGate } from "../delivery/memory-gate.js";
+import { PIPELINE_FREEZES_LOCK_TTL_MS } from "../delivery/pipeline-freezes.js";
 import { TabHolds, tabHoldsDir } from "../sessions/tab-holds.js";
 const MINUTE_MS = 60_000;
 /**
@@ -40,6 +41,10 @@ export function hostLockOf(runtime, path, queue, headroom, focus, zone) {
  */
 export function freezesLockOf(runtime, path, zone) {
     return lockAt(runtime, path, FREEZES_LOCK_TTL_MS, zone, {});
+}
+/** The lock on the pipeline freezes at `path`, held for one read and write: like the deploy freezes' lock, no memory gate. */
+export function pipelineFreezesLockOf(runtime, path, zone) {
+    return lockAt(runtime, path, PIPELINE_FREEZES_LOCK_TTL_MS, zone, {});
 }
 function lockAt(runtime, path, ttlMs, zone, gates) {
     return new HostLock(path, ttlMs, {

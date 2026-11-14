@@ -1,6 +1,7 @@
 import { QUEUE_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
 import { busyText, holderText, isHeavyShare, underLock, waitText } from "../../delivery/host-lock.js";
 import { parseLedger } from "../../delivery/ledger.js";
+import { pipelineFrozenRefusal } from "../../delivery/pipeline-freezes.js";
 import { deliveryPlaces, detachedLogOf } from "../../delivery/places.js";
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass } from "../../delivery/push-pass.js";
 import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel } from "../../delivery/process-request.js";
@@ -88,8 +89,13 @@ function declaredMbOf(args) {
 function requestOf(args, words, what) {
     return processRequest(kindOf(args, words), taskOf(args, what));
 }
-function refuseAfterCutoff(runtime, cutoffUtc, zone) {
-    const reason = queueCutoffReason(runtime.clock.now(), cutoffUtc, zone);
+/** Why the step may not start now (the queue cutoff, or a pipeline freeze on its kind), or undefined when it may. */
+async function startRefusal(runtime, gate) {
+    const now = runtime.clock.now();
+    return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone);
+}
+async function refuseUnstartable(runtime, gate) {
+    const reason = await startRefusal(runtime, gate);
     if (reason !== undefined) {
         throw new RefusedError(reason);
     }
@@ -361,11 +367,12 @@ export async function queue(args, runtime) {
     const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
     const parent = await parentLockOf(runtime, lock, say);
     const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
+    const gate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone };
     if (detach) {
         if (parent !== undefined) {
             throw new UsageError('--detach under a live host lock: a step a queued step starts runs at once under its lock, and that step waits for its result; run it without --detach');
         }
-        refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
+        await refuseUnstartable(runtime, gate);
         const id = detachedIdOf(runtime.clock.now(), runtime.pid);
         return await startDetached(runtime, { log: detachedLogOf(delivery, kit.paths, id) }, args, { id, session, what, words });
     }
@@ -381,7 +388,7 @@ export async function queue(args, runtime) {
             const code = await runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), step);
             return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
         }
-        refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
+        await refuseUnstartable(runtime, gate);
         // The register is read only for a step that queues: a nested step or one refused at once records nothing.
         const register = new JsonlEventLog(runtime.files, kit.paths.events);
         const line = await lineRequestOf(request, async (id) => (await register.read()).state.tasks.get(id), config.focus);
@@ -408,9 +415,9 @@ export async function queue(args, runtime) {
         const waited = waits.end();
         const waitedMs = runtime.clock.now() - waited.queuedAt;
         try {
-            const cutoff = queueCutoffReason(runtime.clock.now(), delivery.schedule.queueCutoffUtc, zone);
-            if (cutoff !== undefined) {
-                return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'refused', reason: cutoff });
+            const refusal = await startRefusal(runtime, gate);
+            if (refusal !== undefined) {
+                return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'refused', reason: refusal });
             }
             const sharing = sharingText(need.reserveMb, taking);
             if (sharing !== undefined) {
