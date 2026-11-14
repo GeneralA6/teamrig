@@ -15,7 +15,7 @@ export interface ApprovalAnswer {
   readonly note: string | null;
 }
 
-/** The owner's decision on a task's card (T1366), as a leader recorded it with `decide`. */
+/** The owner's decision on a task's card (T1366), as a leader recorded it with `update --decided`. */
 export interface OwnerDecision {
   /** The leader who recorded it. */
   readonly by: string;
