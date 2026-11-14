@@ -83,7 +83,7 @@ describe('runCli: the daily meeting', () => {
     const { stdout } = await kit.run(['meeting', 'start', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' });
     assert.equal(stdout[0], 'MEETING started Tue 01-08 12:00 IST: messages to app-lead are held but CRITICAL ones (the hook tells each sender)');
     assert.ok(stdout.includes('DONE 0 done, 0 dropped since Mon 01-07 12:00 IST'), stdout.join('\n'));
-    await kit.run(['update', 'T1', '--note', 'owner decided: go', '--session', 'lead']);
+    await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: go', '--session', 'lead']);
     const ended = await kit.run(['meeting', 'end', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' });
     assert.match(ended.stdout[0] ?? '', /^MEETING ended Tue 01-08 12:00 IST after /);
     const lines = await inboxOf(kit, 'alpha');
@@ -196,23 +196,26 @@ describe('runCli: the daily meeting', () => {
     assert.equal(next.stdout[done + 1], '  Other work 1: teamrig list --status done');
   });
 
-  it("ends: tells only a session with the lead's decisions on its tasks, with them", async () => {
+  it("ends: tells only a session with the owner's answers on its tasks, with them, and not a plain note (T2775)", async () => {
     const kit = await teamBeforeTheMeeting();
     await kit.run(['meeting', 'start', '--session', 'lead']);
     await inboxOf(kit, 'alpha');
     await inboxOf(kit, 'bravo');
     kit.clock.advance(25 * MINUTE);
-    const decided = await kit.run(['update', 'T1', '--note', 'owner decided: the middle tier', '--priority', 'p2', '--session', 'lead']);
+    const decided = await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: the middle tier', '--session', 'lead']);
     assert.equal(decided.code, EXIT.ok, decided.stderr.join('\n'));
+    const noted = await kit.run(['update', 'T2', '--note', 'lead: the docs can wait a day', '--priority', 'p3', '--session', 'lead']);
+    assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
     const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
     assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
+    const cleared = 'owner decided: the middle tier (its wait on the owner cleared: act on it, set its next status)';
     assert.deepEqual(ended.stdout, [
       'MEETING ended Tue 01-08 10:25 UTC after 25 min: messages to app-lead go again; told 1 session(s) the decisions on their tasks',
       "RECORDED 1 decision(s), each told to its task's owner",
-      '  alpha T1: owner decided: the middle tier (changed priority)',
+      `  alpha T1: ${cleared}`,
     ]);
     const alpha = await inboxOf(kit, 'alpha');
-    assert.ok(alpha.some((line) => line.endsWith("lead: the owner's daily meeting with app-lead ended Tue 01-08 10:25 UTC. Decided on your tasks: T1: owner decided: the middle tier (changed priority).")), alpha.join('\n'));
+    assert.ok(alpha.some((line) => line.endsWith(`lead: the owner's daily meeting with app-lead ended Tue 01-08 10:25 UTC. Decided on your tasks: T1: ${cleared}.`)), alpha.join('\n'));
     const bravo = await inboxOf(kit, 'bravo');
     assert.ok(!bravo.some((line) => line.includes('daily meeting')), bravo.join('\n'));
   });
@@ -242,7 +245,7 @@ describe('runCli: the daily meeting', () => {
   it('names a session it could not tell, and goes on', async () => {
     const kit = await teamBeforeTheMeeting({ ...TEAM, register: { secretPatterns: ['daily meeting'] } });
     await kit.run(['meeting', 'start', '--session', 'lead']);
-    await kit.run(['update', 'T1', '--note', 'owner decided: go', '--session', 'lead']);
+    await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: go', '--session', 'lead']);
     const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
     assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
     assert.match(ended.stdout[0] ?? '', /^NOT TOLD alpha: the line looks like it holds a secret/);
