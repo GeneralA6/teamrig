@@ -21,9 +21,13 @@ export function teamPlace(paths, path) {
 export function deliveryDirOf(config, paths) {
     return config.dir === undefined ? join(paths.state, 'deploys') : teamPlace(paths, config.dir);
 }
+/** The folder of the detached queue runs' logs and records (detached-runs.ts). */
+export function detachedDirOf(config, paths) {
+    return join(deliveryDirOf(config, paths), DETACHED_DIR);
+}
 /** The log of the detached queue run `id`: its step's output, and the queue's own lines, since no shell waits for them. */
 export function detachedLogOf(config, paths, id) {
-    return join(deliveryDirOf(config, paths), DETACHED_DIR, `${id}.log`);
+    return join(detachedDirOf(config, paths), `${id}.log`);
 }
 /**
  * Where the delivery files are: the ledgers, the deploy freezes and their lock, the pending merges, the review and
