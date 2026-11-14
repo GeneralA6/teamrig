@@ -45,7 +45,8 @@ function settledOf(record: JsonRecord): { readonly ok: boolean; readonly value: 
   }
   const dayStart = optionalTimeOf(raw, 'dayStart');
   const burst = optionalTimeOf(raw, 'burst');
-  return { ok: dayStart.ok && burst.ok, value: { dayStart: dayStart.value, burst: burst.value } };
+  const poke = optionalTimeOf(raw, 'poke');
+  return { ok: dayStart.ok && burst.ok && poke.ok, value: { dayStart: dayStart.value, burst: burst.value, poke: poke.value } };
 }
 
 /** A wake file's content; undefined when it is damaged or from another format, which starts the tab over. */
@@ -65,8 +66,8 @@ export function parseWakeState(text: string): WakeState | undefined {
   return { tab, known, pending: pending.value, lastWakeAt: last.value, settled: settled.value };
 }
 
-function formatSettled({ dayStart, burst }: SettledMoments): JsonRecord {
-  return { ...(dayStart === undefined ? {} : { dayStart }), ...(burst === undefined ? {} : { burst }) };
+function formatSettled({ dayStart, burst, poke }: SettledMoments): JsonRecord {
+  return { ...(dayStart === undefined ? {} : { dayStart }), ...(burst === undefined ? {} : { burst }), ...(poke === undefined ? {} : { poke }) };
 }
 
 export function formatWakeState(state: WakeState): string {
@@ -131,6 +132,8 @@ export type WakeRecord =
       readonly asks?: number;
       readonly moments?: readonly DayMomentKind[];
       readonly retry?: 'login' | 'api';
+      /** A rush poke (src/wake/rush-poke.ts) of a tab idle with work left; `ids` holds the task it names. */
+      readonly poke?: true;
     }
   | { readonly kind: 'dropped'; readonly at: number; readonly session: string; readonly tab: string; readonly reason: string };
 
@@ -153,6 +156,7 @@ export function formatWakeRecord(record: WakeRecord): string {
     ...(record.asks === undefined ? {} : { asks: record.asks }),
     ...(record.moments === undefined ? {} : { moments: [...record.moments] }),
     ...(record.retry === undefined ? {} : { retry: record.retry }),
+    ...(record.poke === undefined ? {} : { poke: true }),
   });
 }
 

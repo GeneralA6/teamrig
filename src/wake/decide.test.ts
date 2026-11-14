@@ -196,7 +196,7 @@ describe('decideWake', () => {
   it('takes what is there as known at a first check in a tab, keeping the last wake and the settled moments', () => {
     const first = decideWake(input(tasksOf(p1()), undefined));
     assert.deepEqual(first, { verdict: { kind: 'none' }, state: { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: undefined, settled: NO_SETTLED_MOMENTS } });
-    const settled = { dayStart: NOW - 60 * MINUTE, burst: NOW - 120 * MINUTE };
+    const settled = { dayStart: NOW - 60 * MINUTE, burst: NOW - 120 * MINUTE, poke: undefined };
     const moved = decideWake(input(tasksOf(p1()), { ...QUIET, tab: 'old', lastWakeAt: NOW - MINUTE, settled }));
     assert.deepEqual(moved.state, { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: NOW - MINUTE, settled });
     const woke = decideWake(input(tasksOf(p1()), { ...QUIET, settled }, { batchMs: 0 }));
@@ -278,7 +278,7 @@ describe('openedWakeState', () => {
   }
 
   it('knows what could wake the resumed tab now and counts the open as its wake, keeping the settled moments (T1616)', () => {
-    const settled = { dayStart: NOW - 60 * MINUTE, burst: NOW - 120 * MINUTE };
+    const settled = { dayStart: NOW - 60 * MINUTE, burst: NOW - 120 * MINUTE, poke: undefined };
     const previous: WakeState = { tab: TAB, known: ['T7'], pending: { since: NOW - MINUTE, ids: ['T7'] }, lastWakeAt: NOW - 90 * MINUTE, settled };
     const tasks = tasksOf(p1(), testTask({ id: 'T2' }), p1({ id: 'T3', owner: 'bravo' }));
     assert.deepEqual(openedWakeState(opened(tasks, previous)), { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: NOW, settled });

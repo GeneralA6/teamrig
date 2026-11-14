@@ -92,17 +92,17 @@ describe('dueMoments', () => {
   it('names the day start until it is settled, and a burst the session is in from its start until it is settled', () => {
     assert.deepEqual(dueMoments(NOW, SIX, undefined, NO_SETTLED_MOMENTS), [DAY_START]);
     assert.deepEqual(dueMoments(NOW, SIX, BURST, NO_SETTLED_MOMENTS), [DAY_START, BURST_MOMENT]);
-    assert.deepEqual(dueMoments(NOW, SIX, BURST, { dayStart: SIX, burst: BURST.at }), []);
-    assert.deepEqual(dueMoments(NOW, SIX, undefined, { dayStart: SIX - DAY, burst: undefined }), [DAY_START], "yesterday's start settles none of today");
-    assert.deepEqual(dueMoments(NOW, SIX, BURST, { dayStart: SIX, burst: BURST.at - DAY }), [BURST_MOMENT], 'an earlier burst settles none of a new one');
+    assert.deepEqual(dueMoments(NOW, SIX, BURST, { dayStart: SIX, burst: BURST.at, poke: undefined }), []);
+    assert.deepEqual(dueMoments(NOW, SIX, undefined, { dayStart: SIX - DAY, burst: undefined, poke: undefined }), [DAY_START], "yesterday's start settles none of today");
+    assert.deepEqual(dueMoments(NOW, SIX, BURST, { dayStart: SIX, burst: BURST.at - DAY, poke: undefined }), [BURST_MOMENT], 'an earlier burst settles none of a new one');
     assert.deepEqual(dueMoments(BURST.at - 1, undefined, BURST, NO_SETTLED_MOMENTS), [], 'a burst logged ahead of its start');
     assert.deepEqual(dueMoments(NOW, undefined, BURST, NO_SETTLED_MOMENTS), [BURST_MOMENT]);
   });
 
   it('takes a start settled earlier the same UTC day as settled, so a start moved later today wakes no one twice', () => {
     const moved = SIX + HOUR;
-    assert.deepEqual(dueMoments(NOW, moved, undefined, { dayStart: SIX, burst: undefined }), []);
-    assert.deepEqual(dueMoments(NOW, moved, undefined, { dayStart: SIX - DAY + 3 * HOUR, burst: undefined }), [{ kind: 'day-start', at: moved }], "yesterday's later start settles none of today");
+    assert.deepEqual(dueMoments(NOW, moved, undefined, { dayStart: SIX, burst: undefined, poke: undefined }), []);
+    assert.deepEqual(dueMoments(NOW, moved, undefined, { dayStart: SIX - DAY + 3 * HOUR, burst: undefined, poke: undefined }), [{ kind: 'day-start', at: moved }], "yesterday's later start settles none of today");
     assert.deepEqual(dueMoments(SIX - 1, SIX, undefined, NO_SETTLED_MOMENTS), [], 'a start not reached yet');
   });
 });
@@ -171,15 +171,15 @@ describe('decideDayStart', () => {
     const decision = decideDayStart(input({ due: [DAY_START, BURST_MOMENT] }));
     assert.deepEqual(decision, {
       verdict: { kind: 'wake', moments: [DAY_START, BURST_MOMENT], tasks: [testTask()] },
-      settled: { dayStart: SIX, burst: BURST.at },
+      settled: { dayStart: SIX, burst: BURST.at, poke: undefined },
     });
   });
 
   it('settles with no wake a moment the session had a turn after, and wakes it for the rest', () => {
     const between = decideDayStart(input({ due: [DAY_START, BURST_MOMENT], lastTurnAt: SIX + 30 * MINUTE }));
-    assert.deepEqual(between, { verdict: { kind: 'wake', moments: [BURST_MOMENT], tasks: [testTask()] }, settled: { dayStart: SIX, burst: BURST.at } });
+    assert.deepEqual(between, { verdict: { kind: 'wake', moments: [BURST_MOMENT], tasks: [testTask()] }, settled: { dayStart: SIX, burst: BURST.at, poke: undefined } });
     const after = decideDayStart(input({ due: [DAY_START, BURST_MOMENT], lastTurnAt: BURST.at }));
-    assert.deepEqual(after, { verdict: { kind: 'none' }, settled: { dayStart: SIX, burst: BURST.at } });
+    assert.deepEqual(after, { verdict: { kind: 'none' }, settled: { dayStart: SIX, burst: BURST.at, poke: undefined } });
   });
 
   it('keeps the moments due, with no wake, in quiet hours, past the daily budget or with no work it can start', () => {
@@ -191,19 +191,19 @@ describe('decideDayStart', () => {
   it('waits out the gap after the last wake, keeping what it settled', () => {
     const lastWakeAt = NOW - 5 * MINUTE;
     const early = decideDayStart(input({ due: [DAY_START, BURST_MOMENT], lastTurnAt: SIX + 1, lastWakeAt }));
-    assert.deepEqual(early, { verdict: { kind: 'later', at: lastWakeAt + GAP_MS }, settled: { dayStart: SIX, burst: undefined } });
+    assert.deepEqual(early, { verdict: { kind: 'later', at: lastWakeAt + GAP_MS }, settled: { dayStart: SIX, burst: undefined, poke: undefined } });
     assert.equal(decideDayStart(input({ lastWakeAt: NOW - GAP_MS })).verdict.kind, 'wake');
   });
 
   it('keeps the moments due, with no wake, while the login is expired, still settling one the session had a turn after', () => {
     const decision = decideDayStart(input({ due: [DAY_START, BURST_MOMENT], lastTurnAt: SIX + 1, login: { kind: 'expired' } }));
-    assert.deepEqual(decision, { verdict: { kind: 'none' }, settled: { dayStart: SIX, burst: undefined } });
+    assert.deepEqual(decision, { verdict: { kind: 'none' }, settled: { dayStart: SIX, burst: undefined, poke: undefined } });
   });
 
   it("waits for another tab's probe until its recheck, keeping the open moments due", () => {
     const recheckAt = NOW + MINUTE;
     const decision = decideDayStart(input({ due: [DAY_START, BURST_MOMENT], lastTurnAt: SIX + 1, login: { kind: 'probing', recheckAt } }));
-    assert.deepEqual(decision, { verdict: { kind: 'later', at: recheckAt }, settled: { dayStart: SIX, burst: undefined } });
+    assert.deepEqual(decision, { verdict: { kind: 'later', at: recheckAt }, settled: { dayStart: SIX, burst: undefined, poke: undefined } });
     const lastWakeAt = NOW - 5 * MINUTE;
     assert.deepEqual(decideDayStart(input({ lastWakeAt, login: { kind: 'probing', recheckAt } })).verdict, { kind: 'later', at: lastWakeAt + GAP_MS });
   });

@@ -168,9 +168,14 @@ export interface SettledMoments {
   readonly dayStart: number | undefined;
   /** The `at` of the last burst settled. */
   readonly burst: number | undefined;
+  /**
+   * The last rush poke (src/wake/rush-poke.ts), epoch ms: one per idle stretch, so a tab with no turn since is never
+   * poked again. Kept across tabs too: a /clear's first turn is newer, which opens a new stretch all the same.
+   */
+  readonly poke: number | undefined;
 }
 
-export const NO_SETTLED_MOMENTS: SettledMoments = { dayStart: undefined, burst: undefined };
+export const NO_SETTLED_MOMENTS: SettledMoments = { dayStart: undefined, burst: undefined, poke: undefined };
 
 /** What the wake check keeps per session between checks. */
 export interface WakeState {
