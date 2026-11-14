@@ -248,6 +248,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'setup backup': { effect: 'write', flags: ['project'], load: async () => (await setupBackupCommands()).backup },
   'setup restore': { effect: 'write', flags: [], switches: ['yes', 'remove-new'], load: async () => (await setupBackupCommands()).restore },
   'setup scan': { effect: 'read', flags: ['project', 'days', 'max-mb'], switches: [], load: async () => (await setupScanCommand()).scan },
+  'config get': { effect: 'read', flags: [], switches: ['json'], load: async () => (await configCommands()).get },
   'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -731,6 +732,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       1024) MB (one changed within them is not judged), and by Claude Code's /skill-doctor, which also
       counts plugins' skills, and the user's ones used only in other projects; it names the newest setup
       backup, or NO BACKUP; works before a team exists; it only reads
+  config get [<key>] [--json]   every key of the team config, or those at and under <key>: its value
+      against its default, and read-only with why (the roster, an owner gate, a map); --json for a screen
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
