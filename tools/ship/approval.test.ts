@@ -4,7 +4,7 @@ import { EXIT, RefusedError } from '../../src/cli/runtime.ts';
 import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
 import { CliHarness } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { changePatch, clearMerge, mergeClearance, type StandingOf, taskOfBranch } from './approval.ts';
+import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type StandingOf, taskOfBranch } from './approval.ts';
 
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
 
@@ -105,6 +105,14 @@ describe('clearMerge', () => {
     assert.match(reasonOf(await clearMerge(caller, value, 'cli-fix', HEAD, HEAD)), /branch cli-fix names no task/);
     assert.match(reasonOf(await clearMerge({ session: undefined, team: 'app' }, value, 't1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
     assert.match(reasonOf(await clearMerge({ session: 'alpha', team: '' }, value, 't1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
+  });
+
+  it('clearMergeFrom reads the caller and team from the env and the register through the reader', async () => {
+    const kit = await waitingKit(['--note', HEAD]);
+    const env = { TEAMRIG_SESSION: ' alpha ', TEAMRIG_TEAM: 'app' };
+    assert.deepEqual(await clearMergeFrom(env, kit.runtime())('t1-cli', HEAD, HEAD), { kind: 'approved', by: 'lead' });
+    assert.match(reasonOf(await clearMergeFrom({ ...env, TEAMRIG_SESSION: 'stranger' }, kit.runtime())('t1-cli', HEAD, HEAD)), /stranger is not a session on this team/);
+    assert.match(reasonOf(await clearMergeFrom({ TEAMRIG_TEAM: 'app' }, kit.runtime())('t1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
   });
 
   it("refuses with the register's refusal, and lets any other failure through", async () => {

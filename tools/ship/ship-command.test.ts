@@ -31,6 +31,8 @@ function shipDeps(verdict: GateVerdict, mergeExit: number): ShipDeps {
     push: () => 't827-ship-tool',
     merge: () => Promise.resolve({ kind: 'done', code: mergeExit }),
     mainMove: () => null,
+    clearMerge: () => Promise.resolve({ kind: 'approved', by: 'lead' }),
+    patchOf: () => 'patch0',
   };
 }
 

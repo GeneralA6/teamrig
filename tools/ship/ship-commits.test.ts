@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import type { MergeClearance } from './approval.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
 import { DIST, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
 import type { Chunk, ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
 
-const ARGS: ShipArgs = { repo: 'C:/repo', plan: 'plan.json', base: 'origin/main', merge: false, noteFile: null };
+const ARGS: ShipArgs = { repo: 'C:/repo', plan: 'plan.json', base: 'origin/main', merge: false, noteFile: null, approved: null };
 const CHUNKS: readonly Chunk[] = [
   { files: ['src/a.ts'], subject: 'core: a', body: 'why a' },
   { files: ['src/b.ts', 'src/b.test.ts'], subject: 'release: 0.134.0', body: 'raises 0.134.0' },
@@ -27,6 +28,10 @@ interface FakeOptions {
   readonly answers?: Readonly<Record<string, string>>;
   /** What each look at main after failed local checks finds, in turn; the last one repeats; none by default. */
   readonly moves?: readonly (MainMove | null)[];
+  /** What the merge's clearance finds; the lead's approval by default. */
+  readonly clearance?: MergeClearance;
+  /** What each fingerprint of the change finds, in turn; the last one repeats; the same one by default. */
+  readonly patches?: readonly string[];
 }
 
 interface Fake {
@@ -36,11 +41,16 @@ interface Fake {
   readonly logs: string[];
 }
 
+/** The branch and head every fake run has checked out, read by a --merge run's clearance. */
+const HEAD_SHA = '5efae2e918f0a149994f35367b4546c6229e7d3f';
+const BRANCH_ANSWERS: Readonly<Record<string, string>> = { 'rev-parse --abbrev-ref HEAD': 't827-ship-tool\n', 'rev-parse HEAD': `${HEAD_SHA}\n` };
+
 function fake(options: FakeOptions = {}): Fake {
   const events: string[] = [];
   const logs: string[] = [];
   let merges = 0;
   let looks = 0;
+  let patches = 0;
   const step = (event: string): void => {
     events.push(event);
     if (options.failOn !== undefined && event.startsWith(options.failOn)) throw new Error(`${event} failed`);
@@ -51,7 +61,7 @@ function fake(options: FakeOptions = {}): Fake {
     git: (args) => {
       const joined = args.join(' ');
       events.push(`git ${joined}`);
-      const answer = options.answers?.[joined];
+      const answer = options.answers?.[joined] ?? BRANCH_ANSWERS[joined];
       if (answer !== undefined) return answer;
       return args[0] === 'diff' ? (options.numstat ?? '') : 'abc1234 core: a\n';
     },
@@ -81,6 +91,15 @@ function fake(options: FakeOptions = {}): Fake {
       events.push('look at main');
       const moves = options.moves ?? [];
       return moves[looks++] ?? moves.at(-1) ?? null;
+    },
+    clearMerge: (branch, head, approved) => {
+      events.push(`clear ${branch} ${head} ${approved ?? 'none'}`);
+      return Promise.resolve(options.clearance ?? { kind: 'approved', by: 'lead' });
+    },
+    patchOf: (rev) => {
+      events.push(`patch ${rev}`);
+      const found = options.patches ?? [];
+      return found[patches++] ?? found.at(-1) ?? 'patch0';
     },
   };
   return { deps, events, logs };
@@ -188,8 +207,48 @@ test('a tree the gate does not pass is refused before any push, with --merge too
 test('with --merge, pushes the change branch after the gate and returns the merge exit code', async () => {
   const { deps, events, logs } = fake({ mergeExits: [{ kind: 'done', code: 3 }] });
   assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 3);
-  assert.deepEqual(events.slice(-3), ['git log --oneline origin/main..HEAD', 'push', 'merge t827-ship-tool']);
+  assert.deepEqual(events.slice(-4), ['git log --oneline origin/main..HEAD', 'patch HEAD', 'push', 'merge t827-ship-tool']);
   assert.ok(logs.includes('\npushed t827-ship-tool; merging:'));
+});
+
+test('with --merge, clears the merge of the branch at its head and fingerprints its change before anything changes (T2788)', async () => {
+  const { deps, events, logs } = fake();
+  assert.equal(await shipCommits({ ...ARGS, merge: true, approved: '5efae2e91' }, CHUNKS, deps), 0);
+  assert.deepEqual(events.slice(0, 5), [
+    'git rev-parse --abbrev-ref HEAD',
+    'git rev-parse HEAD',
+    `clear t827-ship-tool ${HEAD_SHA} 5efae2e91`,
+    'patch HEAD',
+    'take back 2 chunk(s) since origin/main',
+  ]);
+  assert.ok(logs.includes('merge of t827-ship-tool 5efae2e91: approved by lead'));
+});
+
+test('a refused clearance throws REFUSED before any take back, commit or push', async () => {
+  const { deps, events } = fake({ clearance: { kind: 'refused', reason: 'T827 has no approval of 5efae2e91 by lead' } });
+  await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), /^Error: REFUSED T827 has no approval of 5efae2e91 by lead$/);
+  assert.deepEqual(events, ['git rev-parse --abbrev-ref HEAD', 'git rev-parse HEAD', `clear t827-ship-tool ${HEAD_SHA} none`]);
+});
+
+test("a root team's lead clears itself: no fingerprint, and the merge goes on", async () => {
+  const { deps, events, logs } = fake({ clearance: { kind: 'self' } });
+  assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 0);
+  assert.ok(!events.some((event) => event.startsWith('patch ')));
+  assert.deepEqual(events.slice(-2), ['push', 'merge t827-ship-tool']);
+  assert.ok(logs.includes("merge of t827-ship-tool 5efae2e91: the caller's own, a root team's lead"));
+});
+
+test('a change that differs from the approved one by the push is refused before the push', async () => {
+  const { deps, events } = fake({ patches: ['p1', 'p2'] });
+  await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), /^Error: REFUSED the change differs from the approved head 5efae2e91 outside the version files and dist/);
+  assert.ok(!events.includes('push'));
+  assert.deepEqual(events.filter((event) => event.startsWith('patch ')), ['patch HEAD', 'patch HEAD']);
+});
+
+test('without --merge, nothing is cleared or fingerprinted', async () => {
+  const { deps, events } = fake();
+  await shipCommits(ARGS, CHUNKS, deps);
+  assert.ok(!events.some((event) => event.startsWith('clear ') || event.startsWith('patch ') || event === 'git rev-parse HEAD'));
 });
 
 const TIP = 'fedcba9876543210';

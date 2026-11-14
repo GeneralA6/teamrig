@@ -1,6 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { nodeFiles } from '../../src/core/files.ts';
+import { realSleep } from '../../src/core/lock.ts';
+import { changePatch, clearMergeFrom } from './approval.ts';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { leftoversCommand } from './leftovers.ts';
 import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
@@ -16,7 +20,7 @@ import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 /**
  * The ship tool's command line; what each command does lives in its module.
  * Ships a finished teamrig change from a tested working tree (ship-commits.ts):
- *   node ship.ts <teamrig dir> <plan.json> [base, default origin/main] [--merge [--note-file <path>]]
+ *   node ship.ts <teamrig dir> <plan.json> [base, default origin/main] [--merge [--approved <sha>] [--note-file <path>]]
  * plan.json: { "chunks": [ { "files": ["src/a.ts", ...], "subject": "area: what", "body": "why" } ] }
  *
  * Proves a repo dir's checked-out tree with its local checks (a pass record, else a run that writes one):
@@ -56,6 +60,8 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     push: () => pushOwnBranch(gitLine, profile.main),
     merge: (branch) => mergeBranch([repo, '--head', branch, ...(noteFile === null ? [] : ['--note-file', noteFile])]),
     mainMove: () => mainMovedPast(gitLine, profile.main),
+    clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep) }),
+    patchOf: (rev) => changePatch(git, rev, `refs/remotes/origin/${profile.main}`, profile.regenerated),
   };
 }
 

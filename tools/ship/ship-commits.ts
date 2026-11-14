@@ -1,5 +1,6 @@
 import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
+import type { ClearMerge } from './approval.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
@@ -38,6 +39,16 @@ export interface ShipDeps {
   merge: (branch: string) => Promise<MergeExit>;
   /** main's tip on origin, fetched now, when the branch does not contain it; null when it does (sync.ts). */
   mainMove: () => MainMove | null;
+  /** Whether the caller may merge the branch at its head on the approval it names (approval.ts, T2788). */
+  clearMerge: ClearMerge;
+  /** The fingerprint of what `rev` changes over origin's main, regenerated paths apart (approval.ts `changePatch`). */
+  patchOf: (rev: string) => string;
+}
+
+/** The approved head a --merge run started from, and the fingerprint of its change, which the push must still carry. */
+interface ApprovedChange {
+  readonly head: string;
+  readonly patch: string;
 }
 
 /** How many runs a ship makes in all when main keeps moving past it before it merges (T2696). */
@@ -74,6 +85,9 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  * Ships a finished teamrig change from a tested working tree, all in one run so in one host-lock hold when
  * run inside `teamrig queue` (T629: other ships merge while one waits for the lock, so whatever it settled
  * before the wait goes stale):
+ *   -. with --merge, before anything changes: approval.ts clears the merge of the branch at its head (its task the
+ *      caller's own, and the approval of the caller's leader naming that head, which --approved names too; a root
+ *      team's lead clears itself), and fingerprints the change that head carries (T2788);
  *   0. rerun.ts: a rerun takes back the commits its earlier run made (a failed build or gate, or a first run
  *      without --merge for an approval), so the plan's chunks and raise are uncommitted again (T1017);
  *   1. sync.ts: when origin/main moved past the branch, rebase onto it and set the plan's version raise again
@@ -87,7 +101,8 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  *   5. the local gate (local-gate.ts) on the new HEAD: every local check repos.json lists for the repo that
  *      steps 2 and 4 did not already run on this content (scrub, DCO, the size rule, dist, docs), then a
  *      pass record for the tree, which merge and the pre-push hook reuse;
- *   6. with --merge: push the change branch (push.ts, never main) and merge it (merge.ts).
+ *   6. with --merge: refuse a change that is no longer the approved one, the regenerated version files and dist
+ *      apart, then push the change branch (push.ts, never main) and merge it (merge.ts).
  * Another ship can merge while this one runs its checks (heavy steps share the host), and main then moves past
  * the branch. When that move changed no file this change changes, the version files and the dist aside (every
  * run sets those again), the ship renames the branch `<branch>-N` (a pushed branch is never rewritten, the
@@ -97,9 +112,10 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  * A refusal throws `REFUSED <reason>`; a failed step throws its own error.
  */
 export async function shipCommits(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps): Promise<number> {
-  let stem: string | null = null;
+  let stem: string | null = args.merge ? deps.git(['rev-parse', '--abbrev-ref', 'HEAD']).trim() : null;
+  const approved = stem === null ? null : await clearedChange(args, stem, deps);
   for (let attempt = 1; ; attempt++) {
-    const exit = await shipOnce(args, written, deps);
+    const exit = await shipOnce(args, written, deps, approved);
     if (exit.kind === 'done') return exit.code;
     const tip = exit.tip.slice(0, 7);
     if (attempt === SHIP_ATTEMPTS) throw new Error(`REFUSED main moved past the branch ${SHIP_ATTEMPTS} times during this ship, last to ${tip}: ship again`);
@@ -112,6 +128,22 @@ export async function shipCommits(args: ShipArgs, written: readonly Chunk[], dep
     deps.run('git', ['branch', '-m', next]);
     deps.log(`\nmain moved to ${tip}, touching no file this change touches: shipping again as ${next}`);
   }
+}
+
+/**
+ * The approved change a --merge run of `branch` starts from, read before any step changes the branch; null for a
+ * root team's lead, whom nobody approves. A refused clearance throws `REFUSED <why>`.
+ */
+async function clearedChange(args: ShipArgs, branch: string, deps: ShipDeps): Promise<ApprovedChange | null> {
+  const head = deps.git(['rev-parse', 'HEAD']).trim();
+  const clearance = await deps.clearMerge(branch, head, args.approved);
+  if (clearance.kind === 'refused') throw new Error(`REFUSED ${clearance.reason}`);
+  if (clearance.kind === 'self') {
+    deps.log(`merge of ${branch} ${head.slice(0, 9)}: the caller's own, a root team's lead`);
+    return null;
+  }
+  deps.log(`merge of ${branch} ${head.slice(0, 9)}: approved by ${clearance.by}`);
+  return { head, patch: deps.patchOf('HEAD') };
 }
 
 const pathsOf = (text: string): string[] => text.split('\n').map((line) => line.trim()).filter((line) => line !== '');
@@ -133,7 +165,6 @@ function freeBranch(deps: ShipDeps, stem: string): string {
   }
 }
 
-/** One run of steps 0 to 6. */
 /**
  * Refuses a chunk none of whose files holds an uncommitted change, before any check: its commit would fail only after
  * the typecheck and the coverage run, at `nothing to commit`. The usual one is a version chunk with no raise in the
@@ -149,7 +180,8 @@ function refuseEmptyChunks(deps: ShipDeps, chunks: readonly Chunk[], versionPath
   }
 }
 
-async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps): Promise<MergeExit> {
+/** One run of steps 0 to 6. */
+async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps, approved: ApprovedChange | null): Promise<MergeExit> {
   deps.takeBack(written, args.base);
   const versionPaths = TEAMRIG_VERSION_FILES.map((file) => file.path);
   const chunks = withRaisedVersion(written, versionPaths, deps.sync().sets);
@@ -180,6 +212,9 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
     return { kind: 'moved', ...move };
   }
   if (!args.merge) return { kind: 'done', code: 0 };
+  if (approved !== null && deps.patchOf('HEAD') !== approved.patch) {
+    throw new Error(`REFUSED the change differs from the approved head ${approved.head.slice(0, 9)} outside the version files and dist: ship it without --merge and ask for approval of the new head`);
+  }
 
   const branch = deps.push();
   deps.log(`\npushed ${branch}; merging:`);

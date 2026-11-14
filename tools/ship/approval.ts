@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
+import type { KitReader } from '../../src/cli/kit.ts';
 import { RefusedError } from '../../src/cli/runtime.ts';
-import type { MergeStanding } from '../../src/cli/ship-approval.ts';
+import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
+import { ENV, type Env } from '../../src/core/home.ts';
 import { approvedTaskOf } from '../../src/register/approval.ts';
 
 /**
@@ -92,6 +94,20 @@ export async function clearMerge(caller: MergeCaller, standingOf: StandingOf, br
     throw error;
   }
   return mergeClearance(standing, taskId, head, approved);
+}
+
+/** The clearance of a merge of `branch` at `head`, on the approved sha the caller names (`--approved`) or null. */
+export type ClearMerge = (branch: string, head: string, approved: string | null) => Promise<MergeClearance>;
+
+/**
+ * `clearMerge` for the session and team `env` names (`$TEAMRIG_SESSION`, `$TEAMRIG_TEAM`), reading the register
+ * through `reader`. The env is the caller's own claim, so this stops a mistaken or stale merge, not a session that
+ * lies about who it is: the guard stays the trust boundary.
+ */
+export function clearMergeFrom(env: Env, reader: KitReader): ClearMerge {
+  const caller = { session: env[ENV.session]?.trim(), team: env[ENV.team]?.trim() };
+  const standingOf: StandingOf = (team, session, taskId) => mergeStandingOf(reader, team, session, taskId);
+  return (branch, head, approved) => clearMerge(caller, standingOf, branch, head, approved);
 }
 
 /** Runs git in the repo and returns its stdout; throws when git fails. */

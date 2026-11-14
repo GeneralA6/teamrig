@@ -1,5 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
+import { nodeFiles } from '../../src/core/files.ts';
+import { realSleep } from '../../src/core/lock.ts';
+import { type ClearMerge, clearMergeFrom } from './approval.ts';
 import { type CheckOutcome, type Gh, type RequiredChecks, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
 import { type MergeOutcome, type PullRequest, findOpenPull, openPull, rebaseMerge } from './pulls.ts';
@@ -7,6 +10,7 @@ import { type MergedHead, pullsOfHead, sweepAfterMerge } from './leftovers.ts';
 import { type GateDeps, proveTree, realGateDeps } from './local-gate.ts';
 import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers.ts';
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
+import { APPROVED_SHA } from './ship-plan.ts';
 import { describeCredential } from './token-check.ts';
 
 /**
@@ -302,13 +306,15 @@ export interface MergeArgs {
   intervalS: number;
   /** A Markdown file whose text opens the body of a pull request the merge opens (a gap, a follow-up); null for none. */
   noteFile: string | null;
+  /** The head sha the caller's approver approved (T2788); a merge of any other head is refused. */
+  approved: string | null;
 }
 
 export function parseArgs(argv: readonly string[]): MergeArgs {
-  const usage = 'usage: ship.ts merge <repo dir> [--head <branch>] [--timeout-min <n>] [--interval-s <n>] [--note-file <path>]';
+  const usage = 'usage: ship.ts merge <repo dir> [--head <branch>] [--approved <sha>] [--timeout-min <n>] [--interval-s <n>] [--note-file <path>]';
   const [dir, ...rest] = argv;
   if (dir === undefined || dir.startsWith('--')) throw new Error(usage);
-  const parsed: MergeArgs = { dir, head: null, timeoutMin: 45, intervalS: 30, noteFile: null };
+  const parsed: MergeArgs = { dir, head: null, timeoutMin: 45, intervalS: 30, noteFile: null, approved: null };
   for (let i = 0; i < rest.length; i += 2) {
     const [flag, value] = [rest[i], rest[i + 1]];
     if (value === undefined) throw new Error(`${flag ?? ''} needs a value`);
@@ -316,6 +322,7 @@ export function parseArgs(argv: readonly string[]): MergeArgs {
     else if (flag === '--timeout-min' && /^\d+$/.test(value) && Number(value) > 0) parsed.timeoutMin = Number(value);
     else if (flag === '--interval-s' && /^\d+$/.test(value) && Number(value) > 0) parsed.intervalS = Number(value);
     else if (flag === '--note-file' && !value.startsWith('--')) parsed.noteFile = value;
+    else if (flag === '--approved' && APPROVED_SHA.test(value)) parsed.approved = value;
     else throw new Error(`${usage} (got ${flag} ${value})`);
   }
   return parsed;
@@ -344,6 +351,8 @@ export interface MergeDeps {
   renamedCallers: (base: string, tip: string, repo: string) => string | null;
   /** After a head merged: deletes it, its task's leftovers and the closed heads on origin, and names the rest (leftovers.ts); never throws. */
   sweep: (merged: MergedHead, profile: RepoProfile, gh: Gh) => void;
+  /** Whether the caller may merge the branch at its head on the approval it names (approval.ts, T2788). */
+  clearMerge: ClearMerge;
   out: (line: string) => void;
   err: (line: string) => void;
 }
@@ -360,16 +369,35 @@ export type MergeExit = { kind: 'done'; code: number } | ({ kind: 'moved' } & Ma
 
 const done = (code: number): MergeExit => ({ kind: 'done', code });
 
+/**
+ * Why the merge of `head` at `sha` may not go on, or null when it may. Checked once the head is pushed, before any
+ * credential is read or pull request opened.
+ */
+export type MergeGate = (head: string, sha: string) => Promise<string | null>;
+
+/** The gate of a ship's own merge: the ship cleared the head and checked its change before it pushed (ship-commits.ts). */
+const CLEARED_BY_SHIP: MergeGate = () => Promise.resolve(null);
+
+/** The gate of `ship.ts merge`: the caller's clearance of the head on the approval `args` names. */
+function approvalGate(args: MergeArgs, deps: MergeDeps): MergeGate {
+  return async (head, sha) => {
+    const clearance = await deps.clearMerge(head, sha, args.approved);
+    if (clearance.kind === 'refused') return clearance.reason;
+    deps.out(clearance.kind === 'self' ? `merge of ${head} ${sha.slice(0, 9)}: the caller's own, a root team's lead` : `merge of ${head} ${sha.slice(0, 9)}: approved by ${clearance.by}`);
+    return null;
+  };
+}
+
 /** `ship.ts merge` as a run: a move of main comes back unsaid, so a ship can rebase and go again (T2696). */
 export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number> {
-  const exit = await mergeRun(args, deps);
+  const exit = await mergeRun(args, deps, approvalGate(args, deps));
   if (exit.kind === 'done') return exit.code;
   deps.err(`REFUSED ${exit.reason}`);
   return 1;
 }
 
 /** The merge itself; prints every outcome but a move of main past the head, which it returns to the caller. */
-export async function mergeRun(args: MergeArgs, deps: MergeDeps): Promise<MergeExit> {
+export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate): Promise<MergeExit> {
   const { git } = deps;
   const repo = slugOf(git('remote', 'get-url', 'origin'));
   const profile = profileFor(deps.profiles, repo);
@@ -382,6 +410,11 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps): Promise<MergeE
   if (subjects.length === 0) throw new Error(`${head} has nothing that ${profile.main} lacks`);
   const note = args.noteFile === null ? null : deps.gate.readText(args.noteFile);
   if (args.noteFile !== null && note === null) throw new Error(`--note-file ${args.noteFile}: no such file`);
+  const unapproved = await gate(head, sha);
+  if (unapproved !== null) {
+    deps.err(`REFUSED ${unapproved}`);
+    return done(1);
+  }
   const callers = deps.renamedCallers(`refs/remotes/origin/${profile.main}`, sha, repo);
   if (callers !== null) {
     deps.err(`REFUSED ${callers}`);
@@ -434,6 +467,7 @@ export function realMergeDeps(dir: string): MergeDeps {
     gate: realGateDeps(dir, out),
     renamedCallers: (base, tip, repo) => renamedCallersRefusal({ base, tip, repo }, { env: process.env, userHome: homedir() }, realRenamedCallersDeps(dir, out)),
     sweep: (merged, profile, gh) => sweepAfterMerge(merged, profile, { git, pullsOf: pullsOfHead(gh, merged.repo), out, err }),
+    clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep) }),
     out,
     err,
   };
@@ -460,5 +494,5 @@ export function mergeCommand(argv: readonly string[], depsFor: (dir: string) => 
 
 /** The merge a ship runs (ship.ts): like `mergeCommand`, but a move of main past the branch comes back to the ship. */
 export function mergeBranch(argv: readonly string[], depsFor: (dir: string) => MergeDeps = realMergeDeps): Promise<MergeExit> {
-  return fromArgv(argv, depsFor, mergeRun, done(1));
+  return fromArgv(argv, depsFor, (args, deps) => mergeRun(args, deps, CLEARED_BY_SHIP), done(1));
 }

@@ -19,15 +19,24 @@ export interface ShipArgs {
   readonly merge: boolean;
   /** A Markdown file whose text opens the body of the pull request --merge opens; null for none. */
   readonly noteFile: string | null;
+  /**
+   * The head sha the caller's approver approved (T2788): --merge refuses a branch whose head it does not name, or
+   * whose change differs from that head's; null when none was named, which only a root team's lead may merge on.
+   */
+  readonly approved: string | null;
 }
 
 export const SHIP_USAGE =
-  'usage: ship.ts <teamrig dir> <plan.json> [base] [--merge [--note-file <path>]] | ship.ts check <repo dir> | ship.ts merge <repo dir> ... | ship.ts leftovers <repo dir>';
+  'usage: ship.ts <teamrig dir> <plan.json> [base] [--merge [--approved <sha>] [--note-file <path>]] | ship.ts check <repo dir> | ship.ts merge <repo dir> ... | ship.ts leftovers <repo dir>';
+
+/** A commit sha, short or full, as --approved names it. */
+export const APPROVED_SHA = /^[0-9a-f]{7,40}$/;
 
 export function parseShipArgs(argv: readonly string[]): ShipArgs {
   const positional: string[] = [];
   let merge = false;
   let noteFile: string | null = null;
+  let approved: string | null = null;
   const rest = [...argv];
   for (let arg = rest.shift(); arg !== undefined; arg = rest.shift()) {
     if (arg === '--merge') merge = true;
@@ -35,13 +44,18 @@ export function parseShipArgs(argv: readonly string[]): ShipArgs {
       const value = rest.shift();
       if (value === undefined || value.startsWith('--')) throw new Error(`--note-file needs a path; ${SHIP_USAGE}`);
       noteFile = value;
+    } else if (arg === '--approved') {
+      const value = rest.shift();
+      if (value === undefined || !APPROVED_SHA.test(value)) throw new Error(`--approved needs the approved head's sha; ${SHIP_USAGE}`);
+      approved = value;
     } else if (arg.startsWith('--')) throw new Error(`${SHIP_USAGE} (got ${arg})`);
     else positional.push(arg);
   }
   const [repo, plan, base = 'origin/main', ...extra] = positional;
   if (repo === undefined || plan === undefined || extra.length > 0) throw new Error(SHIP_USAGE);
   if (noteFile !== null && !merge) throw new Error('--note-file opens the pull request that --merge opens: pass --merge too');
-  return { repo, plan, base, merge, noteFile };
+  if (approved !== null && !merge) throw new Error('--approved clears the merge that --merge runs: pass --merge too');
+  return { repo, plan, base, merge, noteFile, approved };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
