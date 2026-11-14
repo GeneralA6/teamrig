@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { LeadTree } from '../config/lead-tree.ts';
 import type { DeliveryConfig, DeliveryRepoConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FOCUS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_DELIVERY_WAIT, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
+import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FOCUS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_DELIVERY_WAIT, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS, DEFAULT_BRANCHES } from '../config/defaults.ts';
 import { HostLock } from '../delivery/host-lock.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
@@ -121,6 +121,7 @@ class World {
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
       freezes: DEFAULT_FREEZES,
       stablePeriods: DEFAULT_STABLE_PERIODS,
+      branches: DEFAULT_BRANCHES,
       repos: options.repos ?? {},
     };
     this.setup = {

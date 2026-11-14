@@ -1,4 +1,5 @@
 import type { TaskStatus } from '../register/model.ts';
+import type { ItemType } from '../register/events.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 import type { AdmissionMode } from '../delivery/admission.ts';
 import type { NeedKind } from '../tabs/need-kind.ts';
@@ -1088,8 +1089,27 @@ export interface DeliveryConfig {
   readonly checkTimeoutSeconds: number;
   readonly freezes: FreezesConfig;
   readonly stablePeriods: StablePeriodsConfig;
+  readonly branches: BranchesConfig;
   /** By name, such as `api`. */
   readonly repos: Readonly<Record<string, DeliveryRepoConfig>>;
+}
+
+/**
+ * How `teamrig worktree add --task` names a new branch, and so its worktree folder (src/worktree/branch-name.ts,
+ * T2690): a pattern of `{type}`, `{id}`, `{issue}`, `{slug}` and `{session}`, `{id}` starting a part so the branch
+ * tells whose it is. Branches made before, or named by hand, keep their names.
+ */
+export interface BranchesConfig {
+  /** The pattern for every branch type without its own, such as `{type}/{id}-{slug}` (`feat/t12-parser`). */
+  readonly pattern: string;
+  /** Per branch type, such as `release`, its own pattern in place of `pattern`. */
+  readonly typePatterns: Readonly<Record<string, string>>;
+  /** Per item type (`task`, `bug`), the branch type its branch takes. */
+  readonly itemTypes: { readonly [T in ItemType]: string };
+  /** Per work class, the branch type its tasks' branches take, in place of their item type's. */
+  readonly classes: Readonly<Record<string, string>>;
+  /** The slug, made from the task's title, is cut at a word to at most this many characters. */
+  readonly slugMax: number;
 }
 
 export interface AlertsConfig {

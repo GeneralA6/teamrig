@@ -6,6 +6,8 @@ import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from '../core
 import { isMinuteInSpan, parseUtcDeadline, utcMinuteOf } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, REVIEW_STATUSES, SESSION_NAME, TASK_STATUSES, WORK_CLASS_NAME, type TaskStatus } from '../register/model.ts';
+import { isItemType, ITEM_TYPES, type ItemType } from '../register/events.ts';
+import { branchPatternProblem, isBranchType } from '../worktree/branch-name.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
@@ -54,6 +56,7 @@ import {
   DEFAULT_TESTS,
   DEFAULT_WAKE,
   DEFAULT_STABLE_PERIODS,
+  DEFAULT_BRANCHES,
   DEFAULT_MEETING,
   QUEUE_TTL_MARGIN_MINUTES,
 } from './defaults.ts';
@@ -143,6 +146,7 @@ import {
   type BudgetLiftConfig,
   type BudgetReset,
   type BurstConfig,
+  type BranchesConfig,
   type DeliveryConfig,
   type DeliveryRepoConfig,
   type QueueConfig,
@@ -808,8 +812,56 @@ function parseDelivery(read: ConfigReader, raw: JsonRecord): DeliveryConfig {
     checkTimeoutSeconds: read.integer(raw, 'checkTimeoutSeconds', path, DEFAULT_CHECK_TIMEOUT_SECONDS, CONFIG_LIMITS.checkTimeoutSeconds),
     freezes: { maxMinutes: read.integer(freezes, 'maxMinutes', `${path}.freezes`, DEFAULT_FREEZES.maxMinutes, CONFIG_LIMITS.freezeMaxMinutes) },
     stablePeriods: parseStablePeriods(read, read.section(raw, 'stablePeriods', path), deployTargetsOf(repos)),
+    branches: parseBranches(read, read.section(raw, 'branches', path)),
     repos,
   };
+}
+
+const isBranchPattern: Check<string> = (pattern) => branchPatternProblem(pattern);
+const isBranchTypeText: Check<string> = (type) => (isBranchType(type) ? undefined : 'expected a branch type: a lowercase letter, then lowercase letters and digits');
+
+/**
+ * `delivery.branches` (T2690). A bad pattern, slug cap or branch type is reported and its default kept; an entry keyed
+ * by no branch type, item type or work class name is reported and left out. The item types merge over the defaults,
+ * so naming `bug` alone keeps a task's `feat`.
+ */
+function parseBranches(read: ConfigReader, raw: JsonRecord): BranchesConfig {
+  const path = 'delivery.branches';
+  const typePatterns = parseBranchMap(read, read.section(raw, 'typePatterns', path), `${path}.typePatterns`, isBranchTypeText, isBranchPattern);
+  const itemTypes: { [T in ItemType]: string } = { ...DEFAULT_BRANCHES.itemTypes };
+  for (const [itemType, value] of Object.entries(read.section(raw, 'itemTypes', path))) {
+    const itemPath = `${path}.itemTypes.${itemType}`;
+    if (!isItemType(itemType)) {
+      read.report(itemPath, `is no item type (${ITEM_TYPES.join(', ')})`);
+      continue;
+    }
+    itemTypes[itemType] = read.stringItem(value, itemPath, isBranchTypeText) ?? itemTypes[itemType];
+  }
+  return {
+    pattern: read.string(raw, 'pattern', path, DEFAULT_BRANCHES.pattern, isBranchPattern),
+    typePatterns,
+    itemTypes,
+    classes: parseBranchMap(read, read.section(raw, 'classes', path), `${path}.classes`, isWorkClassName, isBranchTypeText),
+    slugMax: read.integer(raw, 'slugMax', path, DEFAULT_BRANCHES.slugMax, CONFIG_LIMITS.branchSlugMax),
+  };
+}
+
+/** A map of string values, each key and value checked; a bad entry is reported and left out. */
+function parseBranchMap(read: ConfigReader, raw: JsonRecord, path: string, keyCheck: Check<string>, valueCheck: Check<string>): Record<string, string> {
+  const entries: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const itemPath = `${path}.${key}`;
+    const badKey = keyCheck(key);
+    if (badKey !== undefined) {
+      read.report(itemPath, badKey);
+      continue;
+    }
+    const checked = read.stringItem(value, itemPath, valueCheck);
+    if (checked !== undefined) {
+      entries[key] = checked;
+    }
+  }
+  return entries;
 }
 
 /** When a deploy target's measurement is clean; a settle time for a target no repository deploys, or out of bounds, is reported and left out. */

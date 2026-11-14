@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { DeliveryConfig, DeliveryRepoConfig, DeployConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_FOCUS, DEFAULT_FREEZES, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
+import { DEFAULT_FOCUS, DEFAULT_FREEZES, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS, DEFAULT_BRANCHES } from '../config/defaults.ts';
 import { HostLock } from '../delivery/host-lock.ts';
 import type { DeliveryPlaces } from '../delivery/places.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
@@ -87,6 +87,7 @@ class World {
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
       freezes: DEFAULT_FREEZES,
       stablePeriods: DEFAULT_STABLE_PERIODS,
+      branches: DEFAULT_BRANCHES,
       repos: { pipeline: PIPELINE },
     };
   }

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_FREEZES, DEFAULT_COMMITS, DEFAULT_FOCUS, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_MEETING, DEFAULT_BRANCHES } from './defaults.ts';
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from './migrate.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION, type AccountBudget, type BudgetConfig } from './types.ts';
@@ -37,6 +37,7 @@ describe('parseConfig', () => {
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },
       stablePeriods: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
+      branches: DEFAULT_BRANCHES,
       repos: {},
     });
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
@@ -570,7 +571,49 @@ describe('parseConfig', () => {
     };
     const { config, issues } = parseConfig({ ...ROSTER, delivery });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.delivery, { ...delivery, schedule: {}, repos: {} });
+    assert.deepEqual(config.delivery, { ...delivery, schedule: {}, branches: DEFAULT_BRANCHES, repos: {} });
+  });
+
+  it('names new branches by Conventional Branch when delivery.branches is absent (T2690)', () => {
+    const { config } = parseConfig(ROSTER);
+    assert.deepEqual(config.delivery.branches, { pattern: '{type}/{id}-{slug}', typePatterns: {}, itemTypes: { task: 'feat', bug: 'fix' }, classes: {}, slugMax: 40 });
+  });
+
+  it("keeps the team's branch pattern, per-type patterns, type maps and slug cap, item types over the defaults", () => {
+    const branches = {
+      pattern: '{session}/{id}-{slug}',
+      typePatterns: { release: 'release/{id}', docs: 'docs/{id}-{slug}' },
+      itemTypes: { bug: 'bugfix' },
+      classes: { Improvements: 'chore', 'Tech debt': 'refactor' },
+      slugMax: 24,
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { branches } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.delivery.branches, { ...branches, itemTypes: { task: 'feat', bug: 'bugfix' } });
+  });
+
+  it('reports a bad branch pattern, type, key or slug cap, keeping each default', () => {
+    const branches = {
+      pattern: '{type}/{slug}',
+      typePatterns: { Release: 'release/{id}', hotfix: 'hotfix/{name}', docs: 'docs/{id}-{slug}' },
+      itemTypes: { epic: 'feat', task: 'Feat', bug: 'fix' },
+      classes: { '9lives': 'chore', Improvements: 'chore/x', Roadmap: 'feat' },
+      slugMax: 7,
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { branches } });
+    assert.deepEqual(paths(issues).sort(), [
+      'delivery.branches.classes.9lives',
+      'delivery.branches.classes.Improvements',
+      'delivery.branches.itemTypes.epic',
+      'delivery.branches.itemTypes.task',
+      'delivery.branches.pattern',
+      'delivery.branches.slugMax',
+      'delivery.branches.typePatterns.Release',
+      'delivery.branches.typePatterns.hotfix',
+    ]);
+    assert.match(issues.find((issue) => issue.path === 'delivery.branches.pattern')?.message ?? '', /needs \{id\} exactly once/);
+    assert.match(issues.find((issue) => issue.path === 'delivery.branches.itemTypes.epic')?.message ?? '', /is no item type \(task, bug\)/);
+    assert.deepEqual(config.delivery.branches, { ...DEFAULT_BRANCHES, typePatterns: { docs: 'docs/{id}-{slug}' }, classes: { Roadmap: 'feat' } });
   });
 
   it('cuts a queued step longer than its lock less 10 minutes to fit, and says so', () => {
@@ -830,6 +873,7 @@ describe('parseConfig', () => {
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },
       stablePeriods: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
+      branches: DEFAULT_BRANCHES,
       repos: {},
     });
   });

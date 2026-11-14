@@ -920,6 +920,55 @@
             }
           }
         },
+        "branches": {
+          "description": "How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. Branches made before, or named by hand, keep their names.",
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "description": "The pattern for every branch type without its own: the default gives Conventional Branch names such as feat/t12-parser.",
+              "type": "string",
+              "default": "{type}/{id}-{slug}"
+            },
+            "typePatterns": {
+              "description": "Per branch type, such as release, its own pattern in place of pattern.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "itemTypes": {
+              "description": "Per item type, the branch type its branch takes; an item type left out keeps its default (task: feat, bug: fix).",
+              "type": "object",
+              "properties": {
+                "task": {
+                  "description": "The branch type of a task's branch.",
+                  "type": "string",
+                  "default": "feat"
+                },
+                "bug": {
+                  "description": "The branch type of a bug's branch.",
+                  "type": "string",
+                  "default": "fix"
+                }
+              },
+              "additionalProperties": false
+            },
+            "classes": {
+              "description": "Per work class (focus.classes), the branch type its tasks' branches take, in place of their item type's, such as chore for Improvements.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "slugMax": {
+              "description": "The slug, made from the task's title (lowercase words joined by -, task ids left out), is cut at a word to at most this many characters.",
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 100,
+              "default": 40
+            }
+          }
+        },
         "wait": {
           "description": "How a delivery step waits.",
           "type": "object",

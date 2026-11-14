@@ -226,6 +226,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   deliveryWaitMaxMinutes: 'delivery.wait.maxMinutes',
   checkTimeoutSeconds: 'delivery.checkTimeoutSeconds',
   freezeMaxMinutes: 'delivery.freezes.maxMinutes',
+  branchSlugMax: 'delivery.branches.slugMax',
   settleMinutes: 'delivery.stablePeriods.settleMinutes',
   assumedDeployMinutes: 'delivery.stablePeriods.assumedDeployMinutes',
   stablePeriodMinMinutes: 'delivery.stablePeriods.minMinutes',

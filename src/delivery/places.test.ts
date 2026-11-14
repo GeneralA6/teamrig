@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_DELIVERY_WAIT, DEFAULT_FREEZES, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS } from '../config/defaults.ts';
+import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_DELIVERY_WAIT, DEFAULT_FREEZES, DEFAULT_QUEUE, DEFAULT_STABLE_PERIODS, DEFAULT_BRANCHES } from '../config/defaults.ts';
 import type { DeliveryConfig } from '../config/types.ts';
 import { teamPaths } from '../core/home.ts';
 import { PIPELINE_FREEZES_FILE, PIPELINE_FREEZES_LOCK_FILE } from './pipeline-freezes.ts';
@@ -43,6 +43,7 @@ const CONFIG: DeliveryConfig = {
   checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
   freezes: DEFAULT_FREEZES,
   stablePeriods: DEFAULT_STABLE_PERIODS,
+  branches: DEFAULT_BRANCHES,
   repos: {},
 };
 

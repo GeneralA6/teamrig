@@ -330,6 +330,7 @@ The delivery flow: teamrig queue runs one queued step on the host at a time, und
 | `checkTimeoutSeconds` | integer (1 to 600) | `20` | A deploy's check still running after this many seconds is stopped, and the deploy waits. |
 | `freezes` | [object](#deliveryfreezes) |  | Deploy freezes (teamrig freeze), which hold deploys of their targets while a session measures them. |
 | `stablePeriods` | [object](#deliverystableperiods) |  | teamrig stable-periods: when a measurement of a deploy target is clean, between the deploys and queued steps that disturb it. |
+| `branches` | [object](#deliverybranches) |  | How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. Branches made before, or named by hand, keep their names. |
 | `wait` | [object](#deliverywait) |  | How a delivery step waits. |
 | `schedule` | [object](#deliveryschedule) |  | When queued steps and deploys may start on the host. |
 
@@ -421,6 +422,27 @@ teamrig stable-periods: when a measurement of a deploy target is clean, between 
 | `targetSettleMinutes` | map from string to integer (0 to 1440) |  | Per deploy target, its own settle minutes in place of settleMinutes; each a target some repository deploys. |
 | `assumedDeployMinutes` | integer (0 to 1440) | `20` | How long a deploy is taken to have run before its ledger.md line when the ledger has no record of its start. |
 | `minMinutes` | integer (1 to 1440) | `15` | The shortest stable period worth listing. |
+
+## `delivery.branches`
+
+How teamrig worktree add --task names a new branch, and so its worktree folder: a pattern of {type}, {id}, {issue}, {slug} and {session}, with {id} (t12) starting the pattern or following a /, so the branch tells whose it is. Branches made before, or named by hand, keep their names.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `pattern` | string | `"{type}/{id}-{slug}"` | The pattern for every branch type without its own: the default gives Conventional Branch names such as feat/t12-parser. |
+| `typePatterns` | map from string to string |  | Per branch type, such as release, its own pattern in place of pattern. |
+| `itemTypes` | [object](#deliverybranchesitemtypes) |  | Per item type, the branch type its branch takes; an item type left out keeps its default (task: feat, bug: fix). |
+| `classes` | map from string to string |  | Per work class (focus.classes), the branch type its tasks' branches take, in place of their item type's, such as chore for Improvements. |
+| `slugMax` | integer (8 to 100) | `40` | The slug, made from the task's title (lowercase words joined by -, task ids left out), is cut at a word to at most this many characters. |
+
+## `delivery.branches.itemTypes`
+
+Per item type, the branch type its branch takes; an item type left out keeps its default (task: feat, bug: fix).
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `task` | string | `"feat"` | The branch type of a task's branch. |
+| `bug` | string | `"fix"` | The branch type of a bug's branch. |
 
 ## `delivery.wait`
 
