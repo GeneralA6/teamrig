@@ -37,7 +37,7 @@ export class GoalStore {
             if (reason !== undefined) {
                 return { kind: 'refused', reason };
             }
-            const record = { type: 'goal-set', ...writer, tag: input.tag, target: input.target, title: input.title, note: input.note };
+            const record = { type: 'goal-set', ...writer, tag: input.tag, target: input.target, title: input.title, slice: input.slice, note: input.note };
             return this.append(record);
         });
     }

@@ -26,10 +26,10 @@ export const GITHUB_ACTOR = 'github';
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
 /**
  * Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size
- * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, and its
- * work class, as leaders triage the class of their sessions' tasks (T2076).
+ * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, its
+ * work class, as leaders triage the class of their sessions' tasks (T2076), and the goal slice it prepares (T2453).
  */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'];
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass', 'prepares'];
 /**
  * Fields the lead may change on a task whose owner is no session of the team any more (a retired hire, a session that
  * left at a team split): the LEAD_FIELDS and its ref, which no session of the team could keep true otherwise, such as
@@ -139,6 +139,8 @@ export class RegisterPolicy {
             critical: input.critical ?? false,
             pin: null,
             workClass: input.workClass ?? null,
+            // A lead marks what a task prepares with `update` once it exists, where the policy knows who marks it.
+            prepares: null,
         };
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
@@ -214,7 +216,7 @@ export class RegisterPolicy {
         }
         // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
         const { focus } = this.config;
-        const wip = wipHold({ ...input, task }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+        const wip = wipHold({ ...input, task, goals: context.goals }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
         if (wip !== undefined && focus.wip.mode === 'refuse') {
             return refuse(wip);
         }
@@ -810,8 +812,10 @@ export class RegisterPolicy {
             return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
         }
         const pinned = changes.pin === undefined ? undefined : this.pinProblem(task.id, changes.owner ?? task.owner, caller, changes.pin);
-        if (pinned !== undefined) {
-            return refuse(pinned);
+        const prepared = changes.prepares === undefined ? undefined : this.prepProblem(task.id, changes.owner ?? task.owner, caller, changes.prepares, goalTags);
+        const marked = pinned ?? prepared;
+        if (marked !== undefined) {
+            return refuse(marked);
         }
         if (caller !== task.owner) {
             const problem = this.leaderUpdateProblem(task, caller, names, changes);
@@ -879,6 +883,19 @@ export class RegisterPolicy {
         return pin === null || pin === caller ? undefined : `a pin names the session that sets it (${caller}), not ${pin}`;
     }
     /**
+     * Why `caller` may not set or clear the prep marker of task `id` (T2453), or undefined when it may: the marker lets a
+     * design for a ranked goal's near slice past the slice cap, so only a lead sets it (the lead, or a sub-lead over the
+     * task's `owner`), never the owner itself unless it is the lead, so a build cannot ride it. A marker names one of
+     * `goalTags`, the goal records of the team and the teams above it, whatever register.goals says: a marker on no goal
+     * would only ever lapse.
+     */
+    prepProblem(id, owner, caller, prepares, goalTags) {
+        if (caller !== this.tree.lead && !this.tree.leads(caller, owner)) {
+            return `only ${this.approversText(owner)} marks what ${id} prepares: the marker lets a design run outside the slice cap`;
+        }
+        return prepares === null || goalTags.has(prepares.goal) ? undefined : `goal ${prepares.goal} is not a goal record of the team or a team above: teamrig goal list lists them`;
+    }
+    /**
      * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
      * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS (the lead the LEFT_OWNER_LEAD_FIELDS on a
      * task whose owner left the team, or when it points a task holding no issue ref at an issue: gh migrate opens an
@@ -911,7 +928,7 @@ export class RegisterPolicy {
      * does not apply.
      */
     importAdd(input, state) {
-        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
         const holder = [...state.tasks.values()].find((task) => task.ref === input.ref);
         if (holder !== undefined) {
             return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -1043,8 +1060,8 @@ export class RegisterPolicy {
 /** The texts whose length is judged against their own limit, not `maxText`. */
 const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass } = task;
-    return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass };
+    const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, prepares } = task;
+    return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, prepares };
 }
 /** An update naming goals for a task said to serve none also clears that mark, which a task with goals cannot hold. */
 function clearNoGoal(task, changes) {
