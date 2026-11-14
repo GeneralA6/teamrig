@@ -1248,9 +1248,12 @@ Flags:
   dropped one as not planned. It plans against the issues as GitHub lists them now, so a label someone changed by
   hand is set back and a run that stopped half way is planned again whole. It never reopens an issue a person
   closed: a `KEPT` line names it, and an `UNLISTED` line an active task's issue that is not open on GitHub. A run
-  sends at most 40 writes (half GitHub's limit of 80 a minute) and leaves the rest for the next. This version only
-  plans: it reads the issues and writes nothing, and refuses `--yes` and `--auto`. When a team task and an imported
-  one hold the same issue, the team task speaks for it.
+  sends at most 40 writes (half GitHub's limit of 80 a minute) and leaves the rest for the next. On its own it only
+  plans: it reads the issues and writes nothing. With `--yes` a session on the team sends the plan, a `SET` line for
+  each change and a `PUSHED` line with the counts. A change that adds a `status:` label the repository lacks is held,
+  with a `MISSING` line, until someone makes the label, since adding it would make a new one. The first failed write
+  stops that repository, and the next run plans it again from GitHub as it is. It refuses `--auto`. When a team task
+  and an imported one hold the same issue, the team task speaks for it.
 
 Example:
 

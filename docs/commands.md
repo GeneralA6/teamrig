@@ -350,12 +350,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before
-  issue sync --push [--repo <owner/name>]   plans the other way: for each issue a task holds (ref gh:),
-      the writes that make it show the task's status: active tasks one label (open status:triaged,
+  issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
+      gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
       status: label taken off; done closes it as completed, dropped as not planned; never reopens an
-      issue a person closed, and names it; at most 40 writes a run; this version
-      only plans: it reads and writes nothing
+      issue a person closed, and names it; at most 40 writes a run; without --yes it writes nothing;
+      --yes sends them, a repository stopping at its first failed write, a change adding a status label
+      the repository lacks held until it is made
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
       from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
       title, body} with its public wording, or {id, decision "local", reason}; without --yes writes

@@ -256,8 +256,9 @@ not a token.
 ## Showing each task's status on its issue
 
 `teamrig issue sync --push` plans the other way: for each issue a task holds (its ref `gh:owner/name#number`), what
-makes the issue show the task's status. This version only plans: it reads the issues, like the sync, and writes
-nothing.
+makes the issue show the task's status. On its own it only plans: it reads the issues, like the sync, and writes
+nothing. With `--yes` it sends the plan: each change gets a `SET` line, and a final `PUSHED` line counts the
+changes and writes.
 
 ```text
 ACCESS acme: read with the token saved as teamrig-gh-acme
