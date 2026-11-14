@@ -17,8 +17,12 @@ const TOKEN_SEGMENT = /^(?=[\w-]*\d)(?=[\w-]*[A-Za-z])[\w-]{16,}$/;
 const NUMBER = /^\d+(?:\.\d+)?$/;
 /** A path to the secret, not the secret: `KEY_FILE=/a/b.pem`, `C:\k.pem`, `~/.ssh/id`, `./key`. */
 const PATH = /^(?:[A-Za-z]:)?[\\/~.]/;
-/** One plain lower-case word: a mode or a kind (`AUTH_MODE=oauth`, `TOKEN_TYPE=bearer`). */
-const PLAIN_WORD = /^[a-z]+$/;
+/**
+ * One plain word, lower-case or with one leading capital: a mode, a kind or a role (`AUTH_MODE=oauth`,
+ * `TOKEN_TYPE=bearer`, a role setting holding `Viewer`). The capital adds one bit to a word that already passed, so a
+ * guessable word stays as weak as before (T2399: a Title-case role in a pod env listing filed a rotate task).
+ */
+const PLAIN_WORD = /^[A-Z]?[a-z]+$/;
 /** Git's own variable for a setting's name; the setting's value sits in `GIT_CONFIG_VALUE_<n>`. */
 const GIT_CONFIG_KEY = /^GIT_CONFIG_KEY_\d+$/;
 /** A section and a dot, which git requires of every setting's name (`core.hooksPath`). */
