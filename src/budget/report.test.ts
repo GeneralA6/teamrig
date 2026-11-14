@@ -21,6 +21,7 @@ import {
   sumUsage,
   todayLines,
   W_EXPLAINED,
+  WARN_ONLY_ADVICE,
   type GroupToday,
   type OutsideToday,
   type PeerToday,
@@ -115,7 +116,7 @@ function inBurst(id: string, w: number): SessionToday {
 const SESSIONS: readonly SessionToday[] = [session('lead', 7_500_000, 310), session('alpha', 30_000_000, 1_000), session('bravo', 0, 0, 2, LIFT)];
 const OUTSIDE: OutsideToday = { w: 1_200_000, calls: 40, sessions: 2, top: [{ title: 'release checks', w: 1_100_000 }, { title: 'Docs', w: 100_000 }] };
 const NOBODY_OUTSIDE: OutsideToday = { w: 0, calls: 0, sessions: 0, top: [] };
-const REPORT: TodayReport = { week: WEEK, fiveHour: undefined, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], classes: undefined, peers: [], outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
+const REPORT: TodayReport = { week: WEEK, fiveHour: undefined, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], classes: undefined, peers: [], outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC, overAction: 'ask-lead' };
 /** At WEEK's 7.5M W per percent: Roadmap 2% today and 10% of the week, Improvements past its 15%, a class the config dropped, and the rest. */
 const CLASSES: readonly ClassRow[] = [
   { name: 'Roadmap', todayW: 15_000_000, weekW: 75_000_000, allocationPct: 60 },
@@ -262,6 +263,18 @@ describe('todayLines', () => {
 
   it("gives the team its part of the account's daily budget, which another team on the account shrinks", () => {
     assert.match(todayLines({ ...REPORT, teamPct: 6 })[3] ?? '', /^ {2}the team +5\.0% +6\.0% +37\.50M +1,310$/);
+  });
+
+  it('tells nobody to stop, a cut session neither, when the budget only warns (T2784)', () => {
+    const sessions = [...SESSIONS, { ...session('charlie', 30_000_000, 1_000), cut: true }];
+    const noRoom = todayLines({ ...REPORT, sessions, overAction: 'warn' }).filter((line) => line.startsWith('Past'));
+    assert.deepEqual(noRoom, [`Past the daily budget: alpha, charlie (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). ${WARN_ONLY_ADVICE}`]);
+    const room = todayLines({ ...REPORT, sessions, overAction: 'warn', week: { ...WEEK, teamDay: ROOM } }).filter((line) => line.startsWith('Past'));
+    assert.deepEqual(room, [
+      'Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%): alpha.',
+      `Past the daily budget: charlie. ${WARN_ONLY_ADVICE}`,
+    ]);
+    assert.doesNotMatch(room.join(' '), /start no new work|held by/);
   });
 
   it('never tells a session past budget to skip a test', () => {
