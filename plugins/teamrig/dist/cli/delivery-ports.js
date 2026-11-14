@@ -1,6 +1,7 @@
 import { resolveReset } from "../budget/pace.js";
 import { weekUseAt } from "../budget/snapshot.js";
 import { readFolderWeek } from "../budget/week-summary.js";
+import { CpuGate } from "../delivery/cpu.js";
 import { FREEZES_LOCK_TTL_MS } from "../delivery/freeze-store.js";
 import { HostLock } from "../delivery/host-lock.js";
 import { MemoryGate } from "../delivery/memory-gate.js";
@@ -20,8 +21,9 @@ export function logLineOf(runtime, zone) {
  * `delivery.queue.memoryFloorMb` plus the step's reserve (`heavyReserveMb` at least for a step that takes the lock),
  * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted, the tabs still loading beside the
  * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered as
- * `delivery.queue.admission` says, a ticket naming no class counting as `focus.defaultClass`. A waiter's ticket says
- * what it waits on with the times on `zone`'s clock.
+ * `delivery.queue.admission` says, a ticket naming no class counting as `focus.defaultClass`; a heavy step joins another
+ * heavy one only while `delivery.queue.heavyIdleCpuPct` of the host's CPU is idle. A waiter's ticket says what it waits
+ * on with the times on `zone`'s clock.
  */
 export function hostLockOf(runtime, path, queue, headroom, focus, zone) {
     const tabs = new TabHolds(tabHoldsDir(path), runtime);
@@ -33,7 +35,8 @@ export function hostLockOf(runtime, path, queue, headroom, focus, zone) {
         maxHeavyParallel: queue.maxHeavyParallel,
         defaultClass: focus.defaultClass,
     };
-    return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, admission });
+    const cpu = new CpuGate(runtime.cpu, runtime.sleep, queue.heavyIdleCpuPct);
+    return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission });
 }
 /**
  * The lock the deploy freezes' writers share at `path`, held for a minute, since a write takes moments; it guards no

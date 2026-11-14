@@ -5,6 +5,7 @@ import { nodeTranscriptSource } from "../budget/discover.js";
 import { nodeFileBytes } from "../core/file-bytes.js";
 import { nodeFiles } from "../core/files.js";
 import { GIT_TREES } from "../delivery/git-tree.js";
+import { nodeHostCpu } from "../delivery/cpu.js";
 import { nodeHostMemory } from "../delivery/memory.js";
 import { launchingShellsOf, nodeEvery, starterWatch } from "../delivery/starter-watch.js";
 import { nodeStepRunner } from "../delivery/steps.js";
@@ -85,6 +86,7 @@ export async function runWithNode(argv, entry) {
         shell: nodeShellRunner(),
         steps: nodeStepRunner(process.platform),
         memory: nodeHostMemory(process.platform),
+        cpu: nodeHostCpu(),
         gh: nodeGhRunner(),
         credentials: systemCredentials(process.platform, nodeProgramRunner()),
         probe: NODE_PATH_PROBE,

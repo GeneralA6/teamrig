@@ -337,7 +337,8 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * steps sharing the host (`hostLockOf`'s memory gate): its need learned from its past runs or declared with
  * `--memory-mb` (`needOf`), at least `heavyReserveMb` for a heavy step. With `--small` (a spec run, a lint) the step
  * shares the host with other small steps, holding its need or `smallReserveMb`; a heavy step shares it too under
- * `pipeline` admission, at most `maxHeavyParallel` at once, and takes the lock, waiting for every share to end, under
+ * `pipeline` admission, at most `maxHeavyParallel` at once and joining another only while `heavyIdleCpuPct` of the
+ * host's CPU is idle (`hostLockOf`'s CPU gate), and takes the lock, waiting for every share to end, under
  * `serial` or with `--exclusive`. A small step is killed after `smallMaxRunMinutes` instead, and its `--max-minutes`
  * goes no higher. Once the shell that started it ends (Claude Code's
  * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and

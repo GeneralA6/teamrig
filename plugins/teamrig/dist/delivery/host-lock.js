@@ -180,6 +180,8 @@ export function holderText(holder, zone) {
             return `${stepsText(holder.running.length, '')} of its session running, its cap ${holder.cap}: ${heldText(holder.running, zone)}`;
         case 'heavyCap':
             return `${stepsText(holder.running.length, 'heavy ')} running, the cap ${holder.cap}: ${heldText(holder.running, zone)}`;
+        case 'cpu':
+            return `host CPU ${holder.idlePct}% idle, ${holder.needPct}% needed (delivery.queue.heavyIdleCpuPct) beside ${stepsText(holder.running.length, 'heavy ')}: ${heldText(holder.running, zone)}`;
         case 'admitting':
             return 'another step being admitted';
     }
@@ -243,6 +245,8 @@ export function busyText(holder, zone) {
             return `session cap still reached: ${holderText(holder, zone)}`;
         case 'heavyCap':
             return `heavy cap still reached: ${holderText(holder, zone)}`;
+        case 'cpu':
+            return `host CPU still busy: ${holderText(holder, zone)}`;
         case 'held':
         case 'unknown':
         case 'queued':
@@ -270,6 +274,7 @@ function waitKey(holder, ahead) {
             return `${holder.kind} ${idsOf(holder.shares)} ${ahead}`;
         case 'sessionCap':
         case 'heavyCap':
+        case 'cpu':
             return `${holder.kind} ${idsOf(holder.running)} ${ahead}`;
         case 'admitting':
             return `admitting ${ahead}`;
@@ -327,6 +332,7 @@ function standingBehind(ahead, holder) {
             break;
         case 'sessionCap':
         case 'heavyCap':
+        case 'cpu':
             for (const info of holder.running) {
                 ids.add(info.id);
             }
@@ -868,6 +874,13 @@ export class HostLock {
             const running = others.filter(isHeavyShare);
             if (running.length >= hold.cap) {
                 return { kind: 'busy', holder: { kind: 'heavyCap', cap: hold.cap, running } };
+            }
+            // A heavy step alone on the host is never held on CPU: a host the day's other work keeps busy would never ship.
+            if (running.length > 0 && this.ports.cpu !== undefined) {
+                const cpu = await this.ports.cpu.look();
+                if (cpu.kind === 'cpu') {
+                    return { kind: 'busy', holder: { ...cpu, running } };
+                }
             }
         }
         const look = await this.lookAtMemory(need, others);
