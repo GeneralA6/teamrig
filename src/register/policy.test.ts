@@ -1009,7 +1009,7 @@ describe('RegisterPolicy.update', () => {
     const bravos = testTask({ id: 'T9', owner: 'bravo' });
     assert.deepEqual(tree.update(bravos, 'lead', { ref: 'gh:acme/app#7' }, undefined, EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: null } });
     assert.equal(tree.update(bravos, 'lead', { ref: 'gh:acme/app#7', priority: 1 }, undefined, EMPTY).ok, true, 'beside the work order');
-    const refused = 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: ref)';
+    const refused = 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, prepares on a task it does not own (asked: ref)';
     assert.equal(error(tree.update(bravos, 'lead', { ref: 'notes/plan.md' }, undefined, EMPTY)), refused, 'a ref that is no issue');
     const noted = testTask({ id: 'T9', owner: 'bravo', ref: 'notes/plan.md' });
     assert.deepEqual(tree.update(noted, 'lead', { ref: 'gh:acme/app#7' }, 'ref was: notes/plan.md', EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: 'ref was: notes/plan.md' } }, 'a note ref gives way');
