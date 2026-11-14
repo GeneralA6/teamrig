@@ -31,7 +31,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
       with --resume, goes on in its last Claude Code session when that is small and recent enough,
       as does one whose tab ended outside teamrig (a crash or reboot), on a prompt to re-read its list;
-      a session teamrig close ended goes on in its last one by those limits, else opens fresh; any
+      a session teamrig close ended goes on in its last one by those limits, else opens fresh (on its
+      handover while its refresh is ready, as a resume never takes it); any
       session but the lead is refused while the host has no room for one more (open.headroom), and each
       tab opened holds its MB for open.headroom.loadMinutes while it loads, counted by every team's next
       open and queued step
