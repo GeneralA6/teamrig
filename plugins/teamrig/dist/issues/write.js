@@ -1,11 +1,13 @@
 import { KIT_NAME } from "../core/home.js";
+import { privateShapeIn } from "../core/private-shapes.js";
 import { targetText } from "./host.js";
 import { taskIdIn } from "./posted.js";
 /** The longest comment GitHub takes; another host's limit is checked by the host itself. */
 export const MAX_COMMENT = 65_536;
 /**
  * Why `text` may not be posted as `subject`, or undefined when it may: it is empty, too long, carries a secret
- * shape, or names a task id (a team's own number, which means nothing on the host: posted.ts).
+ * shape or private data (a home folder path, an e-mail address: core/private-shapes.ts), or names a task id (a team's
+ * own number, which means nothing on the host: posted.ts). A refusal names the shape, never the text.
  */
 export function postRefusal(subject, text, scanner) {
     if (text.trim() === '') {
@@ -17,6 +19,10 @@ export function postRefusal(subject, text, scanner) {
     const secret = scanner.refusal(subject, text);
     if (secret !== undefined) {
         return secret;
+    }
+    const shape = privateShapeIn(text);
+    if (shape !== undefined) {
+        return `${subject} holds private data (${shape.description}): take it out, as a post may be read by anyone`;
     }
     const named = taskIdIn(text);
     return named === undefined ? undefined : `${subject} names the task id ${named}: a task id is the team's own, so nothing posted shows one (name issues by #number)`;
