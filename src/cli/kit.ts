@@ -1,4 +1,7 @@
 import { basename, dirname } from 'node:path';
+import { activeRush, type Rush } from '../budget/burst.ts';
+import { BurstLog } from '../budget/burst-log.ts';
+import { rushOverlay } from '../budget/rush.ts';
 import { ConfigLock } from '../config/config-lock.ts';
 import { formatConfig, loadConfig, type ConfigLoad } from '../config/load.ts';
 import { SHIPPED_CONFIG_FORMAT } from '../config/migrate.ts';
@@ -19,7 +22,10 @@ import { fileLockOf } from './file-locks.ts';
 
 export interface Kit {
   readonly paths: TeamPaths;
+  /** The config as commands read it: under a rush, with `rushOverlay`; a config write reads the file (`reloadTeamConfig`). */
   readonly load: ConfigLoad;
+  /** The rush in force when the kit was opened, whose overlay `load` carries. */
+  readonly rush?: Rush;
 }
 
 /**
@@ -120,7 +126,14 @@ export async function openKit(runtime: KitReader, team: string): Promise<Kit> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
   const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
   const load = await teamConfigOf(runtime, team, []);
-  return { load, paths: teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {}) };
+  const paths = teamPaths(kitHome, team, claudeDir, load.status === 'loaded' ? overridesOf(load.config) : {});
+  if (load.status !== 'loaded') {
+    return { load, paths };
+  }
+  // The week's use is not read here: it opens every kit of the tree (accountWeekOn), which would open this one again.
+  // A rush past its stop % ends by the end record the budget hook writes (hook-budget.ts), so the log alone is enough.
+  const rush = activeRush((await new BurstLog(runtime.files, paths.bursts).read()).records, runtime.clock.now(), undefined);
+  return rush === undefined ? { load, paths } : { load: { ...load, config: rushOverlay(load.config) }, paths, rush };
 }
 
 /** The team's config as its file reads now, read the way `openTeamKit` read it: for a change made under the config lock. */

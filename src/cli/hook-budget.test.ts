@@ -19,6 +19,7 @@ import { replyLine, transcript } from '../testing/transcript-lines.ts';
 import { ok } from '../testing/hired-team.ts';
 import { teamConfigOf, teamHomeOf } from '../testing/team-tree.ts';
 import { formatConfig } from '../config/load.ts';
+import { openKit } from './kit.ts';
 import { EXIT } from './runtime.ts';
 
 /** The harness clock is Tuesday 2030-01-08 10:00 UTC; this week resets on Monday 2030-01-14 01:00 UTC, so the pace line is at 19.7%. */
@@ -290,6 +291,21 @@ describe('the budget in the hooks', () => {
     assert.equal(messageOf(await hook('stop', ALPHA_TAB)), "Budget: app-alpha's burst has ended; its daily budget is 0.81% again.");
     const ended = (await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' })).stdout;
     assert.ok(ended.some((line) => line.startsWith('teamrig burst: the burst has ended.')), ended.join('\n'));
+  });
+
+  it('writes the end of a rush whose week passed its stop %, so the config reads with its holds again', async () => {
+    const { kit, hook } = await world({}, 0, 5, { burst: { policy: 'lead' } });
+    ok(await kit.run(['goal', 'add', 'PROD', '--title', 'Production', '--target', '2030-02-01', '--session', 'lead']));
+    ok(await kit.run(['burst', 'start', 'rush', '--goal', 'PROD', '--by', '2030-01-11 16:00', '--stop-pct', '40', '--reason', 'release', '--yes', '--session', 'lead']));
+    await hook('stop', ALPHA_TAB);
+    assert.equal((await openKit(kit.runtime(), 'app')).rush?.goal, 'PROD', 'below its stop % the rush holds');
+    assert.equal((await kit.run(['statusline'], { stdin: status(45) })).code, EXIT.ok);
+    await hook('stop', ALPHA_TAB);
+    const ends = (kit.files.get(join(TEAM_HOME, 'state', 'usage', 'bursts.jsonl')) ?? '').split('\n').filter((line) => line.includes('"kind":"end"'));
+    assert.equal(ends.length, 1, ends.join('\n'));
+    assert.match(ends[0] ?? '', /the week reached its stop %/);
+    const after = await openKit(kit.runtime(), 'app');
+    assert.ok(after.rush === undefined && after.load.status === 'loaded' && after.load.config.budget.overAction === 'ask-lead');
   });
 
   it("tells the lead's model once a week when the surplus is worth a burst, and never starts one", async () => {
