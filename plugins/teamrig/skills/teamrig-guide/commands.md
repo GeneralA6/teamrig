@@ -1736,7 +1736,7 @@ launch block and sub-lead list, so no tab title changes, and a role it has no ho
 `<team>/<id>`. It starts with a copy of your team's settings, so it runs as your team does, and shares your delivery
 setup (its folder, host lock and main checkouts, written as absolute paths), so two teams' queued steps never
 overlap; your budget shares and idle keep-open list go with the sessions they name, and the budget keys of the
-account's week (`enabled`, `account`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd`, `reset`) are not copied: the
+account's week (`enabled`, `account`, `weeklyLimitW`, `subagentWeight`, `modelWeights`, `extraWPerUsd`, `reset`) are not copied: the
 child reads them from your team, so they never drift. Your GitHub import and your
 folders (`paths`) stay yours. A moved task's lines go to the child's register with each session that stays, as who wrote a line, the
 owner, the source, the pin or a decision or approval wait, named `<team>/<id>`; a task that stays and names a moved
@@ -5187,6 +5187,12 @@ W. To find the weight, take a week with both kinds of work and fit the status li
 subagent W: the ratio of their W per 1% is the weight (one team measured about 2.15). A change counts from the next
 metering on; `--day <YYYY-MM-DD>` recounts a past day at the new weight.
 
+Every call's W is also multiplied by its model's weight in `budget.modelWeights` (a list of `{ model, weight }`, empty
+by default, since 0.378.0), for a model that moves the weekly limit faster per W than the others: `model` is a prefix
+of the model id a transcript line names, such as `claude-fable`, and the longest listed match wins; an unlisted model,
+or a line naming none, counts 1. Fit it as the subagent weight: the ratio of the other models' W per 1% to this
+model's. The learned W per % shifts once as the listed model's W is re-weighted.
+
 ### teamrig budget
 
 Measures every session's use since the last run, keeps 8 days of it in the team's `state/usage` folder, and
@@ -5221,7 +5227,7 @@ account's: a team under a parent on its Claude
 account reads and writes them in the folder of the highest team above it reached through teams all on that account,
 so a child team paces the account's week with its parent; a root team, or one whose parent is on another
 account, keeps its own. A team under another takes the team above's `budget.account` when it names none, and its
-`enabled`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd` and `reset` for each it leaves unset, so a team made
+`enabled`, `weeklyLimitW`, `subagentWeight`, `modelWeights`, `extraWPerUsd` and `reset` for each it leaves unset, so a team made
 with `team create --parent` paces the root's week with no copy of these keys; one that names another account takes
 none of them.
 
