@@ -142,6 +142,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         teamDay,
         isLead,
         urgent: work.urgent.get(id) ?? [],
+        awaited: work.awaited.get(id) ?? [],
         leader: budgetLeaderOf(config, roster, id),
         zone: teamZone(config, runtime),
     };

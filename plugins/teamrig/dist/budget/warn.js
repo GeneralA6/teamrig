@@ -157,12 +157,25 @@ function heldClause(facts, standing) {
 function roomText(facts) {
     return `The team has room today: ${formatPct(facts.teamDay.usedPct)} of the week used, below its in-day pace of ${formatPct(facts.teamDay.pacePct)}, so nothing more happens.`;
 }
+/** The session's work that goes on past the daily stop, in the voice `whose` speaks; undefined when it has none. */
+function pastStopWork(facts, whose) {
+    const parts = [];
+    if (facts.urgent.length > 0) {
+        parts.push(`${whose} p0 work (${facts.urgent.join(', ')})`);
+    }
+    if (facts.awaited.length > 0) {
+        parts.push(`the answers other sessions wait on ${whose === 'its' ? 'it' : 'you'} for (${facts.awaited.join(', ')})`);
+    }
+    // Only p0 work alone reads as one thing: the answers are many, and the two together are too.
+    return parts.length === 0 ? undefined : { text: parts.join(' and '), plural: facts.awaited.length > 0 };
+}
 /** What escalation does for this session, as sentences; '' with `warn` or for the lead, and without a part to say. */
 function escalatedText(facts, budget) {
     if (facts.isLead || budget.overAction === 'warn') {
         return '';
     }
-    const helpers = facts.urgent.length === 0 ? helperClause(budget.overAction) : `its p0 work (${facts.urgent.join(', ')}) goes on past the stop, helpers too`;
+    const goesOn = pastStopWork(facts, 'its');
+    const helpers = goesOn === undefined ? helperClause(budget.overAction) : `${goesOn.text} ${goesOn.plural ? 'go' : 'goes'} on past the stop, helpers too`;
     // A leader gave the cut, so no inbox line tells it.
     const told = facts.cut === undefined ? toldText(facts.leader) : undefined;
     const parts = [helpers, told].filter((part) => part !== undefined);
@@ -205,9 +218,10 @@ function quietLine(quiet, span, facts) {
  */
 function leadLineOf(facts, standing) {
     const command = `teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>"`;
+    const goesOn = pastStopWork(facts, 'its');
     return (`${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
         `and ${heldClause(facts, standing)}. ` +
-        `${facts.urgent.length === 0 ? 'It finishes the step in hand' : `It goes on with its p0 work (${facts.urgent.join(', ')}) past the stop`}; lift it only with a stop %: ${command}.`);
+        `${goesOn === undefined ? 'It finishes the step in hand' : `It goes on with ${goesOn.text} past the stop`}; lift it only with a stop %: ${command}.`);
 }
 /**
  * The person's lines at a turn's end: a lift or a burst starting or ending, the quiet hours starting, a new
@@ -266,8 +280,9 @@ function escalationLine(facts, standing, state) {
         ? `the team has no room left today${standing.ahead ? ', and it is ahead of its pace line' : ''}`
         : `${leaderText(facts.cutBy, 'your')} cut you to it until ${formatEndTime(facts.cut.endsAt, facts.zone)}`;
     const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : `${capitalized(leaderText(facts.leader, 'your'))} can lift it.`;
-    const urgent = facts.urgent.length === 0 ? '' : `, except your p0 work (${facts.urgent.join(', ')}): it goes on past the daily stop`;
-    return (`${BUDGET_COMMAND}: you are past today's budget and ${why}. Finish the step in hand and start no new work items or helpers${urgent}. ` +
+    const goesOn = pastStopWork(facts, 'your');
+    const except = goesOn === undefined ? '' : `, except ${goesOn.text}: ${goesOn.plural ? 'they go' : 'it goes'} on past the daily stop`;
+    return (`${BUDGET_COMMAND}: you are past today's budget and ${why}. Finish the step in hand and start no new work items or helpers${except}. ` +
         `Never skip a test or check to save budget. ${lift}`);
 }
 /**
@@ -297,11 +312,12 @@ export function promptWarning(facts, budget, previous) {
 /**
  * Before a helper launch: past budget once escalated, `overAction` applies; in quiet hours,
  * `quietHours.action`; the stronger wins. Only "ask" and "block" hold a launch back. The lead's own
- * helpers, a session under its own lift and no cut, and one with p0 work always go ahead: the lead decides, a lift is a
- * leader's decision (a cut given after it, a later one), and p0 work is done right now.
+ * helpers, a session under its own lift and no cut, and one with p0 work or an answer another session waits on always go
+ * ahead: the lead decides, a lift is a leader's decision (a cut given after it, a later one), p0 work is done right now,
+ * and a held answer blocks its waiter.
  */
 export function helperGate(facts, budget) {
-    if (facts.isLead || (facts.lift !== undefined && facts.cut === undefined) || facts.urgent.length > 0) {
+    if (facts.isLead || (facts.lift !== undefined && facts.cut === undefined) || pastStopWork(facts, 'its') !== undefined) {
         return { kind: 'allow' };
     }
     const standing = standingOf(facts, budget);
