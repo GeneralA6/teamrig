@@ -1677,8 +1677,9 @@ export interface TeamLink {
 /** The owner's daily meeting in the lead's tab (T2512). */
 export interface MeetingConfig {
   /**
-   * The agenda panel beside the lead's chat while a meeting is open: the owner's cards in the agenda's order, the
-   * ones decided since the start checked off with the decision, the one on the table marked (src/meeting/panel.ts).
+   * The agenda panel beside the chat of the session the owner meets while a meeting is open (the lead's daily one, or a
+   * started M<n>): the owner's cards in the agenda's order, the ones decided since the start checked off with the
+   * decision, the one on the table marked (src/meeting/panel.ts).
    */
   readonly panel: { readonly enabled: boolean };
   /**

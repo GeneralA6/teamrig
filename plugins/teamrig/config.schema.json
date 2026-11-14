@@ -1595,7 +1595,7 @@
       "type": "object",
       "properties": {
         "panel": {
-          "description": "The agenda panel beside the lead's chat while a meeting is open.",
+          "description": "The agenda panel beside the chat of the session the owner meets while a meeting is open (the lead's daily one, or a started M<n>).",
           "type": "object",
           "properties": {
             "enabled": {

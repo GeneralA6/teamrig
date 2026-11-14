@@ -1077,7 +1077,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   hook needs-you | hook needs-you-focus
       (run by the plugin's mod: the band naming another tab that asks the user something, and its Focus)
   hook meeting-panel
-      (run by the plugin's mod: the agenda panel beside the lead's chat while the owner's meeting is open)
+      (run by the plugin's mod: the agenda panel beside the chat of the lead's daily meeting or a started M<n>)
   hook update-check | hook update-dismiss | hook update-apply
       (run by the plugin's mod: the band telling of a newer teamrig or teamrig-pane, its Update and Dismiss)
   hook refresh-mid | hook compact-check

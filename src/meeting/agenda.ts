@@ -200,6 +200,16 @@ export function askedDecisions(input: DecisionAgenda): { readonly daily: readonl
 }
 
 /**
+ * The cards a booked meeting (`meeting start M<n>`) asks of one register's tasks (T2808): every one waiting on the
+ * owner, in the agenda's order, the dedicated ones too, since a booked meeting is where those are asked, and the batch
+ * on any day, since the owner booked the time for them.
+ */
+export function bookedDecisions(register: AgendaRegister): { readonly daily: readonly Decision[]; readonly batch: readonly Decision[] } {
+  const order = decisionOrder([{ tasks: ownerAsks(register), tree: register.tree, team: undefined, focus: register.focus }]);
+  return { daily: order.daily, batch: order.improvements };
+}
+
+/**
  * DECISIONS: the tasks waiting on the owner, the lead's team's and those of each team under it (T1018) in one list
  * ranked by what they unblock (decisionOrder), a tie keeping the lead's team first, each with its card facts, then how
  * to card, ask and record them. A decision that frees only Improvements work is asked in its weekly batch, after the

@@ -43,7 +43,8 @@ export interface PanelRegister {
 }
 
 export interface PanelInput {
-  readonly meeting: Meeting;
+  /** The daily meeting, or a booked one's start (T2808): cards decided since then are checked off. */
+  readonly meeting: Pick<Meeting, 'startedAt'>;
   readonly registers: readonly PanelRegister[];
   /** The cards the agenda asks now, in its order (askedDecisions). */
   readonly asked: { readonly daily: readonly Decision[]; readonly batch: readonly Decision[] };

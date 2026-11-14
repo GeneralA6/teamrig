@@ -8,7 +8,7 @@ import { ownSizing, treeRanking } from '../register/ranking.ts';
 import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import { AGENDA_ROWS, agendaLines, askedDecisions, agendaSince, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, TEAM_ROWS, type AgendaInput, type AgendaTeam } from './agenda.ts';
+import { AGENDA_ROWS, agendaLines, askedDecisions, agendaSince, bookedDecisions, cardFacts, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, TEAM_ROWS, type AgendaInput, type AgendaTeam } from './agenda.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -585,5 +585,34 @@ describe('the meeting agenda: DEDICATED (T868)', () => {
     const all = agendaLines({ ...inputOf([DECIDE]), dedicatedOwners: ['pricing'] });
     assert.equal(all.some((line) => line.startsWith('DEDICATED')), false);
     assert.deepEqual(rowIds(section(all, 'DECISIONS')), ['T4']);
+  });
+});
+
+describe('the cards a booked meeting asks (T2808)', () => {
+  const PRICED: Task = { ...DECIDE, id: 'T7', owner: 'pricing', title: 'Set the launch price' };
+  const OPEN = testTask({ id: 'T9', status: 'open' });
+
+  it("asks every card of the register waiting on the owner, a dedicated session's too, and nothing else", () => {
+    const tasks = [DECIDE, PRICED, OPEN];
+    const asked = bookedDecisions({ ...teamOf('app', tasks), dedicatedOwners: ['pricing'] });
+    assert.deepEqual(
+      [...asked.daily, ...asked.batch].map((decision) => decision.task.id).sort(),
+      ['T4', 'T7'],
+    );
+    const daily = askedDecisions({ ...inputOf(tasks), dedicatedOwners: ['pricing'] });
+    assert.deepEqual(
+      [...daily.daily, ...daily.batch].map((decision) => decision.task.id),
+      ['T4'],
+      "the daily meeting leaves the dedicated card to the session's own meeting",
+    );
+  });
+
+  it('asks the Improvements batch on any day, after the daily cards, since the owner booked the time', () => {
+    const improvement = { ...DECIDE, id: 'T9', workClass: 'Improvements' };
+    const own = { ...DECIDE, id: 'T1', workClass: 'Maintenance' };
+    const tasks = [improvement, own];
+    const asked = bookedDecisions(teamOf('app', tasks, rankedTreeOf(tasks)));
+    assert.deepEqual(asked.daily.map((decision) => decision.task.id), ['T1']);
+    assert.deepEqual(asked.batch.map((decision) => decision.task.id), ['T9']);
   });
 });

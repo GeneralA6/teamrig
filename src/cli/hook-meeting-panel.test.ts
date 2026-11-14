@@ -9,6 +9,10 @@ import { EXIT } from './runtime.ts';
 const LEAD_TAB = '0123abcd-0000-4000-8000-0000000000c1';
 const ALPHA_TAB = '0123abcd-0000-4000-8000-0000000000a1';
 const MEETING_PATH = join(TEAM_HOME, 'state', 'meeting.json');
+const MEETINGS_PATH = join(TEAM_HOME, 'state', 'meetings.jsonl');
+const WEB_MEETING_PATH = join(teamHomeOf('web'), 'state', 'meeting.json');
+const WEB_MEETINGS_PATH = join(teamHomeOf('web'), 'state', 'meetings.jsonl');
+const AS_WEB_LEAD = { env: { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' } };
 const STARTED = '2030-01-08T10:00:00.000Z';
 const AS_WEB = { env: { TEAMRIG_TEAM: 'web' } };
 
@@ -49,9 +53,9 @@ const T1 = { id: 'T1', title: 'Pick the pricing tier', summary: SUMMARY, settled
 const T2 = { id: 'T2', title: 'Pick the launch day', summary: SUMMARY, settled: false, decision: null };
 
 describe('runCli: hook meeting-panel', () => {
-  it("shows nothing in the lead's tab before the meeting starts, and watches the meeting file", async () => {
+  it("shows nothing in the lead's tab before the meeting starts, and watches the meeting files", async () => {
     const kit = await twoCards();
-    assert.deepEqual(answerOf(await panel(kit)), { kind: 'off', why: 'no meeting is open', watch: [MEETING_PATH] });
+    assert.deepEqual(answerOf(await panel(kit)), { kind: 'off', why: 'no meeting is open', watch: [MEETING_PATH, MEETINGS_PATH] });
   });
 
   it("lists the owner's cards in the agenda's order while the meeting is open, the first on the table", async () => {
@@ -63,7 +67,7 @@ describe('runCli: hook meeting-panel', () => {
       items: [T1, T2],
       current: 'T1',
       left: 2,
-      watch: [MEETING_PATH, EVENTS_PATH],
+      watch: [MEETING_PATH, MEETINGS_PATH, EVENTS_PATH],
     });
   });
 
@@ -78,7 +82,7 @@ describe('runCli: hook meeting-panel', () => {
       items: [{ ...T1, settled: true, decision: 'the middle tier' }, T2],
       current: 'T2',
       left: 1,
-      watch: [MEETING_PATH, EVENTS_PATH],
+      watch: [MEETING_PATH, MEETINGS_PATH, EVENTS_PATH],
     });
   });
 
@@ -86,13 +90,13 @@ describe('runCli: hook meeting-panel', () => {
     const kit = await twoCards();
     ok(await kit.run(['meeting', 'start', '--session', 'lead']));
     ok(await kit.run(['meeting', 'end', '--session', 'lead']));
-    assert.deepEqual(answerOf(await panel(kit)), { kind: 'off', why: 'no meeting is open', watch: [MEETING_PATH] });
+    assert.deepEqual(answerOf(await panel(kit)), { kind: 'off', why: 'no meeting is open', watch: [MEETING_PATH, MEETINGS_PATH] });
   });
 
-  it("shows nothing in another session's tab, even while the lead's meeting is open", async () => {
+  it("shows nothing in another session's tab while the lead's meeting is open, and watches the booked meetings", async () => {
     const kit = await twoCards();
     ok(await kit.run(['meeting', 'start', '--session', 'lead']));
-    assert.deepEqual(answerOf(await panel(kit, ALPHA_TAB)), { kind: 'off', why: 'only the lead meets the owner', watch: [] });
+    assert.deepEqual(answerOf(await panel(kit, ALPHA_TAB)), { kind: 'off', why: 'no meeting of yours is started', watch: [MEETINGS_PATH] });
   });
 
   it('shows nothing in a tab that is no team session', async () => {
@@ -114,7 +118,7 @@ describe('runCli: hook meeting-panel', () => {
     ok(await kit.run(['add', '--title', 'Pick the login provider', '--description', 'which provider ships', '--priority', 'p1', '--session', 'front'], AS_WEB));
     ok(await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two providers', ...TEST_OWNER_CARD_FLAGS, '--session', 'front'], AS_WEB));
     ok(await kit.run(['meeting', 'start', '--session', 'lead']));
-    const watch = [MEETING_PATH, EVENTS_PATH, teamEventsOf('ops'), teamEventsOf('web'), teamEventsOf('ui')];
+    const watch = [MEETING_PATH, MEETINGS_PATH, EVENTS_PATH, teamEventsOf('ops'), teamEventsOf('web'), teamEventsOf('ui')];
     const card = { id: 'web/T1', title: 'Pick the login provider', summary: SUMMARY, settled: false, decision: null };
     assert.deepEqual(answerOf(await panel(kit)), { kind: 'open', startedAt: STARTED, items: [card], current: 'web/T1', left: 1, watch });
     kit.clock.advance(60_000);
@@ -128,14 +132,67 @@ describe('runCli: hook meeting-panel', () => {
     const asUi = { env: { TEAMRIG_TEAM: 'ui' } };
     ok(await kit.run(['add', '--title', 'Pick the icon set', '--description', 'which icons ship', '--priority', 'p1', '--session', 'pixel'], asUi));
     ok(await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two sets', ...TEST_OWNER_CARD_FLAGS, '--session', 'pixel'], asUi));
-    const webLeadPanel = (): Promise<CliResult> =>
-      kit.run(['hook', 'meeting-panel'], { stdin: JSON.stringify({ session_id: LEAD_TAB, cwd: APP }), env: { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' } });
-    const webMeeting = join(teamHomeOf('web'), 'state', 'meeting.json');
-    assert.deepEqual(answerOf(await webLeadPanel()), { kind: 'off', why: 'no meeting is open', watch: [webMeeting] });
+    assert.deepEqual(answerOf(await webLeadPanel(kit)), { kind: 'off', why: 'no meeting is open', watch: [WEB_MEETING_PATH, WEB_MEETINGS_PATH] });
 
     ok(await kit.run(['meeting', 'start', '--session', 'lead'], AS_WEB));
     const card = { id: 'ui/T1', title: 'Pick the icon set', summary: SUMMARY, settled: false, decision: null };
-    const watch = [webMeeting, teamEventsOf('web'), teamEventsOf('ui')];
-    assert.deepEqual(answerOf(await webLeadPanel()), { kind: 'open', startedAt: STARTED, items: [card], current: 'ui/T1', left: 1, watch });
+    const watch = [WEB_MEETING_PATH, teamEventsOf('web'), teamEventsOf('ui')];
+    assert.deepEqual(answerOf(await webLeadPanel(kit)), { kind: 'open', startedAt: STARTED, items: [card], current: 'ui/T1', left: 1, watch });
+  });
+});
+
+function webLeadPanel(kit: CliHarness): Promise<CliResult> {
+  return kit.run(['hook', 'meeting-panel'], { stdin: JSON.stringify({ session_id: LEAD_TAB, cwd: APP }), ...AS_WEB_LEAD });
+}
+
+/**
+ * Team web, under app: front's T1 waits on the owner, back's T2 needs T1 first, and front's T3 waits on the owner too
+ * but no booked meeting links it; M1 meets web's lead on T2.
+ */
+async function webBooked(): Promise<CliHarness> {
+  const kit = await treeHarness();
+  ok(await kit.run(['add', '--title', 'Pick the login provider', '--description', 'which provider ships', '--priority', 'p1', '--session', 'front'], AS_WEB));
+  ok(await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two providers', ...TEST_OWNER_CARD_FLAGS, '--session', 'front'], AS_WEB));
+  ok(await kit.run(['add', '--title', 'Ship the login page', '--description', 'the page itself', '--priority', 'p1', '--after', 'T1', '--session', 'back'], AS_WEB));
+  ok(await kit.run(['add', '--title', 'Pick the font', '--description', 'which font ships', '--priority', 'p1', '--session', 'front'], AS_WEB));
+  ok(await kit.run(['set', 'T3', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two fonts', ...TEST_OWNER_CARD_FLAGS, '--session', 'front'], AS_WEB));
+  ok(await kit.run(['meeting', 'schedule', '--meets', 'lead', '--at', '2030-01-08 14:00', '--about', 'the login', '--tasks', 'T2', '--session', 'lead'], AS_WEB));
+  return kit;
+}
+
+describe('runCli: hook meeting-panel, booked meetings (T2808)', () => {
+  const card = { id: 'T1', title: 'Pick the login provider', summary: SUMMARY, settled: false, decision: null };
+  const watch = [WEB_MEETINGS_PATH, teamEventsOf('web')];
+
+  it("shows nothing in the session's tab while its booked meeting is only scheduled", async () => {
+    const kit = await webBooked();
+    const why = 'no meeting is open';
+    assert.deepEqual(answerOf(await webLeadPanel(kit)), { kind: 'off', why, watch: [WEB_MEETING_PATH, WEB_MEETINGS_PATH] });
+  });
+
+  it("opens in a sub-team lead's tab once its booked meeting starts: the owner's cards of the meeting's tasks and those they need", async () => {
+    const kit = await webBooked();
+    ok(await kit.run(['meeting', 'start', 'M1', '--session', 'lead'], AS_WEB));
+    assert.deepEqual(answerOf(await webLeadPanel(kit)), { kind: 'open', startedAt: STARTED, items: [card], current: 'T1', left: 1, watch });
+  });
+
+  it('checks a card off once the session met records the decision, and shows nothing once the meeting ends', async () => {
+    const kit = await webBooked();
+    ok(await kit.run(['meeting', 'start', 'M1', '--session', 'lead'], AS_WEB));
+    kit.clock.advance(60_000);
+    ok(await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: the first one', '--session', 'lead'], AS_WEB));
+    const settled = { ...card, settled: true, decision: 'the first one' };
+    assert.deepEqual(answerOf(await webLeadPanel(kit)), { kind: 'open', startedAt: STARTED, items: [settled], current: null, left: 0, watch });
+    ok(await kit.run(['meeting', 'end', 'M1', '--session', 'lead'], AS_WEB));
+    const why = 'no meeting is open';
+    assert.deepEqual(answerOf(await webLeadPanel(kit)), { kind: 'off', why, watch: [WEB_MEETING_PATH, WEB_MEETINGS_PATH] });
+  });
+
+  it("opens in a team member's tab, not the lead's, when the booked meeting meets the member", async () => {
+    const kit = await twoCards();
+    ok(await kit.run(['meeting', 'schedule', '--meets', 'alpha', '--at', '2030-01-08 14:00', '--about', 'pricing', '--tasks', 'T1', '--session', 'lead']));
+    ok(await kit.run(['meeting', 'start', 'M1', '--session', 'lead']));
+    assert.deepEqual(answerOf(await panel(kit, ALPHA_TAB)), { kind: 'open', startedAt: STARTED, items: [T1], current: 'T1', left: 1, watch: [MEETINGS_PATH, EVENTS_PATH] });
+    assert.deepEqual(answerOf(await panel(kit)), { kind: 'off', why: 'no meeting is open', watch: [MEETING_PATH, MEETINGS_PATH] });
   });
 });
