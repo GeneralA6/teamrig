@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { HostPull } from '../issues/pull.ts';
-import { pullEvents, pullNewsText, type PullEvent, type PullWatch } from './pull-news.ts';
+import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from './pull-news.ts';
 
 const T0 = '2030-01-01T00:00:00Z';
 const T1 = '2030-01-02T00:00:00Z';
@@ -99,6 +99,36 @@ describe('pullEvents', () => {
 
   it('keeps the newest cursor when nothing newer was read', () => {
     assert.equal(pullEvents({ cursor: T2, open: [] }, [pull(1)], []).after.cursor, T2);
+  });
+});
+
+describe('pullRecipient', () => {
+  const ownerOf = (task: string): string | undefined => (task === 'T12' ? 'bravo' : undefined);
+
+  it("routes an inside author's own branch to the owner of the task it names", () => {
+    assert.equal(pullRecipient(pull(1, { head: 't12-fix' }), ownerOf, 'watch'), 'bravo');
+    assert.equal(pullRecipient(pull(1, { head: 'T12', authorAssociation: 'member' }), ownerOf, 'watch'), 'bravo');
+  });
+
+  it('routes a fork, an outsider, a branch naming no task or a task the register lacks to the watcher', () => {
+    for (const other of [
+      pull(1, { head: 't12-fix', fork: true }),
+      pull(1, { head: 't12-fix', authorAssociation: 'CONTRIBUTOR' }),
+      pull(1, { head: 'feature-x' }),
+      pull(1, { head: 't99-gone' }),
+    ]) {
+      assert.equal(pullRecipient(other, ownerOf, 'watch'), 'watch', JSON.stringify(other));
+    }
+  });
+
+  it('groups the events by recipient in the order first seen', () => {
+    const events: PullEvent[] = [
+      { kind: 'merged', pull: pull(1, { head: 'x' }) },
+      { kind: 'conflict', pull: pull(2, { head: 't12-a' }) },
+      { kind: 'closed', pull: pull(3, { head: 'y' }) },
+    ];
+    const grouped = eventsByRecipient(events, (one) => pullRecipient(one, ownerOf, 'watch'));
+    assert.deepEqual([...grouped].map(([to, list]) => [to, list.map((event) => event.pull.number)]), [['watch', [1, 3]], ['bravo', [2]]]);
   });
 });
 

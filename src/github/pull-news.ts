@@ -1,5 +1,6 @@
 import type { HostPull, PullChecks, PullMergeable, PullReview } from '../issues/pull.ts';
 import { cut } from '../register/views.ts';
+import { branchTaskOf } from '../worktree/owner.ts';
 import { issueRef } from './map.ts';
 import { isInsideAuthor } from './trust.ts';
 
@@ -108,6 +109,26 @@ function isAfter(time: string, cursor: string | undefined): boolean {
 /** The newest of `times` and `cursor`, or undefined when there is none. */
 function newest(times: readonly string[], cursor: string | undefined): string | undefined {
   return [...times, ...(cursor === undefined ? [] : [cursor])].reduce<string | undefined>((best, time) => (best === undefined || Date.parse(time) > Date.parse(best) ? time : best), undefined);
+}
+
+/**
+ * Who hears about `pull`: the owner of the task its branch names (`t<id>-...`, worktree/owner.ts), when it is a
+ * branch of the repository itself by an author inside it, else `watcher`. A fork's branch name, or an outsider's,
+ * is theirs to choose, so it never routes news to a session.
+ */
+export function pullRecipient(pull: HostPull, ownerOf: (task: string) => string | undefined, watcher: string): string {
+  const task = pull.fork || !isInsideAuthor(pull.authorAssociation) ? undefined : branchTaskOf(pull.head);
+  return (task === undefined ? undefined : ownerOf(task)) ?? watcher;
+}
+
+/** The events of each recipient, in the order first seen (`pullRecipient`). */
+export function eventsByRecipient(events: readonly PullEvent[], recipientOf: (pull: HostPull) => string): Map<string, PullEvent[]> {
+  const byRecipient = new Map<string, PullEvent[]>();
+  for (const event of events) {
+    const to = recipientOf(event.pull);
+    byRecipient.set(to, [...(byRecipient.get(to) ?? []), event]);
+  }
+  return byRecipient;
 }
 
 /** The pull requests one inbox line names; the rest are counted. */
