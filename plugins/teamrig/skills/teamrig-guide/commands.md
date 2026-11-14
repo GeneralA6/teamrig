@@ -5117,7 +5117,10 @@ recognised. It reads the Node.js test runner (spec and TAP), Jest and Vitest. Ex
 1 otherwise.
 
 Everything after `--` is the command. One quoted word runs as written, so `"npm run build && npm test"` works;
-several words are passed on as typed, globs included.
+several words are passed on as typed, globs included. An empty command is REFUSED (exit 64), as a shell would run
+it as nothing and exit 0. On Windows, cmd.exe runs the command and stops reading at a line break, so a word that holds
+one (a `bash -c` script over several lines) is REFUSED too, before anything runs: put the script in a file and run the
+file, or keep each word on one line.
 
 Flags:
 
