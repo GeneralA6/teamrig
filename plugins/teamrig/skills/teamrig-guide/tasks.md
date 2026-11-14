@@ -88,6 +88,17 @@ PowerShell's call operator, a write cmdlet, a JSON object, or an ask to paste) i
 audits; a card that names a past paste ("pasted") passes, and a wait on a leader, which no human reads, is not held
 to it. The [hand-step skill](../hand-step/SKILL.md) has the steps to write the file.
 
+A security-related ask reaches the owner only with the security reviewer's verdict on its card (core rule 9). A card
+on the owner's decision whose gate is in [securityGates] (`permissions` by default), or one set with `--security`
+on any wait on the owner, is refused until the task holds a verdict given on that card's question, options and
+recommendation. As the reviewer reads the card before the owner does, set it on your leader's wait first
+(`--waits decision:<leader>`, the security reviewer's for the lead), have the reviewer record what the review
+found (`teamrig audit T3 --verdict "<what the review found>"`), then set the wait on the owner with the card
+unchanged. The card prints `security: <verdict> (verdict by <reviewer>)`; an edit to its question, options or
+recommendation prints `STALE` in its place and needs a new verdict. A card handing an audited `--run` file needs
+none, as the audit is the reviewer's read. A card on another gate whose words name a guard, permission, secret or
+the like with no verdict is not refused, but `check` flags it `SECURITY-UNREVIEWED`.
+
 Every session needs teamrig 0.10.0 or later before anyone sets `waiting`: an older one skips the
 line with a warning and shows the task at its earlier status. A `blocked` written by an older teamrig reads as
 `waiting` with no reasons.
