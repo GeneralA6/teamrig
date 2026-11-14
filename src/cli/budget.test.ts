@@ -10,6 +10,9 @@ import { FIVE_HOUR_SUMMARY_FILE } from '../budget/five-hour-summary.ts';
 import { OVER_BUDGET_ADVICE, W_EXPLAINED } from '../budget/report.ts';
 import { formatSnapshot, parseSnapshot, snapshotOfStatus, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
 import { EMPTY_USAGE, UsageStore } from '../budget/store.ts';
+import { emptyWarnState } from '../budget/warn.ts';
+import { WarnStore } from '../budget/warn-store.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { formatTeamWeek, TEAM_WEEK_IN_STATE } from '../budget/team-week-summary.ts';
 import { WEEK_SUMMARY_FILE } from '../budget/week-summary.ts';
 import { formatConfig } from '../config/load.ts';
@@ -34,6 +37,7 @@ const STRANGER = '0000000c-0000-4000-8000-000000000003';
 const LIMITED: JsonRecord = { ...TEAM, budget: { weeklyLimitW: 1_000_000_000 } };
 const LIVE = join(KIT, 'usage', 'live');
 const MARKS = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
+const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
 
 function reply(id: string, input: number): string {
   return replyLine({ id, requestId: `q-${id}`, at: '2030-01-08T09:00:00.000Z', usage: { input } });
@@ -426,6 +430,28 @@ describe('teamrig budget lift', () => {
     ]);
   });
 
+  it('wakes a lifted session held past its daily budget, and no session that is not held (T2801)', async () => {
+    const { kit, run } = await world();
+    await new WarnStore(kit.files, join(TEAM_HOME, 'state', 'usage', 'warn')).write('alpha', { ...emptyWarnState('2030-01-08'), held: true });
+    const notHeld = ok(await run(['budget', 'lift', 'bravo', '--part', '20', '--stop-pct', '97', '--reason', 'release', '--session', 'lead']));
+    assert.ok(!notHeld.some((line) => line.startsWith('WOKE')), notHeld.join('\n'));
+    assert.deepEqual(await new WakeAsks(kit.files, ASKS).read('bravo'), []);
+    const lines = ok(await run([...LIFT, '--session', 'lead']));
+    assert.equal(lines[1], 'WOKE app-alpha: held past the daily budget, now free');
+    assert.match(kit.files.get(join(TEAM_HOME, 'state', 'inbox', 'alpha.md')) ?? '', /lead: Budget: lead lifted your daily budget, so your budget hold is over/);
+    assert.equal((await new WakeAsks(kit.files, ASKS).read('alpha')).length, 1);
+  });
+
+  it("wakes every held session of a lifted sub-lead's group (T2801)", async () => {
+    const { kit, run } = await world({ ...LIMITED, leads: { bravo: ['alpha'] } });
+    const store = new WarnStore(kit.files, join(TEAM_HOME, 'state', 'usage', 'warn'));
+    await store.write('alpha', { ...emptyWarnState('2030-01-08'), held: true });
+    await store.write('lead', { ...emptyWarnState('2030-01-08'), held: true });
+    const lines = ok(await run(['budget', 'lift', 'bravo', '--group', '--part', '50', '--stop-pct', '97', '--reason', 'release', '--session', 'lead']));
+    assert.equal(lines[1], 'WOKE app-alpha: held past the daily budget, now free');
+    assert.deepEqual(await new WakeAsks(kit.files, ASKS).read('lead'), []);
+  });
+
   it("lifts a sub-lead's member to a part of its group's daily budget, which budget names", async () => {
     const { run } = await world({ ...LIMITED, leads: { bravo: ['alpha'] } });
     // Bravo's group of 2 gets 2/3 of the team's 12.4%, half of that is 4.1% of the week.
@@ -603,6 +629,16 @@ describe('teamrig budget lift', () => {
       const lines = ok(await run(['budget']));
       assert.ok(lines.some((line) => /^ {2}the team +\S+ +3\.7%/.test(line)), lines.join('\n'));
       assert.deepEqual(ok(await run(crossLift('ui/pixel', '10'))), [lifted('ui/ui-pixel', '10.0', '0.37')]);
+    });
+
+    it('wakes a held session of a team below on its own team, named as that team names the lead (T2801)', async () => {
+      const { kit, run } = await tree();
+      const ui = teamHomeOf('ui');
+      await new WarnStore(kit.files, join(ui, 'state', 'usage', 'warn')).write('pixel', { ...emptyWarnState('2030-01-08'), held: true });
+      const lines = ok(await run(crossLift('ui/pixel', '10')));
+      assert.equal(lines[1], 'WOKE ui/ui-pixel: held past the daily budget, now free');
+      assert.match(kit.files.get(join(ui, 'state', 'inbox', 'pixel.md')) ?? '', /app\/lead: Budget: app\/lead lifted your daily budget/);
+      assert.equal((await new WakeAsks(kit.files, join(ui, 'state', 'wake-asks')).read('pixel')).length, 1);
     });
 
     it("refuses a top-up past what the team's other lifts leave of its daily budget", async () => {
