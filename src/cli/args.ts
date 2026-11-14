@@ -175,6 +175,14 @@ export function noPositionals(args: ParsedArgs): void {
   }
 }
 
+/** The command's positional words, at least one, such as task ids. */
+export function somePositionals(args: ParsedArgs, name: string): readonly string[] {
+  if (args.positionals.length === 0) {
+    throw new UsageError(`${args.command} needs <${name}>`);
+  }
+  return args.positionals;
+}
+
 /** The command's single positional word, such as a task id. */
 export function onePositional(args: ParsedArgs, name: string): string {
   const [value, extra] = args.positionals;

@@ -50,7 +50,7 @@ import { skillsToLint } from '../../skills/run-scripts.ts';
 import { SKILL_FILE } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow, teamSettingsScope } from '../allow-scope.ts';
-import { noPositionals, onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
+import { noPositionals, onePositional, requiredFlag, somePositionals, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { handStepPin, readRunFiles } from '../hand-step-file.ts';
 import { KitTreeGoals } from '../tree-goals.ts';
 import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, dropApprovalOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, withSecurityCard, type TypedTimes } from '../inputs.ts';
@@ -926,41 +926,65 @@ export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 }
 
 /**
- * `show <id> [--tree] [--history]`: every field of the task, its last 3 history events (all with `--history`, T2535),
- * its files ({@link taskFilesLine}, T1457) and the team's inbox lines that name it (T1196); with `--tree`, its line, then what it needs and what needs it, each node with its
- * owner, status and due, then who moves next (views.ts formatTaskTree). A task another register of the team tree
- * holds shows read-only ({@link elsewhereLines}), with its files in that team.
+ * `show <id> [<id> ...] [--tree] [--history]`: for each task in the order given, every field, its last 3 history
+ * events (all with `--history`, T2535), its files ({@link taskFilesLine}, T1457) and the team's inbox lines that name it
+ * (T1196); with `--tree`, its line, then what it needs and what needs it, each node with its owner, status and due, then
+ * who moves next (views.ts formatTaskTree). A task another register of the team tree holds shows read-only
+ * ({@link elsewhereLines}), with its files in that team. Several ids in one call spare a status read each (T2536); an id
+ * named twice shows once, and an unknown one refuses the call before anything prints, so a partial view is never read
+ * as the whole.
  */
 export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const id = taskIdOf(onePositional(args, 'id'));
-  const { own } = await settle(runtime, await ownRegister(runtime), (_retired, working) => !working.state.tasks.has(id));
-  const { snapshot } = own;
-  const task = snapshot.state.tasks.get(id);
-  if (task === undefined) {
-    const away = own.elsewhere.get(id);
-    if (away === undefined) {
-      throw new RefusedError(`no task ${id}`);
-    }
-    elsewhereLines(away, own, args.switches.has('tree'), runtime).forEach((line) => runtime.out.stdout(line));
-    if (!args.switches.has('tree')) {
-      runtime.out.stdout(await taskFilesLine(runtime, own.paths.kitHome, away.team, id));
-    }
-    return EXIT.ok;
+  const ids = [...new Set(somePositionals(args, 'id').map(taskIdOf))];
+  const { own } = await settle(runtime, await ownRegister(runtime), (_retired, working) => ids.some((id) => !working.state.tasks.has(id)));
+  const shown = ids.map((id): ShownTask => ({ id, task: own.snapshot.state.tasks.get(id), away: own.elsewhere.get(id) }));
+  const unknown = shown.filter(({ task, away }) => task === undefined && away === undefined).map(({ id }) => id);
+  if (unknown.length > 0) {
+    throw new RefusedError(`no task ${unknown.join(', ')}`);
   }
+  for (const { id, task, away } of shown) {
+    if (task !== undefined) {
+      await showOwn(task, own, { withTree: args.switches.has('tree'), allHistory: args.switches.has('history') }, runtime);
+    } else if (away !== undefined) {
+      elsewhereLines(away, own, args.switches.has('tree'), runtime).forEach((line) => runtime.out.stdout(line));
+      if (!args.switches.has('tree')) {
+        runtime.out.stdout(await taskFilesLine(runtime, own.paths.kitHome, away.team, id));
+      }
+    }
+  }
+  return EXIT.ok;
+}
+
+/** An id `show` was given, with the task its own register holds or the one another register of the tree holds. */
+interface ShownTask {
+  readonly id: string;
+  readonly task: Task | undefined;
+  readonly away: TaskElsewhere | undefined;
+}
+
+/** The switches of a `show` call that shape each task's view: `--tree`, and `--history` for every event (T2535). */
+interface ShowView {
+  readonly withTree: boolean;
+  readonly allHistory: boolean;
+}
+
+/** One task of {@link show} that its own register holds. */
+async function showOwn(task: Task, own: RolledTeam, view: ShowView, runtime: CliRuntime): Promise<void> {
+  const { withTree, allHistory } = view;
+  const { snapshot } = own;
+  const { id } = task;
   const tree = taskTreeOf(own, runtime);
-  if (args.switches.has('tree')) {
+  if (withTree) {
     [formatTask(task, undefined, tree), ...formatTaskTree(task, tree, SHORT_TITLE_CHARS)].forEach((line) => runtime.out.stdout(line));
-    return EXIT.ok;
+    return;
   }
   const events = snapshot.read.events.filter((event) => event.id === id);
   const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
   const sizeCost = (pct: number) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`);
   const files = await taskFilesLine(runtime, own.paths.kitHome, own.team, id);
-  const allHistory = args.switches.has('history');
   runtime.out.stdout(formatTaskDetail(task, events, tree, { sizeCost, files, runFiles: await readRunFiles(runtime, [task]), allHistory }));
   const named = await taskLinesOf(inboxDepsOf(runtime, own.paths).inboxes, id);
   formatTaskLines(id, named, tree.zone).forEach((line) => runtime.out.stdout(line));
-  return EXIT.ok;
 }
 
 /**
