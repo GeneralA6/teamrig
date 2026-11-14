@@ -7,7 +7,7 @@ import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts'
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { hostOf } from '../issue-hosts.ts';
+import { hostOf, reposOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
@@ -118,18 +118,6 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
 function refusedReason(outcomes: readonly StepOutcome[]): string | undefined {
   const errors = outcomes.flatMap((outcome) => (outcome.result.ok ? [] : [outcome.result.error]));
   return errors.length === 0 ? undefined : `the task list refused ${errors.length} step(s), first: ${errors[0]}`;
-}
-
-/** The repositories to read: every one of `github.repos`, or the one `--repo` names, which must be among them. */
-function reposOf(repos: readonly string[], asked: string | undefined): readonly string[] {
-  if (asked === undefined) {
-    return repos;
-  }
-  const repo = asked.trim().toLowerCase();
-  if (!repos.includes(repo)) {
-    throw new RefusedError(`--repo ${asked} is not one of github.repos (${repos.join(', ')})`);
-  }
-  return [repo];
 }
 
 function previewLines(repo: string, plan: SyncPlan): string[] {
