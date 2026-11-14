@@ -17,8 +17,13 @@ const HANG_LIMIT_MS = 500;
  * thread's load too, which took past 0.5 s on a loaded host (T2433: a ship run's spec saw a timeout, not the crash).
  */
 const ANSWER_LIMIT_MS = 5_000;
-/** When a run that never ends is killed, so a guard the runner cannot stop fails its spec instead of hanging it. */
-const KILL_MS = 20_000;
+/**
+ * When a run that never ends is killed, so a guard the runner cannot stop fails its spec instead of hanging it. It
+ * counts the copy's start too: in a ship run's coverage pass beside another ship's suite, copies that crash at once
+ * took 15 to 19 s to end, and a spinning one was killed at 20 s with nothing on stderr, its 0.5 s limit not yet fired
+ * (T2433).
+ */
+const KILL_MS = 60_000;
 /** The modules the entry runs on, copied beside it as they are. */
 const COPIED = ['guard-main.ts', 'guard-thread.ts', 'guard-thread-messages.ts', 'guard-worker.ts'];
 
