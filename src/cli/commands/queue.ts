@@ -4,7 +4,8 @@ import type { QueueConfig } from '../../config/types.ts';
 import { busyText, holderText, isHeavyShare, underLock, waitText, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
 import { pipelineFrozenRefusal } from '../../delivery/pipeline-freezes.ts';
-import { deliveryPlaces, detachedLogOf } from '../../delivery/places.ts';
+import { formatRunRecord, runRecordPathOf, type DetachedRunRecord } from '../../delivery/detached-runs.ts';
+import { deliveryPlaces, detachedDirOf, detachedLogOf } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
 import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
 import { recordRefusal, runRecorded, type RefusalMark, type StepOwner } from '../../delivery/recorded-step.ts';
@@ -217,14 +218,29 @@ interface DetachedRun {
   readonly log: string;
 }
 
+/** Writes the detached run's record; a record that cannot be written is said in the log, never failing the step. */
+async function keepRunRecord(runtime: CliRuntime, say: Say, path: string, record: DetachedRunRecord): Promise<void> {
+  try {
+    await runtime.files.write(path, formatRunRecord(record));
+  } catch (error) {
+    say(`its run record was not written, so a death of this run goes untold: ${errorMessage(error)}`);
+  }
+}
+
 /**
  * A detached run's session hears in its inbox when its step starts, and, with a wake, when it ends or is refused, since
- * no shell waits for its last line; a line that cannot be posted is said in the log, never failing the step.
+ * no shell waits for its last line; a line that cannot be posted is said in the log, never failing the step. The run
+ * keeps its record (detached-runs.ts) from now until its end line, so a sweep tells its session if it dies before
+ * then; it logs its pid, so a death can be traced to what ended it.
  */
-function detachedReporting(runtime: CliRuntime, kit: Kit, config: KitConfig, say: Say, run: DetachedRun): Reporting {
-  const { id, session, what, log } = run;
+async function detachedReporting(runtime: CliRuntime, kit: Kit, config: KitConfig, say: Say, run: DetachedRun & { readonly record: string }): Promise<Reporting> {
+  const { id, session, what, log, record: recordPath } = run;
+  const record: DetachedRunRecord = { v: 1, id, team: kit.paths.team, session, what, log, pid: runtime.pid, startedAt: new Date(runtime.clock.now()).toISOString() };
+  say(`detached run ${id}: pid ${runtime.pid}`);
+  await keepRunRecord(runtime, say, recordPath, record);
   return {
     started: async () => {
+      await keepRunRecord(runtime, say, recordPath, { ...record, runningAt: new Date(runtime.clock.now()).toISOString() });
       const text = `queue ${id} started: ${what}; log ${log}`;
       let problem: string | undefined;
       try {
@@ -237,6 +253,12 @@ function detachedReporting(runtime: CliRuntime, kit: Kit, config: KitConfig, say
       }
     },
     ended: async (last) => {
+      // Removed before the line: of this run and a sweep, only the one whose removal takes the record reports a death.
+      try {
+        await runtime.files.remove(recordPath);
+      } catch (error) {
+        say(`its run record was not removed: ${errorMessage(error)}`);
+      }
       const problem = await postUrgentLine(runtime, kit, config, { to: session, from: session, text: `queue ${id} ended: ${what}: ${last}; log ${log}` });
       if (problem !== undefined) {
         say(`its end line was not posted to ${session}'s inbox: ${problem}`);
@@ -459,7 +481,10 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     const id = detachedIdOf(runtime.clock.now(), runtime.pid);
     return await startDetached(runtime, { log: detachedLogOf(delivery, kit.paths, id) }, args, { id, session, what, words });
   }
-  const reporting = detachedId === undefined ? UNREPORTED : detachedReporting(runtime, kit, config, say, { id: detachedId, session, what, log: detachedLogOf(delivery, kit.paths, detachedId) });
+  const reporting =
+    detachedId === undefined
+      ? UNREPORTED
+      : await detachedReporting(runtime, kit, config, say, { id: detachedId, session, what, log: detachedLogOf(delivery, kit.paths, detachedId), record: runRecordPathOf(detachedDirOf(delivery, kit.paths), detachedId) });
   const watching = detachedId === undefined ? await watchStarters(runtime, say) : unwatched();
   try {
     const step: Step = { what, words, maxRunMinutes, watching, reporting };
