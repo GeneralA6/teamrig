@@ -92,7 +92,7 @@ function visitCommand(command, inlet, outlet, dialect, location, depth, runner, 
     const launched = launch(command.words, dialect, inlet.text);
     if (launched.kind === 'script') {
         const inner = location.child();
-        launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
+        launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
         visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet, inlet.fed);
         if (launched.sameShell) {
             location.adopt(inner);
@@ -100,7 +100,7 @@ function visitCommand(command, inlet, outlet, dialect, location, depth, runner, 
     }
     else if (launched.kind === 'program' && !launched.program.dynamic) {
         const inner = location.child();
-        launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
+        launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
         const run = {
             name: programName(launched.program.text),
             program: launched.program,

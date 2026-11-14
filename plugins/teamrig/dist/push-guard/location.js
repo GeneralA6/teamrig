@@ -30,6 +30,23 @@ export function resolveDir(current, target, home, host = nodePath) {
     }
     return current === undefined ? undefined : rules.resolve(current, expanded);
 }
+/** A Bash path as Windows names it on a Windows host (whose home names a drive): Git Bash's `/c/x` is `C:/x`; any other path as it is. */
+export function bashDrivePath(path, home) {
+    const drive = /^[A-Za-z]:/.test(home) ? /^\/([A-Za-z])(\/|$)/.exec(path) : null;
+    return drive === null ? path : `${(drive[1] ?? '').toUpperCase()}:/${path.slice(drive[0].length)}`;
+}
+/**
+ * An argument as Git Bash hands it to a Windows program such as git: MSYS turns a word naming `/c/x`, or an option's
+ * `=/c/x` value, into `C:/x`, so `git -C /c/x push` runs in `C:\x` (T2764). A word only known when it runs stays as it is.
+ */
+export function bashNativeWord(word, home) {
+    if (word.dynamic) {
+        return word;
+    }
+    const option = /^(--?[\w-]+=)(.*)$/s.exec(word.text);
+    const text = option === null ? bashDrivePath(word.text, home) : `${option[1] ?? ''}${bashDrivePath(option[2] ?? '', home)}`;
+    return text === word.text ? word : { text, dynamic: false };
+}
 /**
  * The rules that resolve `paths`: Windows rules when any of them names a drive, since only a Windows shell
  * writes one (so `cd /d D:\x` leads to `D:\x` on every host), and the host's rules otherwise.
@@ -43,10 +60,11 @@ function absoluteDir(dir, host) {
 }
 /**
  * A folder command's target as its shell reads it: PowerShell and cmd take `\` as a separator on every host
- * (PowerShell on Linux too), while in bash it is part of a name.
+ * (PowerShell on Linux too), while in bash it is part of a name, and Git Bash's `/c/x` is `C:/x` on Windows
+ * (read as `C:\c\x`, git finds no repository there and the push guard asks, T2764).
  */
-function shellPath(text, dialect) {
-    return dialect === 'bash' ? text : text.replaceAll('\\', '/');
+function shellPath(text, dialect, home) {
+    return dialect === 'bash' ? bashDrivePath(text, home) : text.replaceAll('\\', '/');
 }
 /** The drive letter a Windows path names, lower case, if any. */
 function driveOf(path) {
@@ -103,9 +121,9 @@ export class Location {
             Object.assign(this.top, { dir: root.dir, previous: root.previous, stack: [...root.stack] });
         }
     }
-    /** Moves to a folder a launcher names, such as `env -C dir` or `-WorkingDirectory dir`. */
-    moveTo(target) {
-        this.change(target.dynamic ? undefined : resolveDir(this.dir, target.text, this.home, this.host));
+    /** Moves to a folder a launcher in a `dialect` line names, such as `env -C dir` or `-WorkingDirectory dir`. */
+    moveTo(target, dialect) {
+        this.change(target.dynamic ? undefined : resolveDir(this.dir, shellPath(target.text, dialect, this.home), this.home, this.host));
     }
     /** Applies a command if it changes the folder; false for any other command. */
     apply(words, dialect) {
@@ -173,7 +191,7 @@ export class Location {
         if (target.text === '-') {
             return this.top.previous;
         }
-        return resolveDir(this.dir, shellPath(target.text, dialect), this.home, this.host);
+        return resolveDir(this.dir, shellPath(target.text, dialect, this.home), this.home, this.host);
     }
     changeDir(args, dialect) {
         const target = this.target(args, dialect);
