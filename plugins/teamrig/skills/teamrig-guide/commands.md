@@ -1363,7 +1363,7 @@ CLOSED acme/web#12
 ### teamrig pr conflicts
 
 Run in a clone of the pull request's repository, it fetches the pull request's head (a fork's too) and the newest
-base from `origin`, then prints each file the two conflict on, without a merge: no branch, file or index of the
+base from `origin`, then prints each file the two conflict on, without a merge: no local branch, file or index of the
 clone changes, and nothing is written to GitHub. Use it to tell an outside author which files to rebase, in a
 comment through `teamrig issue comment`, or to see what to redo before re-shipping a team pull request on the newest
 base under a new branch name. A folder whose `origin` is another repository, or not on GitHub, fails before any

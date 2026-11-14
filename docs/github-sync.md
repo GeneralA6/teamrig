@@ -223,7 +223,8 @@ CLOSED acme/web#12
 
 When GitHub marks a pull request as conflicting, `teamrig pr conflicts` names the files to resolve. Run it in a
 clone of the repository: it fetches the pull request's head (a fork's too) and `origin`'s newest base, and merges them
-in git's object store alone, so no branch, file or index of the clone changes and nothing is written to GitHub.
+in git's object store alone, so no local branch, file or index of the clone changes (the fetch only drops the
+remote-tracking refs of branches deleted on `origin`) and nothing is written to GitHub.
 
 ```sh
 teamrig pr conflicts acme/web#7

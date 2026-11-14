@@ -682,7 +682,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       nothing
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
-      branch unless --base) and the rebase it needs; changes no branch or file of the clone and
+      branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
       writes nothing to GitHub; refuses a folder whose origin is another repository
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
