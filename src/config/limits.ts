@@ -104,6 +104,7 @@ export const CONFIG_LIMITS = {
   queueSmallReserveMb: { min: 0, max: 1_048_576 },
   queueHeavyReserveMb: { min: 0, max: 1_048_576 },
   queueAgingMinutes: { min: 0, max: 1440 },
+  queueMemoryPassMinutes: { min: 0, max: 1440 },
   queuePerSessionRunning: { min: 0, max: 64 },
   queueMaxHeavyParallel: { min: 1, max: 64 },
   queueHeavyIdleCpuPct: { min: 0, max: 100 },
