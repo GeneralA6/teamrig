@@ -126,7 +126,7 @@ export async function openSessionTab(runtime: CliRuntime, tab: SessionTab): Prom
     ...(tab.prompt === undefined ? ['--no-prompt'] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
   ];
   const window = teamWindowOf(tab.teamWindow, tab.team);
-  return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window }), argv };
+  return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window, focus: 'take' }), argv };
 }
 
 /**
