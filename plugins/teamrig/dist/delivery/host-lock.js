@@ -478,7 +478,7 @@ export class HostLock {
      */
     async acquire(session, purpose, maxWaitMs, pollMs, onWait, ask = {}, stop) {
         const patience = new Patience(this.ports.clock.now(), maxWaitMs);
-        const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask));
+        const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask), ask.arrivedAt);
         const reports = new WaitReports(onWait, this.ports.zone);
         try {
             const waited = await this.waitInLine(ticket, patience, pollMs, reports, ask, stop);
@@ -992,9 +992,12 @@ export class HostLock {
         const hold = this.holdOf(ask);
         return { ...request, needMb: this.heldMbOf(need), heavy: hold.kind !== 'small', exclusive: hold.kind === 'whole' };
     }
-    /** Writes this step's ticket at the end of the line, its wait running out at `deadline`, saying what it asks when it names a `request`. */
-    async joinLine(session, purpose, deadline, request) {
-        const now = this.ports.clock.now();
+    /**
+     * Writes this step's ticket in line, its wait running out at `deadline`, saying what it asks when it names a `request`:
+     * at the end, or at its first arrival `arrivedAt` when it joins again (never later than now).
+     */
+    async joinLine(session, purpose, deadline, request, arrivedAt) {
+        const now = Math.min(arrivedAt ?? this.ports.clock.now(), this.ports.clock.now());
         const waiter = {
             id: this.ports.newId(),
             pid: this.ports.pid,

@@ -10,7 +10,7 @@ import { recordRefusal, runRecorded } from "../../delivery/recorded-step.js";
 import { stepNeedOf } from "../../delivery/step-need.js";
 import { causeOfLockWait, WaitLog } from "../../delivery/wait-log.js";
 import { queueCutoffReason, minutesText } from "../../delivery/schedule.js";
-import { endedText } from "../../delivery/starter-watch.js";
+import { endedText, startedByGit } from "../../delivery/starter-watch.js";
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT } from "../../delivery/steps.js";
 import { errorMessage } from "../../core/guards.js";
 import { ENV } from "../../core/home.js";
@@ -219,7 +219,7 @@ async function detachedReporting(runtime, kit, config, say, run) {
 }
 /** A detached run has no shell to watch: `--detach`'s returned at once, so nothing stops it but its time limit. */
 function unwatched() {
-    return { starters: [], stop: new AbortController().signal, ended: () => undefined, close: () => undefined };
+    return { starters: [], stop: new AbortController().signal, ended: () => undefined, tabAlive: () => false, close: () => undefined };
 }
 /** The id `--detach` gives its run: the UTC second it started and the caller's process id, so two starts differ. */
 export function detachedIdOf(now, pid) {
@@ -236,6 +236,24 @@ function detachedRunIdOf(args) {
     return id;
 }
 /**
+ * `--arrived-at`: the epoch ms a step handed over (`handOver`) first joined the host lock's line, so its detached run
+ * keeps that place; set only by the hand-over, with `--detached-run`, and never past now.
+ */
+function arrivedAtOf(args, now) {
+    const text = args.flags.get('arrived-at');
+    if (text === undefined) {
+        return undefined;
+    }
+    if (!args.flags.has('detached-run')) {
+        throw new UsageError('--arrived-at is set by queue when it hands a waiting step over to a detached run: never give it by hand');
+    }
+    const at = Number(text);
+    if (!/^\d+$/.test(text) || !Number.isSafeInteger(at) || at <= 0 || at > now) {
+        throw new UsageError(`--arrived-at takes the epoch milliseconds the step joined the line, at most now: ${text}`);
+    }
+    return at;
+}
+/**
  * `--detach`: checks a step needs its result at once refuse. A pre-push hook's checks decide its push; a step under a
  * live host lock is part of its parent step, which waits for it, and `--detached-run` is the run `--detach` starts.
  */
@@ -247,11 +265,15 @@ function refuseDetachUsage(args) {
         throw new UsageError('--detached-run is set by --detach: give only --detach');
     }
 }
-/** The detached run's arguments: this command's flags and switches less `--detach`, its session resolved, its id added. */
-function detachedArgsOf(args, words, session, id) {
+/**
+ * The detached run's arguments: this command's flags and switches less `--detach`, its session resolved, its id added,
+ * and for a hand-over the time its step first joined the line.
+ */
+function detachedArgsOf(args, words, session, id, arrivedAt) {
     const flags = [...args.flags].filter(([name]) => name !== 'session').flatMap(([name, value]) => [`--${name}`, value]);
     const switches = [...args.switches].filter((name) => name !== 'detach').map((name) => `--${name}`);
-    return ['queue', '--detached-run', id, '--session', session, ...flags, ...switches, '--', ...words];
+    const arrival = arrivedAt === undefined ? [] : ['--arrived-at', String(arrivedAt)];
+    return ['queue', '--detached-run', id, '--session', session, ...arrival, ...flags, ...switches, '--', ...words];
 }
 /**
  * Starts this step as a hidden `queue --detached-run` that outlives this command and its shell, its output and the
@@ -259,10 +281,10 @@ function detachedArgsOf(args, words, session, id) {
  * dies with the shell Claude Code's reaper ends.
  */
 async function startDetached(runtime, places, args, run) {
-    const { id, session, what, words } = run;
+    const { id, session, what, words, arrivedAt } = run;
     const started = await runtime.processes.startHidden({
         command: runtime.self.node,
-        args: [runtime.self.script, ...detachedArgsOf(args, words, session, id)],
+        args: [runtime.self.script, ...detachedArgsOf(args, words, session, id, arrivedAt)],
         cwd: runtime.cwd,
         env: runtime.env,
         log: places.log,
@@ -300,6 +322,38 @@ async function runUnderParent(runtime, say, parent, step) {
     await step.reporting.started();
     const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop });
     return report(runtime, say, end, step);
+}
+/**
+ * Whether a step whose launching shell ended while it waited for the lock goes on as a detached run (T2304): only while
+ * the tab's Claude Code runs, so its low-memory reaper or the Bash tool's time limit ended the shell alone and the
+ * session still wants the result; never a git hook's step (its git command took the shell's end as the hook's) or a
+ * pre-push hook's checks, whose push is gone.
+ */
+function handsOver(watching, prePush) {
+    return !prePush && watching.tabAlive() && !startedByGit(watching.starters);
+}
+/**
+ * Hands a step whose launching shell ended over to a detached run that joins the line at the step's first arrival,
+ * then posts the session an urgent line: its Bash tool saw the step die, and running it again would queue it twice.
+ */
+async function handOver(runtime, context, run) {
+    const { kit, config, say, args, ended } = context;
+    const { session, what } = run;
+    const id = detachedIdOf(runtime.clock.now(), runtime.pid);
+    const log = detachedLogOf(config.delivery, kit.paths, id);
+    try {
+        await startDetached(runtime, { log }, args, { ...run, id });
+    }
+    catch (error) {
+        return { kind: 'failed', why: errorMessage(error) };
+    }
+    say(`its launching shell ended (${ended}) while it waited: detached run ${id} keeps its place in line`);
+    const text = `queue ${id} kept ${what}'s place in line: its launching shell ended (${ended}) while it waited, so it runs on detached; do not run it again; log ${log}; teamrig withdraw --session ${session} --what "${what}" stops it`;
+    const problem = await postUrgentLine(runtime, kit, config, { to: session, from: session, text });
+    if (problem !== undefined) {
+        say(`its hand-over line was not posted to ${session}'s inbox: ${problem}`);
+    }
+    return { kind: 'handed' };
 }
 /**
  * True, having said so and printed DONE, when these checks already passed on this clean tree, so a push declined after
@@ -364,8 +418,8 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * host's CPU is idle (`hostLockOf`'s CPU gate), and takes the lock, waiting for every share to end, under
  * `serial` or with `--exclusive`. A small step is killed after `smallMaxRunMinutes` instead, and its `--max-minutes`
  * goes no higher. Once the shell that started it ends (Claude Code's
- * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
- * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
+ * reaper ends a Bash tool's shell alone), it kills a running step, records exit 129 and frees the lock; a waiting step
+ * goes on as a detached run that keeps its place in line while the tab's Claude Code runs (`handsOver`), else stops. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
  * one when they pass, and declines a push whose checks waited past PRE_PUSH_MAX_WAIT_MS for the lock (push-pass.ts).
  * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
@@ -379,6 +433,7 @@ export async function queue(args, runtime) {
         refuseDetachUsage(args);
     }
     const detachedId = detachedRunIdOf(args);
+    const firstArrival = arrivedAtOf(args, runtime.clock.now());
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
     const { delivery } = config;
@@ -423,13 +478,20 @@ export async function queue(args, runtime) {
         const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());
         const need = await needOf(runtime, places.ledger, { session, what, kind: request.kind, small, ...(declaredMb === undefined ? {} : { declaredMb }) }, delivery.queue);
         const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
+        const arrivedAt = firstArrival ?? runtime.clock.now();
         const taking = await unlessStopped(watching.stop, lock.acquire(session, `heavy: ${what}`, delivery.queue.waitMinutes * MINUTE_MS, delivery.wait.pollSeconds * 1_000, (holder, ahead) => {
             const text = `${waiting}: ${waitText(holder, ahead, zone)}`;
             waits.tell({ cause: causeOfLockWait(holder), text });
             say(text);
-        }, { need, request: line, exclusive }, watching.stop));
+        }, { need, request: line, exclusive, arrivedAt }, watching.stop));
         if (taking === undefined) {
-            await recordRefusal(runtime, places.ledger, waits, { ...owner, what, outcome: 'stopped', reason: `its launching shell ended (${endedText(watching)}) while it waited` });
+            const ended = endedText(watching);
+            const handed = handsOver(watching, prePush !== undefined) ? await handOver(runtime, { kit, config, say, args, ended }, { session, what, words, arrivedAt }) : undefined;
+            if (handed?.kind === 'handed') {
+                return EXIT.ok;
+            }
+            const notHanded = handed === undefined ? '' : `; its detached run did not start: ${handed.why}`;
+            await recordRefusal(runtime, places.ledger, waits, { ...owner, what, outcome: 'stopped', reason: `its launching shell ended (${ended}) while it waited${notHanded}` });
             return stoppedWhileWaiting(runtime, say, watching);
         }
         if (taking.kind === 'busy') {
