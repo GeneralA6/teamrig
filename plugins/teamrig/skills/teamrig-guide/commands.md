@@ -3650,6 +3650,37 @@ VALID /home/you/.teamrig/teams/shop/config.json
 A broken config prints `INVALID` with each problem and exits 1. While a config has problems, commands that only
 read warn and use the default for each bad field, and commands that write refuse.
 
+### teamrig config get
+
+Lists every key of the team config, or with `<key>` those at and under it (`messages`, `messages.maxLines`): its
+value as the team's file holds it, or its default when unset, the default beside a changed one, and why a key is
+read-only. The roster (`team`, `sessions`, `names`, `leads`, `roles`) changes only through hire, retire, rename,
+promote and demote; `configVersion` only through `config migrate`; maps and lists of records only in config.json or
+their own command; and the budget, `focus.allocation`, permissions, `ownerGates`, `leadBoundary`, `exec`,
+`readonlyShell` and every guard are owner gates the owner decides. A value `config validate` finds wrong is named
+with its problem, read as its default meanwhile.
+
+Flags:
+
+- `--json`: prints one JSON document, `{ "file", "rows" }`, each row with `path`, `group`, `type`, `items`, `enum`,
+  `min`, `max`, `value`, `default`, `isDefault`, `meaning`, `editable`, `gatedBy`, `readOnly` and `problem` (the
+  ones that apply), for a settings screen such as the pane's.
+
+Example:
+
+```sh
+teamrig config get messages
+```
+
+Output:
+
+```text
+messages.maxLines 12  (default 10)
+messages.coldAfterMinutes 60
+```
+
+It refuses a key the config does not have, and a config it cannot read.
+
 ### teamrig config migrate
 
 Shows an older config rewritten in the current format; `--yes` writes it and keeps the old file in `backups/`.
