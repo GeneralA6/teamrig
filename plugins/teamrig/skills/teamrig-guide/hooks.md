@@ -31,7 +31,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass), at most once a minute |
 | The mod, every 30 s in each tab | `hook meeting-due` | Sends a scheduled meeting's notices before, at and past its time (OS notification, tab toast, a missed one to the lead), from one tab of the team ([a scheduled meeting's notification](#the-mod-a-scheduled-meetings-notification)) |
 | The mod, every 10 s in each tab | `hook needs-you`, `hook needs-you-focus` | Names another tab of the team that asks the user something (a permission prompt, a question, a decision line) in a toast and a band above the prompt, whose Focus brings that tab to the front ([the needs-you band](#the-mod-the-needs-you-band)) |
-| The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's meeting is open, shows its cards in a pane beside the root team lead's chat, in sections (on the table, up next, decided), each with a one-line summary and a decided one with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
+| The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's daily meeting is open, shows its cards in a pane beside the root team lead's chat, and while a booked `M<n>` is started, its cards beside the chat of the session it meets, in sections (on the table, up next, decided), each with a one-line summary and a decided one with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
 | The mod, a minute after a tab starts and every 10 minutes, and when an install changes `installed_plugins.json` | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), once to [a hand step typed into its reply](#end-of-a-turn-a-hand-step-typed-into-the-reply), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; starts the team's `issue watch` hidden in the background when none runs; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
@@ -1505,15 +1505,18 @@ as before 0.342.0, Windows PowerShell exits at once having run nothing, so no to
 
 In the owner's daily meeting the cards went by in the chat, and the owner kept count of what was decided and what was
 left. In each interactive tab, every 15 s whether or not a turn runs, the mod runs
-[`teamrig hook meeting-panel`](commands.md#teamrig-hook-meeting-panel) once the meeting file or a register the
-meeting covers changed, or 10 minutes passed. While a meeting is open, the root team lead's tab opens the
+[`teamrig hook meeting-panel`](commands.md#teamrig-hook-meeting-panel) once a meeting file or a register the
+meeting covers changed, or 10 minutes passed. While the daily meeting is open, the root team lead's tab opens the
 "Meeting agenda" pane beside the chat. A header says how many cards are left and how many are decided; then, with a
 gap between each part, come On the table (the first card still asked, in a rounded box), Up next (the rest still
 asked, in the agenda's order) and Decided (each card decided since the meeting started, `update <id> --decided`,
 with its decision). Each card gives its title, a one-line summary under it (its card's question, else the task's
 description), and its id, dim, last; a section with no card is left out. In a tree of teams it covers every team under the root, as `<team>/<id>`. At
-`meeting end` the pane closes. Every other tab, and a sub-team's lead, shows none. Closing the pane by hand keeps it
-closed until the next meeting starts. `meeting.panel.enabled: false` turns it off.
+`meeting end` the pane closes. A booked meeting (`meeting start M<n>`) opens the same pane in the tab of the session it
+meets, in any team, a sub-team's lead or a member too: its cards are the owner's cards among the meeting's `--tasks`
+and the tasks they need first, the Improvements batch and a dedicated session's cards included, and it closes at
+`meeting end M<n>` (or 4 hours after the start). Every other tab shows none. Closing the pane by hand keeps it closed
+until the next meeting starts. `meeting.panel.enabled: false` turns it off.
 
 ## Meeting start: the spotlight
 
