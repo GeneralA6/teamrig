@@ -12,7 +12,7 @@ import type { AdmissionRules } from './admission.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
 import { MemoryGate } from './memory-gate.ts';
 import type { LineRequest } from './process-request.ts';
-import type { WaitCause } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
 
 const LOCK_PATH = '/kit/host.lock';
 const ME = 4242;

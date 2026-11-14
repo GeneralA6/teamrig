@@ -4,7 +4,8 @@ import { parseJsonl } from '../core/jsonl.ts';
 import { formatUtcMinute } from '../core/time.ts';
 import { TASK_ID } from '../register/model.ts';
 import { isStepKind, type StepKind } from './process-request.ts';
-import { WAIT_CAUSES, type WaitCause, type WaitTold, type WaitTotals } from './wait-log.ts';
+import { WAIT_CAUSES, type WaitCause } from './wait-cause.ts';
+import type { WaitTold, WaitTotals } from './wait-log.ts';
 
 /** The ledger's file name in the delivery folder: one JSON record a line, appended. */
 export const LEDGER_FILE = 'ledger.jsonl';

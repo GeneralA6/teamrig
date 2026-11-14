@@ -11,7 +11,8 @@ import type { CpuGate } from './cpu.ts';
 import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
 import { isLineRequest, type LineRequest } from './process-request.ts';
-import { causeOfLockWait, WAIT_CAUSES, type WaitCause } from './wait-log.ts';
+import { WAIT_CAUSES, type WaitCause } from './wait-cause.ts';
+import { causeOfLockWait } from './wait-log.ts';
 
 /**
  * The host lock's file. Its fields are the ones a team's own deploy tool writes too, so both take the same

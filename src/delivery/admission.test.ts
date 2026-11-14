@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { admissionOrder, agedPriority, isAdmissionMode, placeInLine, UNNAMED_PRIORITY, type AdmissionRules, type InLine } from './admission.ts';
-import type { WaitCause } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
 
 const MINUTE = 60_000;
 const NOW = Date.parse('2026-11-08T12:00:00.000Z');

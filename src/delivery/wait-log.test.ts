@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeClock } from '../testing/fake-clock.ts';
 import type { HostLockInfo, LockWait } from './host-lock.ts';
-import { causeOfLockWait, WaitLog, type WaitCause } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
+import { causeOfLockWait, WaitLog } from './wait-log.ts';
 
 const QUEUED = Date.parse('2030-01-08T10:00:00Z');
 const INFO: HostLockInfo = { id: 'lock-1', pid: 77, session: 'po', purpose: 'build api', acquiredAt: '2030-01-08T09:58:00Z', expiresAt: '2030-01-08T10:58:00Z' };
