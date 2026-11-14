@@ -1,5 +1,6 @@
-import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
+import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostPulls, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
+import type { HostPull } from '../issues/pull.ts';
 
 /** What each use does, as the fake's access line words it. */
 const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'reads', open: 'opens issues', write: 'writes' };
@@ -19,11 +20,11 @@ export type HostCall =
   | { readonly kind: 'unassign'; readonly target: IssueTarget; readonly login: string };
 
 /**
- * An issue host that reaches nothing and holds no issue: a list is empty, each write is recorded, and ends done
- * unless a test set it to fail; opened issues are numbered from 1. Its repositories have the labels a test gave it,
- * and every issue a test did not make missing, with the id 1000 + its number; its links read gives the issues a test
- * gave it, by repository. It is reached as `<owner>: writes as the test` (or reads, or opens issues), scoped to the
- * owner, unless a test made it unreachable.
+ * An issue host that reaches nothing and holds no issue: a list is empty, a pull request read gives what a test set,
+ * each write is recorded, and ends done unless a test set it to fail; opened issues are numbered from 1. Its
+ * repositories have the labels a test gave it, and every issue a test did not make missing, with the id 1000 + its
+ * number; its links read gives the issues a test gave it, by repository. It is reached as `<owner>: writes as the
+ * test` (or reads, or opens issues), scoped to the owner, unless a test made it unreachable.
  */
 export class FakeIssueHost implements IssueHost {
   readonly name = 'the test host';
@@ -106,6 +107,10 @@ export class FakeIssueHost implements IssueHost {
     this.labelReadFailure = reason;
     return this;
   }
+  /** Each pull request read asked, in order. */
+  readonly pullReads: { readonly repo: string; readonly since: string | undefined }[] = [];
+  private readonly pullsOf = new Map<string, readonly HostPull[]>();
+  private pullsFailure: string | undefined;
 
   /** From now on, a links read of `repo` gives `issues`, with `notes` about the read. */
   withLinks(repo: string, issues: readonly LinkedIssue[], notes: readonly string[] = []): this {
@@ -164,6 +169,23 @@ export class FakeIssueHost implements IssueHost {
 
   list(): Promise<HostList> {
     return Promise.resolve({ kind: 'listed', issues: [], notes: [] });
+  }
+
+  /** From now on, a pull request read of `repo` gives `pulls`, whatever time it was given. */
+  holdsPulls(repo: string, pulls: readonly HostPull[]): this {
+    this.pullsOf.set(repo, pulls);
+    return this;
+  }
+
+  /** From now on, a pull request read fails for `reason`. */
+  failsPulls(reason: string): this {
+    this.pullsFailure = reason;
+    return this;
+  }
+
+  pulls(repo: string, since: string | undefined): Promise<HostPulls> {
+    this.pullReads.push({ repo, since });
+    return Promise.resolve(this.pullsFailure === undefined ? { kind: 'listed', pulls: this.pullsOf.get(repo) ?? [], notes: [] } : { kind: 'failed', reason: this.pullsFailure });
   }
 
   open(draft: IssueDraft): Promise<HostOpen> {

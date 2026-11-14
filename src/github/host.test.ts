@@ -5,7 +5,7 @@ import { FakeCredentials } from '../testing/fake-credentials.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
-import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { commentNode, FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
 import {
   assigneeReadArgs,
   isAssigneeRead,
@@ -33,6 +33,7 @@ import {
 import { GitHubIssueHost, issueIdIn, loginIn } from './host.ts';
 import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import { CLOSED_ISSUES_QUERY } from './queries.ts';
+import { PULL_LIMIT } from './pulls.ts';
 import { RepoTokens } from './tokens.ts';
 
 const ENV = { HOME: '/u' };
@@ -108,6 +109,30 @@ describe('GitHubIssueHost.list', () => {
       reason: 'gh api graphql for the issues of acme/web exited with code 1: HTTP 403: API rate limit exceeded',
     });
     assert.equal(gh.ran.length, 2);
+  });
+});
+
+describe('GitHubIssueHost.pulls', () => {
+  it('reads the pull requests changed since the time, through the shipped query with the saved token', async () => {
+    const gh = new FakeGh().holdsPulls('acme/web', [ghPull('acme/web', 1, { updatedAt: '2030-01-01T00:00:00Z' }), ghPull('acme/web', 2, { updatedAt: '2030-01-03T00:00:00Z' })]);
+    const read = await hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'tok_abcdefgh')).pulls('acme/web', '2030-01-02T00:00:00Z');
+    assert.deepEqual(read.kind === 'listed' && [read.pulls.map((pull) => pull.number), read.notes], [[2], []]);
+    assert.ok(gh.ran.every((request) => isIssueQuery(request.args) && request.env['GH_TOKEN'] === 'tok_abcdefgh'));
+  });
+
+  it('says when the read may be cut short, or held items it could not read', async () => {
+    const many = Array.from({ length: PULL_LIMIT + 1 }, (_, index) => ghPull('acme/web', index + 1));
+    const read = await hostWith(new FakeGh().holdsPulls('acme/web', many)).pulls('acme/web', undefined);
+    assert.deepEqual(read.kind === 'listed' && [read.pulls.length, read.notes], [PULL_LIMIT, ['the pull request read reached 200, so it may leave some out']]);
+    const odd = await hostWith(new FakeGh().holdsPulls('acme/web', [{ ...ghPull('acme/web', 900), state: 'DRAFTED' }])).pulls('acme/web', undefined);
+    assert.deepEqual(odd.kind === 'listed' && odd.notes, ['1 item(s) gh printed did not read as pull requests and were left out']);
+  });
+
+  it('gives the one line when the read fails', async () => {
+    assert.deepEqual(await hostWith(new FakeGh()).pulls('acme/nope', undefined), {
+      kind: 'failed',
+      reason: 'acme/nope is not visible to the gh login: check github.repos, or save a read-only token for acme with: save teamrig-gh-acme',
+    });
   });
 });
 
@@ -330,6 +355,7 @@ describe('GitHubIssueHost', () => {
     const reason = 'could not read teamrig-gh-acme from the test store: the keyring is locked; unlock the store and rerun, or save the key again with: save teamrig-gh-acme';
     assert.deepEqual(await host.reach('acme/web', 'read'), { kind: 'unreachable', reason });
     assert.deepEqual(await host.list('acme/web', '2029-12-25'), { kind: 'failed', reason });
+    assert.deepEqual(await host.pulls('acme/web', undefined), { kind: 'failed', reason });
     assert.deepEqual(await host.open(DRAFT), { kind: 'failed', reason });
     assert.deepEqual(await host.comment(TARGET, 'Thanks'), { kind: 'failed', reason });
     assert.deepEqual(await host.close(TARGET), { kind: 'failed', reason });

@@ -5,6 +5,7 @@
  */
 
 import type { HostIssue, LinkedIssue, ReadComment } from './issue.ts';
+import type { HostPull } from './pull.ts';
 
 /** One issue or pull request: its repository (`owner/name`, in lowercase) and its number. */
 export interface IssueTarget {
@@ -84,6 +85,14 @@ export type HostLinks =
   | { readonly kind: 'listed'; readonly issues: readonly LinkedIssue[]; readonly notes: readonly string[] }
   | { readonly kind: 'failed'; readonly reason: string };
 
+/**
+ * A repository's pull requests changed at or after the time a read was given, newest change first, with what a reader
+ * should know about the read; or why it could not be read.
+ */
+export type HostPulls =
+  | { readonly kind: 'listed'; readonly pulls: readonly HostPull[]; readonly notes: readonly string[] }
+  | { readonly kind: 'failed'; readonly reason: string };
+
 /** One issue to open: its repository (`owner/name`), title, body and labels. */
 export interface IssueDraft {
   readonly repo: string;
@@ -103,6 +112,11 @@ export interface IssueHost {
   reach(repo: string, use: HostUse): Promise<HostReach>;
   /** The open issues of `repo` and those closed on or after `closedSince` (`YYYY-MM-DD`, UTC), the newest state of each. */
   list(repo: string, closedSince: string): Promise<HostList>;
+  /**
+   * The pull requests of `repo` changed at or after `since` (an ISO time), newest change first; with no `since`, the
+   * most recently changed ones, as many as one read takes.
+   */
+  pulls(repo: string, since: string | undefined): Promise<HostPulls>;
   /** Opens one issue. */
   open(draft: IssueDraft): Promise<HostOpen>;
   /** Posts `body` as one comment. */

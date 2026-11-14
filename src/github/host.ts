@@ -10,6 +10,7 @@ import {
   type HostLinks,
   type HostList,
   type HostOpen,
+  type HostPulls,
   type HostReach,
   type HostUse,
   type HostWatch,
@@ -51,6 +52,7 @@ import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, readCommentsIn, star
 import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
 import { latestIssues } from './plan.ts';
+import { listPulls, PULL_LIMIT } from './pulls.ts';
 import { TokenReadError, type RepoAccess, type RepoTokens } from './tokens.ts';
 
 /** What each use does with an access, as its ACCESS line words it. */
@@ -106,6 +108,23 @@ export class GitHubIssueHost implements IssueHost {
       return closed;
     }
     return { kind: 'listed', issues: latestIssues(open.issues, closed.issues), notes: [...listNotes('open', open), ...listNotes('closed', closed)] };
+  }
+
+  /** The pull requests changed since `since`, as the owner's saved token or the gh login reads them (pulls.ts). */
+  async pulls(repo: string, since: string | undefined): Promise<HostPulls> {
+    const access = await this.tokens.accessFor(repo);
+    if (access instanceof TokenReadError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    const read = await listPulls(this.gh, access, { repo, since, limit: PULL_LIMIT });
+    if (read.kind === 'failed') {
+      return read;
+    }
+    const notes = [
+      ...(read.full ? [`the pull request read reached ${PULL_LIMIT}, so it may leave some out`] : []),
+      ...(read.unreadable > 0 ? [`${read.unreadable} item(s) gh printed did not read as pull requests and were left out`] : []),
+    ];
+    return { kind: 'listed', pulls: read.pulls, notes };
   }
 
   /**
