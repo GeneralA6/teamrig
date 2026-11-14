@@ -6,7 +6,8 @@ import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, FakeHostMemory } from '../testing/fake
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { marksOfTaking, NOT_STARTED_EXIT, recordQueuedStep, recordRefusal, runRecorded, type RecordedStep, type StepRecordSetup } from './recorded-step.ts';
-import { WaitLog, type WaitCause } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
+import { WaitLog } from './wait-log.ts';
 
 const LEDGER = '/kit/deploys/ledger.jsonl';
 const SAMPLED: StepRecordSetup = { places: { ledger: LEDGER }, delivery: { queue: { memorySampleSeconds: 15 } } };

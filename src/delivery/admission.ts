@@ -1,6 +1,6 @@
 import { NOW_PRIORITY } from '../config/priorities.ts';
 import type { LineRequest } from './process-request.ts';
-import type { WaitCause } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
 
 /**
  * How the host lock's line is ordered (`delivery.queue.admission`): `pipeline` orders it by urgency, class turn, aged
