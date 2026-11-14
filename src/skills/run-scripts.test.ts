@@ -4,7 +4,7 @@ import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { grantGaps } from './grants.ts';
 import type { SkillFile } from './lint.ts';
-import { MAX_FOLLOWED, runScriptPaths, skillsToLint, withRunScripts } from './run-scripts.ts';
+import { localPath, MAX_FOLLOWED, MAX_TRIED, runScriptPaths, skillsToLint, withRunScripts } from './run-scripts.ts';
 
 const HOME = 'D:/devhome';
 const FOLDER = 'D:/devhome/skills/ship-it';
@@ -61,6 +61,16 @@ describe('runScriptPaths', () => {
   });
 });
 
+describe('localPath', () => {
+  it('keeps a path absolute on a drive or a single root, normalised, and refuses a relative, UNC or device path', () => {
+    assert.equal(localPath('C:\\Work\\x\\..\\y.ts'), 'C:/Work/y.ts');
+    assert.equal(localPath('/opt/kit/d.sh'), '/opt/kit/d.sh');
+    for (const path of ['hostA/s/x.js', '../x.js', 'C:x.js', '//host/s/x.js', '\\\\host\\s\\x.js', '\\\\?\\UNC\\h\\s\\x.js', '\\\\.\\pipe\\p', '/\\host\\s\\x.js', 'C:/../x.js']) {
+      assert.equal(localPath(path), undefined, path);
+    }
+  });
+});
+
 describe('withRunScripts', () => {
   it('reads the scripts a SKILL.md runs and every module they import by a relative path, once each', async () => {
     const files = new MemoryFiles({
@@ -113,6 +123,32 @@ describe('withRunScripts', () => {
     assert.deepEqual(read.scripts.map((script) => script.name), ['C:/Work/kit/b.ts']);
     files.fail('readHead', 'C:/Work/kit/b.ts', systemError('EIO'));
     await assert.rejects(withRunScripts(files, skill('node C:/Work/kit/b.ts'), FOLDER, HOME), /EIO: simulated/);
+  });
+
+  it('never reads an import that pops past its drive to a UNC or device path, nor a SKILL.md path that does, as its security review found (T1401)', async () => {
+    const home = 'D:/kit/dev';
+    const files = new WatchedFiles({
+      'C:/a.js': "import x from '../\\hostA\\s\\x.js';",
+      'C:/d1/d2/b.ts': "import y from '../../../\\hostB\\s\\x.js';",
+      'D:/kit/dev/t/c.mjs': "import '../../../../\\?\\UNC\\hostF\\s\\x.js';\nimport '../../../../\\.\\pipe\\hostG.js';",
+    });
+    const text = ['node C:/a.js', 'node C:/d1/d2/b.ts', 'node ~/t/c.mjs', 'node C:/..\\hostL\\s\\a.js'].join('\n');
+    const read = await withRunScripts(files, skill(text), FOLDER, home);
+    assert.deepEqual(read.scripts.map((script) => script.name), ['C:/a.js', 'C:/d1/d2/b.ts', '~/t/c.mjs']);
+    assert.deepEqual(files.heads, ['C:/a.js', 'C:/d1/d2/b.ts', 'D:/kit/dev/t/c.mjs']);
+  });
+
+  it(`tries at most ${MAX_TRIED} paths, so imports of files that are not there stay a bounded read`, async () => {
+    const imports = Array.from({ length: MAX_TRIED }, (_, n) => `import './gone${n}';`).join('\n');
+    const files = new WatchedFiles({ 'C:/Work/many.ts': imports });
+    await withRunScripts(files, skill('node C:/Work/many.ts'), FOLDER, HOME);
+    assert.equal(files.heads.length, MAX_TRIED);
+  });
+
+  it('escapes the control characters of a followed path in its name', async () => {
+    const files = new MemoryFiles({ 'C:/Work/a\u001b[2Jb.ts': 'export {};' });
+    const read = await withRunScripts(files, skill('node "C:/Work/a\u001b[2Jb.ts"'), FOLDER, HOME);
+    assert.deepEqual(read.scripts.map((script) => script.name), ['C:/Work/a\\x1b[2Jb.ts']);
   });
 
   it('never reads a UNC path, and gives back a skill with nothing to follow as it was', async () => {

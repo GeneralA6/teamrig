@@ -1,6 +1,7 @@
-import { posix } from 'node:path';
+import { posix, win32 } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { errorCode } from '../core/guards.ts';
+import { printable } from '../core/printable.ts';
 import type { SkillScript } from './grants.ts';
 import type { SkillFile } from './lint.ts';
 import { SkillDir } from './store.ts';
@@ -18,6 +19,12 @@ import { SkillDir } from './store.ts';
  * bounded read, and the scripts the skill runs come first, then each script's own imports.
  */
 export const MAX_FOLLOWED = 200;
+
+/**
+ * At most this many paths are tried for one skill, found or not: an import may name up to 7 files (`importTargets`),
+ * and scripts full of imports of files that are not there would otherwise try 7 for every import line they hold.
+ */
+export const MAX_TRIED = 1000;
 
 /** How much of a followed file is read: a path a SKILL.md names may be any file, a device or a pipe (`readHead`). */
 export const MAX_SCRIPT_BYTES = 1024 * 1024;
@@ -69,7 +76,7 @@ export function runScriptPaths(text: string, home: string): string[] {
 
 /** The files a relative import may name, in the order node and TypeScript try them: a `.js` import is often a `.ts` file. */
 function importTargets(from: string, spec: string): string[] {
-  const path = posix.join(posix.dirname(from), spec);
+  const path = posix.join(posix.dirname(from), slashed(spec));
   if (/\.[cm]?js$/.test(path)) {
     return [path, path.replace(/js$/, 'ts')];
   }
@@ -79,15 +86,18 @@ function importTargets(from: string, spec: string): string[] {
   return [...['.ts', '.mts', '.js', '.mjs', '.cjs'].map((extension) => `${path}${extension}`), `${path}/index.ts`, `${path}/index.js`];
 }
 
-/** How the check names a followed script: by its path from the skill's folder, else from home, else whole. */
+/**
+ * How the check names a followed script: by its path from the skill's folder, else from home, else whole, with its
+ * control characters escaped, as a SKILL.md may name any path and the name goes into the check's flag line.
+ */
 function displayName(path: string, folder: string, home: string): string {
   const under = (root: string): string | null => (path.startsWith(`${root}/`) ? path.slice(root.length + 1) : null);
   const inFolder = under(folder);
   if (inFolder !== null) {
-    return inFolder;
+    return printable(inFolder);
   }
   const inHome = under(slashed(home).replace(/\/+$/, ''));
-  return inHome === null ? path : `~/${inHome}`;
+  return printable(inHome === null ? path : `~/${inHome}`);
 }
 
 /**
@@ -96,9 +106,31 @@ function displayName(path: string, folder: string, home: string): string {
  */
 const UNREADABLE = new Set(['EACCES', 'EPERM', 'ENOTDIR', 'EISDIR', 'ENAMETOOLONG', 'EINVAL', 'ELOOP']);
 
+/**
+ * `path` as the check may read it: slashes turned, `.` and `..` resolved, and absolute on a drive (`C:/`) or a single
+ * root (`/`); undefined for any other. A UNC or device path (`//host/share`, `//?/UNC/`, `//./pipe/`) would open the
+ * share, sending the user's NTLM hash to the host the text names, and an import with enough `..` and backslashes left
+ * one (T1401's security review). A drive path whose `..` pops past its drive turns relative, and would read under the cwd.
+ */
+export function localPath(path: string): string | undefined {
+  const turned = slashed(path);
+  // Before normalising, which reads a leading `//` as one root and would read `//host/s` as the local `/host/s`.
+  if (turned.startsWith('//')) {
+    return undefined;
+  }
+  const normal = posix.normalize(turned);
+  const absolute = /^(?:[A-Za-z]:\/|\/(?!\/))/.test(normal);
+  return absolute && !/^[\\/]{2}/.test(win32.resolve(normal)) ? normal : undefined;
+}
+
+/** The head of the file at `path`, or undefined when it is no local path (`localPath`), missing or unreadable. */
 async function readNamed(files: Files, path: string): Promise<string | undefined> {
+  const local = localPath(path);
+  if (local === undefined) {
+    return undefined;
+  }
   try {
-    return await files.readHead(path, MAX_SCRIPT_BYTES);
+    return await files.readHead(local, MAX_SCRIPT_BYTES);
   } catch (error) {
     const code = errorCode(error);
     if (code !== undefined && UNREADABLE.has(code)) {
@@ -133,8 +165,10 @@ export async function withRunScripts(files: Files, skill: SkillFile, folder: str
   own.forEach(({ path, text }) => importsOf(path, text));
 
   const followed: SkillScript[] = [];
-  for (let at = 0; at < queue.length && followed.length < MAX_FOLLOWED; at++) {
-    for (const path of queue[at] ?? []) {
+  let tried = 0;
+  for (let at = 0; at < queue.length && followed.length < MAX_FOLLOWED && tried < MAX_TRIED; at++) {
+    for (const path of (queue[at] ?? []).slice(0, MAX_TRIED - tried)) {
+      tried++;
       const text = await readNamed(files, path);
       if (text !== undefined) {
         followed.push({ name: displayName(path, root, home), text });
