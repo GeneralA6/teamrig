@@ -1,6 +1,7 @@
 import { activeBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
+import { autoRestartOf } from "../../config/refresh.js";
 import { isRecord, stringField } from "../../core/guards.js";
 import { LockBusyError } from "../../core/lock.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
@@ -311,7 +312,7 @@ export async function wakeCheck(args, runtime) {
         return answer(runtime, waitAnswer(scope, null));
     }
     const restarts = new RefreshStore(runtime.files, kit.paths);
-    const rearm = { team: kit.paths.team, id, tab, refresh: config.refresh, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
+    const rearm = { team: kit.paths.team, id, tab, refresh: { enabled: config.refresh.enabled, autoRestart: autoRestartOf(config, id) }, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
     if (await restartHoldsWake(runtime, restarts, rearm)) {
         return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
     }
