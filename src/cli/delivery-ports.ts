@@ -41,7 +41,7 @@ type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessi
 export function hostLockOf(
   runtime: LockRuntime & Pick<CliRuntime, 'memory' | 'cpu'>,
   path: string,
-  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb' | 'admission' | 'agingMinutes' | 'perSessionRunning' | 'maxHeavyParallel' | 'heavyIdleCpuPct'>,
+  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb' | 'admission' | 'agingMinutes' | 'memoryPassMinutes' | 'perSessionRunning' | 'maxHeavyParallel' | 'heavyIdleCpuPct'>,
   headroom: Pick<HeadroomConfig, 'commitMaxPct'>,
   focus: Pick<FocusConfig, 'defaultClass'>,
   zone: TimeZone,
@@ -51,6 +51,7 @@ export function hostLockOf(
   const admission: AdmissionRules = {
     mode: queue.admission,
     agingMinutes: queue.agingMinutes,
+    memoryPassMinutes: queue.memoryPassMinutes,
     perSessionRunning: queue.perSessionRunning,
     maxHeavyParallel: queue.maxHeavyParallel,
     defaultClass: focus.defaultClass,
