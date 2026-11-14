@@ -22,6 +22,7 @@ or take it to the lead.
 | `REFUSED T1 already tracks this (open, owner api)` | An active task has this title: work on that one, or ask its owner. |
 | `REFUSED only the owner (api) sets the status of T1` | Tell the owner in an inbox line; only it sets the status. |
 | `REFUSED done needs --evidence: a commit, test count, path or number that proves it` | Add `--evidence` with real proof. |
+| `REFUSED T9 comes after T10 (open), not finished yet: set it done once that is done, dropped or verifying` (a task not started yet adds `, or change its order with teamrig update T9 --after <tasks>\|none`) | A task planned after others is done only once each of them is done, dropped or verifying, on any team's register: finish them first, or drop the one no longer needed. |
 | `REFUSED done needs --skill <name> (the skill written or updated) or --skill none` | Add `--skill <name>` or `--skill none`. |
 | `REFUSED no skill named x; write it first or use --skill none` | Write the skill to `<skills folder>/x/SKILL.md` first, or use `none`. |
 | `REFUSED --skill goes only with done` | Drop `--skill`. |

@@ -193,7 +193,9 @@ tags, so a part without them is flagged `OFF-GOAL` or `DUE-UNPLANNED`. A row lef
 
 A part ties to the work it serves by plan order, since the register has no parent field: the whole is planned
 after its parts (`teamrig update T9 --after T10,T11`), so each part takes the whole's due (`due 10-17 (from T9)`),
-its row names the whole (`needed by T9`), and `teamrig show T9 --tree` prints both. That whole is the parent task
+its row names the whole (`needed by T9`), and `teamrig show T9 --tree` prints both. The whole is not done while a
+part is open, in progress or waiting: `set T9 --status done` is refused until each part is done, dropped or
+verifying, whichever register holds it. That whole is the parent task
 rule 5 names. Keep a whole only when it has a proof beyond its parts (a live check across them); when it is just
 their sum, a goal tag ties the parts together, and the old row stays only for the steps left in it.
 
