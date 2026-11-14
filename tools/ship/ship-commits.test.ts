@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { GateVerdict } from './local-gate.ts';
-import { DIST, parseNumstat, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
+import type { MergeExit } from './merge.ts';
+import { DIST, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
 import type { Chunk, ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
 
@@ -20,7 +21,10 @@ interface FakeOptions {
   readonly verdict?: GateVerdict;
   /** The first step whose event starts with this throws, like a failed command. */
   readonly failOn?: string;
-  readonly mergeExit?: number;
+  /** What each merge returns, in turn; the last one repeats. */
+  readonly mergeExits?: readonly MergeExit[];
+  /** git's stdout by its args joined with spaces, before the defaults. */
+  readonly answers?: Readonly<Record<string, string>>;
 }
 
 interface Fake {
@@ -33,6 +37,7 @@ interface Fake {
 function fake(options: FakeOptions = {}): Fake {
   const events: string[] = [];
   const logs: string[] = [];
+  let merges = 0;
   const step = (event: string): void => {
     events.push(event);
     if (options.failOn !== undefined && event.startsWith(options.failOn)) throw new Error(`${event} failed`);
@@ -41,7 +46,10 @@ function fake(options: FakeOptions = {}): Fake {
     run: (command, args) => step(`${command} ${args.join(' ')}`),
     node: (args) => step(`node ${args.join(' ')}`),
     git: (args) => {
-      events.push(`git ${args.join(' ')}`);
+      const joined = args.join(' ');
+      events.push(`git ${joined}`);
+      const answer = options.answers?.[joined];
+      if (answer !== undefined) return answer;
       return args[0] === 'diff' ? (options.numstat ?? '') : 'abc1234 core: a\n';
     },
     log: (line) => logs.push(line),
@@ -63,7 +71,8 @@ function fake(options: FakeOptions = {}): Fake {
     },
     merge: (branch) => {
       events.push(`merge ${branch}`);
-      return Promise.resolve(options.mergeExit ?? 0);
+      const exits = options.mergeExits ?? [];
+      return Promise.resolve(exits[merges++] ?? exits.at(-1) ?? { kind: 'done', code: 0 });
     },
   };
   return { deps, events, logs };
@@ -147,10 +156,78 @@ test('a tree the gate does not pass is refused before any push, with --merge too
 });
 
 test('with --merge, pushes the change branch after the gate and returns the merge exit code', async () => {
-  const { deps, events, logs } = fake({ mergeExit: 3 });
+  const { deps, events, logs } = fake({ mergeExits: [{ kind: 'done', code: 3 }] });
   assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 3);
   assert.deepEqual(events.slice(-3), ['git log --oneline origin/main..HEAD', 'push', 'merge t827-ship-tool']);
   assert.ok(logs.includes('\npushed t827-ship-tool; merging:'));
+});
+
+const TIP = 'fedcba9876543210';
+const MOVED: MergeExit = { kind: 'moved', tip: TIP, reason: 'main moved to fedcba9' };
+const VERSION_AND_DIST = `plugins/teamrig/.claude-plugin/plugin.json\nsrc/core/version.ts\n${DIST}/a.js\n`;
+
+/** git's answers for a move of main to TIP: the branch changed `ours` since it left main, main changed `theirs`. */
+function moveAnswers(ours: string, theirs: string, taken: readonly string[] = []): Record<string, string> {
+  const answers: Record<string, string> = {
+    [`merge-base HEAD ${TIP}`]: 'base111\n',
+    'diff --name-only --no-renames base111 HEAD': ours,
+    [`diff --name-only --no-renames base111 ${TIP}`]: theirs,
+    'rev-parse --abbrev-ref HEAD': 't827-ship-tool\n',
+  };
+  for (let n = 2; n <= 5; n++) {
+    const name = `t827-ship-tool-${n}`;
+    answers[`branch --list ${name}`] = taken.includes(`local ${name}`) ? `  ${name}\n` : '';
+    answers[`ls-remote --heads origin refs/heads/${name}`] = taken.includes(`origin ${name}`) ? `abc\trefs/heads/${name}\n` : '';
+  }
+  return answers;
+}
+
+test('when main moved past the branch touching other files, renames the branch and ships again from the start (T2696)', async () => {
+  const { deps, events, logs } = fake({
+    mergeExits: [MOVED, { kind: 'done', code: 0 }],
+    answers: moveAnswers(`src/a.ts\n${VERSION_AND_DIST}`, `src/other.ts\n${VERSION_AND_DIST}`),
+  });
+  assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 0);
+  const rename = events.indexOf('git branch -m t827-ship-tool-2');
+  assert.ok(rename > events.indexOf('merge t827-ship-tool'));
+  const again = events.slice(rename + 1);
+  assert.deepEqual(again.slice(0, 3), ['take back 2 chunk(s) since origin/main', 'sync', TSC]);
+  assert.deepEqual(again.slice(-2), ['push', 'merge t827-ship-tool']);
+  assert.equal(events.filter((event) => event === 'sync').length, 2);
+  assert.ok(logs.includes('\nmain moved to fedcba9, touching no file this change touches: shipping again as t827-ship-tool-2'));
+});
+
+test('the new branch name skips one taken here or on origin', async () => {
+  const { deps, events } = fake({
+    mergeExits: [MOVED, { kind: 'done', code: 0 }],
+    answers: moveAnswers('src/a.ts\n', 'src/other.ts\n', ['local t827-ship-tool-2', 'origin t827-ship-tool-3']),
+  });
+  assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 0);
+  assert.deepEqual(events.filter((event) => event.startsWith('git branch -m')), ['git branch -m t827-ship-tool-4']);
+});
+
+test('a move of main that changed a file this change changes is refused, naming the files, with no second run', async () => {
+  const { deps, events } = fake({
+    mergeExits: [MOVED],
+    answers: moveAnswers(`src/a.ts\nsrc/b.ts\n${VERSION_AND_DIST}`, `docs/x.md\nsrc/b.ts\nsrc/a.ts\n${VERSION_AND_DIST}`),
+  });
+  await assert.rejects(
+    shipCommits({ ...ARGS, merge: true }, CHUNKS, deps),
+    /^Error: REFUSED main moved to fedcba9 and changed src\/b\.ts, src\/a\.ts, which this change changes too: rebase onto origin\/main by hand, then ship again under a new branch name$/,
+  );
+  assert.ok(!events.some((event) => event.startsWith('git branch -m')));
+  assert.equal(events.filter((event) => event.startsWith('merge ')).length, 1);
+});
+
+test(`gives up after ${SHIP_ATTEMPTS} runs when main keeps moving, keeping the first branch name as the stem`, async () => {
+  const { deps, events } = fake({ mergeExits: [MOVED], answers: moveAnswers('src/a.ts\n', 'src/other.ts\n') });
+  await assert.rejects(
+    shipCommits({ ...ARGS, merge: true }, CHUNKS, deps),
+    new RegExp(`^Error: REFUSED main moved past the branch ${SHIP_ATTEMPTS} times during this ship, last to fedcba9: ship again$`),
+  );
+  assert.equal(events.filter((event) => event.startsWith('merge ')).length, SHIP_ATTEMPTS);
+  assert.equal(events.filter((event) => event.startsWith('git branch -m')).length, SHIP_ATTEMPTS - 1);
+  assert.equal(events.filter((event) => event === 'git rev-parse --abbrev-ref HEAD').length, 1);
 });
 
 test('parseNumstat reads counts, keeps a binary file uncounted and a path with a tab whole', () => {

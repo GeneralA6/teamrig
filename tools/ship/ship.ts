@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { leftoversCommand } from './leftovers.ts';
 import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
-import { mergeCommand } from './merge.ts';
+import { mergeBranch, mergeCommand } from './merge.ts';
 import { pushOwnBranch } from './push.ts';
 import { profileFor, readProfiles, slugOf } from './repos.ts';
 import { takeBackEarlierRun } from './rerun.ts';
@@ -54,7 +54,7 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     buildSteps: () => buildSteps(buildScriptOf(readFileSync(join(repo, 'package.json'), 'utf8'))),
     proveTree: () => proveTree(repo, profile.local, realGateDeps(repo, log)),
     push: () => pushOwnBranch(gitLine, profile.main),
-    merge: (branch) => mergeCommand([repo, '--head', branch, ...(noteFile === null ? [] : ['--note-file', noteFile])]),
+    merge: (branch) => mergeBranch([repo, '--head', branch, ...(noteFile === null ? [] : ['--note-file', noteFile])]),
   };
 }
 
