@@ -1,7 +1,6 @@
 import { posix, win32 } from 'node:path';
 import { envVariable, pathList } from "../core/path-search.js";
-import { resolveDir } from "../push-guard/location.js";
-import { bashDrivePath } from "../secret-guard/paths.js";
+import { bashDrivePath, resolveDir } from "../push-guard/location.js";
 /**
  * Which teamrig client a line's call starts (T803). The exec guard runs `teamrig exec` only through an install of
  * this plugin, and a program word names one only once it is placed as the line's shell places it: a path from the

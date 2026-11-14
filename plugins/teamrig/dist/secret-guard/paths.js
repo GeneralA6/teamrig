@@ -1,5 +1,5 @@
 import * as nodePath from 'node:path';
-import { resolveDir } from "../push-guard/location.js";
+import { bashDrivePath, resolveDir } from "../push-guard/location.js";
 import { globRegExp, hasWildcard } from "./glob.js";
 /**
  * The files whose content is a secret, and how a word on a command line names one. A team's own globs come after
@@ -137,9 +137,4 @@ export function wordPath(text, place) {
     const expanded = text.replace(HOME_VARIABLES[place.dialect], () => place.home).replace(OTHER_PARTS[place.dialect], UNKNOWN);
     const native = place.dialect === 'bash' ? bashDrivePath(expanded, place.home) : expanded;
     return resolveDir(place.dir, native, place.home) ?? `${UNKNOWN}/${native}`;
-}
-/** A Bash path as Windows names it on a Windows host (whose home names a drive): Git Bash's `/c/x` is `C:/x`; any other path as it is. */
-export function bashDrivePath(path, home) {
-    const drive = /^[A-Za-z]:/.test(home) ? /^\/([A-Za-z])(\/|$)/.exec(path) : null;
-    return drive === null ? path : `${(drive[1] ?? '').toUpperCase()}:/${path.slice(drive[0].length)}`;
 }

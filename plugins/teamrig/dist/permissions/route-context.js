@@ -1,5 +1,4 @@
-import { resolveDir } from "../push-guard/location.js";
-import { bashDrivePath } from "../secret-guard/paths.js";
+import { bashDrivePath, resolveDir } from "../push-guard/location.js";
 /**
  * The `push.default` values under which git pushes a branch named alone to the remote branch of its own name; git
  * 2.51 refuses to push under any other spelling, and `upstream` (or `tracking`) sends it to the branch's upstream.
