@@ -26,7 +26,7 @@ async function freezeContextOf(args, runtime) {
     };
 }
 /** The freeze a write returned; a refusal is REFUSED, and a write another writer held up past the wait is FAILED. */
-function writtenOrExit(runtime, outcome) {
+export function writtenOrExit(runtime, outcome) {
     switch (outcome.kind) {
         case 'done':
             return { kind: 'written', value: outcome.value };

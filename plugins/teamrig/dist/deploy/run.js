@@ -6,6 +6,7 @@ import { appendDeploy } from "../delivery/ledger.js";
 import { lineRequest, processRequest } from "../delivery/process-request.js";
 import { NOT_STARTED_EXIT, recordQueuedStep, recordRefusal } from "../delivery/recorded-step.js";
 import { sayingWaits, WaitLog } from "../delivery/wait-log.js";
+import { pipelineFrozenRefusal } from "../delivery/pipeline-freezes.js";
 import { queueCutoffReason, resetBlackoutReason } from "../delivery/schedule.js";
 import { samePath } from "../core/paths.js";
 import { runDependencyCheck } from "../merge/dependencies.js";
@@ -76,15 +77,16 @@ function hookEnv(setup, ports, request, repo, pending, extra = {}) {
     };
 }
 /**
- * What stops any change to `targets` before its checks are asked: the queue cutoff and the reset blackout refuse it, a
- * deploy freeze on one of them holds it; undefined when none does.
+ * What stops any change to `targets` before its checks are asked: the queue cutoff, the reset blackout and a pipeline
+ * freeze on deploys refuse it, a deploy freeze on one of them holds it; undefined when none does.
  */
 export async function scheduleReadiness(setup, ports, targets) {
     const { schedule } = setup.delivery;
     const now = ports.clock.now();
     const hours = schedule.resetBlackoutHours;
     const refusal = queueCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
-        (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
+        (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone)) ??
+        pipelineFrozenRefusal(await ports.files.read(setup.places.pipelineFreezes), setup.places.pipelineFreezes, now, ['deploy'], setup.zone);
     if (refusal !== undefined) {
         return { kind: 'refuse', reason: refusal };
     }
