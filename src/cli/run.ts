@@ -33,6 +33,7 @@ interface CommandSpec {
 
 const registerCommands = () => import('./commands/register.ts');
 const tabSessionCommands = () => import('./commands/tab-session.ts');
+const checkCommands = () => import('./commands/check.ts');
 const statsCommands = () => import('./commands/stats.ts');
 const reportCommands = () => import('./commands/report.ts');
 const goalCommands = () => import('./commands/goal.ts');
@@ -152,7 +153,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   },
   // --session names the caller on every task and inbox command, so a session can always pass it.
   show: { effect: 'read', flags: ['session'], switches: ['tree', 'history'], load: async () => (await registerCommands()).show },
-  check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
+  check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all', 'new'], load: async () => (await checkCommands()).check },
   plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'by-slice'], load: async () => (await registerCommands()).plan },
   verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
   stats: { effect: 'read', flags: ['session', 'range'], switches: ['tree'], load: async () => (await statsCommands()).stats },
@@ -620,8 +621,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   show <id> [<id> ...] [--tree] [--history]   every field, the last 3 history events and the inbox lines naming
       it, for each id in order (an unknown one refuses the call); --history: every event; --tree: what it needs
       and what needs it, each with owner, status and due, then the next move (who acts first, on which task)
-  check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule and context
-      text over budget, in a short form within 3,000 characters; --all: every flag in full
+  check [--week <date>] [--tree] [--all] [--new]   tasks and skills that break a team rule and context
+      text over budget, in a short form within 3,000 characters; --all: every flag in full; --new:
+      only the flags the session acts on (as start shows them) new since its last start or check --new
   plan [--week <date>] [--tree] [--by-slice]    the week plan (default: the newest week that has
       started); --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>;
       --by-slice: the week's tasks under each slice of the team's goals first, then the rest by band

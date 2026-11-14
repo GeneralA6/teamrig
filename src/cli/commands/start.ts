@@ -10,7 +10,8 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { behindLine, behindMain } from '../behind-main.ts';
-import { checkLines, ownCheck, type CheckReport } from '../reports.ts';
+import { checkSeenOf } from '../check-seen.ts';
+import { checkLines, sessionCheck, type CheckReport } from '../reports.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { UnownedNotices } from '../unowned-notices.ts';
 import { unownedNotice } from '../unowned.ts';
@@ -36,7 +37,8 @@ export const MAX_UNOWNED_NOTICES = 5;
  * --all` and `check --all` do, and every task waiting on it. Any session's start also posts the lead one inbox line on
  * each warning no session owns that the lead was not told of yet (T951), at most MAX_UNOWNED_NOTICES per start; a told
  * warning is told again only after no start saw it for a day. Before its inbox lines it tells each of the team's
- * detached queue runs that died with no end of its own (src/cli/detached-sweep.ts).
+ * detached queue runs that died with no end of its own (src/cli/detached-sweep.ts). It records the flags it showed,
+ * so a later `check --new` prints only those that came since (T2536).
  */
 export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -64,7 +66,9 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   (await waitingReport(own, runtime)).forEach((line) => runtime.out.stdout(line));
   const report = await checkReport(own, runtime);
   await tellLead(runtime, kit, config, report);
-  checkLines(id === tree.lead ? report : ownCheck(report, id, tree.groupOf(id)), args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
+  const acts = sessionCheck(report, id, tree);
+  checkLines(acts, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
+  await checkSeenOf(runtime.files, kit.paths, id).record(acts, now);
   runtime.out.stdout(await weekLineOf(runtime, kit, config, roster));
   const resets = id === tree.lead ? resetSummaryLine(config.budget.resets, now, zone, KIT_NAME) : undefined;
   if (resets !== undefined) {
