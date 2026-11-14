@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { type BranchWords, branchNameFor, branchPatternProblem, isBranchType, issueNumberOf, slugOf } from './branch-name.ts';
+import { DEFAULT_BRANCHES } from '../config/defaults.ts';
+import type { BranchesConfig } from '../config/types.ts';
+import { type BranchTask, type BranchWords, branchNameFor, branchPatternProblem, isBranchType, issueNumberOf, slugOf, taskBranchName } from './branch-name.ts';
 import { branchTaskOf } from './owner.ts';
 
 const WORDS: BranchWords = { type: 'feat', id: 't12', issue: '933', slug: 'issue-forms', session: 'web' };
@@ -59,6 +61,28 @@ describe('branchNameFor', () => {
     const named = branchNameFor('{session}/{id}-{slug}', { ...WORDS, session: '.web' });
     assert.equal(named.kind, 'refused');
     assert.match(named.kind === 'refused' ? named.reason : '', /^"\.web\/t12-issue-forms": expected a branch name/);
+  });
+});
+
+describe('taskBranchName', () => {
+  const task: BranchTask = { id: 'T12', title: 'Parse the input (T11)', owner: 'web', ref: 'gh:acme/app#933', itemType: 'task', workClass: 'Roadmap' };
+
+  it("names a task's branch feat and a bug's fix by default", () => {
+    assert.deepEqual(taskBranchName(task, DEFAULT_BRANCHES, undefined), { kind: 'name', branch: 'feat/t12-parse-the-input' });
+    assert.deepEqual(taskBranchName({ ...task, itemType: 'bug' }, DEFAULT_BRANCHES, undefined), { kind: 'name', branch: 'fix/t12-parse-the-input' });
+  });
+
+  it("takes the given type over the work class's, and the class's over the item type's", () => {
+    const branches: BranchesConfig = { ...DEFAULT_BRANCHES, classes: { Roadmap: 'chore' } };
+    assert.deepEqual(taskBranchName(task, branches, undefined), { kind: 'name', branch: 'chore/t12-parse-the-input' });
+    assert.deepEqual(taskBranchName(task, branches, 'docs'), { kind: 'name', branch: 'docs/t12-parse-the-input' });
+  });
+
+  it("takes the branch type's own pattern, and fills the issue, session and slug cap", () => {
+    const branches: BranchesConfig = { ...DEFAULT_BRANCHES, typePatterns: { release: '{type}/{id}-gh{issue}' }, pattern: '{session}/{type}/{id}-{slug}', slugMax: 9 };
+    assert.deepEqual(taskBranchName(task, branches, 'release'), { kind: 'name', branch: 'release/t12-gh933' });
+    assert.deepEqual(taskBranchName(task, branches, undefined), { kind: 'name', branch: 'web/feat/t12-parse-the' });
+    assert.equal(taskBranchName({ ...task, ref: null }, { ...branches, pattern: '{id}-gh{issue}' }, undefined).kind, 'refused');
   });
 });
 

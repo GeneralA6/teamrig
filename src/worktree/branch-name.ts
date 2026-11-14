@@ -1,3 +1,6 @@
+import type { BranchesConfig } from '../config/types.ts';
+import type { ItemType } from '../register/events.ts';
+
 /**
  * A new branch's name from its task (T2690), by the team's pattern (`delivery.branches`), so every branch and the
  * worktree folder named after it read the same way: `feat/t12-parser` by default, after Conventional Branch. The task id
@@ -72,6 +75,35 @@ export function branchNameFor(pattern: string, words: BranchWords): BranchName {
   const branch = fill(pattern, words);
   const problem = branchNameProblem(branch);
   return problem === undefined ? { kind: 'name', branch } : { kind: 'refused', reason: `"${branch}": ${problem}` };
+}
+
+/** What a task's branch is named from. */
+export interface BranchTask {
+  /** Such as `T12`. */
+  readonly id: string;
+  readonly title: string;
+  readonly owner: string;
+  /** Such as `gh:acme/app#933`; null for none. */
+  readonly ref: string | null;
+  readonly itemType: ItemType;
+  /** The work class the task counts as (register/focus.ts `classOf`). */
+  readonly workClass: string;
+}
+
+/**
+ * The branch `teamrig worktree add --task` makes for `task`: its branch type is `type` when given, else its work class's
+ * in `branches.classes`, else its item type's; the pattern is that branch type's own, else `branches.pattern`.
+ */
+export function taskBranchName(task: BranchTask, branches: BranchesConfig, type: string | undefined): BranchName {
+  const branchType = type ?? branches.classes[task.workClass] ?? branches.itemTypes[task.itemType];
+  const pattern = branches.typePatterns[branchType] ?? branches.pattern;
+  return branchNameFor(pattern, {
+    type: branchType,
+    id: task.id.toLowerCase(),
+    issue: issueNumberOf(task.ref),
+    slug: slugOf(task.title, branches.slugMax),
+    session: task.owner,
+  });
 }
 
 /**
