@@ -34,7 +34,9 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   one with no prompt, `q` cancels). A team session started by `teamrig open` comes back through `launch` as itself;
   any other resumes as it ran. One that was mid-turn, hit an API error or had background jobs, cron jobs or a
   wake-up live at the shutdown gets a prompt to re-check the state and carry on, and so does each lead, told how its
-  team's sessions came back; the others reopen idle. They open one by one within the host's memory, as `teamrig
+  team's sessions came back; the others reopen idle. The prompt names why it ended: the computer restarted only when
+  it ended within the shutdown, else its Claude Code was killed (a power loss, a crash) or its tab closed, and a last
+  turn that ended on a login error asks it to say so rather than retry, as only you can log in again. They open one by one within the host's memory, as `teamrig
   open` does: the lead opens whatever the room, any other waits up to `open.headroom.loadMinutes` (5) for room
   while the tabs before it load, else it is held back for the next run. Each step is written to
   `restore/restore.log` in the kit home,
