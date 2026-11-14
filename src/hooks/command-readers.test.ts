@@ -19,6 +19,8 @@ const READINGS_IMPORTS: ReadonlySet<string> = new Set(['toolCommandReadings', 't
 
 /** Readers whose verdict is the same in every reading, by the path under src/ with `/` separators, with why. */
 const EXEMPT: Readonly<Record<string, string>> = {
+  'hooks/cd-compound.ts':
+    "refuses only, never allows: a line it lets go meets Claude Code's own prompt, a refused one its rerun form, so no reading lets a line run unchecked",
   'hooks/pass-record-guard.ts':
     'matches the pass-record folder name with word bounds; halving keeps at least one backslash of each run, so the name and its bounds read alike in every reading',
   'hooks/prompt-refuse.ts': 'reads the command only for the refusal log line; the call is refused in every reading',
