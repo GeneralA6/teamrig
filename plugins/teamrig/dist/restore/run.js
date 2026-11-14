@@ -2,9 +2,10 @@ import { errorMessage } from "../core/guards.js";
 import { samePath } from "../core/paths.js";
 import { customTitleOf } from "../names/title.js";
 import { CARRY_TAIL_BYTES } from "../refresh/carry.js";
+import { turnRunning } from "../refresh/turn.js";
 import { resumeFolderOf } from "../sessions/resume-folder.js";
 import { ARCHIVE_KEEP_MS } from "./archive.js";
-import { chooseMode, CLOSED_KEEP_MS, continuePrompt, diedAt, endFactsOf, judgeEntry, lastRecordedEffort, lostWorkOf, nearestExistingFolder, selectRestorePlan, summarizeRestore, } from "./plan.js";
+import { chooseMode, CLOSED_KEEP_MS, continuePrompt, diedAt, endFactsOf, HUNG_AFTER_MS, judgeEntry, lastRecordedEffort, lostWorkOf, nearestExistingFolder, selectRestorePlan, summarizeRestore, } from "./plan.js";
 import { teamSessionOf } from "./teams.js";
 import { KIND_TAIL_BYTES, transcriptKindOf } from "./transcript-kind.js";
 /** How long the person has to start, idle or cancel the restore before it starts on its own. */
@@ -33,9 +34,12 @@ async function factsOf(deps, entries, since) {
     const running = new Set();
     const transcripts = new Map();
     const kinds = new Map();
+    const stalled = new Set();
+    const now = deps.clock.now();
     // One at a time: on Windows each process check starts a program.
     for (const entry of entries) {
-        if (await deps.stillRunning(entry)) {
+        const live = await deps.stillRunning(entry);
+        if (live) {
             running.add(entry.claudeSession);
         }
         const transcript = await deps.transcriptOf(entry);
@@ -44,10 +48,18 @@ async function factsOf(deps, entries, since) {
             const tail = await deps.readTail(transcript, KIND_TAIL_BYTES);
             if (tail !== undefined) {
                 kinds.set(entry.claudeSession, transcriptKindOf(tail));
+                if (live && turnRunning(tail) && (await stalledSince(deps, transcript, now))) {
+                    stalled.add(entry.claudeSession);
+                }
             }
         }
     }
-    return { now: deps.clock.now(), since, shutdown: await deps.shutdowns.lastShutdown(), running, transcripts, kinds };
+    return { now, since, shutdown: await deps.shutdowns.lastShutdown(), running, stalled, transcripts, kinds };
+}
+/** Whether the transcript was last written HUNG_AFTER_MS ago or more: a live turn writes it at each step. */
+async function stalledSince(deps, transcript, now) {
+    const modifiedAt = await deps.modifiedAt(transcript);
+    return modifiedAt !== undefined && now - modifiedAt >= HUNG_AFTER_MS;
 }
 /** The label is the team session's name, else the title the person gave the session, else its short id. */
 async function itemOf(deps, facts, judged) {
@@ -131,6 +143,7 @@ export async function previewRestore(deps) {
     const items = await itemsOf(deps, facts, plan.restore);
     printItems(deps, 'RESTORE', items);
     printItems(deps, 'CLOSED', await itemsOf(deps, facts, plan.closed));
+    printItems(deps, 'HUNG', await itemsOf(deps, facts, plan.hung));
     printJudged(deps, 'KEEP', plan.keep);
     printJudged(deps, 'DISCARD', plan.discard);
     for (const lead of items.filter((item) => item.team?.isLead === true)) {
@@ -147,7 +160,7 @@ export async function checkRestore(deps) {
     const since = deps.clock.now();
     const { plan } = await planOf(deps, since);
     await prune(deps, plan.discard);
-    await deps.log(`check: ${plan.restore.length} to restore, ${plan.keep.length} kept, ${plan.closed.length} closed`);
+    await deps.log(`check: ${plan.restore.length} to restore, ${plan.keep.length} kept, ${plan.closed.length} closed, ${plan.hung.length} hung`);
     return { since, count: plan.restore.length };
 }
 function progressWords({ opened, skipped, failed, total }) {
@@ -163,7 +176,8 @@ const KEEP_HOURS = CLOSED_KEEP_MS / 3_600_000;
 /**
  * Reopens the sessions the last shutdown killed, after a countdown the person may cut short, turn into an
  * idle reopen of all, or cancel. The tabs closed outside a shutdown are listed apart and reopen only with `a`,
- * unless no session is to restore: then they are what the person ran it for, and the countdown takes them.
+ * unless no session is to restore: then they are what the person ran it for, and the countdown takes them. A tab
+ * still running but hung mid-turn is listed apart too and, only with `k`, its process is ended and it reopens (T1744).
  * Each is judged again just before its tab opens, since a second run or the person may have reopened it
  * meanwhile. Its entry counts the attempt before the tab opens, so a session that keeps failing to resume is
  * dropped after MAX_RESTORE_ATTEMPTS; a tab that did not open takes the count back. The log says when the
@@ -173,48 +187,68 @@ const KEEP_HOURS = CLOSED_KEEP_MS / 3_600_000;
 export async function runRestore(deps, since) {
     const { facts, plan } = await planOf(deps, since);
     await prune(deps, plan.discard);
-    if (plan.restore.length === 0 && plan.closed.length === 0) {
+    if (plan.restore.length === 0 && plan.closed.length === 0 && plan.hung.length === 0) {
         deps.print('No Claude Code sessions to restore.');
         await deps.log('run: nothing to restore');
         return { opened: 0, failed: 0 };
     }
     const restored = await itemsOf(deps, facts, plan.restore);
     const closed = await itemsOf(deps, facts, plan.closed);
+    const hung = await itemsOf(deps, facts, plan.hung);
     const first = restored.length > 0 ? restored : closed;
     const extra = restored.length > 0 ? closed : [];
     if (restored.length > 0) {
         printGroup(deps, `Claude Code sessions the last shutdown interrupted (${restored.length}):`, restored);
     }
-    else {
+    else if (closed.length > 0) {
         printGroup(deps, `Claude Code sessions closed outside a shutdown in the last ${KEEP_HOURS} h (${closed.length}):`, closed);
     }
     if (extra.length > 0) {
         printGroup(deps, `Closed outside a shutdown in the last ${KEEP_HOURS} h (${extra.length}), reopened only with [a]:`, extra);
+    }
+    // A live process may still be working, so a hung tab is never ended unless the person presses k.
+    if (hung.length > 0) {
+        printGroup(deps, `Still running but hung mid-turn (${hung.length}), ended and reopened only with [k]:`, hung);
     }
     deps.print('Sessions marked "continue" resume with a message to re-check the state and carry on (mid-turn, an API error, ' +
         'work live at the shutdown, or the lead); the others reopen idle, with no prompt.');
     const progress = { started: false, total: first.length, opened: 0, skipped: 0, failed: 0 };
     const unwatch = deps.stops.watch((signal) => deps.log(`run: interrupted by ${signal} ${progress.started ? `after ${progressWords(progress)}` : 'at the countdown'}`));
     try {
-        await reopenAll(deps, facts, { first, extra }, progress);
+        await reopenAll(deps, facts, { first, extra, hung }, progress);
     }
     finally {
         unwatch();
     }
     return { opened: progress.opened, failed: progress.failed };
 }
-async function reopenAll(deps, facts, { first, extra }, progress) {
-    const choice = await deps.countdown.choose(COUNTDOWN_SECONDS, extra.length);
+function takenOf(choice, { first, extra, hung }) {
+    if (choice === 'all') {
+        return [...first, ...extra];
+    }
+    return choice === 'kill' ? [...first, ...hung] : first;
+}
+function howWords(choice, { extra, hung }) {
+    if (choice === 'idle') {
+        return ', all idle';
+    }
+    if (choice === 'all') {
+        return `, the ${extra.length} closed too`;
+    }
+    return choice === 'kill' ? `, the ${hung.length} hung too` : '';
+}
+async function reopenAll(deps, facts, groups, progress) {
+    const choice = await deps.countdown.choose(COUNTDOWN_SECONDS, groups.extra.length, groups.hung.length);
     if (choice === 'cancel') {
         deps.print('Cancelled: nothing was reopened. Run "teamrig restore run" to try again.');
         await deps.log('run: cancelled');
         return;
     }
-    const taken = choice === 'all' ? [...first, ...extra] : first;
+    const taken = takenOf(choice, groups);
     const chosen = choice === 'idle' ? taken.map((item) => ({ ...item, mode: 'idle', why: 'reopened idle' })) : taken;
     progress.started = true;
     progress.total = chosen.length;
-    const how = choice === 'idle' ? ', all idle' : choice === 'all' ? `, the ${extra.length} closed too` : '';
+    const how = howWords(choice, groups);
     await deps.log(`run: started, ${chosen.length} to reopen${how}`);
     for (const [index, item] of chosen.entries()) {
         const outcome = await reopenItem(deps, facts, item, chosen);
@@ -229,11 +263,21 @@ async function reopenItem(deps, facts, item, items) {
     const id = item.entry.claudeSession;
     const current = await deps.registry.read(id);
     const recheck = current === undefined ? { verdict: 'discard', reason: 'its entry is gone' } : judgeEntry(current, { ...facts, now: deps.clock.now() });
-    // A closed tab the person chose to reopen still judges `closed`; any other verdict means it needs no reopen now.
-    if (current === undefined || (recheck.verdict !== 'restore' && recheck.verdict !== 'closed')) {
+    // A closed or hung tab the person chose to reopen still judges so; any other verdict means it needs no reopen now.
+    if (current === undefined || recheck.verdict === 'keep' || recheck.verdict === 'discard') {
         deps.print(`Skipped ${item.label} (${recheck.reason})`);
         await deps.log(`run: skipped ${id} (${recheck.reason})`);
         return 'skipped';
+    }
+    if (recheck.verdict === 'hung') {
+        // Its live process holds the session: a resume beside it would run the same session twice.
+        const ended = await deps.end(current);
+        if (ended.kind === 'failed') {
+            deps.print(`FAILED to end hung ${item.label}: ${ended.error}`);
+            await deps.log(`run: failed ${id} (could not end its hung process: ${ended.error})`);
+            return 'failed';
+        }
+        await deps.log(`run: ended hung ${id} (${ended.kind})`);
     }
     const { folder, note } = await reopenFolderOf(deps, item);
     const others = item.team?.isLead === true ? leadSummaryOf(item, items) : undefined;
