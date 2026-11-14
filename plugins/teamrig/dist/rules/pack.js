@@ -85,7 +85,7 @@ function pushRule(pushGuard, hookAsks) {
 function refusedRouteRule(hookAsks) {
     return hookAsks === 'refuse'
         ? 'A refused or blocked route waits on approval:owner; take your next task, never route around it or hand it off.'
-        : 'A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed to another session.';
+        : 'A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed off.';
 }
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
 function percent(value) {
@@ -201,7 +201,7 @@ export function coreRuleTexts(config, command, platform, clock) {
         'own-change': "Own your change end to end: only the session that made it merges, deploys (if it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
         messages: messagesRule(config, command) + timesClause(zone, clock.now),
         register: `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
-            ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain-words description of what and why; ${statusDemands(config, command)}` +
+            ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain description of what and why; ${statusDemands(config, command)}` +
             ' Wait on a peer by its task.' +
             ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
         'task-order': `Work your own task list in plan order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` before you start it,` +
@@ -211,7 +211,7 @@ export function coreRuleTexts(config, command, platform, clock) {
             " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
         deploy: "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
             queuedSteps(config.delivery, command, cutoffSpan),
-        'lean-calls': 'Lean calls: batch related shell steps in one call (each re-reads context).' +
+        'lean-calls': 'Lean calls: batch related shell steps in one call.' +
             // The clause alone keeps work in the session (a helper only for parallel work or a review), so the rule spends
             // no words on saying it; the helper launch reminder still does.
             ` ${sentenceCase(helperDefaultClause(budget.subagentWeight))}; run helpers on your model and effort.` +
@@ -225,6 +225,10 @@ export function coreRuleTexts(config, command, platform, clock) {
                 ? ` Pace the week to ${percent(budget.targetPct)} of the limit, ${percent(budget.reservePct)} kept for incidents [budget]; waited-on answers are blockers, never budget-held.`
                 : ''),
         investigate: 'Investigate first: frequency × impact, the cheapest fix for the visible symptom.' +
+            // Owner order 11-13 (T2607): a hand step named its files repo-relative and the owner had to ask for full paths.
+            // A human reads a path from another folder, so a relative one leads nowhere; a web file is its full URL. To fit
+            // CORE_PACK_MAX_CHARS, rules 4, 8, 13 and 15 took shorter words.
+            ' Give humans absolute paths and full URLs.' +
             // An owner question names no task by its number alone (the register refuses an owner wait without its
             // decision card, register/card.ts). With tab status on, the marker line ends the turn on the decision circle
             // (tabs/status.ts); the words are shorter there so the worst-case pack still fits CORE_PACK_MAX_CHARS. Who
@@ -246,7 +250,7 @@ export function coreRuleTexts(config, command, platform, clock) {
         skills: 
         // The skill limits (description words, Owner and Last verified lines, per-area count, forbidden keys) live in
         // the guide alone: lintSkills (skills/lint.ts) flags each breach in `check`, so the pack names only the pointer.
-        `A procedure you investigated and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
+        `A procedure you investigated and will rerun becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
             ` within the guide's skill limits. Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.`,
         commits: 'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
             ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files, a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line` +
