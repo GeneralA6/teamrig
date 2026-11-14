@@ -86,7 +86,8 @@ export async function restart(args, runtime) {
         asks: new ClearAsks(runtime.files, clearAskDir(kit.paths.kitHome)),
         restore: new RestoreRegistry(runtime.files, restoreSessionsDir(kit.paths.kitHome)),
         openTab: async () => {
-            const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal, teamWindow: config.open.teamWindow };
+            // A restart is never typed by a person: its tab keeps the focus where the owner left it (T2510).
+            const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal, teamWindow: config.open.teamWindow, focus: 'keep' };
             const { outcome } = await openSessionTab(runtime, tab);
             return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
         },

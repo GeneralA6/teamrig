@@ -17,11 +17,11 @@ function command(command, args, folder, mode) {
  * to AppleScript as a run argument, never inside the script.
  */
 export function tabCommand(terminal, tab) {
-    const { title, folder, argv, window } = tab;
+    const { title, folder, argv, window, focus } = tab;
     switch (terminal) {
         case 'tmux':
-            // tmux 3.0 and later run a command given as several arguments without a shell.
-            return command('tmux', ['new-window', '-c', folder, '-n', title, ...argv], folder, 'exit');
+            // tmux 3.0 and later run a command given as several arguments without a shell; -d leaves the current window selected.
+            return command('tmux', ['new-window', ...(focus === 'keep' ? ['-d'] : []), '-c', folder, '-n', title, ...argv], folder, 'exit');
         case 'windows-terminal': {
             const unsafe = [title, folder, ...(window === undefined ? [] : [window]), ...argv].find((arg) => WINDOWS_TERMINAL_UNSAFE.test(arg));
             if (unsafe !== undefined) {
@@ -31,7 +31,21 @@ export function tabCommand(terminal, tab) {
             return command('wt.exe', ['-w', window ?? '0', 'new-tab', '--title', title, '-d', folder, '--', ...argv], folder, 'exit');
         }
         case 'macos-terminal':
-            return command('osascript', ['-e', 'on run argv', '-e', 'tell application "Terminal"', '-e', 'activate', '-e', 'do script (item 1 of argv)', '-e', 'end tell', '-e', 'end run', shellCommand('darwin', folder, argv)], folder, 'exit');
+            // Without `activate`, Terminal opens the window behind the app the owner is in.
+            return command('osascript', [
+                '-e',
+                'on run argv',
+                '-e',
+                'tell application "Terminal"',
+                ...(focus === 'take' ? ['-e', 'activate'] : []),
+                '-e',
+                'do script (item 1 of argv)',
+                '-e',
+                'end tell',
+                '-e',
+                'end run',
+                shellCommand('darwin', folder, argv),
+            ], folder, 'exit');
         case 'gnome-terminal':
             return command('gnome-terminal', ['--tab', `--working-directory=${folder}`, '--', ...argv], folder, 'exit');
         case 'konsole':

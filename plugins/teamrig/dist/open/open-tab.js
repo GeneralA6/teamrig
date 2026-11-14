@@ -1,3 +1,4 @@
+import { startKeepingFocus } from "./keep-focus.js";
 import { EXIT_WAIT_MS } from "./processes.js";
 import { autoTerminals, tabCommand } from "./terminals.js";
 /** How an opened tab's launch ended, for a log: `windows-terminal exited 0`. */
@@ -31,7 +32,10 @@ export async function openTab(deps, choice, tab) {
             reasons.push(planned.why);
             continue;
         }
-        const outcome = await deps.processes.start(planned.request);
+        // tmux and macOS Terminal keep the focus by their own flags (tabCommand); Windows Terminal has none.
+        const outcome = terminal === 'windows-terminal' && tab.focus === 'keep'
+            ? await startKeepingFocus(deps.processes, deps.env, planned.request)
+            : await deps.processes.start(planned.request);
         switch (outcome.kind) {
             case 'started':
                 return { kind: 'opened', terminal, end: outcome.end };
