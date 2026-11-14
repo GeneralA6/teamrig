@@ -219,6 +219,28 @@ CLOSED acme/web#12
 - **Access.** The same token or `gh` login as the sync, which needs the [write permissions](#what-each-command-needs);
   a `FAILED` line names the permission a token lacks. `TEAMRIG_GITHUB=off` writes nothing.
 
+## A pull request in conflict
+
+When GitHub marks a pull request as conflicting, `teamrig pr conflicts` names the files to resolve. Run it in a
+clone of the repository: it fetches the pull request's head (a fork's too) and `origin`'s newest base, and merges them
+in git's object store alone, so no branch, file or index of the clone changes and nothing is written to GitHub.
+
+```sh
+teamrig pr conflicts acme/web#7
+```
+
+```text
+CONFLICTS acme/web#7 (head d00d5ee) against origin/main (b4e2a91): 2 files
+  src/a.ts
+  docs/b.md
+To land it: rebase its branch onto origin/main and resolve these files.
+```
+
+For an outside pull request, post those files and the rebase in a comment (`teamrig issue comment`). A team pull
+request is re-shipped by its owner on the newest base under a new branch name, never force-pushed. `--base` names
+the branch the pull request targets when it is not `origin`'s default; the fetch uses git's own access to `origin`,
+not a token.
+
 ## Renewing a token
 
 When a token expires, GitHub refuses it and the `FAILED` line says so. Regenerate it on GitHub (the token's page has
