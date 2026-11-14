@@ -23,7 +23,7 @@
     "check": "node tools/setup/cli.ts --check && npm run typecheck && npm run coverage && npm run build && node tools/ci/dist-fresh-cli.ts && node tools/ci/dist-smoke-cli.ts && node tools/docs/images-cli.ts --check && node tools/docs/configuration-cli.ts --check && node tools/docs/doc-check-cli.ts && node tools/ci/plugin-version-cli.ts && node tools/ci/size-rule-cli.ts && npm run scrub"
   },
   "devDependencies": {
-    "@types/node": "22.20.3",
-    "typescript": "5.9.3"
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2"
   }
 }
