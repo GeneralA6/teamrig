@@ -119,6 +119,23 @@ export async function listIssues(gh: GhRunner, access: RepoAccess, request: Issu
 }
 
 async function readPage(gh: GhRunner, access: RepoAccess, request: IssueListRequest, args: readonly string[]): Promise<IssuePage> {
+  const ran = await runRead(gh, access, request.repo, args, ISSUE_READ);
+  return ran.kind === 'failed' ? ran : parseIssuePage(ran.stdout, request);
+}
+
+/** What a read lists, as its failure lines name it: the noun, and the token permission that lets it read. */
+export interface ReadKind {
+  readonly noun: string;
+  readonly permission: string;
+}
+
+export const ISSUE_READ: ReadKind = { noun: 'issues', permission: 'Issues' };
+
+/** What one gh run of a read printed, or the one line saying why it failed. */
+export type ReadRun = { readonly kind: 'read'; readonly stdout: string } | { readonly kind: 'failed'; readonly reason: string };
+
+/** Runs one page of a read of `repo` as `access` reads it; a run that did not start or end well is one line, never thrown. */
+export async function runRead(gh: GhRunner, access: RepoAccess, repo: string, args: readonly string[], kind: ReadKind): Promise<ReadRun> {
   let result: GhResult;
   try {
     result = await gh.run({ args, env: access.env });
@@ -126,9 +143,9 @@ async function readPage(gh: GhRunner, access: RepoAccess, request: IssueListRequ
     return { kind: 'failed', reason: startFailureText(error) };
   }
   if (result.end.kind !== 'exited' || result.end.code !== 0) {
-    return { kind: 'failed', reason: failureText(request.repo, result, access) };
+    return { kind: 'failed', reason: failureText(repo, result, access, kind) };
   }
-  return parseIssuePage(result.stdout, request);
+  return { kind: 'read', stdout: result.stdout };
 }
 
 /** Why gh did not start (most often it is not installed), or why it was stopped for printing too much. */
@@ -143,11 +160,12 @@ export function startFailureText(error: unknown): string {
 
 /**
  * Why a gh run failed, with the fix when it is a known one, worded for what read the repository: a login
- * or token GitHub refused, a repository it cannot see, or issues it may not read.
+ * or token GitHub refused, a repository it cannot see, or issues (or pull requests: `kind`) it may not read.
  */
-export function failureText(repo: string, result: GhResult, access: RepoAccess): string {
+export function failureText(repo: string, result: GhResult, access: RepoAccess, kind: ReadKind): string {
+  const { noun, permission } = kind;
   if (result.end.kind === 'signal') {
-    return `gh was stopped (${result.end.signal}) before it listed the issues of ${repo}; it gets ${GH_TIMEOUT_MS / 1000} s`;
+    return `gh was stopped (${result.end.signal}) before it listed the ${noun} of ${repo}; it gets ${GH_TIMEOUT_MS / 1000} s`;
   }
   const token = `the token saved as ${access.credential}`;
   const saveOne = `save a read-only token for ${access.owner} with: ${access.save}`;
@@ -158,14 +176,14 @@ export function failureText(repo: string, result: GhResult, access: RepoAccess):
         : `gh is not logged in to GitHub: run gh auth login, or ${saveOne}`;
     case 'no-permission':
       return access.via === 'token'
-        ? `${token} may not read the issues of ${repo}: on GitHub, edit that token and set Issues to Read-only; its text stays the same, so nothing needs saving again`
-        : `the gh login may not read the issues of ${repo}: ${saveOne}`;
+        ? `${token} may not read the ${noun} of ${repo}: on GitHub, edit that token and set ${permission} to Read-only; its text stays the same, so nothing needs saving again`
+        : `the gh login may not read the ${noun} of ${repo}: ${saveOne}`;
     case 'not-visible':
       return access.via === 'token'
         ? `${repo} is not visible to ${token}: check github.repos, and on GitHub give that token this repository`
         : `${repo} is not visible to the gh login: check github.repos, or ${saveOne}`;
     case undefined:
-      return plainLine(`gh api graphql for the issues of ${repo} ${exitText(result.end.code, result.stderr)}`);
+      return plainLine(`gh api graphql for the ${noun} of ${repo} ${exitText(result.end.code, result.stderr)}`);
   }
 }
 
@@ -175,30 +193,47 @@ export function failureText(repo: string, result: GhResult, access: RepoAccess):
  * for issues changed since then.
  */
 export function parseIssuePage(stdout: string, request: IssueListRequest): IssuePage {
-  const failed: IssuePage = { kind: 'failed', reason: `gh printed no page of the issues of ${request.repo}` };
+  const page = connectionPage(stdout, 'issues');
+  if (page === undefined) {
+    return { kind: 'failed', reason: `gh printed no page of the issues of ${request.repo}` };
+  }
+  const read = page.nodes.map((item) => issueOf(item, request.repo));
+  const issues = read.filter((issue) => issue !== null).filter((issue) => wanted(issue, request));
+  return { kind: 'page', issues, unreadable: read.filter((issue) => issue === null).length, items: page.nodes.length, next: page.next };
+}
+
+/** One page of a connection: its items, read or not, and where the next page starts (undefined on the last). */
+export interface ConnectionPage {
+  readonly nodes: readonly unknown[];
+  readonly next: string | undefined;
+}
+
+/**
+ * The `data.repository.<key>` connection of a page `gh api graphql` printed; undefined when it is not one, or says
+ * more pages follow without saying where.
+ */
+export function connectionPage(stdout: string, key: string): ConnectionPage | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    return failed;
+    return undefined;
   }
   const data = isRecord(parsed) ? recordField(parsed, 'data') : undefined;
   const repository = data === undefined ? undefined : recordField(data, 'repository');
-  const connection = repository === undefined ? undefined : recordField(repository, 'issues');
+  const connection = repository === undefined ? undefined : recordField(repository, key);
   const pageInfo = connection === undefined ? undefined : recordField(connection, 'pageInfo');
   const nodes = connection?.['nodes'];
   if (pageInfo === undefined || !Array.isArray(nodes)) {
-    return failed;
+    return undefined;
   }
   const more = pageInfo['hasNextPage'] === true;
   const cursor = stringField(pageInfo, 'endCursor');
   if (more && (cursor === undefined || cursor === '')) {
-    return failed;
+    return undefined;
   }
   const items: readonly unknown[] = nodes;
-  const read = items.map((item) => issueOf(item, request.repo));
-  const issues = read.filter((issue) => issue !== null).filter((issue) => wanted(issue, request));
-  return { kind: 'page', issues, unreadable: read.filter((issue) => issue === null).length, items: items.length, next: more ? cursor : undefined };
+  return { nodes: items, next: more ? cursor : undefined };
 }
 
 /** False only for an issue a closed read asked about that closed before its day. */

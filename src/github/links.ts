@@ -1,8 +1,8 @@
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { HostLinks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
-import { HOST_ID, type GhResult, type GhRunner } from './gh.ts';
-import { failureText, nodesOf, plainLine, startFailureText } from './issues.ts';
+import { HOST_ID, type GhRunner } from './gh.ts';
+import { ISSUE_READ, nodesOf, plainLine, runRead } from './issues.ts';
 import { linksPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -53,16 +53,8 @@ export async function listLinks(gh: GhRunner, access: RepoAccess, repo: string, 
 }
 
 async function readLinksPage(gh: GhRunner, access: RepoAccess, repo: string, args: readonly string[]): Promise<LinksPage> {
-  let result: GhResult;
-  try {
-    result = await gh.run({ args, env: access.env });
-  } catch (error) {
-    return { kind: 'failed', reason: startFailureText(error) };
-  }
-  if (result.end.kind !== 'exited' || result.end.code !== 0) {
-    return { kind: 'failed', reason: failureText(repo, result, access) };
-  }
-  return parseLinksPage(result.stdout, repo);
+  const ran = await runRead(gh, access, repo, args, ISSUE_READ);
+  return ran.kind === 'failed' ? ran : parseLinksPage(ran.stdout, repo);
 }
 
 /**
