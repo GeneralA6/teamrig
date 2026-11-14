@@ -75,13 +75,28 @@ export async function listJobs(gh: RunGh, run: RunRef): Promise<RunJob[]> {
 }
 
 /**
- * The jobs other than `self` that did not complete with success. Each matrix leg is its own job here, which
+ * The jobs other than `self` that did not conclude with success. Each matrix leg is its own job here, which
  * `needs.<job>.result` is not: GitHub folds a matrix into one result, and a leg cancelled because no runner
- * took it left that result a success, so the summary passed a run that never tested one OS.
+ * took it left that result a success, so the summary passed a run that never tested one OS. The conclusion alone
+ * decides, as the API can list a job `in_progress` minutes after it ended: on run 43534894842 the scrub job, done in
+ * 8 s, still read `in_progress` with conclusion `success` when the summary ran 5 minutes later.
  */
 export function unpassedJobs(jobs: readonly RunJob[], self: string): RunJob[] {
-  return jobs.filter((job) => job.name !== self && !(job.status === 'completed' && job.conclusion === 'success'));
+  return jobs.filter((job) => job.name !== self && job.conclusion !== 'success');
 }
+
+/** How often, and how far apart, the jobs are listed again while one has no conclusion yet. */
+export interface Relist {
+  readonly tries: number;
+  readonly pauseMs: number;
+  readonly sleep: (ms: number) => Promise<void>;
+}
+
+/**
+ * The summary job runs only once every job it needs ended (ci-workflow.test.ts holds `needs` to every job), so a job
+ * with no conclusion yet is the API lagging: up to 6 more listings, 10 s apart.
+ */
+export const RELIST: Relist = { tries: 6, pauseMs: 10_000, sleep: (ms) => new Promise((done) => setTimeout(done, ms)) };
 
 /** The run GitHub Actions describes in the environment (GITHUB_REPOSITORY, GITHUB_RUN_ID). */
 export function runFromEnv(env: Readonly<Record<string, string | undefined>>): RunRef {
@@ -93,9 +108,24 @@ export function runFromEnv(env: Readonly<Record<string, string | undefined>>): R
   return { repo, runId };
 }
 
-/** Lists the run's jobs and fails, naming each, unless every job but `self` completed with success. */
-export async function checkEveryJob(run: RunRef, self: string, gh: RunGh, out: (line: string) => void): Promise<number> {
-  const jobs = await listJobs(gh, run);
+/** How an unpassed job ended, by its conclusion whatever its status reads, else where it still is. */
+function endedOrStill(job: RunJob): string {
+  if (job.conclusion !== null) {
+    return `ended ${job.conclusion}`;
+  }
+  return job.status === 'completed' ? 'ended with no conclusion' : `is still ${job.status}`;
+}
+
+/**
+ * Lists the run's jobs and fails, naming each, unless every job but `self` concluded with success. While a job has
+ * no conclusion yet, it lists them again as `relist` allows; a job that concluded otherwise fails at once.
+ */
+export async function checkEveryJob(run: RunRef, self: string, gh: RunGh, out: (line: string) => void, relist: Relist = RELIST): Promise<number> {
+  let jobs = await listJobs(gh, run);
+  for (let tried = 0; tried < relist.tries && unpassedJobs(jobs, self).some((job) => job.conclusion === null); tried += 1) {
+    await relist.sleep(relist.pauseMs);
+    jobs = await listJobs(gh, run);
+  }
   const others = jobs.filter((job) => job.name !== self);
   if (others.length === 0) {
     out(`every-check: run ${run.runId} lists no job but ${self}`);
@@ -103,7 +133,7 @@ export async function checkEveryJob(run: RunRef, self: string, gh: RunGh, out: (
   }
   const unpassed = unpassedJobs(jobs, self);
   for (const job of unpassed) {
-    out(`every-check: ${job.name} ${job.status === 'completed' ? `ended ${job.conclusion ?? 'with no conclusion'}` : `is still ${job.status}`}`);
+    out(`every-check: ${job.name} ${endedOrStill(job)}`);
   }
   if (unpassed.length > 0) {
     return EXIT_FINDINGS;
