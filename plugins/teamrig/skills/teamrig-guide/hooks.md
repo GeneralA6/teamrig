@@ -1593,6 +1593,15 @@ hold.` While a rush is in force the budget hook reads the team's holds as warnin
 rush's stop % it writes the rush's end record (`the week reached its stop %`), so the holds are back from the next
 turn.
 
+The poke: while a rush is in force, the mod's wake check ([the wake on urgent work](#the-mod-the-wake-on-urgent-work))
+wakes a tab of a session in the rush, other than the lead, that has sat idle `[rush.pokeAfterMinutes]` minutes (5 by
+default) since its last turn with a task of its own it can go on with (open or in progress, not waiting). The prompt
+reads `Rush on PROD: this tab sat idle 5 min with work left ... Start or continue T12 (...) now`, naming the session's
+top task of the goal, else its top task; the toast reads `teamrig poked this tab (rush on PROD, idle 5 min): ...` and
+the wake log marks the line `poke`. A tab gets one poke per idle stretch: none again until it has a new turn. While a
+queued step of the session runs (`teamrig queue`), the poke waits for it to end; a step only waiting in line counts as
+idle. A shell the tab runs in the background is not seen. No poke once the rush ends.
+
 ## Every session: the restore tracker
 
 `hook restore-track` runs at each session start, prompt, turn end, API error (`StopFailure`) and session end,

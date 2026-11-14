@@ -59,6 +59,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `refresh` | [object](#refresh) |  | Context refresh: when a session finishes a task (teamrig set \<id> --status done) with its context at or over contextTokens, or with everyTasks tasks finished since its context was last fresh and the context at everyTasksMinTokens or more, or after the lead ran teamrig refresh \<session>, it writes a handover; then the user types /clear, or teamrig starts it fresh on its own (autoRestart). A relative handoverDir is resolved against the team's folder; unset, it is \<team folder>/handover. |
 | `hiring` | [object](#hiring) |  | Hiring sessions with teamrig hire, each a worker the leader is sure the team needs: who decides. No cap counts hires: the host's room bounds who is at the office, and the leader decides who is hired. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's. |
 | `burst` | [object](#burst) |  | Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired sessions that spends more of the week, for a surplus the week would leave unused at the reset or for a deadline. A person always starts one by command; nothing starts one on its own. |
+| `rush` | [object](#rush) |  | Rushes (teamrig burst start rush): a team works one goal at full speed until a set time; the owner starts each one. |
 | `paths` | [object](#paths) |  | Folders moved from their defaults; a relative path is resolved against the team's folder (\<kit home>/teams/\<team>). Unset, state and inbox stay under the team's folder and skills is the skills folder of Claude Code's folder ($CLAUDE\_CONFIG\_DIR, else \~/.claude). |
 
 ## `team`
@@ -898,6 +899,14 @@ Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired session
 | `minSparePct` | number (0.1 to 100) | `5` | The least share of the week, in %, projected unused at the pace end (at the week's mean rate so far) for a surplus burst; with other teams on the Claude account, the team's part of it (split by weight, as the daily budget is). |
 | `maxHelpers` | integer (0 to 20) | `3` | The most helpers each burst session runs at once; the burst's model line states it. |
 | `maxHires` | integer (0 to 20) | `2` | The most sessions one burst may hire (teamrig hire --burst). |
+
+## `rush`
+
+Rushes (teamrig burst start rush): a team works one goal at full speed until a set time; the owner starts each one.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `pokeAfterMinutes` | integer (1 to 120) | `5` | The poke: while a rush is on, a tab idle this many minutes since its last turn, with a task of its own it can go on with (open or in progress, not waiting) and no queued step of its own running, is woken once to start or continue its top task. A step only waiting in the queue counts as idle. One poke per idle stretch; none once the rush ends. |
 
 ## `paths`
 
