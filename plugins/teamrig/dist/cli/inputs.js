@@ -205,6 +205,10 @@ export function addInputOf(flags, caller, times) {
     if (workClass !== undefined) {
         input.workClass = workClass;
     }
+    const local = flags.get('local');
+    if (local !== undefined) {
+        input.local = local;
+    }
     return input;
 }
 /** `--after T5,T6`: the tasks to finish before this one starts. */
@@ -231,7 +235,8 @@ export function waitsOf(text, times) {
     });
 }
 /**
- * The fields `update` changes; `none` clears the description, ref, due date, week, plan dependency or size, and
+ * The fields `update` changes; `none` clears the description, ref, due date, week, plan dependency, size, class or
+ * local reason, and
  * `--goals none` says the task serves no goal.
  */
 export function changesOf(flags, times) {
@@ -287,6 +292,10 @@ export function changesOf(flags, times) {
     const workClass = flags.get('class');
     if (workClass !== undefined) {
         changes.workClass = workClass === NONE ? null : workClass;
+    }
+    const local = flags.get('local');
+    if (local !== undefined) {
+        changes.local = local === NONE ? null : local;
     }
     return changes;
 }

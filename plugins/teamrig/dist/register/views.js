@@ -2,7 +2,7 @@ import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
 import { shortSha256 } from "./hand-step.js";
 import { itemTypeOf } from "./item-types.js";
-import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
+import { ACTIVE_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, priorityText } from "./model.js";
 import { isUntriaged } from "./park.js";
 import { reviewLines, reviewPartNames } from "./review.js";
 import { decidingKey, planOrder } from "./tree.js";
@@ -64,15 +64,15 @@ export function rankParts(task, tree) {
 }
 /**
  * The fields every task row starts with: `T12 in-progress`, its {@link rankParts}, `p2`, its type past a plain task
- * (`bug`, `critical bug`), `owner alpha`, then `due 01-15` and `after T5,T6` (its plan dependency) when it has them. The
- * due is the effective one of `tree`, in its zone: an earlier due of a task that needs it names that task (`due 01-10
- * (from T194)`).
+ * (`bug`, `critical bug`), `owner alpha`, its {@link placeMark}, then `due 01-15` and `after T5,T6` (its plan
+ * dependency) when it has them. The due is the effective one of `tree`, in its zone: an earlier due of a task that needs
+ * it names that task (`due 01-10 (from T194)`).
  */
 function rowHead(task, team, tree) {
     const type = itemTypeOf(task);
     const typed = type === 'task' ? [] : [task.critical ? `critical ${type}` : type];
     const pinned = task.pin === null ? [] : ['pinned'];
-    const parts = [`${taskLabel(task, team)} ${task.status}`, ...rankParts(task, tree), priorityText(task.priority), ...pinned, ...typed, `owner ${task.owner}`];
+    const parts = [`${taskLabel(task, team)} ${task.status}`, ...rankParts(task, tree), priorityText(task.priority), ...pinned, ...typed, `owner ${task.owner}`, ...placeMark(task)];
     const inherited = tree.effectiveDue(task.id);
     if (inherited !== undefined && inherited.from !== null) {
         parts.push(`due ${showStored(inherited.due, tree.zone)} (from ${inherited.from})`);
@@ -211,6 +211,20 @@ export function aheadText(row, next) {
 function issueOf(task) {
     return task.source === GITHUB_SOURCE && task.ref !== null ? task.ref : undefined;
 }
+/** An issue ref's number: `933` of `gh:acme/web#933`. */
+const ISSUE_NUMBER = /#(\d+)$/;
+/**
+ * Where the task's public copy lives (T2608), so a row tells them apart: `local` for a task kept off the tracker, `issue
+ * #933` for one a team posted (an imported one names its issue as `from` already), nothing for a task that has
+ * neither, which follows the team's placement and is not posted yet.
+ */
+function placeMark(task) {
+    if (task.local !== null) {
+        return ['local'];
+    }
+    const number = task.source === GITHUB_SOURCE || task.ref?.startsWith(ISSUE_REF_PREFIX) !== true ? undefined : ISSUE_NUMBER.exec(task.ref)?.[1];
+    return number === undefined ? [] : [`issue #${number}`];
+}
 /**
  * One line that names each field, so a newcomer can read it:
  * `T12 in-progress, p2, owner alpha, due 01-15, week 01-13, from lead, goals G1 | title`; a task imported from
@@ -287,6 +301,9 @@ function changeText(name, value, zone) {
     if (name === 'workClass') {
         return typeof value === 'string' ? value : 'none';
     }
+    if (name === 'local') {
+        return typeof value === 'string' ? JSON.stringify(value) : 'none';
+    }
     if (name === 'goals' && Array.isArray(value) && value.length === 0) {
         return 'none';
     }
@@ -317,6 +334,7 @@ export function formatEvent(event, zone) {
                 task.type === null ? undefined : `type=${task.type}`,
                 task.critical ? 'critical=true' : undefined,
                 task.workClass === null ? undefined : `workClass=${task.workClass}`,
+                task.local === null ? undefined : `local=${JSON.stringify(task.local)}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');
@@ -362,6 +380,9 @@ export function formatTaskDetail(task, events, tree, extras) {
     }
     if (task.ref !== null) {
         lines.push(`ref: ${task.ref}`);
+    }
+    if (task.local !== null) {
+        lines.push(`local: ${task.local} (kept off the issue tracker)`);
     }
     if (task.pin !== null) {
         lines.push(`pinned by ${task.pin}: above every other task of ${task.owner}`);

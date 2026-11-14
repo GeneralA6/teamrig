@@ -19,7 +19,7 @@ import { parseWaits } from "./waits.js";
  * `review` (T916), a task's `type` and `critical` mark (T1252), which replaced `kind`, and a `done` status's `watch`
  * (T1306), an update's `waits` (T1295), a task's `noGoal` mark (T1730), an update's `decided` mark (T1366) and its
  * `sizeBase` (T649), a task's `workClass` (T2076), a start's `oneCommit` mark (T2110) and an update's hand step `audit`
- * (T2312) and a card's `affects` (T2623), which an older reader ignores:
+ * (T2312), a card's `affects` (T2623) and a task's `local` reason (T2608), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -51,7 +51,7 @@ const LEGACY_KINDS = new Map([
     ['problem', { type: 'bug', critical: false }],
     ['critical', { type: 'bug', critical: true }],
 ]);
-export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'noGoal', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'];
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'noGoal', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass', 'local'];
 /** The lead's answer to the approval a waiting task asks of it (T684): given, or declined with the note saying why. */
 export const APPROVAL_VERDICTS = ['approved', 'declined'];
 export function isApprovalVerdict(value) {
@@ -79,7 +79,7 @@ export function sizeProblem(value) {
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 /**
  * The record an event is written as. A create line leaves out an empty `after`, a null `description`, `size`, `type`,
- * `pin` or `workClass` and a false `critical` or `noGoal`, which read back as none, so a task without them costs no bytes and its
+ * `pin`, `workClass` or `local` and a false `critical` or `noGoal`, which read back as none, so a task without them costs no bytes and its
  * line is the one an older teamrig wrote.
  */
 export function eventRecord(event) {
@@ -94,7 +94,8 @@ export function eventRecord(event) {
         (name === 'critical' && !task.critical) ||
         (name === 'noGoal' && !task.noGoal) ||
         (name === 'pin' && task.pin === null) ||
-        (name === 'workClass' && task.workClass === null);
+        (name === 'workClass' && task.workClass === null) ||
+        (name === 'local' && task.local === null);
     return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
 /** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
@@ -385,6 +386,12 @@ function readField(fields, name, value) {
                 return `bad workClass ${JSON.stringify(value)}`;
             }
             fields.workClass = typeof value === 'string' ? value : null;
+            return undefined;
+        case 'local':
+            if (value !== undefined && value !== null && (typeof value !== 'string' || value.trim() === '')) {
+                return 'local is not text';
+            }
+            fields.local = typeof value === 'string' ? value : null;
             return undefined;
     }
 }

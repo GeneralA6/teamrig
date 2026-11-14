@@ -16,7 +16,7 @@ import { waitsOnOwner } from "./owner-waits.js";
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText } from "./tree.js";
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from "./verify.js";
-import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling } from "./waits.js";
+import { isPeerWait, isReady, sameWait, sameWaits, unshippedAfter, waitContext, waitSpelling } from "./waits.js";
 import { wipHold } from "./wip.js";
 /** The skill name that closes a task which produced no reusable procedure. */
 export const NO_SKILL = 'none';
@@ -29,7 +29,7 @@ export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
  * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, and its
  * work class, as leaders triage the class of their sessions' tasks (T2076).
  */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'];
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass', 'local'];
 /**
  * Fields the lead may change on a task whose owner is no session of the team any more (a retired hire, a session that
  * left at a team split): the LEAD_FIELDS and its ref, which no session of the team could keep true otherwise, such as
@@ -139,6 +139,7 @@ export class RegisterPolicy {
             critical: input.critical ?? false,
             pin: null,
             workClass: input.workClass ?? null,
+            local: input.local ?? null,
         };
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
@@ -262,6 +263,13 @@ export class RegisterPolicy {
             return refuse(`verifying needs --waits saying when its proof runs: ${PROOF_WAITS_USAGE}; if tests or a dry run proved it and its proof is a sighting, close it done with ${WATCH_USAGE} instead`);
         }
         if (input.status === 'done') {
+            const before = unshippedAfter(task.after, waitContext(context.state.tasks, context.now, context.zone, context.elsewhere));
+            if (before.length > 0) {
+                const listed = before.map(({ id, status }) => `${id} (${status})`).join(', ');
+                // Only a task not started yet takes a new plan order (afterChangeProblem), so only its refusal offers one.
+                const reorder = hasStarted(task) ? '' : `, or change its order with teamrig update ${task.id} --after <tasks>|none`;
+                return refuse(`${task.id} comes after ${listed}, not finished yet: set it done once ${before.length === 1 ? 'that is' : 'those are'} done, dropped or verifying${reorder}`);
+            }
             if (register.requireEvidenceOnDone && evidence === null && task.evidence === null) {
                 return refuse('done needs --evidence: a commit, test count, path or number that proves it');
             }
@@ -911,7 +919,7 @@ export class RegisterPolicy {
      * does not apply.
      */
     importAdd(input, state) {
-        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: null };
         const holder = [...state.tasks.values()].find((task) => task.ref === input.ref);
         if (holder !== undefined) {
             return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -1027,7 +1035,11 @@ export class RegisterPolicy {
         if (size !== undefined) {
             return size;
         }
-        return this.checkText('title', fields.title) ?? this.checkText('description', fields.description) ?? this.checkText('ref', fields.ref);
+        const local = localProblem(fields);
+        if (local !== undefined) {
+            return local;
+        }
+        return this.checkText('title', fields.title) ?? this.checkText('description', fields.description) ?? this.checkText('ref', fields.ref) ?? this.checkText('local', fields.local);
     }
     /** Checks the length against `maxText` (the title and description have their own limits), then the secret shapes. */
     checkText(name, text) {
@@ -1043,8 +1055,22 @@ export class RegisterPolicy {
 /** The texts whose length is judged against their own limit, not `maxText`. */
 const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass } = task;
-    return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass };
+    const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, local } = task;
+    return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, local };
+}
+/**
+ * Why a task's `local` reason cannot stand (T2608): it says nothing, or the task holds an issue already, so it is on
+ * the tracker and kept off it at once; the issue ref goes first (`--ref none`), so a posted task is never marked local
+ * by mistake.
+ */
+function localProblem(fields) {
+    if (fields.local === null) {
+        return undefined;
+    }
+    if (fields.local.trim() === '') {
+        return 'local needs its reason, one line saying why the task stays off the issue tracker';
+    }
+    return fields.ref?.startsWith(ISSUE_REF_PREFIX) === true ? `a task kept local holds no issue, and this one holds ${fields.ref}: clear it first with --ref none` : undefined;
 }
 /** An update naming goals for a task said to serve none also clears that mark, which a task with goals cannot hold. */
 function clearNoGoal(task, changes) {
