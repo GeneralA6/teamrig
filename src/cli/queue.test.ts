@@ -6,10 +6,10 @@ import { FIRST_IN_LINE_POLL_MS } from '../delivery/host-lock.ts';
 import type { QueuedStepRecord, RefusalOutcome, RefusalRecord } from '../delivery/ledger.ts';
 import { recordPass } from '../delivery/push-pass.ts';
 import { KIT_VERSION } from '../core/version.ts';
-import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { APP, CliHarness, KIT, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { BUSY_HOLDERS, BUSY_HOLDERS_TEXT, FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
-import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
+import { CLAUDE, FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -318,10 +318,10 @@ describe('teamrig queue', () => {
     assert.equal(ledgerOf(kit).some((record) => JSON.stringify(record).includes('peakTreeMb')), false);
   });
 
-  it('stops waiting for the lock once the shell that started it ended, leaving the lock to its holder and recording its refusal', async () => {
+  it("stops waiting for the lock once the shell that started it ended in a person's own terminal, leaving the lock to its holder and recording its refusal", async () => {
     const { kit, steps } = harness({ ...TEAM, delivery: { wait: { pollSeconds: 30 } } });
     await kit.files.write(LOCK, heldBy());
-    const starters = new FakeStarterWatch();
+    const starters = new FakeStarterWatch([SHELL]);
     const sleep = async (ms: number): Promise<void> => {
       await kit.clock.sleep(ms);
       starters.end();
@@ -1060,4 +1060,88 @@ describe('teamrig queue --detached-run (T2227)', () => {
     const unwritten = (at: string): string => `2030-01-08 ${at} UTC its run record was not written, so a death of this run goes untold: EACCES: permission denied`;
     assert.deepEqual([result.code, result.stdout.filter((line) => line.includes('run record'))], [0, [unwritten('10:00:00'), unwritten('10:00:02')]], 'at its start and when its step runs');
   });
+});
+
+describe('teamrig queue hands a waiting step over when its shell ended under a live tab (T2304)', () => {
+  const HANDED_ID = '20300108-100002-4242';
+  const HANDED_LOG = join(TEAM_HOME, 'state', 'deploys', 'detached', `${HANDED_ID}.log`);
+  const ARRIVED = String(Date.parse('2030-01-08T10:00:00.000Z'));
+  const HANDED = `queue ${HANDED_ID} kept build api's place in line: its launching shell ended (bash.exe 4100) while it waited, so it runs on detached; do not run it again; log ${HANDED_LOG}; teamrig withdraw --session alpha --what "build api" stops it`;
+  const GIT_STARTER = { pid: 4200, parentPid: SHELL.pid, name: 'git.exe', commandLine: 'git commit' };
+  const STOPPED = "STOPPED before the host lock was free: nothing ran; re-run the same command in the background with no human's OK, unless you or the human stopped it on purpose";
+
+  /** Runs `argv` with the lock held until `ending` ends one of `starters` at the first look again. */
+  async function waitUntilEnded(argv: readonly string[], starters: FakeStarterWatch, ending: typeof SHELL, extra: { readonly processes?: FakeProcesses; readonly trees?: FakeTrees } = {}): Promise<{ kit: CliHarness; steps: FakeSteps; processes: FakeProcesses; result: CliResult }> {
+    const { kit, steps } = harness({ ...TEAM, delivery: { wait: { pollSeconds: 30 } } });
+    await kit.files.write(LOCK, heldBy());
+    const processes = extra.processes ?? new FakeProcesses();
+    const sleep = async (ms: number): Promise<void> => {
+      await kit.clock.sleep(ms);
+      starters.end(ending);
+    };
+    const result = await kit.run(argv, { steps, starters, sleep, processes, sessionProcesses: otherRuns(), ...(extra.trees === undefined ? {} : { trees: extra.trees }) });
+    return { kit, steps, processes, result };
+  }
+
+  it("hands the step over to a detached run joining at its first arrival, tells and wakes its session, and records no refusal, as Claude Code's reaper ended the shell alone", async () => {
+    const starters = new FakeStarterWatch();
+    const { kit, steps, processes, result } = await waitUntilEnded(BUILD, starters, SHELL);
+    assert.deepEqual(result, {
+      code: 0,
+      stdout: [
+        '2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC',
+        `QUEUED ${HANDED_ID}: build api runs detached; log ${HANDED_LOG}; alpha's inbox gets a line when it starts and when it ends`,
+        `2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: detached run ${HANDED_ID} keeps its place in line`,
+      ],
+      stderr: [],
+    });
+    const args = ['/opt/teamrig/dist/cli/main.js', 'queue', '--detached-run', HANDED_ID, '--session', 'alpha', '--arrived-at', ARRIVED, '--what', 'build api', '--', 'npm', 'run', 'build'];
+    assert.deepEqual([processes.hidden[0]?.args, processes.hidden[0]?.log, steps.ran, kit.files.get(LOCK), ledgerOf(kit), starters.openWatches], [args, HANDED_LOG, [], heldBy(), [], 0]);
+    assert.deepEqual([await alphaLines(kit), await alphaWakes(kit)], [[HANDED], [`alpha: ${HANDED}`]]);
+
+    const seen: string[] = [];
+    const look = async (ms: number): Promise<void> => {
+      seen.push(...(await kit.files.list(`${LOCK}.queue`)));
+      await kit.clock.sleep(ms);
+      await kit.files.remove(LOCK);
+    };
+    const [, ...hiddenArgs] = processes.hidden[0]?.args ?? [];
+    const ran = await kit.run(hiddenArgs, { steps: steps.ends(0, MINUTE), sleep: look, sessionProcesses: otherRuns() });
+    assert.deepEqual([ran.code, steps.ran.length, new Set(seen).size], [0, 1, 1], 'one ticket, however many looks the wait took');
+    assert.ok(seen[0]?.startsWith(`${ARRIVED.padStart(15, '0')}-`), `the detached run's ticket is named by the first arrival: ${seen[0] ?? 'none'}`);
+  });
+
+  for (const [label, starters, ending, argv, trees] of [
+    ['its tab ended: Claude Code is gone, so no one wants the result', new FakeStarterWatch(), CLAUDE, BUILD, undefined],
+    ["a git hook's step: its git command took the shell's end as the hook's", new FakeStarterWatch([GIT_STARTER, SHELL, CLAUDE]), SHELL, BUILD, undefined],
+    ["a pre-push hook's checks: their push is gone", new FakeStarterWatch(), SHELL, ['queue', '--session', 'alpha', '--what', 'build api', '--pre-push', '--', 'npm', 'run', 'build'], new FakeTrees(cleanTree())],
+  ] as const) {
+    it(`stops, handing nothing over, when ${label}`, async () => {
+      const { kit, processes, result } = await waitUntilEnded(argv, starters, ending, trees === undefined ? {} : { trees });
+      assert.deepEqual([result.code, result.stdout.at(-1), processes.hidden, await alphaLines(kit)], [1, STOPPED, [], []]);
+      assert.equal(ledgerOf(kit).length, 1, 'its stopped refusal');
+    });
+  }
+
+  it('stops, recording why, when its detached run did not start', async () => {
+    const processes = new FakeProcesses().onStart('/usr/bin/node', { kind: 'failed', error: 'spawn EPERM' });
+    const { kit, result } = await waitUntilEnded(BUILD, new FakeStarterWatch(), SHELL, { processes });
+    assert.deepEqual([result.code, result.stdout.at(-1), await alphaLines(kit)], [1, STOPPED, []]);
+    const refusal = buildRefused('2030-01-08T10:00:02.000Z', 2_000, 'stopped', 'its launching shell ended (bash.exe 4100) while it waited; its detached run did not start: build api did not start detached: spawn EPERM');
+    assert.deepEqual(ledgerOf(kit), [refusal]);
+  });
+
+  for (const [label, argv, message] of [
+    ['--arrived-at by hand', ['queue', '--session', 'alpha', '--what', 'checks', '--arrived-at', ARRIVED, '--', 'npm', 'test'], /--arrived-at is set by queue when it hands a waiting step over/],
+    ['--arrived-at past now', ['queue', '--detached-run', HANDED_ID, '--session', 'alpha', '--what', 'checks', '--arrived-at', String(Date.parse('2030-01-09T00:00:00.000Z')), '--', 'npm', 'test'], /--arrived-at takes the epoch milliseconds the step joined the line, at most now/],
+    ['--arrived-at that is no time', ['queue', '--detached-run', HANDED_ID, '--session', 'alpha', '--what', 'checks', '--arrived-at', '1e12', '--', 'npm', 'test'], /--arrived-at takes the epoch milliseconds/],
+  ] as const) {
+    it(`prints the usage for ${label}, running nothing`, async () => {
+      const { kit, steps } = harness();
+      const result = await kit.run(argv, { steps });
+      assert.equal(result.code, EXIT.usage);
+      assert.match(result.stderr.join('\n'), message);
+      assert.deepEqual(steps.ran, []);
+    });
+  }
 });
