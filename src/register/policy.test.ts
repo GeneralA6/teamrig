@@ -1411,8 +1411,8 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
       "--gate names the owner gate or business decision that makes a question owner's: it goes only with a wait on owner's decision",
     );
     assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, gate: 'staffing' } })), `--gate "staffing" is no owner gate [ownerGates] and no business decision: ${GATE_USAGE}`);
-    const changed = set(ASKED, { waits: OWNER_DECISION, card: { gate: 'permissions' } });
-    assert.deepEqual(changed.ok ? changed.value.card : undefined, { ...TEST_CARD, gate: 'permissions' }, 'a later set changes the gate alone');
+    const changed = set(ASKED, { waits: OWNER_DECISION, card: { gate: 'resource changes' } });
+    assert.deepEqual(changed.ok ? changed.value.card : undefined, { ...TEST_CARD, gate: 'resource changes' }, 'a later set changes the gate alone');
     const toLead = set(ASKED, { waits: [{ kind: 'decision', who: 'lead' }] });
     assert.deepEqual(toLead.ok ? toLead.value.card : undefined, TEST_CARD, "a wait moved to the lead's decision drops it");
     const gated = new RegisterPolicy(testConfig({ ownerGates: ['hiring'] }));
@@ -1785,6 +1785,57 @@ describe("RegisterPolicy.audit --verdict: the security reviewer's verdict on a t
     assert.equal(error(reviewed.audit(carded, 'bravo', verdict('  '), undefined)), '--verdict is blank: say what the review found and whether the owner may approve it');
     assert.equal(error(reviewed.audit({ ...carded, status: 'done' }, 'bravo', verdict('Pass'), undefined)), 'T1 is done: a card is audited for a task still to finish');
     assert.notEqual(error(reviewed.audit(carded, 'bravo', verdict(`Pass ${credentialUrl()}`), undefined)), 'allowed');
+  });
+});
+
+describe("RegisterPolicy.setStatus: a card on a security gate reaches the owner only with the security verdict (T2761)", () => {
+  const policy = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'bravo' } }));
+  const GATED: DecisionCard = { ...TEST_CARD, gate: 'permissions' };
+  const read = { question: TEST_CARD.question, options: TEST_CARD.options, recommend: TEST_CARD.recommend };
+  const VERDICT = { text: 'Pass: read only', read, by: 'bravo', at: '2030-01-08T09:00:00.000Z' };
+  const reviewed: Task = { ...TASK, securityVerdict: VERDICT };
+  const set = (task: Task, input: Omit<StatusInput, 'status'>, on: RegisterPolicy = policy) => on.setStatus(task, 'alpha', { status: 'waiting', note: 'x', ...input }, CTX);
+  const route = 'set the card on a wait on your leader first (--waits decision:lead), have it read (the security reviewer (bravo), with teamrig audit T1 --verdict "<what the review found>"), then wait on owner with the card unchanged';
+
+  it('refuses a card on a gate in securityGates while the task holds no verdict, naming the route through the reviewer', () => {
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: GATED })), `T1's card asks owner about permissions, a security gate [securityGates], and has no security verdict: it reaches owner only with one (core rule 9); ${route}`);
+    const asked = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION, card: GATED });
+    assert.match(error(set(asked, { waits: OWNER_DECISION, note: 'asked again' })), /^T1's card asks owner about permissions/, 'a card kept from an older row');
+  });
+
+  it('passes the card the verdict read, and one moved from the leader\'s wait to the owner\'s with its parts kept', () => {
+    assert.deepEqual(set(reviewed, { waits: OWNER_DECISION, card: GATED }), {
+      ok: true,
+      value: { status: 'waiting', note: 'x', evidence: null, skill: null, waits: OWNER_DECISION, card: GATED },
+    });
+    const onLead: Task = { ...reviewed, status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: TEST_CARD };
+    const moved = set(onLead, { waits: OWNER_DECISION, card: { gate: 'Permissions' } });
+    assert.deepEqual(moved.ok ? moved.value.card : undefined, GATED);
+  });
+
+  it('refuses a card whose question, options or recommendation changed since the verdict, but not its default', () => {
+    const stale = `the security verdict bravo gave on T1's card read another question, options or recommendation: an edit needs a new verdict (core rule 9); ${route}`;
+    assert.equal(error(set(reviewed, { waits: OWNER_DECISION, card: { ...GATED, recommend: 'Pro, the bigger launch' } })), stale);
+    assert.equal(error(set(reviewed, { waits: OWNER_DECISION, card: { ...GATED, options: [...GATED.options].reverse() } })), stale);
+    assert.equal(error(set(reviewed, { waits: OWNER_DECISION, card: { ...GATED, byDefault: 'Pro ships on the due date' } })), 'allowed');
+  });
+
+  it('passes a gate outside securityGates, and a card handing an audited hand step, without a verdict', () => {
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: TEST_OWNER_CARD })), 'allowed', 'budget is no security gate by default');
+    const strict = new RegisterPolicy(testConfig({ securityGates: ['budget'] }));
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: TEST_OWNER_CARD }, strict)), /^T1's card asks owner about budget, a security gate/, 'the team names its own');
+    const step = '/w/tasks/T1/grant-read.ps1';
+    const sha256 = 'a'.repeat(64);
+    const audited: Task = { ...TASK, audits: [{ path: step, sha256, by: 'bravo', at: VERDICT.at }] };
+    assert.equal(error(set(audited, { waits: OWNER_DECISION, card: GATED, run: { path: step, sha256 } })), 'allowed', 'the audit of its file is the reviewer\'s read');
+  });
+
+  it("routes the lead, who has no leader to wait on, through the security reviewer's wait", () => {
+    const lead = testTask({ status: 'in-progress', startedAt: TASK.startedAt, owner: 'lead' });
+    assert.match(
+      error(policy.setStatus(lead, 'lead', { status: 'waiting', note: 'x', waits: OWNER_DECISION, card: GATED }, CTX)),
+      /; set the card on a wait on the security reviewer first, have it read/,
+    );
   });
 });
 

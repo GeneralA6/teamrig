@@ -11,7 +11,7 @@ import type { SlicedGoal } from './focus.ts';
 import { NO_GOAL_TAGS } from './goals.ts';
 import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256, type AuditPin } from './hand-step.ts';
-import { verdictReadOf, type SecurityVerdictPin } from './security-verdict.ts';
+import { verdictIsCurrent, verdictReadOf, type SecurityVerdictPin } from './security-verdict.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields, type TaskPrep } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
@@ -713,11 +713,12 @@ export class RegisterPolicy {
 
   /**
    * What a card asking the owner (`owners`) must say besides its parts, and must not: no hand step in its text
-   * (typedStepProblem); what it changes, on a test, measure or proof (proofProblem); why, on an owner's order; its
-   * gate, on a decision.
+   * (typedStepProblem); what it changes, on a test, measure or proof (proofProblem); the security verdict on it, on a
+   * security gate (securityProblem); why, on an owner's order; its gate, on a decision.
    */
   private ownerAsk(task: Task, owners: readonly PersonWait[], card: DecisionCard | null): Verdict<DecisionCard | null> {
-    const problem = owners.length === 0 || card === null ? undefined : (this.typedStepProblem(task, card) ?? this.proofProblem(task, owners, card));
+    const problem =
+      owners.length === 0 || card === null ? undefined : (this.typedStepProblem(task, card) ?? this.proofProblem(task, owners, card) ?? this.securityProblem(task, card));
     if (problem !== undefined) {
       return refuse(problem);
     }
@@ -741,6 +742,34 @@ export class RegisterPolicy {
       `Write the step to a ${HAND_STEP_KINDS.join(', ')} file, have it audited (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --file <path>) and give ${RUN_FLAG} <path>; ` +
       `a card that hands no step says so without code or an ask to paste ("the line is in")`
     );
+  }
+
+  /**
+   * A security-related ask reaches the owner only with the security reviewer's verdict on its card (T2761, core rule
+   * 9): a card asking the owner to decide on a gate in `securityGates` is refused while the task holds no verdict, or
+   * one given on another question, options or recommendation (verdictIsCurrent). A card handing a hand step (`run`) is
+   * reviewed already, as its audit is the reviewer's read of it (runProblem). A card kept from an older row is held to
+   * it too, as it still reaches the owner. The reviewer reads the card before the owner does, so the card goes first
+   * on a wait on the session's leader, and keeps its parts when the wait moves to the owner.
+   */
+  private securityProblem(task: Task, card: DecisionCard): string | undefined {
+    const gate = card.gate?.toLowerCase();
+    if (card.run !== undefined || gate === undefined || !this.config.securityGates.some((security) => security.toLowerCase() === gate)) {
+      return undefined;
+    }
+    const verdict = task.securityVerdict;
+    if (verdict !== null && verdictIsCurrent(verdict, card)) {
+      return undefined;
+    }
+    const { ownerSource } = this.config.register;
+    const leader = this.leaderOf(task);
+    const first = leader === undefined ? 'set the card on a wait on the security reviewer first' : `set the card on a wait on your leader first (--waits decision:${leader})`;
+    const route = `${first}, have it read (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --verdict "<what the review found>"), then wait on ${ownerSource} with the card unchanged`;
+    const why =
+      verdict === null
+        ? `${task.id}'s card asks ${ownerSource} about ${card.gate}, a security gate [securityGates], and has no security verdict: it reaches ${ownerSource} only with one (core rule 9)`
+        : `the security verdict ${verdict.by} gave on ${task.id}'s card read another question, options or recommendation: an edit needs a new verdict (core rule 9)`;
+    return `${why}; ${route}`;
   }
 
   /** Who leads the task's owner: its sub-lead or the lead, and for the lead, the parent team's lead; undefined at the root. */

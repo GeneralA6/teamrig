@@ -1,5 +1,6 @@
 import { isRecord } from '../core/guards.ts';
 import { auditOf, handStepShapeOf, runFileDrift, runLineOf, shortSha256, type HandStepAudit, type RunFiles } from './hand-step.ts';
+import { verdictIsCurrent, type SecurityVerdict } from './security-verdict.ts';
 
 /**
  * A decision card (T514): what a task waiting on a decision or an approval asks, written so whoever decides needs
@@ -314,12 +315,14 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
  * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's, why
  * the owner is asked and what a test it asks about changes (when the card says), each option numbered, the recommendation and the default, then the
  * hand step to run (when the card hands one), each line led by `indent`. `audits` are the task's (fold.ts), and
- * `runFiles` what its hand step file hashes to now.
+ * `runFiles` what its hand step file hashes to now. `verdict` is the task's security verdict (T2761), printed after
+ * the gate, or marked STALE once the card asks something other than what it was given on.
  */
-export function cardLines(card: DecisionCard, indent: string, audits: readonly HandStepAudit[], runFiles: RunFiles): string[] {
+export function cardLines(card: DecisionCard, indent: string, audits: readonly HandStepAudit[], runFiles: RunFiles, verdict: SecurityVerdict | null): string[] {
   return [
     `${indent}decide: ${card.question}`,
     ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
+    ...(verdict === null ? [] : [`${indent}security: ${verdictText(verdict, card)}`]),
     ...(card.whyAsk === undefined ? [] : [`${indent}why asked: ${card.whyAsk}`]),
     ...(card.affects === undefined ? [] : [`${indent}affects: ${card.affects}`]),
     ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
@@ -327,6 +330,16 @@ export function cardLines(card: DecisionCard, indent: string, audits: readonly H
     `${indent}with no answer: ${card.byDefault}`,
     ...(card.run === undefined ? [] : [`${indent}run: ${runText(card.run, audits, runFiles)}`]),
   ];
+}
+
+/**
+ * The security verdict as the owner reads it: the reviewer's text and who gave it, or, once the card asks another
+ * question, options or recommendation than the verdict read, that it is stale and not to be decided on (core rule 9).
+ */
+function verdictText(verdict: SecurityVerdict, card: DecisionCard): string {
+  return verdictIsCurrent(verdict, card)
+    ? `${verdict.text} (verdict by ${verdict.by})`
+    : `STALE: ${verdict.by}'s verdict read another question, options or recommendation; do not decide until it is read again`;
 }
 
 /**

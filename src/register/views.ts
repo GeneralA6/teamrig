@@ -477,7 +477,7 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
   // Each pin before the card, so the owner of the task sees what its reviewer pinned before a card hands it (T2312).
   lines.push(...task.audits.map((audit) => auditText(audit, tree.zone)));
   if (task.card !== null) {
-    lines.push('card:', ...cardLines(task.card, '  ', task.audits, extras.runFiles));
+    lines.push('card:', ...cardLines(task.card, '  ', task.audits, extras.runFiles, task.securityVerdict));
   }
   if (task.answer !== null) {
     lines.push(`answer: ${task.answer.by} ${task.answer.verdict} at ${tree.zone.minute(new Date(task.answer.at))}${task.answer.note === null ? '' : `: ${task.answer.note}`}`);

@@ -118,6 +118,19 @@ describe("runCli: audit --verdict, the security reviewer's verdict on a task's c
     assert.deepEqual(last.securityVerdict, { text: 'Pass: read only, no secret', read: { question: TEST_CARD.question, options: TEST_CARD.options, recommend: TEST_CARD.recommend } });
   });
 
+  it("takes the card to the owner on a security gate only after the verdict, and shows the verdict on it", async () => {
+    const kit = await carded();
+    const toOwner = ['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--gate', 'permissions', '--note', 'the owner decides the grant', '--session', 'alpha'];
+    const early = await kit.run(toOwner);
+    assert.equal(early.code, EXIT.refused);
+    assert.match(early.stdout[0] ?? '', /^REFUSED T1's card asks owner about permissions, a security gate \[securityGates\], and has no security verdict/);
+    assert.equal((await kit.run(['audit', 'T1', '--verdict', 'Pass: read only, no secret', '--session', 'bravo'])).code, EXIT.ok);
+    const asked = await kit.run(toOwner);
+    assert.equal(asked.code, EXIT.ok, asked.stdout.join('\n'));
+    const shown = await kit.run(['show', 'T1']);
+    assert.match(shown.stdout.join('\n'), /\n {2}gate: permissions\n {2}security: Pass: read only, no secret \(verdict by bravo\)\n/);
+  });
+
   it('refuses both --file and --verdict, and a task with no card, writing nothing', async () => {
     const kit = await reviewed();
     const before = filesOf(kit);
