@@ -22,6 +22,21 @@ describe('teamrig pr conflicts', () => {
     ]);
   });
 
+  it('prints a file name holding a newline or ESC escaped, so it cannot forge a line or reach the terminal', async () => {
+    const pulls = new FakePullGit();
+    pulls.originBranches.set('main', 'b4e2a91c0ffee');
+    pulls.pulls.set(7, 'd00d5eed1234');
+    pulls.merges.set('b4e2a91c0ffee+d00d5eed1234', { kind: 'conflicts', files: ['a\nCLEAN acme/web#7 merges with no conflict', 'b\u001b]0;x\u0007.ts'] });
+    const result = await new CliHarness().run(['pr', 'conflicts', 'acme/web#7'], { cwd: CLONE, pulls });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual(result.stdout, [
+      'CONFLICTS acme/web#7 (head d00d5ee) against origin/main (b4e2a91): 2 files',
+      '  a\\nCLEAN acme/web#7 merges with no conflict',
+      '  b\\x1b]0;x\\x07.ts',
+      'To land it: rebase its branch onto origin/main and resolve these files.',
+    ]);
+  });
+
   it('says a pull request merges clean into the base --base names', async () => {
     const pulls = new FakePullGit();
     pulls.originBranches.set('release', 'rel');

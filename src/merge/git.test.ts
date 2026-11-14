@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import { GIT_MERGE as git, ORIGIN } from './git.ts';
+import { GIT_MERGE as git, ORIGIN, rebaseStopReason } from './git.ts';
 
 /** A repo on `main`, pushed to a bare origin beside it, with `origin/HEAD` set; returns the repo and the origin's folder. */
 function repoWithOrigin(prefix: string): { repo: TempRepo; origin: string } {
@@ -247,6 +247,23 @@ describe('GIT_MERGE rebase', () => {
     } finally {
       repo.remove();
     }
+  });
+});
+
+describe('rebaseStopReason', () => {
+  // Windows refuses such a file name on disk, so the conflict list is checked here rather than through a real rebase.
+  it('names conflicting paths with a newline or ESC escaped, on the one line of the reason', () => {
+    assert.equal(
+      rebaseStopReason('origin/main', ['a\nb.txt', 'c\u001b[2J.txt'], 'git rebase failed', { ok: true }),
+      'rebase onto origin/main stopped (conflicts in a\\nb.txt, c\\x1b[2J.txt); aborted, the branch is as it was; to land it, rebase onto origin/main by hand, resolve those files and merge again, a branch already pushed for review under a new name, never force-pushed',
+    );
+  });
+
+  it("gives git's own reason when nothing conflicts, and says when the abort failed too", () => {
+    assert.equal(
+      rebaseStopReason('origin/main', [], 'could not apply', { ok: false, reason: 'locked' }),
+      'rebase onto origin/main stopped (could not apply); git rebase --abort failed too (locked): finish or abort it by hand',
+    );
   });
 });
 

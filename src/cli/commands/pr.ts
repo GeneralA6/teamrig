@@ -1,4 +1,5 @@
 import { parseIssueTarget, targetText } from '../../issues/host.ts';
+import { printable } from '../../core/printable.ts';
 import { pullConflicts } from '../../github/pull-conflicts.ts';
 import { onePositional } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -10,7 +11,7 @@ const SHORT_SHA = 7;
 /**
  * `pr conflicts <owner/name#n> [--base <branch>]` (T2693): in a clone of the pull request's repository, fetches the
  * pull request's head and prints the files it conflicts on against the newest base (default origin's default
- * branch), for the comment an outside author needs or the work a team pull request's owner must redo. It changes no
+ * branch), for the comment an outside author needs or the work a team pull request's owner must redo. It changes no local
  * branch or file of the clone and writes nothing to GitHub. Exit 0 with a CONFLICTS or CLEAN line, 1 when git
  * failed.
  */
@@ -33,8 +34,9 @@ export async function prConflicts(args: ParsedArgs, runtime: CliRuntime): Promis
     case 'conflicts': {
       const count = found.files.length === 1 ? '1 file' : `${found.files.length} files`;
       say(`CONFLICTS ${name} (head ${found.headSha.slice(0, SHORT_SHA)}) against ${found.base} (${found.baseSha.slice(0, SHORT_SHA)}): ${count}`);
+      // The file names are the pull request author's: escaped, a newline or ESC in one cannot forge a line or reach the terminal.
       for (const file of found.files) {
-        say(`  ${file}`);
+        say(`  ${printable(file)}`);
       }
       say(`To land it: rebase its branch onto ${found.base} and resolve these files.`);
       return EXIT.ok;
