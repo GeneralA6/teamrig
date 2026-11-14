@@ -116,7 +116,7 @@ const COMMANDS = {
         load: async () => (await registerCommands()).list,
     },
     // --session names the caller on every task and inbox command, so a session can always pass it.
-    show: { effect: 'read', flags: ['session'], switches: ['tree'], load: async () => (await registerCommands()).show },
+    show: { effect: 'read', flags: ['session'], switches: ['tree', 'history'], load: async () => (await registerCommands()).show },
     check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
     plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
     verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
@@ -530,8 +530,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it.
       --parked: only the quiet tasks the park rule leaves out of a list; --untriaged: only the tasks that
       wait for a leader to class them
-  show <id> [--tree]   every field, the history and the inbox lines naming it; --tree: what it needs and
-      what needs it, each with owner, status and due, then the next move (who acts first, on which task)
+  show <id> [--tree] [--history]   every field, the last 3 history events and the inbox lines naming it;
+      --history: every event; --tree: what it needs and what needs it, each with owner, status and due, then
+      the next move (who acts first, on which task)
   check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule and context
       text over budget, in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)

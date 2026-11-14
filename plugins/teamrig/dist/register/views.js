@@ -362,6 +362,17 @@ export function formatEvent(event, zone) {
     }
 }
 /**
+ * The history events `show` prints without `--history` (T2535, owner-approved fix C4 of T2217): the last 3 hold the
+ * status and wait a proof check reads, so one call still serves it, and the older ones cost every read its text.
+ */
+export const SHOWN_HISTORY_EVENTS = 3;
+/** `history:` and each event, or the last few under a header that counts the rest and names `--history`. */
+function historyLines(events, zone, all) {
+    const shown = all ? events : events.slice(-SHOWN_HISTORY_EVENTS);
+    const header = shown.length === events.length ? 'history:' : `history (last ${shown.length} of ${events.length}; --history prints all):`;
+    return [header, ...shown.map((event) => `  ${formatEvent(event, zone)}`)];
+}
+/**
  * `show`: the task line, its description (what and why, its later lines indented two spaces), its status details,
  * its files, then its history; `tree` reads the task line as {@link formatTask} does, and `extras.sizeCost` words its
  * size's cost beside the percent.
@@ -418,7 +429,7 @@ export function formatTaskDetail(task, events, tree, extras) {
     if (extras.files !== undefined) {
         lines.push(extras.files);
     }
-    lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event, tree.zone)}`));
+    lines.push(...historyLines(events.filter((event) => event.id === task.id), tree.zone, extras.allHistory === true));
     return lines.join('\n');
 }
 /**
