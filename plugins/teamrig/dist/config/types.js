@@ -82,11 +82,19 @@ export function isEscalation(value) {
     return ESCALATIONS.some((escalation) => escalation === value);
 }
 /**
+ * The resets the account holds beside its weekly one: `fable` refills the Fable bar and gives back what Fable used of the
+ * weekly limit, `full` clears all of the week's usage.
+ */
+export const RESET_KINDS = ['fable', 'full'];
+export function isResetKind(value) {
+    return RESET_KINDS.some((kind) => kind === value);
+}
+/**
  * The budget keys of the account's week, and whether the budget is on: a team under another (`team.parent`) that
  * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
  * a tree read one week alike without a copy that drifts.
  */
-export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'];
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset', 'resets'];
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
  * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead; `automatic` as
