@@ -329,6 +329,7 @@ export const DEFAULT_QUEUE = {
     heavyReserveMb: 2048,
     admission: 'pipeline',
     agingMinutes: 15,
+    memoryPassMinutes: 15,
     perSessionRunning: 2,
     maxHeavyParallel: 2,
     heavyIdleCpuPct: 25,
