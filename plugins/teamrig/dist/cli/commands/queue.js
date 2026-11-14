@@ -21,7 +21,7 @@ import { JsonlEventLog } from "../../register/store.js";
 import { commandLine } from "../../test-run/shell.js";
 import { requiredFlag, UsageError } from "../args.js";
 import { hostLockOf, logLineOf } from "../delivery-ports.js";
-import { commandWordsOf, sessionRef } from "../inputs.js";
+import { sessionRef, shellWordsOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { parentLockOf } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -370,7 +370,7 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
 export async function queue(args, runtime) {
-    const words = commandWordsOf(args);
+    const words = shellWordsOf(args, runtime.platform);
     const what = requiredFlag(args.flags, 'what');
     const request = requestOf(args, words, what);
     const declaredMb = declaredMbOf(args);

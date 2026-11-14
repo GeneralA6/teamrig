@@ -8,6 +8,7 @@ import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText,
 import { WAITS_USAGE } from "../register/policy.js";
 import { REVIEW_FLAGS, REVIEW_ORDER } from "../register/review.js";
 import { isWaitKind, waitOf } from "../register/waits.js";
+import { unrunnableReason } from "../test-run/shell.js";
 import { requiredFlag, UsageError } from "./args.js";
 /**
  * Flag text to register inputs. Only the shape is checked here (a priority like p2, a list, a date); the
@@ -41,6 +42,15 @@ export function commandWordsOf(args) {
         throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
     }
     return args.rest;
+}
+/** The command to run in the platform's shell (`commandWordsOf`), refused when that shell would not run it as given. */
+export function shellWordsOf(args, platform) {
+    const words = commandWordsOf(args);
+    const reason = unrunnableReason(words, platform);
+    if (reason !== undefined) {
+        throw new UsageError(reason);
+    }
+    return words;
 }
 /** `T12`, or `web/T12`: team web's task, as a roll-up over a team tree names a task of another team. */
 export function taskRefOf(text) {
