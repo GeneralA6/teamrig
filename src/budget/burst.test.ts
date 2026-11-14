@@ -7,6 +7,7 @@ import type { BudgetConfig, BurstConfig } from '../config/types.ts';
 import { DailyProfile } from './active-time.ts';
 import {
   activeBurst,
+  activeRush,
   burstFloorOf,
   burstFloorPct,
   burstsOver,
@@ -14,6 +15,9 @@ import {
   isBurst,
   isBurstKind,
   isBurstOver,
+  isRush,
+  RUSH_STOP_REASON,
+  rushPastStop,
   spareShareNote,
   surplusOf,
   withBurst,
@@ -46,6 +50,7 @@ const REQUEST: BurstRequest = {
   stopPct: undefined,
   deadline: undefined,
   tasks: [],
+  goal: undefined,
   reason: 'week-end surplus',
   approvedBy: 'owner',
   by: 'lead',
@@ -74,6 +79,7 @@ const CONTEXT: BurstContext = {
 };
 const DUE = Date.parse('2030-01-08T20:00:00Z');
 const DEADLINE: BurstRequest = { ...REQUEST, kind: 'deadline', stopPct: 80, deadline: DUE, tasks: ['T1', 'T2'] };
+const RUSH_REQUEST: BurstRequest = { ...REQUEST, kind: 'rush', helpers: 0, hires: 0, stopPct: 90, deadline: DUE, goal: 'PROD' };
 
 function refusal(decision: BurstDecision): string {
   assert.equal(decision.kind, 'refused');
@@ -254,6 +260,25 @@ describe('decideBurst', () => {
     assert.deepEqual(started.tasks, []);
     assert.equal('deadline' in started, false);
   });
+
+  it('starts a rush for its goal until --by or the reset, with no helpers or hires needed', () => {
+    const started = given(decideBurst(RUSH_REQUEST, CONTEXT));
+    assert.equal(started.kind, 'rush');
+    assert.equal(started.goal, 'PROD');
+    assert.equal(started.endsAt, DUE);
+    assert.equal(started.stopPct, 90);
+    assert.deepEqual(started.tasks, []);
+    assert.equal('deadline' in started, false);
+    const late = Date.parse('2030-01-09T06:00:00Z');
+    assert.equal(given(decideBurst({ ...RUSH_REQUEST, deadline: late }, CONTEXT)).endsAt, RESET);
+  });
+
+  it('refuses a rush without its goal, its end or its stop %, and keeps no goal on another kind', () => {
+    assert.match(refusal(decideBurst({ ...RUSH_REQUEST, goal: undefined }, CONTEXT)), /a rush needs --goal <tag>/);
+    assert.match(refusal(decideBurst({ ...RUSH_REQUEST, deadline: undefined }, CONTEXT)), /a rush needs --by <time>: when it ends/);
+    assert.match(refusal(decideBurst({ ...RUSH_REQUEST, stopPct: undefined }, CONTEXT)), /a rush needs --stop-pct <n>/);
+    assert.equal('goal' in given(decideBurst({ ...DEADLINE, goal: 'PROD' }, CONTEXT)), false);
+  });
 });
 
 describe('burstFloorPct', () => {
@@ -345,6 +370,25 @@ describe('activeBurst and burstsOver', () => {
     assert.deepEqual([...burstsOver([first, second], NOW, 70)], [first.at]);
     assert.deepEqual([...burstsOver([first, second, end(second.at, NOW)], NOW, 70)], [first.at, second.at]);
     assert.deepEqual([...burstsOver([first, second], NOW, 99.5)], [first.at, second.at]);
+  });
+
+  it('is a rush in force only when the burst in force is a rush with its goal', () => {
+    const rush = burst({ kind: 'rush', goal: 'PROD', stopPct: 90, at: NOW - HOUR });
+    assert.deepEqual(activeRush([first, rush], NOW, 70), rush);
+    assert.equal(activeRush([first, second], NOW, 70), undefined);
+    assert.equal(activeRush([first, rush, end(rush.at, NOW - 1)], NOW, 70), undefined);
+    assert.equal(activeRush([burst({ kind: 'rush', at: NOW - HOUR })], NOW, 70), undefined);
+    assert.equal(isRush(rush), true);
+    assert.equal(isRush(second), false);
+  });
+
+  it('finds the rush the log holds in force past its stop %, which the hook ends', () => {
+    const rush = burst({ kind: 'rush', goal: 'PROD', stopPct: 90, at: NOW - HOUR });
+    assert.deepEqual(rushPastStop([rush], NOW, 90), rush);
+    assert.equal(rushPastStop([rush], NOW, 89.9), undefined);
+    assert.equal(rushPastStop([rush, end(rush.at, NOW - 1)], NOW, 95), undefined);
+    assert.equal(rushPastStop([second], NOW, 99.5), undefined);
+    assert.match(RUSH_STOP_REASON, /stop %/);
   });
 
   it('tells a burst from an end, and a kind from anything else', () => {

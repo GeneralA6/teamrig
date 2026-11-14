@@ -15,12 +15,15 @@ import { wSince, type WeekReading } from './week.ts';
  * before the reset, once the team's part of it (`surplusOf`) is at least `burst.minSparePct`, and ends at
  * the pace end.
  * `deadline`: work the user needs by a time; it names its tasks and a stop %, and ends at the deadline or
- * the reset. Every burst ends at its stop % at the latest, never above `budget.targetPct`, so it never
+ * the reset. `rush`: the team works one goal at full speed until a set time; it names the goal, an end and a
+ * stop %, and while it is in force the team's config reads with its holds turned to report only
+ * (src/budget/rush.ts `rushOverlay`), so nothing is written and nothing needs restoring when it ends.
+ * Every burst ends at its stop % at the latest, never above `budget.targetPct`, so it never
  * spends the reserve. Only a person starts one, by command (`burst.policy`): it spends more of the week.
  * Pure: it takes the clock's now, the week and the caps.
  */
 
-export const BURST_KINDS = ['surplus', 'deadline'] as const;
+export const BURST_KINDS = ['surplus', 'deadline', 'rush'] as const;
 export type BurstKind = (typeof BURST_KINDS)[number];
 
 export function isBurstKind(value: unknown): value is BurstKind {
@@ -48,6 +51,8 @@ export interface Burst {
   readonly tasks: readonly string[];
   /** A deadline burst's deadline, epoch ms. */
   readonly deadline?: number;
+  /** A rush's goal: the goal tag whose tasks, and the tasks under them, are its work. */
+  readonly goal?: string;
   readonly reason: string;
   /** Who approved it, under `burst.policy` `owner`. */
   readonly approvedBy?: string;
@@ -149,9 +154,11 @@ export interface BurstRequest {
   readonly hires: number | undefined;
   /** Unset: `budget.targetPct` for a surplus burst; a deadline burst needs one. */
   readonly stopPct: number | undefined;
-  /** A deadline burst's deadline, epoch ms. */
+  /** A deadline burst's deadline, or when a rush ends, epoch ms. */
   readonly deadline: number | undefined;
   readonly tasks: readonly string[];
+  /** A rush's goal, already checked against the team's goals. */
+  readonly goal: string | undefined;
   readonly reason: string;
   readonly approvedBy: string | undefined;
   readonly by: string;
@@ -210,7 +217,8 @@ function capsProblem(request: BurstRequest, config: BurstConfig): string | undef
   if (hires > config.maxHires) {
     return `--hires ${hires} is above burst.maxHires (${config.maxHires})`;
   }
-  return helpers === 0 && hires === 0 ? 'a burst with no helpers and no hires adds nothing: give --helpers or --hires' : undefined;
+  // A rush adds its overlay and goal focus even with no helpers or hires, so only the other kinds need one.
+  return request.kind !== 'rush' && helpers === 0 && hires === 0 ? 'a burst with no helpers and no hires adds nothing: give --helpers or --hires' : undefined;
 }
 
 /** When the burst ends at the latest, or why it cannot start. */
@@ -232,10 +240,13 @@ function endOf(request: BurstRequest, context: BurstContext, window: WeekWindow,
     return { endsAt: window.paceEnd };
   }
   if (request.deadline === undefined) {
-    return { problem: 'a deadline burst needs --by <time>: when its tasks are due' };
+    return { problem: request.kind === 'rush' ? 'a rush needs --by <time>: when it ends' : 'a deadline burst needs --by <time>: when its tasks are due' };
   }
   if (request.deadline <= now) {
     return { problem: `--by ${context.zone.minute(new Date(request.deadline))} has passed` };
+  }
+  if (request.kind === 'rush') {
+    return request.goal === undefined ? { problem: 'a rush needs --goal <tag>: the goal the team works at full speed' } : { endsAt: Math.min(request.deadline, window.reset) };
   }
   if (request.tasks.length === 0) {
     return { problem: 'a deadline burst needs --task <ids>: the tasks due by --by' };
@@ -331,8 +342,8 @@ export function decideBurst(request: BurstRequest, context: BurstContext): Burst
   if (usedPct === undefined || window === undefined) {
     return refused("the week's use or reset is unknown, so the burst cannot be judged: run teamrig statusline install, or set budget.weeklyLimitW and budget.reset");
   }
-  if (request.kind === 'deadline' && request.stopPct === undefined) {
-    return refused('a deadline burst needs --stop-pct <n>: the share of the week, in %, at which it ends');
+  if (request.kind !== 'surplus' && request.stopPct === undefined) {
+    return refused(`a ${request.kind === 'rush' ? 'rush' : 'deadline burst'} needs --stop-pct <n>: the share of the week, in %, at which it ends`);
   }
   const stopPct = request.stopPct ?? targetPct;
   if (stopPct > targetPct) {
@@ -363,6 +374,7 @@ export function decideBurst(request: BurstRequest, context: BurstContext): Burst
       endsAt: end.endsAt,
       tasks: request.kind === 'deadline' ? request.tasks : [],
       ...(request.kind === 'deadline' && request.deadline !== undefined ? { deadline: request.deadline } : {}),
+      ...(request.kind === 'rush' && request.goal !== undefined ? { goal: request.goal } : {}),
       reason: request.reason.trim(),
       ...(approvedBy === undefined || approvedBy === '' ? {} : { approvedBy }),
       by: request.by,
@@ -383,6 +395,31 @@ export function isBurstOver(burst: Burst, records: readonly BurstRecord[], now: 
 export function activeBurst(records: readonly BurstRecord[], now: number, usedPct: number | undefined): Burst | undefined {
   const newest = records.filter(isBurst).filter((burst) => burst.at <= now).at(-1);
   return newest === undefined || isBurstOver(newest, records, now, usedPct) ? undefined : newest;
+}
+
+/** A rush: a burst whose goal is set, as `decideBurst` and the log's parse make every rush. */
+export type Rush = Burst & { readonly kind: 'rush'; readonly goal: string };
+
+export function isRush(burst: Burst): burst is Rush {
+  return burst.kind === 'rush' && burst.goal !== undefined;
+}
+
+/** The rush in force at `now`: the burst in force (`activeBurst`) when it is a rush. */
+export function activeRush(records: readonly BurstRecord[], now: number, usedPct: number | undefined): Rush | undefined {
+  const inForce = activeBurst(records, now, usedPct);
+  return inForce !== undefined && isRush(inForce) ? inForce : undefined;
+}
+
+/** The reason on the end record the budget hook writes for a rush past its stop %. */
+export const RUSH_STOP_REASON = 'the week reached its stop %';
+
+/**
+ * The rush the log alone still holds in force though the week is past its stop %: the one whose end the budget hook
+ * writes down, since the overlay (`openKit`) reads only the log.
+ */
+export function rushPastStop(records: readonly BurstRecord[], now: number, usedPct: number): Rush | undefined {
+  const byLog = activeRush(records, now, undefined);
+  return byLog !== undefined && activeBurst(records, now, usedPct) === undefined ? byLog : undefined;
 }
 
 /** The `at` of every burst over at `now`, so the hires each one made are due to retire. */

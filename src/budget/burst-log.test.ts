@@ -37,6 +37,20 @@ const DEADLINE: Burst = {
   by: 'lead',
   at: NOW + 1,
 };
+const RUSH: Burst = {
+  kind: 'rush',
+  sessions: ['alpha', 'bravo'],
+  helpers: 0,
+  hires: 0,
+  dailyPct: 30,
+  stopPct: 90,
+  endsAt: Date.parse('2030-01-08T16:00:00Z'),
+  tasks: [],
+  goal: 'PROD',
+  reason: 'ship PROD',
+  by: 'lead',
+  at: NOW + 3,
+};
 const END: BurstEnd = { kind: 'end', burstAt: NOW, reason: 'done early', by: 'lead', at: NOW + 2 };
 
 describe('burst records', () => {
@@ -46,13 +60,17 @@ describe('burst records', () => {
         burst: ['approvedBy', 'at', 'by', 'dailyPct', 'deadline', 'endsAt', 'helpers', 'hires', 'kind', 'reason', 'sessions[]', 'stopPct', 'tasks[]', 'v'],
         end: ['at', 'burstAt', 'by', 'kind', 'reason', 'v'],
       },
+      2: {
+        burst: ['approvedBy', 'at', 'by', 'dailyPct', 'deadline', 'endsAt', 'goal', 'helpers', 'hires', 'kind', 'reason', 'sessions[]', 'stopPct', 'tasks[]', 'v'],
+        end: ['at', 'burstAt', 'by', 'kind', 'reason', 'v'],
+      },
     };
-    const full: Burst = { ...DEADLINE, approvedBy: 'owner' };
+    const full: Burst = { ...DEADLINE, approvedBy: 'owner', goal: 'PROD' };
     assert.deepEqual({ burst: fieldPaths(burstRecordOf(full)), end: fieldPaths(burstRecordOf(END)) }, written[BURST_FORMAT]);
   });
 
-  it('round-trips a surplus burst, a deadline burst and an end, with instants as ISO strings', () => {
-    for (const record of [SURPLUS, DEADLINE, END]) {
+  it('round-trips a surplus burst, a deadline burst, a rush and an end, with instants as ISO strings', () => {
+    for (const record of [SURPLUS, DEADLINE, RUSH, END]) {
       assert.deepEqual(parseBurstRecord(burstRecordOf(record)), record);
     }
     assert.equal(burstRecordOf(SURPLUS)['endsAt'], '2030-01-09T00:00:00.000Z');
@@ -79,6 +97,11 @@ describe('burst records', () => {
     ]) {
       assert.equal(parseBurstRecord({ ...start, ...damage }), undefined, JSON.stringify(damage));
     }
+    const rush = burstRecordOf(RUSH);
+    for (const damage of [{ goal: undefined }, { goal: 7 }]) {
+      assert.equal(parseBurstRecord({ ...rush, ...damage }), undefined, JSON.stringify(damage));
+    }
+    assert.equal(parseBurstRecord({ ...start, goal: 7 }), undefined);
     const stop = burstRecordOf(END);
     for (const damage of [{ burstAt: 'then' }, { reason: 1 }, { by: undefined }, { at: 'now' }]) {
       assert.equal(parseBurstRecord({ ...stop, ...damage }), undefined, JSON.stringify(damage));
@@ -104,5 +127,12 @@ describe('BurstLog', () => {
     const newer = new BurstLog(new MemoryFiles({ [PATH]: `{"v":${BURST_FORMAT + 1},"kind":"surplus"}\n` }), PATH);
     assert.deepEqual(await newer.read(), { records: [], skipped: 1 });
     await assert.rejects(newer.append(SURPLUS), NewerDataError);
+  });
+
+  it('reads the records written before the rush, and never a format 1 rush', async () => {
+    const before = { ...burstRecordOf(SURPLUS), v: 1 };
+    const oldRush = { ...burstRecordOf(RUSH), v: 1 };
+    const files = new MemoryFiles({ [PATH]: `${JSON.stringify(before)}\n${JSON.stringify(oldRush)}\n${JSON.stringify({ ...burstRecordOf(END), v: 1 })}\n` });
+    assert.deepEqual(await new BurstLog(files, PATH).read(), { records: [SURPLUS, END], skipped: 1 });
   });
 });
