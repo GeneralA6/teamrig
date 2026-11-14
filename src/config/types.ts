@@ -1129,16 +1129,16 @@ export interface DecisionsConfig {
   readonly dedicatedOwners: readonly string[];
 }
 
+/** `refresh.autoRestart`: on or off for every session, or on for the team's lead only. */
+export const AUTO_RESTART_LEAD = 'lead';
+export type AutoRestart = boolean | typeof AUTO_RESTART_LEAD;
+
 /**
  * Context refresh: at any turn end with the session's context at or over `contextTokens`, at a task end
  * (`set <id> --status done`) with `everyTasks` tasks finished since its context was last fresh, or after the lead
  * asked for it, the session writes a handover; then the user types /clear, or teamrig starts it fresh on its own
  * (`autoRestart`).
  */
-/** `refresh.autoRestart`: on or off for every session, or on for the team's lead only. */
-export const AUTO_RESTART_LEAD = 'lead';
-export type AutoRestart = boolean | typeof AUTO_RESTART_LEAD;
-
 export interface RefreshConfig {
   readonly enabled: boolean;
   /** The context size, in tokens, that asks for a refresh. Absolute, since a hook cannot see the window size. */
