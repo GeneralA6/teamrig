@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
+import type { JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers } from '../testing/fake-worktrees.ts';
@@ -83,5 +84,78 @@ describe('runCli: worktree add (T1305)', () => {
     const failed = await new CliHarness(LISTED).run(['worktree', 'add', 't9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
     assert.equal(failed.code, EXIT.failed);
     assert.match(failed.stdout.at(-1) ?? '', /^FAILED its setup node tools\/link-modules.ts exited 2; the worktree stays at .*t9-parser: finish its setup by hand/);
+  });
+});
+
+describe('runCli: worktree add --task names the branch by delivery.branches (T2690)', () => {
+  /** Team app with T1, alpha's task "Parse the input (T0)", and T2, a bug filed as Maintenance with issue #933. */
+  async function teamWorld(config: JsonRecord = LISTED): Promise<CliHarness> {
+    const kit = new CliHarness(config);
+    for (const fields of [
+      ['--title', 'Parse the input (T0)'],
+      ['--title', 'Login loop', '--type', 'bug', '--class', 'Maintenance', '--ref', 'gh:acme/app#933'],
+    ]) {
+      const added = await kit.run(['add', '--session', 'lead', '--owner', 'alpha', '--description', 'Do it.', '--priority', 'p1', ...fields]);
+      assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+    }
+    return kit;
+  }
+
+  it("makes a task's branch feat/<id>-<slug> and a bug's fix/..., the folder named after it", async () => {
+    const kit = await teamWorld();
+    const { git, ports } = world();
+    const hooks = new FakeHooks().answer(SETUP, { lines: [] });
+    const feat = await kit.run(['worktree', 'add', '--task', 'T1'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
+    assert.equal(feat.code, EXIT.ok, feat.stdout.join('\n'));
+    const fix = await kit.run(['worktree', 'add', '--task', 'T2'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
+    assert.equal(fix.code, EXIT.ok, fix.stdout.join('\n'));
+    assert.deepEqual(
+      git.steps.filter((step) => step.startsWith('worktree add')),
+      [`worktree add -b feat/t1-parse-the-input ${resolve('/w/wt', 'feat-t1-parse-the-input')} origin/main in ${MAIN}`, `worktree add -b fix/t2-login-loop ${resolve('/w/wt', 'fix-t2-login-loop')} origin/main in ${MAIN}`],
+    );
+  });
+
+  it("takes --type, the work class's branch type and the team's own pattern", async () => {
+    const branches = { pattern: '{session}/{type}/{id}-gh{issue}', classes: { Maintenance: 'chore' } };
+    const kit = await teamWorld({ ...LISTED, delivery: { ...LISTED.delivery, branches } });
+    const { git, ports } = world();
+    const hooks = new FakeHooks().answer(SETUP, { lines: [] });
+    const chore = await kit.run(['worktree', 'add', '--task', 'T2'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
+    assert.equal(chore.code, EXIT.ok, chore.stdout.join('\n'));
+    const docs = await kit.run(['worktree', 'add', '--task', 'T2', '--type', 'docs'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
+    assert.equal(docs.code, EXIT.ok, docs.stdout.join('\n'));
+    assert.deepEqual(
+      git.steps.filter((step) => step.startsWith('worktree add')).map((step) => step.split(' ')[3]),
+      ['alpha/chore/t2-gh933', 'alpha/docs/t2-gh933'],
+    );
+    const noIssue = await kit.run(['worktree', 'add', '--task', 'T1'], { worktrees: ports, hooks, cwd: '/w/t4', env: IN_TEAM });
+    assert.equal(noIssue.code, EXIT.refused);
+    assert.deepEqual(noIssue.stdout, ['REFUSED the branch pattern {session}/{type}/{id}-gh{issue} names {issue}, which this task has none of: give a branch name instead']);
+  });
+
+  it('refuses a task the register lacks, and --task outside a team, before any change', async () => {
+    const { git, ports } = world();
+    const missing = await (await teamWorld()).run(['worktree', 'add', '--task', 'T9'], { worktrees: ports, cwd: '/w/t4', env: IN_TEAM });
+    assert.equal(missing.code, EXIT.refused);
+    assert.deepEqual(missing.stdout, ["REFUSED team app's register has no T9"]);
+    const outside = await new CliHarness(null, null).run(['worktree', 'add', '--task', 'T1'], { worktrees: ports, cwd: '/w/t4' });
+    assert.equal(outside.code, EXIT.refused);
+    assert.match(outside.stdout[0] ?? '', /^REFUSED --task names a task on a team's register, and .* is in no team: give a branch name instead$/);
+    assert.deepEqual(git.steps, []);
+  });
+
+  it('takes a branch name or --task, not both, --type only with --task, and a branch type and task id as typed', async () => {
+    const kit = await teamWorld();
+    const { git, ports } = world();
+    for (const argv of [
+      ['worktree', 'add', 't9-x', '--task', 'T1'],
+      ['worktree', 'add', 't9-x', '--type', 'fix'],
+      ['worktree', 'add', '--task', 'T1', '--type', 'Fix/x'],
+      ['worktree', 'add', '--task', 'twelve'],
+    ]) {
+      const result = await kit.run(argv, { worktrees: ports, cwd: '/w/t4', env: IN_TEAM });
+      assert.equal(result.code, EXIT.usage, argv.join(' '));
+    }
+    assert.deepEqual(git.steps, []);
   });
 });
