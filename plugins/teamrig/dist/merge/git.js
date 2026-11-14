@@ -1,5 +1,6 @@
 import { basename, dirname, resolve } from 'node:path';
 import { outcome, query, queryLine, runGit } from "../core/git-run.js";
+import { printable } from "../core/printable.js";
 /** The remote a branch is pushed to, and the one a deploy pulls from. */
 export const ORIGIN = 'origin';
 /** A fetch, a push of a deleted branch or a rebase talks to a remote or rewrites commits: allow it far longer than a query. */
@@ -17,13 +18,24 @@ function lines(text) {
 function samePlace(a, b) {
     return resolve(a) === resolve(b);
 }
-/** Why a rebase stopped: its conflicting paths when it has any, else git's own reason. */
+/** Aborts the rebase that stopped in `dir` and says why it stopped (see {@link rebaseStopReason}). */
 function rebaseStopped(dir, onto, said) {
     const conflicts = (query(dir, ['-c', 'core.quotePath=false', 'diff', '--name-only', '--diff-filter=U', '-z']) ?? '').split('\0').filter((path) => path !== '');
-    const why = conflicts.length > 0 ? `conflicts in ${conflicts.join(', ')}` : said;
     const abort = outcome(runGit(dir, ['rebase', '--abort'], LONG_TIMEOUT_MS), 'git rebase --abort');
-    const left = abort.ok || /no rebase in progress/i.test(abort.reason) ? 'aborted, the branch is as it was' : `git rebase --abort failed too (${abort.reason}): finish or abort it by hand`;
-    return `rebase onto ${onto} stopped (${why}); ${left}`;
+    return rebaseStopReason(onto, conflicts, said, abort);
+}
+/**
+ * Why a rebase stopped: its conflicting paths when it has any, else git's own reason. A conflict also says the way
+ * out: a force-push of a branch already pushed for review would throw away what its reviewers saw, so the resolved
+ * change goes out again under a new branch name. The paths print with control characters escaped: `-z` leaves them
+ * raw, and a newline or ESC in one would add lines to the reason or reach the terminal.
+ */
+export function rebaseStopReason(onto, conflicts, said, abort) {
+    const why = conflicts.length > 0 ? `conflicts in ${conflicts.map(printable).join(', ')}` : said;
+    const aborted = abort.ok || /no rebase in progress/i.test(abort.reason);
+    const left = aborted ? 'aborted, the branch is as it was' : `git rebase --abort failed too (${abort.reason}): finish or abort it by hand`;
+    const fix = aborted && conflicts.length > 0 ? `; to land it, rebase onto ${onto} by hand, resolve those files and merge again, a branch already pushed for review under a new name, never force-pushed` : '';
+    return `rebase onto ${onto} stopped (${why}); ${left}${fix}`;
 }
 /**
  * A refusal when `name` starts with '-', which git would read as an option; undefined otherwise. `checkout` and `reset`
