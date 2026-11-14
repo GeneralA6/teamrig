@@ -132,8 +132,8 @@ teamrig update T7 --priority p1 --session lead
 
 `--decided` takes the card off the agenda and the batches at once and marks the task decided, so its session sees it
 READY and sets its next status, even one that closed before the meeting ended; it takes the note alone, so change a
-priority, due date or week in a second `update`. The note is what `meeting end` tells the task's owner, with any field
-you changed. A task of a team under yours takes its row's name and the note alone: `teamrig update web/T2 --decided
+priority, due date or week in a second `update`. The note is what `meeting end` tells the task's owner; a plain
+`update --note` or a changed field is no answer and reaches no one. A task of a team under yours takes its row's name and the note alone: `teamrig update web/T2 --decided
 --note "owner decided: ..." --session lead`; its fields stay that team's. A new order
 of the human's that creates work is a new task: `teamrig add --session lead --owner <id> --source owner ...`. When a
 decision changes what a session works on right now, send it one CRITICAL message; anything else waits for the end.
@@ -145,7 +145,7 @@ teamrig update T7 --later "2026-11-02 09:00" --note "owner put it off: waits for
 ```
 
 It leaves `DECISIONS` and the decision batches for `LATER` until that time, then is asked again; `--later none`
-brings it back at once. A task of a team under yours takes it too: `update web/T2 --later ... --note ...`.
+brings it back at once. `meeting end` tells its owner when it comes back. A task of a team under yours takes it too: `update web/T2 --later ... --note ...`.
 
 When the human would rather hear a session's cards from the session that holds them, `teamrig meet <id|name>`
 wakes that session's tab at once with an inbox line from the human (run again, it says when it asked and posts
@@ -166,8 +166,9 @@ with its brief and records each answer: record nothing for them here.
 teamrig meeting end --session lead
 ```
 
-Each session you recorded a decision for gets one inbox line with the decisions on its tasks; the others get none,
-as the hold just ends. It lists what you recorded. `RECORDED nothing` means no task's owner hears of a decision:
+Each session you recorded a Decided or a Later for gets one inbox line with them; the others get none, as the hold
+just ends. It lists what you recorded. Every card asked that got neither carries over (`CARRIED`): the next meeting
+asks it first, under `Carried over`, so a card the human talked about but did not settle is not lost. `RECORDED nothing` means no task's owner hears of a decision:
 record each answer with `update` before you end, and send one you forgot to its task's owner as an inbox line. A
 meeting you forget to end stops holding messages 4 hours after it started; end it anyway, so the decisions go out.
 With your context past `refresh.contextTokens`, the end of the turn that ends the meeting asks for your handover: the

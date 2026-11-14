@@ -2636,14 +2636,21 @@ opens it)`, then the agenda.
 
 ### teamrig meeting end
 
-Closes the meeting, or one left open past 4 hours, and tells each other session the lead recorded a decision for,
-in one inbox line: the decisions on its tasks during the meeting, each `update` by the lead with its note and the
-fields it changed. A session with none gets no line. Messages to the lead go again. Only the lead runs it; with no
+Closes the meeting, or one left open past 4 hours, and tells each other session the lead recorded the owner's answer
+for, in one inbox line: the answers on its tasks during the meeting, each `update --decided` (its wait on the owner
+cleared) or `update --later` (put off to a time) by the lead, with its note. A plain `update --note` is no answer and
+reaches no one. A session with none gets no line. Messages to the lead go again. Only the lead runs it; with no
 meeting open it is refused.
+
+Every card the agenda asked that got no answer carries over: the meeting records it, and the next meeting's agenda
+asks it first, under `Carried over <n>, asked at the last meeting and still open, first:`, then
+`New since the last meeting <n>:` before the rest. A carried card whose wait on the owner cleared meanwhile is asked
+no more.
 
 With a meeting id, `meeting end M3` ends a scheduled meeting instead: one booked with
 `meeting schedule`, scheduled or started, is done; `--note` records what came of it. The lead or the session met
-runs it, and no one is told. The daily meeting takes no `--note`: its decisions are recorded on their tasks.
+runs it, and the session met and those joining, but the caller, are told by one inbox line with the note. The daily
+meeting takes no `--note`: its decisions are recorded on their tasks.
 
 Flags:
 
@@ -2662,19 +2669,21 @@ Output:
 ```text
 MEETING ended Thu 10-15 11:25 IDT after 25 min: messages to shop-lead go again; told 1 session(s) the decisions on their tasks
 RECORDED 1 decision(s), each told to its task's owner
-  web T7: owner decided: the middle tier ships first (changed priority)
+  web T7: owner decided: the middle tier ships first (its wait on the owner cleared: act on it, set its next status)
+CARRIED 1 card(s) with no answer to the next meeting, asked there first: T9
 ```
 
-With nothing recorded it says so: a decision the register lacks reaches no one. A line the inbox refuses (a team
+With nothing recorded it says so: a decision the register lacks reaches no one. The `CARRIED` line shows only when a
+card carries. A line the inbox refuses (a team
 secret pattern matched it) prints `NOT TOLD <id>: <why>` first; the rest go on.
 
-In a tree of teams a decision the root lead recorded on a task below (`update web/T2 --note`) reaches that task's
+In a tree of teams a decision the root lead recorded on a task below (`update web/T2 --decided --note`) reaches that task's
 owner in its own team's inbox, from the lead's address (`app/lead`), scanned with both teams' secret patterns. Its
 row names the owner with its team, `  web/front T2: owner decided: ship it`, as does a refused line, `NOT TOLD
 web/front: <why>`.
 
-A scheduled meeting's end prints `ENDED M3 done, Thu 10-15 14:00 IDT, 30 min, web | the pricing tiers`; one done
-or dropped already is refused: `REFUSED M3 is done: meeting end takes a scheduled or started meeting`.
+A scheduled meeting's end prints `ENDED M3 done, Thu 10-15 14:00 IDT, 30 min, web | the pricing tiers`, then
+`TOLD web` when the lead ended it; one done or dropped already is refused: `REFUSED M3 is done: meeting end takes a scheduled or started meeting`.
 
 ### teamrig meeting schedule
 
