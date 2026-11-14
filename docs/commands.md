@@ -98,9 +98,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       limit lines over the last 7 days, the owner's decisions as card facts, the late tasks, what
       finished since the last meeting, the branches merged with no approval (under pushToProtected
       gated), the lead's inbox and the week's use and fit; agenda prints it again; end tells each
-      session the decisions recorded on its tasks (update --note) by one inbox line, and no other
-      session; in a tree of teams only the root team's lead holds it, and its stats, decisions and
-      end cover every team under it
+      session the owner's answers recorded on its tasks (update --decided or --later) by one inbox
+      line, and no other session, and carries each card asked with no answer to the next meeting, whose
+      agenda asks it first; in a tree of teams only the root team's lead holds it, and its stats,
+      decisions and end cover every team under it
   meeting schedule --meets <id|name> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
       [--tasks T1,T2] [--brief <path>]   books the owner's meeting with one session at a set time, apart
       from the daily one: it prints its id (M3) and tells the session met and those joining by one inbox
@@ -114,7 +115,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       opening prompt (the topic, tasks, brief and those joining), its running tab brought to the front
       and woken once idle or a closed one opened, and those joining are told by one inbox line
   meeting end <id> [--note "<what came of it>"] | meeting drop <id> --note "<why>"   the meeting was
-      held, or will not be (those it meets are told why)
+      held, or will not be; those it meets are told what came of it, or why
   decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
       decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
       and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a
