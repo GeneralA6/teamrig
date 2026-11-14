@@ -787,6 +787,10 @@ transcript).
 By default it prints a short form
 within 3,000 characters: each kind with its count (and its detail when every flag of it shares one), at most 5
 of its tasks as short rows, then `+N more`; the same for skill flags. `--all` prints every flag in full.
+`--new` prints only the flags new since your last `start` or `check --new`: the flags your `start` shows (all of them
+for the lead, else those of your own tasks and skills and your group's), less those that call showed, under a line
+naming when that was (`NEW since Sat 11-14 13:22 IST`). A flag that cleared and came back counts as new again. Run
+it between starts in place of a full `check`; `check` and `check --all` stay the full view and record nothing.
 
 Flags:
 
@@ -794,6 +798,8 @@ Flags:
 - `--week <date>`: check against that week's plan instead of the current one.
 - `--tree`: the lead only: also every team under it.
 - `--all`: every flag in full, one line each, instead of the short form.
+- `--new`: only the flags your `start` shows that your last `start` or `check --new` did not, then records them as
+  shown.
 
 Example:
 
