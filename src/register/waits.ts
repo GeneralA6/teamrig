@@ -191,3 +191,17 @@ export function waitsText(waits: readonly WaitReason[], zone: TimeZone, context?
 export function unfinishedAfter(after: readonly string[], context: WaitContext): string[] {
   return after.filter((id) => !isFinished(id, context));
 }
+
+/** The statuses of work not shipped yet; a verifying task has shipped, only its proof is left. */
+const UNSHIPPED: readonly TaskStatus[] = ['open', 'in-progress', 'waiting'];
+
+/**
+ * The tasks of a plan dependency still open, in progress or waiting, each with its status: while any is left, the task
+ * after them is not done (T2608), as a GitHub parent with local subtasks is not finished before they are.
+ */
+export function unshippedAfter(after: readonly string[], context: WaitContext): { readonly id: string; readonly status: TaskStatus }[] {
+  return after.flatMap((id) => {
+    const status = context.statusOf(id);
+    return status !== undefined && UNSHIPPED.includes(status) ? [{ id, status }] : [];
+  });
+}

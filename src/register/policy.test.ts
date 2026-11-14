@@ -322,6 +322,46 @@ describe('RegisterPolicy.setStatus: a done change watched for its sighting (T130
   });
 });
 
+describe('RegisterPolicy.setStatus: done waits for the tasks it comes after (T2608)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const DONE: StatusInput = { status: 'done', note: 'tests green', evidence: '6012 tests', skill: 'none', followups: [] };
+  const PARENT: Task = { ...TASK, id: 'T9', after: ['T2', 'T3', 'T4'] };
+  const at = (tasks: Task[], elsewhere: TasksElsewhere = NO_TASKS_ELSEWHERE): StatusContext => ({ ...CTX, state: stateOf(...tasks), elsewhere });
+
+  it('refuses done while a task it comes after is open, in progress or waiting, naming each', () => {
+    const tasks = [testTask({ id: 'T2', status: 'open' }), testTask({ id: 'T3', status: 'in-progress' }), testTask({ id: 'T4', status: 'waiting', waits: OWNER_DECISION }), PARENT];
+    assert.equal(
+      error(policy.setStatus(PARENT, 'alpha', DONE, at(tasks))),
+      'T9 comes after T2 (open), T3 (in-progress), T4 (waiting), not finished yet: set it done once those are done, dropped or verifying',
+    );
+  });
+
+  it('offers a new plan order only to a task not started yet', () => {
+    const unstarted: Task = testTask({ id: 'T9', status: 'open', after: ['T2'] });
+    assert.equal(
+      error(policy.setStatus(unstarted, 'alpha', DONE, at([testTask({ id: 'T2', status: 'open' }), unstarted]))),
+      'T9 comes after T2 (open), not finished yet: set it done once that is done, dropped or verifying, or change its order with teamrig update T9 --after <tasks>|none',
+    );
+  });
+
+  it("reads a task on another team's register too", () => {
+    const refusal = error(policy.setStatus({ ...PARENT, after: ['T40'] }, 'alpha', DONE, at([PARENT], elsewhereOf(testTask({ id: 'T40', status: 'open' })))));
+    assert.match(refusal, /^T9 comes after T40 \(open\), not finished yet: set it done once that is done/);
+  });
+
+  it('lets done through once each is done, dropped, verifying or retired from every register', () => {
+    const tasks = [testTask({ id: 'T2', status: 'done' }), testTask({ id: 'T3', status: 'dropped' }), testTask({ id: 'T4', status: 'verifying' }), PARENT];
+    assert.equal(policy.setStatus(PARENT, 'alpha', DONE, at(tasks)).ok, true);
+    assert.equal(policy.setStatus({ ...PARENT, after: ['T77'] }, 'alpha', DONE, CTX).ok, true);
+  });
+
+  it('holds only done: the task may still go verifying or be dropped', () => {
+    const tasks = [testTask({ id: 'T2', status: 'open' }), PARENT];
+    const dropped = policy.setStatus({ ...PARENT, after: ['T2'] }, 'alpha', { status: 'dropped', note: 'not needed' }, at(tasks));
+    assert.equal(dropped.ok, true, error(dropped));
+  });
+});
+
 describe('RegisterPolicy.setStatus: the follow-ups a closing change names', () => {
   const policy = new RegisterPolicy(testConfig());
   const LEFT = testTask({ id: 'T2', title: 'Fix the finding' });

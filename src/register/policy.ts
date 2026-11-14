@@ -18,7 +18,7 @@ import { waitsOnOwner } from './owner-waits.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from './verify.ts';
-import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling, type PersonWait, type PersonWaitKind, type WaitReason } from './waits.ts';
+import { isPeerWait, isReady, sameWait, sameWaits, unshippedAfter, waitContext, waitSpelling, type PersonWait, type PersonWaitKind, type WaitReason } from './waits.ts';
 import { wipHold } from './wip.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
@@ -466,6 +466,13 @@ export class RegisterPolicy {
       );
     }
     if (input.status === 'done') {
+      const before = unshippedAfter(task.after, waitContext(context.state.tasks, context.now, context.zone, context.elsewhere));
+      if (before.length > 0) {
+        const listed = before.map(({ id, status }) => `${id} (${status})`).join(', ');
+        // Only a task not started yet takes a new plan order (afterChangeProblem), so only its refusal offers one.
+        const reorder = hasStarted(task) ? '' : `, or change its order with teamrig update ${task.id} --after <tasks>|none`;
+        return refuse(`${task.id} comes after ${listed}, not finished yet: set it done once ${before.length === 1 ? 'that is' : 'those are'} done, dropped or verifying${reorder}`);
+      }
       if (register.requireEvidenceOnDone && evidence === null && task.evidence === null) {
         return refuse('done needs --evidence: a commit, test count, path or number that proves it');
       }
