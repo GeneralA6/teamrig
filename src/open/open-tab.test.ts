@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeProcesses } from '../testing/fake-processes.ts';
+import { KEEP_FOCUS_PROGRAM_VAR } from './keep-focus.ts';
 import { launchWords, openTab } from './open-tab.ts';
 import type { TabRequest } from './terminals.ts';
 
@@ -31,6 +32,29 @@ describe('openTab', () => {
     const outcome = await openTab({ processes, env: { TMUX: 'x' }, platform: 'linux' }, 'x-terminal-emulator', TAB);
     assert.deepEqual(outcome, { kind: 'none', reasons: ['x-terminal-emulator is not installed'] });
     assert.equal(processes.started.length, 1);
+  });
+
+  it('opens a Windows Terminal tab that keeps the focus through the script, and one that takes it plainly', async () => {
+    const keep = new FakeProcesses().onRun('powershell.exe', { kind: 'exited', code: 0 });
+    assert.deepEqual(await openTab({ processes: keep, env: {}, platform: 'win32' }, 'windows-terminal', { ...TAB, focus: 'keep' }), {
+      kind: 'opened',
+      terminal: 'windows-terminal',
+      end: 'exited',
+    });
+    assert.deepEqual(keep.ran.map((request) => request.env[KEEP_FOCUS_PROGRAM_VAR]), ['wt.exe']);
+    assert.deepEqual(keep.started, []);
+
+    const take = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    await openTab({ processes: take, env: {}, platform: 'win32' }, 'windows-terminal', TAB);
+    assert.deepEqual(take.ran, []);
+    assert.deepEqual(take.started.map((request) => request.command), ['wt.exe']);
+  });
+
+  it('keeps the focus in tmux by its own flag, with no script', async () => {
+    const processes = new FakeProcesses().onStart('tmux', { kind: 'started', end: 'exited' });
+    await openTab({ processes, env: { TMUX: 'x' }, platform: 'linux' }, 'tmux', { ...TAB, focus: 'keep' });
+    assert.deepEqual(processes.ran, []);
+    assert.deepEqual(processes.started[0]?.args.slice(0, 2), ['new-window', '-d']);
   });
 
   it('starts nothing for print', async () => {
