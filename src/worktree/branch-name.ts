@@ -1,10 +1,18 @@
-import { branchNameProblem } from './add.ts';
-
 /**
  * A new branch's name from its task (T2690), by the team's pattern (`delivery.branches`), so every branch and the
  * worktree folder named after it read the same way: `feat/t12-parser` by default, after Conventional Branch. The task id
  * starts a part of the name, which is what tells whose branch it is (owner.ts `branchTaskOf`).
  */
+
+/** A new branch's name, which also names its folder: from a letter or digit, then letters, digits, `.`, `_`, `-` and `/`. */
+const BRANCH_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+/** Why `branch` cannot name a new branch and its folder, or undefined when it can; git refuses what this lets through. */
+export function branchNameProblem(branch: string): string | undefined {
+  const bad =
+    !BRANCH_NAME.test(branch) || ['..', '//', '/.'].some((part) => branch.includes(part)) || ['/', '.', '.lock'].some((end) => branch.endsWith(end));
+  return bad ? 'expected a branch name: letters, digits, ., _, - and /, from a letter or digit, without .., // or a part that starts with ., and not ending in /, . or .lock' : undefined;
+}
 
 /** The placeholders a pattern may use. */
 export const BRANCH_PLACEHOLDERS = ['type', 'id', 'issue', 'slug', 'session'] as const;
