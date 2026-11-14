@@ -1237,6 +1237,16 @@ Flags:
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
   ref only, at most ten named). It reads every repository, so it refuses `--repo`.
+- `--push`: plans the other way, from the task list to the issues: for each issue a task holds by its
+  `gh:<owner>/<name>#<number>` ref, the writes that make the issue show the task's status. An active task gives its
+  issue one label (`open` `status:triaged`, `in-progress` `status:in-progress`, `waiting` `status:waiting`,
+  `verifying` `status:in-review`) and any other `status:` label comes off; a done task closes it as completed, a
+  dropped one as not planned. It plans against the issues as GitHub lists them now, so a label someone changed by
+  hand is set back and a run that stopped half way is planned again whole. It never reopens an issue a person
+  closed: a `KEPT` line names it, and an `UNLISTED` line an active task's issue that is not open on GitHub. A run
+  sends at most 40 writes (half GitHub's limit of 80 a minute) and leaves the rest for the next. This version only
+  plans: it reads the issues and writes nothing, and refuses `--yes` and `--auto`. When a team task and an imported
+  one hold the same issue, the team task speaks for it.
 
 Example:
 
