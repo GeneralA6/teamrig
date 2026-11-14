@@ -43,6 +43,22 @@ describe('EnvAssignments', () => {
     assert.deepEqual(plain.filter((text) => assignments.hitsIn(text).length > 0), []);
   });
 
+  it('passes one Title-case word, a role or a mode, as it passes the lower-case word', () => {
+    // A live pod env listing (T2399): Grafana's anonymous role setting holds a role name. Built from parts so no line
+    // of this file holds the name and its value together.
+    const roleSetting = join('GF_AUTH_ANONYMOUS_', 'ORG_ROLE');
+    for (const role of ['Viewer', 'Admin', 'Editor', 'Basic']) {
+      assert.deepEqual(values(assignments, join(roleSetting, '=', role, '\n')), [], role);
+    }
+  });
+
+  it('still finds a capitalised value that is more than one plain word', () => {
+    const roleSetting = join('GF_AUTH_ANONYMOUS_', 'ORG_ROLE');
+    for (const value of [join('Sum', 'mer24'), join('Qx7m', 'Rt9w'), join('Sum', 'mer.')]) {
+      assert.deepEqual(values(assignments, join(roleSetting, '=', value, '\n')), [value], value);
+    }
+  });
+
   it("judges a URL by its login, password, secret-named parameters and token-shaped path segments, and keeps the whole URL", () => {
     const hook = join('Qx7mRt9w', 'Lp4wZn2kV8');
     const urls = [
