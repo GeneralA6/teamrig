@@ -682,6 +682,20 @@ describe('TaskTree waitingOn', () => {
     assert.deepEqual(tree.waitingOn('charlie'), []);
   });
 
+  it('leaves out an approval the session already answered, either way, and keeps one another giver answered (T1422)', () => {
+    const started = '2030-01-07T09:00:00.000Z';
+    const asking = (id: string, answer: Task['answer']): Task =>
+      testTask({ id, owner: 'bravo', status: 'waiting', startedAt: started, waits: [{ kind: 'approval', who: 'lead' }], answer });
+    const at = NOW.toISOString();
+    const tree = treeOf(
+      asking('T1', null),
+      asking('T2', { by: 'lead', verdict: 'approved', at, note: null }),
+      asking('T3', { by: 'lead', verdict: 'declined', at, note: 'no tests' }),
+      asking('T4', { by: 'security', verdict: 'approved', at, note: null }),
+    );
+    assert.deepEqual(ids(tree.waitingOn('lead').map((entry) => entry.task)), ['T1', 'T4']);
+  });
+
   it('leaves out a parked task, which no list shows its owner', () => {
     const need = testTask({ id: 'T1', owner: 'alpha' });
     const needer = testTask({ id: 'T2', owner: 'bravo', after: ['T1'], workClass: 'Improvements', updatedAt: '2029-12-20T10:00:00.000Z' });
