@@ -50,10 +50,8 @@ Anyone can open an issue on a public repository, so teamrig takes only the issue
 - **Anyone else's, once accepted.** An issue by any other author (one with a merged pull request too) waits until
   someone other than its author adds the `acceptLabel` label, `teamrig` by default (any case). Only people with
   triage rights can label an issue; a label put on by a bot, a workflow or an issue template does not count.
-- **The main-push alert.** An issue the repository's own GitHub Actions bot opens under the alert's title
-  (`Push to main outside a pull request, by <login>`, or `Force push ...`) becomes a task too: a workflow's token
-  writes only to its own repository, and the alert's text is its own. teamrig's repository raises it from
-  `.github/workflows/main-push-alert.yml`. Any other issue a workflow opens waits for the label like an outsider's.
+- **A workflow's issue waits too.** An issue a GitHub Actions workflow or another app opens waits for the label like
+  an outsider's, since a workflow may copy an outsider's text into it.
 - **An edit undoes the accept.** When the title or body changes at or after the label went on, whoever edited it,
   the issue is not accepted any more. Once you have read the new text, remove the label and add it again.
 

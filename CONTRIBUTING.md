@@ -106,8 +106,8 @@ repository is private, where GitHub Actions minutes bill, so it checks only once
 runs on the commit being pushed (`tools/ci/local.ts`; the list is `tools/ci/local-checks.ts`), all but the
 dependency review, which reads GitHub's dependency graph ([Security checks](#security-checks)):
 - It refuses a push to `main`, before any check: every change lands through a pull request. On GitHub,
-  `.github/workflows/main-push-alert.yml` opens an issue when main changes outside a pull request anyway (from a
-  clone without the hooks), so the owner hears of it; a commit made in GitHub's web editor raises none.
+  the `main` ruleset refuses the same push from a clone without the hooks: it has no bypass actor, so no one can
+  change main outside a pull request (see [Rules on `main`](#pull-requests)).
 - It proves a committed tree: it refuses uncommitted changes, and a pushed commit that is not checked out.
 - It stops at the first failing check and prints its output.
 - A pass is recorded in the clone's git folder (`local-ci/<tree>.json`, shared by its worktrees), so a tree is
