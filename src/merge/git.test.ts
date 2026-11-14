@@ -236,7 +236,11 @@ describe('GIT_MERGE rebase', () => {
       landElsewhere(repo, 'app.txt', 'theirs\n');
       git.fetch(repo.dir, ORIGIN);
       const stopped = git.rebase(repo.dir, 'origin/main');
-      assert.deepEqual(stopped, { ok: false, reason: 'rebase onto origin/main stopped (conflicts in app.txt); aborted, the branch is as it was' });
+      assert.deepEqual(stopped, {
+        ok: false,
+        reason:
+          'rebase onto origin/main stopped (conflicts in app.txt); aborted, the branch is as it was; to land it, rebase onto origin/main by hand, resolve those files and merge again, a branch already pushed for review under a new name, never force-pushed',
+      });
       assert.equal(git.sha(repo.dir, 'HEAD'), mine);
       assert.equal(git.checkoutOf(repo.dir)?.branch, 'feat');
       assert.deepEqual(git.changes(repo.dir, true), []);
