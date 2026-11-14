@@ -103,6 +103,17 @@ describe('EnvAssignments', () => {
     assert.deepEqual(names.map((name) => values(assignments, join(name, setting))), names.map(() => [setting]));
   });
 
+  it('passes a function call assigned to a secret name, as code and notes write one, and keeps a token before ( a hit (T1924)', () => {
+    for (const call of ['buildSessionHelper(', 'makeToken()', 'ReadKey(x)', 'resolve(']) {
+      assert.deepEqual(values(assignments, join('TEST_TOKEN=', call)), [], call);
+    }
+    const tokens = [KEY, join('aB3dE5fG7h', 'I9jK1lM3nO'), join('Rtw', 'LpwZn'), join('Qx', 'mRtw')];
+    for (const token of tokens) {
+      assert.deepEqual(values(assignments, join('API_', 'KEY=', token, '(')), [token], token);
+    }
+    assert.deepEqual(values(assignments, join('API_', 'KEY=', 'buildSessionHelper', ' (')), ['buildSessionHelper'], 'a space before ( is no call');
+  });
+
   it('passes a variable whose name is not a secret one', () => {
     assert.deepEqual(values(assignments, join('HOME=/c/u\nBUILD_ID=', KEY)), []);
   });
