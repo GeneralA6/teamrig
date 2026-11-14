@@ -28,6 +28,14 @@ export function resumePrompt(team, id) {
     return `You are the ${id} session of team ${team}, hired back after a retire and resumed in your last Claude Code session. Your tasks may have moved since: run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`, and start your first open task.`;
 }
 /**
+ * The first prompt of a session that ended outside teamrig (a crash, a reboot, a lost tab), neither closed nor
+ * rehired, resumed in its last Claude Code session with `open --resume` (T1743): it knows its work, but its tasks may
+ * have moved.
+ */
+export function recoverPrompt(team, id) {
+    return `You are the ${id} session of team ${team}, resumed in your last Claude Code session after its tab ended. Your tasks may have moved since: run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`, and carry on with your work.`;
+}
+/**
  * What a session hears when the owner meets it on its own cards waiting on them (`teamrig meet`, T1295): the line
  * that wakes a running session, and the first prompt's ask of one opened for the meeting.
  */
