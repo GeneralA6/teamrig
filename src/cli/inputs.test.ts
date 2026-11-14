@@ -107,6 +107,11 @@ describe('addInputOf', () => {
     assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha', TIMES).after, undefined, 'none given leaves it to the default');
     assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5,soon' }), 'alpha', TIMES), /"soon" is not a task id like T12/);
   });
+
+  it('keeps a task off the issue tracker with --local and its reason (T2608)', () => {
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2', local: 'security' }), 'alpha', TIMES).local, 'security');
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha', TIMES).local, undefined, 'none given follows the placement');
+  });
 });
 
 describe('goalsOf', () => {
@@ -159,6 +164,11 @@ describe('changesOf', () => {
   it('types a task a bug, or a task, which the bug hint reads as typed', () => {
     assert.deepEqual(changesOf(flags({ type: 'bug' }), TIMES), { type: 'bug' });
     assert.deepEqual(changesOf(flags({ type: 'task' }), TIMES), { type: 'task' });
+  });
+
+  it('keeps a task local with its reason, or clears it with none (T2608)', () => {
+    assert.deepEqual(changesOf(flags({ local: 'team operations' }), TIMES), { local: 'team operations' });
+    assert.deepEqual(changesOf(flags({ local: 'none' }), TIMES), { local: null });
   });
 });
 

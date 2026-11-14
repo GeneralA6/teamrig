@@ -40,6 +40,7 @@ describe('golden register logs', () => {
       critical: false,
       pin: null,
       workClass: null,
+      local: null,
       review: {},
       reparks: 0,
       watch: null,

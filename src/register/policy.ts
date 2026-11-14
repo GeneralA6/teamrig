@@ -38,7 +38,7 @@ export const GITHUB_STATUSES: readonly TaskStatus[] = ['open', 'done', 'dropped'
  * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, and its
  * work class, as leaders triage the class of their sessions' tasks (T2076).
  */
-export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'];
+export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass', 'local'];
 
 /**
  * Fields the lead may change on a task whose owner is no session of the team any more (a retired hire, a session that
@@ -69,6 +69,8 @@ export interface AddInput {
   readonly critical?: boolean;
   /** Its work class (`--class`), one of `focus.classes`; absent: not set, read as `focus.defaultClass` (T2076). */
   readonly workClass?: string;
+  /** Why it stays off the issue tracker (`--local`, T2608); absent: not said, so it follows the team's placement. */
+  readonly local?: string;
 }
 
 /** A task for a GitHub issue: its source is GITHUB_SOURCE and its ref the issue's (github/map.ts). */
@@ -333,6 +335,7 @@ export class RegisterPolicy {
       critical: input.critical ?? false,
       pin: null,
       workClass: input.workClass ?? null,
+      local: input.local ?? null,
     };
     if (fields.description === null && this.config.register.requireDescription) {
       return refuse(DESCRIPTION_NEEDED);
@@ -1170,7 +1173,7 @@ export class RegisterPolicy {
    * does not apply.
    */
   importAdd(input: ImportInput, state: RegisterState): Verdict<TaskFields> {
-    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: null };
     const holder = [...state.tasks.values()].find((task) => task.ref === input.ref);
     if (holder !== undefined) {
       return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -1291,7 +1294,11 @@ export class RegisterPolicy {
     if (size !== undefined) {
       return size;
     }
-    return this.checkText('title', fields.title) ?? this.checkText('description', fields.description) ?? this.checkText('ref', fields.ref);
+    const local = localProblem(fields);
+    if (local !== undefined) {
+      return local;
+    }
+    return this.checkText('title', fields.title) ?? this.checkText('description', fields.description) ?? this.checkText('ref', fields.ref) ?? this.checkText('local', fields.local);
   }
 
   /** Checks the length against `maxText` (the title and description have their own limits), then the secret shapes. */
@@ -1310,8 +1317,23 @@ export class RegisterPolicy {
 const OWN_LIMITS: readonly string[] = ['title', 'description'];
 
 function pickFields(task: Task): TaskFields {
-  const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass } = task;
-  return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass };
+  const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, local } = task;
+  return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, local };
+}
+
+/**
+ * Why a task's `local` reason cannot stand (T2608): it says nothing, or the task holds an issue already, so it is on
+ * the tracker and kept off it at once; the issue ref goes first (`--ref none`), so a posted task is never marked local
+ * by mistake.
+ */
+function localProblem(fields: Pick<TaskFields, 'local' | 'ref'>): string | undefined {
+  if (fields.local === null) {
+    return undefined;
+  }
+  if (fields.local.trim() === '') {
+    return 'local needs its reason, one line saying why the task stays off the issue tracker';
+  }
+  return fields.ref?.startsWith(ISSUE_REF_PREFIX) === true ? `a task kept local holds no issue, and this one holds ${fields.ref}: clear it first with --ref none` : undefined;
 }
 
 /** An update naming goals for a task said to serve none also clears that mark, which a task with goals cannot hold. */

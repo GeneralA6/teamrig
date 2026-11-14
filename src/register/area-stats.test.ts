@@ -6,7 +6,7 @@ import { EVENT_VERSION, type RegisterEvent, type TaskFields } from './events.ts'
 import type { TaskStatus } from './model.ts';
 import { registerStats, type RegisterStats, type StatsInput, type StatsTeam } from './stats.ts';
 
-const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: null };
 
 /** Thursday 2030-01-10 12:00 on the team's clock (UTC+2): the usual reads the day-ends of 12-11 to 01-09. */
 const NOW = new Date('2030-01-10T10:00:00.000Z');

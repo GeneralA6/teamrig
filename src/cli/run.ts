@@ -111,7 +111,7 @@ const sweepCommands = () => import('./commands/sweep.ts');
 const setupBackupCommands = () => import('./commands/setup-backup.ts');
 const auditCommand = () => import('./commands/audit.ts');
 
-const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'class'];
+const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'type', 'class', 'local'];
 /** The parts of a bug's review `set` gives (register/review.ts REVIEW_FLAGS). */
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 
@@ -441,6 +441,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b|none]
       [--week <date>] [--after T5,T6] [--size <pct>] [--type task|bug] [--critical] [--class <name>]
+      [--local "<reason>"]
       --description: what the task is and why, in plain words for a person (newlines kept, at most 2,000
       characters), needed unless register.requireDescription is off; show prints it under the title
       --after: the tasks to finish before this one starts; its line shows "after T5"
@@ -452,6 +453,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       to mark it, here and when it starts
       --class: the work class, one of focus.classes (Roadmap, Maintenance, Improvements by default); a task
       without one counts as focus.defaultClass
+      --local: keeps the task off the issue tracker, with one line saying why (security, team operations);
+      its line shows "local", and gh migrate opens no issue for it; refused on a task with an issue ref
   add --team <team> [--owner <s>] [--source owner] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
       --source owner: the lead of a team above <team> relays the owner's order, sourced owner there
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
@@ -501,8 +504,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --followups; verifying and done need every part (requireOn; mode refuse, warn or off)
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
-      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin] [--note ..]
-      the lead may change owner, priority, due, week, after, size, type, class, critical and pin on any task
+      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin] [--local ..|none]
+      [--note ..]
+      the lead may change owner, priority, due, week, after, size, type, class, critical, pin and local on
+      any task
+      --local "<reason>": keeps the task off the issue tracker; none puts it back under the team's placement
       --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
       on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
       a --note from the task's owner also replaces the note show and the waiting text print

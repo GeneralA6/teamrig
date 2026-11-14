@@ -58,7 +58,7 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
+      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: null },
     });
   });
 
@@ -158,7 +158,7 @@ describe('RegisterPolicy.add', () => {
 
   it('refuses an active task with the same title, but not a closed one', () => {
     const open = foldEvents([
-      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null } },
+      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: null } },
     ]);
     assert.match(error(policy.add({ ...INPUT, title: 'add a  HEALTH check' }, open)), /T4 already tracks this \(open, owner alpha\)/);
     const closed = foldEvents([
@@ -221,7 +221,7 @@ describe('RegisterPolicy: the description', () => {
   });
 
   it("leaves the description to the owner: the lead may not change it on another session's task", () => {
-    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: description)');
+    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, local on a task it does not own (asked: description)');
     assert.equal(error(policy.update(TASK, 'bravo', { description: 'Why it matters.' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
   });
 
@@ -930,6 +930,7 @@ describe('RegisterPolicy.ask', () => {
         critical: false,
         pin: null,
         workClass: null,
+        local: null,
       },
     });
     const undated = asking(PLANNED, 'alpha', { owner: 'alpha', title: 'Write the migration' });
@@ -1012,12 +1013,12 @@ describe('RegisterPolicy.update', () => {
     assert.equal(error(policy.update(left, 'lead', { owner: 'yankee' }, undefined, EMPTY)), 'owner yankee is not a session on this team', 'an owner a write sets is a session');
     assert.equal(
       error(policy.update(left, 'lead', { title: 'x' }, undefined, EMPTY)),
-      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, ref on a task it does not own (asked: title)',
+      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, local, ref on a task it does not own (asked: title)',
     );
     assert.equal(error(policy.update(left, 'alpha', { ref: 'notes/new.md' }, undefined, EMPTY)), 'only the owner (zulu) or the lead (lead) changes T1');
     assert.equal(
       error(policy.update(TASK, 'lead', { ref: 'notes/new.md' }, undefined, EMPTY)),
-      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: ref)',
+      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, local on a task it does not own (asked: ref)',
       'an owner on the team keeps its own ref',
     );
   });
@@ -1027,7 +1028,7 @@ describe('RegisterPolicy.update', () => {
     const bravos = testTask({ id: 'T9', owner: 'bravo' });
     assert.deepEqual(tree.update(bravos, 'lead', { ref: 'gh:acme/app#7' }, undefined, EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: null } });
     assert.equal(tree.update(bravos, 'lead', { ref: 'gh:acme/app#7', priority: 1 }, undefined, EMPTY).ok, true, 'beside the work order');
-    const refused = 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: ref)';
+    const refused = 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, local on a task it does not own (asked: ref)';
     assert.equal(error(tree.update(bravos, 'lead', { ref: 'notes/plan.md' }, undefined, EMPTY)), refused, 'a ref that is no issue');
     const noted = testTask({ id: 'T9', owner: 'bravo', ref: 'notes/plan.md' });
     assert.deepEqual(tree.update(noted, 'lead', { ref: 'gh:acme/app#7' }, 'ref was: notes/plan.md', EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: 'ref was: notes/plan.md' } }, 'a note ref gives way');
@@ -1041,7 +1042,7 @@ describe('RegisterPolicy.update', () => {
     const stale = testTask({ workClass: 'Chores' });
     assert.equal(policy.update(stale, 'alpha', { title: 'Add two health checks' }, undefined, EMPTY).ok, true, 'a kept class stands');
     assert.equal(error(policy.update(stale, 'alpha', { workClass: 'Toil' }, undefined, EMPTY)), 'class Toil is not one of focus.classes (Roadmap, Maintenance, Improvements)');
-    assert.equal(policy.update(stale, 'alpha', { workClass: null }, undefined, EMPTY).ok, true, 'clearing it');
+    assert.equal(policy.update(stale, 'alpha', { workClass: null, local: null }, undefined, EMPTY).ok, true, 'clearing it');
     assert.equal(policy.update(stale, 'alpha', { workClass: 'Roadmap' }, undefined, EMPTY).ok, true, 'one of the classes');
   });
 
@@ -1310,7 +1311,7 @@ describe('RegisterPolicy, the GitHub import', () => {
     const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#8' });
     assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
       ok: true,
-      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
+      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: null },
     });
     assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
     assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');
@@ -1904,5 +1905,29 @@ describe("RegisterPolicy: the owner's Note and Next from the pane (T1298)", () =
     const named = new RegisterPolicy(testConfig({ register: { ownerSource: 'human' } }));
     assert.deepEqual(named.ownerNext(testTask()), { ok: true, value: { by: 'human', changes: { pin: 'human' }, note: null } });
     assert.equal(error(named.ownerNote(testTask(), undefined)), 'a Note needs --text: what human tells alpha');
+  });
+});
+
+describe('RegisterPolicy: a task kept local (T2608)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const kept = testTask({ local: 'security' });
+  const besideIssue = 'a task kept local holds no issue, and this one holds gh:acme/web#7: clear it first with --ref none';
+
+  it('adds a task with its reason, and refuses one that says nothing or sits beside an issue ref', () => {
+    const added = policy.add({ ...INPUT, local: 'team operations' }, EMPTY);
+    assert.equal(added.ok && added.value.local, 'team operations');
+    assert.equal(error(policy.add({ ...INPUT, local: '  ' }, EMPTY)), 'local needs its reason, one line saying why the task stays off the issue tracker');
+    assert.equal(error(policy.add({ ...INPUT, local: 'security', ref: 'gh:acme/web#7' }, EMPTY)), besideIssue);
+    assert.equal(error(policy.add({ ...INPUT, local: 'security', ref: 'inbox:3' }, EMPTY)), 'allowed', 'a ref that is no issue');
+    assert.notEqual(error(policy.add({ ...INPUT, local: credentialUrl() }, EMPTY)), 'allowed', 'the secret scan reads the reason');
+  });
+
+  it('lets the owner or the lead set and clear it, and refuses an issue ref on a task kept local', () => {
+    assert.equal(error(policy.update(testTask(), 'alpha', { local: 'a private repo' }, undefined, EMPTY)), 'allowed', 'its owner');
+    assert.equal(error(policy.update(testTask(), 'lead', { local: 'a private repo' }, undefined, EMPTY)), 'allowed', 'the lead, on a task it does not own');
+    assert.equal(error(policy.update(kept, 'alpha', { local: null }, undefined, EMPTY)), 'allowed', 'cleared');
+    assert.equal(error(policy.update(testTask({ ref: 'gh:acme/web#7' }), 'alpha', { local: 'security' }, undefined, EMPTY)), besideIssue);
+    assert.equal(error(policy.update(kept, 'lead', { ref: 'gh:acme/web#7' }, undefined, EMPTY)), besideIssue, 'linking an issue');
+    assert.equal(error(policy.update(testTask({ ref: 'gh:acme/web#7' }), 'alpha', { ref: null, local: 'security' }, undefined, EMPTY)), 'allowed', 'the issue ref cleared with it');
   });
 });

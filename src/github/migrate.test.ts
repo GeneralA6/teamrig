@@ -144,6 +144,12 @@ describe('planMigration', () => {
     assert.deepEqual(plan.local, []);
   });
 
+  it('skips a task kept local, so an issue row never posts it (T2608)', () => {
+    const plan = planMigration([issueRow()], tasksOf(testTask({ local: 'security' })), [REPO], allow);
+    assert.deepEqual(plan.skipped, [{ id: 'T1', reason: 'the task is kept local: security' }]);
+    assert.deepEqual(plan.creates, []);
+  });
+
   it('skips a task that holds its issue already, so a rerun opens no second one', () => {
     const plan = planMigration([issueRow()], tasksOf(testTask({ ref: `gh:${REPO}#7` })), [REPO], allow);
     assert.deepEqual(plan.skipped, [{ id: 'T1', reason: `the task has its issue already: gh:${REPO}#7` }]);

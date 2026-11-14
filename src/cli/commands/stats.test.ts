@@ -121,7 +121,7 @@ describe('teamrig stats', () => {
   });
 });
 
-const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: null };
 
 /** The tree app > web > ui and app > ops, one goal record each (A1, B1, D1 and C1), targeted for 2030-02-01. */
 async function goalTree(): Promise<CliHarness> {

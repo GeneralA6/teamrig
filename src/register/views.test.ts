@@ -152,7 +152,25 @@ describe('a task imported from GitHub', () => {
     const issue = testTask({ source: 'github', ref: 'gh:acme/web#7' });
     assert.equal(formatShortTask(issue, 80, undefined, TREE), 'T1 open, p2, owner alpha, from gh:acme/web#7 | Add a health check');
     assert.equal(formatTask(issue, undefined, TREE), 'T1 open, p2, owner alpha, from gh:acme/web#7 | Add a health check');
-    assert.equal(formatShortTask(testTask({ ref: 'gh:acme/web#7' }), 80, undefined, TREE), 'T1 open, p2, owner alpha | Add a health check');
+    assert.equal(formatShortTask(testTask({ ref: 'gh:acme/web#7' }), 80, undefined, TREE), 'T1 open, p2, owner alpha, issue #7 | Add a health check', 'a posted task is marked by its issue');
+  });
+});
+
+describe('the placement mark (T2608)', () => {
+  it('marks a task kept local, one the team posted by its issue number, and none that is neither', () => {
+    assert.equal(formatShortTask(testTask({ local: 'security' }), 80, undefined, TREE), 'T1 open, p2, owner alpha, local | Add a health check');
+    assert.equal(formatTask(testTask({ ref: 'gh:acme/web#933' }), undefined, TREE), 'T1 open, p2, owner alpha, issue #933, from lead | Add a health check');
+    assert.equal(formatShortTask(testTask({ ref: 'inbox:3' }), 80, undefined, TREE), 'T1 open, p2, owner alpha | Add a health check', 'a ref that is no issue');
+    assert.equal(formatShortTask(testTask({ ref: 'gh:acme/web' }), 80, undefined, TREE), 'T1 open, p2, owner alpha | Add a health check', 'an issue ref with no number');
+  });
+
+  it('prints the reason in show, and a local reason set or cleared in the history', () => {
+    const detail = formatTaskDetail(testTask({ local: 'team operations' }), [], TREE, EXTRAS).split('\n');
+    assert.ok(detail.includes('local: team operations (kept off the issue tracker)'), detail.join('\n'));
+    const fields = { title: 'x', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: 'security' };
+    assert.match(formatEvent({ v: 2, type: 'create', id: 'T1', at: AT, by: 'lead', task: fields }, TimeZone.UTC), / local="security"$/);
+    assert.match(formatEvent({ v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { local: 'a private repo' }, note: null }, TimeZone.UTC), / local="a private repo"$/);
+    assert.match(formatEvent({ v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { local: null }, note: null }, TimeZone.UTC), / local=none$/);
   });
 });
 
@@ -477,9 +495,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, local: null },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: ['T1'], size: null, type: null, critical: false, pin: null, workClass: null } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: ['T1'], size: null, type: null, critical: false, pin: null, workClass: null, local: null } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {

@@ -225,6 +225,9 @@ function skipReason(row: MigrateRow, task: Task | undefined, repos: readonly str
   if (task.ref?.startsWith(ISSUE_REF_PREFIX) === true) {
     return `the task has its issue already: ${task.ref}`;
   }
+  if (task.local !== null) {
+    return `the task is kept local: ${task.local}`;
+  }
   if (!repos.includes(row.repo)) {
     return `${row.repo} is not one of github.repos (${repos.join(', ')})`;
   }

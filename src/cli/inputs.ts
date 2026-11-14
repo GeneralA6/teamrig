@@ -249,6 +249,10 @@ export function addInputOf(flags: Flags, caller: string, times: TypedTimes): Add
   if (workClass !== undefined) {
     input.workClass = workClass;
   }
+  const local = flags.get('local');
+  if (local !== undefined) {
+    input.local = local;
+  }
   return input;
 }
 
@@ -278,7 +282,8 @@ export function waitsOf(text: string, times: TypedTimes): WaitReason[] {
 }
 
 /**
- * The fields `update` changes; `none` clears the description, ref, due date, week, plan dependency or size, and
+ * The fields `update` changes; `none` clears the description, ref, due date, week, plan dependency, size, class or
+ * local reason, and
  * `--goals none` says the task serves no goal.
  */
 export function changesOf(flags: Flags, times: TypedTimes): Partial<TaskFields> {
@@ -334,6 +339,10 @@ export function changesOf(flags: Flags, times: TypedTimes): Partial<TaskFields> 
   const workClass = flags.get('class');
   if (workClass !== undefined) {
     changes.workClass = workClass === NONE ? null : workClass;
+  }
+  const local = flags.get('local');
+  if (local !== undefined) {
+    changes.local = local === NONE ? null : local;
   }
   return changes;
 }
