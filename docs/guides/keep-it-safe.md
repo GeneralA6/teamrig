@@ -214,7 +214,8 @@ lock, lease or fencing token (`claimToken`). The reason says to send the secret'
 
 A deny line in Claude Code's `permissions.deny` refuses a call whatever a hook or auto mode says, so it holds where
 an allow hook would approve reading a secret. `teamrig doctor` and `check` flag the secret deny lines (`.env`,
-`secrets.yaml`, `~/.npmrc`, `~/.ssh/id_*`, cloud and registry credentials, `*.pem`, `*.key`, `env`, `printenv`, a
+`secrets.yaml`, `~/.npmrc`, `~/.ssh/id_*`, cloud and registry credentials, gh's and Claude Code's logins,
+`*.pem`, `*.key`, `env`, `printenv`, a
 Kubernetes secret) that no settings file holds (`deny-missing`) and print them as a list to paste into your user
 settings; teamrig never writes permissions itself
 ([doctor](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-doctor)).

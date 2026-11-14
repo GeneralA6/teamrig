@@ -3571,13 +3571,15 @@ WARN quiet-ask budget.quietHours.action is ask, so in the quiet hours (22:00-06:
 (the user's `settings.json` in Claude Code's folder, the project's `.claude/settings.json` and
 `.claude/settings.local.json`): a hook's allow or auto mode can approve a call that reads a credential file
 (`.env`, `secrets.yaml`, `~/.npmrc`, `~/.ssh/id_*`, `~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`,
-`~/.git-credentials`, gh's `hosts.yml`, `*.pem`, `*.key`) or prints the environment or a Kubernetes secret, and a deny
+`~/.git-credentials`, gh's `hosts.yml` where gh keeps it on your platform, under
+`~/AppData/Roaming/GitHub CLI` on Windows, Claude Code's own login `~/.claude/.credentials.json`, `*.pem`, `*.key`)
+or prints the environment or a Kubernetes secret, and a deny
 line beats both. teamrig never writes permissions: paste the JSON list it prints into `permissions.deny` of your user
 settings. A rule ending in `:*` is the legacy prefix form, so `PowerShell(Get-ChildItem env:*)` misses
 `Get-ChildItem env:X`; the list uses `env*`. `check` shows it too, as a warning no session owns.
 
 ```text
-WARN deny-missing 2 of 19 secret deny line(s) are in no settings file a session reads (read: /home/you/.claude/settings.json), so a hook's allow or auto mode can approve reading a credential file or printing the environment; a deny line beats both, and teamrig never writes permissions: paste these into the permissions.deny list of /home/you/.claude/settings.json yourself: ["Bash(env)","Read(//**/*.key)"]
+WARN deny-missing 2 of 20 secret deny line(s) are in no settings file a session reads (read: /home/you/.claude/settings.json), so a hook's allow or auto mode can approve reading a credential file or printing the environment; a deny line beats both, and teamrig never writes permissions: paste these into the permissions.deny list of /home/you/.claude/settings.json yourself: ["Bash(env)","Read(//**/*.key)"]
 ```
 
 `project-missing` is a `team.project` or `launch.<id>.project` that is missing or a file on this machine: a tab
