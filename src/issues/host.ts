@@ -28,6 +28,10 @@ export function targetText(target: IssueTarget): string {
   return `${target.repo}#${target.number}`;
 }
 
+/** Why an issue was closed, as the host shows it: done, not to be done, or a duplicate of another. */
+export const CLOSE_REASONS = ['completed', 'not-planned', 'duplicate'] as const;
+export type CloseReason = (typeof CLOSE_REASONS)[number];
+
 /** What a run does on a host, for the line saying how it reaches it: lists issues, opens them, or writes on one. */
 export type HostUse = 'read' | 'open' | 'write';
 

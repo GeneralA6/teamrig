@@ -3,7 +3,25 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { GhRefusedError, isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, issueCloseArgs, issueCommentArgs, issueCreateArgs, nodeGhRunner, type IssueNumber } from './gh.ts';
+import {
+  GhRefusedError,
+  isAllowedGh,
+  isIssueClose,
+  isIssueComment,
+  isIssueCreate,
+  isIssueQuery,
+  isLabelAdd,
+  isLabelRead,
+  isLabelRemove,
+  issueCloseArgs,
+  issueCommentArgs,
+  issueCreateArgs,
+  issueLabelAddArgs,
+  issueLabelRemoveArgs,
+  labelReadArgs,
+  nodeGhRunner,
+  type IssueNumber,
+} from './gh.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs } from './queries.ts';
 
@@ -145,10 +163,23 @@ describe('isIssueClose', () => {
     assert.equal(isIssueClose(CLOSE), true);
   });
 
-  it('refuses a reopen, any other field, method, flag or path', () => {
+  it('takes a close with each reason, in the word GitHub uses for it', () => {
+    assert.deepEqual(issueCloseArgs(ISSUE, 'not-planned').slice(-2), ['-f', 'state_reason=not_planned']);
+    for (const reason of ['completed', 'not-planned', 'duplicate'] as const) {
+      assert.equal(isIssueClose(issueCloseArgs(ISSUE, reason)), true, reason);
+    }
+  });
+
+  it('refuses a reopen, any other field, reason, method, flag or path', () => {
     for (const args of [
       ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=open'],
-      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=completed'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=open', '-f', 'state_reason=reopened'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=reopened'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=not-planned'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=completed', '-f', 'title=t'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state_reason=completed', '-f', 'state=closed'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'duplicate_issue_id=1'],
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'PATCH', '-f', 'state=closed'],
       ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'title=t'],
       ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-F', 'state=closed'],
       ['api', 'repos/acme/web/issues/7', '-X', 'DELETE', '-f', 'state=closed'],
@@ -165,6 +196,76 @@ describe('isIssueClose', () => {
     assert.ok([READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b')].every((args) => !isIssueClose(args)));
     assert.ok([READ, issueCreateArgs(DRAFT), CLOSE].every((args) => !isIssueComment(args)));
     assert.ok(!isIssueCreate(CLOSE) && !isIssueQuery(CLOSE) && !isIssueCreate(issueCommentArgs(ISSUE, 'b')));
+  });
+});
+
+describe('the label calls', () => {
+  const ADD = issueLabelAddArgs(ISSUE, ['type: bug', 'p1']);
+  const REMOVE = issueLabelRemoveArgs(ISSUE, 'needs triage');
+
+  it('takes the command lines the label builders make, a name with a space, slash or hash kept in one path segment', () => {
+    assert.deepEqual(ADD, ['api', 'repos/acme/web/issues/7/labels', '-X', 'POST', '-f', 'labels[]=type: bug', '-f', 'labels[]=p1']);
+    assert.deepEqual(REMOVE, ['api', 'repos/acme/web/issues/7/labels/needs%20triage', '-X', 'DELETE']);
+    assert.deepEqual(labelReadArgs('acme/web', 'a/b#c?'), ['api', 'repos/acme/web/labels/a%2Fb%23c%3F']);
+    assert.equal(isLabelAdd(ADD), true);
+    assert.equal(isLabelRemove(REMOVE), true);
+    assert.equal(isLabelRemove(issueLabelRemoveArgs(ISSUE, '../../../x')), true, 'encoded, the dots stay inside the segment');
+    assert.equal(isLabelRead(labelReadArgs('acme/web', 'a/b#c?')), true);
+    assert.ok([ADD, REMOVE, labelReadArgs('acme/web', 'p1')].every(isAllowedGh));
+  });
+
+  it('refuses a label add with no label, another field, flag or method, or a replace of every label', () => {
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'POST'],
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'PUT', '-f', 'labels[]=p1'],
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'POST', '-f', 'labels[]=p1', '-f', 'name=p2'],
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'POST', '-F', 'labels[]=@file'],
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/labels', '-X', 'POST', '-f', 'labels[]=p1'],
+      ['api', 'repos/acme/web/issues/7/comments', '-X', 'POST', '-f', 'labels[]=p1'],
+    ]) {
+      assert.equal(isLabelAdd(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it("refuses a remove that steps out of the label's segment, carries a field or flag, or deletes the repository's label", () => {
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7/labels/..', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/labels/.', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/labels/a b', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/labels/a%2fb', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/labels/p1', '-X', 'DELETE', '-f', 'name=p1'],
+      ['api', 'repos/acme/web/issues/7/labels/p1', '-X', 'POST'],
+      ['api', 'repos/acme/web/labels/p1', '-X', 'DELETE'],
+      ['api', 'repos/../web/issues/7/labels/p1', '-X', 'DELETE'],
+    ]) {
+      assert.equal(isLabelRemove(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it("refuses a label read that creates, edits or deletes it, or reads another path", () => {
+    for (const args of [
+      ['api', 'repos/acme/web/labels/p1', '-X', 'PATCH', '-f', 'name=p2'],
+      ['api', 'repos/acme/web/labels/p1', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/labels', '-X', 'POST', '-f', 'name=p1'],
+      ['api', 'repos/acme/web/labels'],
+      ['api', 'repos/acme/web/labels/..'],
+      ['api', 'repos/acme/web/labels/p1/x'],
+      ['api', 'repos/acme/web/issues/7/labels/p1'],
+      ['api', 'repos/acme/web/labels/p1', '--hostname', 'example.com'],
+    ]) {
+      assert.equal(isLabelRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it('is never taken for a comment, a close, a create or a query, nor they for a label call', () => {
+    for (const args of [ADD, REMOVE, labelReadArgs('acme/web', 'p1')]) {
+      assert.ok(!isIssueClose(args) && !isIssueComment(args) && !isIssueCreate(args) && !isIssueQuery(args), args[1]);
+    }
+    for (const args of [READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b'), issueCloseArgs(ISSUE, 'duplicate')]) {
+      assert.ok(!isLabelAdd(args) && !isLabelRemove(args) && !isLabelRead(args), args[1]);
+    }
   });
 });
 
@@ -185,7 +286,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries and to open, comment on or close an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries and to open, comment on, label or close an issue: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });
