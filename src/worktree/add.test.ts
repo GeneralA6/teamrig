@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers } from '../testing/fake-worktrees.ts';
-import { branchNameProblem, createWorktree, MAIN_CHECKOUT_ENV, type AddEnd, type AddRequest } from './add.ts';
+import { createWorktree, MAIN_CHECKOUT_ENV, type AddEnd, type AddRequest } from './add.ts';
+import { branchNameProblem } from './branch-name.ts';
 
 const SETUP = ['node', 'tools/link-modules.ts'];
 const REQUEST: AddRequest = { branch: 't9/parser', mainDir: '/w/main', folder: '/w/wt', setup: SETUP, env: { PATH: '/bin' } };
