@@ -114,6 +114,8 @@ export function isResetKind(value) {
  * a tree read one week alike without a copy that drifts.
  */
 export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset', 'resets'];
+/** `refresh.autoRestart`: on or off for every session, or on for the team's lead only. */
+export const AUTO_RESTART_LEAD = 'lead';
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
  * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead; `automatic` as
