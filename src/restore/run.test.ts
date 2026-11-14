@@ -7,7 +7,7 @@ import { MemoryFiles, MemoryPathProbe } from '../testing/memory-files.ts';
 import { ARCHIVE_KEEP_MS, RestoreArchive, restoreArchiveDir } from './archive.ts';
 import type { RestoreChoice } from './countdown.ts';
 import type { RestoreEntry } from './entry.ts';
-import { continuePrompt, type LostWork } from './plan.ts';
+import { continuePrompt, type EndFacts, type LostWork } from './plan.ts';
 import { RestoreRegistry, restoreSessionsDir } from './registry.ts';
 import { checkRestore, previewRestore, ROOM_POLL_MS, runRestore, TAB_STAGGER_MS, type ReopenOutcome, type ReopenTab, type RestoreDeps } from './run.ts';
 import type { RestoreTeam } from './teams.ts';
@@ -25,6 +25,7 @@ const WENT_IN = '80000000-2222-4333-8444-555555555555';
 const PROJECTS = '/p';
 const WORKTREE = '/work/app/.claude/worktrees/fix';
 const NOTHING_LOST: LostWork = { background: 0, crons: 0, wake: false };
+const KILLED: EndFacts = { cause: 'killed', apiError: undefined };
 
 const turn = (effort: string): string => JSON.stringify({ type: 'assistant', effort, message: { model: 'claude-opus-5-5' } });
 
@@ -254,7 +255,7 @@ describe('runRestore', () => {
         folder: '/work/app',
         team: { team: 'app', session: 'lead', name: 'app-lead', isLead: true, terminal: 'auto', teamWindow: false, launched: true, effort: undefined },
         effort: 'high',
-        prompt: continuePrompt(NOTHING_LOST, 'app-alpha continue (mid-turn)'),
+        prompt: continuePrompt(KILLED, NOTHING_LOST, 'app-alpha continue (mid-turn)'),
       },
       {
         claudeSession: ALPHA,
@@ -262,7 +263,7 @@ describe('runRestore', () => {
         folder: '/work/app',
         team: { team: 'app', session: 'alpha', name: 'app-alpha', isLead: false, terminal: 'auto', teamWindow: false, launched: true, effort: undefined },
         effort: 'max',
-        prompt: continuePrompt(NOTHING_LOST, undefined),
+        prompt: continuePrompt(KILLED, NOTHING_LOST, undefined),
       },
       { claudeSession: LONE, title: 'notes', folder: '/work', team: undefined, effort: undefined, prompt: undefined },
     ]);

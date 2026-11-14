@@ -109,7 +109,7 @@ export function judgeEntry(entry: RestoreEntry, facts: JudgeFacts): Judgement {
     return { verdict: 'discard', reason: `exited (${entry.endReason})` };
   }
   const { shutdown } = facts;
-  if (shutdown !== undefined && entry.endedAt >= shutdown.start - SHUTDOWN_GRACE_MS && entry.endedAt <= shutdown.end) {
+  if (endedInShutdown(entry.endedAt, shutdown)) {
     return { verdict: 'restore', reason: 'closed by the shutdown' };
   }
   if (facts.now - entry.endedAt > CLOSED_KEEP_MS) {
@@ -211,24 +211,79 @@ export function summarizeRestore(sessions: readonly RestoredSession[]): string {
   return sessions.map(({ label, mode, why }) => `${label} ${mode === 'continue' ? `continue (${why})` : 'idle'}`).join(', ');
 }
 
-export const CONTINUE_PROMPT =
-  'The computer restarted (update or power loss) and this session was restored automatically. ' +
+/**
+ * Why a restored session's Claude Code ended: the machine's shutdown, an end with none recorded (a power loss, a
+ * crash, a forced close), or its tab closed at another time. The continue prompt names it, since a session told the
+ * computer restarted when only its tab closed re-checks services that never stopped (T1745).
+ */
+export type EndCause = 'shutdown' | 'killed' | 'closed';
+
+/** The cause, from the same facts the verdict read: no end recorded, else an end inside the shutdown's span. */
+export function endCauseOf(entry: RestoreEntry, shutdown: ShutdownWindow | undefined): EndCause {
+  if (entry.endedAt === undefined) {
+    return 'killed';
+  }
+  return endedInShutdown(entry.endedAt, shutdown) ? 'shutdown' : 'closed';
+}
+
+/** Whether an end falls in the shutdown's span, from SHUTDOWN_GRACE_MS before it began to when the event log stopped. */
+function endedInShutdown(endedAt: number, shutdown: ShutdownWindow | undefined): boolean {
+  return shutdown !== undefined && endedAt >= shutdown.start - SHUTDOWN_GRACE_MS && endedAt <= shutdown.end;
+}
+
+const CAUSE_WORDS: Readonly<Record<EndCause, string>> = {
+  shutdown: 'The computer restarted (an update or a shutdown) and this session was restored automatically.',
+  killed: "This session's Claude Code ended without exiting (a power loss, a crash or a forced close of its window) and was reopened by teamrig restore.",
+  closed: "This session's tab was closed while it still had work and was reopened by teamrig restore.",
+};
+
+/** The error code Claude Code names for an expired or missing login (src/restore/turn-error.ts). */
+export const LOGIN_ERROR = 'authentication_failed';
+
+/** What the continue prompt says of the session's end: its cause, and the API error its last turn ended on, if any. */
+export interface EndFacts {
+  readonly cause: EndCause;
+  /** The API error code its last turn ended on; `unknown` when none was named; undefined when its last turn ended well. */
+  readonly apiError: string | undefined;
+}
+
+/** The end facts of an entry: its cause, and its API error while its last turn ended on one. */
+export function endFactsOf(entry: RestoreEntry, shutdown: ShutdownWindow | undefined): EndFacts {
+  return { cause: endCauseOf(entry, shutdown), apiError: entry.state === 'error' ? (entry.apiError?.code ?? 'unknown') : undefined };
+}
+
+function apiErrorWords(code: string | undefined): string | undefined {
+  if (code === undefined) {
+    return undefined;
+  }
+  return code === LOGIN_ERROR
+    ? 'Your last turn ended on a login error: if a command still answers "Please run /login", stop and say so in one line, as only the person can log in again.'
+    : `Your last turn ended on an API error (${code}): run it again once.`;
+}
+
+const CONTINUE_RULES =
   'If your last task was already finished, or you were told to pause or stay idle, just reply in one line and wait. ' +
   'If you were waiting for my decision or permission, ask again instead of proceeding. ' +
   'Otherwise, before doing anything, re-check the current state: services, containers, port-forwards and builds ' +
   'may still be starting, the last step you ran may or may not have completed, and background jobs, monitors, ' +
-  'loops and scheduled wake-ups from before the restart are gone. ' +
+  'loops and scheduled wake-ups from before it ended are gone. ' +
   'Then continue the task you were working on from where you left off, restarting any background work it still needs.';
+
+/** The prompt's fixed part for an end: its cause, its API error when there was one, then what to do. */
+export function continueBase(end: EndFacts): string {
+  return [CAUSE_WORDS[end.cause], apiErrorWords(end.apiError), CONTINUE_RULES].filter((part) => part !== undefined).join(' ');
+}
 
 const ELLIPSIS = '...';
 
 /**
- * The first prompt of a session restored to continue: CONTINUE_PROMPT, the work it lost, and for the lead how
- * every other session came back, cut so the whole stays within PROMPT_MAX.
+ * The first prompt of a session restored to continue: why it ended, the work it lost, and for the lead how every
+ * other session came back, cut so the whole stays within PROMPT_MAX.
  */
-export function continuePrompt(lost: LostWork, othersSummary: string | undefined): string {
+export function continuePrompt(end: EndFacts, lost: LostWork, othersSummary: string | undefined): string {
   const lostWords = describeLostWork(lost);
-  const base = lostWords === undefined ? CONTINUE_PROMPT : `${CONTINUE_PROMPT} At the shutdown you had ${lostWords} live.`;
+  const fixed = continueBase(end);
+  const base = lostWords === undefined ? fixed : `${fixed} When it ended you had ${lostWords} live.`;
   if (othersSummary === undefined || othersSummary === '') {
     return base;
   }

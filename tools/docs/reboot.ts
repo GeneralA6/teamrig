@@ -103,6 +103,7 @@ export const PRINTED: readonly Printed[] = [
 
 /** The lead's first prompt, the one the restore resumed it with: how every other session of its team came back. */
 export const LEAD_PROMPT = continuePrompt(
+  { cause: 'shutdown', apiError: undefined },
   { background: 0, crons: 0, wake: false },
   summarizeRestore(SESSIONS.filter((session) => session.name !== 'lead').map(({ label, mode, why }) => ({ label, mode, why }))),
 );
