@@ -185,6 +185,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   budgetReservePct: 'budget.reservePct',
   weeklyLimitW: 'budget.weeklyLimitW',
   subagentWeight: 'budget.subagentWeight',
+  budgetModelWeights: 'budget.modelWeights',
+  modelWeight: 'budget.modelWeights[].weight',
   extraWPerUsd: 'budget.extraWPerUsd',
   paceEndHoursBeforeReset: 'budget.paceEndHoursBeforeReset',
   sessionShare: 'budget.sessions.*.share',

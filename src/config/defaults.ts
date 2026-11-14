@@ -221,6 +221,7 @@ export const DEFAULT_COMMITS: CommitsConfig = {
 export const DEFAULT_BUDGET: BudgetConfig = {
   enabled: false,
   subagentWeight: 1,
+  modelWeights: [],
   resets: [],
   targetPct: 99.5,
   reservePct: 0.5,

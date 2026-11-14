@@ -759,6 +759,17 @@ export interface ResetStock {
   readonly note?: string;
 }
 
+/**
+ * What one W of a model's calls moves the weekly meter, against 1 for any model unlisted: the account's limit
+ * counts each model at its own rate (a Fable W about 4.4 times an Opus W, T2531), so the meter weighs it before the
+ * W per % is learned, and the week's use reads alike whatever mix of models a team runs.
+ */
+export interface ModelWeight {
+  /** A prefix of the model id a transcript line names, such as `claude-fable`; the longest listed match wins. */
+  readonly model: string;
+  readonly weight: number;
+}
+
 /** UTC hours in which the live warning applies `action` on its own, while the team sleeps. */
 export interface QuietHours {
   readonly startUtc: string;
@@ -793,7 +804,7 @@ export interface BudgetLiftConfig {
  * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
  * a tree read one week alike without a copy that drifts.
  */
-export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset', 'resets'] as const satisfies readonly (keyof BudgetConfig)[];
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'modelWeights', 'extraWPerUsd', 'reset', 'resets'] as const satisfies readonly (keyof BudgetConfig)[];
 
 /** The keys of ACCOUNT_BUDGET_KEYS as a team reads them, its own or the team above's. */
 export type AccountBudget = Pick<BudgetConfig, (typeof ACCOUNT_BUDGET_KEYS)[number]>;
@@ -825,6 +836,11 @@ export interface BudgetConfig {
    * multiplies each subagent call's W by it, so every W (and `weeklyLimitW`) is in main-session W. 1: alike.
    */
   readonly subagentWeight: number;
+  /**
+   * Each model's weight on the meter, multiplied with subagentWeight on each call's W. Unset: the team above's
+   * (`AccountBudget`), else none, every model alike.
+   */
+  readonly modelWeights: readonly ModelWeight[];
   /**
    * W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate
    * (src/budget/extra.ts). Unset: the team above's (`AccountBudget`), else the extra-usage pool shows in dollars only

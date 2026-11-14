@@ -454,6 +454,7 @@ The weekly token budget: the pace line the team is measured against and each ses
 | `accountLead` | [session name](#shared-types) |  | The root team whose lead is the account's main lead: after each reset it splits the week among the account's root teams, each lead then splits its part among its own team and its child teams, and the main lead reports the split at the owner's first meeting after the reset. Unset: the team above's, in a team under another on its account; else the root team's own lead, which holds while the account has one root team. Set it in every root team's config once a second root team joins the account. |
 | `weeklyLimitW` | integer (1000000 to 1000000000000) |  | The weekly limit in weighted tokens. Unset: the team above's, in a team under another on its account; else derived from the status line's weekly %. |
 | `subagentWeight` | number (0.1 to 10) | `1` | What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike. Unset in a team under another on its account: the team above's. |
+| `modelWeights` | array (at most 10 items) of [object](#budgetmodelweights) | `[]` | What one W of each model's calls moves the weekly meter, against 1 for a model unlisted: the account's limit counts models at their own rates, so the meter multiplies each call's W by its model's weight, on top of subagentWeight. The rollup keeps raw W. Unset in a team under another on its account: the team above's; else none, every model alike. |
 | `extraWPerUsd` | integer (1000 to 1000000000) |  | W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the team above's, in a team under another on its account; else the extra-usage pool shows in dollars only until then, with no allowance. |
 | `reset` | [object](#budgetreset) |  | When the weekly limit resets, for a team without a status line. Unset: the team above's, in a team under another on its account; else the reset time the status line reports. |
 | `resets` | array (at most 20 items) of [object](#budgetresets) | `[]` | The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none. |
@@ -472,6 +473,15 @@ The weekly token budget: the pace line the team is measured against and each ses
 | `lift` | [object](#budgetlift) |  | Bounds on a leader's lift of a session's or a sub-lead's group's daily budget (teamrig budget lift). Every lift carries a stop %, the share of the week at which it ends. |
 | `statusSnapshotDir` | string (at least 1 character) |  | The folder of status line snapshots, \<Claude session id>.json each. Unset: \<kit home>/usage/live. |
 | `maxBytesPerHook` | integer (100000 to 100000000) | `4000000` | The most transcript bytes one hook run reads; the rest waits for the next run. |
+
+## `budget.modelWeights[]`
+
+What one W of each model's calls moves the weekly meter, against 1 for a model unlisted: the account's limit counts models at their own rates, so the meter multiplies each call's W by its model's weight, on top of subagentWeight. The rollup keeps raw W. Unset in a team under another on its account: the team above's; else none, every model alike.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `model` (required) | string (1 to 60 characters, matching `^[^\r\n]+$`) |  | A prefix of the model id a transcript names, such as claude-fable; the longest listed match wins. |
+| `weight` (required) | number (0.1 to 20) |  | Its W on the meter per W of its calls. |
 
 ## `budget.reset`
 

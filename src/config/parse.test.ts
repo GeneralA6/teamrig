@@ -1681,6 +1681,7 @@ describe('parseConfig budget', () => {
         accountLead: 'app',
         weeklyLimitW: 680_000_000,
         subagentWeight: 2.15,
+        modelWeights: [{ model: 'claude-fable', weight: 4.4 }],
         extraWPerUsd: 120_000,
         reset: { weekday: 'wed', timeUtc: '01:00' },
         resets: [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', note: 'one week cleared' }],
@@ -1708,6 +1709,7 @@ describe('parseConfig budget', () => {
       accountLead: 'app',
       weeklyLimitW: 680_000_000,
       subagentWeight: 2.15,
+      modelWeights: [{ model: 'claude-fable', weight: 4.4 }],
       extraWPerUsd: 120_000,
       reset: { weekday: 'wed', timeUtc: '01:00' },
       resets: [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: [], note: 'one week cleared' }],
@@ -1737,6 +1739,7 @@ describe('parseConfig budget', () => {
       accountLead: 'app',
       weeklyLimitW: 680_000_000,
       subagentWeight: 2.15,
+      modelWeights: [{ model: 'claude-fable', weight: 4.4 }],
       extraWPerUsd: 120_000,
       reset: { weekday: 'wed', timeUtc: '01:00' },
       resets: [{ kind: 'fable', count: 3, expiresUtc: '2027-03-09 07:59', usedUtc: ['2026-11-12 10:00'] }],
@@ -1815,6 +1818,49 @@ describe('parseConfig budget', () => {
     const { config, issues } = parseConfig({ ...ROSTER, budget: { resets: Array.from({ length: 21 }, () => grant) } });
     assert.deepEqual(paths(issues), ['budget.resets']);
     assert.deepEqual(config.budget.resets, []);
+  });
+
+  it('weighs every model alike when the team lists no model weights (T2454)', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.budget.modelWeights, []);
+  });
+
+  it('reads model weights, and an empty list as none (T2454)', () => {
+    const weights = [
+      { model: 'claude-fable', weight: 4.4 },
+      { model: 'claude-haiku', weight: 0.5 },
+    ];
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { modelWeights: weights } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.budget.modelWeights, weights);
+    assert.deepEqual(parseConfig({ ...ROSTER, budget: { modelWeights: [] } }).config.budget.modelWeights, []);
+  });
+
+  it('drops a model weight it cannot read whole and keeps the others (T2454)', () => {
+    const good = { model: 'claude-fable', weight: 4.4 };
+    for (const [entry, path, message] of [
+      [{ weight: 2 }, 'budget.modelWeights[0].model', 'is required'],
+      [{ model: '', weight: 2 }, 'budget.modelWeights[0].model', undefined],
+      [{ model: 'claude-\nopus', weight: 2 }, 'budget.modelWeights[0].model', undefined],
+      [{ model: 'claude-opus' }, 'budget.modelWeights[0].weight', 'is required'],
+      [{ model: 'claude-opus', weight: 0 }, 'budget.modelWeights[0].weight', 'expected a number from 0.1 to 20, got 0'],
+      [{ model: 'claude-opus', weight: 21 }, 'budget.modelWeights[0].weight', 'expected a number from 0.1 to 20, got 21'],
+      ['claude-opus', 'budget.modelWeights[0]', 'expected an object, got "claude-opus"'],
+    ] as const) {
+      const { config, issues } = parseConfig({ ...ROSTER, budget: { modelWeights: [entry, good] } });
+      assert.deepEqual(paths(issues), [path], JSON.stringify(entry));
+      if (message !== undefined) {
+        assert.equal(issues[0]?.message.startsWith(message), true, `${JSON.stringify(entry)}: ${issues[0]?.message ?? ''}`);
+      }
+      assert.deepEqual(config.budget.modelWeights, [good], JSON.stringify(entry));
+    }
+  });
+
+  it('reports a model listed twice, and more than 10 model weights (T2454)', () => {
+    const twice = parseConfig({ ...ROSTER, budget: { modelWeights: [{ model: 'claude-fable', weight: 4 }, { model: 'claude-fable', weight: 5 }] } });
+    assert.deepEqual(paths(twice.issues), ['budget.modelWeights[1].model']);
+    const many = parseConfig({ ...ROSTER, budget: { modelWeights: Array.from({ length: 11 }, (_, index) => ({ model: `m${index}`, weight: 1 })) } });
+    assert.deepEqual(paths(many.issues), ['budget.modelWeights']);
+    assert.deepEqual(many.config.budget.modelWeights, []);
   });
 
   it('reads no main lead and the default floor when the team sets neither (T2215)', () => {

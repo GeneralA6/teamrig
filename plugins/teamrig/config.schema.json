@@ -1013,6 +1013,20 @@
           "maximum": 10,
           "default": 1
         },
+        "modelWeights": {
+          "description": "What one W of each model's calls moves the weekly meter, against 1 for a model unlisted: the account's limit counts models at their own rates, so the meter multiplies each call's W by its model's weight, on top of subagentWeight. The rollup keeps raw W. Unset in a team under another on its account: the team above's; else none, every model alike.",
+          "type": "array",
+          "maxItems": 10,
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": ["model", "weight"],
+            "properties": {
+              "model": { "description": "A prefix of the model id a transcript names, such as claude-fable; the longest listed match wins.", "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[^\\r\\n]+$" },
+              "weight": { "description": "Its W on the meter per W of its calls.", "type": "number", "minimum": 0.1, "maximum": 20 }
+            }
+          }
+        },
         "extraWPerUsd": {
           "description": "W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the team above's, in a team under another on its account; else the extra-usage pool shows in dollars only until then, with no allowance.",
           "type": "integer",
