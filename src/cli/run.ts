@@ -806,7 +806,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       Bash tool's wait): prints QUEUED <id> at once and runs the step hidden as queue --detached-run <id>
       (set only by --detach), which outlives its shell, so no shell watch stops it, its output and lines in
       <delivery dir>/detached/<id>.log; its session's inbox gets a line when it starts and a waking one
-      when it ends or is refused. Refused with --pre-push and under a live host lock
+      when it ends or is refused, or, from the next start or idle pass, when it died with no end of its
+      own (queue <id> died ...). Refused with --pre-push and under a live host lock
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
       host lock (queue, merge, deploy) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
