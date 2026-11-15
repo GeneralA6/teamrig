@@ -9,6 +9,7 @@ import { bookedMeetingOf, MeetingSchedule, type ScheduledMeeting } from '../meet
 import { workCutOffBy, type TabEnder } from '../open/end-tab.ts';
 import { isClaudeProcess, type ProcessInfo } from '../open/session-processes.ts';
 import { readRunningWork } from '../refresh/running.ts';
+import { RefreshStore } from '../refresh/store.ts';
 import type { Task } from '../register/fold.ts';
 import { parkRulesOf } from '../register/park.ts';
 import type { TasksElsewhere } from '../register/tree.ts';
@@ -61,6 +62,8 @@ export interface IdleFacts {
   readonly asks: ReadonlyMap<string, readonly WakeAsk[]>;
   /** The team's booked owner meetings (src/meeting/schedule.ts): a session in a started one stays open (T2542). */
   readonly meetings: readonly ScheduledMeeting[];
+  /** The sessions whose refresh is ready (`RefreshStore.readyHandover`): a reopen starts them fresh on their handover. */
+  readonly readyHandovers: ReadonlySet<string>;
   readonly now: number;
   readonly zone: TimeZone;
 }
@@ -97,7 +100,14 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
     asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id), () => seenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
   }
   const { meetings } = await new MeetingSchedule(runtime.files, kit.paths.meetings).read();
-  return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, now, zone: teamZone(config, runtime) };
+  const refresh = new RefreshStore(runtime.files, kit.paths);
+  const readyHandovers = new Set<string>();
+  for (const id of roster.ids) {
+    if ((await refresh.readyHandover(id)) !== undefined) {
+      readyHandovers.add(id);
+    }
+  }
+  return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, readyHandovers, now, zone: teamZone(config, runtime) };
 }
 
 /** A session's transcript measured, with its last change known. */
@@ -151,7 +161,8 @@ function measuredOf(last: LastSession): MeasuredSession | undefined {
  * the next pass for it), a time wait of its own ending soon, quiet too briefly since its last own transcript entry, a
  * transcript in a project folder no folder `open` could resume it in has (`resumeFolderOf`: the project, or a folder
  * it ran in, which its close records), a turn not ended (under way, at a tool call, or a decision put to the person),
- * work running in the background, a last session too big or old to resume (v1 has no handover for a close), its
+ * work running in the background, a last session too big or old to resume unless its refresh is ready (its reopen then
+ * starts fresh on its handover, T1248), its
  * process no longer a Claude Code, or shells
  * an end would cut off. The first that holds keeps it open. The last two look at the host's processes one by one
  * (about a second each on Windows), so only a session every other check would close pays for them.
@@ -214,7 +225,8 @@ export async function idleVerdictOf(runtime: CliRuntime, config: KitConfig, rost
     return keep('still runs background work its transcript shows');
   }
   const resume = resumeVerdict({ claudeSession: record.claudeSession, changedAt: last.changedAt, tokens: last.tokens }, config.hiring, now);
-  if (resume.kind === 'fresh') {
+  // A ready refresh reopens fresh on its handover (open.ts, T2354), so the size of the old context no longer matters.
+  if (resume.kind === 'fresh' && !facts.readyHandovers.has(id)) {
     return keep(`could not be resumed once closed (${resume.detail}); retire it with its handover instead`);
   }
   const claude = await runtime.sessionProcesses.describe(record.claudePid);

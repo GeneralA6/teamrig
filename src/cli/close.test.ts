@@ -5,6 +5,7 @@ import { projectTranscriptPath } from '../budget/discover.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MeetingSchedule, type ScheduledMeeting } from '../meeting/schedule.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
+import { RefreshStore } from '../refresh/store.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { SessionLog } from '../sessions/log.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
@@ -290,6 +291,15 @@ describe('teamrig close', () => {
     shelled.processes.add({ pid: 8200, parentPid: CLAUDE.pid, name: 'bash.exe', commandLine: 'bash -c npm test' });
     assertRefused(await close(shelled, ['alpha', '--yes', '--session', 'lead']), /would also end the background shells it runs \(pid 8200\)/);
     assert.deepEqual(shelled.processes.ends, []);
+  });
+
+  it('closes a session too big to resume when its refresh is ready, as its reopen starts fresh on its handover (T1248)', async () => {
+    const big = await runningAlpha(75, reply(400_000));
+    const store = new RefreshStore(big.kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+    await store.setState('alpha', { phase: 'ready', task: 'T3', at: new Date(big.kit.clock.now()).toISOString(), tokens: 400_000, noticed: true, transcript: null, claudePid: CLAUDE.pid });
+    const closed = await close(big, ['alpha', '--yes', '--session', 'lead']);
+    assert.equal(closed.code, 0, [...closed.stdout, ...closed.stderr].join('\n'));
+    assert.notDeepEqual(big.processes.ends, []);
   });
 
   it("drops the closed session's restore entry, so a reboot's restore does not reopen it, and keeps every other (T1425)", async () => {
