@@ -3,6 +3,7 @@ import {
   targetText,
   type CloseReason,
   type HostEnd,
+  type HostAssignee,
   type HostIssueId,
   type HostLabel,
   type HostLinks,
@@ -17,7 +18,9 @@ import {
 import type { IssueState } from '../issues/issue.ts';
 import { exitText } from '../open/processes.ts';
 import {
+  assigneeReadArgs,
   blockedByAddArgs,
+  issueAssignArgs,
   issueCloseArgs,
   issueCommentArgs,
   issueCreateArgs,
@@ -157,19 +160,32 @@ export class GitHubIssueHost implements IssueHost {
    * Reads the one label: found when gh ends well, missing when GitHub answers Not Found (no such label, or a
    * repository the access cannot see, which the add would fail on anyway), else failed with gh's own line.
    */
-  async labelExists(repo: string, label: string): Promise<HostLabel> {
+  labelExists(repo: string, label: string): Promise<HostLabel> {
+    return this.exists(repo, labelReadArgs(repo, label), `the label ${JSON.stringify(label)} of ${repo}`);
+  }
+
+  /**
+   * Reads whether the login may be assigned: found when gh ends well, missing when GitHub answers Not Found (not a
+   * person with access, an organisation, or a repository the access cannot see), else failed with gh's own line.
+   */
+  assigneeExists(repo: string, login: string): Promise<HostAssignee> {
+    return this.exists(repo, assigneeReadArgs(repo, login), `whether ${login} may be assigned in ${repo}`);
+  }
+
+  /** One read of `what` in `repo`: found when gh ends well, missing on Not Found, else failed with gh's own line. */
+  private async exists(repo: string, args: readonly string[], what: string): Promise<HostLabel> {
     const access = await this.tokens.accessFor(repo);
     if (access instanceof TokenReadError) {
       return { kind: 'failed', reason: access.message };
     }
     let result: GhResult;
     try {
-      result = await this.gh.run({ args: labelReadArgs(repo, label), env: access.env });
+      result = await this.gh.run({ args, env: access.env });
     } catch (error) {
       return { kind: 'failed', reason: startFailureText(error) };
     }
     if (result.end.kind === 'signal') {
-      return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading the label ${JSON.stringify(label)} of ${repo}` };
+      return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading ${what}` };
     }
     if (result.end.code === 0) {
       return { kind: 'found' };
@@ -177,7 +193,7 @@ export class GitHubIssueHost implements IssueHost {
     if (ghFailureKind(result.end.code, result.stderr) === 'not-visible') {
       return { kind: 'missing' };
     }
-    return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read the label ${JSON.stringify(label)} of ${repo} ${exitText(result.end.code, result.stderr)}`)) };
+    return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read ${what} ${exitText(result.end.code, result.stderr)}`)) };
   }
 
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd> {
@@ -202,6 +218,10 @@ export class GitHubIssueHost implements IssueHost {
 
   addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd> {
     return this.write(target, blockedByAddArgs(target, blockerId), 'add a blocker to');
+  }
+
+  assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd> {
+    return this.write(target, issueAssignArgs(target, logins), 'assign');
   }
 
   /** One write; `missing`, when given, says what a Not Found means for it in place of the issue not being there. */

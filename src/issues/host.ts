@@ -52,6 +52,9 @@ export type HostIssueId = { readonly kind: 'found'; readonly id: number } | { re
 /** Whether a repository has a label: it has, it has not, or the read failed, with one plain line saying why. */
 export type HostLabel = { readonly kind: 'found' } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
+/** Whether a login may be assigned in a repository: found, missing (it may not), or the read failed. */
+export type HostAssignee = HostLabel;
+
 /**
  * A repository's issues as one list read them, the open ones and those closed since the day it was given, with what
  * a reader should know about the read; or why it could not be read, in which case nothing of it was.
@@ -110,6 +113,10 @@ export interface IssueHost {
   addSubIssue(parent: IssueTarget, childId: number): Promise<HostEnd>;
   /** Marks `target` blocked by the issue whose host id is `blockerId`. */
   addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd>;
+  /** Whether `login` may be assigned in `repo`, so an assign is only sent for one the host would not drop. */
+  assigneeExists(repo: string, login: string): Promise<HostAssignee>;
+  /** Adds `logins` to the assignees of the issue or pull request; those already on it stay. */
+  assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd>;
 }
 
 /** The hosts teamrig has an adapter for, by the team config list that names their repositories. */

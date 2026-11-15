@@ -5,7 +5,22 @@ import { FakeCredentials } from '../testing/fake-credentials.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, isIssueRead, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
+import {
+  isAssigneeRead,
+  isIssueAssign,
+  isIssueClose,
+  isIssueComment,
+  isIssueCreate,
+  isIssueQuery,
+  isIssueRead,
+  isLabelAdd,
+  isLabelRead,
+  isLabelRemove,
+  isLinkAdd,
+  type GhRequest,
+  type GhResult,
+  type GhRunner,
+} from './gh.ts';
 import { GitHubIssueHost, issueIdIn } from './host.ts';
 import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import { CLOSED_ISSUES_QUERY } from './queries.ts';
@@ -182,6 +197,18 @@ describe('GitHubIssueHost', () => {
     for (const stdout of ['', 'not json', 'null', '[]', '7', '{"number":7}', '{"id":"4242"}', '{"id":0}', '{"id":-3}', '{"id":1.5}', '{"id":1e300}']) {
       assert.equal(issueIdIn(stdout), undefined, stdout);
     }
+  });
+
+  it('reads whether a login may be assigned, found or missing on Not Found, and assigns through the allowlisted call (T2999)', async () => {
+    const gh = new FakeGh().cannotAssign('acme/web', ['acme']);
+    const host = hostWith(gh);
+    assert.deepEqual(await host.assigneeExists('acme/web', 'octocat'), { kind: 'found' });
+    assert.deepEqual(await host.assigneeExists('acme/web', 'acme'), { kind: 'missing' });
+    assert.deepEqual(await host.assign(TARGET, ['octocat']), { kind: 'done' });
+    const [found, missing, assign] = gh.ran.map((request) => request.args);
+    assert.ok(isAssigneeRead(found ?? []) && isAssigneeRead(missing ?? []) && isIssueAssign(assign ?? []));
+    const stopped = new FakeGh().answers('acme/web', { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
+    assert.deepEqual(await hostWith(stopped).assigneeExists('acme/web', 'octocat'), { kind: 'failed', reason: 'gh was stopped (SIGTERM) while reading whether octocat may be assigned in acme/web' });
   });
 
   it('names a label read that gh could not start, was stopped, or had no key to run with', async () => {

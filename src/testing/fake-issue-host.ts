@@ -1,4 +1,4 @@
-import type { CloseReason, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, IssueDraft, IssueHost, IssueTarget } from '../issues/host.ts';
+import type { CloseReason, HostAssignee, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, IssueDraft, IssueHost, IssueTarget } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 
 /** What each use does, as the fake's access line words it. */
@@ -12,7 +12,8 @@ export type HostCall =
   | { readonly kind: 'label-add'; readonly target: IssueTarget; readonly labels: readonly string[] }
   | { readonly kind: 'label-remove'; readonly target: IssueTarget; readonly label: string }
   | { readonly kind: 'sub-issue'; readonly parent: IssueTarget; readonly childId: number }
-  | { readonly kind: 'blocked-by'; readonly target: IssueTarget; readonly blockerId: number };
+  | { readonly kind: 'blocked-by'; readonly target: IssueTarget; readonly blockerId: number }
+  | { readonly kind: 'assign'; readonly target: IssueTarget; readonly logins: readonly string[] };
 
 /**
  * An issue host that reaches nothing and holds no issue: a list is empty, each write is recorded, and ends done
@@ -35,6 +36,27 @@ export class FakeIssueHost implements IssueHost {
   private linkEnd: HostEnd = { kind: 'done' };
   private readonly linked = new Map<string, HostLinks>();
   private idRead: HostIssueId | undefined;
+  private readonly unassignable = new Set<string>();
+  private assigneeRead: HostAssignee | undefined;
+  private assignEnd: HostEnd = { kind: 'done' };
+
+  /** From now on, these logins may not be assigned in any repository; every other login may. */
+  cannotAssign(...logins: string[]): this {
+    logins.forEach((login) => this.unassignable.add(login));
+    return this;
+  }
+
+  /** From now on, every read of whether a login may be assigned ends as `end`. */
+  readsAssignee(end: HostAssignee): this {
+    this.assigneeRead = end;
+    return this;
+  }
+
+  /** From now on, an assign fails for `reason`. */
+  failsAssign(reason: string): this {
+    this.assignEnd = { kind: 'failed', reason };
+    return this;
+  }
 
   /** From now on, every repository has these labels. */
   hasLabels(...labels: string[]): this {
@@ -162,5 +184,14 @@ export class FakeIssueHost implements IssueHost {
   addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd> {
     this.calls.push({ kind: 'blocked-by', target, blockerId });
     return Promise.resolve(this.linkEnd);
+  }
+
+  assigneeExists(_repo: string, login: string): Promise<HostAssignee> {
+    return Promise.resolve(this.assigneeRead ?? { kind: this.unassignable.has(login) ? 'missing' : 'found' });
+  }
+
+  assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd> {
+    this.calls.push({ kind: 'assign', target, logins });
+    return Promise.resolve(this.assignEnd);
   }
 }
