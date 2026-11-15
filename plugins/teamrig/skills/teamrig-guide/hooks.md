@@ -1413,6 +1413,13 @@ while the mark holds: 5 minutes, or until the session's step no longer asks for 
 is logged as `FAILED to start` and held the same way. A failure of the pass never costs the tab its wake answer; a pass 15 minutes old or failed shows in `teamrig check` as
 FLEET-STALE, a warning for the lead; a pass that never ran shows nothing, as a new team waits for its first idle tab.
 
+A tab held on a permission prompt runs no wake check of its own, so the pass watches for it too: a tab file in
+`state/tabs/` that has asked for a permission for 10 minutes, its Claude Code still running, pages the owner once
+through the same chat webhook an expired login pages ([alerts.pageWebhookFile] or [alerts.pageWebhookEnv], the team's
+or a parent team's), naming the tab, since when, and the tool with at most three plain words of its command, never a
+path or a value. `state/prompt-holds-paged.json` keeps the holds paged, so each pages once; a post that fails is
+tried again at the next pass, and its problem is written to the hook's stderr. Answer the prompt in that tab.
+
 A reopened tab whose SessionStart hook has not written its session's record 5 minutes after the reopen loaded no
 teamrig, as one opened while an install was copied, and [the hookless-tab check](#end-of-a-turn-hookless-tabs) cannot
 see it. The pass logs each such reopen once as a `"kind": "hookless"` line in `state/idle-pass.jsonl` and, in `on`,

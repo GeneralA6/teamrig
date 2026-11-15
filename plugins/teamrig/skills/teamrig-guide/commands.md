@@ -727,7 +727,10 @@ last writing `teamrig issue sync` kept; it is raised once a wait, and from
 the restore's record (`<kit home>/bin/launchers.json`, written by [restore install](#teamrig-restore-install),
 `uninstall` and a newer version's first session start) RESTORE-DEAD: a logon entry or shortcut teamrig set up that
 starts a Node or launcher that is gone, such as one left on a Node an upgrade removed, and RESTORE-STRAY: a `Restore
-Claude Sessions` shortcut or logon entry that starts something else; `teamrig restore install --yes` repoints both.
+Claude Sessions` shortcut or logon entry that starts something else; `teamrig restore install --yes` repoints both,
+and PROMPT-HELD: a tab of the team has waited 10 minutes or more on a permission prompt nobody answered, so its
+session and every session waiting on it stand still; the [idle pass](hooks.md#the-idle-pass) pages the owner once a
+hold, and only a person at that tab can answer it.
 Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
