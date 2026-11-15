@@ -192,6 +192,18 @@ describe('the lead boundary', () => {
     assert.deepEqual(TEAM.researchOf('~/.teamrig/teams/app/tasks/T01'), { name: 'tasks/t01', owner: undefined }, 'no register id');
   });
 
+  it("reads a file named for the lead's own task as its own, and one named for another session's task as hand-off work (GeneralA6/teamrig#751)", () => {
+    const own = tool('Read', { path: 'D:/backups/t1-register/events.sql' }, 'b1');
+    const other = tool('Read', { path: 'D:/backups/t2-register/events.sql' }, 'b2');
+    assert.equal(leadWorkOf(own, PATHS), undefined, "a backup the lead made for its own task");
+    assert.equal(leadWorkOf(tool('Edit', { path: '~/dev/app/.claude/worktrees/t1-fix/src/a.ts' }), PATHS), undefined, "the lead's own task's worktree");
+    assert.equal(leadWorkOf(other, PATHS), 'search', "another session's task");
+    assert.equal(leadWorkOf(tool('Read', { path: 'D:/backups/t01-x/a.sql' }), PATHS), 'search', 'no register id');
+    assert.equal(leadWorkOf(tool('Read', { path: 'D:/backups/tools/a.sql' }), PATHS), 'search', 'no task id');
+    const unknown: LeadPaths = { own: OWN, team: teamFolders(new Map()) };
+    assert.deepEqual(tasksSearched([own, other], unknown), ['T1', 'T2'], 'the register is read for their owners');
+  });
+
   it('names the tasks whose folders a turn searches, each once, before their owners are known (T1467)', () => {
     const turn = [
       tool('Grep', { path: '~/.teamrig/teams/app/tasks/T1' }, 'k1'),
