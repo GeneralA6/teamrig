@@ -118,8 +118,22 @@ describe('BranchMoves: mapChange', () => {
     }
   });
 
-  it('sees a config change from a write of remote, push or branch keys, or a remote added, renamed or removed', () => {
-    const commands = ['config push.default upstream', 'config branch.t1-x.merge refs/heads/main', 'config --add remote.origin.push refs/heads/*:refs/heads/main', 'remote add fork x', 'remote rename origin up', 'remote remove fork', 'remote rm fork'];
+  it('sees a config change from a write of remote, push or branch keys, or a remote renamed or removed', () => {
+    const commands = ['config push.default upstream', 'config branch.t1-x.merge refs/heads/main', 'config --add remote.origin.push refs/heads/*:refs/heads/main', 'remote rename origin up', 'remote remove fork', 'remote rm fork', 'remote $CMD fork'];
+    for (const command of commands) {
+      assert.equal(changeAfter([command]), 'config', command);
+    }
+  });
+
+  it('sees no change from a remote added with fetch keys only, which a named push never reads', () => {
+    const commands = ['remote add fork x', 'remote add -f fork x', 'remote add --fetch --no-tags fork x', 'remote add --tags fork x', 'remote add -t main -m main fork x', 'remote add --track=main --master=main fork x', 'remote -v add fork x', 'remote add -- fork x', 'remote add -- fork --mirror=push'];
+    for (const command of commands) {
+      assert.equal(changeAfter([command]), 'none', command);
+    }
+  });
+
+  it('sees a config change from a remote added with a mirror, an abbreviated or unknown option, or a word only known when it runs', () => {
+    const commands = ['remote add --mirror=push fork x', 'remote add --mirror fork x', 'remote add --mi=push fork x', 'remote add --mirror=fetch fork x', 'remote add --bogus fork x', 'remote add $OPT fork x', 'remote add -t $B fork x', 'remote add fork $URL', 'remote $SUB fork x'];
     for (const command of commands) {
       assert.equal(changeAfter([command]), 'config', command);
     }

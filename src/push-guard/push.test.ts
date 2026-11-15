@@ -658,6 +658,8 @@ describe('evaluatePushes: a branch named alone', () => {
     );
     expectRows([['git push origin t1-x', 'allow']], onBranch({ 'push.default': 'upstream' }));
     expectRows([['git push origin t1-x', 'allow']], onBranch({ 'remote.fork.push': 'refs/heads/t1-x:refs/heads/main' }));
+    // A plain remote add writes no key a named push reads, so the config read before the line still holds.
+    expectRows([['git remote add up /x/far.git; git push -q up t1-x t1-x:keep', 'allow']], onBranch({ 'push.default': 'simple' }));
   });
 
   it('asks in doubt where it cannot read the mapping', () => {
@@ -669,6 +671,7 @@ describe('evaluatePushes: a branch named alone', () => {
       [
         ['git config push.default upstream && git push origin t1-x', 'ask', 'doubt'],
         ['git remote rename up origin && git push origin t1-x', 'ask', 'doubt'],
+        ['git remote add --mirror=push up x && git push up t1-x', 'ask', 'doubt'],
         ['git branch t1-x origin/main && git push origin t1-x', 'ask', 'doubt'],
         ['cd "$DIR" && git push origin t1-x', 'ask', 'doubt'],
         ['git push "$R" t1-x', 'ask', 'doubt'],
