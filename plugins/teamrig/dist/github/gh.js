@@ -7,8 +7,9 @@ import { QUERY_VARIABLES, RAW_FIELD } from "./queries.js";
  * comment on or the close of one issue or pull request (issue comment and issue close, a close with or without its
  * reason), its labels: the read of one label of a repository, labels added to one issue, one label taken off it
  * (issue label), the read of one issue, for the id a duplicate close names (issue close --duplicate-of), logins
- * added to one issue's assignees and the read of whether one login may be assigned (the status push), and one
- * sub-issue or blocked-by link added (issue links). The runner refuses any other command line before it starts: no
+ * added to one issue's assignees and the read of whether one login may be assigned (the status push), one
+ * sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes, conditional reads that tell
+ * whether a repository changed (isWatchProbe). The runner refuses any other command line before it starts: no
  * issue edit, reopen, assignee removal, label create or delete, link removal, merge or branch delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
@@ -249,6 +250,40 @@ export function isLabelRead(args) {
     const match = LABEL_PATH.exec(args[1] ?? '');
     return args[0] === 'api' && args.length === 2 && match !== null && REPO_NAME.test(match[1] ?? '') && isLabelSegment(match[2] ?? '');
 }
+/**
+ * The REST reads `issue watch` probes each repository with: the issue or pull request changed last (a comment, a
+ * review or a label moves it; pull requests are issues here) and the latest workflow runs. Each is one fixed GET.
+ */
+export const WATCH_PATHS = ['issues?state=all&sort=updated&per_page=1', 'actions/runs?per_page=5'];
+/** The header a probe sends to be told only whether the answer changed: GitHub answers 304, free, when it did not. */
+const IF_NONE_MATCH = 'If-None-Match: ';
+/**
+ * An entity tag as GitHub sends one, strong or weak: quoted, of printable characters only (RFC 9110's etagc), at most
+ * 200 of them, so a tag can never add a header line or a flag.
+ */
+export const ENTITY_TAG = /^(?:W\/)?"[\x21\x23-\x7E]{1,200}"$/;
+/** The command line of one probe: `gh api -i [-H "If-None-Match: <tag>"] repos/<owner>/<name>/<path>`. */
+export function watchProbeArgs(repo, path, tag) {
+    return ['api', '-i', ...(tag === undefined ? [] : ['-H', `${IF_NONE_MATCH}${tag}`]), `repos/${repo}/${path}`];
+}
+/**
+ * True for `gh api -i [-H "If-None-Match: <tag>"] repos/<owner>/<name>/<path>`, a path of WATCH_PATHS, and nothing
+ * more: one GET with its headers printed, and at most that one header, its tag an ENTITY_TAG. A method, a field,
+ * another header or path, `--paginate` or `--hostname` is refused, so a probe can only read those two answers.
+ */
+export function isWatchProbe(args) {
+    if (args[0] !== 'api' || args[1] !== '-i' || (args.length !== 3 && args.length !== 5)) {
+        return false;
+    }
+    if (args.length === 5) {
+        const header = args[3] ?? '';
+        if (args[2] !== '-H' || !header.startsWith(IF_NONE_MATCH) || !ENTITY_TAG.test(header.slice(IF_NONE_MATCH.length))) {
+            return false;
+        }
+    }
+    const path = args[args.length - 1] ?? '';
+    return path.startsWith('repos/') && WATCH_PATHS.some((probe) => path.endsWith(`/${probe}`) && REPO_NAME.test(path.slice('repos/'.length, -(probe.length + 1))));
+}
 /** `-f key=value` pairs in order; null when anything else is there. */
 function rawPairs(args) {
     const pairs = [];
@@ -304,11 +339,11 @@ export function isLinkAdd(args) {
         field.slice(0, equals) === key &&
         HOST_ID.test(field.slice(equals + 1)));
 }
-/** A command line the runner will not start: none of a shipped issue query's page, one issue's creation, comment, labels, close or link. */
+/** A command line the runner will not start: none of a shipped issue query's page, a watch probe, one issue's creation, comment, labels, close or link. */
 export class GhRefusedError extends Error {
     name = 'GhRefusedError';
     constructor(args) {
-        super(`teamrig only runs gh for its shipped issue queries and to open, read, comment on, label, assign, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, label, assign, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
     }
 }
 /** True for each command line the runner starts. */
@@ -323,7 +358,8 @@ export function isAllowedGh(args) {
         isIssueRead(args) ||
         isIssueAssign(args) ||
         isAssigneeRead(args) ||
-        isLinkAdd(args));
+        isLinkAdd(args) ||
+        isWatchProbe(args));
 }
 /**
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a

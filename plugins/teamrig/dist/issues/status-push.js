@@ -31,16 +31,17 @@ export const PUSH_WRITES_PER_RUN = 40;
  */
 export const PUSH_WRITES_PER_HOUR = 250;
 /**
- * The writes one automatic push sends at most when it runs once per `everyMinutes`: PUSH_WRITES_PER_RUN, lowered so
- * that the runs of an hour stay within PUSH_WRITES_PER_HOUR, with no count kept between runs. An hour holds up to
- * ceil(60 / everyMinutes) runs (every 7 minutes: 9, at 0, 7, ..., 56), so the hourly writes are split by that. Every 0
- * minutes is the automatic sync turned off: no writes.
+ * The writes one automatic push sends at most when the watch can run a sync every `probeSeconds`:
+ * PUSH_WRITES_PER_RUN, lowered so that the runs of an hour stay within PUSH_WRITES_PER_HOUR, with no count kept
+ * between runs. An hour holds up to ceil(3600 / probeSeconds) runs (every 420 seconds: 9, at 0, 7, ..., 56 minutes),
+ * so the hourly writes are split by that. The watch's own label writes read as a change, so a backlog drains a run
+ * per probe. 0 seconds is the watch turned off: no writes.
  */
-export function autoPushWrites(everyMinutes) {
-    if (everyMinutes <= 0) {
+export function autoPushWrites(probeSeconds) {
+    if (probeSeconds <= 0) {
         return 0;
     }
-    return Math.min(PUSH_WRITES_PER_RUN, Math.floor(PUSH_WRITES_PER_HOUR / Math.ceil(60 / everyMinutes)));
+    return Math.min(PUSH_WRITES_PER_RUN, Math.floor(PUSH_WRITES_PER_HOUR / Math.ceil(3600 / probeSeconds)));
 }
 /** The issue a task's status calls for. */
 export function issueGoal(status) {

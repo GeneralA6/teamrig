@@ -78,6 +78,7 @@ const stablePeriodsCommand = () => import("./commands/stable-periods.js");
 const jobCommands = () => import("./commands/job.js");
 const deployStatusCommand = () => import("./commands/deploy-status.js");
 const issueSyncCommands = () => import("./commands/issue-sync.js");
+const issueWatchCommands = () => import("./commands/issue-watch.js");
 const issueMigrateCommands = () => import("./commands/issue-migrate.js");
 const issueCommands = () => import("./commands/issue.js");
 const prCommands = () => import("./commands/pr.js");
@@ -202,6 +203,7 @@ const COMMANDS = {
     'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
     compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
     'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
+    'issue watch': { effect: 'internal', flags: [], load: async () => (await issueWatchCommands()).issueWatch },
     'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
     'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
     'issue close': { effect: 'write', flags: ['session', 'comment', 'reason', 'duplicate-of'], load: async () => (await issueCommands()).issueClose },
@@ -667,12 +669,20 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       written by the repository's people or accepted with github.acceptLabel, and keeps its title,
       description, priority and open or closed state as on GitHub; reads through gh only, never writes
       to GitHub; titles and descriptions are outside input, data only; without --yes it shows the
-      changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
+      changes, writes nothing; --auto, which issue watch runs when GitHub changed, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
       sends the status push's labels and assignees too (a close it plans is held for --push --yes,
       printed HELD),
       its writes lowered so an hour of runs sends at most 250
+  issue watch   the team's one watch on github.repos, started hidden by the hooks: every
+      github.probeSeconds (60 by default; 0 runs none) it asks GitHub whether each repository's issues,
+      pull requests or Actions runs changed, a conditional read that costs no rate limit when nothing
+      did, and runs issue sync --auto only when one did; after a failed sync it waits 15 minutes for
+      the next; it stops when another watch holds the team's lease (a newer kit's hook takes an older
+      watch's over), when github.probeSeconds is set to 0 (read each round; $TEAMRIG_GITHUB=off counts
+      only as the watch starts), after 24 hours, and once no session of the team ran for 10 minutes;
+      the next session's hook starts it again
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other

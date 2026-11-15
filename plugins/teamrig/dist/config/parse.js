@@ -476,11 +476,28 @@ function parseGithub(read, raw, sessions) {
         owners: readGithubOwners(read, read.section(raw, 'owners', 'github'), sessions),
         sessions: readGithubSessions(read, read.section(raw, 'sessions', 'github'), repos, sessions),
         closedDays: read.integer(raw, 'closedDays', 'github', DEFAULT_GITHUB.closedDays, CONFIG_LIMITS.closedDays),
-        everyMinutes: read.integer(raw, 'everyMinutes', 'github', DEFAULT_GITHUB.everyMinutes, CONFIG_LIMITS.githubEveryMinutes),
+        probeSeconds: readProbeSeconds(read, raw),
         statusPush: read.boolean(raw, 'statusPush', 'github', DEFAULT_GITHUB.statusPush),
         acceptLabel: read.string(raw, 'acceptLabel', 'github', DEFAULT_GITHUB.acceptLabel, shortLine(GITHUB_LABEL_MAX_LENGTH)),
         similarThreshold: read.number(raw, 'similarThreshold', 'github', DEFAULT_GITHUB.similarThreshold, CONFIG_LIMITS.similarThreshold),
     };
+}
+/** Below this, a probe every few seconds would spend gh starts for nothing GitHub shows that fast. */
+export const MIN_PROBE_SECONDS = 30;
+/** Why `github.everyMinutes` is no longer read; the configuration page says the same. */
+export const EVERY_MINUTES_DROPPED = 'issue watch syncs when GitHub changed, probing every github.probeSeconds';
+/**
+ * `github.probeSeconds`: 0 turns the watch off, else MIN_PROBE_SECONDS to its limit; a value between is reported and
+ * reads as the default. `everyMinutes`, which it replaced, is reported until deleted.
+ */
+function readProbeSeconds(read, raw) {
+    read.dropped(raw, 'everyMinutes', 'github', EVERY_MINUTES_DROPPED);
+    const seconds = read.integer(raw, 'probeSeconds', 'github', DEFAULT_GITHUB.probeSeconds, CONFIG_LIMITS.githubProbeSeconds);
+    if (seconds > 0 && seconds < MIN_PROBE_SECONDS) {
+        read.report('github.probeSeconds', `expected 0 (no watch) or at least ${MIN_PROBE_SECONDS}, got ${seconds}`);
+        return DEFAULT_GITHUB.probeSeconds;
+    }
+    return seconds;
 }
 /**
  * `github.sessions`: the session each repository's issues go to; a repository not in `github.repos` or a
