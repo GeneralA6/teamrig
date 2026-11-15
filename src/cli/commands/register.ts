@@ -55,6 +55,7 @@ import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, 
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { fiveHourWarnings } from '../five-hour-check.ts';
+import { githubLateWarnings } from '../github-late-check.ts';
 import { resetExpiryWarnings } from '../reset-expiry-check.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
 import { restoreLauncherWarnings } from '../launcher-record-check.ts';
@@ -1055,8 +1056,8 @@ function withOverLimit(sections: readonly CheckSection[], fit: WeekFit): CheckSe
  * src/cli/idle-pass-check.ts), each of its repositories whose git hooks skip the secret scan (SECRET-HOOK,
  * src/cli/secret-hook-check.ts), each secret guard key or settings file that turns a secret check off
  * (SECRET-GUARD-OFF, src/cli/secret-guard-off-check.ts), a five-hour window near full (FIVE-HOUR,
- * src/cli/five-hour-check.ts), a reset grant about to expire unused (RESET-EXPIRING, src/cli/reset-expiry-check.ts)
- * and each part of this machine that starts the restore and starts a file gone or
+ * src/cli/five-hour-check.ts), a reset grant about to expire unused (RESET-EXPIRING, src/cli/reset-expiry-check.ts),
+ * each GitHub thread past its answer target (GH-LATE, src/cli/github-late-check.ts) and each part of this machine that starts the restore and starts a file gone or
  * something install did not set up (RESTORE-DEAD, RESTORE-STRAY, src/cli/launcher-record-check.ts) are the unowned
  * warnings, which go to the lead (src/cli/unowned.ts, T951).
  */
@@ -1117,9 +1118,10 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const off = await secretGuardOffWarnings(runtime.files, own.config.secretGuard, settings);
   const fiveHour = await fiveHourWarnings(runtime.files, snapshotDirOf(own.config.budget, own.paths), own.config.budget, zone, now.getTime());
   const resets = resetExpiryWarnings(own.config.budget, zone, now.getTime());
+  const late = await githubLateWarnings(runtime.files, own.paths.githubClocks, zone, now.getTime());
   const restore = await restoreLauncherWarnings(runtime.files, resolveKitHome(runtime.env, runtime.userHome));
   const lead = own.config.roles.lead;
-  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...resets, ...restore], lead, decisions };
+  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...resets, ...restore, ...late], lead, decisions };
 }
 
 /**
