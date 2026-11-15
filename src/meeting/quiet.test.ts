@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { isBreakthrough, isCritical, quietHoldReason, type QuietFacts } from './quiet.ts';
+import { bookedHoldReason, isBreakthrough, isCritical, quietHoldReason, type BookedQuietFacts, type QuietFacts } from './quiet.ts';
 
 const FACTS: QuietFacts = {
   meeting: { startedAt: '2030-01-08T09:00:00.000Z', by: 'lead', endedAt: null, since: null, carried: [] },
@@ -52,5 +52,47 @@ describe('the meeting quiet window', () => {
     assert.equal(isBreakthrough({ ...critical, from: 'lead' }), false);
     assert.equal(isBreakthrough({ ...critical, to: 'bravo' }), false);
     assert.equal(isBreakthrough({ ...critical, meeting: undefined }), false);
+  });
+});
+
+const BOOKED: BookedQuietFacts = {
+  meeting: {
+    id: 'M4',
+    at: Date.parse('2030-01-08T10:00:00.000Z'),
+    minutes: 30,
+    session: 'alpha',
+    with: [],
+    tasks: [],
+    about: 'the cache design.',
+    brief: null,
+    status: 'started',
+    notifiedAt: null,
+    by: 'lead',
+    changedAt: Date.parse('2030-01-08T10:05:00.000Z'),
+    note: null,
+  },
+  to: 'alpha',
+  toName: 'ace',
+  from: 'bravo',
+  text: 'the build is green',
+  command: 'teamrig',
+  zone: TimeZone.UTC,
+};
+
+describe("the quiet window of a session's own meeting (T2985)", () => {
+  it('holds a message to the session met, naming the meeting, its start and the inbox line to leave instead', () => {
+    assert.equal(
+      bookedHoldReason(BOOKED),
+      'Held: ace is in meeting M4 with the owner (the cache design) since Tue 01-08 10:05 UTC. Keep working and leave this as one inbox line, which ace reads after the meeting: ' +
+        'teamrig inbox add --to alpha --text "...". Only what needs the owner now goes as a message: start it with CRITICAL: and send it again.',
+    );
+    assert.ok(bookedHoldReason({ ...BOOKED, from: undefined }) !== undefined, 'a sender no session is known for is held too');
+  });
+
+  it("lets go a CRITICAL or empty message, the session's own, and any with no meeting in its tab", () => {
+    assert.equal(bookedHoldReason({ ...BOOKED, text: 'CRITICAL: the site is down' }), undefined);
+    assert.equal(bookedHoldReason({ ...BOOKED, text: ' ' }), undefined);
+    assert.equal(bookedHoldReason({ ...BOOKED, from: 'alpha' }), undefined);
+    assert.equal(bookedHoldReason({ ...BOOKED, meeting: undefined }), undefined);
   });
 });

@@ -97,3 +97,22 @@ describe('the cold-send hook during the daily meeting', () => {
     assert.deepEqual((await noLead.run(['hook', 'cold-send'], { stdin: send('alpha', 'the build is green') })).stdout, []);
   });
 });
+
+// T2985: any session the owner meets in its own tab, a worker too, is held as the lead is in the daily meeting.
+describe("the cold-send hook during a session's own meeting with the owner", () => {
+  it('holds a message to the session met but a CRITICAL one, and lets go one to those joining and once it ended', async () => {
+    const kit = new CliHarness(TEAM);
+    const started = await kit.run(['meeting', 'start', '--about', 'the cache design', '--with', 'bravo', '--session', 'alpha']);
+    assert.equal(started.code, 0, started.stderr.join('\n'));
+    const fromBravo = { env: { TEAMRIG_SESSION: 'bravo' } };
+    const held = await kit.run(['hook', 'cold-send'], { stdin: send('alpha', 'the build is green'), ...fromBravo });
+    assert.equal(decisionOf(held), 'deny');
+    assert.match(held.stdout[0] ?? '', /Held: app-alpha is in meeting M1 with the owner \(the cache design\) since Tue 01-08 10:00 UTC\. .*teamrig inbox add --to alpha --text/);
+    assert.deepEqual((await kit.run(['hook', 'cold-send'], { stdin: send('alpha', 'CRITICAL: the site is down'), ...fromBravo })).stdout, []);
+    assert.deepEqual((await kit.run(['hook', 'cold-send'], { stdin: send('bravo', 'the build is green'), env: { TEAMRIG_SESSION: 'lead' } })).stdout, [], 'one joining is not held');
+    assert.deepEqual((await kit.run(['hook', 'cold-send'], { stdin: send('lead', 'the build is green'), ...fromBravo })).stdout, [], 'no daily meeting');
+
+    assert.equal((await kit.run(['meeting', 'end', '--session', 'alpha'])).code, 0);
+    assert.deepEqual((await kit.run(['hook', 'cold-send'], { stdin: send('alpha', 'the build is green'), ...fromBravo })).stdout, []);
+  });
+});
