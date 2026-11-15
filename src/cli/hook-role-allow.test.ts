@@ -11,7 +11,9 @@ const MARKS = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
 const HOOK = ['hook', 'route-allow'];
 const NOTHING = { code: EXIT.ok, stdout: [], stderr: [] };
 const ALPHA = { TEAMRIG_SESSION: 'alpha' };
-const CLOSE = 'teamrig issue close acme/web#7 --comment "Fixed in #8; thanks!"';
+/** A close with no --session, which no role call is (T2984). */
+const UNNAMED = 'teamrig issue close acme/web#7 --comment "Fixed in #8; thanks!"';
+const CLOSE = `${UNNAMED} --session alpha`;
 /** A token shape the secret guard knows, built here so no token sits in the source. */
 const TOKEN = ['gh', 'p_', 'a1'.repeat(18)].join('');
 
@@ -75,12 +77,12 @@ describe('hook route-allow: service roles', () => {
     const bravoHolds = { serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] } } };
     const read = await boundKit(bravoHolds);
     await mark(read, 'bravo');
-    assert.deepEqual(await read.run(HOOK, { stdin: call(`${CLOSE} --session bravo`), env: { TEAMRIG_SESSION: 'bravo' } }), NOTHING);
+    assert.deepEqual(await read.run(HOOK, { stdin: call(`${UNNAMED} --session bravo`), env: { TEAMRIG_SESSION: 'bravo' } }), NOTHING);
     const named = await boundKit(bravoHolds);
-    assert.deepEqual(await named.run(HOOK, { stdin: call(`${CLOSE} --session bravo`), env: ALPHA }), NOTHING);
-    assert.deepEqual(await named.run(HOOK, { stdin: call(CLOSE), env: { TEAMRIG_SESSION: 'bravo' } }), NOTHING);
+    assert.deepEqual(await named.run(HOOK, { stdin: call(`${UNNAMED} --session bravo`), env: ALPHA }), NOTHING);
+    assert.deepEqual(await (await boundKit()).run(HOOK, { stdin: call(UNNAMED), env: ALPHA }), NOTHING, "the holder's call naming no session, though the environment names alpha (N1)");
     const holder = await boundKit();
-    assert.deepEqual(await holder.run(HOOK, { stdin: call(`${CLOSE} --session bravo`), env: ALPHA }), NOTHING, "alpha's tab running as bravo");
+    assert.deepEqual(await holder.run(HOOK, { stdin: call(`${UNNAMED} --session bravo`), env: ALPHA }), NOTHING, "alpha's tab running as bravo");
     assert.deepEqual(await answersOf(read), []);
   });
 
@@ -90,20 +92,20 @@ describe('hook route-allow: service roles', () => {
     assert.deepEqual(await unmarked.run(HOOK, { stdin: call(CLOSE), env: ALPHA }), NOTHING);
     const kit = await boundKit();
     assert.deepEqual(await kit.run(HOOK, { stdin: call(CLOSE, { session_id: 'not-an-id' }), env: ALPHA }), NOTHING);
-    assert.deepEqual(await kit.run(HOOK, { stdin: call(CLOSE), env: {} }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(UNNAMED), env: {} }), NOTHING);
   });
 
   it('gives no role for a call off its shape, a repository off the list, or a command the role does not hold', async () => {
     const kit = await boundKit({ serviceRoles: { github: { holders: ['alpha'], commands: ['issue comment'] } } });
-    for (const line of [CLOSE, 'teamrig issue comment other/web#7 --body "x"', 'teamrig issue comment acme/web#7 --body "x"; rm -rf y', 'teamrig issue sync']) {
+    for (const line of [CLOSE, 'teamrig issue comment other/web#7 --body "x" --session alpha', 'teamrig issue comment acme/web#7 --body "x" --session alpha; rm -rf y', 'teamrig issue sync']) {
       assert.deepEqual(await kit.run(HOOK, { stdin: call(line), env: ALPHA }), NOTHING, line);
     }
-    assert.deepEqual(await kit.run(HOOK, { stdin: call('teamrig issue comment acme/web#7 --body "x"', { tool_name: 'PowerShell' }), env: ALPHA }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call('teamrig issue comment acme/web#7 --body "x" --session alpha', { tool_name: 'PowerShell' }), env: ALPHA }), NOTHING);
   });
 
   it('stays out when a guard refuses the call, so that guard answers it', async () => {
     const kit = await boundKit();
-    assert.deepEqual(await kit.run(HOOK, { stdin: call(`teamrig issue comment acme/web#7 --body "${TOKEN}"`), env: ALPHA }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(`teamrig issue comment acme/web#7 --body "${TOKEN}" --session alpha`), env: ALPHA }), NOTHING);
     assert.deepEqual(await answersOf(kit), []);
   });
 

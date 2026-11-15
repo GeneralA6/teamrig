@@ -884,14 +884,15 @@ With `prompts.routeAllow` on (its default), whatever `prompts.hookAsks` says, `h
 with no permission check when all of these hold:
 
 - **it is one role call, as written**: `teamrig issue close <owner/name#n> [--comment "<text>"]` or `teamrig issue
-  comment <owner/name#n> --body "<text>"`, through this install's own launcher, with `--session` the only other flag,
-  as one plain command (an output redirect such as `2>&1` aside). The issue's repository is on `github.repos`. A text
-  is double-quoted with no `"`, `\`, `$`, backtick or line break inside, and the line has no single quote or
-  backslash outside one, so bash runs the text as written. Every text the Bash tool's shell may run reads as the same
-  call;
+  comment <owner/name#n> --body "<text>"`, through this install's own launcher, with `--session <you>`, required, the
+  only other flag, as one plain command (an output redirect such as `2>&1` aside). The issue's repository is on
+  `github.repos`. A text is double-quoted with no `"`, `\`, `$`, backtick or line break inside, and the line has no
+  single quote or backslash outside one, so bash runs the text as written. Every text the Bash tool's shell may run
+  reads as the same call;
 - **the tab is the holder's**: every inbox mark this Claude Code session ever wrote names one session, it is on the
-  roster, and the call runs as that same session (its `--session`, else `$TEAMRIG_SESSION`). A tab that ever read or
-  bound as two sessions holds no role, so `inbox read --session bravo` from alpha's tab never lends it bravo's role;
+  roster, and it is the session the call's `--session` names (the hook never falls back on `$TEAMRIG_SESSION`, which
+  the shell may set otherwise). A tab that ever read or bound as two sessions holds no role, so `inbox read --session
+  bravo` from alpha's tab never lends it bravo's role;
 - **a role gives it**: one of `serviceRoles` names the session among its holders and the command among its commands;
 - **every guard passed it**: the same push, package, secret, db-write, exec, pass-record and service-role guards as
   the route allow; a guard that asks or refuses answers instead;

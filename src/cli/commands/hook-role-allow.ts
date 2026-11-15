@@ -9,21 +9,19 @@ import type { CommandTable } from '../../slash/plan.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { rosterOf, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
-import { envSession } from './hook-input.ts';
 import { kitContextOf } from './hook-route-context.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
  * The session the tab holds roles as (T2984, condition C1): the one area its every inbox mark names, on the roster, and
- * the same session the call runs as (its `--session`, else `$TEAMRIG_SESSION`), so neither a flag nor the environment
- * lends a tab another session's role; undefined otherwise.
+ * the same session the call names with its `--session`, which every role call carries, so a flag never lends a tab
+ * another session's role; undefined otherwise.
  */
-async function holderOf(runtime: CliRuntime, kit: Kit, config: KitConfig, claudeSession: string, named: string | undefined): Promise<string | undefined> {
+async function holderOf(runtime: CliRuntime, kit: Kit, config: KitConfig, claudeSession: string, caller: string): Promise<string | undefined> {
   const roster = await rosterOf(runtime, kit, config);
   const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
   const bound = soleAreaOf(marks, claudeSession);
-  const caller = named ?? envSession(runtime);
-  const found = caller === undefined ? undefined : roster.lookup(caller);
+  const found = roster.lookup(caller);
   return bound !== undefined && roster.ids.includes(bound) && found?.ok === true && found.id === bound ? bound : undefined;
 }
 

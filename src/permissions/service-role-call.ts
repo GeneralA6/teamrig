@@ -54,13 +54,16 @@ export function roleScanTextOf(line: string): string | undefined {
   return scanned.replace(TARGET_WORD, '$1_$2');
 }
 
-/** What a role call runs: the table command, its target, and the `--session` it names, if any. */
+/** What a role call runs: the table command, its target, and the `--session` it names. */
 export interface RoleCall {
   readonly command: ServiceCommand;
   /** `owner/name#n`, as the command takes it, lowercased. */
   readonly target: string;
-  /** The `--session` flag's text; undefined when the line names none, so the tab's own session runs it. */
-  readonly session: string | undefined;
+  /**
+   * The `--session` flag's text, which every role call names (T2984): the CLI would otherwise take the caller from
+   * the shell's environment, which a profile can change, and the hook from its own, so the two could differ.
+   */
+  readonly session: string;
 }
 
 /** What a role call needs beyond the line: the CLI's table, its own launcher, and the team's GitHub repositories. */
@@ -78,10 +81,14 @@ export async function roleCallOf(line: string, context: RoleCallContext): Promis
   }
   const command = parsed.command;
   const target = parseIssueTarget(parsed.positionals[0] ?? '');
-  if (target === undefined || !context.repos.includes(target.repo) || !(await matchesKit(SHAPES[command], words, context))) {
+  const session = parsed.flags.get('session');
+  if (target === undefined || session === undefined) {
     return undefined;
   }
-  return { command, target: targetText(target), session: parsed.flags.get('session') };
+  if (!context.repos.includes(target.repo) || !(await matchesKit(SHAPES[command], words, context))) {
+    return undefined;
+  }
+  return { command, target: targetText(target), session };
 }
 
 /**

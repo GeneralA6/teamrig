@@ -33,7 +33,7 @@ describe('service-role allow: who holds what', () => {
 
 describe('service-role allow: the daily cap and the log', () => {
   const now = Date.parse('2030-01-07T12:00:00.000Z');
-  const call = { command: 'issue close', target: 'acme/web#7', session: undefined } as const;
+  const call = { command: 'issue close', target: 'acme/web#7', session: 'alpha' } as const;
   const line = (at: string, role: string): string => toJsonlLine(roleAllowRecord({ at: new Date(at), session: 'alpha', claudeSession: 'c', role, call }));
 
   it('counts the role allows of that role since the window opened, and nothing else', () => {

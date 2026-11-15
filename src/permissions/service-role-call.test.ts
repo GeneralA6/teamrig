@@ -27,13 +27,13 @@ describe('service-role call: the mask', () => {
 
 describe('service-role call: the shapes', () => {
   it('reads issue close and issue comment on a team repository, with the session the line names', async () => {
-    assert.deepEqual(await roleCallOf('teamrig issue close acme/web#7', CONTEXT), { command: 'issue close', target: 'acme/web#7', session: undefined });
+    assert.deepEqual(await roleCallOf('teamrig issue close acme/web#7 --session gh', CONTEXT), { command: 'issue close', target: 'acme/web#7', session: 'gh' });
     assert.deepEqual(await roleCallOf('teamrig issue close Acme/Web#7 --comment "Fixed in #8; thanks!" --session gh', CONTEXT), {
       command: 'issue close',
       target: 'acme/web#7',
       session: 'gh',
     });
-    assert.deepEqual(await roleCallOf('teamrig issue comment acme/web#12 --body "Looking at it" 2>&1', CONTEXT), { command: 'issue comment', target: 'acme/web#12', session: undefined });
+    assert.deepEqual(await roleCallOf('teamrig issue comment acme/web#12 --session gh --body "Looking at it" 2>&1', CONTEXT), { command: 'issue comment', target: 'acme/web#12', session: 'gh' });
   });
 
   it('reads no call off the table, off the repositories, through another program or joined to another command', async () => {
@@ -60,9 +60,14 @@ describe('service-role call: the shapes', () => {
     }
   });
 
+  it('reads no call naming no --session, whatever the environment says (T2984)', async () => {
+    assert.equal(await roleCallOf('teamrig issue close acme/web#7 --comment "done"', CONTEXT), undefined);
+    assert.equal(await roleCallOf('teamrig issue comment acme/web#7 --body "x"', CONTEXT), undefined);
+  });
+
   it('reads a Bash call alone, as each text its shell may run', async () => {
-    const line = 'teamrig issue close acme/web#7 --comment "done"';
-    assert.deepEqual(await toolRoleCallOf('Bash', line, 'win32', CONTEXT), { command: 'issue close', target: 'acme/web#7', session: undefined });
+    const line = 'teamrig issue close acme/web#7 --comment "done" --session gh';
+    assert.deepEqual(await toolRoleCallOf('Bash', line, 'win32', CONTEXT), { command: 'issue close', target: 'acme/web#7', session: 'gh' });
     assert.equal(await toolRoleCallOf('PowerShell', line, 'win32', CONTEXT), undefined);
     assert.equal(await toolRoleCallOf(undefined, line, 'linux', CONTEXT), undefined);
     assert.equal(await toolRoleCallOf('Bash', 'teamrig issue close acme/web#7 --comment "a\\\\b"', 'win32', CONTEXT), undefined, 'a line with two readings');
