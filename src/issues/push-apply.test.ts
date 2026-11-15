@@ -7,8 +7,9 @@ import type { IssueChange, PushPlan } from './status-push.ts';
 const REPO = 'acme/web';
 
 /** A change on acme/web issue `number` for task T<number>. */
-function change(number: number, writes: Partial<Pick<IssueChange, 'add' | 'remove' | 'close' | 'status'>>): IssueChange {
-  return { target: { repo: REPO, number }, task: `T${number}`, status: writes.status ?? 'in-progress', add: writes.add ?? [], remove: writes.remove ?? [], close: writes.close };
+function change(number: number, writes: Partial<Pick<IssueChange, 'add' | 'remove' | 'close' | 'status' | 'assign'>>): IssueChange {
+  const base = { target: { repo: REPO, number }, task: `T${number}`, status: writes.status ?? 'in-progress', add: writes.add ?? [], remove: writes.remove ?? [], close: writes.close };
+  return writes.assign === undefined ? base : { ...base, assign: writes.assign };
 }
 
 function plan(...changes: IssueChange[]): PushPlan {
@@ -23,6 +24,37 @@ async function push(host: FakeIssueHost, pushed: PushPlan): Promise<{ outcome: A
 }
 
 describe('applyPush', () => {
+  it('reads each login once, then sends the assign after the labels', async () => {
+    const host = new FakeIssueHost().hasLabels('status:in-progress');
+    const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in-progress'], assign: 'octocat' }), change(8, { assign: 'octocat' })));
+    assert.deepEqual(outcome, { sent: 2, writes: 3, held: 0, failed: undefined });
+    assert.deepEqual(lines, ['SET acme/web#7 T7 in-progress: add status:in-progress, assign octocat', 'SET acme/web#8 T8 in-progress: assign octocat']);
+    assert.deepEqual(
+      host.calls.map((call) => call.kind),
+      ['label-add', 'assign', 'assign'],
+    );
+  });
+
+  it('sends a change without the assign of a login the repository may not assign, and skips one left empty', async () => {
+    const host = new FakeIssueHost().hasLabels('status:in-progress').cannotAssign('acme');
+    const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in-progress'], assign: 'acme' }), change(8, { assign: 'acme' })));
+    assert.deepEqual(outcome, { sent: 1, writes: 1, held: 0, failed: undefined });
+    assert.deepEqual(lines, [
+      'UNASSIGNED acme/web: acme may not be assigned there (not a person with access to it); its 2 issue(s) stay unassigned: map the owning session to a login that may under github.owners',
+      'SET acme/web#7 T7 in-progress: add status:in-progress',
+    ]);
+    assert.ok(host.calls.every((call) => call.kind !== 'assign'));
+  });
+
+  it('writes nothing when a login read fails, and stops the repository at a failed assign', async () => {
+    const unread = await push(new FakeIssueHost().readsAssignee({ kind: 'failed', reason: 'gh was stopped' }), plan(change(7, { assign: 'octocat' })));
+    assert.deepEqual(unread.outcome, { sent: 0, writes: 0, held: 0, failed: 'gh was stopped' });
+    assert.deepEqual(unread.lines, ['FAILED acme/web: gh was stopped; nothing was written']);
+    const refused = await push(new FakeIssueHost().failsAssign('may not assign'), plan(change(7, { assign: 'octocat' }), change(8, { assign: 'octocat' })));
+    assert.deepEqual(refused.outcome, { sent: 0, writes: 0, held: 0, failed: 'may not assign' });
+    assert.deepEqual(refused.lines, ['FAILED acme/web#7 T7: may not assign; the rest of acme/web waits for the next run']);
+  });
+
   it('sends each change whole, its labels added, then taken off, then the close', async () => {
     const host = new FakeIssueHost().hasLabels('status:in-progress');
     const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in-progress'], remove: ['status:triaged'] }), change(8, { status: 'done', remove: ['status:waiting'], close: 'completed' })));

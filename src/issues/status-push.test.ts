@@ -13,6 +13,8 @@ import {
   PUSH_WRITES_PER_HOUR,
   PUSH_WRITES_PER_RUN,
   STATUS_LABELS,
+  assigneeOf,
+  sessionLogins,
   type IssueChange,
 } from './status-push.ts';
 
@@ -188,6 +190,44 @@ describe('planPush (T2682)', () => {
     );
     assert.deepEqual(plan.deferred, []);
     assert.deepEqual(planPush(REPO, issues, tasks).heldCloses, []);
+  });
+});
+
+describe('the assignee (T2999)', () => {
+  const logins = sessionLogins({ octocat: 'bravo', hubot: 'bravo', monalisa: 'alpha' });
+
+  it("maps each session to its first login, and an issue to its session's login, else the repository's owner", () => {
+    assert.deepEqual([...logins], [
+      ['bravo', 'octocat'],
+      ['alpha', 'monalisa'],
+    ]);
+    assert.equal(assigneeOf(REPO, 'bravo', logins), 'octocat');
+    assert.equal(assigneeOf(REPO, 'lead', logins), 'acme');
+  });
+
+  it('assigns an open issue no one is assigned to, alone or with its label, and never one a person assigned', () => {
+    const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:triaged'] }), testHostIssue(9, { assignees: ['someone'] })];
+    const tasks = [holding('T1', 7, { owner: 'bravo', status: 'in-progress' }), holding('T2', 8, { owner: 'lead' }), holding('T3', 9, { owner: 'bravo' })];
+    const plan = planPush(REPO, issues, tasks, undefined, logins);
+    assert.deepEqual(
+      plan.changes.map((change) => [change.task, change.add, change.assign, changeWrites(change)]),
+      [
+        ['T1', ['status:in-progress'], 'octocat', 2],
+        ['T2', [], 'acme', 1],
+        ['T3', ['status:triaged'], undefined, 1],
+      ],
+    );
+    assert.deepEqual(plan.changes.map(changeLine), [
+      'LABEL acme/web#7 T1 in-progress: add status:in-progress, assign octocat',
+      'ASSIGN acme/web#8 T2 open: assign acme',
+      'LABEL acme/web#9 T3 open: add status:triaged',
+    ]);
+  });
+
+  it('assigns no closing issue, and nobody without logins', () => {
+    const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:triaged'] })];
+    assert.equal(planPush(REPO, issues, [holding('T1', 7, { status: 'done' })], undefined, logins).changes[0]?.assign, undefined);
+    assert.deepEqual(planPush(REPO, issues, [holding('T2', 8, { status: 'open' })]).changes, []);
   });
 });
 

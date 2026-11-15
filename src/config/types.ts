@@ -676,8 +676,9 @@ export interface GithubConfig {
   readonly everyMinutes: number;
   /**
    * Whether the automatic sync also sends the status push (`issue sync --push --yes`), so each issue a task holds
-   * shows the task's status without a session running it. It sends labels only: a close waits for a session's
-   * `issue sync --push --yes` (security verdict F1 on T2876). Off by default: read the push's dry run first.
+   * shows the task's status without a session running it. It sends labels and assignees only: a close waits
+   * for a session's `issue sync --push --yes` (security verdict F1 on T2876).
+   * Off by default: read the push's dry run first.
    */
   readonly statusPush: boolean;
   /**

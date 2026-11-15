@@ -4,7 +4,7 @@ import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.
 import { importRules } from '../../github/map.ts';
 import { importedTasks, linkedRefs, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
-import { autoPushWrites } from '../../issues/status-push.ts';
+import { autoPushWrites, sessionLogins } from '../../issues/status-push.ts';
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -134,8 +134,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
         since,
         tasks: async () => (await register.snapshot()).state.tasks.values(),
         send: true,
-        // No closes: the automatic push sends labels only (security verdict F1 on T2876); it prints each close held.
+        // No closes: the automatic push sends labels and assignees only (security verdict F1 on T2876); it prints each close held.
         limits: { writesPerRun, closes: false },
+        logins: sessionLogins(config.github.owners),
         told,
       },
       say,

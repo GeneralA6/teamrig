@@ -149,17 +149,20 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(writes(gh), [
       'api repos/acme/web/labels/status%3Atriaged',
+      'api repos/acme/web/assignees/acme',
       'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:triaged',
       'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:triaged',
+      'api repos/acme/web/issues/8/assignees -X POST -f assignees[]=acme',
     ]);
-    assert.ok(result.stdout.includes('PUSHED 2 change(s), 2 write(s); at most 20 a run, the rest planned again on the next'), result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('PUSHED 2 change(s), 3 write(s); at most 20 a run, the rest planned again on the next'), result.stdout.join('\n'));
     const wrote = result.stdout.find((line) => line.startsWith('WROTE ')) ?? '';
     assert.ok(!wrote.includes('GitHub was only read'), wrote);
   });
 
   it('shares the run writes across the repositories, in their order, leaving the rest for the next run', async () => {
     const kit = new CliHarness(pushTeam({ statusPush: true, everyMinutes: 1 }));
-    const three = (repo: string): JsonRecord[] => [1, 2, 3].map((number) => ghIssue(repo, number, { title: `Work ${number}` }));
+    // Assigned already, so each change is one label write.
+    const three = (repo: string): JsonRecord[] => [1, 2, 3].map((number) => ghIssue(repo, number, { title: `Work ${number}`, assignees: ['octocat'] }));
     const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:triaged']).hasLabels('acme/api', ['status:triaged']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
@@ -191,7 +194,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
       result.stdout.filter((line) => /^(PUSH|HELD|PUSHED) /u.test(line)),
       [
         "PUSH acme/web: 0 to change, 0 unchanged, 1 close(s) held for a session's push",
-        "HELD acme/web#7 T1 dropped: close as not-planned, take off status:triaged; the automatic push sends labels only: a session's teamrig issue sync --push --yes sends the close",
+        "HELD acme/web#7 T1 dropped: close as not-planned, take off status:triaged; the automatic push never closes: a session's teamrig issue sync --push --yes sends the close",
         'PUSH acme/api: 0 to change, 0 unchanged',
         'PUSHED 0 change(s), 0 write(s); at most 20 a run, the rest planned again on the next',
       ],
