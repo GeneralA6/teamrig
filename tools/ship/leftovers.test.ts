@@ -69,6 +69,14 @@ test('a branch names its task by its t<id>- prefix, in lower case', () => {
   assert.equal(taskOf('t12'), null);
 });
 
+test('a branch named by a pattern names its task by the first part that starts t<id>-', () => {
+  assert.equal(taskOf('feat/t1867-reship'), 't1867');
+  assert.equal(taskOf('lead/fix/T838-guard'), 't838');
+  assert.equal(taskOf('fix/t5-a/t6-b'), 't5');
+  assert.equal(taskOf('feat/xt5-parser'), null);
+  assert.equal(taskOf('feat/parser-t5-x'), null);
+});
+
 test('a merge sweeps the leftovers of its own task only, never the merged head or a branch with work', () => {
   const states: BranchState[] = [
     { branch: 't5-new', sha: A, ahead: 0 },

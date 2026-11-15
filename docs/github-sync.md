@@ -244,6 +244,29 @@ request is re-shipped by its owner on the newest base under a new branch name, n
 the branch the pull request targets when it is not `origin`'s default; the fetch uses git's own access to `origin`,
 not a token.
 
+## Showing each task's status on its issue
+
+`teamrig issue sync --push` plans the other way: for each issue a task holds (its ref `gh:owner/name#number`), what
+makes the issue show the task's status. This version only plans: it reads the issues, like the sync, and writes
+nothing.
+
+```text
+ACCESS acme: read with the token saved as teamrig-gh-acme
+PUSH acme/web: 2 to change, 4 unchanged, 1 closed on the host while the task is active
+LABEL acme/web#7 T41 in-progress: add status:in-progress, take off status:triaged
+CLOSE acme/web#9 T42 done: close as completed, take off status:in-review
+KEPT acme/web#5 T30 open: closed on the host (not_planned) while the task is active; the push never reopens an issue, so set the task to match or reopen the issue
+PREVIEW nothing was written; a push would send 4 write(s) now, at most 40 a run, and plan the rest again on the next
+```
+
+- **One status label.** `open` shows `status:triaged`, `in-progress` `status:in-progress`, `waiting`
+  `status:waiting`, `verifying` `status:in-review`; any other `status:` label comes off. Done closes the issue as
+  completed, dropped as not planned.
+- **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
+  changed by hand is set back, and a run that stopped half way is planned again whole.
+- **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
+- **Within GitHub's limit.** At most 40 writes a run, half GitHub's 80 a minute; the rest waits for the next run.
+
 ## Renewing a token
 
 When a token expires, GitHub refuses it and the `FAILED` line says so. Regenerate it on GitHub (the token's page has

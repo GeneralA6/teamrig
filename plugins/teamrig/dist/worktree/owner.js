@@ -8,9 +8,13 @@
  * nothing to lose, so any session may remove it. A rebase stopped before its first new commit looks the same; removing
  * it ends that rebase, but its branch keeps every commit. Any other detached HEAD is the lead's alone to remove.
  */
-/** The task a branch is named for: `T12` for `t12-parser` or `T12`; undefined for a branch named for none. */
+/**
+ * The task a branch is named for: `T12` for `t12-parser`, `T12`, or a part of the name that starts with the id, as
+ * `delivery.branches` patterns put it (`feat/t12-parser`, T2690); the first such part counts. Undefined for a branch
+ * named for none.
+ */
 export function branchTaskOf(branch) {
-    const digits = branch === undefined ? undefined : /^t(\d+)(?:-|$)/i.exec(branch)?.[1];
+    const digits = branch === undefined ? undefined : /(?:^|\/)t(\d+)(?:[-/]|$)/i.exec(branch)?.[1];
     return digits === undefined ? undefined : `T${digits}`;
 }
 /** Undefined when the caller may remove the worktree; else why not, naming who may. */
@@ -28,7 +32,7 @@ export function removalRefusal({ caller, branch, mergedInto, ownerOf, tree }) {
         return `the worktree is on no branch, and git does not show every commit of its HEAD on the default branch (as of the last fetch), ${leadAlone}: if it merged, fetch and run this again`;
     }
     if (task === undefined || owner === undefined) {
-        const named = task === undefined ? 'names no task (t<id>-<name>)' : `names ${task}, which the register lacks`;
+        const named = task === undefined ? 'names no task (t<id>-<name>, or a part starting t<id>-)' : `names ${task}, which the register lacks`;
         return `the worktree's branch ${branch} ${named}, ${leadAlone}`;
     }
     const may = [owner, ...tree.chainOf(owner)];

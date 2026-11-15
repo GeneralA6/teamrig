@@ -122,6 +122,15 @@ describe('matchesGitPush', () => {
     }
   });
 
+  it('takes a branch a delivery.branches pattern names, the task id starting a part of it (T2690)', async () => {
+    for (const branch of ['feat/t1-parser', 'fix/T1-x', 'web/feat/t1/x']) {
+      assert.equal(await push(`git push -u origin ${branch}`), true, branch);
+    }
+    for (const branch of ['feat/t2-parser', 'feat/xt1-parser', 'feat/parser-t1', 'refs/heads/feat/t1-x', 'feat/t1-x:main']) {
+      assert.equal(await push(`git push -u origin ${branch}`), false, branch);
+    }
+  });
+
   it('takes only a branch of a task the caller owns, never a protected one, whatever its case', async () => {
     for (const branch of ['t2-x', 'feature-x', 'main', 'MAIN', 't3-release', 'T3-Release', 't9-x']) {
       assert.equal(await push(`git push origin ${branch}`), false, branch);

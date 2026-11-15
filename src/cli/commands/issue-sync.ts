@@ -7,10 +7,11 @@ import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts'
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { hostOf } from '../issue-hosts.ts';
+import { hostOf, reposOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
+import { issuePush } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, reportAutoSync } from './issue-sync-auto.ts';
 
 /** The rows of steps a repository prints; the rest are counted. */
@@ -24,7 +25,7 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
 
 /**
  * `issue sync [--repo <owner/name>] [--yes]`: brings the task list in step with the GitHub issues of the team's
- * `github.repos`, inbound only. Each repository is listed through the issue host port (issues/host.ts; on GitHub
+ * `github.repos`, inbound; `--push` plans the outbound half instead (issue-push.ts). Each repository is listed through the issue host port (issues/host.ts; on GitHub
  * with the token saved for its owner, else, when none is saved, the gh login), and an ACCESS line says which, once
  * per owner; a saved token the store could not read fails that owner's repositories, never read through the login
  * instead. A sync only lists issues, and the
@@ -37,6 +38,9 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  */
 export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
+  if (args.switches.has('push')) {
+    return issuePush(args, runtime);
+  }
   const auto = args.switches.has('auto');
   const write = auto || args.switches.has('yes');
   if (auto && args.flags.has('repo')) {
@@ -118,18 +122,6 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
 function refusedReason(outcomes: readonly StepOutcome[]): string | undefined {
   const errors = outcomes.flatMap((outcome) => (outcome.result.ok ? [] : [outcome.result.error]));
   return errors.length === 0 ? undefined : `the task list refused ${errors.length} step(s), first: ${errors[0]}`;
-}
-
-/** The repositories to read: every one of `github.repos`, or the one `--repo` names, which must be among them. */
-function reposOf(repos: readonly string[], asked: string | undefined): readonly string[] {
-  if (asked === undefined) {
-    return repos;
-  }
-  const repo = asked.trim().toLowerCase();
-  if (!repos.includes(repo)) {
-    throw new RefusedError(`--repo ${asked} is not one of github.repos (${repos.join(', ')})`);
-  }
-  return [repo];
 }
 
 function previewLines(repo: string, plan: SyncPlan): string[] {

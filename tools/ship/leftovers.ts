@@ -64,9 +64,12 @@ export function workCommits(commits: readonly LoggedCommit[], regenerated: reado
   return commits.filter(commit => commit.parents.length > 1 || commit.files.some(file => !isRegenerated(file, regenerated)));
 }
 
-/** The task a branch is named for (`t1867-reship` → `t1867`), lower case; null for a branch named for none. */
+/**
+ * The task a branch is named for (`t1867-reship` → `t1867`, `feat/t1867-reship` too: the first part of the name that
+ * starts `t<id>-`, as `delivery.branches` patterns put it), lower case; null for a branch named for none.
+ */
 export function taskOf(branch: string): string | null {
-  return /^(t\d+)-/i.exec(branch)?.[1]?.toLowerCase() ?? null;
+  return /(?:^|\/)(t\d+)-/i.exec(branch)?.[1]?.toLowerCase() ?? null;
 }
 
 /** Every branch on origin but main, with its sha and its work commits counted against main; fetches and prunes first. */
