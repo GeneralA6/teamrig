@@ -28,6 +28,7 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
 | [`dev-add-config-key`](.claude/skills/dev-add-config-key/SKILL.md) | a new key in the team config |
 | [`dev-update-docs`](.claude/skills/dev-update-docs/SKILL.md) | the docs a change must update, and the checks that hold them to the code |
 | [`dev-ship-change`](.claude/skills/dev-ship-change/SKILL.md) | from the last commit to the merge: dist, version raise, checks, push, pull request |
+| [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.md) | joining a design issue: a reasoned comment, nothing taken until it is agreed, no sensitive data |
 
 - **One branch per change**, cut from the newest `origin/main` (see [Branches and releases](#branches-and-releases)).
 - **One logical change per commit**: a fix with its tests, a refactor apart from what it enables, a mechanical change
@@ -185,6 +186,7 @@ is turned off.
 | Bug report | `bug` | What happened, What was expected, Steps, Version (`teamrig --version`), OS |
 | Task | `task` | What, Why, Done when |
 | Feature request | `feature` | Problem, Proposal, Alternatives (optional) |
+| Design | `design` | Question, Context, Options, Proposal (optional); talk, not work, until agreed ([Design issues](#design-issues)) |
 
 - **Title**: `<area>: <a plain sentence>`, such as `budget: the week line counts a retired session`.
 - **Labels** are listed in `.github/labels.json`. The form sets the type. Maintainers and the GitHub watcher set
@@ -194,6 +196,24 @@ is turned off.
   [SECURITY.md](SECURITY.md) says what to send.
 - `tools/ci/github-format.ts` lists each form's sections and the pull request template's, and
   `tools/ci/github-format.test.ts` holds the forms, `labels.json` and the template to it.
+
+## Design issues
+
+A design issue, labelled `design`, is where we talk about how something should work before anyone builds it, in
+place of a discussion forum. Open one with the Design form. Every contributor, and the agent working for them, may
+join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.md).
+
+- **Give your side with reasons**: a comment saying what you would do and why, what it costs and what it gives up,
+  answering the earlier comments you disagree with. One comment per point, not a running log.
+- **Nothing to take yet**: no claim, no assignee, no branch, no code and no pull request until the maintainer marks
+  it agreed. teamrig shows no status label on a design issue and assigns it to no one.
+- **Agreed**: the maintainer posts a comment starting `Agreed:` that sums up the decision, updates the issue body to
+  it and takes the `design` label off, or opens the work as new issues linked to it. From then on it is work, taken
+  like any other issue.
+- **Never post sensitive data**, here or anywhere public (an issue, a comment, a pull request, a commit): no secret,
+  token or key, no private path, host name or e-mail address, no private log, and no security hole. A security hole
+  goes through a private report, as [SECURITY.md](SECURITY.md) says; a log goes in cut to the lines that matter, with
+  every private value taken out.
 
 ## Pull requests
 - **The description**: the template asks for What, Why, Reach (see [Where a change lives](#where-a-change-lives)), Changes, Old-code proof (for a fix, the regression test that
