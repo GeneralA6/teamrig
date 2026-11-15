@@ -100,6 +100,19 @@ describe('hook picker-guard', () => {
     assert.match(reasonOf(member) ?? '', /--session front`; the lead brings it to the owner\./);
   });
 
+  // T2985: a worker in its own meeting with the owner asks there in plain text.
+  it('refuses the picker of a session in its own meeting, saying to ask in plain text, and as before once it ends', async () => {
+    const kit = new CliHarness(ON_TEAM);
+    const ask = { stdin: call('AskUserQuestion'), env: ALPHA };
+    assert.equal((await kit.run(['meeting', 'start', '--about', 'the cache design', '--session', 'alpha'])).code, EXIT.ok);
+    const inMeeting = await kit.run(HOOK, ask);
+    assert.equal(decisionOf(inMeeting), 'deny');
+    assert.match(reasonOf(inMeeting) ?? '', /^teamrig picker guard: your meeting M1 with the owner is in this tab: ask in plain text/);
+    assert.match(reasonOf(await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: { TEAMRIG_SESSION: 'bravo' } })) ?? '', /the lead brings it to the owner\./, 'another session');
+    assert.equal((await kit.run(['meeting', 'end', '--session', 'alpha'])).code, EXIT.ok);
+    assert.match(reasonOf(await kit.run(HOOK, ask)) ?? '', /the lead brings it to the owner\./);
+  });
+
   it("tells the root lead of a tree in the owner's meeting to ask in plain text, as the lead of a team on its own", async () => {
     const kit = await treeHarness({ pickerGuard: { enabled: true } });
     assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);

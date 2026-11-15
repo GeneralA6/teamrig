@@ -53,11 +53,13 @@ export function askerOf(session: string | undefined, helper: boolean, lead: stri
 }
 
 /**
- * The owner's meeting as the guard sees it: whether the asker's team has one open, read for a lead's own thread only, a
- * sub-team's lead's too (T2985), as no other asker's reason names it.
+ * The owner's meetings as the guard sees them: whether the asker's team has its daily meeting open, read for a lead's
+ * own thread only, a sub-team's lead's too (T2985), as no other asker's reason names it; and the id of the booked or
+ * on-the-spot meeting held in the asker's own tab, any session's (T2985), undefined when none is or for a helper.
  */
 export interface LeadMeeting {
   readonly open: boolean;
+  readonly inTab: string | undefined;
 }
 
 /** The decision card's set command for `session`, run with `command`. */
@@ -76,6 +78,13 @@ export function pickerReason(command: string, asker: PickerAsker, meeting: LeadM
     return (
       `${guard} the owner's daily meeting asks in plain text. Read the card as it stands,` +
       " its options numbered and your recommendation first, and let the owner answer in their own words; record the answer in the same turn:" +
+      ` \`${command} update <id> --decided --note "owner decided: <decision>" --session ${asker.session}\`.`
+    );
+  }
+  if (asker.role !== 'helper' && meeting.inTab !== undefined) {
+    return (
+      `${guard} your meeting ${meeting.inTab} with the owner is in this tab: ask in plain text,` +
+      ' your options numbered and your recommendation first, and let the owner answer in their own words; record a decision on its task in the same turn:' +
       ` \`${command} update <id> --decided --note "owner decided: <decision>" --session ${asker.session}\`.`
     );
   }
