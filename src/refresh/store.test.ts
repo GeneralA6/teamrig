@@ -25,12 +25,12 @@ describe('RefreshStore', () => {
     const files = new MemoryFiles();
     const store = new RefreshStore(files, PATHS);
     const path = join(PATHS.refresh, 'alpha.json');
-    await files.write(path, '{"v":3,"phase":"boundary","task":"T3","at":"x","finished":1,"ask":null,"later":true}\n');
+    await files.write(path, '{"v":4,"phase":"boundary","task":"T3","at":"x","finished":1,"ask":null,"later":true}\n');
     await assert.rejects(store.setState('alpha', { phase: 'boundary', task: 'T3', at: AT, finished: 2, ask: null }), NewerDataError);
     assert.match(files.get(path) ?? '', /"later":true/);
     await files.write(path, '{"v":1,"phase":"boundary","task":"T3","at":"x","finished":1,"ask":null}\n');
     await store.setState('alpha', { phase: 'boundary', task: 'T3', at: AT, finished: 2, ask: null });
-    assert.match(files.get(path) ?? '', /^\{"v":2,/);
+    assert.match(files.get(path) ?? '', /^\{"v":3,/);
   });
 
   it("keeps the lead's request in a file of its own, so neither write overwrites the other", async () => {

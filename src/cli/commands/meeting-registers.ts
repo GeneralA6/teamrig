@@ -21,13 +21,17 @@ export function agendaRegisterOf(rolled: RolledTeam, runtime: CliRuntime): Omit<
   };
 }
 
-/** What the agenda asks the owner's cards from: the lead's register, each team under it, the day for the batch. */
-export function decisionAgendaOf({ own, teams }: RollUp, runtime: CliRuntime, now: number): DecisionAgenda {
+/**
+ * What the agenda asks the owner's cards from: the lead's register, each team under it, the day for the batch, and the
+ * cards carried over (Meeting.carried, T2775), asked first.
+ */
+export function decisionAgendaOf({ own, teams }: RollUp, runtime: CliRuntime, now: number, carried: readonly string[]): DecisionAgenda {
   return {
     ...agendaRegisterOf(own, runtime),
     below: teams.filter((rolled) => rolled.team !== own.team).map((rolled) => ({ team: rolled.team, ...agendaRegisterOf(rolled, runtime) })),
     now,
     improvementsDay: own.config.focus.improvementsDay,
+    carried,
   };
 }
 

@@ -83,7 +83,7 @@ describe('runCli: the daily meeting', () => {
     const { stdout } = await kit.run(['meeting', 'start', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' });
     assert.equal(stdout[0], 'MEETING started Tue 01-08 12:00 IST: messages to app-lead are held but CRITICAL ones (the hook tells each sender)');
     assert.ok(stdout.includes('DONE 0 done, 0 dropped since Mon 01-07 12:00 IST'), stdout.join('\n'));
-    await kit.run(['update', 'T1', '--note', 'owner decided: go', '--session', 'lead']);
+    await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: go', '--session', 'lead']);
     const ended = await kit.run(['meeting', 'end', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' });
     assert.match(ended.stdout[0] ?? '', /^MEETING ended Tue 01-08 12:00 IST after /);
     const lines = await inboxOf(kit, 'alpha');
@@ -196,25 +196,71 @@ describe('runCli: the daily meeting', () => {
     assert.equal(next.stdout[done + 1], '  Other work 1: teamrig list --status done');
   });
 
-  it("ends: tells only a session with the lead's decisions on its tasks, with them", async () => {
+  it("ends: tells only a session with the owner's answers on its tasks, with them, and not a plain note (T2775)", async () => {
     const kit = await teamBeforeTheMeeting();
     await kit.run(['meeting', 'start', '--session', 'lead']);
     await inboxOf(kit, 'alpha');
     await inboxOf(kit, 'bravo');
     kit.clock.advance(25 * MINUTE);
-    const decided = await kit.run(['update', 'T1', '--note', 'owner decided: the middle tier', '--priority', 'p2', '--session', 'lead']);
+    const decided = await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: the middle tier', '--session', 'lead']);
     assert.equal(decided.code, EXIT.ok, decided.stderr.join('\n'));
+    const noted = await kit.run(['update', 'T2', '--note', 'lead: the docs can wait a day', '--priority', 'p3', '--session', 'lead']);
+    assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
     const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
     assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
+    const cleared = 'owner decided: the middle tier (its wait on the owner cleared: act on it, set its next status)';
     assert.deepEqual(ended.stdout, [
       'MEETING ended Tue 01-08 10:25 UTC after 25 min: messages to app-lead go again; told 1 session(s) the decisions on their tasks',
       "RECORDED 1 decision(s), each told to its task's owner",
-      '  alpha T1: owner decided: the middle tier (changed priority)',
+      `  alpha T1: ${cleared}`,
     ]);
     const alpha = await inboxOf(kit, 'alpha');
-    assert.ok(alpha.some((line) => line.endsWith("lead: the owner's daily meeting with app-lead ended Tue 01-08 10:25 UTC. Decided on your tasks: T1: owner decided: the middle tier (changed priority).")), alpha.join('\n'));
+    assert.ok(alpha.some((line) => line.endsWith(`lead: the owner's daily meeting with app-lead ended Tue 01-08 10:25 UTC. Decided on your tasks: T1: ${cleared}.`)), alpha.join('\n'));
     const bravo = await inboxOf(kit, 'bravo');
     assert.ok(!bravo.some((line) => line.includes('daily meeting')), bravo.join('\n'));
+  });
+
+  it('carries every card with no answer to the next meeting, which asks it first; a Decided or a Later is done (T2775)', async () => {
+    const kit = await teamBeforeTheMeeting();
+    for (const title of ['Pick the launch date', 'Pick the support plan']) {
+      await kit.run(['add', '--title', title, '--description', 'which one', '--priority', 'p1', '--session', 'alpha']);
+    }
+    for (const id of ['T3', 'T4']) {
+      const waiting = await kit.run(['set', id, '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
+      assert.equal(waiting.code, EXIT.ok, waiting.stderr.join('\n'));
+    }
+    await kit.run(['meeting', 'start', '--session', 'lead']);
+    await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: the middle tier', '--session', 'lead']);
+    await kit.run(['update', 'T3', '--later', '2030-01-12 09:00', '--note', 'owner: after the demo', '--session', 'lead']);
+    const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
+    assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
+    assert.equal(ended.stdout.at(-1), 'CARRIED 1 card(s) with no answer to the next meeting, asked there first: T4');
+
+    kit.clock.advance(24 * 60 * MINUTE);
+    await kit.run(['add', '--title', 'Pick the logo', '--description', 'which one', '--priority', 'p1', '--session', 'alpha']);
+    await kit.run(['set', 'T5', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', 'alpha']);
+    const next = (await kit.run(['meeting', 'start', '--session', 'lead'])).stdout;
+    const head = next.indexOf('DECISIONS 2 waiting on owner (decision or approval)');
+    assert.ok(head > 0, next.join('\n'));
+    assert.equal(next[head + 1], '  Carried over 1, asked at the last meeting and still open, first:');
+    assert.match(next[head + 2] ?? '', /^ {2}T4 /);
+    const fresh = next.indexOf('  New since the last meeting 1:');
+    assert.ok(fresh > head + 2 && fresh < next.findIndex((line) => /^ {2}T5 /.test(line)), next.join('\n'));
+    assert.ok(!next.some((line) => /^ {2}T1 /.test(line)), 'a Decided card is asked no more');
+  });
+
+  it('carries nothing once each card got an answer, and drops a carried card whose wait cleared (T2775)', async () => {
+    const kit = await teamBeforeTheMeeting();
+    await kit.run(['meeting', 'start', '--session', 'lead']);
+    const first = await kit.run(['meeting', 'end', '--session', 'lead']);
+    assert.equal(first.stdout.at(-1), 'CARRIED 1 card(s) with no answer to the next meeting, asked there first: T1');
+    await kit.run(['set', 'T1', '--status', 'in-progress', '--note', 'the owner answered in chat', '--session', 'alpha']);
+    kit.clock.advance(24 * 60 * MINUTE);
+    const next = (await kit.run(['meeting', 'start', '--session', 'lead'])).stdout;
+    assert.ok(next.includes('DECISIONS 0 waiting on owner (decision or approval)'), next.join('\n'));
+    assert.ok(!next.some((line) => line.includes('Carried over')), next.join('\n'));
+    const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
+    assert.ok(!ended.stdout.some((line) => line.startsWith('CARRIED')), ended.stdout.join('\n'));
   });
 
   it('ends a meeting with nothing recorded: posts no line, and says a decision the register lacks reaches no one', async () => {
@@ -242,7 +288,7 @@ describe('runCli: the daily meeting', () => {
   it('names a session it could not tell, and goes on', async () => {
     const kit = await teamBeforeTheMeeting({ ...TEAM, register: { secretPatterns: ['daily meeting'] } });
     await kit.run(['meeting', 'start', '--session', 'lead']);
-    await kit.run(['update', 'T1', '--note', 'owner decided: go', '--session', 'lead']);
+    await kit.run(['update', 'T1', '--decided', '--note', 'owner decided: go', '--session', 'lead']);
     const ended = await kit.run(['meeting', 'end', '--session', 'lead']);
     assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
     assert.match(ended.stdout[0] ?? '', /^NOT TOLD alpha: the line looks like it holds a secret/);

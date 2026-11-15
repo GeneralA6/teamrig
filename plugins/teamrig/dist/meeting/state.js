@@ -1,4 +1,4 @@
-import { stringField } from "../core/guards.js";
+import { isStringArray, stringField } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { MS_PER_HOUR } from "../core/time.js";
 /**
@@ -38,16 +38,18 @@ export function parseMeeting(text) {
     const by = stringField(record, 'by');
     const endedAt = record['endedAt'];
     const since = record['since'];
+    const carried = record['carried'] ?? [];
     if (startedAt === undefined || by === undefined || Number.isNaN(Date.parse(startedAt))) {
         return undefined;
     }
-    if ((endedAt !== null && typeof endedAt !== 'string') || (since !== null && typeof since !== 'string')) {
+    if ((endedAt !== null && typeof endedAt !== 'string') || (since !== null && typeof since !== 'string') || !isStringArray(carried)) {
         return undefined;
     }
-    return { startedAt, by, endedAt, since };
+    return { startedAt, by, endedAt, since, carried };
 }
 export function formatMeeting(meeting) {
-    return toJsonlLine({ [VERSION_FIELD]: MEETING_FORMAT, startedAt: meeting.startedAt, by: meeting.by, endedAt: meeting.endedAt, since: meeting.since });
+    const { startedAt, by, endedAt, since, carried } = meeting;
+    return toJsonlLine({ [VERSION_FIELD]: MEETING_FORMAT, startedAt, by, endedAt, since, carried: [...carried] });
 }
 /** The latest meeting, one small JSON file (`state/meeting.json`). */
 export class MeetingStore {

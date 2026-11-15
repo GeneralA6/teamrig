@@ -1276,7 +1276,7 @@ describe('teamrig statusline', () => {
   describe('while the owner meets the lead (T2513)', () => {
     const MEETING_FILE = join(TEAM_HOME, 'state', 'meeting.json');
     /** The lead's meeting, started an hour before the harness's clock. */
-    const OPEN_MEETING: Meeting = { startedAt: '2030-01-08T09:00:00.000Z', by: 'lead', endedAt: null, since: null };
+    const OPEN_MEETING: Meeting = { startedAt: '2030-01-08T09:00:00.000Z', by: 'lead', endedAt: null, since: null, carried: [] };
     const HELD = `${SHOWN}, meeting on: held`;
     const COLOURED = `\x1b[38;2;215;95;215m${SHOWN}\x1b[0m`;
 

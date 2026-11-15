@@ -9,7 +9,7 @@ import { ACTIVE_STATUSES } from '../register/model.ts';
 import { asksOwner, isDedicated, isProofAsk, isUngated, ownerLater } from '../register/owner-waits.ts';
 import type { TaskTree } from '../register/tree.ts';
 import { cut, formatShortTask } from '../register/views.ts';
-import { decisionOrder, isImprovementsDay, type Decision, type DecisionFocus, type DecisionRead } from './decision-order.ts';
+import { decisionKey, decisionOrder, isImprovementsDay, type Decision, type DecisionFocus, type DecisionRead } from './decision-order.ts';
 
 /**
  * The register's part of the daily meeting's agenda, gathered in one call so the lead spends no turn per item, in the
@@ -79,6 +79,8 @@ export interface AgendaInput {
   readonly improvementsDay: Weekday;
   /** What the hand step file of each card asked, the lead's team's and those under it, hashes to now (T2312). */
   readonly runFiles: RunFiles;
+  /** The cards a meeting left unanswered (Meeting.carried, T2775), by decisionKey: asked first, as carried over. */
+  readonly carried: readonly string[];
 }
 
 /** Text on one line: line breaks and runs of spaces become one space. */
@@ -178,23 +180,32 @@ export function laterLine(command: string, ownerMarker: string, lead: string, un
 }
 
 /** What the agenda reads the owner's decisions from: the lead's register, those under it, and the day for the batch. */
-export type DecisionAgenda = AgendaRegister & Pick<AgendaInput, 'below' | 'now' | 'improvementsDay'>;
+export type DecisionAgenda = AgendaRegister & Pick<AgendaInput, 'below' | 'now' | 'improvementsDay' | 'carried'>;
 
 /**
- * The cards the agenda asks today, in its order: the daily ones, then the Improvements batch on its weekday (empty on
- * the others). The meeting's agenda panel lists the same cards in the same order (src/meeting/panel.ts).
+ * The cards the agenda asks today, in its order: the carried over ones first (T2775), a batch one too on any day, as a
+ * meeting asked it already; then the other daily ones; then the Improvements batch on its weekday (empty on the
+ * others). A carried card no longer waiting on the owner is not asked. The meeting's agenda panel lists the same cards
+ * in the same order (src/meeting/panel.ts).
  */
 export function askedDecisions(input: DecisionAgenda): { readonly daily: readonly Decision[]; readonly batch: readonly Decision[] } {
   const order = decisionOrder([decisionRead(input, undefined), ...input.below.map((team) => decisionRead(team, team.team))]);
-  return { daily: order.daily, batch: isImprovementsDay(input.now, input.improvementsDay) ? order.improvements : [] };
+  const carried = new Set(input.carried);
+  const isCarried = (decision: Decision): boolean => carried.has(decisionKey(decision));
+  const fresh = (decisions: readonly Decision[]): Decision[] => decisions.filter((decision) => !isCarried(decision));
+  return {
+    daily: [...[...order.daily, ...order.improvements].filter(isCarried), ...fresh(order.daily)],
+    batch: isImprovementsDay(input.now, input.improvementsDay) ? fresh(order.improvements) : [],
+  };
 }
 
 /**
  * DECISIONS: the tasks waiting on the owner, the lead's team's and those of each team under it (T1018) in one list
  * ranked by what they unblock (decisionOrder), a tie keeping the lead's team first, each with its card facts, then how
  * to card, ask and record them. A decision that frees only Improvements work is asked in its weekly batch, after the
- * daily cards, and no other day shows it. The card form is the owner's: each item readable alone, with the numbers to
- * decide by and one exact action.
+ * daily cards, and no other day shows it. The cards the meeting before left unanswered come first, under their own
+ * line (T2775). The card form is the owner's: each item readable alone, with the numbers to decide by and one exact
+ * action.
  */
 function decisionLines(input: AgendaInput): string[] {
   const { daily, batch } = askedDecisions(input);
@@ -206,9 +217,21 @@ function decisionLines(input: AgendaInput): string[] {
   const below = asked.some((decision) => decision.team !== undefined);
   const labelled = below ? ' (<team>/<id> for a task of a team under yours, as its row names it)' : '';
   const handed = below ? ' (and --team <team> for a team under yours)' : '';
+  const carriedKeys = new Set(input.carried);
+  const carried = daily.filter((decision) => carriedKeys.has(decisionKey(decision)));
+  const fresh = daily.slice(carried.length);
+  const carriedBlock =
+    carried.length === 0
+      ? []
+      : [
+          `  Carried over ${carried.length}, asked at the last meeting and still open, first:`,
+          ...cardsOf(carried, input.runFiles),
+          ...(fresh.length === 0 ? [] : [`  New since the last meeting ${fresh.length}:`]),
+        ];
   return [
     head,
-    ...cardsOf(daily, input.runFiles),
+    ...carriedBlock,
+    ...cardsOf(fresh, input.runFiles),
     ...(batch.length === 0 ? [] : [`  Improvements batch ${batch.length}, weekly, after the daily cards:`, ...cardsOf(batch, input.runFiles)]),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
     askLine(input.ownerMarker),

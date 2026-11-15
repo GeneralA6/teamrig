@@ -1,5 +1,5 @@
 import type { Files } from '../core/files.ts';
-import { stringField } from '../core/guards.ts';
+import { isStringArray, stringField } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { MS_PER_HOUR } from '../core/time.ts';
 
@@ -22,6 +22,12 @@ export interface Meeting {
   readonly endedAt: string | null;
   /** When the meeting before it closed, from which its agenda counts the finished work; null for a team's first. */
   readonly since: string | null;
+  /**
+   * The cards the agenda asks first, as carried over (T2775), by decisionKey: while the meeting is open, those the
+   * meeting before left unanswered; once `meeting end` closed it, those this one left unanswered, for the next. A file
+   * written before carry-over had none.
+   */
+  readonly carried: readonly string[];
 }
 
 /**
@@ -65,17 +71,19 @@ export function parseMeeting(text: string): Meeting | undefined {
   const by = stringField(record, 'by');
   const endedAt = record['endedAt'];
   const since = record['since'];
+  const carried = record['carried'] ?? [];
   if (startedAt === undefined || by === undefined || Number.isNaN(Date.parse(startedAt))) {
     return undefined;
   }
-  if ((endedAt !== null && typeof endedAt !== 'string') || (since !== null && typeof since !== 'string')) {
+  if ((endedAt !== null && typeof endedAt !== 'string') || (since !== null && typeof since !== 'string') || !isStringArray(carried)) {
     return undefined;
   }
-  return { startedAt, by, endedAt, since };
+  return { startedAt, by, endedAt, since, carried };
 }
 
 export function formatMeeting(meeting: Meeting): string {
-  return toJsonlLine({ [VERSION_FIELD]: MEETING_FORMAT, startedAt: meeting.startedAt, by: meeting.by, endedAt: meeting.endedAt, since: meeting.since });
+  const { startedAt, by, endedAt, since, carried } = meeting;
+  return toJsonlLine({ [VERSION_FIELD]: MEETING_FORMAT, startedAt, by, endedAt, since, carried: [...carried] });
 }
 
 /** The latest meeting, one small JSON file (`state/meeting.json`). */
