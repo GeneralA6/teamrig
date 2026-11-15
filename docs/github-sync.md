@@ -159,8 +159,10 @@ reaches its owner within about a minute while an idle repository costs nothing.
 - After a sync that failed, the next waits 15 minutes; a repository the watch cannot ask is synced every 15 minutes, so
   its failure still reaches the lead.
 - The watch stops 10 minutes after the team's last session closed; the next session to start brings it back.
-- One runs per team: it holds `state/github-watch.json` with its process id, and a second one started by mistake
-  stops at once.
+- It also stops after 24 hours, and the next hook starts a fresh one, so it never runs old code for long.
+- One runs per team: it holds `state/github-watch.json` with its process id and kit version, and a second one
+  started by mistake stops at once. After an update, the first hook of the new kit takes the lease over and starts
+  the new code; the old watch stops at its next round.
 
 - Each session with new tasks gets one inbox line, for example
   `github: GitHub sync added 1 task(s) for you: T42 gh:acme/web#7 "Fix the login redirect"`.
@@ -197,7 +199,9 @@ follow-up does not restart the wait. The target depends on the issue:
 The clocks live in `state/github-clocks.json` in the team's folder. Reading them costs no GitHub call: `check` reads
 what the last sync kept.
 
-`"probeSeconds": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
+`"probeSeconds": 0` turns the automatic sync off, and stops a running watch at its next round. `TEAMRIG_GITHUB=off`
+turns every sync off on one machine, but only for a watch started after it is set: a running watch keeps the
+environment it started with, so set `probeSeconds` to 0 to stop it.
 `teamrig issue sync --yes` still works at any time.
 
 ## Moving your tasks to issues

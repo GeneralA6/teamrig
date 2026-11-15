@@ -1306,10 +1306,13 @@ changed GitHub answers "not modified", which costs no rate limit. Only when some
 `teamrig issue sync --auto`. After a sync that failed it waits 15 minutes for the next, and a repository it cannot
 ask is synced every 15 minutes, so its failure still reaches the lead.
 
-It holds `state/github-watch.json` with its process id and renews it each round, so one runs per team: a second
-prints `HELD` and stops. It stops on its own (a `STOP` line says why) once no session of the team ran for 10
-minutes, when `github.repos` is empty or `github.probeSeconds` is 0 (read again each round), and under
-`TEAMRIG_GITHUB=off`. Exit 0.
+It holds `state/github-watch.json` with its process id and kit version and renews it each round, so one runs per
+team: a second prints `HELD` and stops. A hook of a newer kit takes an older watch's lease over and starts the new
+code, so an update reaches the watch at the next turn's end. It stops on its own (a `STOP` line says why) once no
+session of the team ran for 10 minutes, after 24 hours (the next hook starts a fresh one), and when `github.repos`
+is empty or `github.probeSeconds` is 0, read again each round: setting `probeSeconds` to 0 is how to stop a
+running watch. `TEAMRIG_GITHUB=off` only keeps a new watch from starting, since a running one keeps the
+environment it started with. Exit 0.
 
 Flags: none.
 

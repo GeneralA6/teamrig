@@ -700,8 +700,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       github.probeSeconds (60 by default; 0 runs none) it asks GitHub whether each repository's issues,
       pull requests or Actions runs changed, a conditional read that costs no rate limit when nothing
       did, and runs issue sync --auto only when one did; after a failed sync it waits 15 minutes for
-      the next; it stops when another watch holds the team's lease, under $TEAMRIG_GITHUB=off, and once
-      no session of the team ran for 10 minutes; the next session's hook starts it again
+      the next; it stops when another watch holds the team's lease (a newer kit's hook takes an older
+      watch's over), when github.probeSeconds is set to 0 (read each round; $TEAMRIG_GITHUB=off counts
+      only as the watch starts), after 24 hours, and once no session of the team ran for 10 minutes;
+      the next session's hook starts it again
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
