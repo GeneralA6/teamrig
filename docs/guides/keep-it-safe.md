@@ -121,10 +121,13 @@ never spells out would have to be built on purpose.
 
 It is a guard against mistakes, not a sandbox; protect the branch on your git host too. It does not see:
 
-- a push inside a program the command runs: `npm run deploy`, `pwsh -File x.ps1`, `make`, `find -exec`,
-  `ssh host git push`. A shell script file the line runs (`bash x.sh`, `./ship.sh`, `source x.sh`) is read as the
-  line's own commands, as written there when the line writes it first; one it cannot read asks. A `python` or
-  `node` script is judged by its text only;
+- a push inside a program the command runs: `npm run deploy`, `pwsh -File x.ps1`, `make`. A shell script file
+  the line runs (`bash x.sh`, `./ship.sh`, `source x.sh`) is read as the line's own commands, as written there when
+  the line writes it first; one it cannot read asks. A `python` or `node` script is judged by its text only. The
+  command `su -c`, `runuser`, `flock -c`, `script -c`, `find -exec`, `trap`, `nsenter`, `chroot`, `unshare`,
+  `setpriv`, `systemd-run` and `. /dev/stdin <<<` run is read like the line; `ssh`, `watch`, `tmux`, `screen`, a
+  terminal's `-e`, `parallel`, `at`, `crontab`, `docker`/`kubectl exec` and awk's `system()` ask when the command
+  they are handed names a push, as does a push written into a shell startup file, `PROMPT_COMMAND` or an alias;
 - a command line kept in a variable the line does not set as above, such as `bash -c "$CMD"`;
 - variables, functions or aliases your shell's startup files set (a readonly or integer variable, an `IFS`, a
   function named like a command), as with a function named `git`;

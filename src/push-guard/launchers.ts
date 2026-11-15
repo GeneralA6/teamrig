@@ -123,7 +123,44 @@ const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>(
     },
   ],
   ['wsl', { valued: ['-d', '--distribution', '-u', '--user', '--shell-type', '--distribution-id'], chdir: ['--cd'] }],
+  // Programs that run the command after their options, in another
+  // namespace, root, privilege set or systemd unit.
+  ['nsenter', { valued: ['-t', '--target', '-S', '--setuid', '-G', '--setgid', '-Z'] }],
+  ['chroot', { valued: ['--userspec', '--groups'], leading: 1 }],
+  [
+    'unshare',
+    {
+      valued: ['--map-user', '--map-group', '--map-users', '--map-groups', '--propagation', '--setgroups', '-S', '--setuid', '-G', '--setgid', '-R', '--root', '--monotonic', '--boottime'],
+      chdir: ['-w', '--wd'],
+    },
+  ],
+  [
+    'setpriv',
+    {
+      valued: ['--reuid', '--regid', '--ruid', '--euid', '--rgid', '--egid', '--groups', '--inh-caps', '--ambient-caps', '--bounding-set', '--securebits', '--selinux-label', '--apparmor-profile', '--pdeathsig', '--landlock-access', '--landlock-rule'],
+    },
+  ],
+  [
+    'systemd-run',
+    {
+      valued: [
+        ...['-u', '--unit', '-p', '--property', '--description', '--slice', '-E', '--setenv', '-M', '--machine', '-H', '--host', '--uid', '--gid', '--nice', '--service-type'],
+        ...['--on-active', '--on-boot', '--on-startup', '--on-unit-active', '--on-unit-inactive', '--on-calendar', '--timer-property', '--path-property', '--socket-property'],
+      ],
+      chdir: ['--working-directory'],
+    },
+  ],
+  ['runuser', { valued: ['-u', '--user', '-g', '--group', '-G', '--supp-group', '-w', '--whitelist-environment', '-s', '--shell'] }],
+  ['flock', { valued: ['-w', '--timeout', '-E', '--conflict-exit-code'], leading: 1 }],
 ]);
+
+/**
+ * Programs whose `-c` / `--command` option is a command line a shell
+ * runs (`su -c`, `runuser user -c`, `flock f -c`, `script -c`), anywhere among their options.
+ */
+const COMMAND_OPTION_PROGRAMS: ReadonlySet<string> = new Set(['su', 'runuser', 'flock', 'script']);
+/** `find`'s actions that run a command, ended by `;` or `+`. */
+const FIND_EXEC = new Set(['-exec', '-execdir', '-ok', '-okdir']);
 
 const POSIX_SHELLS: ReadonlySet<string> = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish']);
 const POWERSHELLS: ReadonlySet<string> = new Set(['pwsh', 'powershell', 'pwsh-preview']);
@@ -208,6 +245,30 @@ export function isAssignment(text: string): boolean {
 function assignmentOf(word: ShellWord): Assignment {
   const equals = word.text.indexOf('=');
   return { name: word.text.slice(0, equals), value: { text: word.text.slice(equals + 1), dynamic: word.dynamic } };
+}
+
+/**
+ * The value of a `-c` / `--command` option among `args` (a short
+ * cluster such as `-qc` takes the next word), undefined when there is none, null when its value is missing.
+ */
+function commandOption(args: readonly ShellWord[]): ShellWord | null | undefined {
+  for (const [index, arg] of args.entries()) {
+    const text = arg.text;
+    if (text === '--') {
+      return undefined;
+    }
+    if (text === '--command' || text === '--session-command') {
+      return args[index + 1] ?? null;
+    }
+    if (text.startsWith('--command=') || text.startsWith('--session-command=')) {
+      return { text: text.slice(text.indexOf('=') + 1), dynamic: arg.dynamic };
+    }
+    if (/^-[A-Za-z]+$/.test(text) && text.includes('c')) {
+      const at = text.indexOf('c');
+      return at === text.length - 1 ? (args[index + 1] ?? null) : { text: text.slice(at + 1), dynamic: arg.dynamic };
+    }
+  }
+  return undefined;
 }
 
 /** Joins words into one command line; for cmd a word with spaces or separators is quoted, as the caller's process start would. */
@@ -318,6 +379,24 @@ class LaunchReader {
   }
 
   private named(name: string, args: readonly ShellWord[], head: ShellWord): Step {
+    // A `-c` command line, `find -exec`, and `trap`'s handler.
+    if (this.dialect === 'bash' && COMMAND_OPTION_PROGRAMS.has(name)) {
+      const command = commandOption(args);
+      if (command !== undefined) {
+        return command === null ? { kind: 'opaque', reason: `${name} -c runs a command line only known when it runs`, gated: true } : this.script(command, 'bash', false);
+      }
+    }
+    const found = this.dialect === 'bash' && name === 'find' ? this.findExec(args) : undefined;
+    if (found !== undefined) {
+      return found;
+    }
+    if (this.dialect === 'bash' && name === 'trap') {
+      const handler = args.find((arg) => arg.text !== '--');
+      const first = args[0]?.text ?? '';
+      if (handler !== undefined && first !== '-l' && first !== '-p' && handler.text !== '-' && handler.text !== '' && args.length >= 2) {
+        return this.script(handler, 'bash', true);
+      }
+    }
     const wrapper = WRAPPERS.get(name);
     if (wrapper !== undefined) {
       this.called = true;
@@ -350,6 +429,25 @@ class LaunchReader {
       return this.teamrig(args, head);
     }
     return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner, captured: this.captured };
+  }
+
+  /**
+   * `find ... -exec cmd args ;` runs `cmd args` for each file: the
+   * words of its one command. More than one command is a doubt, as one launch names one program. Undefined for a
+   * find that runs no command, which is the program `find` itself.
+   */
+  private findExec(args: readonly ShellWord[]): Step | undefined {
+    const starts = args.flatMap((arg, index) => (FIND_EXEC.has(arg.text) ? [index] : []));
+    const start = starts[0];
+    if (start === undefined) {
+      return undefined;
+    }
+    if (starts.length > 1) {
+      return { kind: 'opaque', reason: 'find runs more than one command', gated: true };
+    }
+    const rest = args.slice(start + 1);
+    const end = rest.findIndex((arg) => arg.text === ';' || arg.text === '+');
+    return { kind: 'next', words: end === -1 ? rest : rest.slice(0, end) };
   }
 
   private script(script: ShellWord, dialect: ShellDialect, sameShell: boolean): ScriptLaunch {
@@ -450,6 +548,11 @@ class LaunchReader {
     }
     const operand = args[index];
     if (command) {
+      // Under xargs, a script that is one word without a blank, such as `{}`, is a placeholder
+      // for what stdin hands it: `echo X | xargs -I{} sh -c {}`.
+      if (this.stdinArgs && (operand === undefined || !/\s/.test(operand.text))) {
+        return STDIN_SCRIPT;
+      }
       return operand === undefined ? NOTHING : this.script(operand, 'bash', false);
     }
     if (operand === undefined || stdin) {

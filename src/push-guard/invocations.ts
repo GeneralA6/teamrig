@@ -176,6 +176,44 @@ function looksBinary(text: string): boolean {
   return (newline === -1 ? sample : sample.subarray(0, newline)).includes(0);
 }
 
+/*
+ * Programs that run a command the guard cannot read: on another host
+ * or in a container, in a terminal or multiplexer, later, or in parallel. Each is a doubt when the command it is
+ * handed names a push: in its arguments, or for those that read commands on stdin, in its stdin (a heredoc or a
+ * here-string), or a pipe into it when the line names a push.
+ */
+/** Programs that run a command from their arguments. */
+const ARGUMENT_RUNNERS: ReadonlySet<string> = new Set([
+  ...['ssh', 'watch', 'tmux', 'screen', 'xterm', 'gnome-terminal', 'konsole', 'kitty', 'alacritty', 'xfce4-terminal', 'parallel'],
+  ...['docker', 'podman', 'kubectl', 'oc', 'awk', 'gawk', 'mawk', 'nawk'],
+]);
+/** Container tools: only what follows their `exec`, `run` or `debug` is a command (`docker push` pushes an image). */
+const CONTAINER_TOOLS: ReadonlySet<string> = new Set(['docker', 'podman', 'kubectl', 'oc']);
+const CONTAINER_COMMANDS: ReadonlySet<string> = new Set(['exec', 'run', 'debug']);
+/** awk runs a command only through `system(...)` or a pipe to or from a quoted command. */
+const AWK_RUNS = /system\s*\(|\|\s*"|"\s*\|/;
+
+/** The arguments of an {@link ARGUMENT_RUNNERS} program that hold the command it runs. */
+function runnerArgs(name: string, args: readonly ShellWord[]): readonly ShellWord[] {
+  if (CONTAINER_TOOLS.has(name)) {
+    const at = args.findIndex((arg) => CONTAINER_COMMANDS.has(arg.text));
+    return at === -1 ? [] : args.slice(at + 1);
+  }
+  if (/awk$/.test(name)) {
+    return args.filter((arg) => AWK_RUNS.test(arg.text));
+  }
+  return args;
+}
+
+/** Programs that run commands they read on stdin. */
+const STDIN_RUNNERS: ReadonlySet<string> = new Set(['ssh', 'at', 'batch', 'crontab', 'parallel', 'make', 'docker', 'podman', 'kubectl']);
+/** Paths a process reads its own stdin through. */
+const STDIN_PATH = /^\/(?:dev\/stdin|dev\/fd\/0|proc\/self\/fd\/0)$/;
+/** Variables whose value a shell runs as commands later: before a prompt, at its start, or in a prompt. */
+const CODE_VARIABLES = /^(?:PROMPT_COMMAND|BASH_ENV|ENV|PS[0124])(?:\[[^\]]*\])?\+?=/;
+/** A shell's startup file, which every later shell runs. */
+const STARTUP_FILE = /(?:^|\/)(?:\.(?:bashrc|bash_profile|bash_login|bash_logout|profile|zshrc|zprofile|zshenv|zlogin|kshrc|mkshrc)|profile|bash\.bashrc|environment)$/;
+
 /** The file a word names, in `dir` when relative; undefined when it is only known when it runs. */
 function filePath(word: ShellWord, dir: string | undefined): string | undefined {
   if (word.dynamic || word.text === '' || word.text.includes('\n')) {
@@ -402,6 +440,8 @@ class GitInvocationFinder {
    * or undefined when that text is not known (`echo ... > f`, `>>`, `tee`).
    */
   private readonly writtenFiles = new Map<string, string | undefined>();
+  /** True while the command being visited reads a pipe from the one before it. */
+  private fedByPipe = false;
   private readonly context: FinderContext;
 
   constructor(context: FinderContext) {
@@ -461,6 +501,9 @@ class GitInvocationFinder {
         piped = undefined;
       }
       location.enter(command.subshells);
+      const before = commands[commands.indexOf(command) - 1];
+      this.fedByPipe = before !== undefined && before.nesting === command.nesting && PIPE_TERMINATOR.test(before.terminator);
+      this.noteCodeAssignments(command.words, dialect);
       const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
       // An interpreter's words and stdin are its script, judged by visitCommand, not shell words that name a push:
       // a python heredoc that posts a message saying "push" arms no doubt about the line. Its output feeding another
@@ -493,9 +536,14 @@ class GitInvocationFinder {
   private noteWrites(command: ShellCommand, launched: Launch | undefined, stdin: ShellWord | undefined, location: Location): void {
     const stored = stdin !== undefined && !stdin.dynamic && launched !== undefined && stdinUse(command, launched) === 'stored' ? stdin.text : undefined;
     const record = (word: ShellWord, text: string | undefined): void => {
-      const path = filePath(word, location.dir);
+      const path = filePath(word, location.dir) ?? (word.dynamic ? undefined : word.text);
       if (path !== undefined && !DEVICE_PATH.test(path)) {
         this.writtenFiles.set(path, text);
+        // Every later shell runs a startup file.
+        const written = text ?? [...command.words, ...(stdin === undefined ? [] : [stdin])].map((each) => each.text).join(' ');
+        if (STARTUP_FILE.test(path) && saysPush(written)) {
+          this.doubt('it writes a push into a shell startup file, which every later shell runs', false);
+        }
       }
     };
     for (const redirection of command.redirections) {
@@ -533,9 +581,30 @@ class GitInvocationFinder {
    * A file with a `#!` line for another language is read by that language's rule (see interpreters.ts); a binary
    * a shell refuses (see {@link looksBinary}) is left alone.
    */
-  private visitScriptFile(file: ShellWord, chdirs: readonly ShellWord[], env: readonly Assignment[], sameShell: boolean, byPath: boolean, location: Location, depth: number): void {
+  private visitScriptFile(
+    file: ShellWord,
+    chdirs: readonly ShellWord[],
+    env: readonly Assignment[],
+    sameShell: boolean,
+    byPath: boolean,
+    location: Location,
+    depth: number,
+    stdin?: ShellWord,
+  ): void {
     const inner = location.child();
     chdirs.forEach((chdir) => inner.moveTo(chdir));
+    // `. /dev/stdin <<< X` runs the here-string; a pipe, unknown commands.
+    if (!file.dynamic && STDIN_PATH.test(file.text)) {
+      if (stdin === undefined) {
+        this.doubt('a shell reads its commands from stdin', true);
+      } else {
+        this.inheriting(hooksVariableOf(env), sameShell, () => this.visitScript(stdin, 'bash', inner, depth + 1));
+        if (sameShell) {
+          location.adopt(inner);
+        }
+      }
+      return;
+    }
     const path = filePath(file, inner.dir);
     if (path === undefined) {
       this.doubt('it runs a shell script file only known when it runs', true);
@@ -656,7 +725,7 @@ class GitInvocationFinder {
     switch (launched.kind) {
       case 'nothing':
         if (launched.scriptFile !== undefined && dialect === 'bash') {
-          this.visitScriptFile(launched.scriptFile, launched.chdirs ?? [], launched.env ?? [], false, false, location, depth);
+          this.visitScriptFile(launched.scriptFile, launched.chdirs ?? [], launched.env ?? [], false, false, location, depth, stdin);
         }
         break;
       case 'opaque':
@@ -681,7 +750,7 @@ class GitInvocationFinder {
         if (dialect === 'bash' && (programText === 'source' || programText === '.')) {
           const file = launched.args[0];
           if (file !== undefined) {
-            this.visitScriptFile(file, launched.chdirs, launched.env, true, false, location, depth);
+            this.visitScriptFile(file, launched.chdirs, launched.env, true, false, location, depth, stdin);
           }
           break;
         }
@@ -704,6 +773,7 @@ class GitInvocationFinder {
           break;
         }
         const name = programName(launched.program.text);
+        this.visitRunner(name, launched.args, stdin);
         const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
         if (name !== 'git' && (subcommand === undefined || !BUILTINS.has(subcommand))) {
           break;
@@ -716,6 +786,37 @@ class GitInvocationFinder {
       }
     }
     return launched;
+  }
+
+  /**
+   * Doubts a program that runs a command the guard cannot read (see
+   * {@link ARGUMENT_RUNNERS}, {@link STDIN_RUNNERS}) when that command names a push.
+   */
+  private visitRunner(name: string, args: readonly ShellWord[], stdin: ShellWord | undefined): void {
+    const reason = `it hands ${name} a command that names a push, which ${name} runs where the guard cannot read it`;
+    if (ARGUMENT_RUNNERS.has(name) && runnerArgs(name, args).some((arg) => saysPush(arg.text))) {
+      this.doubt(reason, false);
+    } else if (STDIN_RUNNERS.has(name) && stdin !== undefined && saysPush(stdin.text)) {
+      this.doubt(reason, false);
+    } else if (STDIN_RUNNERS.has(name) && stdin === undefined && this.fedByPipe) {
+      this.doubt(`it pipes commands into ${name}, which runs them where the guard cannot read them`, true);
+    }
+  }
+
+  /**
+   * Doubts a variable set to code a shell runs later (`PROMPT_COMMAND`,
+   * `BASH_ENV`, a prompt) or an alias, when the code names a push.
+   */
+  private noteCodeAssignments(words: readonly ShellWord[], dialect: ShellDialect): void {
+    if (dialect !== 'bash') {
+      return;
+    }
+    const alias = words[0]?.text === 'alias';
+    for (const word of words) {
+      if ((CODE_VARIABLES.test(word.text) || (alias && /^[^=\s]+=/.test(word.text))) && saysPush(word.text.slice(word.text.indexOf('=') + 1))) {
+        this.doubt(alias ? 'it defines an alias that names a push, which a later command may run' : 'it sets a variable a shell runs as commands later to text that names a push', false);
+      }
+    }
   }
 
   /**
