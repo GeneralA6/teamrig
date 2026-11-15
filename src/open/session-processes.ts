@@ -102,8 +102,11 @@ export const LOOKUP_TIMEOUT_MS = 20_000;
 /** The stand-in for a SessionEnd hook gets as long as Claude Code gives its hooks by default. */
 export const FEED_TIMEOUT_MS = 60_000;
 
-/** `ps`'s arguments for every process: its id, its starter's and its command line. */
-const POSIX_LISTING: readonly string[] = ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='];
+/**
+ * `ps`'s arguments for every process: its id, its starter's and its command line, whole (`-ww`): without it `ps` cuts
+ * each line to `$COLUMNS` even into a pipe, which a hook may inherit from its terminal.
+ */
+const POSIX_LISTING: readonly string[] = ['-A', '-ww', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='];
 
 /** A real process id; anything else never reaches a command line. */
 function isPid(pid: number): boolean {
@@ -348,7 +351,7 @@ export function nodeSessionProcesses(options: SessionProcessesOptions = {}): Ses
           const result = await run({ program: 'powershell.exe', args: windowsLookup(pid) });
           return result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsProcess(result.stdout) : undefined;
         }
-        const result = await run({ program: 'ps', args: ['-o', 'ppid=', '-o', 'args=', '-p', String(pid)] });
+        const result = await run({ program: 'ps', args: ['-ww', '-o', 'ppid=', '-o', 'args=', '-p', String(pid)] });
         return result.end.kind === 'exited' && result.end.code === 0 ? parsePosixProcess(pid, result.stdout) : undefined;
       } catch {
         return undefined;

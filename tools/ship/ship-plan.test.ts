@@ -3,9 +3,22 @@ import { test } from 'node:test';
 import { parsePlan, parseShipArgs, withPlanVersion, withRaisedVersion } from './ship-plan.ts';
 
 test('reads a ship\'s repo, plan and base, merging only when asked', () => {
-  assert.deepEqual(parseShipArgs(['C:/w', 'C:/s/plan.json']), { repo: 'C:/w', plan: 'C:/s/plan.json', base: 'origin/main', merge: false, noteFile: null });
-  assert.deepEqual(parseShipArgs(['C:/w', 'C:/s/plan.json', 'origin/dev', '--merge']), { repo: 'C:/w', plan: 'C:/s/plan.json', base: 'origin/dev', merge: true, noteFile: null });
-  assert.deepEqual(parseShipArgs(['C:/w', '--merge', '--note-file', 'C:/s/note.md', 'C:/s/plan.json']), { repo: 'C:/w', plan: 'C:/s/plan.json', base: 'origin/main', merge: true, noteFile: 'C:/s/note.md' });
+  assert.deepEqual(parseShipArgs(['C:/w', 'C:/s/plan.json']), { repo: 'C:/w', plan: 'C:/s/plan.json', base: 'origin/main', merge: false, noteFile: null, approved: null });
+  assert.deepEqual(parseShipArgs(['C:/w', 'C:/s/plan.json', 'origin/dev', '--merge']), { repo: 'C:/w', plan: 'C:/s/plan.json', base: 'origin/dev', merge: true, noteFile: null, approved: null });
+  assert.deepEqual(parseShipArgs(['C:/w', '--merge', '--note-file', 'C:/s/note.md', 'C:/s/plan.json']), { repo: 'C:/w', plan: 'C:/s/plan.json', base: 'origin/main', merge: true, noteFile: 'C:/s/note.md', approved: null });
+});
+
+test('reads the approved head a merge names, a short or a full sha (T2788)', () => {
+  assert.equal(parseShipArgs(['C:/w', 'plan.json', '--merge', '--approved', '5efae2e91']).approved, '5efae2e91');
+  const full = '5efae2e918f0a149994f35367b4546c6229e7d3f';
+  assert.equal(parseShipArgs(['C:/w', 'plan.json', '--approved', full, '--merge']).approved, full);
+});
+
+test('refuses --approved without a sha, or without --merge', () => {
+  assert.throws(() => parseShipArgs(['C:/w', 'plan.json', '--merge', '--approved']), /--approved needs the approved head's sha/);
+  assert.throws(() => parseShipArgs(['C:/w', 'plan.json', '--merge', '--approved', 'HEAD']), /--approved needs the approved head's sha/);
+  assert.throws(() => parseShipArgs(['C:/w', 'plan.json', '--merge', '--approved', '5efae2']), /--approved needs the approved head's sha/);
+  assert.throws(() => parseShipArgs(['C:/w', 'plan.json', '--approved', '5efae2e91']), /--approved clears the merge that --merge runs: pass --merge too/);
 });
 
 test('refuses ship arguments it cannot read', () => {

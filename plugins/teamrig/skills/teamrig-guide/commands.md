@@ -89,7 +89,10 @@ A task with the same title (ignoring case and extra spaces) that is still open, 
 
 ### teamrig set
 
-Sets a task's status. Only the task's owner may.
+Sets a task's status. Only the task's owner may. With the leader digest on (`register.leaderDigest`, off by default), a
+member's change with a `--note` that tells none of its leaders (no wait on the lead, say) also prints `NOTED in the register (the lead sees it at its next prompt)` on stderr: the lead
+sees it in its [prompt digest](hooks.md#each-prompt-the-leader-digest), so it is "noted in the register", not "reported to
+the lead".
 
 Flags:
 
@@ -296,6 +299,8 @@ pin of a task it does not own. A pin puts a task above every other task of its o
 leader above the owner sets or clears it (the lead on its own tasks too), never the owner itself; an owner has one
 pin, so a new pin clears the earlier one in the same write, and handing the task to another owner clears it. A sub-lead hands a task only to itself or a session it leads; the lead moves work between
 groups. A `--note` alone adds context to any task's history, from any session; one from the task's owner also becomes the note `show` and the waiting text print, as a note on `set` does, so a restated note shows at once.
+With the leader digest on, a member's `--note` that tells none of its leaders prints
+`NOTED in the register (the lead sees it at its next prompt)` on stderr, as `set` does.
 The status never changes here: use `set`.
 
 In a tree of teams, the lead at its root, who asks the owner every team's decisions, records an answer on a task of
@@ -1315,8 +1320,9 @@ the only host so far: the repository must be in `github.repos`, and the comment 
 token saved for the owner as `teamrig-gh-<owner>`, else the `gh auth login` account (an `ACCESS` line says which).
 The token needs Issues and Pull requests: Read and write. It refuses, posting nothing, a caller not on the team, a
 target that is not `owner/name#number`, a repository not in `github.repos`, and a body that is empty, past 65,536
-characters, looks like it holds a secret, or names a task id (`T12`: ids are the team's own, so link issues by
-`#number`). A saved token the store cannot read stops it, never the `gh` login in its place. `TEAMRIG_GITHUB=off`
+characters, looks like it holds a secret, holds private data (a path inside a home folder, an e-mail address, an
+IPv4 address or an internal host name: the refusal names the shape, never the text), or names a task id (`T12`: ids
+are the team's own, so link issues by `#number`). A saved token the store cannot read stops it, never the `gh` login in its place. `TEAMRIG_GITHUB=off`
 prints an `OFF` line and posts nothing. It prints `COMMENTED <target>`, or `FAILED <target>: <reason>` with the fix
 (a token without the permission, an issue not there). Exit 1 when it failed, 2 when refused, else 0.
 
@@ -5328,7 +5334,9 @@ account's day holds nobody by itself: the teams on one account share one pool, s
 has room. While the team has room, they are named apart as not held: `Past their part, not held while the team has
 room today (3.0% of the week used, below its in-day pace of 4.7%): the team, api.` A session a leader cut ([teamrig
 budget cut](#teamrig-budget-cut)) is held past its part whatever room the team has, named on a line of its own:
-`Past the daily budget, held by a leader's cut whatever room the team has: web.` A session id or name shows that
+`Past the daily budget, held by a leader's cut whatever room the team has: web.` Under `budget.overAction` warn the
+hooks hold nobody, so the line names who is past and ends `The budget only warns (budget.overAction warn), so nothing
+is held: go on with your task list.` in place of the advice to stop. A session id or name shows that
 session by day.
 
 Flags:

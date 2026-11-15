@@ -40,15 +40,17 @@ export async function openTeam(runtime: CliRuntime, access: Access): Promise<Tea
 }
 
 /**
- * One inbox line telling a task's owner the task is its own; `shown` names the owner in the NOTE (another team's by
- * address). A p0 task also says the owner is woken: its team's wake check wakes an idle owner for it (src/wake/decide.ts:
- * a p0 wakes even past the budget and in blocking quiet hours), so the asker needs no `inbox add --wake now` (T2686).
+ * One inbox line telling a task's owner the task is its own, true when posted; `shown` names the owner in the NOTE
+ * (another team's by address). A p0 task also says the owner is woken: its team's wake check wakes an idle owner for
+ * it (src/wake/decide.ts: a p0 wakes even past the budget and in blocking quiet hours), so the asker needs no
+ * `inbox add --wake now` (T2686).
  */
-export async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: Task, shown = task.owner): Promise<void> {
+export async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: Task, shown = task.owner): Promise<boolean> {
   const posted = await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
   if (posted && task.priority === HELD_PRIORITY && team.config.wake.enabled) {
     runtime.out.stderr(`NOTE ${shown} is woken at its idle prompt for ${task.id}, a p0, so no --wake now is needed`);
   }
+  return posted;
 }
 
 /**

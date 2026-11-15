@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { mock, test } from 'node:test';
+import type { MergeClearance } from './approval.ts';
 import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
@@ -394,8 +395,10 @@ test("reads main through git in the repo dir: a fetch then origin's tip, contain
 });
 
 test('reads the repo dir and the polling flags', () => {
-  assert.deepEqual(parseArgs(['C:/repo']), { dir: 'C:/repo', head: null, timeoutMin: 45, intervalS: 30, noteFile: null });
-  assert.deepEqual(parseArgs(['C:/repo', '--head', 'feature/x', '--timeout-min', '5', '--interval-s', '10']), { dir: 'C:/repo', head: 'feature/x', timeoutMin: 5, intervalS: 10, noteFile: null });
+  assert.deepEqual(parseArgs(['C:/repo']), { dir: 'C:/repo', head: null, timeoutMin: 45, intervalS: 30, noteFile: null, approved: null });
+  assert.deepEqual(parseArgs(['C:/repo', '--head', 'feature/x', '--timeout-min', '5', '--interval-s', '10']), { dir: 'C:/repo', head: 'feature/x', timeoutMin: 5, intervalS: 10, noteFile: null, approved: null });
+  assert.equal(parseArgs(['C:/repo', '--approved', 'abc1234def']).approved, 'abc1234def');
+  assert.throws(() => parseArgs(['C:/repo', '--approved', 'HEAD']), /usage: ship\.ts merge/);
   assert.throws(() => parseArgs([]), /usage: ship\.ts merge/);
   assert.throws(() => parseArgs(['--head', 'dev']), /usage: ship\.ts merge/);
   assert.throws(() => parseArgs(['C:/repo', '--timeout-min', '0']), /usage: ship\.ts merge/);
@@ -418,6 +421,8 @@ interface RunFixture {
   local?: { checkedOut?: string; status?: string; record?: string; exit?: number };
   /** What the renamed-callers gate refuses with; null (the default) lets the merge go on. */
   renamedCallers?: string;
+  /** What the merge's clearance finds (T2788); the lead's approval by default. */
+  clearance?: MergeClearance;
 }
 
 /** The git folder as git names it for a linked worktree: absolute on every OS ('C:/repo/.git' is relative on POSIX). */
@@ -472,6 +477,7 @@ function runFixture(fixture: RunFixture = {}): {
   local: FakeGate;
   renamedCallers: ReturnType<typeof mock.fn<MergeDeps['renamedCallers']>>;
   sweep: ReturnType<typeof mock.fn<MergeDeps['sweep']>>;
+  clearMerge: ReturnType<typeof mock.fn<MergeDeps['clearMerge']>>;
 } {
   const gitCalls: string[] = [];
   const answers: Record<string, string> = {
@@ -495,6 +501,7 @@ function runFixture(fixture: RunFixture = {}): {
   const ghFor = mock.fn((_token: string): Gh => gh);
   const renamedCallers = mock.fn((_base: string, _tip: string, _repo: string): string | null => fixture.renamedCallers ?? null);
   const sweep = mock.fn<MergeDeps['sweep']>(() => undefined);
+  const clearMerge = mock.fn<MergeDeps['clearMerge']>(() => Promise.resolve(fixture.clearance ?? { kind: 'approved', by: 'lead' }));
   const deps: MergeDeps = {
     git: (...args) => {
       const key = args.join(' ');
@@ -510,13 +517,53 @@ function runFixture(fixture: RunFixture = {}): {
     gate: local.gate,
     renamedCallers,
     sweep,
+    clearMerge,
     out: line => out.push(line),
     err: line => err.push(line),
   };
-  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep };
+  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge };
 }
 
-const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null };
+const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null, approved: null };
+/** What `ship.ts merge` says once the lead's approval cleared the head (T2788). */
+const APPROVED_LINE = `merge of ${BRANCH} abc1234de: approved by lead`;
+
+test('clears the pushed head on the approval --approved names, saying who approved it (T2788)', async () => {
+  const { deps, out, clearMerge } = runFixture();
+  assert.equal(await runMerge({ ...ARGS, approved: 'abc1234' }, deps), 0);
+  assert.deepEqual(clearMerge.mock.calls.map(call => call.arguments), [[BRANCH, SHA, 'abc1234']]);
+  assert.equal(out[0], APPROVED_LINE);
+});
+
+test("a root team's lead clears its own merge and says so", async () => {
+  const { deps, out } = runFixture({ clearance: { kind: 'self' } });
+  assert.equal(await runMerge(ARGS, deps), 0);
+  assert.equal(out[0], `merge of ${BRANCH} abc1234de: the caller's own, a root team's lead`);
+});
+
+test('a merge without the approval of its head is refused before the token is read or any GitHub call', async () => {
+  let tokenReads = 0;
+  const { deps, out, err, ghFor, renamedCallers } = runFixture({ clearance: { kind: 'refused', reason: 'T9 has no approval of abc1234de by lead' } });
+  const counted: MergeDeps = {
+    ...deps,
+    credential: () => {
+      tokenReads += 1;
+      return deps.credential();
+    },
+  };
+  assert.equal(await runMerge(ARGS, counted), 1);
+  assert.deepEqual([out, err], [[], ['REFUSED T9 has no approval of abc1234de by lead']]);
+  assert.equal(tokenReads, 0);
+  assert.equal(renamedCallers.mock.callCount(), 0);
+  assert.equal(ghFor.mock.callCount(), 0);
+});
+
+test("a ship's own merge asks no clearance: the ship cleared its head before it pushed", async () => {
+  const { deps, out, clearMerge } = runFixture({ clearance: { kind: 'refused', reason: 'never asked' } });
+  assert.deepEqual(await mergeBranch(['C:/repo', '--head', BRANCH], () => deps), { kind: 'done', code: 0 });
+  assert.equal(clearMerge.mock.callCount(), 0);
+  assert.equal(out.at(-1), 'MERGED #3 into main, now at main999');
+});
 
 test('merges the pushed head of a repo found from its origin remote, with the token from the keychain', async () => {
   const { deps, gitCalls, out, err, ghFor } = runFixture();
@@ -582,7 +629,7 @@ test('a renamed command a consumer still calls is refused before the token is re
   };
   assert.equal(await runMerge(ARGS, counted), 1);
   assert.deepEqual(err, [`REFUSED ${refusal}`]);
-  assert.deepEqual(out, []);
+  assert.deepEqual(out, [APPROVED_LINE]);
   assert.equal(tokenReads, 0);
   assert.equal(ghFor.mock.callCount(), 0);
 });
@@ -604,7 +651,7 @@ test('a branch main moved past is refused before any pull request; a merge onto 
   const stale = runFixture({ mainTip: MOVED });
   assert.equal(await runMerge(ARGS, stale.deps), 1);
   assert.deepEqual(stale.err, [`REFUSED main moved to moved00, which ${BRANCH} abc1234 does not contain: rebase ${BRANCH} onto origin/main, push it and run merge again`]);
-  assert.deepEqual(stale.out, []);
+  assert.deepEqual(stale.out, [APPROVED_LINE]);
 
   const drifted = runFixture({ mergedTree: 'tree-other' });
   assert.equal(await runMerge(ARGS, drifted.deps), 1);
@@ -657,7 +704,7 @@ test("a ship's merge gets a move of main back unsaid, with main's tip; every oth
   assert.deepEqual(await mergeBranch(['C:/repo', '--head', BRANCH], () => merged.deps), { kind: 'done', code: 0 });
   assert.equal(merged.out.at(-1), 'MERGED #3 into main, now at main999');
   const refused = runFixture({ rounds: [[['gates', 'completed', 'failure'], ['test', 'completed', 'success']]] });
-  assert.deepEqual(await mergeRun(ARGS, refused.deps), { kind: 'done', code: 1 });
+  assert.deepEqual(await mergeRun(ARGS, refused.deps, () => Promise.resolve(null)), { kind: 'done', code: 1 });
   assert.deepEqual(refused.err, ['REFUSED failed: gates (failure)']);
   const broken = runFixture({ pushedSha: 'other' });
   assert.deepEqual(await mergeBranch(['C:/repo', '--head', BRANCH], () => broken.deps), { kind: 'done', code: 1 });
@@ -707,7 +754,7 @@ test('on the local gate it refuses another checked-out commit or uncommitted cha
     const { deps, err, out, ghWrites, local } = runFixture({ local: fixture });
     assert.equal(await runMerge(ARGS, deps), 1);
     assert.deepEqual(err, [message]);
-    assert.deepEqual(out, []);
+    assert.deepEqual(out, [APPROVED_LINE]);
     assert.deepEqual(ghWrites, [], 'no pull request opened');
     assert.deepEqual(local.runs, []);
   }

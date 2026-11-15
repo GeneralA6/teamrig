@@ -103,6 +103,14 @@ describe('sweepTree', () => {
     assert.deepEqual(host.kills, [[10, 11], [12, 13]]);
   });
 
+  it('leaves alone an older process whose ended starter’s id a member took, as a detached waiter (T2785)', async () => {
+    // Waiter 30 started at 50 from a launcher that ended; Windows gave that id, 11, to the step's console at 200.
+    const waiter = proc(30, 11, 50);
+    const host = new FakeSweepHost([[...STEP, waiter], [proc(1, 0, 0), proc(20, 1, 50), waiter]]);
+    await sweepTree(10, host);
+    assert.deepEqual(host.kills, [[10, 11]]);
+  });
+
   it('kills again a member that outlived its kill', async () => {
     const host = new FakeSweepHost([STEP, [proc(20, 1, 50), proc(11, 10, 200)], []]);
     await sweepTree(10, host);
@@ -225,6 +233,10 @@ describe('stragglersOf', () => {
 
   it('leaves alone a process started after the kill ended, under a member’s freed id', () => {
     assert.deepEqual(stragglersOf([proc(41, 10, 1_001)], members, 1_000), []);
+  });
+
+  it('leaves alone a process that started before the member holding its parent’s id, with its tree (T2785)', () => {
+    assert.deepEqual(stragglersOf([proc(42, 11, 150), proc(43, 42, 160)], members, 1_000), []);
   });
 
   it('leaves alone a process beside the tree', () => {

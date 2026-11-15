@@ -36,6 +36,7 @@ export const DEFAULT_REGISTER = {
     requireNoteOn: ['waiting', 'verifying', 'done', 'dropped'],
     requireFollowupsOn: ['verifying', 'done'],
     autoArchive: true,
+    leaderDigest: false,
     requireProofOnVerifying: true,
     requireDecisionCard: true,
     verifyGate: 'refuse',
