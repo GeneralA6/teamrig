@@ -889,6 +889,9 @@ with no permission check when all of these hold:
   `github.repos`. A text is double-quoted with no `"`, `\`, `$`, backtick or line break inside, and the line has no
   single quote or backslash outside one, so bash runs the text as written. Every text the Bash tool's shell may run
   reads as the same call;
+- **the text posts as it reads**: no format or bidi character (a right-to-left override, a zero-width space), no line
+  or paragraph separator, and no @-mention (`@bob`, `@acme/team`; an @ inside a word, as in an e-mail address, is fine),
+  so a role never pings someone or posts text that reads other than it is without the owner seeing it;
 - **the tab is the holder's**: every inbox mark this Claude Code session ever wrote names one session, it is on the
   roster, and it is the session the call's `--session` names (the hook never falls back on `$TEAMRIG_SESSION`, which
   the shell may set otherwise). A tab that ever read or bound as two sessions holds no role, so `inbox read --session

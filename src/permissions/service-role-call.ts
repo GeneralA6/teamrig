@@ -66,6 +66,16 @@ export interface RoleCall {
   readonly session: string;
 }
 
+/** The flags whose text a role call posts on GitHub. */
+const POSTED_FLAGS: readonly string[] = ['comment', 'body'];
+
+/**
+ * Text a role call does not post unasked (T2984): a format or bidi character (`U+202E`, a zero-width space), a line
+ * or paragraph separator, which can make a post read other than it is, or an @-mention, which pings someone outside
+ * the team. The post still runs once the permission check lets it.
+ */
+const UNPOSTABLE = /[\p{Cf}\p{Zl}\p{Zp}]|(?<![\p{L}\p{N}_])@[\p{L}\p{N}]/u;
+
 /** What a role call needs beyond the line: the CLI's table, its own launcher, and the team's GitHub repositories. */
 export interface RoleCallContext extends KitContext {
   readonly repos: readonly string[];
@@ -82,7 +92,8 @@ export async function roleCallOf(line: string, context: RoleCallContext): Promis
   const command = parsed.command;
   const target = parseIssueTarget(parsed.positionals[0] ?? '');
   const session = parsed.flags.get('session');
-  if (target === undefined || session === undefined) {
+  const posts = POSTED_FLAGS.map((flag) => parsed.flags.get(flag) ?? '');
+  if (target === undefined || session === undefined || posts.some((text) => UNPOSTABLE.test(text))) {
     return undefined;
   }
   if (!context.repos.includes(target.repo) || !(await matchesKit(SHAPES[command], words, context))) {
