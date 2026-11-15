@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { isIssueQuery, isLinkAdd } from '../github/gh.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
+import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { EXIT } from './runtime.ts';
 
@@ -94,6 +95,29 @@ describe('teamrig issue links', () => {
     const refused = await (await treeKit()).run(['issue', 'links', '--repo', 'acme/api'], { ...AS_LEAD, gh });
     assert.equal(refused.code, EXIT.refused);
     assert.match([...refused.stdout, ...refused.stderr].join('\n'), /--repo acme\/api is not one of github\.repos \(acme\/web\)/u);
+    assert.deepEqual(gh.ran, []);
+  });
+
+  it('says what the links read left out, before the plan', async () => {
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 9), ghIssue('acme/web', 10), ghIssue('acme/web', 11), { ...ghIssue('acme/web', 12), fullDatabaseId: null }]);
+    const result = await (await treeKit()).run(['issue', 'links'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual(result.stdout.slice(0, 3), [
+      READ_LOGIN,
+      'NOTE acme/web: 1 item(s) gh printed did not read as issues with links and were left out',
+      'REPO acme/web: 1 issue(s) to change, 4 link(s) to add, 0 already there',
+    ]);
+  });
+
+  it('fails a repository whose saved key the store cannot read, running no gh, never the gh login in its place', async () => {
+    const gh = repoGh();
+    const credentials = new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked');
+    const result = await (await treeKit()).run(['issue', 'links', '--yes'], { ...AS_LEAD, gh, credentials });
+    assert.equal(result.code, EXIT.failed);
+    assert.deepEqual(result.stdout, [
+      'FAILED acme/web: could not read teamrig-gh-acme from the test store: the keyring is locked; unlock the store and rerun, or save the key again with: save teamrig-gh-acme',
+      'WROTE 0 link(s) on GitHub; the task list was only read',
+    ]);
     assert.deepEqual(gh.ran, []);
   });
 
