@@ -2428,9 +2428,10 @@ NOTE backend has an inbox line: lead took back the sessions you led (importer, s
 Service roles (`teamrig roles grant`, `revoke` and `list`) let a named session run a few teamrig commands for an outside
 service past every permission check, from its own tab only: the team's `serviceRoles` config [serviceRoles] maps
 each role to its holders and its commands. The commands come from teamrig's table, each a reviewed shape
-(`issue close`, `issue comment`); a name outside it fails the config load. `team` holds a role for every session
-only where each command checks its caller itself; the others name their sessions. `hook route-allow` lets the
-holder's own tab run them with no permission check, up to `prompts.serviceRoleDailyCap` calls a role in 24 hours
+(`issue close`, `issue comment`, `queue ship`, `queue merge`); a name outside it fails the config load. `team` holds
+a role for every session only where each command checks its caller itself, as a ship or merge does (it runs only on
+the session's own task branch); the others name their sessions. `hook route-allow` lets the holder's own tab run them
+with no permission check, up to `prompts.serviceRoleDailyCap` closes and comments a role in 24 hours
 ([the service-role allow](hooks.md#before-a-shell-command-the-service-role-allow)). See also
 [the service-role guard](hooks.md#before-a-write-or-a-shell-command-the-service-role-guard).
 

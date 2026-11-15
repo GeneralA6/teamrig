@@ -19,7 +19,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Asks the owner before a session's `teamrig roles grant` or `revoke`, and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
-| `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)); with `prompts.routeAllow` on, whatever asks say, lets a service role's holder run the role's `teamrig issue close` or `issue comment` from its own tab, up to a daily cap ([the service-role allow](#before-a-shell-command-the-service-role-allow)) |
+| `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)); with `prompts.routeAllow` on, whatever asks say, lets a service role's holder run the role's `teamrig issue close` or `issue comment` from its own tab, up to a daily cap, or a queued ship or merge of its own task branch with the team's ship tool ([the service-role allow](#before-a-shell-command-the-service-role-allow)) |
 | `PreToolUse` on `AskUserQuestion` and `Bash` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, to a sub-team's lead, and to a session in its own meeting with the owner, with the reason to decide it if it is the session's own, else record it on its task and go on, and a session's Bash `cd` compound Claude Code would hold on a permission prompt, quoting its form to rerun ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that runs a sanctioned route or provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one, and during a booked or on-the-spot meeting every message to the session met |
@@ -890,10 +890,18 @@ with no permission check when all of these hold:
   only other flag, as one plain command (an output redirect such as `2>&1` aside). The issue's repository is on
   `github.repos`. A text is double-quoted with no `"`, `\`, `$`, backtick or line break inside, and the line has no
   single quote or backslash outside one, so bash runs the text as written. Every text the Bash tool's shell may run
-  reads as the same call;
+  reads as the same call. A ship or merge is `teamrig queue --kind ship|merge --session <you> --what "<text>" [--task
+  T<id>] [--detach] [--max-minutes <n>] -- node <shipTool> <worktree> <plan.json> [--merge [--approved <sha>]
+  [--note-file <file>]]`, or `... -- node <shipTool> merge <worktree> [--approved <sha>] [--note-file <file>]`, every
+  path absolute, `--session` required here too;
 - **the text posts as it reads**: no format or bidi character (a right-to-left override, a zero-width space), no line
   or paragraph separator, and no @-mention (`@bob`, `@acme/team`; an @ inside a word, as in an e-mail address, is fine),
   so a role never pings someone or posts text that reads other than it is without the owner seeing it;
+- **a ship runs only the holder's own work**: `<shipTool>` is the `shipTool` [delivery.repos.shipTool] of a delivery
+  repository, a tracked file of a checkout of that repository with no change at all and its HEAD on the default
+  branch as of the last fetch, so what runs is code that landed through review; the worktree is a linked worktree of
+  the same repository inside its worktree folder, on a task branch (`t<id>-...`, never a protected branch) whose task
+  the session owns, `--task` names that task when given, and the plan and note sit in that task's files folder;
 - **the tab is the holder's**: every inbox mark this Claude Code session ever wrote names one session, it is on the
   roster, and it is the session the call's `--session` names (the hook never falls back on `$TEAMRIG_SESSION`, which
   the shell may set otherwise). A tab that ever read or bound as two sessions holds no role, so `inbox read --session
@@ -901,16 +909,18 @@ with no permission check when all of these hold:
 - **a role gives it**: one of `serviceRoles` names the session among its holders and the command among its commands;
 - **every guard passed it**: the same push, package, secret, db-write, exec, pass-record and service-role guards as
   the route allow; a guard that asks or refuses answers instead;
-- **the role is under its cap**: fewer than `prompts.serviceRoleDailyCap` (10 by default, 0 to 200) allows of the
-  role in the last 24 hours. Past it the call asks the owner (refused with asks off), with the reason
-  "teamrig: the service role github ran its 10 calls of the last 24 hours (prompts.serviceRoleDailyCap), so this one
-  asks the owner. ...".
+- **the role is under its cap**, for a close or comment: fewer than `prompts.serviceRoleDailyCap` (10 by default, 0
+  to 200) closes and comments the role allowed in the last 24 hours. Past it the call asks the owner (refused with
+  asks off), with the reason "teamrig: the service role github ran its 10 calls of the last 24 hours
+  (prompts.serviceRoleDailyCap), so this one asks the owner. ...". A ship or merge counts toward no cap: it acts only
+  on the session's own task branch, through the ship tool's own checks.
 
-Each allow writes a line to `state/prompt-answers.jsonl` naming the session, the role, the command and the issue
-(`"answer": "role"`), never the text; the cap counts those lines, so a log it cannot write lets nothing past. A config
-with any issue, or one a newer teamrig wrote, gives no role, and `prompts.routeAllow: off` takes the allow away
-without a release. A permission rule or another hook that denies the call still wins: Claude Code applies a deny
-over any hook's allow. Anything else, a role call it does not allow included, goes on to the permission check.
+Each allow writes a line to `state/prompt-answers.jsonl` naming the session, the role, the command and the issue or
+the ship's branch (`"answer": "role"`), never the text; the cap counts those lines, so a log it cannot write lets
+nothing past. A config with any issue, or one a newer teamrig wrote, gives no role, and `prompts.routeAllow: off`
+takes the allow away without a release. A permission rule or another hook that denies the call still wins: Claude
+Code applies a deny over any hook's allow. Anything else, a role call it does not allow included, goes on to the
+permission check.
 
 ## Before a shell command: the read-only allow
 
