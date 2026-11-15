@@ -46,6 +46,7 @@ import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, 
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { fiveHourWarnings } from "../five-hour-check.js";
+import { promptHoldWarnings } from "../prompt-hold-page.js";
 import { resetExpiryWarnings } from "../reset-expiry-check.js";
 import { idlePassWarnings } from "../idle-pass-check.js";
 import { restoreLauncherWarnings } from "../launcher-record-check.js";
@@ -937,7 +938,8 @@ function withOverLimit(sections, fit) {
  * (SECRET-GUARD-OFF, src/cli/secret-guard-off-check.ts), a five-hour window near full (FIVE-HOUR,
  * src/cli/five-hour-check.ts), a reset grant about to expire unused (RESET-EXPIRING, src/cli/reset-expiry-check.ts)
  * and each part of this machine that starts the restore and starts a file gone or
- * something install did not set up (RESTORE-DEAD, RESTORE-STRAY, src/cli/launcher-record-check.ts) are the unowned
+ * something install did not set up (RESTORE-DEAD, RESTORE-STRAY, src/cli/launcher-record-check.ts) and each of its
+ * tabs held on a permission prompt (PROMPT-HELD, src/cli/prompt-hold-page.ts) are the unowned
  * warnings, which go to the lead (src/cli/unowned.ts, T951).
  */
 export async function checkReport(args, runtime) {
@@ -994,8 +996,9 @@ export async function checkReport(args, runtime) {
     const fiveHour = await fiveHourWarnings(runtime.files, snapshotDirOf(own.config.budget, own.paths), own.config.budget, zone, now.getTime());
     const resets = resetExpiryWarnings(own.config.budget, zone, now.getTime());
     const restore = await restoreLauncherWarnings(runtime.files, resolveKitHome(runtime.env, runtime.userHome));
+    const holds = await promptHoldWarnings(runtime, own.paths, zone, new SecretScanner(own.config.register.secretPatterns), now.getTime());
     const lead = own.config.roles.lead;
-    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...resets, ...restore], lead, decisions };
+    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...resets, ...restore, ...holds], lead, decisions };
 }
 /**
  * The batch of the owner's decisions a root team's lead asks next, over its register and every register under it; none
