@@ -1398,6 +1398,34 @@
         }
       }
     },
+    "serviceRoles": {
+      "description": "Service roles, by name: each lets the sessions that hold it run a few teamrig commands for an outside service past every permission check, Claude Code's auto mode included, from their own tab only. Commands are names from teamrig's fixed table, never free text; an unknown name, a holder not on the team or a misspelt key fails the load. Written by teamrig roles grant and teamrig roles revoke, which the owner runs; a session's own edit of it is refused.",
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["holders", "commands"],
+        "additionalProperties": false,
+        "properties": {
+          "holders": {
+            "description": "The sessions of this team that hold the role, by id, or team for every session of it, which only a role whose every command checks its own caller may name.",
+            "anyOf": [
+              { "enum": ["team"] },
+              { "type": "array", "items": { "$ref": "#/$defs/sessionName" }, "minItems": 1, "uniqueItems": true }
+            ]
+          },
+          "commands": {
+            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one).",
+            "type": "array",
+            "items": { "enum": ["issue close", "issue comment"] },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        }
+      },
+      "default": {}
+    },
     "alerts": {
       "description": "The alerting rule the core rules state, and where a page to the owner goes.",
       "type": "object",

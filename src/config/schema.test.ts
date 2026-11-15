@@ -18,9 +18,11 @@ import {
   NODE_MODULE_PATTERN,
   REVIEW_PATH_LIMITS,
   RULE_CONFLICT_LIMITS,
+  SERVICE_ROLE_LIMITS,
 } from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
+import { SERVICE_COMMANDS } from '../permissions/service-commands.ts';
 import { SHARED_METHOD_NAMES } from '../db-write-guard/verbs.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS } from '../rules/keys.ts';
@@ -86,6 +88,7 @@ const EVERY_KEY = {
   statusLine: { folder: false, branch: false, pace: false },
   decisions: { batchTimesUtc: ['13:03'], batchAt: 3 },
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
+  serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] } },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
   exec: { path: ['C:/tools'], webhookEnv: 'EXEC_WEBHOOK_URL' },
   alerts: { pageWebhookEnv: 'PAGE_WEBHOOK_URL', pageWebhookFile: 'C:/chat/.page-webhook' },
@@ -534,6 +537,24 @@ describe('config.schema.json', () => {
     assert.deepEqual(mode['enum'], [...REVIEW_PATH_MODES]);
     assert.deepEqual(reviewer['enum'], [...REVIEW_CLASSES]);
     assert.deepEqual(items['required'], ['glob']);
+  });
+
+  it('takes the service roles the parser takes: table command names, a role count and a role name pattern (T2984)', async () => {
+    const node = nodeAt(await loadSchema(), 'serviceRoles');
+    assert.equal(node['maxProperties'], SERVICE_ROLE_LIMITS.maxRoles);
+    const names = node['propertyNames'];
+    assert.ok(isRecord(names));
+    assert.equal(names['pattern'], SERVICE_ROLE_LIMITS.namePattern.source);
+    const role = anyProperty(node);
+    assert.ok(role !== undefined);
+    const { commands } = properties(role);
+    assert.ok(isRecord(commands));
+    const items = commands['items'];
+    assert.ok(isRecord(items));
+    assert.deepEqual(items['enum'], [...SERVICE_COMMANDS]);
+    for (const command of SERVICE_COMMANDS) {
+      assert.match(String(commands['description']), new RegExp(`\\b${command}\\b`), `the description says what ${command} runs`);
+    }
   });
 
   it('requires exactly the roster', async () => {

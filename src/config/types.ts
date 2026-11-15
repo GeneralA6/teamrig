@@ -3,6 +3,7 @@ import type { ItemType } from '../register/events.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 import type { AdmissionMode } from '../delivery/admission.ts';
 import type { NeedKind } from '../tabs/need-kind.ts';
+import type { ServiceCommand } from '../permissions/service-commands.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
 export const CONFIG_VERSION = 8;
@@ -692,6 +693,20 @@ export interface GithubConfig {
    * their TF-IDF word vectors (src/issues/similar.ts). Higher lists fewer, closer candidates.
    */
   readonly similarThreshold: number;
+}
+
+/**
+ * One service role (T2984): the teamrig commands it lets run past every permission check for the sessions that hold
+ * it. Written by `teamrig roles grant` and `revoke`, which the owner runs.
+ */
+export interface ServiceRoleConfig {
+  /**
+   * The sessions of this team that hold it, by id, or `team` for every session of the team, which only a role whose
+   * every command checks its own caller may name (TEAM_HELD_COMMANDS).
+   */
+  readonly holders: readonly string[] | 'team';
+  /** The commands it holds, by name from teamrig's fixed table (permissions/service-commands.ts); never free text. */
+  readonly commands: readonly ServiceCommand[];
 }
 
 /** The small-commits rule: one logical change per commit, and a reason line on any commit over the bounds. */
@@ -1646,6 +1661,8 @@ export interface KitConfig {
   readonly wake: WakeConfig;
   readonly tests: TestsConfig;
   readonly github: GithubConfig;
+  /** Each service role by name: the teamrig commands it holds and the sessions that hold it (T2984). */
+  readonly serviceRoles: Readonly<Record<string, ServiceRoleConfig>>;
   readonly alerts: AlertsConfig;
   readonly decisions: DecisionsConfig;
   /**

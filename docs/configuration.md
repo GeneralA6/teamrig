@@ -42,6 +42,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `wake` | [object](#wake) |  | Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared or answered), tasks handed together wake once, and each wake says what it costs. |
 | `tests` | [object](#tests) |  | What teamrig test prints of a failed run. |
 | `github` | [object](#github) |  | The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md). |
+| `serviceRoles` | map (at most 16 keys) from string (matching `^[a-z][a-z0-9-]{0,31}$`) to [object](#serviceroles) | `{}` | Service roles, by name: each lets the sessions that hold it run a few teamrig commands for an outside service past every permission check, Claude Code's auto mode included, from their own tab only. Commands are names from teamrig's fixed table, never free text; an unknown name, a holder not on the team or a misspelt key fails the load. Written by teamrig roles grant and teamrig roles revoke, which the owner runs; a session's own edit of it is refused. |
 | `alerts` | [object](#alerts) |  | The alerting rule the core rules state, and where a page to the owner goes. |
 | `decisions` | [object](#decisions) |  | When the lead asks the owner the decisions waiting on them (tasks waiting on the owner's decision or approval), together in one batch instead of one at a time. A batch holds the waits not yet asked and the asked ones now past their due date; `teamrig decisions` prints it and `teamrig decisions asked` records it asked, as a meeting's start does. The lead's check says when one is due. |
 | `tabStatus` | [object](#tabstatus) |  | A colored circle before each terminal tab's title for what its session is doing: green ready, yellow working (or a helper still running), orange waiting on the user, blue waiting on the user's decision (a turn whose last message has a `Decision needed:` line), red an API error, purple compacting. |
@@ -608,6 +609,15 @@ The team's GitHub repositories. teamrig issue sync reads their issues into the r
 | `statusPush` | boolean | `false` | Whether the automatic sync also sends the status push (teamrig issue sync --push --yes), so each issue a task holds shows the task's status without a session running it. It sends labels and assignees only: a close waits for a session's teamrig issue sync --push --yes. Off by default: read the push's dry run (teamrig issue sync --push) first. |
 | `similarThreshold` | number (0 to 1) | `0.35` | The score, from 0 to 1, at which a mirrored issue counts as a duplicate candidate of a new one: the cosine of their TF-IDF word vectors. Higher lists fewer, closer candidates. |
 | `acceptLabel` | string (1 to 50 characters, matching `^[^\r\n]+$`) | `"teamrig"` | The label that lets an issue by an author outside the repository (not its owner, an organization member or a collaborator) become a task: it counts when someone other than the author added it last and the title and body were not edited after that. Matched without case. |
+
+## `serviceRoles.*`
+
+Service roles, by name: each lets the sessions that hold it run a few teamrig commands for an outside service past every permission check, Claude Code's auto mode included, from their own tab only. Commands are names from teamrig's fixed table, never free text; an unknown name, a holder not on the team or a misspelt key fails the load. Written by teamrig roles grant and teamrig roles revoke, which the owner runs; a session's own edit of it is refused.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `holders` (required) | one of `"team"` or array (at least 1 item, unique) of [session name](#shared-types) |  | The sessions of this team that hold the role, by id, or team for every session of it, which only a role whose every command checks its own caller may name. |
+| `commands` (required) | array (at least 1 item, unique) of one of `"issue close"`, `"issue comment"` |  | The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one). |
 
 ## `alerts`
 

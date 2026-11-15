@@ -464,6 +464,55 @@ describe('parseConfig', () => {
     }
   });
 
+  it('reads no service roles by default', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.serviceRoles, {});
+  });
+
+  it('reads a service role whose commands come from the table and whose holders are sessions of the team (T2984)', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, serviceRoles: { github: { holders: ['bravo'], commands: ['issue close', 'issue comment'] } } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.serviceRoles, { github: { holders: ['bravo'], commands: ['issue close', 'issue comment'] } });
+  });
+
+  it('fails the load on an unknown command, a holder off the roster or a misspelt key, and leaves the role out (T2984 C3)', () => {
+    const cases: readonly [unknown, readonly string[]][] = [
+      [{ holders: ['bravo'], commands: ['issue delete'] }, ['serviceRoles.github.commands[0]']],
+      [{ holders: ['bravo'], commands: ['issue *'] }, ['serviceRoles.github.commands[0]']],
+      [{ holders: ['bravo'], commands: ['issue close', 'issue close'] }, ['serviceRoles.github.commands[1]']],
+      [{ holders: ['bravo'], commands: [] }, ['serviceRoles.github.commands']],
+      [{ holders: ['bravo'] }, ['serviceRoles.github.commands']],
+      [{ holders: ['zulu'], commands: ['issue close'] }, ['serviceRoles.github.holders[0]']],
+      [{ holders: ['acme/bravo'], commands: ['issue close'] }, ['serviceRoles.github.holders[0]']],
+      [{ holders: ['bravo', 'bravo'], commands: ['issue close'] }, ['serviceRoles.github.holders[1]']],
+      [{ holders: [], commands: ['issue close'] }, ['serviceRoles.github.holders']],
+      [{ holders: 'bravo', commands: ['issue close'] }, ['serviceRoles.github.holders']],
+      [{ holder: ['bravo'], holders: ['bravo'], commands: ['issue close'] }, ['serviceRoles.github.holder']],
+      ['bravo', ['serviceRoles.github']],
+    ];
+    for (const [role, expected] of cases) {
+      const parsed = parseConfig({ ...ROSTER, serviceRoles: { github: role } });
+      assert.deepEqual(paths(parsed.issues), expected, JSON.stringify(role));
+      assert.deepEqual(parsed.config.serviceRoles, {}, JSON.stringify(role));
+    }
+  });
+
+  it('refuses "team" holders for a command that acts as whoever runs it (T2984 C4)', () => {
+    const parsed = parseConfig({ ...ROSTER, serviceRoles: { github: { holders: 'team', commands: ['issue close'] } } });
+    assert.deepEqual(paths(parsed.issues), ['serviceRoles.github.holders']);
+    assert.match(parsed.issues[0]?.message ?? '', /acts as whoever runs it/);
+    assert.deepEqual(parsed.config.serviceRoles, {});
+  });
+
+  it('refuses a role name outside the pattern and more roles than the limit', () => {
+    const role = { holders: ['bravo'], commands: ['issue close'] };
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, serviceRoles: { 'Git Hub': role } }).issues), ['serviceRoles.Git Hub']);
+    const many = Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`r${index}`, role]));
+    const parsed = parseConfig({ ...ROSTER, serviceRoles: many });
+    assert.deepEqual(paths(parsed.issues), ['serviceRoles']);
+    assert.deepEqual(parsed.config.serviceRoles, {});
+    assert.equal(Object.keys(parseConfig({ ...ROSTER, serviceRoles: Object.fromEntries(Object.entries(many).slice(0, 16)) }).config.serviceRoles).length, 16);
+  });
+
   it('reads each listed repository\'s session in lowercase, and reports one not listed, an unknown session or a repeat', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
