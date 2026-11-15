@@ -4,14 +4,13 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  assigneeReadArgs,
   blockedByAddArgs,
   GhRefusedError,
-  assigneeReadArgs,
   isAllowedGh,
   isAssigneeRead,
   isIssueAssign,
   isIssueBodyEdit,
-  issueAssignArgs,
   isIssueClose,
   isIssueComment,
   isIssueCreate,
@@ -22,6 +21,7 @@ import {
   isLabelRemove,
   isLinkAdd,
   isWatchProbe,
+  issueAssignArgs,
   issueBodyArgs,
   issueCloseArgs,
   issueCommentArgs,
@@ -29,11 +29,13 @@ import {
   issueLabelAddArgs,
   issueLabelRemoveArgs,
   issueReadArgs,
+  isUserRead,
   labelReadArgs,
   nodeGhRunner,
   subIssueAddArgs,
   WATCH_PATHS,
   watchProbeArgs,
+  userReadArgs,
   type IssueNumber,
 } from './gh.ts';
 import type { IssueDraft } from '../issues/host.ts';
@@ -315,6 +317,27 @@ describe('the duplicate close and the issue read', () => {
 });
 
 describe('the assignee calls (T2999)', () => {
+  it('takes a user read, and refuses one with a method, a field or a path past the user', () => {
+    assert.deepEqual(userReadArgs('OctoCat'), ['api', 'users/OctoCat']);
+    assert.ok(isUserRead(userReadArgs('OctoCat')) && isAllowedGh(userReadArgs('OctoCat')));
+    for (const args of [
+      ['api', 'users/octocat', '-X', 'GET'],
+      ['api', 'users/octocat', '-X', 'PATCH', '-f', 'name=x'],
+      ['api', 'users/octocat', '--jq', '.email'],
+      ['api', 'users/octocat/repos'],
+      ['api', 'users/'],
+      ['api', 'users/-octocat'],
+      ['api', 'users/octo--cat'],
+      ['api', 'users/../user'],
+      ['api', 'users/octocat?per_page=1'],
+      ['api', 'user'],
+      ['api', '/users/octocat'],
+    ]) {
+      assert.equal(isUserRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
   const ASSIGN = issueAssignArgs(ISSUE, ['octocat', 'mona-lisa']);
 
   it('takes the command lines issueAssignArgs and assigneeReadArgs build', () => {

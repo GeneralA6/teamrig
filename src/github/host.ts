@@ -32,9 +32,11 @@ import {
   issueLabelRemoveArgs,
   issueReadArgs,
   labelReadArgs,
+  isLogin,
   subIssueAddArgs,
   WATCH_PATHS,
   watchProbeArgs,
+  userReadArgs,
   type GhResult,
   type GhRunner,
   type WatchPath,
@@ -172,20 +174,33 @@ export class GitHubIssueHost implements IssueHost {
    * Reads the one label: found when gh ends well, missing when GitHub answers Not Found (no such label, or a
    * repository the access cannot see, which the add would fail on anyway), else failed with gh's own line.
    */
-  labelExists(repo: string, label: string): Promise<HostLabel> {
-    return this.exists(repo, labelReadArgs(repo, label), `the label ${JSON.stringify(label)} of ${repo}`);
+  async labelExists(repo: string, label: string): Promise<HostLabel> {
+    const read = await this.read(repo, labelReadArgs(repo, label), `the label ${JSON.stringify(label)} of ${repo}`);
+    return read.kind === 'found' ? { kind: 'found' } : read;
   }
 
   /**
-   * Reads whether the login may be assigned: found when gh ends well, missing when GitHub answers Not Found (not a
-   * person with access, an organisation, or a repository the access cannot see), else failed with gh's own line.
+   * Reads whether the login may be assigned, as GitHub spells it. GitHub's assignee check matches a login's case
+   * exactly (`octocat` is Not Found where `OctoCat` is the user), while teamrig keeps logins in lowercase, so the user
+   * is read first for its login as GitHub keeps it. Found with that login when gh ends well; missing when GitHub answers
+   * Not Found (no such user, not a person with access, an organisation, or a repository the access cannot see); else
+   * failed with gh's own line.
    */
-  assigneeExists(repo: string, login: string): Promise<HostAssignee> {
-    return this.exists(repo, assigneeReadArgs(repo, login), `whether ${login} may be assigned in ${repo}`);
+  async assigneeExists(repo: string, login: string): Promise<HostAssignee> {
+    const user = await this.read(repo, userReadArgs(login), `the GitHub user ${login}`);
+    if (user.kind !== 'found') {
+      return user;
+    }
+    const spelled = loginIn(user.stdout);
+    if (spelled === undefined || spelled.toLowerCase() !== login.toLowerCase()) {
+      return { kind: 'failed', reason: `gh printed no login ${login} for the GitHub user ${login}` };
+    }
+    const read = await this.read(repo, assigneeReadArgs(repo, spelled), `whether ${spelled} may be assigned in ${repo}`);
+    return read.kind === 'found' ? { kind: 'found', login: spelled } : read;
   }
 
-  /** One read of `what` in `repo`: found when gh ends well, missing on Not Found, else failed with gh's own line. */
-  private async exists(repo: string, args: readonly string[], what: string): Promise<HostLabel> {
+  /** One read of `what` in `repo`: found with what gh printed when it ends well, missing on Not Found, else failed with gh's own line. */
+  private async read(repo: string, args: readonly string[], what: string): Promise<HostRead> {
     const access = await this.tokens.accessFor(repo);
     if (access instanceof TokenReadError) {
       return { kind: 'failed', reason: access.message };
@@ -200,7 +215,7 @@ export class GitHubIssueHost implements IssueHost {
       return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading ${what}` };
     }
     if (result.end.code === 0) {
-      return { kind: 'found' };
+      return { kind: 'found', stdout: result.stdout };
     }
     if (ghFailureKind(result.end.code, result.stderr) === 'not-visible') {
       return { kind: 'missing' };
@@ -327,6 +342,24 @@ export function writeFailureText(target: IssueTarget, what: string, code: number
     case undefined:
       return plainLine(`gh api to ${what} ${shown} ${exitText(code, stderr)}`);
   }
+}
+
+/** What one read gave: found with what gh printed, missing on Not Found, or failed with the reason. */
+type HostRead = { readonly kind: 'found'; readonly stdout: string } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
+/** The `login` of a user as `gh api users/<login>` prints it, when it has a login's shape; else undefined. */
+export function loginIn(stdout: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || !('login' in parsed)) {
+    return undefined;
+  }
+  const { login } = parsed;
+  return typeof login === 'string' && isLogin(login) ? login : undefined;
 }
 
 /** The `id` of an issue as GitHub's REST API prints it: a positive safe integer, else undefined. */

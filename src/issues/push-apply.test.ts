@@ -46,6 +46,13 @@ describe('applyPush', () => {
     assert.ok(host.calls.every((call) => call.kind !== 'assign'));
   });
 
+  it('assigns a login as the host spells it, since GitHub drops an assign in another case (T2999)', async () => {
+    const host = new FakeIssueHost().spells('GeneralA6');
+    const { lines } = await push(host, plan(change(7, { assign: 'generala6' })));
+    assert.deepEqual(lines, ['SET acme/web#7 T7 in-progress: assign GeneralA6']);
+    assert.deepEqual(host.calls.flatMap((call) => (call.kind === 'assign' ? [call.logins] : [])), [['GeneralA6']]);
+  });
+
   it('writes nothing when a login read fails, and stops the repository at a failed assign', async () => {
     const unread = await push(new FakeIssueHost().readsAssignee({ kind: 'failed', reason: 'gh was stopped' }), plan(change(7, { assign: 'octocat' })));
     assert.deepEqual(unread.outcome, { sent: 0, writes: 0, held: 0, failed: 'gh was stopped' });

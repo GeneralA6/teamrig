@@ -39,12 +39,19 @@ export class FakeIssueHost implements IssueHost {
   private readonly linked = new Map<string, HostLinks>();
   private idRead: HostIssueId | undefined;
   private readonly unassignable = new Set<string>();
+  private readonly spellings = new Map<string, string>();
   private assigneeRead: HostAssignee | undefined;
   private assignEnd: HostEnd = { kind: 'done' };
 
   /** From now on, these logins may not be assigned in any repository; every other login may. */
   cannotAssign(...logins: string[]): this {
     logins.forEach((login) => this.unassignable.add(login));
+    return this;
+  }
+
+  /** From now on, the host spells each of these logins as given, whatever case a read names it in. */
+  spells(...logins: string[]): this {
+    logins.forEach((login) => this.spellings.set(login.toLowerCase(), login));
     return this;
   }
 
@@ -200,7 +207,7 @@ export class FakeIssueHost implements IssueHost {
   }
 
   assigneeExists(_repo: string, login: string): Promise<HostAssignee> {
-    return Promise.resolve(this.assigneeRead ?? { kind: this.unassignable.has(login) ? 'missing' : 'found' });
+    return Promise.resolve(this.assigneeRead ?? (this.unassignable.has(login) ? { kind: 'missing' } : { kind: 'found', login: this.spellings.get(login.toLowerCase()) ?? login }));
   }
 
   assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd> {

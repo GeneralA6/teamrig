@@ -6,6 +6,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import {
+  assigneeReadArgs,
   isAssigneeRead,
   isIssueAssign,
   isIssueBodyEdit,
@@ -19,11 +20,13 @@ import {
   isLabelRemove,
   isLinkAdd,
   isWatchProbe,
+  isUserRead,
+  userReadArgs,
   type GhRequest,
   type GhResult,
   type GhRunner,
 } from './gh.ts';
-import { GitHubIssueHost, issueIdIn } from './host.ts';
+import { GitHubIssueHost, issueIdIn, loginIn } from './host.ts';
 import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import { CLOSED_ISSUES_QUERY } from './queries.ts';
 import { RepoTokens } from './tokens.ts';
@@ -216,13 +219,35 @@ describe('GitHubIssueHost', () => {
   it('reads whether a login may be assigned, found or missing on Not Found, and assigns through the allowlisted call (T2999)', async () => {
     const gh = new FakeGh().cannotAssign('acme/web', ['acme']);
     const host = hostWith(gh);
-    assert.deepEqual(await host.assigneeExists('acme/web', 'octocat'), { kind: 'found' });
+    assert.deepEqual(await host.assigneeExists('acme/web', 'octocat'), { kind: 'found', login: 'octocat' });
     assert.deepEqual(await host.assigneeExists('acme/web', 'acme'), { kind: 'missing' });
     assert.deepEqual(await host.assign(TARGET, ['octocat']), { kind: 'done' });
-    const [found, missing, assign] = gh.ran.map((request) => request.args);
-    assert.ok(isAssigneeRead(found ?? []) && isAssigneeRead(missing ?? []) && isIssueAssign(assign ?? []));
+    const [user, found, acme, missing, assign] = gh.ran.map((request) => request.args);
+    assert.ok(isUserRead(user ?? []) && isUserRead(acme ?? []) && isAssigneeRead(found ?? []) && isAssigneeRead(missing ?? []) && isIssueAssign(assign ?? []));
     const stopped = new FakeGh().answers('acme/web', { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
     assert.deepEqual(await hostWith(stopped).assigneeExists('acme/web', 'octocat'), { kind: 'failed', reason: 'gh was stopped (SIGTERM) while reading whether octocat may be assigned in acme/web' });
+  });
+
+  it('reads a login in the case GitHub spells it, so the case-exact assignee check finds it (T2999)', async () => {
+    const gh = new FakeGh().spells('OctoCat');
+    assert.deepEqual(await hostWith(gh).assigneeExists('acme/web', 'octocat'), { kind: 'found', login: 'OctoCat' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [userReadArgs('octocat'), assigneeReadArgs('acme/web', 'OctoCat')]);
+  });
+
+  it('gives missing for no such user and failed for a user read naming another login, reading no assignee', async () => {
+    const absent = new FakeGh().answersUserRead({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' });
+    assert.deepEqual(await hostWith(absent).assigneeExists('acme/web', 'ghost'), { kind: 'missing' });
+    assert.equal(absent.ran.length, 1);
+    const other = new FakeGh().answersUserRead({ end: { kind: 'exited', code: 0 }, stdout: '{"login":"mallory"}', stderr: '' });
+    assert.deepEqual(await hostWith(other).assigneeExists('acme/web', 'octocat'), { kind: 'failed', reason: 'gh printed no login octocat for the GitHub user octocat' });
+    assert.equal(other.ran.length, 1);
+  });
+
+  it("takes as a login only a string of a login's shape in the printed user", () => {
+    assert.equal(loginIn('{"login":"OctoCat","type":"User"}'), 'OctoCat');
+    for (const stdout of ['', 'not json', 'null', '[]', '{}', '{"login":7}', '{"login":"-x"}', '{"login":"a b"}']) {
+      assert.equal(loginIn(stdout), undefined, stdout);
+    }
   });
 
   it('names a label read that gh could not start, was stopped, or had no key to run with', async () => {

@@ -52,8 +52,11 @@ export type HostIssueId = { readonly kind: 'found'; readonly id: number } | { re
 /** Whether a repository has a label: it has, it has not, or the read failed, with one plain line saying why. */
 export type HostLabel = { readonly kind: 'found' } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
-/** Whether a login may be assigned in a repository: found, missing (it may not), or the read failed. */
-export type HostAssignee = HostLabel;
+/**
+ * Whether a login may be assigned in a repository: found, with the login as the host spells it (GitHub keeps a login's
+ * case, and its assignee check matches that case only), missing (no such user, or it may not be assigned), or the read failed.
+ */
+export type HostAssignee = { readonly kind: 'found'; readonly login: string } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
 /**
  * A repository's issues as one list read them, the open ones and those closed since the day it was given, with what

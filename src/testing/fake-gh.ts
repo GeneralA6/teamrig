@@ -1,6 +1,7 @@
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import {
   isAssigneeRead,
+  isUserRead,
   isIssueAssign,
   isIssueBodyEdit,
   isIssueClose,
@@ -152,6 +153,8 @@ export class FakeGh implements GhRunner {
   private writeFailure: GhResult | undefined;
   private readonly labels = new Map<string, readonly string[]>();
   private readonly unassignable = new Map<string, readonly string[]>();
+  private readonly spellings = new Map<string, string>();
+  private userAnswer: GhResult | undefined;
   private pageSize = ISSUE_PAGE_SIZE;
   /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
   private readonly versions = new Map<string, number>();
@@ -199,6 +202,21 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
+  /**
+   * From now on, GitHub spells each of these logins as given: a user read in any case prints it so, and an assignee
+   * read matches it only in that case, as GitHub's does. A login not given is spelled as a read names it.
+   */
+  spells(...logins: string[]): this {
+    logins.forEach((login) => this.spellings.set(login.toLowerCase(), login));
+    return this;
+  }
+
+  /** From now on, every user read ends as given. */
+  answersUserRead(result: GhResult): this {
+    this.userAnswer = result;
+    return this;
+  }
+
   /** From now on, a comment on, a body edit or the close of, a label added to or taken off, an assignee or a link added to an issue ends as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
@@ -241,6 +259,9 @@ export class FakeGh implements GhRunner {
     }
     if (isAssigneeRead(request.args)) {
       return this.assigneeRead(request.args[1] ?? '');
+    }
+    if (isUserRead(request.args)) {
+      return this.userRead(request.args[1] ?? '');
     }
     if (isIssueRead(request.args)) {
       return this.issueRead(request.args[1] ?? '');
@@ -314,14 +335,27 @@ export class FakeGh implements GhRunner {
     return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
   }
 
-  /** An assignee read as GitHub answers it: what a test set for the repository, else 204 unless the login may not be assigned there. */
+  /** A user read as GitHub answers it: the user with its login as GitHub spells it, whatever case the path names. */
+  private userRead(path: string): GhResult {
+    if (this.userAnswer !== undefined) {
+      return this.userAnswer;
+    }
+    const login = path.slice('users/'.length);
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ login: this.spellings.get(login.toLowerCase()) ?? login, type: 'User' }), stderr: '' };
+  }
+
+  /**
+   * An assignee read as GitHub answers it: what a test set for the repository, else 204 unless the login may not be
+   * assigned there or is not in the case GitHub spells it.
+   */
   private assigneeRead(path: string): GhResult {
     const [, owner = '', name = '', , login = ''] = path.split('/');
     const canned = this.canned.get(`${owner}/${name}`);
     if (canned !== undefined) {
       return canned;
     }
-    return (this.unassignable.get(`${owner}/${name}`) ?? []).includes(login)
+    const spelled = this.spellings.get(login.toLowerCase()) ?? login;
+    return spelled !== login || (this.unassignable.get(`${owner}/${name}`) ?? []).includes(login)
       ? { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' }
       : { end: { kind: 'exited', code: 0 }, stdout: '', stderr: '' };
   }

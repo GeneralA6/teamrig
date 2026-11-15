@@ -10,11 +10,11 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
  * comment on or the close of one issue or pull request (issue comment and issue close, a close with or without its
  * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
  * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
- * --duplicate-of), logins added to one issue's assignees and the read of whether one login may be assigned (the
- * status push), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes, conditional
- * reads that tell whether a repository changed (isWatchProbe). The runner refuses any other command line before it
- * starts: no title or state edit besides the close, no reopen, assignee removal, label create or delete, link
- * removal, merge or branch delete.
+ * --duplicate-of), logins added to one issue's assignees, the read of one user, for the case GitHub spells its login
+ * in, and the read of whether one login may be assigned (the status push), one sub-issue or blocked-by link added
+ * (issue links), and `issue watch`'s two probes, conditional reads that tell whether a repository changed
+ * (isWatchProbe). The runner refuses any other command line before it starts: no title or state edit besides the
+ * close, no reopen, assignee removal, label create or delete, link removal, merge or branch delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -147,6 +147,11 @@ export function issueAssignArgs(target: IssueNumber, logins: readonly string[]):
 /** The command line that reads whether `login` may be assigned in `repo`, which fails when it may not. */
 export function assigneeReadArgs(repo: string, login: string): string[] {
   return ['api', `repos/${repo}/assignees/${login}`];
+}
+
+/** The command line that reads one GitHub user, whose `login` is spelled in the case GitHub keeps; it fails when there is no such user. */
+export function userReadArgs(login: string): string[] {
+  return ['api', `users/${login}`];
 }
 
 /** The command line that reads one label of a repository, which fails when the repository has no such label. */
@@ -300,6 +305,18 @@ const ASSIGNEE_PATH = /^repos\/([^/]+\/[^/]+)\/assignees\/([^/]+)$/;
 export function isAssigneeRead(args: readonly string[]): boolean {
   const match = ASSIGNEE_PATH.exec(args[1] ?? '');
   return args[0] === 'api' && args.length === 2 && match !== null && REPO_NAME.test(match[1] ?? '') && isLogin(match[2] ?? '');
+}
+
+/** `users/<login>`: one GitHub user. */
+const USER_PATH = /^users\/([^/]+)$/u;
+
+/**
+ * True for `gh api users/<login>` and nothing more: a read, gh's default GET, of one user's public profile, which
+ * gives the login in the case GitHub keeps. A method, a field or a path below the user is refused.
+ */
+export function isUserRead(args: readonly string[]): boolean {
+  const match = USER_PATH.exec(args[1] ?? '');
+  return args[0] === 'api' && args.length === 2 && match !== null && isLogin(match[1] ?? '');
 }
 
 /** `repos/<owner>/<name>/labels/<label>`: one label of a repository. */
@@ -459,6 +476,7 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isIssueRead(args) ||
     isIssueAssign(args) ||
     isAssigneeRead(args) ||
+    isUserRead(args) ||
     isLinkAdd(args) ||
     isWatchProbe(args)
   );

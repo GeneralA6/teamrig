@@ -114,6 +114,7 @@ describe('teamrig issue sync --push', () => {
       gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' ')),
       [
         'api repos/acme/web/labels/status%3Ain-progress',
+        'api users/acme',
         'api repos/acme/web/assignees/acme',
         'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:in-progress',
         'api repos/acme/web/issues/8/labels/status%3Atriaged -X DELETE',

@@ -102,6 +102,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(writes(gh), [
       'api repos/acme/web/labels/status%3Atriaged',
+      'api users/acme',
       'api repos/acme/web/assignees/acme',
       'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:triaged',
       'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:triaged',

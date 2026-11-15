@@ -16,7 +16,8 @@ export interface PushOutcome {
  * status label the repository lacks (its changes are held, as adding it would make a new label), UNASSIGNED for a
  * login the repository may not assign (its changes go without the assign, as GitHub would drop it silently and the
  * next run would send it again), FAILED with the reason. Each label the plan adds, and each login it assigns, is read
- * once before any write. The first failed write or read stops the
+ * once before any write; a login goes out as the host spells it, since GitHub drops an assign whose case is not the
+ * login's own. The first failed write or read stops the
  * repository: the plan is drawn again from the issues as they are on the next run, so nothing is kept to resend and
  * a half-sent change is finished then.
  */
@@ -33,6 +34,7 @@ export async function applyPush(host: IssueHost, plan: PushPlan, say: (line: str
     }
   }
   const unassignable = new Set<string>();
+  const spelled = new Map<string, string>();
   for (const login of new Set(plan.changes.flatMap((change) => (change.assign === undefined ? [] : [change.assign])))) {
     const found = await host.assigneeExists(plan.repo, login);
     if (found.kind === 'failed') {
@@ -41,13 +43,15 @@ export async function applyPush(host: IssueHost, plan: PushPlan, say: (line: str
     }
     if (found.kind === 'missing') {
       unassignable.add(login);
+    } else {
+      spelled.set(login, found.login);
     }
   }
   for (const login of unassignable) {
     const left = plan.changes.filter((change) => change.assign === login).length;
     say(`UNASSIGNED ${plan.repo}: ${login} may not be assigned there (not a person with access to it); its ${left} issue(s) stay unassigned: map the owning session to a login that may under github.owners`);
   }
-  const sendable = plan.changes.map((change) => (change.assign !== undefined && unassignable.has(change.assign) ? withoutAssign(change) : change)).filter((change) => changeWrites(change) > 0);
+  const sendable = plan.changes.map((change) => assignedAs(change, unassignable, spelled)).filter((change) => changeWrites(change) > 0);
   const held = sendable.filter((change) => change.add.some((label) => missing.has(label)));
   for (const label of missing) {
     const waiting = held.filter((change) => change.add.includes(label)).length;
@@ -66,6 +70,14 @@ export async function applyPush(host: IssueHost, plan: PushPlan, say: (line: str
     writes += changeWrites(change);
   }
   return { sent, writes, held: held.length, failed: undefined };
+}
+
+/** `change` with its assign as the host spells the login, or with none for a login the repository may not assign. */
+function assignedAs(change: IssueChange, unassignable: ReadonlySet<string>, spelled: ReadonlyMap<string, string>): IssueChange {
+  if (change.assign === undefined) {
+    return change;
+  }
+  return unassignable.has(change.assign) ? withoutAssign(change) : { ...change, assign: spelled.get(change.assign) ?? change.assign };
 }
 
 /** `change` with no assign, for a login the repository may not assign. */
