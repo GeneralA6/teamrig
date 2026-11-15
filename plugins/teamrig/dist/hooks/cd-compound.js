@@ -1,8 +1,7 @@
 import * as nodePath from 'node:path';
 import { recordField, stringField } from "../core/guards.js";
 import { KIT_NAME } from "../core/home.js";
-import { resolveDir } from "../push-guard/location.js";
-import { bashDrivePath } from "../secret-guard/paths.js";
+import { bashDrivePath, resolveDir } from "../push-guard/location.js";
 import { rerunOf } from "./rerun-forms.js";
 /** Whether the guard looks at this payload: the switch is on and it is a PreToolUse call of Bash. */
 export function guardsCdCompound(enabled, payload) {
