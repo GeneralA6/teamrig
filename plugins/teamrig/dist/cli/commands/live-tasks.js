@@ -43,7 +43,7 @@ export async function liveTasksNoteOf(runtime, paths, config, id, zone, start) {
  * the missed meetings it is met in or joins (every one for the lead), and the week as a hook reads it (cli/stored-week.ts:
  * the use as last stored, no transcript measured, so a restore of many tabs stays inside the hook's timeout), and for
  * the lead the account's resets in stock. A
- * schedule or a week it cannot read leaves its line out, never throws: the note must still reach the session.
+ * schedule, a week or resets it cannot read leave their line out, never throw: the note must still reach the session.
  */
 export async function blockStartOf(runtime, kit, config, id) {
     const zone = teamZone(config, runtime);
@@ -58,6 +58,15 @@ export async function blockStartOf(runtime, kit, config, id) {
             .then((reading) => weekLine(reading, zone))
             .catch(() => undefined),
     ]);
-    const resets = id === lead ? resetSummaryLine(config.budget.resets, now, zone, KIT_NAME) : undefined;
+    const resets = id === lead ? resetsLineOf(config, now, zone) : undefined;
     return { at: zone.weekdayMinute(new Date(now)), meetings, week, ...(resets === undefined ? {} : { resets }) };
+}
+/** The lead's resets line, or undefined when the grants cannot be read: the start note never throws (GeneralA6/teamrig#931). */
+function resetsLineOf(config, now, zone) {
+    try {
+        return resetSummaryLine(config.budget.resets, now, zone, KIT_NAME);
+    }
+    catch {
+        return undefined;
+    }
 }
