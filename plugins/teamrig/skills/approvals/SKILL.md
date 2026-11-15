@@ -56,5 +56,7 @@ Approve only when every line holds:
 
 ## 4. After
 
-An approval stands until the task's next status, and the push guard reads it until then. When `check` still flags
+An approval stands until the task's next status, and the push guard reads it until then. A status that keeps the
+task waiting on you, behind another task or a time or the same approval set again, keeps it while its note names no
+other commit; a note naming a new head asks anew. When `check` still flags
 an approved task `READY` after its owner pushed or merged, send one inbox line to set its next status.
