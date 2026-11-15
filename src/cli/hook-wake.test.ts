@@ -13,6 +13,7 @@ import { inboxLineOf } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import type { RunRequest } from '../open/processes.ts';
 import { SessionLog } from '../sessions/log.ts';
+import { formatTabNeed } from '../tabs/need.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
@@ -926,6 +927,18 @@ describe('hook wake-check runs the idle pass', () => {
     const told = (await new WakeAsks(kit.files, ASKS).read('bravo')).map((stored) => stored.ask?.text);
     assert.equal(kit.files.get(record), undefined);
     assert.deepEqual(told.map((text) => text?.startsWith('queue r1 died while it waited for its turn: build api: ')), [true]);
+  });
+
+  it('pages the owner, on a due pass, for a tab held on a permission prompt, and warns on stderr when the page fails (T2927)', async () => {
+    const kit = await idleTeam({ ...DRY_RUN, alerts: { pageWebhookFile: '/chat/page-url' } });
+    await kit.files.write('/chat/page-url', 'http://chat.example/x\n');
+    const held = { session: 'bravo', state: 'waiting', kind: 'permission', text: 'Bash: git status', task: null, pid: null, since: '2030-01-08T09:45:00.000Z' } as const;
+    await kit.files.write(join(TEAM_HOME, 'state', 'tabs', 'bravo.json'), formatTabNeed(held));
+    const result = await passCheck(kit);
+    assert.deepEqual(answerOf(result), WAIT);
+    assert.deepEqual(result.stderr, [
+      "WARN the page of app/bravo's permission prompt hold failed (the webhook URL alerts.pageWebhookFile gives is not an https URL); the next idle pass tries again",
+    ]);
   });
 
   it('names once a reopened tab no teamrig hook started in, to the lead with a wake in mode on, and drops the mark once a hook started', async () => {
