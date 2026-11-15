@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment, isIssueRead, isLabelAdd, isLabelRead, isLabelRemove } from '../github/gh.ts';
-import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
+import { isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isLabelAdd, isLabelRead, isLabelRemove } from '../github/gh.ts';
+import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { EXIT } from './runtime.ts';
@@ -194,6 +195,75 @@ describe('teamrig issue label', () => {
     const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'label', 'acme/web#7', '--remove', 'p1'], { gh, env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' } });
     assert.equal(result.code, EXIT.ok);
     assert.match(result.stdout.join('\n'), /^OFF /u);
+    assert.deepEqual(gh.ran, []);
+  });
+});
+
+describe('teamrig issue edit', () => {
+  const SPEC = join(APP, 'spec.md');
+  const BODY = '## Spec\n\nStep one: run `npm test` $(x) @file\n';
+
+  it('replaces the body with the file, resolved from the working folder, through the allowlisted call', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const log = kit.files.get(EVENTS_PATH);
+    await kit.files.write(SPEC, BODY);
+    const gh = new FakeGh();
+    const result = await kit.run(['issue', 'edit', 'Acme/Web#612', '--body-file', 'spec.md'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(result.stdout, [LOGIN, `EDITED acme/web#612: its body is now ${BODY.length} characters`]);
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/612', '-X', 'PATCH', '-f', `body=${BODY}`]]);
+    assert.ok(isIssueBodyEdit(gh.ran[0]?.args ?? []));
+    assert.equal(kit.files.get(EVENTS_PATH), log);
+  });
+
+  it("drops a byte-order mark an editor wrote at the file's start", async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    await kit.files.write(SPEC, `\uFEFF${BODY}`);
+    const gh = new FakeGh();
+    await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', SPEC], { ...AS_LEAD, gh });
+    assert.deepEqual(gh.ran.map((request) => request.args.at(-1)), [`body=${BODY}`]);
+  });
+
+  it('refuses, running no gh, no file, a missing file, and a body that is empty, secret or names a task id', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const gh = new FakeGh();
+    /** Built at runtime so no secret-shaped literal sits in the source. */
+    const secret = ['ghp', '_', 'a'.repeat(36)].join('');
+    const files: Array<[string, RegExp]> = [
+      [' \n', /^REFUSED --body-file is empty/u],
+      [`key ${secret}`, /^REFUSED --body-file looks like it holds a secret/u],
+      ['Done in T12', /^REFUSED --body-file names the task id T12/u],
+    ];
+    for (const [text, error] of files) {
+      await kit.files.write(SPEC, text);
+      const result = await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', SPEC], { ...AS_LEAD, gh });
+      const printed = [...result.stdout, ...result.stderr].join('\n');
+      assert.equal(result.code, EXIT.refused, printed);
+      assert.match(printed, error);
+      assert.ok(!printed.includes(secret));
+    }
+    const missing = await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', 'gone.md'], { ...AS_LEAD, gh });
+    assert.equal(missing.code, EXIT.refused);
+    assert.match([...missing.stdout, ...missing.stderr].join('\n'), /^REFUSED no file .*gone\.md: --body-file takes the file holding the new body/u);
+    const none = await kit.run(['issue', 'edit', 'acme/web#7'], { ...AS_LEAD, gh });
+    assert.match([...none.stdout, ...none.stderr].join('\n'), /--body-file is required/u);
+    await kit.files.write(SPEC, BODY);
+    const unlisted = await kit.run(['issue', 'edit', 'acme/api#7', '--body-file', SPEC], { ...AS_LEAD, gh });
+    assert.match([...unlisted.stdout, ...unlisted.stderr].join('\n'), /^REFUSED acme\/api is not one of the team's repositories/u);
+    assert.deepEqual(gh.ran, []);
+  });
+
+  it('fails, saying the body stayed, when GitHub refuses the edit, and writes nothing while GitHub is off', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    await kit.files.write(SPEC, BODY);
+    const denied = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' });
+    const failed = await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', SPEC], { ...AS_LEAD, gh: denied });
+    assert.equal(failed.code, EXIT.failed);
+    assert.match(failed.stdout.join('\n'), /^FAILED acme\/web#7: the gh login may not edit the body of acme\/web#7: .*; the body is as it was$/mu);
+    const gh = new FakeGh();
+    const off = await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', SPEC], { gh, env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' } });
+    assert.equal(off.code, EXIT.ok);
+    assert.match(off.stdout.join('\n'), /^OFF /u);
     assert.deepEqual(gh.ran, []);
   });
 });

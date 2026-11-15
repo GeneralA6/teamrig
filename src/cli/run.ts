@@ -225,6 +225,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'issue watch': { effect: 'internal', flags: [], load: async () => (await issueWatchCommands()).issueWatch },
   'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
   'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
+  'issue edit': { effect: 'write', flags: ['session', 'body-file'], load: async () => (await issueCommands()).issueEdit },
   'issue close': { effect: 'write', flags: ['session', 'comment', 'reason', 'duplicate-of'], load: async () => (await issueCommands()).issueClose },
   'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
   'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
@@ -724,6 +725,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       owner, else the gh login; refuses an empty body, a secret shape, private data (a home folder
       path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
       gh login in its place
+  issue edit <owner/name#n> --body-file <path>   replaces the body (the description) of one issue or
+      pull request of the team's repositories with the file's text, with the same access and checks as
+      issue comment; the title, state, labels and assignees stay; the host keeps the old body in its
+      edit history
   issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
       [--duplicate-of <owner/name#n>]   closes one issue or pull request of the team's repositories,
       first posting --comment when given, with the same checks; a failed comment closes nothing;

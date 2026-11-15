@@ -105,6 +105,7 @@ const EXPECTED = {
   'issue watch': 'internal',
   'issue migrate': 'write',
   'issue comment': 'write',
+  'issue edit': 'write',
   'issue close': 'write',
   'issue label': 'write',
   'pr conflicts': 'write',

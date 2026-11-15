@@ -1,7 +1,8 @@
+import { resolve } from 'node:path';
 import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type IssueHost, type IssueTarget } from '../../issues/host.ts';
-import { labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
+import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
@@ -21,6 +22,30 @@ export async function issueComment(args: ParsedArgs, runtime: CliRuntime): Promi
   const target = targetOf(args);
   return writeOn(args, runtime, { target, comment: requiredFlag(args.flags, 'body'), close: false }, '--body');
 }
+
+/**
+ * `issue edit <owner/name#n> --body-file <path>` (T3021): replaces the body (the description) of one issue or pull
+ * request of the team's repositories with the text of a file, through the same host and checks as `issue comment`;
+ * the title, state, labels and assignees stay. A file is the input, as a full description runs to many lines a shell
+ * argument would mangle; a byte-order mark an editor put at its start is dropped. Exit 1 when the host failed, else 0.
+ */
+export async function issueEdit(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const target = targetOf(args);
+  const path = resolve(runtime.cwd, requiredFlag(args.flags, 'body-file'));
+  const text = await runtime.files.read(path);
+  if (text === undefined) {
+    throw new RefusedError(`no file ${path}: --body-file takes the file holding the new body`);
+  }
+  const body = text.startsWith(BYTE_ORDER_MARK) ? text.slice(BYTE_ORDER_MARK.length) : text;
+  const host = await hostFor(args, runtime, target.repo, { flag: '--body-file', text: body });
+  if (host === undefined) {
+    return EXIT.ok;
+  }
+  return (await editIssueBody(host, { target, body }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
+}
+
+/** The mark some Windows editors write first in a UTF-8 file; it is no part of the text. */
+const BYTE_ORDER_MARK = '﻿';
 
 /**
  * `issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate] [--duplicate-of
