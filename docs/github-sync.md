@@ -292,11 +292,12 @@ changes and writes.
 
 ```text
 ACCESS acme: read with the token saved as teamrig-gh-acme
-PUSH acme/web: 2 to change, 4 unchanged, 1 closed on the host while the task is active
+PUSH acme/web: 3 to change, 3 unchanged, 1 closed on the host while the task is active
 LABEL acme/web#7 T41 in-progress: add status:in-progress, take off status:triaged
 CLOSE acme/web#9 T42 done: close as completed, take off status:in-review
+ASSIGN acme/web#11 T43 open: assign acme
 KEPT acme/web#5 T30 open: closed on the host (not_planned) while the task is active; the push never reopens an issue, so set the task to match or reopen the issue
-PREVIEW nothing was written; a push would send 4 write(s) now, at most 40 a run, and plan the rest again on the next
+PREVIEW nothing was written; a push would send 5 write(s) now, at most 40 a run, and plan the rest again on the next
 ```
 
 - **One status label.** `open` shows `status:triaged`, `in-progress` `status:in-progress`, `waiting`
@@ -305,12 +306,17 @@ PREVIEW nothing was written; a push would send 4 write(s) now, at most 40 a run,
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
+- **Someone answers for it.** An open issue no one is assigned to gets an assignee: the login `github.owners` maps
+  to the task's owning session, else the account that owns the repository (sessions are not GitHub users). An issue
+  a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may
+  not assign (not a person with access to it) gets an `UNASSIGNED` line and its issues keep their label changes, as
+  GitHub would drop it silently and every run would send it again.
 - **Within GitHub's limit.** At most 40 writes a run, half GitHub's 80 a minute, shared by every repository in
   `github.repos` order; the rest waits for the next run.
 - **On its own, once you turn it on.** With `"statusPush": true` in the team config's `github` block, the
   [automatic sync](#then-it-runs-on-its-own) sends the push after each import, so no session runs it. Each run then
   sends fewer writes when the sync runs often, so an hour of runs sends at most 250, half GitHub's 500 an hour (every
-  15 minutes: 40 a run; every 5: 20). It sends labels only: a close is the one write a person reads as a decision,
+  15 minutes: 40 a run; every 5: 20). It sends labels and assignees only: a close is the one write a person reads as a decision,
   so the automatic push prints it as a `HELD` line and leaves it to a session's `teamrig issue sync --push --yes`.
   A failed write is told to the lead's inbox like a repository that cannot be read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
 
@@ -374,8 +380,10 @@ again.
   off (`.../issues/<number>/labels/<label> -X DELETE`), `teamrig issue close`'s close
   (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only, a duplicate's also with the
   original's `duplicate_issue_id`, digits only) and the read of that original (`.../issues/<number> -X GET`, no
-  field), and `teamrig issue links`'s one link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`,
-  `-X POST` with one issue id only). No link is ever removed.
+  field), the status push's read of whether one login may be assigned (`repos/<owner>/<name>/assignees/<login>`)
+  and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), and
+  `teamrig issue links`'s one link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST`
+  with one issue id only). No link is ever removed.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
   is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
   that one run.
