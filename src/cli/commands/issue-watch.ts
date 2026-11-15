@@ -2,7 +2,20 @@ import type { KitConfig } from '../../config/types.ts';
 import { ENV } from '../../core/home.ts';
 import type { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { formatWatchLease, idleDone, leaseHeld, parseWatchLease, readDue, type LastRead, type ProbeRound, type WatchLease } from '../../github/watch.ts';
+import { KIT_VERSION } from '../../core/version.ts';
+import {
+  formatWatchLease,
+  idleDone,
+  leaseHeld,
+  LIFETIME_MS,
+  leaseOutdated,
+  lifetimeDone,
+  parseWatchLease,
+  readDue,
+  type LastRead,
+  type ProbeRound,
+  type WatchLease,
+} from '../../github/watch.ts';
 import type { WatchMarks } from '../../issues/host.ts';
 import { runsClaude } from '../../open/session-processes.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
@@ -19,8 +32,11 @@ import { issueSync } from './issue-sync.ts';
  * `github.probeSeconds` it asks GitHub whether each repository changed (IssueHost.watch: conditional reads, free when
  * nothing changed) and runs `issue sync --auto` in this process only when one did (github/watch.ts readDue). It holds
  * a lease file with its pid and a beat, so one runs per team; it stops when the lease is another's, when the config
- * lists no repository or sets 0 seconds, under TEAMRIG_GITHUB=off, and once no team session ran for 10 minutes.
+ * lists no repository or sets 0 seconds, under TEAMRIG_GITHUB=off, once no team session ran for 10 minutes, and once
+ * it ran 24 hours. A hook of a newer kit takes over an older watch's lease, so an update reaches the watch at once.
  */
+
+const HOUR_MS = 3_600_000;
 
 /** The sync a change calls for, as the Stop hook used to start it: every repository, written, with its reports. */
 const AUTO_SYNC: ParsedArgs = { command: 'issue sync', positionals: [], flags: new Map(), switches: new Set(['auto']), rest: [], help: false };
@@ -47,9 +63,15 @@ async function readLease(runtime: CliRuntime, kit: Kit): Promise<WatchLease | un
   return parseWatchLease((await runtime.files.read(kit.paths.githubWatch)) ?? '');
 }
 
-/** Whether a lease holds the watch: fresh, and either a hook's claim on its way or a process still running. */
+/**
+ * Whether a lease holds the watch: fresh, of this kit's version or a newer one, and either a hook's claim on its way or
+ * a process still running. An older watch's lease holds nothing, so the old code stops at its next beat.
+ */
 function holds(runtime: CliRuntime, lease: WatchLease | undefined, now: number, probeSeconds: number): boolean {
-  return leaseHeld(lease, now, probeSeconds) && (lease?.pid === undefined || runtime.sessionProcesses.alive(lease.pid));
+  if (lease === undefined || !leaseHeld(lease, now, probeSeconds) || leaseOutdated(lease, KIT_VERSION)) {
+    return false;
+  }
+  return lease.pid === undefined || runtime.sessionProcesses.alive(lease.pid);
 }
 
 /**
@@ -71,7 +93,7 @@ export async function ensureWatch(runtime: CliRuntime, kit: Kit, config: KitConf
     if (holds(runtime, await readLease(runtime, kit), now, probeSeconds)) {
       return false;
     }
-    await runtime.files.write(kit.paths.githubWatch, formatWatchLease({ pid: undefined, startedAt: now, beatAt: now }));
+    await runtime.files.write(kit.paths.githubWatch, formatWatchLease({ pid: undefined, kitVersion: KIT_VERSION, startedAt: now, beatAt: now }));
     return true;
   });
   if (claimed) {
@@ -100,7 +122,7 @@ export async function issueWatch(args: ParsedArgs, runtime: CliRuntime): Promise
     if (lease?.pid !== undefined && lease.pid !== runtime.pid && holds(runtime, lease, now, config.github.probeSeconds)) {
       return false;
     }
-    await runtime.files.write(kit.paths.githubWatch, formatWatchLease({ pid: runtime.pid, startedAt: now, beatAt: now }));
+    await runtime.files.write(kit.paths.githubWatch, formatWatchLease({ pid: runtime.pid, kitVersion: KIT_VERSION, startedAt: now, beatAt: now }));
     return true;
   });
   if (!claimed) {
@@ -108,7 +130,7 @@ export async function issueWatch(args: ParsedArgs, runtime: CliRuntime): Promise
     return EXIT.ok;
   }
   try {
-    say(`STOP ${await watchLoop(runtime)}`);
+    say(`STOP ${await watchLoop(runtime, now)}`);
   } finally {
     await leaseLock(runtime, kit, config, config.lock.waitMs).run(async () => {
       if ((await readLease(runtime, kit))?.pid === runtime.pid) {
@@ -124,7 +146,7 @@ export async function issueWatch(args: ParsedArgs, runtime: CliRuntime): Promise
  * the repositories or the interval counts from the next round, and keeps the marks of a repository only once a sync
  * that read it went well, so a change a failed sync missed reads as changed again.
  */
-async function watchLoop(runtime: CliRuntime): Promise<string> {
+async function watchLoop(runtime: CliRuntime, startedAt: number): Promise<string> {
   const marks = new Map<string, WatchMarks>();
   let last: LastRead | undefined;
   let idleSince: number | undefined;
@@ -139,6 +161,9 @@ async function watchLoop(runtime: CliRuntime): Promise<string> {
       return 'another watch holds the lease';
     }
     const now = runtime.clock.now();
+    if (lifetimeDone(startedAt, now)) {
+      return `the watch ran ${LIFETIME_MS / HOUR_MS} hours; the next hook starts a fresh one`;
+    }
     idleSince = (await anySessionRuns(runtime, kit, config)) ? undefined : (idleSince ?? now);
     if (idleDone(idleSince, now)) {
       return 'no session of the team ran for 10 minutes; the next one starts the watch again';

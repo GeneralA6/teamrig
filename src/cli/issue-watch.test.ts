@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Sleep } from '../core/lock.ts';
-import { formatWatchLease, parseWatchLease } from '../github/watch.ts';
+import { KIT_VERSION } from '../core/version.ts';
+import { formatWatchLease, LIFETIME_MS, parseWatchLease } from '../github/watch.ts';
 import type { HiddenRequest, StartOutcome } from '../open/processes.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -18,6 +19,7 @@ const CLAUDE_PID = 6100;
 const OTHER_WATCH_PID = 6200;
 const STOP = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, stop_hook_active: false });
 const START = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, source: 'startup' });
+const OLD_KIT = '0.1.0';
 const WATCH_START = { command: '/usr/bin/node', args: ['/opt/teamrig/dist/cli/main.js', 'issue', 'watch'], cwd: TEAM_HOME, team: 'app' };
 
 /** A turn's end in `session`'s tab; the hook must print nothing and end well. */
@@ -64,7 +66,7 @@ describe('the hooks start the GitHub watch', () => {
     await stop(kit, processes);
     await stop(kit, processes, 'alpha');
     assert.deepEqual(started(processes), [WATCH_START]);
-    assert.deepEqual(parseWatchLease(kit.files.get(LEASE) ?? ''), { pid: undefined, startedAt: kit.clock.now(), beatAt: kit.clock.now() });
+    assert.deepEqual(parseWatchLease(kit.files.get(LEASE) ?? ''), { pid: undefined, kitVersion: KIT_VERSION, startedAt: kit.clock.now(), beatAt: kit.clock.now() });
 
     // The started watch never beat: three probe intervals and the grace later, the next hook starts another.
     kit.clock.advance(5 * MINUTE);
@@ -87,7 +89,7 @@ describe('the hooks start the GitHub watch', () => {
     const kit = new CliHarness(WATCH_TEAM);
     const processes = new FakeProcesses();
     const now = kit.clock.now();
-    await kit.files.write(LEASE, formatWatchLease({ pid: OTHER_WATCH_PID, startedAt: now - 30 * MINUTE, beatAt: now - MINUTE }));
+    await kit.files.write(LEASE, formatWatchLease({ pid: OTHER_WATCH_PID, kitVersion: KIT_VERSION, startedAt: now - 30 * MINUTE, beatAt: now - MINUTE }));
     kit.sessionProcesses.add({ pid: OTHER_WATCH_PID, parentPid: 1, name: 'node', commandLine: 'node teamrig issue watch' });
     await stop(kit, processes);
     assert.deepEqual(processes.hidden, []);
@@ -95,6 +97,29 @@ describe('the hooks start the GitHub watch', () => {
     kit.sessionProcesses.exit(OTHER_WATCH_PID);
     await stop(kit, processes);
     assert.deepEqual(started(processes), [WATCH_START]);
+  });
+
+  it('takes over a live watch of an older kit, so an update reaches the one process that writes to GitHub at once', async () => {
+    const kit = new CliHarness(WATCH_TEAM);
+    const processes = new FakeProcesses();
+    const now = kit.clock.now();
+    await kit.files.write(LEASE, formatWatchLease({ pid: OTHER_WATCH_PID, kitVersion: OLD_KIT, startedAt: now - 30 * MINUTE, beatAt: now - MINUTE }));
+    kit.sessionProcesses.add({ pid: OTHER_WATCH_PID, parentPid: 1, name: 'node', commandLine: 'node teamrig issue watch' });
+    await stop(kit, processes);
+    assert.deepEqual(started(processes), [WATCH_START]);
+    assert.deepEqual(parseWatchLease(kit.files.get(LEASE) ?? ''), { pid: undefined, kitVersion: KIT_VERSION, startedAt: now, beatAt: now });
+  });
+
+  it('leaves a live watch of a newer kit alone, so two kits on one machine never take the lease in turns', async () => {
+    const kit = new CliHarness(WATCH_TEAM);
+    const processes = new FakeProcesses();
+    const now = kit.clock.now();
+    const newer = formatWatchLease({ pid: OTHER_WATCH_PID, kitVersion: '999.0.0', startedAt: now - 30 * MINUTE, beatAt: now - MINUTE });
+    await kit.files.write(LEASE, newer);
+    kit.sessionProcesses.add({ pid: OTHER_WATCH_PID, parentPid: 1, name: 'node', commandLine: 'node teamrig issue watch' });
+    await stop(kit, processes);
+    assert.deepEqual(processes.hidden, []);
+    assert.equal(kit.files.get(LEASE), newer);
   });
 
   it('ends Stop and SessionStart well when the watch cannot be started, as a hook must never fail a turn', async () => {
@@ -178,7 +203,7 @@ describe('teamrig issue watch', () => {
     const kit = new CliHarness(WATCH_TEAM);
     const gh = new FakeGh().holds('acme/web', []).holds('acme/api', []);
     const now = kit.clock.now();
-    const other = formatWatchLease({ pid: OTHER_WATCH_PID, startedAt: now - 30 * MINUTE, beatAt: now - MINUTE });
+    const other = formatWatchLease({ pid: OTHER_WATCH_PID, kitVersion: KIT_VERSION, startedAt: now - 30 * MINUTE, beatAt: now - MINUTE });
     await kit.files.write(LEASE, other);
     kit.sessionProcesses.add({ pid: OTHER_WATCH_PID, parentPid: 1, name: 'node', commandLine: 'node teamrig issue watch' });
     const held = await kit.run(['issue', 'watch'], { gh });
@@ -193,11 +218,39 @@ describe('teamrig issue watch', () => {
     assert.ok(gh.probes().length > 0);
   });
 
+  it('claims the lease from a live watch of an older kit, whose next beat then stops it', async () => {
+    const kit = new CliHarness(WATCH_TEAM);
+    const gh = new FakeGh().holds('acme/web', []).holds('acme/api', []);
+    const now = kit.clock.now();
+    await kit.files.write(LEASE, formatWatchLease({ pid: OTHER_WATCH_PID, kitVersion: OLD_KIT, startedAt: now - 30 * MINUTE, beatAt: now - MINUTE }));
+    kit.sessionProcesses.add({ pid: OTHER_WATCH_PID, parentPid: 1, name: 'node', commandLine: 'node teamrig issue watch' });
+    const leases: (number | undefined)[] = [];
+    const sleep = scripted(kit, [() => leases.push(parseWatchLease(kit.files.get(LEASE) ?? '')?.pid)]);
+    const result = await kit.run(['issue', 'watch'], { gh, sleep });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.deepEqual(leases, [CLI_PID]);
+    assert.ok(gh.probes().length > 0);
+  });
+
+  it('stops once it ran 24 hours though a session still runs, leaving the lease for the next hook', async () => {
+    const kit = new CliHarness(WATCH_TEAM);
+    await leadRuns(kit);
+    const gh = new FakeGh().holds('acme/web', []).holds('acme/api', []);
+    // The session ends after the second round, so a watch with no lifetime would stop idle 10 minutes later instead.
+    const steps = [() => kit.clock.advance(LIFETIME_MS - 2 * MINUTE), () => kit.sessionProcesses.exit(CLAUDE_PID)];
+    const result = await kit.run(['issue', 'watch'], { gh, sleep: scripted(kit, steps) });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    // Minute 0 and 24 h less one minute run; the round at 24 h stops before it probes.
+    assert.equal(kit.clock.sleeps.length, 2);
+    assert.equal(result.stdout.at(-1), 'STOP the watch ran 24 hours; the next hook starts a fresh one');
+    assert.equal(kit.files.get(LEASE), undefined);
+  });
+
   it('stops when another watch took its lease, leaving that lease in place', async () => {
     const kit = new CliHarness(WATCH_TEAM);
     await leadRuns(kit);
     const gh = new FakeGh().holds('acme/web', []).holds('acme/api', []);
-    const taken = formatWatchLease({ pid: OTHER_WATCH_PID, startedAt: kit.clock.now(), beatAt: kit.clock.now() });
+    const taken = formatWatchLease({ pid: OTHER_WATCH_PID, kitVersion: KIT_VERSION, startedAt: kit.clock.now(), beatAt: kit.clock.now() });
     const result = await kit.run(['issue', 'watch'], { gh, sleep: scripted(kit, [() => kit.files.write(LEASE, taken)]) });
     assert.equal(result.stdout.at(-1), 'STOP another watch holds the lease');
     assert.equal(kit.files.get(LEASE), taken);
