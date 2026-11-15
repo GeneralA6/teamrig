@@ -69,6 +69,9 @@ and mark a part that must wait for another as blocked by it.
 - One label per meaning: one type, one priority, and one status when the repository uses status labels; never a
   second label that says the same as another (a "help wanted" beside a status that already says the issue is open
   to take).
+- A parent issue (a goal) takes no status label: its parts carry the status, and the goal is done when they are.
+- `good first issue` only on a small, well-defined issue a newcomer can finish with no knowledge beyond its body;
+  on a few such issues, so the label keeps meaning something.
 - Assign the issue to its taker once they say they take it; until then it stays unassigned, open to anyone.
 
 ## 6. Read it back
