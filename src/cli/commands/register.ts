@@ -1123,7 +1123,7 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const resets = resetExpiryWarnings(own.config.budget, zone, now.getTime());
   const late = await githubLateWarnings(runtime.files, own.paths.githubClocks, zone, now.getTime());
   const restore = await restoreLauncherWarnings(runtime.files, resolveKitHome(runtime.env, runtime.userHome));
-  const holds = await promptHoldWarnings(runtime, own.paths, zone, now.getTime());
+  const holds = await promptHoldWarnings(runtime, own.paths, zone, new SecretScanner(own.config.register.secretPatterns), now.getTime());
   const lead = own.config.roles.lead;
   return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...resets, ...restore, ...late, ...holds], lead, decisions };
 }
