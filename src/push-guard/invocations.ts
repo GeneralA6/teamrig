@@ -1,4 +1,5 @@
-import { isAssignment, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
+import { packagedStartOf, type PackagedStart } from '../package-guard/packaged.ts';
+import { isAssignment, launch, programName, staticWord, type Assignment, type Launch, type ProgramLaunch } from './launchers.ts';
 import { bashNativeWord, Location, resolveDir } from './location.ts';
 import { splitGitAlias } from './program-split.ts';
 import { redirectsInput, stdinUse } from './stdin.ts';
@@ -408,6 +409,11 @@ class GitInvocationFinder {
       }
       case 'program': {
         const name = programName(launched.program.text);
+        const packaged = packagedStartOf(name, launched.args);
+        if (packaged !== undefined) {
+          this.visitPackaged(packaged, launched, dialect, location, depth, stdin);
+          break;
+        }
         const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
         if (name !== 'git' && (subcommand === undefined || !BUILTINS.has(subcommand))) {
           break;
@@ -421,6 +427,30 @@ class GitInvocationFinder {
       }
     }
     return launched;
+  }
+
+  /**
+   * Visits what a package runner or a version manager starts (T3069): `git push` in `npx -c "git push"` or
+   * `volta run git push` runs as surely as a line's own. It runs one script level deeper, in the runner's folder,
+   * with its variables and stdin.
+   */
+  private visitPackaged(start: PackagedStart, runner: ProgramLaunch, dialect: ShellDialect, location: Location, depth: number, stdin: ShellWord | undefined): void {
+    if (depth >= MAX_SCRIPT_DEPTH) {
+      this.doubt('package runners nest too deep to read', false);
+      return;
+    }
+    const inner = location.child();
+    runner.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
+    if (start.kind === 'script') {
+      if (start.script.dynamic && start.dialect !== dialect) {
+        this.doubt(`it hands ${DIALECT_NAMES[start.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true);
+      }
+      this.inheriting(hooksVariableOf(runner.env), false, () => this.visitScript(start.script, start.dialect, inner, depth + 1));
+      return;
+    }
+    // The runner's variables reach the program it starts, so `GIT_DIR=x npx git push` still moves git.
+    const env = runner.env.map(({ name, value }) => ({ text: `${name}=${value.text}`, dynamic: value.dynamic }));
+    this.visitCommand(env.length === 0 ? start.words : [staticWord('env'), ...env, ...start.words], dialect, inner, depth + 1, stdin);
   }
 
   /**

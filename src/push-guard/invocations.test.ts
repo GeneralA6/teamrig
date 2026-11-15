@@ -270,6 +270,31 @@ describe('findGitInvocations: scripts and shells', () => {
     ]);
   });
 
+  it('reads the git a package runner or a version manager starts, in its folder and with its variables (T3069)', () => {
+    expectInvocations([
+      ['npx -c "git push origin main"', [`${CWD}|push|origin main`]],
+      ['npm exec --call "cd sub && git push"', [`${SUB}|push|`]],
+      ['npx bash -c "git push origin main"', [`${CWD}|push|origin main`]],
+      ['pnpm exec sh -c "git push"', [`${CWD}|push|`]],
+      ['pnpm dlx -c git push origin main', [`${CWD}|push|origin main`]],
+      ['yarn exec git push', [`${CWD}|push|`]],
+      ['bunx git push', [`${CWD}|push|`]],
+      ['corepack npx -c "git push"', [`${CWD}|push|`]],
+      ['volta run --node 20 git push', [`${CWD}|push|`]],
+      ['fnm exec --using 20 git push', [`${CWD}|push|`]],
+      ['nvm exec 20 git push', [`${CWD}|push|`]],
+      ['env -C sub npx git push', [`${SUB}|push|`]],
+      ['GIT_CONFIG_COUNT=1 npx git push', [`${CWD}|push||cfg`]],
+      ['npm test', []],
+      ['npx tsc --noEmit', []],
+    ]);
+    // Its shell is cmd on Windows and sh elsewhere, so the doubt's words differ; it doubts on a line that mentions a push either way.
+    const runTime = doubts('npx -c "$CMD"');
+    assert.equal(runTime.length, 1, runTime.join());
+    assert.ok(runTime.every((doubt) => doubt.startsWith('g:')), runTime.join());
+    expectDoubt(`${'npx '.repeat(9)}git push`, '!:package runners nest too deep to read');
+  });
+
   it('doubts what it cannot read', () => {
     expectDoubt('bash -c "$CMD"', 'g:the program it runs is only known when it runs');
     expectDoubt('pwsh -c "$CMD"', 'g:it hands PowerShell a command line built from bash variables');

@@ -91,6 +91,14 @@ describe('pushGuardOutput', () => {
     assert.doesNotMatch(denied, /pushToProtected/);
   });
 
+  it("reads a push a package runner or a version manager starts as the line's own (T3069)", async () => {
+    for (const line of ['npx -c "git push origin main"', 'npx bash -c "git push origin main"', 'pnpm exec sh -c "git push origin main"', 'volta run git push origin main']) {
+      assert.equal(decisionOf(await pushGuardOutput(payload(line), env())), 'ask', line);
+    }
+    assert.equal(decisionOf(await pushGuardOutput(payload('npx -c "git push -f origin main"'), env())), 'deny');
+    assert.equal(await pushGuardOutput(payload('npx -c "git push origin feature"'), env()), '');
+  });
+
   it('emits nothing for a branch push, a heredoc note or a payload without a command', async () => {
     assert.equal(await pushGuardOutput(payload('git push origin feature'), env()), '');
     assert.equal(await pushGuardOutput(payload("cat > n.md <<'EOF'\ngit push origin main\nEOF"), env()), '');
