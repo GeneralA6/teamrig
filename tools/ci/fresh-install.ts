@@ -53,6 +53,15 @@ export function layoutOf(home: string): { readonly clone: string; readonly plugi
 }
 
 /**
+ * The inherited variable `name` under whichever case this OS spells it (Windows hands Node `Path`, Git Bash
+ * `COMSPEC`), or `fallback` when it is not set.
+ */
+export function inheritedValue(inherited: Readonly<Record<string, string | undefined>>, name: string, fallback: string): string {
+  const key = Object.keys(inherited).find((each) => each.toUpperCase() === name.toUpperCase());
+  return (key === undefined ? undefined : inherited[key]) ?? fallback;
+}
+
+/**
  * The developer's environment: the scratch home for every tool, git with no system config and no login
  * prompt, a commit identity, and the plugin's bin folder first on PATH. Every other variable is left out, so
  * the runner's own kit home or team never leaks in.

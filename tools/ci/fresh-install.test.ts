@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { delimiter, join } from 'node:path';
 import type { RunRequest, RunResult } from './dist-smoke.ts';
-import { cmdArg, freshInstall, installEnv, installSteps, layoutOf, teamrigRequest, type InstallInput } from './fresh-install.ts';
+import { cmdArg, freshInstall, inheritedValue, installEnv, installSteps, layoutOf, teamrigRequest, type InstallInput } from './fresh-install.ts';
 
 const HOME = join('scratch', 'home');
 const { clone, plugin, project } = layoutOf(HOME);
@@ -134,6 +134,15 @@ describe('installEnv', () => {
       GIT_COMMITTER_NAME: 'dev',
       GIT_COMMITTER_EMAIL: 'dev@example.com',
     });
+  });
+});
+
+describe('inheritedValue', () => {
+  it('finds a variable under any case, and answers the fallback for one not set or set to nothing', () => {
+    assert.equal(inheritedValue({ Path: 'a' }, 'PATH', ''), 'a');
+    assert.equal(inheritedValue({ COMSPEC: 'cmd' }, 'ComSpec', 'cmd.exe'), 'cmd');
+    assert.equal(inheritedValue({ OTHER: 'x' }, 'PATH', 'none'), 'none');
+    assert.equal(inheritedValue({ PATH: undefined }, 'PATH', 'none'), 'none');
   });
 });
 

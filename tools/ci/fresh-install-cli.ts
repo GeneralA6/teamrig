@@ -1,17 +1,11 @@
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { runMain } from '../lib/run-main.ts';
-import { freshInstall, installEnv, type InstallInput, type InstallRunner } from './fresh-install.ts';
-
-/** The PATH, under whichever case this OS spells its name (Windows hands Node `Path`). */
-function inheritedPath(): string {
-  const key = Object.keys(process.env).find((name) => name.toUpperCase() === 'PATH');
-  return key === undefined ? '' : (process.env[key] ?? '');
-}
+import { freshInstall, inheritedValue, installEnv, type InstallInput, type InstallRunner } from './fresh-install.ts';
+import { spawnRun } from './spawn-run.ts';
 
 /**
  * A new developer's first run of the committed tree in this checkout, cloned over `file://` into an empty home
@@ -25,23 +19,12 @@ async function main(): Promise<number> {
       platform: process.platform,
       source: pathToFileURL(resolve('.')).href,
       home,
-      path: inheritedPath(),
+      path: inheritedValue(process.env, 'PATH', ''),
       nodePath: process.execPath,
-      comspec: process.env['ComSpec'] ?? 'cmd.exe',
+      comspec: inheritedValue(process.env, 'ComSpec', 'cmd.exe'),
     };
     const env = installEnv(input, process.env);
-    const run: InstallRunner = (request, cwd) => {
-      const result = spawnSync(request.file, request.args, {
-        input: request.input,
-        encoding: 'utf8',
-        env,
-        cwd,
-        timeout: 120_000,
-        windowsVerbatimArguments: request.verbatim ?? false,
-      });
-      // A file that cannot start (missing, or not executable) has no output, only an error.
-      return { status: result.status, stdout: result.stdout, stderr: result.error === undefined ? result.stderr : result.error.message };
-    };
+    const run: InstallRunner = (request, cwd) => spawnRun(request, { env, cwd, timeout: 120_000 });
     const report = freshInstall(input, run, (plugin) => JSON.parse(readFileSync(join(plugin, 'hooks', 'hooks.json'), 'utf8')));
     report.log.forEach((line) => console.log(`  ${line}`));
     if (report.findings.length === 0) {
