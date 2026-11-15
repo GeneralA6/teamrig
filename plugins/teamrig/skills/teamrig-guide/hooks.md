@@ -286,7 +286,10 @@ current name in any case only binds the tab and renames nothing. If the `.teamri
 Before Claude runs a Bash or PowerShell command, the guard reads it (on Windows a Bash line also as bash receives
 it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)), with what each shell, wrapper, package
 runner or version manager on it starts (`bash -c "..."`, `npx -c "..."`, `pnpm exec sh -c "..."`, `volta run git
-push`), and decides:
+push`), and decides. The line a package runner hands its shell (`npx -c`, `pnpm exec -c`, the first operand of
+`yarn exec` and `bun exec`) is read as bash, cmd and PowerShell each read it, since `--script-shell`,
+`npm_config_script_shell`, an `.npmrc` or `ComSpec` may pick any of them; one the line hands a shell it names that
+the guard cannot read (`--script-shell=node`, or a variable) is asked about. The guard:
 
 - **Runs as usual**: no `git push` in it, a `--dry-run`, or a push that updates no protected branch
   (`main` and `master` by default [pushGuard.protectedBranches]; an empty list guards nothing, mirrors included).
@@ -742,7 +745,9 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
 `dist/cli/guard-main.js` beside it, with or without the extension) through `node` or any other script host (`tsx`,
 `bun`, `npx tsx`), through a package runner or a version manager (`npx`, `npm exec`, `pnpm exec`, `pnpm dlx`, `yarn`,
 `bunx`, `corepack`, `volta run`, `fnm exec`, `nvm exec`), the line it hands a shell (`npx -c "..."`,
-`pnpm exec sh -c "..."`) included, or as any other program whose later words start an `exec` or `owner` command
+`pnpm exec sh -c "..."`, `yarn exec "..."`) included and read as bash, cmd and PowerShell each read it (a line that
+names a shell the guard cannot read for it, `--script-shell=node` or a variable, is refused: leave the runner its
+own shell, or run the commands directly), or as any other program whose later words start an `exec` or `owner` command
 (`node x.js exec approve ...`, `./copy owner next ...`), since a copy or another name may be the CLI. A line that
 hands the literal words `exec approve` to another program (`echo exec approve R1`) is refused for that too; quote
 them (`echo "exec approve R1"`). A command word only known when it runs counts only after teamrig's own name, so
