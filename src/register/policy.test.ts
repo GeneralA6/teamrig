@@ -72,6 +72,12 @@ describe('RegisterPolicy.add', () => {
     assert.equal(error(own.add({ ...INPUT, workClass: 'Roadmap' }, EMPTY)), 'class Roadmap is not one of focus.classes (Product, Upkeep)');
   });
 
+  it('matches a class in any case and keeps the configured spelling (GeneralA6/teamrig#845)', () => {
+    const verdict = policy.add({ ...INPUT, workClass: 'maintenance' }, EMPTY);
+    assert.equal(verdict.ok ? verdict.value.workClass : error(verdict), 'Maintenance');
+    assert.equal(error(policy.add({ ...INPUT, workClass: 'chores' }, EMPTY)), 'class chores is not one of focus.classes (Roadmap, Maintenance, Improvements)');
+  });
+
   it("takes teamrig's p0 beside the configured levels, a team with its own levels included", () => {
     const verdict = policy.add({ ...INPUT, priority: 0 }, EMPTY);
     assert.equal(verdict.ok ? verdict.value.priority : undefined, 0);
@@ -1027,6 +1033,11 @@ describe('RegisterPolicy.update', () => {
     assert.equal(policy.update(stale, 'alpha', { workClass: 'Roadmap' }, undefined, EMPTY).ok, true, 'one of the classes');
   });
 
+  it('matches a class in any case on update and keeps the configured spelling (GeneralA6/teamrig#845)', () => {
+    const verdict = policy.update(TASK, 'alpha', { workClass: 'ROADMAP' }, undefined, EMPTY);
+    assert.deepEqual(verdict.ok ? verdict.value.changes : error(verdict), { workClass: 'Roadmap' });
+  });
+
   it('refuses a critical mark on a task, and clears the mark when a critical bug becomes a task (T1252)', () => {
     assert.equal(error(policy.update(TASK, 'alpha', { critical: true }, undefined, EMPTY)), 'critical marks only a bug: give --type bug too');
     assert.equal(error(policy.update(testTask({ ...TASK, type: 'task' }), 'alpha', { critical: true }, undefined, EMPTY)), 'critical marks only a bug: give --type bug too');
@@ -1171,6 +1182,10 @@ describe('RegisterPolicy.triage (T2086)', () => {
 
   it('lets the owner write class, goals and size', () => {
     assert.deepEqual(policy.triage(TASK, 'alpha', ROW, EMPTY), { ok: true, value: { changes: ROW, note: null } });
+  });
+
+  it('matches a row class in any case and keeps the configured spelling (GeneralA6/teamrig#845)', () => {
+    assert.deepEqual(policy.triage(TASK, 'alpha', { ...ROW, workClass: 'roadmap' }, EMPTY), { ok: true, value: { changes: ROW, note: null } });
   });
 
   it("lets the lead write goals, which a leader's update may not", () => {

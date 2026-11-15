@@ -63,7 +63,8 @@ Flags:
 - `--critical`: marks a bug in a critical area, whose review asks `--harden` too; its line shows `critical bug`.
   Only with `--type bug`.
 - `--class <name>`: the work class, one of the team's `focus.classes` (`Roadmap`, `Maintenance`, `Improvements` by
-  default); any other name is refused. A task without one counts as `focus.defaultClass`.
+  default), matched in any case and stored as the config spells it; any other name is refused. A task without one
+  counts as `focus.defaultClass`.
 - `--team <team>`: asks another team of your tree for the work: the task lands in that team's register from you,
   owned by `--owner` (a session of that team, by id or name) or else that team's lead. The owner gets an inbox line
   and the team's lead, when it is not the owner, a copy. A team of a separate tree is refused. Its one `--source`
@@ -330,7 +331,7 @@ Flags:
 - `--size <pct>|none`: a new size, in percent of the weekly usage limit, or `none` to clear it.
 - `--type task|bug`: makes the item a task or a bug (`--type task` also quiets the hint); the lead may type any
   task. A critical bug made a task loses its critical mark.
-- `--class <name>|none`: a new work class, one of `focus.classes`, or `none` to clear it (it then counts as
+- `--class <name>|none`: a new work class, one of `focus.classes` in any case, or `none` to clear it (it then counts as
   `focus.defaultClass`); a leader above the owner may set it too. A class the team since renamed out of
   `focus.classes` stays on the task until changed.
 - `--critical`: marks a bug critical; only on a bug.
