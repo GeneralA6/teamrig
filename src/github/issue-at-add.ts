@@ -49,7 +49,7 @@ export function addIssuePlan(ask: AddIssueAsk, github: Pick<GithubConfig, 'repos
   if (asksIssue) {
     return openPlan(ask, github, scanner);
   }
-  if (github.issueAtAdd !== '' && !(ask.ref?.startsWith(ISSUE_REF_PREFIX) ?? false)) {
+  if (github.issueAtAdd !== undefined && !(ask.ref?.startsWith(ISSUE_REF_PREFIX) ?? false)) {
     return {
       ok: false,
       error: `github.issueAtAdd is ${github.issueAtAdd}: give the task's public issue with --issue <title> --issue-body <text>, or why it stays local with --local <reason>`,
@@ -100,7 +100,7 @@ function repoOf(asked: string | undefined, { repos, issueAtAdd }: Pick<GithubCon
     const repo = asked.trim().toLowerCase();
     return repos.includes(repo) ? { ok: true, value: repo } : { ok: false, error: `--issue-repo ${asked} is not one of github.repos (${repos.join(', ')})` };
   }
-  if (issueAtAdd !== '') {
+  if (issueAtAdd !== undefined) {
     return { ok: true, value: issueAtAdd };
   }
   const [only, ...more] = repos;

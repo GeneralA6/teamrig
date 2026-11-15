@@ -1417,9 +1417,9 @@
           "$ref": "#/$defs/sessionName"
         },
         "issueAtAdd": {
-          "description": "The repository, one of repos, a new task's issue opens in. While set, teamrig add opens the task's issue there with the public wording given (--issue and --issue-body), or records why the task stays local (--local), and adds no task with neither, so every task has its issue from the start. Empty, the default: an add opens an issue only when asked.",
+          "description": "The repository, one of repos, a new task's issue opens in. While set, teamrig add opens the task's issue there with the public wording given (--issue and --issue-body), or records why the task stays local (--local), and adds no task with neither, so every task has its issue from the start. Unset, the default: an add opens an issue only when asked.",
           "type": "string",
-          "default": ""
+          "minLength": 1
         },
         "acceptLabel": {
           "description": "The label that lets an issue by an author outside the repository (not its owner, an organization member or a collaborator) become a task: it counts when someone other than the author added it last and the title and body were not edited after that. Matched without case.",

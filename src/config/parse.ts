@@ -741,6 +741,7 @@ function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     }
     repos.push(key);
   }
+  const issueAtAdd = readIssueAtAdd(read, raw, repos);
   return {
     repos,
     owners: readGithubOwners(read, read.section(raw, 'owners', 'github'), sessions),
@@ -752,16 +753,16 @@ function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     acceptLabel: read.string(raw, 'acceptLabel', 'github', DEFAULT_GITHUB.acceptLabel, shortLine(GITHUB_LABEL_MAX_LENGTH)),
     similarThreshold: read.number(raw, 'similarThreshold', 'github', DEFAULT_GITHUB.similarThreshold, CONFIG_LIMITS.similarThreshold),
     ...readGithubWatcher(read, raw, sessions),
-    issueAtAdd: readIssueAtAdd(read, raw, repos),
+    ...(issueAtAdd === undefined ? {} : { issueAtAdd }),
   };
 }
 
-/** `github.issueAtAdd`: empty, or one of `repos` in lowercase; any other repository is reported and reads as empty. */
-function readIssueAtAdd(read: ConfigReader, raw: JsonRecord, repos: readonly string[]): string {
-  const repo = read.string(raw, 'issueAtAdd', 'github', DEFAULT_GITHUB.issueAtAdd).trim().toLowerCase();
-  if (repo !== '' && !repos.includes(repo)) {
+/** `github.issueAtAdd`: unset, or one of `repos` in lowercase; any other repository is reported and reads as unset. */
+function readIssueAtAdd(read: ConfigReader, raw: JsonRecord, repos: readonly string[]): string | undefined {
+  const repo = read.optionalString(raw, 'issueAtAdd', 'github')?.trim().toLowerCase();
+  if (repo !== undefined && !repos.includes(repo)) {
     read.report('github.issueAtAdd', `${describe(repo)} is not one of github.repos`);
-    return DEFAULT_GITHUB.issueAtAdd;
+    return undefined;
   }
   return repo;
 }

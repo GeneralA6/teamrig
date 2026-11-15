@@ -4,27 +4,27 @@ import { SecretScanner } from '../core/secrets.ts';
 import { addIssuePlan, type AddIssueAsk, type AddIssuePlan } from './issue-at-add.ts';
 
 const NONE: AddIssueAsk = { title: undefined, body: undefined, repo: undefined, local: undefined, ref: undefined, type: undefined, priority: 2 };
-const ONE_REPO = { repos: ['acme/web'], issueAtAdd: '' };
-const TWO_REPOS = { repos: ['acme/web', 'acme/api'], issueAtAdd: '' };
+const ONE_REPO = { repos: ['acme/web'] };
+const TWO_REPOS = { repos: ['acme/web', 'acme/api'] };
 const AT_ADD = { repos: ['acme/web', 'acme/api'], issueAtAdd: 'acme/api' };
 const ISSUE = { title: ' Add a health check ', body: 'Why it is needed.\n' };
 
-function planned(ask: Partial<AddIssueAsk>, github: { readonly repos: readonly string[]; readonly issueAtAdd: string }): AddIssuePlan {
+function planned(ask: Partial<AddIssueAsk>, github: { readonly repos: readonly string[]; readonly issueAtAdd?: string }): AddIssuePlan {
   const verdict = addIssuePlan({ ...NONE, ...ask }, github, new SecretScanner());
   assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
   return verdict.value;
 }
 
-function refused(ask: Partial<AddIssueAsk>, github: { readonly repos: readonly string[]; readonly issueAtAdd: string }): string {
+function refused(ask: Partial<AddIssueAsk>, github: { readonly repos: readonly string[]; readonly issueAtAdd?: string }): string {
   const verdict = addIssuePlan({ ...NONE, ...ask }, github, new SecretScanner());
   assert.ok(!verdict.ok, 'expected a refusal');
   return verdict.error;
 }
 
 describe('addIssuePlan', () => {
-  it('asks nothing while github.issueAtAdd is empty and the add names no issue', () => {
+  it('asks nothing while github.issueAtAdd is unset and the add names no issue', () => {
     assert.deepEqual(planned({}, TWO_REPOS), { kind: 'none' });
-    assert.deepEqual(planned({ ref: 'notes/plan.md' }, { repos: [], issueAtAdd: '' }), { kind: 'none' });
+    assert.deepEqual(planned({ ref: 'notes/plan.md' }, { repos: [] }), { kind: 'none' });
   });
 
   it('refuses an add with neither an issue nor a reason while github.issueAtAdd is set, unless --ref names an issue', () => {
@@ -50,7 +50,7 @@ describe('addIssuePlan', () => {
 
   it('refuses an issue with no repository to open it in, or one outside github.repos', () => {
     assert.equal(refused(ISSUE, TWO_REPOS), '--issue-repo names the repository: github.repos has 2 (acme/web, acme/api) and github.issueAtAdd names none');
-    assert.equal(refused(ISSUE, { repos: [], issueAtAdd: '' }), 'github.repos names no repository to open the issue in');
+    assert.equal(refused(ISSUE, { repos: [] }), 'github.repos names no repository to open the issue in');
     assert.equal(refused({ ...ISSUE, repo: 'acme/other' }, TWO_REPOS), '--issue-repo acme/other is not one of github.repos (acme/web, acme/api)');
   });
 

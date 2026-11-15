@@ -717,10 +717,10 @@ export interface GithubConfig {
   /**
    * The repository of `repos` a new task's issue opens in: while set, `teamrig add` opens the task's issue there with
    * the public wording given (`--issue`, `--issue-body`), or records why the task stays local (`--local`), and adds no
-   * task with neither, so every task has its issue from the start. Empty, the default: an add opens an issue only when
+   * task with neither, so every task has its issue from the start. Unset, the default: an add opens an issue only when
    * asked.
    */
-  readonly issueAtAdd: string;
+  readonly issueAtAdd?: string;
 }
 
 /**

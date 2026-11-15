@@ -73,7 +73,7 @@ describe('teamrig add with its issue', () => {
     assert.equal(tasksOf(kit).size, 0);
   });
 
-  it('adds as before with issueAtAdd empty and no issue flag', async () => {
+  it('adds as before with issueAtAdd unset and no issue flag', async () => {
     const kit = new CliHarness(OPEN_TEAM);
     const gh = new FakeGh();
     const result = await kit.run(TASK, { ...AS_LEAD, gh });

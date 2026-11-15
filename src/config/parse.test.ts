@@ -28,7 +28,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35, issueAtAdd: '' });
+    assert.deepEqual(config.github, { repos: [], owners: {}, areaOwners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
@@ -422,7 +422,6 @@ describe('parseConfig', () => {
       statusPush: false,
       acceptLabel: 'teamrig',
       similarThreshold: 0.35,
-      issueAtAdd: '',
     });
     assert.equal(parseConfig({ ...ROSTER, github: { statusPush: true } }).config.github.statusPush, true);
     for (const wrong of ['yes', 1]) {
@@ -449,7 +448,7 @@ describe('parseConfig', () => {
     assert.match(dropped.issues[0]?.message ?? '', /^is no longer read: issue watch syncs when GitHub changed/);
   });
 
-  it('reads github issueAtAdd as one of the repos in lowercase, and reports any other repository as empty', () => {
+  it('reads github issueAtAdd as one of the repos in lowercase, and reports any other repository as unset', () => {
     const repos = ['acme/web', 'acme/docs'];
     const { config, issues } = parseConfig({ ...ROSTER, github: { repos, issueAtAdd: 'Acme/Web' } });
     assert.deepEqual(issues, []);
@@ -457,10 +456,20 @@ describe('parseConfig', () => {
     const outside = parseConfig({ ...ROSTER, github: { repos, issueAtAdd: 'acme/other' } });
     assert.deepEqual(paths(outside.issues), ['github.issueAtAdd']);
     assert.match(outside.issues[0]?.message ?? '', /is not one of github\.repos/);
-    assert.equal(outside.config.github.issueAtAdd, '');
-    const wrongType = parseConfig({ ...ROSTER, github: { repos, issueAtAdd: 7 } });
-    assert.deepEqual(paths(wrongType.issues), ['github.issueAtAdd']);
-    assert.equal(wrongType.config.github.issueAtAdd, '');
+    assert.equal(outside.config.github.issueAtAdd, undefined);
+    for (const wrong of [7, '', ' ']) {
+      const parsed = parseConfig({ ...ROSTER, github: { repos, issueAtAdd: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.issueAtAdd']);
+      assert.equal(parsed.config.github.issueAtAdd, undefined);
+    }
+  });
+
+  it('reads a github block written back whole as it was, with issueAtAdd left out while unset', () => {
+    const first = parseConfig({ ...ROSTER, github: { repos: ['acme/web'] } });
+    assert.equal('issueAtAdd' in first.config.github, false);
+    const again = parseConfig({ ...ROSTER, github: JSON.parse(JSON.stringify(first.config.github)) });
+    assert.deepEqual(again.issues, []);
+    assert.deepEqual(again.config.github, first.config.github);
   });
 
   it('reads the github similar threshold within 0 to 1, else keeps 0.35', () => {
