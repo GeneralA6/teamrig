@@ -177,7 +177,9 @@ sequenceDiagram
   `inbox read` would, but nothing is marked read. A title that names no session, or sessions of two teams, binds
   nothing, and the prompt hook says once how to bind the tab. `$TEAMRIG_SESSION` and an earlier binding always win.
   A bound tab with no title gets its session's name as title at its next prompt (`sessionTitle` in the prompt
-  hook's answer); a tab with a title keeps it.
+  hook's answer); a tab with a title keeps it. A bound tab writes only as its own session: a command that changes
+  anything is refused (`REFUSED this tab is <session>'s: ...`) when `--session` or `$TEAMRIG_SESSION` names another
+  session. Reads name any session.
 - `teamrig open <session>` opens a tab in tmux (when run inside tmux), Windows Terminal, macOS Terminal, GNOME
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
   With `open.teamWindow: true`, each tab of the team's sessions opens in a Windows Terminal window of the team's

@@ -11,6 +11,7 @@ or take it to the lead.
 | --- | --- |
 | `REFUSED no team here: create one with teamrig team create <team> --sessions <id,id>, set $TEAMRIG_TEAM, or put .teamrig.json {"team": "<id>"} in the project folder` | Run the command from the project folder, or set `$TEAMRIG_TEAM`. Create a team only if the user wants one. |
 | `--session (or $TEAMRIG_SESSION) is required` | Add `--session <your id>`. If you do not know it, run `teamrig who` and ask the user. |
+| `REFUSED this tab is alpha's: a session runs teamrig's writes only as itself, not as lead` | This tab is bound to alpha, and a write runs only as the tab's own session. Run it as `--session alpha`, or ask the session it names (here lead) to run it. |
 | `REFUSED db is not a session on this team (sessions: lead (shop-lead), api (shop-api), web (shop-web))` | Use one of the ids or names listed. |
 | `REFUSED the team config has 2 problem(s) (first: ...); run: teamrig config validate` | Run `teamrig config validate` and fix each problem it lists in the config; reads still work meanwhile. |
 | `REFUSED no team config at <path>; create it with: teamrig team create <team> --sessions <id,id>` | The pointer names a team with no config: create it, or fix `.teamrig.json`. |
