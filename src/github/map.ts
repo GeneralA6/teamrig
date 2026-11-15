@@ -144,13 +144,18 @@ export function issueOwner(issue: Pick<HostIssue, 'repo' | 'assignees' | 'labels
       return session;
     }
   }
-  const labels = new Set(issue.labels.map((label) => label.toLowerCase()));
-  for (const [label, session] of rules.areaOwners) {
-    if (labels.has(label)) {
+  return areaOwnerOf(issue.labels, rules.areaOwners) ?? rules.repoSessions.get(issue.repo) ?? rules.lead;
+}
+
+/** The session of the first label in `github.areaOwners` the labels carry, in the config's order, any case; else undefined. */
+export function areaOwnerOf(labels: readonly string[], areaOwners: ReadonlyMap<string, string>): string | undefined {
+  const carried = new Set(labels.map((label) => label.toLowerCase()));
+  for (const [label, session] of areaOwners) {
+    if (carried.has(label)) {
       return session;
     }
   }
-  return rules.repoSessions.get(issue.repo) ?? rules.lead;
+  return undefined;
 }
 
 export function issueOutcome(issue: HostIssue): IssueOutcome {
