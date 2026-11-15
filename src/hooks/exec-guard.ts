@@ -298,6 +298,9 @@ const UNREADABLE =
 const FED_SHELL =
   'a shell here reads its commands from a pipe, so the guard cannot tell whether they review a request or act as the owner; run them directly, or hand the shell a heredoc, which the guard reads.';
 
+const FOREIGN_SHELL =
+  'a package runner here hands its command line to a shell the line names (--script-shell, npm_config_script_shell or ComSpec) that the guard cannot read, so it cannot tell whether the line reviews a request or acts as the owner; leave the runner its own shell, or run the commands directly.';
+
 /** At most this many changed files are named in a refusal; the rest are counted. */
 const NAMED_FILES = 5;
 
@@ -410,6 +413,7 @@ export function runsOfReadings(readings: readonly string[], context: ProgramsCon
     bare: each.flatMap((runs) => runs.bare),
     opaque: each.flatMap((runs) => runs.opaque),
     fedShells: each.flatMap((runs) => runs.fedShells),
+    foreignShells: each.flatMap((runs) => runs.foreignShells),
   };
 }
 
@@ -420,7 +424,8 @@ export function runsOfReadings(readings: readonly string[], context: ProgramsCon
  * command through a client that is no install of this plugin, one only known when it runs, or one whose files differ
  * from its build; whenever the line runs a `teamrig owner` command, through any client, as it acts as the owner, or a
  * settings writer's write (`permissions trim --yes` and the rest of SETTINGS_WRITERS), as it changes a permission; and
- * when a shell on the line takes its commands from a pipe the guard cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec` calls start
+ * when a shell on the line takes its commands from a pipe the guard cannot read, or a package runner hands its line to
+ * a shell the line names that the guard cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec` calls start
  * once, and reads the tab's session only for a line that holds a review. A Bash line on Windows is read in each
  * reading bash may run (`toolCommandReadings`), so a call the line as written escapes is still refused.
  */
@@ -453,10 +458,11 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
   const opaqueSettings = runs.opaque.flatMap((run) => settingsWriteOf(run.args) ?? []);
   const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
   const fed = runs.fedShells.length > 0;
-  if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && opaqueSettings.length === 0 && !unread && !fed) {
+  const foreign = runs.foreignShells.length > 0;
+  if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && opaqueSettings.length === 0 && !unread && !fed && !foreign) {
     return '';
   }
-  const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : [])];
+  const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : [])];
   reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : [])));
   reasons.push(...opaqueOwner.map((words) => ownerRefusalOf(ownerActionOf(words))));

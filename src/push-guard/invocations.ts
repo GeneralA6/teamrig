@@ -49,6 +49,18 @@ export interface GitInvocations {
    * targets do not count.
    */
   readonly mentionsPush: boolean;
+  /** Each place the line runs one of several readings of what a package runner starts, of which only one runs. */
+  readonly readings: readonly ReadingSpan[];
+}
+
+/**
+ * The git runs of the readings of what one package runner starts (see `packagedStartOf`), read one after another:
+ * reading `n` runs from the end before it (`start` for the first) to `ends[n]`, as indexes into the invocations.
+ * Only one reading runs, so what an earlier one moves is not known to hold in a later one, or after them all.
+ */
+export interface ReadingSpan {
+  readonly start: number;
+  readonly ends: readonly number[];
 }
 
 export interface FinderContext {
@@ -273,6 +285,7 @@ function splitOption(text: string): readonly [string, string | undefined] {
 class GitInvocationFinder {
   private readonly invocations: GitInvocation[] = [];
   private readonly doubts: Doubt[] = [];
+  private readonly readings: ReadingSpan[] = [];
   private mentionsPush = false;
   /** Aliases a `git config alias.x value` earlier in the line sets; undefined marks one only known when it runs. */
   private readonly lineAliases = new Map<string, string | undefined>();
@@ -293,7 +306,7 @@ class GitInvocationFinder {
 
   find(command: string): GitInvocations {
     this.visitScript(staticWord(command), this.context.dialect, new Location(this.context.cwd, this.context.home), 0);
-    return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.mentionsPush };
+    return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.mentionsPush, readings: this.readings };
   }
 
   private doubt(reason: string, gated: boolean): void {
@@ -409,8 +422,8 @@ class GitInvocationFinder {
       }
       case 'program': {
         const name = programName(launched.program.text);
-        const packaged = packagedStartOf(name, launched.args);
-        if (packaged !== undefined) {
+        const packaged = packagedStartOf(name, launched.args, launched.env);
+        if (packaged.length > 0) {
           this.visitPackaged(packaged, launched, dialect, location, depth, stdin);
           break;
         }
@@ -432,25 +445,45 @@ class GitInvocationFinder {
   /**
    * Visits what a package runner or a version manager starts (T3069): `git push` in `npx -c "git push"` or
    * `volta run git push` runs as surely as a line's own. It runs one script level deeper, in the runner's folder,
-   * with its variables and stdin.
+   * with its variables and stdin. Each reading of it is visited in turn, and kept as a {@link ReadingSpan} when
+   * there are several; a shell the line names for it that the guard cannot read always asks.
    */
-  private visitPackaged(start: PackagedStart, runner: ProgramLaunch, dialect: ShellDialect, location: Location, depth: number, stdin: ShellWord | undefined): void {
+  private visitPackaged(starts: readonly PackagedStart[], runner: ProgramLaunch, dialect: ShellDialect, location: Location, depth: number, stdin: ShellWord | undefined): void {
     if (depth >= MAX_SCRIPT_DEPTH) {
       this.doubt('package runners nest too deep to read', false);
       return;
     }
-    const inner = location.child();
-    runner.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
-    if (start.kind === 'script') {
-      if (start.script.dynamic && start.dialect !== dialect) {
-        this.doubt(`it hands ${DIALECT_NAMES[start.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true);
-      }
-      this.inheriting(hooksVariableOf(runner.env), false, () => this.visitScript(start.script, start.dialect, inner, depth + 1));
-      return;
+    const start = this.invocations.length;
+    const ends: number[] = [];
+    for (const packaged of starts) {
+      const inner = location.child();
+      runner.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
+      this.visitPackagedReading(packaged, runner, dialect, inner, depth, stdin);
+      ends.push(this.invocations.length);
     }
-    // The runner's variables reach the program it starts, so `GIT_DIR=x npx git push` still moves git.
-    const env = runner.env.map(({ name, value }) => ({ text: `${name}=${value.text}`, dynamic: value.dynamic }));
-    this.visitCommand(env.length === 0 ? start.words : [staticWord('env'), ...env, ...start.words], dialect, inner, depth + 1, stdin);
+    if (ends.length > 1) {
+      this.readings.push({ start, ends });
+    }
+  }
+
+  /** Visits one reading of what a package runner starts, in `inner`, its folder. */
+  private visitPackagedReading(start: PackagedStart, runner: ProgramLaunch, dialect: ShellDialect, inner: Location, depth: number, stdin: ShellWord | undefined): void {
+    switch (start.kind) {
+      case 'script':
+        if (start.script.dynamic && start.dialect !== dialect) {
+          this.doubt(`it hands ${DIALECT_NAMES[start.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true);
+        }
+        this.inheriting(hooksVariableOf(runner.env), false, () => this.visitScript(start.script, start.dialect, inner, depth + 1));
+        return;
+      case 'foreign-shell':
+        this.doubt(start.shell.dynamic ? 'a package runner hands its command line to a shell only known when it runs' : `a package runner hands its command line to ${programName(start.shell.text)}, a shell the guard cannot read`, false);
+        return;
+      case 'words': {
+        // The runner's variables reach the program it starts, so `GIT_DIR=x npx git push` still moves git.
+        const env = runner.env.map(({ name, value }) => ({ text: `${name}=${value.text}`, dynamic: value.dynamic }));
+        this.visitCommand(env.length === 0 ? start.words : [staticWord('env'), ...env, ...start.words], dialect, inner, depth + 1, stdin);
+      }
+    }
   }
 
   /**

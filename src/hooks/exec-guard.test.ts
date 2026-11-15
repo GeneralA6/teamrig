@@ -506,6 +506,37 @@ describe('execGuardOutput', () => {
     assert.equal(quiet.checks(), 0);
   });
 
+  it("reads a package runner's shell line in every shell the line or an .npmrc may pick for it", async () => {
+    const quiet = env();
+    for (const line of [
+      `npx --script-shell=bash -c "teamrig e''xec approve R1 --session alpha"`,
+      `npm_config_script_shell=bash npx -c "teamrig e''xec approve R1 --session alpha"`,
+      `npm --script-shell bash exec -c "teamrig e''xec status R1"`,
+      'npx -c "teamrig e^xec approve R1 --session alpha"',
+      `pnpm exec -c "teamrig e''xec status R1"`,
+      'yarn exec "teamrig exec status R1"',
+      'bun exec "teamrig exec status R1"',
+    ]) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', /runs through a package runner/, line);
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('refuses a package runner whose shell line goes to a shell the line names that the guard cannot read', async () => {
+    const quiet = env();
+    for (const line of ['npx --script-shell=node -c "x"', 'npm_config_script_shell=python3 npx -c "x"', 'ComSpec=C:/tools/run.exe npm exec -c "x"', 'npx --script-shell "$S" -c "x"']) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', /hands its command line to a shell the line names/, line);
+    }
+    for (const line of ['npx --script-shell=bash -c "tsc --noEmit"', 'ComSpec=C:/Windows/System32/cmd.exe npx -c "tsc"', 'npx --script-shell=pwsh -c "tsc"']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
   it('reads an entry script named without its extension, or with a module one, as the CLI (T3069)', async () => {
     const quiet = env();
     for (const line of [

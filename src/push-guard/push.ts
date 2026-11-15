@@ -1,6 +1,6 @@
 import type { PushToProtected } from '../config/types.ts';
 import { BranchMoves, type BranchView } from './branch-moves.ts';
-import { findGitInvocations, type FinderContext, type GitConfigReader, type GitInvocation, type GitInvocations } from './invocations.ts';
+import { findGitInvocations, type FinderContext, type GitConfigReader, type GitInvocation, type GitInvocations, type ReadingSpan } from './invocations.ts';
 import { namedPushTarget, type MapChange, type NamedPushTarget } from './named-push.ts';
 import type { ShellDialect, ShellWord } from './tokenizer.ts';
 
@@ -487,7 +487,10 @@ export function judgePushes(found: GitInvocations, context: GuardContext): PushV
   let protectedPush: ProtectedPush | undefined;
   let doubt: string | undefined;
   const updates: ProtectedUpdate[] = [];
-  for (const invocation of found.invocations) {
+  for (const [index, invocation] of found.invocations.entries()) {
+    if (afterMovingReading(found, index, moves)) {
+      moves.forget();
+    }
     const push = parsePush(invocation);
     if (push !== undefined) {
       const judgement = judge.judge(push, push.dir === undefined ? { kind: 'unknown' } : moves.view(push.dir), moves.mapChange());
@@ -510,6 +513,32 @@ export function judgePushes(found: GitInvocations, context: GuardContext): PushV
     return { decision: 'ask', updates, doubt };
   }
   return protectedPush === undefined ? { decision: 'allow', updates: [] } : { decision: 'allow', updates, protectedPush };
+}
+
+/**
+ * True when `index` ends a reading of what a package runner starts (see `ReadingSpan`) and a reading up to it may
+ * move a branch: only one reading runs, so where a branch stands from there on is not known.
+ */
+function afterMovingReading(found: GitInvocations, index: number, moves: BranchMoves): boolean {
+  return found.readings.some(
+    (span) => span.ends.includes(index) && readingsDiffer(found.invocations, span) && found.invocations.slice(span.start, index).some((invocation) => moves.moves(invocation)),
+  );
+}
+
+/** True when the readings of `span` run different git commands; when they all run the same ones, any of them is the one that runs. */
+function readingsDiffer(invocations: readonly GitInvocation[], { start, ends }: ReadingSpan): boolean {
+  const runs: string[] = [];
+  let from = start;
+  for (const end of ends) {
+    runs.push(invocations.slice(from, end).map(invocationKey).join('\n'));
+    from = end;
+  }
+  return new Set(runs).size > 1;
+}
+
+/** What a git run is, for telling two readings apart. */
+function invocationKey({ dir, subcommand, args, configOverride, hooksOverride }: GitInvocation): string {
+  return JSON.stringify([dir ?? null, subcommand, args.map(({ text, dynamic }) => [text, dynamic]), configOverride, hooksOverride ?? null]);
 }
 
 /** Why the guard stopped a push, naming the team's protected branches. */

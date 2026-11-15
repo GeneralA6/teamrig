@@ -99,6 +99,12 @@ describe('pushGuardOutput', () => {
     assert.equal(await pushGuardOutput(payload('npx -c "git push origin feature"'), env()), '');
   });
 
+  it("asks about a push in a package runner's shell line whatever shell the line or an .npmrc picks for it", async () => {
+    for (const line of [`npx --script-shell=bash -c "git p''ush origin main"`, `npm_config_script_shell=bash npx -c "git p''ush origin main"`, 'npx -c "git p^ush origin main"', 'npx --script-shell=node -c "x"']) {
+      assert.equal(decisionOf(await pushGuardOutput(payload(line), env())), 'ask', line);
+    }
+  });
+
   it('emits nothing for a branch push, a heredoc note or a payload without a command', async () => {
     assert.equal(await pushGuardOutput(payload('git push origin feature'), env()), '');
     assert.equal(await pushGuardOutput(payload("cat > n.md <<'EOF'\ngit push origin main\nEOF"), env()), '');

@@ -112,10 +112,14 @@ describe('programsOf', () => {
   });
 
   it('reads what a package runner or a version manager starts, naming the outermost one, in its folder and scope (T3069)', () => {
-    const packaged = (command: string, dialect: ShellDialect = 'bash'): string[] =>
-      programsOf(command, { cwd: APP, home: HOME, dialect })
-        .filter((run) => run.packageRunner !== undefined)
-        .map((run) => `${[run.name, ...run.args.map((arg) => arg.text)].join(' ')} < ${run.packageRunner?.text ?? ''}${run.runner ? ' runner' : ''} @ ${run.dir ?? '?'}`);
+    // A runner's shell line is read in each shell that may run it, so each distinct run is listed once.
+    const packaged = (command: string, dialect: ShellDialect = 'bash'): string[] => [
+      ...new Set(
+        programsOf(command, { cwd: APP, home: HOME, dialect })
+          .filter((run) => run.packageRunner !== undefined)
+          .map((run) => `${[run.name, ...run.args.map((arg) => arg.text)].join(' ')} < ${run.packageRunner?.text ?? ''}${run.runner ? ' runner' : ''} @ ${run.dir ?? '?'}`),
+      ),
+    ];
     const sub = join(APP, 'sub');
     assert.deepEqual(packaged('npx bash -c "teamrig exec approve R1"'), [`teamrig exec approve R1 < npx @ ${APP}`]);
     assert.deepEqual(packaged('npx -c "teamrig exec approve R1 && git status"'), [`teamrig exec approve R1 < npx @ ${APP}`, `git status < npx @ ${APP}`]);
@@ -125,6 +129,22 @@ describe('programsOf', () => {
     assert.deepEqual(packaged('teamrig queue --what x -- npx jest'), [`jest < npx runner @ ${APP}`]);
     assert.deepEqual(packaged('npx.cmd teamrig status', 'powershell'), [`teamrig status < npx.cmd @ ${APP}`]);
     assert.deepEqual(packaged('npm test && npm run build && yarn build'), []);
+  });
+
+  it("reads a package runner's shell line in bash, cmd and PowerShell, and keeps a shell the line names but no guard reads", () => {
+    const named = (command: string): string[] =>
+      programsOf(command, { cwd: APP, home: HOME, dialect: 'bash' })
+        .filter((run) => run.packageRunner !== undefined && run.name === 'teamrig')
+        .map((run) => run.args.map((arg) => arg.text).join(' '));
+    assert.ok(named(`npx --script-shell=bash -c "teamrig e''xec approve R1"`).includes('exec approve R1'));
+    assert.ok(named(`npm_config_script_shell=bash npx -c "teamrig e''xec approve R1"`).includes('exec approve R1'));
+    assert.ok(named('npx -c "teamrig e^xec approve R1"').includes('exec approve R1'));
+    const foreign = (command: string): string[] =>
+      runsOf(command, { cwd: APP, home: HOME, dialect: 'bash' }).foreignShells.map((shell) => (shell.dynamic ? `~${shell.text}` : shell.text));
+    assert.deepEqual(foreign('npx --script-shell=node -c "x"'), ['node']);
+    assert.deepEqual(foreign('ComSpec=C:/tools/run.exe npx -c "x"'), ['C:/tools/run.exe']);
+    assert.deepEqual(foreign('npx --script-shell "$S" -c "x"'), ['~$S']);
+    assert.deepEqual(foreign('npx --script-shell=bash -c "x" && ComSpec=cmd.exe npx -c "y" && npx --script-shell=node eslint'), []);
   });
 
   it('keeps a word a package runner starts that is only known when it runs as an opaque run (T3069)', () => {
