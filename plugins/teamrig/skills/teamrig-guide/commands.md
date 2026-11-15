@@ -6267,7 +6267,7 @@ request`, `worktree remove`, a register or inbox command, a `git commit` with it
 you own) runs; a line that provably only reads runs; a Bash line teamrig's rules give a rerun form (after a leading
 `cd D &&`, or a plain `git worktree remove`) is refused quoting the line to run instead; anything else is refused with
 the tool's name and the note to record the step as waiting for the owner and take the next task. Each answer is a line
-in `state/prompt-answers.jsonl`, its command redacted, a route's by its route alone; lines over 7 days old move to the
+in `state/prompt-answers.jsonl`, its command masked of every secret value, a route's by its route alone; lines over 7 days old move to the
 archive (see
 [teamrig compact](#teamrig-compact)). The question picker (`AskUserQuestion`) and plan mode's exit (`ExitPlanMode`)
 still open. See [Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
