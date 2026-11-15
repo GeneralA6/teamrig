@@ -33,6 +33,9 @@ Approve only when every line holds:
   advisories checked.
 - The time: before the team's queue cutoff [delivery.schedule.queueCutoffUtc] when the change needs a
   build or a test run, and outside any no-merge window in the team's rules.
+- Its reach is stated and fits where it lives: work any team using the tool would need goes into the shared tool,
+  with what differs per team in a config key, not into one team's rules or a session's skill. The note or pull request
+  says the reach; a narrow reach on generic work, decline asking to move it.
 - Nothing owner-gated inside [ownerGates]: destructive data operations, permissions, budget, resource changes,
   product or design decisions.
 
