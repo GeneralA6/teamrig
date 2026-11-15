@@ -1850,6 +1850,7 @@ function parsePrompts(read: ConfigReader, raw: JsonRecord): PromptsConfig {
   return {
     hookAsks: isHookAsks(asks) ? asks : DEFAULT_PROMPTS.hookAsks,
     routeAllow: isRouteAllow(routeAllow) ? routeAllow : DEFAULT_PROMPTS.routeAllow,
+    serviceRoleDailyCap: read.integer(raw, 'serviceRoleDailyCap', 'prompts', DEFAULT_PROMPTS.serviceRoleDailyCap, CONFIG_LIMITS.serviceRoleDailyCap),
   };
 }
 

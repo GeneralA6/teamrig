@@ -256,6 +256,7 @@ The permission prompts teamrig's own hooks raise.
 | --- | --- | --- | --- |
 | `hookAsks` | one of `"ask"`, `"refuse"` | `"ask"` | A call a teamrig hook would ask the human about (a push to a protected branch or one it cannot read, an ad-hoc package run, a git command without hooks, a call that would print a secret, a helper over the budget, as their own keys set): ask raises the permission prompt; refuse refuses it instead, its reason telling the session to record the step as waiting for the owner's approval and take its next task, so no prompt holds a session while nobody is there to answer it. |
 | `routeAllow` | one of `"on"`, `"off"` | `"on"` | While hookAsks is refuse: on lets a Bash line that runs a sanctioned route marked for it (teamrig merge, deploy, exec request, worktree remove, git commit) run with no permission check at all, once every teamrig guard passed it, logged by its route alone; off takes that allow away without a release. It only takes allows away: no config adds a route. Inert while hookAsks is ask. |
+| `serviceRoleDailyCap` | integer (0 to 200) | `10` | How many calls one service role (serviceRoles) lets run with no permission check in 24 hours, so a holder steered by text from outside closes or comments only so much; past it, the role's next call asks the owner (refused with hookAsks refuse). 0 lets none through. Each allowed call is a line of state/prompt-answers.jsonl naming the role, command and target, never the text. |
 
 ## `secretGuard`
 

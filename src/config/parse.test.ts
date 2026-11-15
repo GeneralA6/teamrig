@@ -1272,7 +1272,21 @@ describe('parseConfig', () => {
     }
     const bad = parseConfig({ ...ROSTER, prompts: { hookAsks: 'refuse', routeAllow: true } });
     assert.deepEqual(paths(bad.issues), ['prompts.routeAllow']);
-    assert.deepEqual(bad.config.prompts, { hookAsks: 'refuse', routeAllow: 'on' });
+    assert.deepEqual(bad.config.prompts, { hookAsks: 'refuse', routeAllow: 'on', serviceRoleDailyCap: 10 });
+  });
+
+  it('reads how many calls a service role lets run in 24 hours, defaulting to 10 and refusing one out of bounds', () => {
+    assert.equal(parseConfig(ROSTER).config.prompts.serviceRoleDailyCap, 10);
+    for (const cap of [0, 3, 200]) {
+      const set = parseConfig({ ...ROSTER, prompts: { serviceRoleDailyCap: cap } });
+      assert.deepEqual(set.issues, []);
+      assert.equal(set.config.prompts.serviceRoleDailyCap, cap);
+    }
+    for (const bad of [-1, 201, 2.5, '10']) {
+      const read = parseConfig({ ...ROSTER, prompts: { serviceRoleDailyCap: bad } });
+      assert.deepEqual(paths(read.issues), ['prompts.serviceRoleDailyCap'], String(bad));
+      assert.equal(read.config.prompts.serviceRoleDailyCap, 10);
+    }
   });
 
   it('reads the db-write guard, asking by default with no program, client or script of the team', () => {

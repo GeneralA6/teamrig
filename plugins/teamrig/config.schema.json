@@ -464,6 +464,13 @@
           "type": "string",
           "enum": ["on", "off"],
           "default": "on"
+        },
+        "serviceRoleDailyCap": {
+          "description": "How many calls one service role (serviceRoles) lets run with no permission check in 24 hours, so a holder steered by text from outside closes or comments only so much; past it, the role's next call asks the owner (refused with hookAsks refuse). 0 lets none through. Each allowed call is a line of state/prompt-answers.jsonl naming the role, command and target, never the text.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200,
+          "default": 10
         }
       }
     },

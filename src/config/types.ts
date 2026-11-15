@@ -327,6 +327,11 @@ export interface PromptsConfig {
   readonly hookAsks: HookAsks;
   /** Whether a sanctioned route's line runs with no permission check at all while asks are refused. */
   readonly routeAllow: RouteAllow;
+  /**
+   * How many calls one service role lets run with no permission check in 24 hours (T2984, security condition C6), so a
+   * holder steered by outside text closes or comments only so much; past it, the role's next call asks the owner.
+   */
+  readonly serviceRoleDailyCap: number;
 }
 
 /**

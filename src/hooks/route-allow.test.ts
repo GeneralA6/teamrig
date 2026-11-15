@@ -13,9 +13,9 @@ function routeOf(id: RouteId): SanctionedRoute {
 describe('route allow', () => {
   it('answers only while the team refuses asks and its switch is on', () => {
     assert.equal(routeAllowOn(DEFAULT_PROMPTS), false);
-    assert.equal(routeAllowOn({ hookAsks: 'refuse', routeAllow: 'on' }), true);
-    assert.equal(routeAllowOn({ hookAsks: 'refuse', routeAllow: 'off' }), false);
-    assert.equal(routeAllowOn({ hookAsks: 'ask', routeAllow: 'on' }), false);
+    assert.equal(routeAllowOn({ hookAsks: 'refuse', routeAllow: 'on', serviceRoleDailyCap: 10 }), true);
+    assert.equal(routeAllowOn({ hookAsks: 'refuse', routeAllow: 'off', serviceRoleDailyCap: 10 }), false);
+    assert.equal(routeAllowOn({ hookAsks: 'ask', routeAllow: 'on', serviceRoleDailyCap: 10 }), false);
   });
 
   it('takes the routes the owner granted or that stay local, never a push or the register', () => {

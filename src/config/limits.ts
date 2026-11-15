@@ -55,6 +55,7 @@ export const CONFIG_LIMITS = {
   dbWriteNodeClients: { maxItems: 16 },
   dbWriteClientReceivers: { maxItems: 8, maxLength: 40 },
   packageCooldownDays: { min: 0, max: 365 },
+  serviceRoleDailyCap: { min: 0, max: 200 },
   searchNudgeAt: { min: 0, max: 50 },
   turnLogKeepHours: { min: 1, max: 168 },
   meetingBeforeMinutes: { min: 0, max: 120 },
