@@ -1,4 +1,5 @@
 import { claudeProjectsDir, findTranscript } from "../../budget/discover.js";
+import { sessionRefreshOf } from "../../config/refresh.js";
 import { isNonNegativeInteger, isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
@@ -58,7 +59,7 @@ async function transcriptOf(runtime, payload) {
 function askContextOf(runtime, scope, store) {
     const { config, roster, id } = scope;
     return {
-        settings: config.refresh,
+        settings: sessionRefreshOf(config, id),
         now: new Date(runtime.clock.now()).toISOString(),
         session: { id, team: scope.kit.paths.team, name: roster.nameOf(id) ?? id },
         handoverPath: store.handoverPath(id),
@@ -71,7 +72,8 @@ function askContextOf(runtime, scope, store) {
  * threshold (`decideMidTurn`), so a long turn refreshes before Claude Code compacts it. The ask is recorded
  * before it is answered, so the turn's end asks again only when the handover is not written by then. The
  * running work, which takes the transcript's last 8 MiB, is read only once the context is past the size.
- * stdin: `{session_id, cwd, tokens}`, `tokens` the context the last reply read.
+ * stdin: `{session_id, cwd, tokens, window?}`, `tokens` the context the last reply read, `window` the context window
+ * Claude Code reports, which raises the threshold on a large one.
  */
 export async function refreshMid(args, runtime) {
     noPositionals(args);
@@ -84,13 +86,15 @@ export async function refreshMid(args, runtime) {
     if (tokens === undefined || scope === undefined || !scope.config.refresh.enabled) {
         return answer(runtime, OFF);
     }
+    // The window Claude Code reports, which tells a large one apart; a mod from before it sends none.
+    const window = countOf(payload, 'window');
     const store = new RefreshStore(runtime.files, scope.kit.paths);
     const state = await store.state(scope.id);
     const context = askContextOf(runtime, scope, store);
     const meeting = await inMeetingNow(runtime, scope);
-    const first = decideMidTurn(state, context, { tokens, meeting, due: undefined });
+    const first = decideMidTurn(state, context, { tokens, window, meeting, due: undefined });
     const decision = first.kind === 'measure'
-        ? decideMidTurn(state, context, { tokens, meeting, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, payload)) })
+        ? decideMidTurn(state, context, { tokens, window, meeting, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, payload)) })
         : first;
     switch (decision.kind) {
         case 'ask':
@@ -99,7 +103,7 @@ export async function refreshMid(args, runtime) {
             return answer(runtime, { kind: 'ask', text: decision.reason, nextAt: decision.nextAt });
         case 'none':
             if (decision.state !== undefined) {
-                // A fresh start's first measure: its baseline.
+                // A fresh start's first measure, its baseline, or the window the session showed.
                 await store.setState(scope.id, decision.state);
             }
             return answer(runtime, { kind: 'wait', nextAt: decision.nextAt });
