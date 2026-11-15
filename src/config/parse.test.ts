@@ -821,6 +821,15 @@ describe('parseConfig', () => {
     assert.equal(config.delivery.repos['bad']?.worktreeSetup, undefined);
   });
 
+  it('reads the ship tool a service role may run, and reports a blank one (T2984)', () => {
+    const repos = { set: { mainCheckout: 'repos/set', shipTool: '../.ship/tools/ship/ship.ts' }, unset: { mainCheckout: 'repos/unset' }, bad: { mainCheckout: 'repos/bad', shipTool: ' ' } };
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { repos } });
+    assert.deepEqual(paths(issues), ['delivery.repos.bad.shipTool']);
+    assert.equal(config.delivery.repos['set']?.shipTool, '../.ship/tools/ship/ship.ts');
+    assert.equal(config.delivery.repos['unset']?.shipTool, undefined);
+    assert.equal(config.delivery.repos['bad']?.shipTool, undefined);
+  });
+
   it('reads a repository’s merge command, and leaves out one that is not a program with its arguments', () => {
     const command = ['node', 'tools/merge.ts'];
     const repos = {

@@ -1081,6 +1081,12 @@ export interface DeliveryRepoConfig {
    */
   readonly worktreeFolder?: string;
   /**
+   * The ship tool a service role may run through `teamrig queue --kind ship|merge` with no permission check (T2984):
+   * its script, in a checkout of this repository teamrig keeps clean on main, checked at every allow. A relative path
+   * is in the main checkout; unset: no role runs a ship.
+   */
+  readonly shipTool?: string;
+  /**
    * What `teamrig worktree add` runs in a new worktree, such as a link to the main checkout's node_modules: a program
    * and its arguments, run without a shell, with the main checkout's folder in `TEAMRIG_MAIN_CHECKOUT`. Anything but
    * exit 0 leaves the worktree in place and fails the add. Unset: nothing runs.

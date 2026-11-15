@@ -1133,6 +1133,7 @@ function parseDeliveryRepos(read: ConfigReader, raw: JsonRecord): Record<string,
     const docsFolder = read.optionalString(entry, 'docsFolder', path, isPathText);
     reportRenamedKey(read, entry, path, 'followMainCheckout', 'updateMainCheckout');
     const worktreeFolder = read.optionalString(entry, 'worktreeFolder', path, isPathText);
+    const shipTool = read.optionalString(entry, 'shipTool', path, isPathText);
     const worktreeSetup = entry['worktreeSetup'] === undefined ? undefined : read.stringListItem(entry['worktreeSetup'], `${path}.worktreeSetup`, HOOK_ARGV_MAX_ITEMS);
     repos[name] = {
       mainCheckout,
@@ -1145,6 +1146,7 @@ function parseDeliveryRepos(read: ConfigReader, raw: JsonRecord): Record<string,
       decisionRecordGate: read.boolean(entry, 'decisionRecordGate', path, false),
       updateMainCheckout: read.boolean(entry, 'updateMainCheckout', path, false),
       ...(worktreeFolder === undefined ? {} : { worktreeFolder }),
+      ...(shipTool === undefined ? {} : { shipTool }),
       ...(worktreeSetup === undefined ? {} : { worktreeSetup }),
       ...(merge === undefined ? {} : { merge }),
       ...(deploy === undefined ? {} : { deploy }),
