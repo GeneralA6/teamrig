@@ -3,7 +3,7 @@ import { parseIssueTarget, targetText } from '../issues/host.ts';
 import { readable } from '../slash/plan.ts';
 import { matchesKit, type KitContext, type KitShape } from './route-kit.ts';
 import { plainWordsOf } from './route-line.ts';
-import { isServiceCommand, SERVICE_COMMANDS, type ServiceCommand } from './service-commands.ts';
+import { isServiceCommand, type ServiceCommand } from './service-commands.ts';
 
 /**
  * The call shapes a service role lets run (T2984, design 1): each table command as the CLI's own parser reads it, with
@@ -76,23 +76,20 @@ export async function roleCallOf(line: string, context: RoleCallContext): Promis
   if (words === undefined || parsed === undefined || !isServiceCommand(parsed.command)) {
     return undefined;
   }
-  const command = SERVICE_COMMANDS.find((name) => name === parsed.command);
+  const command = parsed.command;
   const target = parseIssueTarget(parsed.positionals[0] ?? '');
-  if (command === undefined || target === undefined || !context.repos.includes(target.repo) || !(await matchesKit(SHAPES[command], words, context))) {
+  if (target === undefined || !context.repos.includes(target.repo) || !(await matchesKit(SHAPES[command], words, context))) {
     return undefined;
   }
   return { command, target: targetText(target), session: parsed.flags.get('session') };
 }
 
 /**
- * The role call a shell tool call runs: one only when each text its shell may run is that same call, as
- * `toolRouteOf` reads a route; undefined for any other tool or line.
+ * The role call a Bash tool call runs; undefined for any other tool or line. A call only when its shell may run one
+ * text (`toolCommandReadings`): a second reading comes only from a backslash run, which no role call holds.
  */
 export async function toolRoleCallOf(tool: string | undefined, line: string, platform: NodeJS.Platform, context: RoleCallContext): Promise<RoleCall | undefined> {
-  if (tool !== 'Bash') {
-    return undefined;
-  }
-  const [first, ...rest] = await Promise.all(toolCommandReadings(tool, line, platform).map((reading) => roleCallOf(reading, context)));
-  const same = (call: RoleCall | undefined): boolean => call !== undefined && first !== undefined && call.command === first.command && call.target === first.target && call.session === first.session;
-  return first !== undefined && rest.every(same) ? first : undefined;
+  const readings = toolCommandReadings(tool, line, platform);
+  const [only] = readings;
+  return tool !== 'Bash' || readings.length !== 1 || only === undefined ? undefined : roleCallOf(only, context);
 }

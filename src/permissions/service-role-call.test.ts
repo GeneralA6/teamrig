@@ -65,5 +65,6 @@ describe('service-role call: the shapes', () => {
     assert.deepEqual(await toolRoleCallOf('Bash', line, 'win32', CONTEXT), { command: 'issue close', target: 'acme/web#7', session: undefined });
     assert.equal(await toolRoleCallOf('PowerShell', line, 'win32', CONTEXT), undefined);
     assert.equal(await toolRoleCallOf(undefined, line, 'linux', CONTEXT), undefined);
+    assert.equal(await toolRoleCallOf('Bash', 'teamrig issue close acme/web#7 --comment "a\\\\b"', 'win32', CONTEXT), undefined, 'a line with two readings');
   });
 });
