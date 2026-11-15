@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { GUARD_LIMIT_MS, judgeGuard, runGuard, type GuardHost, type GuardMain } from './guard-runner.ts';
+import { GUARD_LIMIT_MS, isHookArgv, judgeGuard, runGuard, type GuardHost, type GuardMain } from './guard-runner.ts';
 import { EXIT, type ExitCode } from './runtime.ts';
 import type { NodeEntry } from './node-main.ts';
 
@@ -204,9 +204,24 @@ describe('runGuard', () => {
     assert.match(host.errors.join(''), /crashed \(EAGAIN/);
   });
 
-  it('names the hook "hook" when argv names none', async () => {
-    const host = new FakeHost();
-    await runGuard([], SCRIPT, async () => answering(EXIT.usage).main, host);
-    assert.match(host.errors.join(''), /its hook guard ended with exit 64/);
+  it('blocks any argv but `hook <name>` before it loads the CLI, so the entry runs no other command (T3069)', async () => {
+    for (const argv of [[], ['hook'], ['roles', 'grant', 'github', '--holder', 'alpha'], ['hook', 'push-guard', 'extra'], ['owner', 'next', 'T1'], ['hook', '--help'], ['hook', 'Push_Guard']]) {
+      const host = new FakeHost();
+      let loads = 0;
+      const load = async (): Promise<GuardMain> => {
+        loads += 1;
+        return answering(EXIT.ok).main;
+      };
+      await runGuard(argv, SCRIPT, load, host);
+      assert.equal(loads, 0, argv.join(' '));
+      assert.deepEqual(host.exits, [2], argv.join(' '));
+      assert.deepEqual(host.written, []);
+      assert.match(host.errors.join(''), /the guard entry runs only `hook <name>`/);
+    }
+  });
+
+  it('reads `hook <name>` with a plain name as a hook run', () => {
+    assert.equal(isHookArgv(['hook', 'service-role-guard']), true);
+    assert.equal(isHookArgv(['hook', 'push-guard', '--x']), false);
   });
 });
