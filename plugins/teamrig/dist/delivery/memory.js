@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { freemem, totalmem } from 'node:os';
 import { treeOf, wholeNumberLines } from "./processes.js";
@@ -204,14 +204,59 @@ async function commitOf(platform) {
 export function linuxCommitOf(overcommitMode, meminfo) {
     return overcommitMode.trim() === '2' ? parseMeminfoCommit(meminfo) : undefined;
 }
+/** The page counts vm_stat prints whose sum is the memory macOS hands out without paging. */
+const VM_STAT_AVAILABLE = ['free', 'inactive', 'speculative'];
 /**
- * The real probe: Node's free and total memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its
- * commit charge. The lister and every process it started are left out, so a watch does not count its own sampling.
+ * The bytes macOS can hand out now, from `vm_stat`: its free, inactive and speculative pages times its page size.
+ * Inactive and speculative (read-ahead) pages are reclaimed at once without paging, and vm_stat's "Pages free" leaves
+ * the speculative ones out, so the three never overlap. Undefined unless the page size and all three counts are there.
  */
-export function nodeMemoryProbe(platform) {
+export function parseVmStatAvailable(text) {
+    const pageSize = /page size of (\d+) bytes/.exec(text)?.[1];
+    if (pageSize === undefined) {
+        return undefined;
+    }
+    let pages = 0;
+    for (const label of VM_STAT_AVAILABLE) {
+        const count = new RegExp(`^Pages ${label}:\\s+(\\d+)\\.?\\s*$`, 'm').exec(text)?.[1];
+        if (count === undefined) {
+            return undefined;
+        }
+        pages += Number(count);
+    }
+    return pages * Number(pageSize);
+}
+/** How long a `vm_stat` read may take before the probe falls back to Node's count: it prints in a few ms. */
+const VM_STAT_TIMEOUT_MS = 2000;
+/** Runs `file` and returns what it printed, undefined when it fails or outlasts VM_STAT_TIMEOUT_MS. */
+export const nodeRunSync = (file, args) => {
+    try {
+        return execFileSync(file, args, { encoding: 'utf8', windowsHide: true, timeout: VM_STAT_TIMEOUT_MS });
+    }
+    catch {
+        return undefined;
+    }
+};
+/**
+ * The MB the host can hand out now without paging. Node's freemem() is that on Windows (free plus standby) and Linux
+ * (MemAvailable), but on macOS it counts only free pages, a few hundred MB on a Mac with GBs to give, so the queue's
+ * memory gate held its steps for memory the host had (T2634). There `vm_stat` is read instead, freemem() only when
+ * that read fails.
+ */
+export function freeMbOf(platform, run, nodeFreeBytes) {
+    const vmStat = platform === 'darwin' ? run('vm_stat', []) : undefined;
+    const available = vmStat === undefined ? undefined : parseVmStatAvailable(vmStat);
+    return Math.round((available ?? nodeFreeBytes()) / MB);
+}
+/**
+ * The real probe: the host's free memory (`freeMbOf`, `run` reading vm_stat on macOS) and total memory, the host's
+ * process list from PowerShell on Windows or `ps` elsewhere, and its commit charge. The lister and every process it
+ * started are left out, so a watch does not count its own sampling.
+ */
+export function nodeMemoryProbe(platform, run = nodeRunSync) {
     const { file, args, bytesPerUnit } = listCommand(platform);
     return {
-        freeMb: () => Math.round(freemem() / MB),
+        freeMb: () => freeMbOf(platform, run, freemem),
         totalMb: () => Math.round(totalmem() / MB),
         processes: () => new Promise((resolve) => {
             const lister = execFile(file, args, { windowsHide: true, maxBuffer: LIST_MAX_BUFFER }, (error, stdout) => {
