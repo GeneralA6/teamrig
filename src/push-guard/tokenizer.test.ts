@@ -120,6 +120,22 @@ describe('parseShell: bash', () => {
     assert.equal(parseHeldText(`${'$('.repeat(20)}git push${')'.repeat(20)}`).skipped, true);
   });
 
+  it('reads no command in held backticks that never close, as bash runs none there (T2764)', () => {
+    const run = (text: string): string[][] => parseHeldText(text).commands.map((parsed) => parsed.words.map(show));
+    // The escaped backtick is part of the open substitution's text, so the rest of the line is too.
+    assert.deepEqual(run('x `\\` git push origin main'), []);
+    assert.deepEqual(run('then `\\`'), []);
+    // Here the first substitution closes before `git`; its own text is one open backtick, a word that runs nothing.
+    assert.deepEqual(run('a `\\` b `git push`'), [['~` b ']]);
+    assert.deepEqual(run('a `git push'), []);
+    assert.equal(parseHeldText('a `git push').complete, false);
+    // Closed, the escaped backtick opens a nested substitution once the text is read; one before an open one still runs.
+    assert.deepEqual(run('say `\\`git push\\`` here'), [['git', 'push'], ['~`git push`']]);
+    assert.deepEqual(run('`git fetch` then `git push'), [['git', 'fetch']]);
+    // A command line still reads an open backtick's text as commands: its parse is not complete, so guards doubt it.
+    assert.deepEqual(parseShell('echo `git push', 'bash').commands.map((parsed) => parsed.words.map(show)), [['git', 'push'], ['echo', '~`git push']]);
+  });
+
   it('reads a single-quoted piece of a double-quoted ${...} with confidence only when it is plain text', () => {
     assert.equal(complete(`echo "\${B:-'a b'}"; cat <<EOF\n\${B:-'x'}\nEOF`), true);
     assert.equal(skipped(`echo "\${B:-'a b'}"`), false);

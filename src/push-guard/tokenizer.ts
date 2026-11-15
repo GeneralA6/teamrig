@@ -326,17 +326,19 @@ function mergedParse(parses: readonly ShellParse[]): ShellParse {
  * different words in different hosts or versions of the shell, the parse holds the commands of every reading.
  */
 export function parseShell(command: string, dialect: ShellDialect): ShellParse {
-  return mergedParse(readingsOf(command, dialect).map((reading) => new Scanner(reading, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse()));
+  return mergedParse(readingsOf(command, dialect).map((reading) => new Scanner(reading, dialect, { nesting: 0, subshells: [], ids: { next: 0 }, held: false }).parse()));
 }
 
 /**
  * The commands bash runs when an expansion reads a word's {@link ShellWord.held} text again: the substitutions
  * in it, read as in an unquoted heredoc's body, where quotes are plain text and a backslash keeps a `$`.
  * bash expands that text left to right, so where it never closes bash stops at the error after running the
- * substitutions before it, which the commands hold; only {@link ShellParse.skipped} text may hide one.
+ * substitutions before it, which the commands hold; only {@link ShellParse.skipped} text may hide one. A backtick
+ * substitution that never closes runs nothing, at any depth: one whose escaped backtick, part of its text, was
+ * taken for its close, so the rest of the line is its text, holds no command.
  */
 export function parseHeldText(held: string): ShellParse {
-  return new Scanner(plainReading(held), 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
+  return new Scanner(plainReading(held), 'bash', { nesting: 0, subshells: [], ids: { next: 0 }, held: true }).parseExpandable();
 }
 
 /** What may stand before the `=` of a PowerShell assignment that has no target in the same word. */
@@ -703,6 +705,12 @@ interface ScanScope {
   readonly nesting: number;
   readonly subshells: number[];
   readonly ids: { next: number };
+  /**
+   * True while reading held text again (see {@link parseHeldText}). There a backtick substitution that never closes
+   * runs nothing: bash finds it has no closing backtick before it would run it, so its text holds no commands. A
+   * command line keeps reading such text as commands, as its parse is not complete then and every guard doubts it.
+   */
+  readonly held: boolean;
 }
 
 /**
@@ -732,6 +740,7 @@ class Scanner {
   private expansions = 0;
   private readonly subshells: number[];
   private readonly ids: { next: number };
+  private readonly held: boolean;
   private readonly reading: Reading;
   private readonly source: string;
   private readonly dialect: ShellDialect;
@@ -743,6 +752,7 @@ class Scanner {
     this.nesting = scope.nesting;
     this.subshells = scope.subshells;
     this.ids = scope.ids;
+    this.held = scope.held;
   }
 
   parse(): ShellParse {
@@ -1765,7 +1775,10 @@ class Scanner {
     return true;
   }
 
-  /** bash backticks: the commands inside are read as their own line, in a subshell; the word keeps them as written. */
+  /**
+   * bash backticks: the commands inside are read as their own line, in a subshell; the word keeps them as written. An
+   * escaped backtick is part of that line, so it opens a nested substitution only when the line is read.
+   */
   private readBackticks(word: WordBuilder): void {
     const start = this.index;
     let inner = '';
@@ -1777,17 +1790,20 @@ class Scanner {
       inner += this.at();
       this.index += 1;
     }
-    if (this.done) {
-      this.complete = false;
-    } else {
+    const closed = !this.done;
+    if (closed) {
       this.index += 1;
-    }
-    if (this.nesting >= MAX_NESTING) {
-      this.skip();
     } else {
+      this.complete = false;
+    }
+    // Held text read again: bash stops at the missing backtick before it runs the substitution.
+    const runs = closed || !this.held;
+    if (runs && this.nesting >= MAX_NESTING) {
+      this.skip();
+    } else if (runs) {
       const subshells = [...this.subshells, this.ids.next];
       this.ids.next += 1;
-      const nested = new Scanner(plainReading(inner), 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids }).scan();
+      const nested = new Scanner(plainReading(inner), 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids, held: this.held }).scan();
       this.commands.push(...nested.commands);
       this.unreadBodies.push(...nested.unreadBodies);
       this.complete &&= nested.complete;
