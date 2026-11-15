@@ -1,7 +1,7 @@
 import { surplusOf, type Surplus } from '../budget/burst.ts';
 import { addedSessionPct } from '../budget/parts.ts';
 import type { WeekWindow } from '../budget/pace.ts';
-import { workWeights } from '../budget/work.ts';
+import { awaitedAnswers, workWeights } from '../budget/work.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
 import type { Task } from '../register/fold.ts';
@@ -37,8 +37,10 @@ export async function readScaleOutBudget(
   if (usedPct === undefined || window === undefined) {
     return { spare: undefined, hirePct: undefined };
   }
-  const work = workWeights(tasks, config.register.priorities);
-  const teams = await teamsOnAccountOf(runtime, { team: paths.team, config, usageDir: paths.usage, ids: config.sessions, liftsPath: paths.lifts, work }, now, usedPct);
+  const all = [...tasks];
+  const work = workWeights(all, config.register.priorities);
+  const asks = awaitedAnswers(all);
+  const teams = await teamsOnAccountOf(runtime, { team: paths.team, config, usageDir: paths.usage, ids: config.sessions, liftsPath: paths.lifts, work, asks }, now, usedPct);
   const spare = surplusOf({ window, now, usedPct, targetPct: config.budget.targetPct, config: config.burst, teams });
   if (spare === undefined) {
     return { spare, hirePct: undefined };

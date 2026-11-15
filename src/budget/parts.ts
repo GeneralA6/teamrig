@@ -15,6 +15,11 @@ export interface BudgetSplit {
   readonly leads: KitConfig['leads'];
   /** Each session's top queued task's weight under its priority (`workWeights`); a session not in it counts 1. */
   readonly work: ReadonlyMap<string, WorkByPriority>;
+  /**
+   * Each session's answers other sessions wait on it for (src/budget/work.ts `awaitedAnswers`), by task id: each adds
+   * to its weight (`sessionWeightOf`), so a reviewer's part grows with the asks queued on it (T3037).
+   */
+  readonly asks: ReadonlyMap<string, readonly string[]>;
   /** The session lifts in force, as each lifted session's part of its parent's budget in percent (`budgetSplitOf`). */
   readonly lifted: ReadonlyMap<string, number>;
   /** The group lifts in force, as each lifted sub-lead's group's part of its parent's budget in percent. */
@@ -117,9 +122,20 @@ export function shareOf(split: Pick<BudgetSplit, 'sessions'>, id: string): numbe
   return split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE;
 }
 
-/** A session's weight in the split: its `share` times its top queued task's weight (`workWeights`), at least 1 so a session with none still gets a part. */
-export function sessionWeightOf(split: Pick<BudgetSplit, 'sessions' | 'work'>, id: string): number {
-  return shareOf(split, id) * Math.max(1, workWeightOf(split.work.get(id)));
+/**
+ * How many of a session's waiting asks weigh in the split, each as one task of weight 1: enough that a queue of review
+ * asks moves the day's split towards their answerer, and no more, so one session's queue never takes the whole day.
+ */
+export const ASK_CAP = 5;
+
+/**
+ * A session's weight in the split: its `share` times its top queued task's weight (`workWeights`), at least 1 so a
+ * session with none still gets a part, plus one per answer others wait on it for (`asks`), up to {@link ASK_CAP}: a
+ * wait on a session blocks another, so its part grows with them and its budget does not hold them (T3037).
+ */
+export function sessionWeightOf(split: Pick<BudgetSplit, 'sessions' | 'work' | 'asks'>, id: string): number {
+  const asks = Math.min(ASK_CAP, split.asks.get(id)?.length ?? 0);
+  return shareOf(split, id) * (Math.max(1, workWeightOf(split.work.get(id))) + asks);
 }
 
 /** A session as a split-tree leaf, weighed by its weight and funded part (`funded`), with its session lift in force. */

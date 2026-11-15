@@ -480,6 +480,18 @@ describe('teamrig budget lift', () => {
     assert.match(lines[5] ?? '', /^ {2}app-bravo +0\.50% +1\.8% +5\.00M +1$/);
   });
 
+  it("weighs each answer another session waits on into its answerer's part (T3037)", async () => {
+    const { run } = await world();
+    ok(await run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']));
+    const waited = await run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'needs an approval', '--session', 'alpha']);
+    assert.equal(waited.code, EXIT.ok, [...waited.stdout, ...waited.stderr].join('\n'));
+    const lines = ok(await run(['budget']));
+    // alpha's task waits, so it weighs 1, as bravo does; the lead (no use today, so not listed) 1 plus the ask it
+    // answers: alpha and bravo get 12.4% × 1/4 each, not the 1/3 each they got with no ask.
+    assert.match(lines[4] ?? '', /^ {2}app-alpha +2\.0% +3\.1% /);
+    assert.match(lines[5] ?? '', /^ {2}app-bravo +0\.50% +3\.1% /);
+  });
+
   it('gives no part to a session a short day does not fund, with budget.pauseByPriority on', async () => {
     const { run } = await world({ ...LIMITED, budget: { weeklyLimitW: 1_000_000_000, pauseByPriority: true } });
     ok(await run(['add', '--title', 'Stop the outage', '--description', 'what and why', '--priority', 'p0', '--owner', 'alpha', '--session', 'lead']));

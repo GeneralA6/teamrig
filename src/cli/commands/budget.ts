@@ -180,8 +180,8 @@ export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfi
 }
 
 /** How the team's part of the day is split among its sessions: down its lead tree, by their queued work (`work`), the lifts in force and the sessions a short day may pause. */
-function splitOf(reading: Reading, team: string, roster: Roster, config: Pick<KitConfig, 'budget' | 'leads' | 'roles'>, work: ReadonlyMap<string, WorkByPriority>): BudgetSplit {
-  return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, pausable: pausableOf(config, team, roster.ids), lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
+function splitOf(reading: Reading, team: string, roster: Roster, config: Pick<KitConfig, 'budget' | 'leads' | 'roles'>, work: ReadonlyMap<string, WorkByPriority>, asks: ReadonlyMap<string, readonly string[]>): BudgetSplit {
+  return budgetSplitOf({ team, ids: roster.ids, sessions: config.budget.sessions, leads: config.leads, work, asks, pausable: pausableOf(config, team, roster.ids), lifts: reading.lifts, now: reading.now, usedPct: reading.week.usedPct });
 }
 
 /** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift, the burst and whether a leader's cut of it is in force. */
@@ -320,10 +320,10 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     return EXIT.ok;
   }
   const tasks = recountDay === undefined ? await readTasks(runtime.files, kit.paths.events) : undefined;
-  const { weights: work } = tasks === undefined ? NO_WORK : queuedWork(tasks, config.register.priorities, reading.now);
+  const { weights: work, awaited: asks } = tasks === undefined ? NO_WORK : queuedWork(tasks, config.register.priorities, reading.now);
   // A recount shows no budgets, so it reads no other team.
   const onAccount = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
-  const { split, others } = fundForDay({ split: splitOf(reading, kit.paths.team, roster, config, work), others: onAccount }, reading.week);
+  const { split, others } = fundForDay({ split: splitOf(reading, kit.paths.team, roster, config, work, asks), others: onAccount }, reading.week);
   const sessions = sessionsToday(reading, roster, config.budget, split, others);
   const teamPct = teamPartOf(reading.week.allowancePct, split, others);
   const { measured, week, now } = reading;
@@ -500,8 +500,8 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const name = nameOf(id);
   const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
   const { week } = reading;
-  const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities, now);
-  const split = splitOf(reading, kit.paths.team, roster, config, work);
+  const { weights: work, awaited: asks } = await readWork(runtime.files, kit.paths.events, config.register.priorities, now);
+  const split = splitOf(reading, kit.paths.team, roster, config, work, asks);
   const place = liftPlaceOf(split, id, group);
   if (place === undefined) {
     throw new RefusedError(`${group ? `${name}'s group` : name} has no daily budget to lift: \`leads\` lists it in a loop of sub-leads no leader above reaches`);
@@ -558,8 +558,8 @@ async function crossTeamLift(runtime: CliRuntime, lifting: LiftingTeam, target: 
   }
   const address = formatAddress({ team: target.team, id: found.id });
   const reading = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
-  const { weights: work } = await readWork(runtime.files, kit.paths.events, config.register.priorities, ask.now);
-  const split = splitOf(reading, own, roster, config, work);
+  const { weights: work, awaited: asks } = await readWork(runtime.files, kit.paths.events, config.register.priorities, ask.now);
+  const split = splitOf(reading, own, roster, config, work, asks);
   const place = crossLiftPlaceOf(split, address);
   const parent = `team ${own}'s daily budget`;
   const decision = decideLift(

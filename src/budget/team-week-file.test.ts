@@ -14,7 +14,7 @@ const PATH = '/kit/teams/app/state/usage/team.week.json';
 
 /** A team's split, its sessions at the default share with no queued work. */
 function splitOf(team: string, ids: readonly string[]): BudgetSplit {
-  return { team, ids, sessions: {}, leads: {}, work: new Map(), lifted: new Map(), liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map() };
+  return { team, ids, sessions: {}, leads: {}, work: new Map(), asks: new Map(), lifted: new Map(), liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map() };
 }
 
 /** A usage store with `w` W on each day. */

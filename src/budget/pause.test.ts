@@ -20,6 +20,7 @@ function app(extra: Partial<BudgetSplit> = {}): BudgetSplit {
     sessions: {},
     leads: {},
     work: workOf({ alpha: { 1: 5 }, bravo: { 3: 3 } }),
+    asks: new Map(),
     lifted: new Map(),
     liftedGroups: new Map(),
     crossLifted: new Map(),

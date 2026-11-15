@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_REGISTER, DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
 import type { SessionBudget } from '../config/types.ts';
 import type { Lift } from './lift.ts';
-import { addedSessionPct, budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, partOf, sessionWeightOf, shareOf, teamPartOf, teamShareOf, teamTreeOf, type BudgetSplit, type GroupPart, type SplitNode } from './parts.ts';
+import { addedSessionPct, ASK_CAP, budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, partOf, sessionWeightOf, shareOf, teamPartOf, teamShareOf, teamTreeOf, type BudgetSplit, type GroupPart, type SplitNode } from './parts.ts';
 import { workWeightOf, workWeights, type WorkByPriority } from './work.ts';
 
 const IDS = ['lead', 'alpha', 'bravo'];
@@ -11,7 +11,7 @@ const NOW = Date.parse('2030-01-08T10:00:00Z');
 const MINUTE = 60_000;
 
 function split(sessions: Readonly<Record<string, SessionBudget>> = {}, extra: Partial<BudgetSplit> = {}): BudgetSplit {
-  return { team: 'app', ids: IDS, sessions, leads: {}, work: new Map(), lifted: new Map(), liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map(), ...extra };
+  return { team: 'app', ids: IDS, sessions, leads: {}, work: new Map(), asks: new Map(), lifted: new Map(), liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map(), ...extra };
 }
 
 /** Each session's queued work as one weight, all of it at p1. */
@@ -21,7 +21,7 @@ function workOf(weights: Readonly<Record<string, number>>): ReadonlyMap<string, 
 
 /** Another team on the account, its sessions at the default share with no queued work unless `extra` says so. */
 function otherTeam(team: string, ids: readonly string[], extra: Partial<BudgetSplit> = {}): BudgetSplit {
-  return { team, ids, sessions: {}, leads: {}, work: new Map(), lifted: new Map(), liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map(), ...extra };
+  return { team, ids, sessions: {}, leads: {}, work: new Map(), asks: new Map(), lifted: new Map(), liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map(), ...extra };
 }
 
 /** A team led as lead > alpha > bravo > charlie, with delta beside alpha under the lead, every session at weight 1. */
@@ -125,7 +125,7 @@ describe('dailyBudgetOf', () => {
     const next = sequence(940);
     const ids = ['lead', 'alpha', 'bravo', 'charlie', 'delta'];
     for (let round = 0; round < 500; round++) {
-      const each: BudgetSplit = { team: 'app', ids, ...randomParts(next, ids, () => true), leads: {}, liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map() };
+      const each: BudgetSplit = { team: 'app', ids, ...randomParts(next, ids, () => true), leads: {}, liftedGroups: new Map(), crossLifted: new Map(), asks: new Map(), pausable: new Set(), funded: new Map() };
       const allowancePct = next() * 20;
       for (const id of ids) {
         assert.equal(dailyBudgetOf(allowancePct, id, each), flatSplitPct(allowancePct, id, each), `round ${round}, ${id}`);
@@ -147,7 +147,7 @@ describe('dailyBudgetOf', () => {
         }
       }
       const inGroups = new Set([...Object.keys(leads), ...Object.values(leads).flat()]);
-      const each: BudgetSplit = { team: 'app', ids, ...randomParts(next, ids, (id) => !inGroups.has(id)), leads, liftedGroups: new Map(), crossLifted: new Map(), pausable: new Set(), funded: new Map() };
+      const each: BudgetSplit = { team: 'app', ids, ...randomParts(next, ids, (id) => !inGroups.has(id)), leads, liftedGroups: new Map(), crossLifted: new Map(), asks: new Map(), pausable: new Set(), funded: new Map() };
       const allowancePct = next() * 20;
       for (const id of ids) {
         near(dailyBudgetOf(allowancePct, id, each), flatSplitPct(allowancePct, id, each), `round ${round}, ${id}, leads ${JSON.stringify(leads)}`);
@@ -491,8 +491,36 @@ describe('funded parts', () => {
   });
 });
 
+describe('asks waiting on a session (T3037)', () => {
+  /** Ask ids for a session: `count` tasks another session waits on it for. */
+  const asked = (count: number): readonly string[] => Array.from({ length: count }, (_, index) => `T${index + 1}`);
+
+  it('weighs a session with no asks as before: its share times its top task, at least 1', () => {
+    const each = split({ alpha: { share: 2 } }, { work: workOf({ alpha: 3 }) });
+    assert.deepEqual([sessionWeightOf(each, 'alpha'), sessionWeightOf(each, 'bravo')], [6, 1]);
+  });
+
+  it('adds one task of weight 1 per ask, times its share, up to the cap', () => {
+    const each = split({ alpha: { share: 2 } }, { work: workOf({ alpha: 3 }), asks: new Map([['alpha', asked(2)], ['bravo', asked(ASK_CAP + 4)]]) });
+    assert.deepEqual([sessionWeightOf(each, 'alpha'), sessionWeightOf(each, 'bravo'), sessionWeightOf(each, 'lead')], [10, 1 + ASK_CAP, 1]);
+  });
+
+  it("grows the asked session's part of the day out of the others' parts, which still add up to the day", () => {
+    const plain = split();
+    const asking = split({}, { asks: new Map([['bravo', asked(3)]]) });
+    assert.deepEqual(IDS.map((id) => dailyBudgetOf(6, id, plain)), [2, 2, 2]);
+    assert.deepEqual(IDS.map((id) => dailyBudgetOf(6, id, asking)), [1, 1, 4]);
+  });
+
+  it('lets no queue of asks take more than the cap gives it', () => {
+    const capped = split({}, { asks: new Map([['bravo', asked(ASK_CAP)]]) });
+    const over = split({}, { asks: new Map([['bravo', asked(ASK_CAP * 10)]]) });
+    assert.deepEqual(IDS.map((id) => dailyBudgetOf(8, id, over)), IDS.map((id) => dailyBudgetOf(8, id, capped)));
+  });
+});
+
 describe('budgetSplitOf', () => {
-  const source = { team: 'app', ids: IDS, sessions: {}, leads: { alpha: ['bravo'] }, work: workOf({ bravo: 2 }), pausable: new Set(['bravo']), now: NOW };
+  const source = { team: 'app', ids: IDS, sessions: {}, leads: { alpha: ['bravo'] }, work: workOf({ bravo: 2 }), asks: new Map(), pausable: new Set(['bravo']), now: NOW };
 
   it("maps each session's and each on-roster sub-lead's group's lift in force to its part, and keeps the sessions a short day may pause", () => {
     const lifts = [
@@ -510,6 +538,7 @@ describe('budgetSplitOf', () => {
       sessions: {},
       leads: { alpha: ['bravo'] },
       work: workOf({ bravo: 2 }),
+      asks: new Map(),
       pausable: new Set(['bravo']),
       lifted: new Map([['alpha', 50]]),
       liftedGroups: new Map([['alpha', 40]]),
