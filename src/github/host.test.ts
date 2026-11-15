@@ -8,6 +8,7 @@ import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import {
   isAssigneeRead,
   isIssueAssign,
+  isIssueBodyEdit,
   isIssueClose,
   isIssueComment,
   isIssueCreate,
@@ -140,6 +141,18 @@ describe('GitHubIssueHost', () => {
     ]);
     assert.ok(isIssueComment(gh.ran[0]?.args ?? []) && isIssueClose(gh.ran[1]?.args ?? []));
     assert.deepEqual(gh.ran.map((request) => request.env['GH_TOKEN']), ['acme-issues-token', 'acme-issues-token']);
+  });
+
+  it("replaces a body through the allowlisted call, with the owner's token, and says a refused one in plain words", async () => {
+    const gh = new FakeGh();
+    const host = hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'acme-issues-token'));
+    assert.deepEqual(await host.editBody(TARGET, '## Spec\n\nStep one: $(x) @file'), { kind: 'done' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=## Spec\n\nStep one: $(x) @file']]);
+    assert.ok(isIssueBodyEdit(gh.ran[0]?.args ?? []));
+    assert.deepEqual(gh.ran.map((request) => request.env['GH_TOKEN']), ['acme-issues-token']);
+    const denied = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by personal access token (HTTP 403)\n' });
+    const end = await hostWith(denied, new FakeCredentials().saves('teamrig-gh-acme', 'k')).editBody(TARGET, 'b');
+    assert.ok(end.kind === 'failed' && end.reason.startsWith('the token saved as teamrig-gh-acme may not edit the body of acme/web#7'), JSON.stringify(end));
   });
 
   it("closes with a reason and adds and takes off labels through the allowlisted calls, with the owner's token", async () => {

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
-import { labelIssue, labelRefusal, MAX_COMMENT, MAX_LABEL, postRefusal, writeIssue, type IssueWrite, type LabelWrite } from './write.ts';
+import { editIssueBody, labelIssue, labelRefusal, MAX_COMMENT, MAX_LABEL, postRefusal, writeIssue, type IssueWrite, type LabelWrite } from './write.ts';
 
 const TARGET = { repo: 'acme/web', number: 7 };
 
@@ -119,6 +119,29 @@ describe('writeIssue', () => {
       'FAILED acme/web#7: HTTP 403; the comment was posted: rerun teamrig issue close acme/web#7 without --comment',
     ]);
     assert.deepEqual((await run(new FakeIssueHost().failsClose('HTTP 403'), { target: TARGET, close: true })).lines.slice(1), ['FAILED acme/web#7: HTTP 403']);
+  });
+});
+
+describe('editIssueBody', () => {
+  /** Runs a body edit of TARGET on `host`, giving whether it was done and the lines it said. */
+  async function edit(host: FakeIssueHost, body: string): Promise<{ done: boolean; lines: string[] }> {
+    const lines: string[] = [];
+    const done = await editIssueBody(host, { target: TARGET, body }, (line) => lines.push(line));
+    return { done, lines };
+  }
+
+  it('replaces the body, saying how the host was reached and the new length', async () => {
+    const host = new FakeIssueHost();
+    assert.deepEqual(await edit(host, '## Spec'), { done: true, lines: ['ACCESS acme: writes as the test', 'EDITED acme/web#7: its body is now 7 characters'] });
+    assert.deepEqual(host.calls, [{ kind: 'body', target: TARGET, body: '## Spec' }]);
+  });
+
+  it('changes nothing when the host cannot be reached, and says the body stayed when the edit fails', async () => {
+    const unreachable = new FakeIssueHost().unreachable('the keyring is locked');
+    assert.deepEqual(await edit(unreachable, 'b'), { done: false, lines: ['FAILED acme/web#7: the keyring is locked; nothing was changed'] });
+    assert.deepEqual(unreachable.calls, []);
+    const refused = new FakeIssueHost().failsBody('HTTP 403');
+    assert.deepEqual(await edit(refused, 'b'), { done: false, lines: ['ACCESS acme: writes as the test', 'FAILED acme/web#7: HTTP 403; the body is as it was'] });
   });
 });
 

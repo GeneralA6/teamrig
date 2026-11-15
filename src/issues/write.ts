@@ -22,6 +22,34 @@ export interface IssueWrite {
   readonly duplicateOf?: IssueTarget;
 }
 
+/** The new body (the description) of one issue or pull request. */
+export interface BodyWrite {
+  readonly target: IssueTarget;
+  readonly body: string;
+}
+
+/**
+ * Replaces the body of one issue or pull request through `host`, one line said for each step: ACCESS, then EDITED,
+ * or FAILED with the host's reason. The host is reached before the write, so a key that cannot be read changes
+ * nothing. True when the body was replaced.
+ */
+export async function editIssueBody(host: IssueHost, write: BodyWrite, say: (line: string) => void): Promise<boolean> {
+  const shown = targetText(write.target);
+  const reach = await host.reach(write.target.repo, 'write');
+  if (reach.kind === 'unreachable') {
+    say(`FAILED ${shown}: ${reach.reason}; nothing was changed`);
+    return false;
+  }
+  say(`ACCESS ${reach.access}`);
+  const edited = await host.editBody(write.target, write.body);
+  if (edited.kind === 'failed') {
+    say(`FAILED ${shown}: ${edited.reason}; the body is as it was`);
+    return false;
+  }
+  say(`EDITED ${shown}: its body is now ${write.body.length} characters`);
+  return true;
+}
+
 /** The labels to add to one issue or pull request and those to take off it. */
 export interface LabelWrite {
   readonly target: IssueTarget;

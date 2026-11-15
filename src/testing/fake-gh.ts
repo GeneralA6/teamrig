@@ -2,6 +2,7 @@ import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import {
   isAssigneeRead,
   isIssueAssign,
+  isIssueBodyEdit,
   isIssueClose,
   isIssueComment,
   isIssueCreate,
@@ -198,7 +199,7 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
-  /** From now on, a comment on, the close of, a label added to or taken off, an assignee or a link added to an issue ends as given. */
+  /** From now on, a comment on, a body edit or the close of, a label added to or taken off, an assignee or a link added to an issue ends as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
     return this;
@@ -244,7 +245,7 @@ export class FakeGh implements GhRunner {
     if (isIssueRead(request.args)) {
       return this.issueRead(request.args[1] ?? '');
     }
-    if (isIssueComment(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args)) {
+    if (isIssueComment(request.args) || isIssueBodyEdit(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
     if (isLinkAdd(request.args)) {

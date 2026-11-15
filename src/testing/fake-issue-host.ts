@@ -8,6 +8,7 @@ const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'reads', open: 'open
 export type HostCall =
   | { readonly kind: 'open'; readonly draft: IssueDraft }
   | { readonly kind: 'comment'; readonly target: IssueTarget; readonly body: string }
+  | { readonly kind: 'body'; readonly target: IssueTarget; readonly body: string }
   | { readonly kind: 'close'; readonly target: IssueTarget; readonly reason?: CloseReason; readonly duplicateId?: number }
   | { readonly kind: 'label-add'; readonly target: IssueTarget; readonly labels: readonly string[] }
   | { readonly kind: 'label-remove'; readonly target: IssueTarget; readonly label: string }
@@ -29,6 +30,7 @@ export class FakeIssueHost implements IssueHost {
   private opened = 0;
   private commentEnd: HostEnd = { kind: 'done' };
   private closeEnd: HostEnd = { kind: 'done' };
+  private bodyEnd: HostEnd = { kind: 'done' };
   private labelEnd: HostEnd = { kind: 'done' };
   private readonly removeEnds = new Map<string, HostEnd>();
   private labelReadFailure: string | undefined;
@@ -118,6 +120,12 @@ export class FakeIssueHost implements IssueHost {
     return this;
   }
 
+  /** From now on, a body edit fails for `reason`. */
+  failsBody(reason: string): this {
+    this.bodyEnd = { kind: 'failed', reason };
+    return this;
+  }
+
   /** From now on, a close fails for `reason`. */
   failsClose(reason: string): this {
     this.closeEnd = { kind: 'failed', reason };
@@ -144,6 +152,11 @@ export class FakeIssueHost implements IssueHost {
   comment(target: IssueTarget, body: string): Promise<HostEnd> {
     this.calls.push({ kind: 'comment', target, body });
     return Promise.resolve(this.commentEnd);
+  }
+
+  editBody(target: IssueTarget, body: string): Promise<HostEnd> {
+    this.calls.push({ kind: 'body', target, body });
+    return Promise.resolve(this.bodyEnd);
   }
 
   close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd> {

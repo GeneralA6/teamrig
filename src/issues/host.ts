@@ -94,6 +94,8 @@ export interface IssueHost {
   open(draft: IssueDraft): Promise<HostOpen>;
   /** Posts `body` as one comment. */
   comment(target: IssueTarget, body: string): Promise<HostEnd>;
+  /** Replaces the body (the description) of the issue or pull request with `body`; its title, state and the rest stay. */
+  editBody(target: IssueTarget, body: string): Promise<HostEnd>;
   /**
    * Closes the issue or pull request, giving `reason` when there is one; a duplicate also names the issue it
    * duplicates by its host id (issueId), which the host links. `duplicateId` is used only with the duplicate reason.

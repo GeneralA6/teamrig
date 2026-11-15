@@ -24,6 +24,7 @@ import {
   assigneeReadArgs,
   blockedByAddArgs,
   issueAssignArgs,
+  issueBodyArgs,
   issueCloseArgs,
   issueCommentArgs,
   issueCreateArgs,
@@ -129,6 +130,10 @@ export class GitHubIssueHost implements IssueHost {
 
   comment(target: IssueTarget, body: string): Promise<HostEnd> {
     return this.write(target, issueCommentArgs(target, body), 'comment on');
+  }
+
+  editBody(target: IssueTarget, body: string): Promise<HostEnd> {
+    return this.write(target, issueBodyArgs(target, body), 'edit the body of');
   }
 
   close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd> {
