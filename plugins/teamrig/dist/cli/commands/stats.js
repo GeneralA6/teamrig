@@ -12,6 +12,7 @@ import { callerOf } from "../inputs.js";
 import { sessionIdOf, teamZone } from "../kit.js";
 import { rollUp } from "../roll-up.js";
 import { EXIT } from "../runtime.js";
+import { githubUseLines } from "../stats-github.js";
 import { useLines } from "../stats-use.js";
 import { KitTreeGoals } from "../tree-goals.js";
 import { ownRegister, warnDamage } from "./register.js";
@@ -24,7 +25,7 @@ const AREAS_SHOWN = 6;
  * of the team's calendar days, as the pane's Stats tab folds them (register/stats.ts): the Health tiles with their
  * levels, then each section's headline and the days the week sat at its usage limit (the `$` mark, from the meter log),
  * for the lead and the meeting agenda's top lines, and last how much of the task work the plan held (cli/stats-use.ts,
- * from the daily rollups). As with `list`, `--session`
+ * from the daily rollups), then the W the own team's GitHub-linked tasks used (cli/stats-github.ts). As with `list`, `--session`
  * reads one session's tasks in its team, and with `--tree` names the caller instead, who must be the team's lead: the
  * teams under it are rolled up, so `/teamrig`, which fills in the tab's session, can run both. Read-only: each
  * register's whole history is read, since a range reaches past what a compaction left in the working set.
@@ -38,8 +39,10 @@ export async function stats(args, runtime) {
     const histories = await historiesOf(runtime, rolled);
     const folded = await foldHistories(runtime, rolled, histories, range, scope);
     const use = await useLines(runtime, { teams: histories, focus: rolled.own.config.focus, days: folded.stats.days.map((day) => day.day), ...(scope === undefined ? {} : { scope }) });
+    const own = histories.find((read) => read.rolled.team === rolled.own.team);
+    const github = own === undefined ? [] : await githubUseLines(runtime, rolled.own, own.history.state.tasks.values(), scope?.session);
     const name = scope === undefined ? rolled.own.team : formatAddress({ team: scope.team, id: scope.session });
-    [...statsLines(folded, name, rolled.teams.map((team) => team.team)), ...use].forEach((line) => runtime.out.stdout(line));
+    [...statsLines(folded, name, rolled.teams.map((team) => team.team)), ...use, ...github].forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
 /**

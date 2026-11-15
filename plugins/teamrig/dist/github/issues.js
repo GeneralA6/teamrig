@@ -183,6 +183,8 @@ function issueOf(item, repo) {
         authorKind: kindOf(recordField(item, 'author')),
         labelEvents: events.flatMap(labelEventOf),
         renamedAt: latestRename(events),
+        createdAt: timeField(item, 'createdAt'),
+        comments: nodesOf(item['comments']).flatMap(commentOf),
     };
 }
 /** A label event of the timeline, or nothing when the item is another kind or lacks its label or time. */
@@ -195,6 +197,11 @@ function labelEventOf(event) {
     }
     const actor = recordField(event, 'actor');
     return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
+}
+/** A comment's time and author kind and tie, or nothing when it lacks its time; a deleted author reads as an empty kind. */
+function commentOf(comment) {
+    const at = timeField(comment, 'createdAt');
+    return at === undefined ? [] : [{ at, authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(recordField(comment, 'author')) }];
 }
 /** The time of the newest change of title among the timeline events. */
 function latestRename(events) {

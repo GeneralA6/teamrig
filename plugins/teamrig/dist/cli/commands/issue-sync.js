@@ -12,6 +12,7 @@ import { hostOf, reposOf } from "../issue-hosts.js";
 import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
+import { recordClocks, repoThreads } from "./issue-clock.js";
 import { issuePush, pushEndLine, pushRepos } from "./issue-push.js";
 import { GITHUB_OFF, githubOff, reportAutoSync } from "./issue-sync-auto.js";
 /** The rows of steps a repository prints; the rest are counted. */
@@ -64,6 +65,9 @@ export async function issueSync(args, runtime) {
     const leftOut = new Map();
     const unread = new Set();
     let written = 0;
+    /** The open threads of the repositories read, for the response clock, and those repositories. */
+    const threads = [];
+    const clocked = new Set();
     for (const repo of reposOf(config.github.repos, args.flags.get('repo'))) {
         const reach = await host.reach(repo, 'read');
         if (reach.kind === 'unreachable') {
@@ -96,6 +100,9 @@ export async function issueSync(args, runtime) {
             continue;
         }
         const outcomes = await applySteps(register, plan.steps);
+        // Against the tasks as written, so an issue the import just took is held by its new task.
+        threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
+        clocked.add(repo);
         [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
         written += outcomes.filter((outcome) => outcome.result.ok).length;
         added.push(...addedTasks(outcomes));
@@ -104,6 +111,9 @@ export async function issueSync(args, runtime) {
             failures.push({ repo, reason: refused });
         }
         ends.push(refused === undefined ? 'ok' : 'refused');
+    }
+    if (write) {
+        (await recordClocks(runtime, kit, config, clocked, threads)).forEach(say);
     }
     const pushing = auto && config.github.statusPush;
     if (pushing) {
