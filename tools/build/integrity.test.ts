@@ -16,7 +16,7 @@ describe('integrity', () => {
   });
   afterEach(() => repo.remove());
 
-  it("lists a hash of each launcher, compiled file and hook, and nothing else of the plugin's", () => {
+  it("lists a hash of each launcher, compiled file and hook, and nothing else of the plugin's, no test file either", () => {
     const files = {
       'bin/teamrig': '#!/bin/sh\n',
       'bin/teamrig.cmd': '@echo off\r\n',
@@ -27,6 +27,7 @@ describe('integrity', () => {
       repo.write(`${ROOT}/${path}`, text);
     }
     repo.write(`${ROOT}/skills/guide/SKILL.md`, '# guide\n');
+    repo.write(`${ROOT}/hooks/register.test.ts`, 'export {};\n');
     for (const run of [1, 2]) {
       const result = repo.run(CLI);
       assert.equal(result.status, 0, `run ${run}: ${result.stderr}`);

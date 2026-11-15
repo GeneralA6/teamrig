@@ -11,7 +11,8 @@ const manifest = new Map<string, string>();
 for (const folder of CLIENT_FOLDERS) {
   for (const entry of await readdir(join(pluginRoot, folder), { recursive: true, withFileTypes: true })) {
     const path = join(entry.parentPath, entry.name);
-    if (entry.isFile() && path !== manifestPath) {
+    // A test file is no part of the client: it never runs from the plugin, and a packaged install may leave it out.
+    if (entry.isFile() && path !== manifestPath && !entry.name.endsWith('.test.ts')) {
       manifest.set(relative(pluginRoot, path).replaceAll('\\', '/'), clientFileHash(await readFile(path, 'utf8')));
     }
   }
