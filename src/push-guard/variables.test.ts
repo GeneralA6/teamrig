@@ -183,6 +183,24 @@ describe('resolveLiteralVariables: what resolves', () => {
       assert.equal(pushCommand(line), 'git push origin feat', line);
     }
   });
+
+  it('resolves a redirection target to the one word bash writes to, and keeps a heredoc delimiter', () => {
+    const rows: readonly (readonly [line: string, expected: readonly string[]])[] = [
+      ["S=/s; cat > $S/x.cjs <<'EOF'\nbody\nEOF", ['>/s/x.cjs', '<<EOF']],
+      ['S=/s; echo hi >> "$S/a b.log" 2>&1', ['>>/s/a b.log', '2>&1']],
+      ['S=/s; wc -l < ${S}/in <<< $S', ['</s/in', '<<</s']],
+      // Unresolved: a value bash splits (an ambiguous redirect), a pattern, a name never bound, a binding after its use.
+      ['S="/a b"; echo hi > $S', ['>~$S']],
+      ['S=/s/*; echo hi > $S', ['>~$S']],
+      ['echo hi > $S/x', ['>~$S/x']],
+      ['echo hi > $S/x; S=/s', ['>~$S/x']],
+    ];
+    for (const [line, expected] of rows) {
+      const command = resolveLiteralVariables(parseShell(line, 'bash'), undefined).find((candidate) => candidate.redirections.length > 0);
+      const written = command?.redirections.map(({ operator, target }) => `${operator}${target === undefined ? '' : `${target.dynamic ? '~' : ''}${target.text}`}`);
+      assert.deepEqual(written, expected, line);
+    }
+  });
 });
 
 describe('resolveLiteralVariables: the home folder', () => {
