@@ -23,6 +23,10 @@ export interface IssueSpec {
   readonly authorKind?: string;
   /** Timeline items, as labeledEvent and renamedEvent build them, oldest first. */
   readonly timeline?: readonly JsonRecord[];
+  /** When it was opened; null unless set. */
+  readonly createdAt?: string;
+  /** Comments, as commentNode builds them, oldest first. */
+  readonly comments?: readonly JsonRecord[];
   /** GitHub's own id for it, which a link write names; 1000 plus its number unless set. */
   readonly hostId?: number;
   /** Its parent issue; none unless set. */
@@ -56,6 +60,7 @@ export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): Jso
     state,
     stateReason: spec.stateReason ?? null,
     url: `https://github.com/${repo}/issues/${number}`,
+    createdAt: spec.createdAt ?? null,
     updatedAt,
     closedAt: state === 'CLOSED' ? (spec.closedAt ?? updatedAt) : null,
     lastEditedAt: spec.lastEditedAt ?? null,
@@ -67,12 +72,18 @@ export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): Jso
     fullDatabaseId: String(spec.hostId ?? 1000 + number),
     parent: spec.parent === undefined ? null : issueNode(spec.parent),
     blockedBy: { nodes: (spec.blockedBy ?? []).map(issueNode) },
+    comments: { nodes: spec.comments ?? [] },
   };
 }
 
 /** A timeline item: `actor`, an account of `kind`, put `label` on the issue at `at`. */
 export function labeledEvent(label: string, actor: string, at: string, kind = 'User'): JsonRecord {
   return { __typename: 'LabeledEvent', createdAt: at, actor: { __typename: kind, login: actor }, label: { name: label } };
+}
+
+/** A comment as the issue queries read it: posted at `at` by an author of `association` and account `kind`. */
+export function commentNode(at: string, association: string, kind = 'User'): JsonRecord {
+  return { createdAt: at, authorAssociation: association, author: { __typename: kind } };
 }
 
 /** A timeline item: the issue's title was changed at `at`. */

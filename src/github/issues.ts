@@ -1,7 +1,7 @@
 import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { exitText } from '../open/processes.ts';
 import { GH_TIMEOUT_MS, type GhResult, type GhRunner } from './gh.ts';
-import type { HostIssue, LabelEvent } from '../issues/issue.ts';
+import type { HostIssue, IssueComment, LabelEvent } from '../issues/issue.ts';
 import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -240,6 +240,8 @@ function issueOf(item: unknown, repo: string): HostIssue | null {
     authorKind: kindOf(recordField(item, 'author')),
     labelEvents: events.flatMap(labelEventOf),
     renamedAt: latestRename(events),
+    createdAt: timeField(item, 'createdAt'),
+    comments: nodesOf(item['comments']).flatMap(commentOf),
   };
 }
 
@@ -253,6 +255,12 @@ function labelEventOf(event: JsonRecord): LabelEvent[] {
   }
   const actor = recordField(event, 'actor');
   return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
+}
+
+/** A comment's time and author kind and tie, or nothing when it lacks its time; a deleted author reads as an empty kind. */
+function commentOf(comment: JsonRecord): IssueComment[] {
+  const at = timeField(comment, 'createdAt');
+  return at === undefined ? [] : [{ at, authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(recordField(comment, 'author')) }];
 }
 
 /** The time of the newest change of title among the timeline events. */

@@ -24,6 +24,8 @@ function issue(overrides: Partial<HostIssue> = {}): HostIssue {
     authorKind: 'User',
     labelEvents: [],
     renamedAt: undefined,
+    createdAt: undefined,
+    comments: [],
     ...overrides,
   };
 }

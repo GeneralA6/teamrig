@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
+import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
 import { isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import type { HostIssue } from '../issues/issue.ts';
 import { issuePageArgs, listIssues, parseIssuePage, plainLine, type IssueListRequest } from './issues.ts';
@@ -39,6 +39,8 @@ function readIssue(number: number, overrides: Partial<HostIssue> = {}): HostIssu
     authorKind: 'User',
     labelEvents: [],
     renamedAt: undefined,
+    createdAt: undefined,
+    comments: [],
     ...overrides,
   };
 }
@@ -78,6 +80,27 @@ describe('issuePageArgs', () => {
 });
 
 describe('listIssues', () => {
+  it('reads when an issue was opened and when each comment was posted, by what kind of author, never its text or login', async () => {
+    const gh = new FakeGh().holds('acme/web', [
+      ghIssue('acme/web', 7, {
+        createdAt: '2030-01-01T08:00:00Z',
+        comments: [commentNode('2030-01-01T09:00:00Z', 'MEMBER'), commentNode('2030-01-01T10:00:00Z', 'NONE', 'Bot'), { createdAt: 'not a time', authorAssociation: 'NONE', author: null }, { createdAt: '2030-01-01T11:00:00Z', author: null }],
+      }),
+    ]);
+    const list = await listIssues(gh, LOGIN, OPEN);
+    assert.equal(list.kind, 'listed');
+    assert.deepEqual(list.kind === 'listed' ? list.issues : [], [
+      readIssue(7, {
+        createdAt: '2030-01-01T08:00:00Z',
+        comments: [
+          { at: '2030-01-01T09:00:00Z', authorAssociation: 'MEMBER', authorKind: 'User' },
+          { at: '2030-01-01T10:00:00Z', authorAssociation: 'NONE', authorKind: 'Bot' },
+          { at: '2030-01-01T11:00:00Z', authorAssociation: '', authorKind: '' },
+        ],
+      }),
+    ]);
+  });
+
   it('reads the issues of one state, with who wrote, labelled and renamed each, through a read only', async () => {
     const gh = new FakeGh().holds('acme/web', [
       ghIssue('acme/web', 7, {

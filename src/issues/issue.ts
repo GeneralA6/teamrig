@@ -18,6 +18,19 @@ export interface LabelEvent {
   readonly actorKind: string;
 }
 
+/**
+ * A comment on an issue, as far as the response clock reads it (src/github/clock.ts): when, and its author's kind and
+ * tie to the repository. Never its text or its author's login.
+ */
+export interface IssueComment {
+  /** When it was posted, an ISO time. */
+  readonly at: string;
+  /** Its author's tie to the repository, as the host names it; empty when it gives none. */
+  readonly authorAssociation: string;
+  /** What kind of account its author is (`User`, `Bot`, `Organization`); empty when the host gives none. */
+  readonly authorKind: string;
+}
+
 /** An issue as the import reads it. */
 export interface HostIssue {
   readonly repo: string;
@@ -49,6 +62,10 @@ export interface HostIssue {
   readonly labelEvents: readonly LabelEvent[];
   /** When its title last changed, among those same timeline events; undefined when none of them is a change of title. */
   readonly renamedAt: string | undefined;
+  /** When it was opened, an ISO time; undefined when the host gave none. */
+  readonly createdAt: string | undefined;
+  /** Its newest comments, oldest first, as many as the host reads. */
+  readonly comments: readonly IssueComment[];
 }
 
 /** One issue of a repository with the links the host has on it. `hostId` is the host's own id, which a link write names. */

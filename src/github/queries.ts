@@ -16,14 +16,22 @@ export const TIMELINE_EVENTS = 30;
  */
 export const RAW_FIELD = '-f';
 
-/** One issue: what the task is made from, and who wrote it, labelled it and edited it, which decides trust. */
-const ISSUE_FIELDS = `number title body state stateReason url updatedAt closedAt lastEditedAt authorAssociation
+/** Comments kept per issue, newest last: enough to see who spoke last for the response clock (src/github/clock.ts). */
+export const COMMENTS_READ = 20;
+
+/**
+ * One issue: what the task is made from, and who wrote it, labelled it and edited it, which decides trust; and when it
+ * was opened and when each newest comment was posted by what kind of author, which runs the response clock. A comment's
+ * text and author login are never read.
+ */
+const ISSUE_FIELDS = `number title body state stateReason url createdAt updatedAt closedAt lastEditedAt authorAssociation
         author { __typename login }
         labels(first: 100) { nodes { name } }
         assignees(first: 100) { nodes { login } }
         timelineItems(itemTypes: [LABELED_EVENT, RENAMED_TITLE_EVENT], last: ${TIMELINE_EVENTS}) {
           nodes { __typename ... on LabeledEvent { createdAt actor { __typename login } label { name } } ... on RenamedTitleEvent { createdAt } }
-        }`;
+        }
+        comments(last: ${COMMENTS_READ}) { nodes { createdAt authorAssociation author { __typename } } }`;
 
 /** Every open issue, oldest first. */
 export const OPEN_ISSUES_QUERY = `query($owner: String!, $name: String!, $after: String) {
