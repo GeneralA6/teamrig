@@ -6,8 +6,8 @@ import { deliveryPlaces } from "../../delivery/places.js";
 import { liveFreezes, parsePipelineFreezes, pipelineFreezeText } from "../../delivery/pipeline-freezes.js";
 import { minutesText } from "../../delivery/schedule.js";
 import { TabHolds, tabHoldsDir } from "../../sessions/tab-holds.js";
-import { hostLockOf } from "../delivery-ports.js";
-import { openTeamKit, requireConfig, teamZone } from "../kit.js";
+import { hostLockOf, teamAdmissionOf } from "../delivery-ports.js";
+import { openTeamKit, reloadTeamConfig, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 const MINUTE_MS = 60_000;
 /** How far back REFUSED looks: a day, the span the pipeline trial compares day by day. */
@@ -113,7 +113,7 @@ export async function pipeline(_args, runtime) {
     const { delivery } = config;
     const zone = teamZone(config, runtime);
     const places = deliveryPlaces(delivery, kit.paths);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
     const state = await lock.state();
     const shares = await lock.shares();
     const tabs = await new TabHolds(tabHoldsDir(places.hostLock), runtime).held();

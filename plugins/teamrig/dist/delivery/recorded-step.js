@@ -66,6 +66,8 @@ export async function recordQueuedStep(ports, setup, mark, work, exitOf) {
     const watching = sampleMs === 0 ? undefined : ports.memory.watch(ports.pid, sampleMs);
     let exitCode = NOT_STARTED_EXIT;
     try {
+        // Inside the try: a hook that throws still leaves an end record, the step recorded as not started.
+        await setup.opened?.(start);
         const result = await work();
         exitCode = exitOf(result);
         return result;

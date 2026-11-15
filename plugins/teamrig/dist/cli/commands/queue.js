@@ -2,7 +2,7 @@ import { QUEUE_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
 import { busyText, holderText, isHeavyShare, underLock, waitText } from "../../delivery/host-lock.js";
 import { parseLedger } from "../../delivery/ledger.js";
 import { pipelineFrozenRefusal } from "../../delivery/pipeline-freezes.js";
-import { formatRunRecord, runRecordPathOf } from "../../delivery/detached-runs.js";
+import { formatRunRecord, RUN_RECORD_FORMAT, runRecordPathOf } from "../../delivery/detached-runs.js";
 import { deliveryPlaces, detachedDirOf, detachedLogOf } from "../../delivery/places.js";
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass } from "../../delivery/push-pass.js";
 import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel } from "../../delivery/process-request.js";
@@ -20,9 +20,9 @@ import { TASK_ID } from "../../register/model.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { commandLine } from "../../test-run/shell.js";
 import { requiredFlag, UsageError } from "../args.js";
-import { hostLockOf, logLineOf } from "../delivery-ports.js";
+import { hostLockOf, logLineOf, teamAdmissionOf } from "../delivery-ports.js";
 import { sessionRef, shellWordsOf } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { parentLockOf } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
@@ -166,7 +166,7 @@ async function report(runtime, say, end, step) {
     await step.reporting.ended(ended.last);
     return ended.code;
 }
-const UNREPORTED = { started: async () => undefined, ended: async () => undefined };
+const UNREPORTED = { started: async () => undefined, opened: async () => undefined, ended: async () => undefined };
 /** Writes the detached run's record; a record that cannot be written is said in the log, never failing the step. */
 async function keepRunRecord(runtime, say, path, record) {
     try {
@@ -180,16 +180,19 @@ async function keepRunRecord(runtime, say, path, record) {
  * A detached run's session hears in its inbox when its step starts, and, with a wake, when it ends or is refused, since
  * no shell waits for its last line; a line that cannot be posted is said in the log, never failing the step. The run
  * keeps its record (detached-runs.ts) from now until its end line, so a sweep tells its session if it dies before
- * then; it logs its pid, so a death can be traced to what ended it.
+ * then, and with its step's start record once that is in the ledger, so the sweep closes it too (T2942); it logs its
+ * pid, so a death can be traced to what ended it.
  */
 async function detachedReporting(runtime, kit, config, say, run) {
     const { id, session, what, log, record: recordPath } = run;
-    const record = { v: 1, id, team: kit.paths.team, session, what, log, pid: runtime.pid, startedAt: new Date(runtime.clock.now()).toISOString() };
+    const record = { v: RUN_RECORD_FORMAT, id, team: kit.paths.team, session, what, log, pid: runtime.pid, startedAt: new Date(runtime.clock.now()).toISOString() };
     say(`detached run ${id}: pid ${runtime.pid}`);
     await keepRunRecord(runtime, say, recordPath, record);
+    let running = record;
     return {
         started: async () => {
-            await keepRunRecord(runtime, say, recordPath, { ...record, runningAt: new Date(runtime.clock.now()).toISOString() });
+            running = { ...record, runningAt: new Date(runtime.clock.now()).toISOString() };
+            await keepRunRecord(runtime, say, recordPath, running);
             const text = `queue ${id} started: ${what}; log ${log}`;
             let problem;
             try {
@@ -201,6 +204,9 @@ async function detachedReporting(runtime, kit, config, say, run) {
             if (problem !== undefined) {
                 say(`its start line was not posted to ${session}'s inbox: ${problem}`);
             }
+        },
+        opened: async (step) => {
+            await keepRunRecord(runtime, say, recordPath, { ...running, step });
         },
         ended: async (last) => {
             // Removed before the line: of this run and a sweep, only the one whose removal takes the record reports a death.
@@ -443,7 +449,7 @@ export async function queue(args, runtime) {
     const exclusive = exclusiveOf(args, small);
     const maxRunMinutes = maxRunMinutesOf(args, delivery.queue, small);
     const places = deliveryPlaces(delivery, kit.paths);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
     const parent = await parentLockOf(runtime, lock, say);
     const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
     const gate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone };
@@ -515,7 +521,7 @@ export async function queue(args, runtime) {
             await reporting.started();
             const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
             const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined || taking.sharing.heavy ? {} : { shared: true }), request: run };
-            const end = await runRecorded(runtime, { places, delivery }, mark);
+            const end = await runRecorded(runtime, { places, delivery, opened: (start) => reporting.opened({ ledger: places.ledger, start }) }, mark);
             const code = await report(runtime, say, end, step);
             return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);
         }

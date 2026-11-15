@@ -7,9 +7,9 @@ import { mergeBranch } from "../../merge/merge.js";
 import { MergeLog } from "../../merge/merge-log.js";
 import { ReviewHolds } from "../../merge/review-holds.js";
 import { JsonlEventLog } from "../../register/store.js";
-import { hostLockOf, logLineOf, nextResetFrom } from "../delivery-ports.js";
+import { hostLockOf, logLineOf, nextResetFrom, teamAdmissionOf } from "../delivery-ports.js";
 import { callerOf } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { refuseUnderParentLock } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
@@ -35,7 +35,7 @@ export async function merge(args, runtime) {
     const places = deliveryPlaces(delivery, kit.paths);
     const say = logLineOf(runtime, zone);
     const tree = new LeadTree(config);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
     await refuseUnderParentLock(runtime, lock, say, zone, 'teamrig merge');
     const watching = await watchStarters(runtime, say);
     try {

@@ -116,6 +116,10 @@ function queuedStepOf(record) {
     }
     return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit, ...queuedStepExtrasOf(record) };
 }
+/** `value` as a queued step record, the start or end record of one, or undefined when it is not one (T2942: a detached run keeps its start record). */
+export function parseQueuedStep(value) {
+    return isRecord(value) && value['type'] === 'heavy' ? queuedStepOf(value) : undefined;
+}
 function deployOf(record) {
     const kind = record['kind'];
     const [session, repo, range] = [stringField(record, 'session'), stringField(record, 'repo'), stringField(record, 'range')];

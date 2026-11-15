@@ -6,8 +6,8 @@ import { deliveryPlaces, teamPlace } from "../../delivery/places.js";
 import { blackoutStart, queueCutoffSpan } from "../../delivery/schedule.js";
 import { jobsOf } from "../../delivery/stable-periods.js";
 import { deployRepos, plural, readPending, short } from "../../deploy/pending.js";
-import { hostLockOf, nextResetFrom } from "../delivery-ports.js";
-import { openTeamKit, requireConfig, teamZone } from "../kit.js";
+import { hostLockOf, nextResetFrom, teamAdmissionOf } from "../delivery-ports.js";
+import { openTeamKit, reloadTeamConfig, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 function lockText(state, zone) {
     switch (state.kind) {
@@ -69,7 +69,7 @@ export async function deployStatus(_args, runtime) {
     const zone = teamZone(config, runtime);
     const places = deliveryPlaces(delivery, kit.paths);
     const say = (line) => runtime.out.stdout(line);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
     say(`host lock: ${lockText(await lock.state(), zone)}`);
     const shares = await lock.shares();
     if (shares.length > 0) {

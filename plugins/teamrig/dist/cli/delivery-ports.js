@@ -20,15 +20,20 @@ export function logLineOf(runtime, zone) {
  * stale. Every step that takes it or shares the host passes its memory gate first: free memory over
  * `delivery.queue.memoryFloorMb` plus the step's reserve (`heavyReserveMb` at least for a step that takes the lock),
  * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted, the tabs still loading beside the
- * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered as
- * `delivery.queue.admission` says, a ticket naming no class counting as `focus.defaultClass`; a heavy step joins another
+ * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered by the rules `admission`
+ * gives at each look ({@link teamAdmissionOf}); a heavy step joins another
  * heavy one only while `delivery.queue.heavyIdleCpuPct` of the host's CPU is idle. A waiter's ticket says what it waits
  * on with the times on `zone`'s clock.
  */
-export function hostLockOf(runtime, path, queue, headroom, focus, zone) {
+export function hostLockOf(runtime, path, queue, headroom, admission, zone) {
     const tabs = new TabHolds(tabHoldsDir(path), runtime);
     const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct }, () => tabs.live());
-    const admission = {
+    const cpu = new CpuGate(runtime.cpu, runtime.sleep, queue.heavyIdleCpuPct);
+    return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission });
+}
+/** The rules the host lock's line is ordered by: `delivery.queue.admission` and its keys, a ticket naming no class counting as `focus.defaultClass`. */
+export function admissionRulesOf(queue, focus) {
+    return {
         mode: queue.admission,
         agingMinutes: queue.agingMinutes,
         memoryPassMinutes: queue.memoryPassMinutes,
@@ -36,8 +41,24 @@ export function hostLockOf(runtime, path, queue, headroom, focus, zone) {
         maxHeavyParallel: queue.maxHeavyParallel,
         defaultClass: focus.defaultClass,
     };
-    const cpu = new CpuGate(runtime.cpu, runtime.sleep, queue.heavyIdleCpuPct);
-    return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission });
+}
+/**
+ * The admission rules of the team's config as `reload` reads it at each look, starting from `config`'s, the one the
+ * command launched on (T2942): a step waits in line for hours, and one that kept its launch's rules never saw a
+ * raised `maxHeavyParallel`. A read that finds no config, or one that does not parse (mid-edit), keeps the last rules
+ * read, so a bad edit never reorders the line.
+ */
+export function teamAdmissionOf(config, reload) {
+    let last = admissionRulesOf(config.delivery.queue, config.focus);
+    return {
+        async rules() {
+            const load = await reload();
+            if (load.status === 'loaded') {
+                last = admissionRulesOf(load.config.delivery.queue, load.config.focus);
+            }
+            return last;
+        },
+    };
 }
 /**
  * The lock the deploy freezes' writers share at `path`, held for a minute, since a write takes moments; it guards no

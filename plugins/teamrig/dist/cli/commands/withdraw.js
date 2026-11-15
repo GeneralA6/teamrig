@@ -1,8 +1,8 @@
 import { deliveryPlaces } from "../../delivery/places.js";
 import { ENV } from "../../core/home.js";
 import { UsageError } from "../args.js";
-import { hostLockOf } from "../delivery-ports.js";
-import { openTeamKit, requireConfig, rosterOf, teamZone } from "../kit.js";
+import { hostLockOf, teamAdmissionOf } from "../delivery-ports.js";
+import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { tabSessionOf } from "./tab-session.js";
 /**
@@ -66,7 +66,7 @@ export async function withdraw(args, runtime) {
     const config = requireConfig(kit, runtime, 'read');
     const session = await ownSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config));
     const zone = teamZone(config, runtime);
-    const lock = hostLockOf(runtime, deliveryPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue, config.open.headroom, config.focus, zone);
+    const lock = hostLockOf(runtime, deliveryPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
     if (chosen === undefined) {
         const waiting = (await lock.line()).filter((waiter) => waiter.session === session);
         if (waiting.length === 0) {

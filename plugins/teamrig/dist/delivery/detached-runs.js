@@ -1,7 +1,22 @@
 import { join } from 'node:path';
 import { isRecord, numberField, stringField } from "../core/guards.js";
+import { parseQueuedStep } from "./ledger.js";
 /** The suffix of a detached run's record, beside its log in the detached folder (`detachedDirOf`). */
 export const RUN_RECORD_SUFFIX = '.run.json';
+/**
+ * The run record's format: 2 added `step` (T2942). Format 1 is still read, as it has the same fields less that one; an
+ * older teamrig reads a format 2 record as none, so it leaves that run's death to a newer sweep: told late, never falsely.
+ */
+export const RUN_RECORD_FORMAT = 2;
+/** The exit code a sweep records for a step whose run died, as `exitCodeOf` records one a signal stopped. */
+export const DIED_EXIT = 1;
+/**
+ * The end record of a step whose run died while it ran, under its start's id: the death was seen at `endedAt`, a sweep's
+ * time, so the end is late by at most the time between sweeps, never early.
+ */
+export function diedEndOf(start, endedAt) {
+    return { ...start, endedAt, exitCode: DIED_EXIT };
+}
 /** The record of the detached run `id` in the detached folder `dir`. */
 export function runRecordPathOf(dir, id) {
     return join(dir, `${id}${RUN_RECORD_SUFFIX}`);
@@ -18,7 +33,7 @@ export function parseRunRecord(text) {
     catch {
         return undefined;
     }
-    if (!isRecord(value) || value['v'] !== 1) {
+    if (!isRecord(value) || (value['v'] !== 1 && value['v'] !== RUN_RECORD_FORMAT)) {
         return undefined;
     }
     const [id, team, session, what, log, startedAt, pid] = [
@@ -34,7 +49,16 @@ export function parseRunRecord(text) {
         return undefined;
     }
     const runningAt = stringField(value, 'runningAt');
-    return { v: 1, id, team, session, what, log, pid, startedAt, ...(runningAt === undefined ? {} : { runningAt }) };
+    const step = value['v'] === RUN_RECORD_FORMAT ? ledgerStepOf(value['step']) : undefined;
+    return { v: RUN_RECORD_FORMAT, id, team, session, what, log, pid, startedAt, ...(runningAt === undefined ? {} : { runningAt }), ...(step === undefined ? {} : { step }) };
+}
+/** `value` as a ledger step, or undefined when it is not one: a run whose step is unreadable is still told, only not closed. */
+function ledgerStepOf(value) {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const [ledger, start] = [stringField(value, 'ledger'), parseQueuedStep(value['start'])];
+    return ledger === undefined || start === undefined ? undefined : { ledger, start };
 }
 /**
  * The runs of `team` in the detached folder `dir` whose process is gone. A reused pid makes a dead run look alive until

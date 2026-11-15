@@ -4,9 +4,9 @@ import { SecretScanner } from "../../core/secrets.js";
 import { redeployTargets } from "../../deploy/deploy.js";
 import { deployRepo } from "../../deploy/run.js";
 import { requiredFlag, UsageError } from "../args.js";
-import { hostLockOf, logLineOf, nextResetFrom } from "../delivery-ports.js";
+import { hostLockOf, logLineOf, nextResetFrom, teamAdmissionOf } from "../delivery-ports.js";
 import { callerOf, commandWordsOf, listOf } from "../inputs.js";
-import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
+import { findTeam, openKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { refuseUnderParentLock } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
@@ -43,7 +43,7 @@ export async function deploy(args, runtime) {
     const { delivery, budget } = config;
     const places = deliveryPlaces(delivery, kit.paths);
     const say = logLineOf(runtime, zone);
-    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+    const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
     await refuseUnderParentLock(runtime, lock, say, zone, 'teamrig deploy');
     const watching = await watchStarters(runtime, say);
     try {
