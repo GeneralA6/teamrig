@@ -20,6 +20,7 @@ import {
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
+  isWatchProbe,
   issueCloseArgs,
   issueCommentArgs,
   issueCreateArgs,
@@ -29,6 +30,8 @@ import {
   labelReadArgs,
   nodeGhRunner,
   subIssueAddArgs,
+  WATCH_PATHS,
+  watchProbeArgs,
   type IssueNumber,
 } from './gh.ts';
 import type { IssueDraft } from '../issues/host.ts';
@@ -434,6 +437,52 @@ describe('isLinkAdd', () => {
   });
 });
 
+describe('isWatchProbe', () => {
+  const TAG = 'W/"50b22ce0798d5266d68ab18f566208f054bace28abff5bdb55246daea34bb6d5"';
+
+  it('takes each of the two probe paths of a repository, with no tag or one entity tag, strong or weak', () => {
+    for (const path of WATCH_PATHS) {
+      for (const tag of [undefined, TAG, '"abc"']) {
+        const args = watchProbeArgs('acme/web.site', path, tag);
+        assert.ok(isWatchProbe(args), args.join(' '));
+        assert.ok(isAllowedGh(args), args.join(' '));
+      }
+    }
+    assert.deepEqual(watchProbeArgs('acme/web', 'actions/runs?per_page=5', '"t"'), ['api', '-i', '-H', 'If-None-Match: "t"', 'repos/acme/web/actions/runs?per_page=5']);
+  });
+
+  it('refuses another path, method, field, header or flag, and a tag that could add a header line', () => {
+    for (const args of [
+      ['api', '-i', 'repos/acme/web/issues?state=all&sort=updated&per_page=100'],
+      ['api', '-i', 'repos/acme/web/issues'],
+      ['api', '-i', 'repos/acme/../issues?state=all&sort=updated&per_page=1'],
+      ['api', '-i', 'repos/acme/web/x/issues?state=all&sort=updated&per_page=1'],
+      ['api', '-i', 'repos/acme/web/actions/runs?per_page=5', '-X', 'POST'],
+      ['api', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '--paginate', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', 'Authorization: token x', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', 'If-None-Match: "a"\r\nX-Evil: 1', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', 'If-None-Match: "a b"', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', 'If-None-Match: *', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', `If-None-Match: "${'a'.repeat(201)}"`, 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-f', 'x=1', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', 'repos/acme/web/actions/runs?per_page=5', '--hostname', 'example.com'],
+      ['api', '-i', 'graphql'],
+    ]) {
+      assert.equal(isWatchProbe(args), false, args.join(' '));
+      assert.equal(isAllowedGh(args), false, args.join(' '));
+    }
+  });
+
+  it('is never taken for a query or a write, nor they for a probe', () => {
+    const probe = watchProbeArgs('acme/web', 'issues?state=all&sort=updated&per_page=1', TAG);
+    assert.ok(!isIssueQuery(probe) && !isIssueCreate(probe) && !isIssueComment(probe) && !isIssueClose(probe) && !isLabelAdd(probe) && !isLabelRemove(probe) && !isLabelRead(probe) && !isLinkAdd(probe));
+    for (const args of [READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b'), issueCloseArgs(ISSUE, 'duplicate'), labelReadArgs('acme/web', 'p1'), subIssueAddArgs(ISSUE, 12), blockedByAddArgs(ISSUE, 12)]) {
+      assert.equal(isWatchProbe(args), false, args[1]);
+    }
+  });
+});
+
 describe('nodeGhRunner', () => {
   it('passes each argument as a list item, never through a shell, and tells gh not to prompt', async () => {
     const gh = script('echo-args.mjs', 'process.stdout.write(JSON.stringify([process.argv.slice(2), process.env.GH_PROMPT_DISABLED]));');
@@ -451,7 +500,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries and to open, read, comment on, label, assign, close or link an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, label, assign, close or link an issue: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });
