@@ -1340,7 +1340,7 @@
       }
     },
     "github": {
-      "description": "The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment, teamrig issue label, teamrig issue edit and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md).",
+      "description": "The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment, teamrig issue label, teamrig issue edit and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, never the gh login; no saved token, or one that cannot be read, stops the read or write for that owner (docs/github-sync.md).",
       "type": "object",
       "properties": {
         "repos": {

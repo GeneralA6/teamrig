@@ -66,17 +66,11 @@ and open or closed state still follow GitHub, its title and description stay as 
 
 ## 2. Give teamrig read access
 
-teamrig reads issues through the GitHub CLI, [`gh`](https://cli.github.com). For each owner (the `acme` in
-`acme/web`) it uses:
-
-- **a token saved for that owner**, when there is one: recommended, and needed when your repositories belong to
-  more than one owner;
-- **else the `gh` login** (`gh auth login`), which works when that account can read the issues of every listed
-  repository.
-
-A token is saved, but the credential store cannot read it (a locked keyring, for one): the command stops for that
-owner with a `FAILED` line naming the store and the fix, and never falls back to the `gh` login, which may reach
-more than the token was given. `teamrig issue sync` reads the other owners on.
+teamrig reads and writes issues through the GitHub CLI, [`gh`](https://cli.github.com), with **a token saved for
+each owner** (the `acme` in `acme/web`), handed to `gh` for that run only. It never uses the `gh` login
+(`gh auth login`) in its place, which may reach more than the token was given: an owner with no saved token, or
+one the credential store cannot read (a locked keyring, for one), stops with a `FAILED` line naming the store and
+the fix, and nothing runs for it. `teamrig issue sync` reads the other owners on.
 
 ### What each command needs
 
@@ -139,7 +133,7 @@ ADD new gh:acme/web#7 p1 web: "Fix the login redirect"
 ADD new gh:acme/web#9 p2 web: "Add search to the docs"
 LEFT OUT acme/web: 1 open issue(s) by people outside the repository wait for someone to add the "teamrig" label: #12
 REPO acme/api: 0 to add, 0 to change, 3 unchanged
-ACCESS globex: read with the gh login; no token saved as teamrig-gh-globex
+ACCESS globex: read with the token saved as teamrig-gh-globex
 REPO globex/site: 1 to add, 0 to change, 0 unchanged
 ADD new gh:globex/site#4 p2 web: "Broken footer link"
 PREVIEW nothing was written; teamrig issue sync --yes writes the above as github
@@ -458,8 +452,7 @@ again.
 | `the token saved as teamrig-gh-acme may not read the issues of acme/web` | The token sees the repository but has no Issues permission. | On GitHub, edit the token: what [each command needs](#what-each-command-needs). |
 | `acme/web is not visible to the token saved as teamrig-gh-acme` | The repository is not one the token was given, or the name is wrong. | Check `github.repos`; on GitHub, add the repository to the token. |
 | `GitHub refused the token saved as teamrig-gh-acme (expired or revoked?)` | Expired, revoked or not yet approved by the organisation. | Regenerate it and save it again, or ask an organisation owner to approve it. |
-| `... is not visible to the gh login` / `the gh login may not read the issues` | No token is saved for that owner, and the `gh` account cannot read it. | Save a token for the owner (step 2). |
-| `gh is not logged in to GitHub` | No token for that owner and no `gh` login. | Save a token, or run `gh auth login`. |
+| `no token for acme is saved as teamrig-gh-acme` | No token is saved for that owner. teamrig never reads or writes through the `gh` login in its place. | Save a token for the owner (step 2). |
 | `gh, the GitHub CLI, is not installed` | `gh` is missing. | Install it from [cli.github.com](https://cli.github.com). |
 | `could not read teamrig-gh-acme from ...` | The token is saved, but the credential store could not be read (a locked keyring, for one). Nothing ran for that owner: teamrig never uses the `gh` login in a saved token's place. | Unlock the store and rerun, or save the token again. |
 
