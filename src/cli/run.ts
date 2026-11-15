@@ -2,6 +2,7 @@ import { errorMessage } from '../core/guards.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
 import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
+import { isSettingsWriter, settingsWriteRefusal, WRITE_SWITCH } from '../core/settings-writers.ts';
 import { cutLineMessage, shimArgs } from './cmd-shim.ts';
 import { CommandHelp } from './help.ts';
 import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs } from './args.ts';
@@ -1019,6 +1020,14 @@ export const HELP: ReadonlySet<string> = new Set(['help', '--help', '-h']);
 /** The words that print the version; the LLM guide documents them as `teamrig version`. */
 export const VERSION: ReadonlySet<string> = new Set(['version', '--version', '-v']);
 
+/** Refuses a settings writer's write where Claude Code set CLAUDECODE (src/core/settings-writers.ts); its preview runs. */
+function refuseSettingsWrite(command: string, switches: ReadonlySet<string>, runtime: CliRuntime): void {
+  const claudeCode = runtime.env[ENV.claudeCode];
+  if (claudeCode !== undefined && claudeCode !== '' && switches.has(WRITE_SWITCH) && isSettingsWriter(command)) {
+    throw new RefusedError(settingsWriteRefusal(command));
+  }
+}
+
 export async function runCli(given: readonly string[], runtime: CliRuntime): Promise<ExitCode> {
   const argv = shimArgs(given, runtime.cmdShimLine);
   if (argv === undefined) {
@@ -1047,6 +1056,7 @@ export async function runCli(given: readonly string[], runtime: CliRuntime): Pro
     if (spec === undefined) {
       throw new UsageError(`unknown command "${args.command}"`);
     }
+    refuseSettingsWrite(args.command, args.switches, runtime);
     const command = await spec.load();
     return await command(args, runtime);
   } catch (error) {
