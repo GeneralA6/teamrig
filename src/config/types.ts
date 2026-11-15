@@ -714,6 +714,13 @@ export interface GithubConfig {
    * outside the repository, or from a branch that names no task. Unset, the lead.
    */
   readonly watcher?: string;
+  /**
+   * The repository of `repos` a new task's issue opens in: while set, `teamrig add` opens the task's issue there with
+   * the public wording given (`--issue`, `--issue-body`), or records why the task stays local (`--local`), and adds no
+   * task with neither, so every task has its issue from the start. Empty, the default: an add opens an issue only when
+   * asked.
+   */
+  readonly issueAtAdd: string;
 }
 
 /**

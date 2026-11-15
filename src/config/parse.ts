@@ -752,7 +752,18 @@ function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     acceptLabel: read.string(raw, 'acceptLabel', 'github', DEFAULT_GITHUB.acceptLabel, shortLine(GITHUB_LABEL_MAX_LENGTH)),
     similarThreshold: read.number(raw, 'similarThreshold', 'github', DEFAULT_GITHUB.similarThreshold, CONFIG_LIMITS.similarThreshold),
     ...readGithubWatcher(read, raw, sessions),
+    issueAtAdd: readIssueAtAdd(read, raw, repos),
   };
+}
+
+/** `github.issueAtAdd`: empty, or one of `repos` in lowercase; any other repository is reported and reads as empty. */
+function readIssueAtAdd(read: ConfigReader, raw: JsonRecord, repos: readonly string[]): string {
+  const repo = read.string(raw, 'issueAtAdd', 'github', DEFAULT_GITHUB.issueAtAdd).trim().toLowerCase();
+  if (repo !== '' && !repos.includes(repo)) {
+    read.report('github.issueAtAdd', `${describe(repo)} is not one of github.repos`);
+    return DEFAULT_GITHUB.issueAtAdd;
+  }
+  return repo;
 }
 
 /** Below this, a probe every few seconds would spend gh starts for nothing GitHub shows that fast. */
