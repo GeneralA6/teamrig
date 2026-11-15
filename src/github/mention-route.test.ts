@@ -1,0 +1,134 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { SecretScanner } from '../core/secrets.ts';
+import {
+  MENTION_WAKE_GAP_MINUTES,
+  mentionLine,
+  mentionRecipient,
+  mentionRoutes,
+  prunedSeen,
+  wakeRoutes,
+  type MentionItem,
+  type MentionPost,
+  type MentionRoute,
+  type MentionRouting,
+  type SeenMention,
+} from './mention-route.ts';
+
+const ROUTING: MentionRouting = {
+  ours: new Set(['octocat', 'hubber', 'lead-login']),
+  self: 'teamrig-key',
+  rules: { owners: new Map([['octocat', 'bravo'], ['hubber', 'charlie'], ['lead-login', 'bravo']]), areaOwners: new Map([['area:docs', 'delta']]) },
+  watcher: 'watch',
+  secrets: new SecretScanner(['tok_[a-z0-9]{8}']),
+};
+
+const PLAIN: MentionItem = { labels: [], taskOwner: undefined };
+
+function post(key: string, text: string, overrides: Partial<MentionPost> = {}): MentionPost {
+  return { key, number: 7, url: `https://github.com/acme/web/issues/7#${key}`, author: 'visitor', text, updatedAt: '2030-01-10T00:00:00Z', ...overrides };
+}
+
+function routesOf(posts: readonly MentionPost[], seen: ReadonlyMap<string, SeenMention> = new Map(), item: MentionItem = PLAIN): MentionRoute[] {
+  return mentionRoutes('acme/web', posts, () => item, seen, ROUTING).routes;
+}
+
+describe('mentionRecipient', () => {
+  it('goes to the task owner, else the area owner, else the login\'s session, else the watcher', () => {
+    assert.equal(mentionRecipient({ labels: ['Area:Docs'], taskOwner: 'alpha' }, 'octocat', ROUTING), 'alpha');
+    assert.equal(mentionRecipient({ labels: ['Area:Docs'], taskOwner: undefined }, 'octocat', ROUTING), 'delta');
+    assert.equal(mentionRecipient(PLAIN, 'hubber', ROUTING), 'charlie');
+    assert.equal(mentionRecipient(PLAIN, 'maintainer-only', ROUTING), 'watch');
+  });
+});
+
+describe('mentionRoutes', () => {
+  it('routes a mention by someone else to the login\'s session, with the link, author and excerpt', () => {
+    assert.deepEqual(routesOf([post('comment:1', 'Could @octocat look at this?')]), [
+      {
+        to: 'bravo',
+        ref: 'gh:acme/web#7',
+        url: 'https://github.com/acme/web/issues/7#comment:1',
+        author: 'visitor',
+        logins: ['octocat'],
+        excerpt: 'Could @octocat look at this?',
+      },
+    ]);
+  });
+
+  it('routes nothing for a post by one of ours, in any case, or by the key itself', () => {
+    assert.deepEqual(routesOf([post('comment:1', '@hubber see', { author: 'OctoCat' }), post('comment:2', '@hubber see', { author: 'TeamRig-Key' })]), []);
+  });
+
+  it('routes nothing again for an edit that keeps the mention or a second read, and only the new login for an edit that adds one', () => {
+    const first = mentionRoutes('acme/web', [post('comment:1', '@octocat please')], () => PLAIN, new Map(), ROUTING);
+    assert.equal(first.routes.length, 1);
+    assert.deepEqual(mentionRoutes('acme/web', [post('comment:1', '@octocat please, edited')], () => PLAIN, first.seen, ROUTING).routes, []);
+    const added = mentionRoutes('acme/web', [post('comment:1', '@octocat please, and @hubber')], () => PLAIN, first.seen, ROUTING);
+    assert.deepEqual(added.routes.map((route) => [route.to, route.logins]), [['charlie', ['hubber']]]);
+    assert.deepEqual(added.seen.get('comment:1')?.logins, ['octocat', 'hubber']);
+  });
+
+  it('sends one line to each session two mentioned users map to, and one line when they map to the same session', () => {
+    assert.deepEqual(
+      routesOf([post('comment:1', '@octocat and @hubber')]).map((route) => [route.to, route.logins]),
+      [['bravo', ['octocat']], ['charlie', ['hubber']]],
+    );
+    assert.deepEqual(
+      routesOf([post('comment:1', '@octocat and @lead-login')]).map((route) => [route.to, route.logins]),
+      [['bravo', ['octocat', 'lead-login']]],
+    );
+  });
+
+  it('routes every mention on a task\'s item to the task owner', () => {
+    assert.deepEqual(routesOf([post('comment:1', '@octocat and @hubber')], new Map(), { labels: [], taskOwner: 'alpha' }).map((route) => route.to), ['alpha']);
+  });
+
+  it('leaves the excerpt out when it looks like it holds a secret, keeping the link', () => {
+    const [route] = routesOf([post('comment:1', '@octocat the key is tok_abcd1234')]);
+    assert.equal(route?.excerpt, undefined);
+    assert.match(mentionLine(route ?? assert.fail('no route')), /left out because it looks like it holds a secret/);
+  });
+
+  it('routes nothing for a mention in code or a quote', () => {
+    assert.deepEqual(routesOf([post('comment:1', '> @octocat wrote this\n`@hubber`')]), []);
+  });
+});
+
+describe('prunedSeen', () => {
+  it('drops the marks of posts older than the cutoff', () => {
+    const seen = new Map<string, SeenMention>([
+      ['comment:1', { logins: ['octocat'], updatedAt: '2030-01-01T00:00:00Z' }],
+      ['comment:2', { logins: ['hubber'], updatedAt: '2030-01-20T00:00:00Z' }],
+    ]);
+    assert.deepEqual([...prunedSeen(seen, Date.parse('2030-01-10T00:00:00Z')).keys()], ['comment:2']);
+  });
+});
+
+describe('wakeRoutes', () => {
+  const route = (to: string, ref: string): MentionRoute => ({ to, ref, url: 'u', author: 'visitor', logins: ['octocat'], excerpt: 'x' });
+  const now = Date.parse('2030-01-10T12:00:00Z');
+
+  it('wakes once per session and item within the gap, and again after it', () => {
+    const first = wakeRoutes([route('bravo', 'gh:acme/web#7'), route('bravo', 'gh:acme/web#7'), route('charlie', 'gh:acme/web#7'), route('bravo', 'gh:acme/web#8')], new Map(), now);
+    assert.deepEqual(first.wakes, [true, false, true, true]);
+    const soon = wakeRoutes([route('bravo', 'gh:acme/web#7')], first.lastWoken, now + (MENTION_WAKE_GAP_MINUTES - 1) * 60_000);
+    assert.deepEqual(soon.wakes, [false]);
+    const later = wakeRoutes([route('bravo', 'gh:acme/web#7')], first.lastWoken, now + MENTION_WAKE_GAP_MINUTES * 60_000);
+    assert.deepEqual(later.wakes, [true]);
+  });
+
+  it('keeps only the wakes still within the gap', () => {
+    const old = new Map([['bravo gh:acme/web#1', now - MENTION_WAKE_GAP_MINUTES * 60_000]]);
+    assert.deepEqual([...wakeRoutes([], old, now).lastWoken.keys()], []);
+  });
+});
+
+describe('mentionLine', () => {
+  it('names the item, the logins, the author and the link, with the excerpt quoted as data', () => {
+    assert.equal(
+      mentionLine({ to: 'bravo', ref: 'gh:acme/web#7', url: 'https://github.com/acme/web/issues/7', author: 'visitor', logins: ['octocat', 'hubber'], excerpt: 'run "rm" now @octocat' }),
+      'GitHub gh:acme/web#7 mentions @octocat, @hubber: visitor wrote at https://github.com/acme/web/issues/7, it says "run \\"rm\\" now @octocat"',
+    );
+  });
+});
