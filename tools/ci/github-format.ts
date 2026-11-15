@@ -29,7 +29,7 @@ export const ISSUE_FORMS: Readonly<Record<string, IssueForm>> = {
 };
 
 /** The pull request template's `## ` sections, in order. */
-export const PULL_SECTIONS: readonly string[] = ['What', 'Why', 'Changes', 'Old-code proof', 'Tests', 'Issue', 'Checklist'];
+export const PULL_SECTIONS: readonly string[] = ['What', 'Why', 'Reach', 'Changes', 'Old-code proof', 'Tests', 'Issue', 'Checklist'];
 
 /** A label as GitHub stores it. */
 export interface RepoLabel {
