@@ -14,7 +14,7 @@ function answer(runtime, value) {
 }
 /**
  * `hook meeting-panel`, run by the mod's meeting panel hand in a team session's tab (T2512). It shows only in the tab
- * of a root team's lead, the one that meets the owner, while the meeting it started is open, and only with
+ * of a team's lead, a sub-team's too (T2985), while the meeting it started is open, and only with
  * `meeting.panel.enabled`: the owner's cards of the lead's register and of every team under it, as the agenda asks
  * them, the ones decided since the start checked off (meetingPanelOf). It reads and writes nothing else.
  */
@@ -31,16 +31,12 @@ export async function meetingPanel(args, runtime) {
     if (roster.holderOf('lead') !== id) {
         return answer(runtime, { kind: 'off', why: 'only the lead meets the owner', watch: [] });
     }
-    const kitTree = await loadTree(runtime);
-    if (kitTree.tree.ownerLeadAbove(kit.paths.team) !== undefined) {
-        return answer(runtime, { kind: 'off', why: 'a team under another meets no owner', watch: [] });
-    }
     const now = runtime.clock.now();
     const meeting = await new MeetingStore(runtime.files, kit.paths.meeting).read();
     if (meeting === undefined || !inMeeting(meeting, id, now)) {
         return answer(runtime, { kind: 'off', why: 'no meeting is open', watch: [kit.paths.meeting] });
     }
-    const rollUp = await subtreeOf(runtime, { kit, config, roster }, kitTree);
+    const rollUp = await subtreeOf(runtime, { kit, config, roster }, await loadTree(runtime));
     const { own, teams } = rollUp;
     const panel = meetingPanelOf({
         meeting,

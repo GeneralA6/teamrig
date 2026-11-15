@@ -31,10 +31,7 @@ import { decidedByOf, decisionAgendaOf } from "./meeting-registers.js";
 import { agendaMeetingLines, meetingEndScheduled, meetingStartScheduled } from "./meetings.js";
 import { taskTreeOf, weekFitOf } from "./register.js";
 import { foldStats, statsTopLines } from "./stats.js";
-/**
- * The caller's team, refused unless the caller is its lead and the team a root team: the meeting is the lead's with the
- * owner, and a child team's waits on the owner go up to the lead at its tree's root, whose agenda lists them (T509).
- */
+/** The caller's team, refused unless the caller is its lead: the meeting is the lead's with the owner, over its subtree. */
 async function meetingKit(args, runtime, access) {
     noPositionals(args);
     const kit = await openTeamKit(runtime);
@@ -47,12 +44,7 @@ async function meetingKit(args, runtime, access) {
     if (lead === undefined || caller !== lead) {
         throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} runs the owner's daily meeting`);
     }
-    const team = kit.paths.team;
     const kitTree = await loadTree(runtime);
-    const above = kitTree.tree.ownerLeadAbove(team);
-    if (above !== undefined) {
-        throw new RefusedError(`team ${team} meets no owner: the owner's daily meeting is ${formatAddress(above)}'s, whose agenda lists ${team}'s waits on the owner`);
-    }
     const store = new MeetingStore(runtime.files, kit.paths.meeting);
     return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now(), zone: teamZone(config, runtime), kitTree };
 }

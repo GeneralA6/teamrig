@@ -584,10 +584,11 @@ function decidedOf(args) {
     return true;
 }
 /**
- * `update <team>/<id> --note ".." [--later <when|none> | --decided]`: the lead who asks the owner a team's decisions,
- * at its tree's root (T1018), records a note, a Later (T1295) or the owner's answer as a Decided (T1366) on a task of
- * that team. It lands in that team's register as an event by the lead's `<team>/<id>`. Only that lead may, and only
- * these: every other field stays the task's own team's to change, but for the rows a person confirmed in `sweep apply`.
+ * `update <team>/<id> --note ".." [--later <when|none> | --decided]`: the lead of a team above, the root's (T1018) or a
+ * sub-team's that met the owner over its subtree (T2985), records a note, a Later (T1295) or the owner's answer as a
+ * Decided (T1366) on a task of that team. It lands in that team's register as an event by the lead's `<team>/<id>`.
+ * Only those leads may, and only these: every other field stays the task's own team's to change, but for the rows a
+ * person confirmed in `sweep apply`.
  */
 async function noteBelow(args, runtime, caller, below, id) {
     const others = [
@@ -604,12 +605,12 @@ async function noteBelow(args, runtime, caller, below, id) {
         throw new UsageError(`${below}/${id} is a task of your own team: update ${id}`);
     }
     const { from, tree } = await treeCallerOf(runtime, team, caller, below);
-    const asker = tree.ownerLeadAbove(below);
-    if (asker === undefined) {
+    const leads = tree.leadsAbove(below);
+    if (leads.length === 0) {
         throw new RefusedError(`team ${below} has no parent team, so only its own sessions note its tasks`);
     }
-    if (asker.team !== from.team || asker.id !== from.id) {
-        throw new RefusedError(`only ${formatAddress(asker)}, who asks the owner team ${below}'s decisions, notes its tasks from another team; ${formatAddress(from)} may not`);
+    if (!leads.some((lead) => lead.team === from.team && lead.id === from.id)) {
+        throw new RefusedError(`only a lead above team ${below} (${leads.map((lead) => formatAddress(lead)).join(', ')}) notes its tasks from another team; ${formatAddress(from)} may not`);
     }
     const target = await teamOf(runtime, await openKit(runtime, below), 'write');
     const by = formatAddress(from);

@@ -10,7 +10,7 @@ import { DECISION_MARKER } from "../tabs/status.js";
  *
  * The lead's own thread never keeps it either: the owner's daily meeting asks the cards in plain text, so in an open
  * meeting the reason says to read the card and let the owner answer in their own words (T1278, T2256). A sub-team's
- * lead never keeps it: the user talks only to the root team's lead, so its decisions go up to its parent lead (T1019). A helper never keeps it, the lead's neither: its picker stops the
+ * lead never keeps it: outside its own meeting with the owner (T2985), its decisions go up to its parent lead (T1019). A helper never keeps it, the lead's neither: its picker stops the
  * session that started it, and its question belongs in its report. ExitPlanMode stays allowed: plan mode starts only
  * when the person chose it in that tab, and the tool is its only way out.
  *
@@ -44,7 +44,7 @@ function cardCommand(command, session) {
 /** Why the picker is refused, and what `asker` does instead, with the `command` it runs. */
 export function pickerReason(command, asker, meeting) {
     const guard = `${command} picker guard:`;
-    if (asker.role === 'lead' && meeting.open) {
+    if ((asker.role === 'lead' || asker.role === 'subteam-lead') && meeting.open) {
         return (`${guard} the owner's daily meeting asks in plain text. Read the card as it stands,` +
             " its options numbered and your recommendation first, and let the owner answer in their own words; record the answer in the same turn:" +
             ` \`${command} update <id> --decided --note "owner decided: <decision>" --session ${asker.session}\`.`);
@@ -67,10 +67,13 @@ export function pickerReason(command, asker, meeting) {
             return `${card}${parentRoute(command, asker.session, asker.parentLead)}`;
     }
 }
-/** Where a sub-team's lead takes the card instead: one inbox line to its parent lead, who carries it up to the owner. */
+/**
+ * Where a sub-team's lead takes the card outside a meeting: one inbox line to its parent lead, who carries it up to the
+ * owner; or the owner's meeting in its own tab, which asks it in plain text (T2985).
+ */
 function parentRoute(command, session, parentLead) {
     const to = formatAddress(parentLead);
     return (`; then tell your parent lead ${to} (name \`${parentLead.name}\`) in one inbox line,` +
         ` \`${command} inbox add --to ${to} --text "T<id> waits on the owner's decision: <what is decided>" --session ${session}\`, and it carries the decision up.` +
-        " The user talks only to the root team's lead, so the picker never opens for a sub-team's lead, and its tab never asks the owner: with no task left, end your turn.");
+        ` The picker never opens for a sub-team's lead: the owner's meeting in this tab asks it in plain text (\`${command} meeting start\`); with no task left, end your turn.`);
 }
