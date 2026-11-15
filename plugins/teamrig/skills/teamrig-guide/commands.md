@@ -71,6 +71,19 @@ Flags:
   is `owner` (`register.ownerSource`): the lead of a team above the asked one relays the human's order, and the task
   there is sourced `owner`, its history naming the lead as the writer; from any other session it is refused, and
   any other source is refused too.
+- `--issue "<public title>"`: opens the task's GitHub issue with this title and `--issue-body`, labelled by
+  `--type` (`bug`, else `enhancement`) and `--priority` (p0 and p1 as `p1`, p2 as `p2`, lower as `p3`), and points
+  the task's ref at it, so the sync adds no second task for it. The issue is public: one-line title, no task id,
+  no secret; the task keeps its own title and description. It opens with the token saved for the repository's
+  owner. When GitHub fails the task stays written with no issue (`FAILED T<n>'s issue: ...`, exit 1); with GitHub
+  off on the machine it prints `OFF`.
+- `--issue-body "<public text>"`: the issue's body; it comes with `--issue`.
+- `--issue-repo <owner/repo>`: where the issue opens, one of `github.repos`; else `[github.issueAtAdd]`, else the
+  one repository of `github.repos`.
+- `--local "<why>"`: the task gets no issue; the reason is written as its ref, `local: <why>`. Not with `--issue`
+  or `--ref`.
+- While `[github.issueAtAdd]` names a repository, every add gives `--issue` and `--issue-body`, or `--local`, or a
+  `--ref` to an issue it has; any other add is refused and writes nothing. None of the four flags goes with `--team`.
 
 Example:
 
