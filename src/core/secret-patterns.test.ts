@@ -105,6 +105,9 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
       join('api', '_key', ': ', 'sk_live then retry'),
       join('pass', 'word', ': ', 'hunter\nuser: bob'),
       join('db_', 'secret', ':  letters\n\tport: 5432'),
+      // A passphrase of plain words is a value: only a few prose words start a sentence (GeneralA6/teamrig#852).
+      join('pass', 'word', ': ', 'correct horse battery staple'),
+      join('api', '_key', ': ', 'purple monkey dishwasher'),
     ],
     misses: [
       'rotate the password via the vault runbook',
