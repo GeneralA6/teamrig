@@ -144,6 +144,28 @@ describe('GitHubIssueHost.pulls', () => {
   });
 });
 
+describe('GitHubIssueHost.jobLog', () => {
+  it("reads the failed job's log with the saved token and gives its excerpt, a secret shape redacted", async () => {
+    const stdout = ['check\tRun tests\t2030-01-01T00:00:00.0000000Z not ok 1 - reads', 'check\tRun tests\t2030-01-01T00:00:01.0000000Z token tok_abcdefgh leaked'].join('\n');
+    const gh = new FakeGh().holdsJobLog(41, stdout);
+    const log = await hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'tok_zzzzzzzz')).jobLog('acme/web', 41);
+    assert.deepEqual(log, { kind: 'read', step: 'Run tests', lines: ['not ok 1 - reads', 'token [redacted secret pattern from the team config] leaked'] });
+    assert.deepEqual(
+      gh.ran.map((request) => [request.args, request.env['GH_TOKEN']]),
+      [[['run', 'view', '--job', '41', '--log-failed', '--repo', 'acme/web'], 'tok_zzzzzzzz']],
+    );
+  });
+
+  it('gives the one line, naming the Actions permission, when the read fails', async () => {
+    const forbidden: GhResult = { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 403: Resource not accessible by personal access token\n' };
+    const log = await hostWith(new FakeGh().answers('acme/web', forbidden), new FakeCredentials().saves('teamrig-gh-acme', 'k')).jobLog('acme/web', 41);
+    assert.equal(log.kind === 'failed' && log.reason.includes('may not read the failed job logs of acme/web') && log.reason.includes('set Actions to Read-only'), true, JSON.stringify(log));
+    const odd: GhResult = { end: { kind: 'exited', code: 2 }, stdout: '', stderr: 'boom tok_abcdefgh\n' };
+    const failed = await hostWith(new FakeGh().answers('acme/web', odd)).jobLog('acme/web', 41);
+    assert.deepEqual(failed.kind === 'failed' && failed.reason.startsWith('gh run view for the failed job logs of acme/web') && !failed.reason.includes('tok_abcdefgh'), true, JSON.stringify(failed));
+  });
+});
+
 describe('GitHubIssueHost.open', () => {
   it("opens the issue through the allowlisted create, with the owner's token, and gives its number", async () => {
     const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7)]);

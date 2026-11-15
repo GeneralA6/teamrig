@@ -21,6 +21,7 @@ import {
   isIssueQuery,
   isIssueRead,
   isIssueUnassign,
+  isJobLogRead,
   isLabelAdd,
   isLabelCreate,
   isLabelRead,
@@ -37,6 +38,7 @@ import {
   issueReadArgs,
   issueUnassignArgs,
   isUserRead,
+  jobLogArgs,
   labelCreateArgs,
   labelReadArgs,
   nodeGhRunner,
@@ -637,6 +639,39 @@ describe('isWatchProbe', () => {
   });
 });
 
+describe('isJobLogRead', () => {
+  it("takes the failed-log read of one job, as jobLogArgs makes it", () => {
+    const args = jobLogArgs('acme/web', 40123456789);
+    assert.deepEqual(args, ['run', 'view', '--job', '40123456789', '--log-failed', '--repo', 'acme/web']);
+    assert.equal(isJobLogRead(args), true);
+    assert.equal(isAllowedGh(args), true);
+  });
+
+  it('refuses a rerun, cancel or download, another flag, a flag out of place, or a job or repository that is not one', () => {
+    const LOG = jobLogArgs('acme/web', 7);
+    const refused: string[][] = [
+      ['run', 'rerun', '--job', '7', '--log-failed', '--repo', 'acme/web'],
+      ['run', 'cancel', '7', '--repo', 'acme/web'],
+      ['run', 'download', '7', '--repo', 'acme/web'],
+      ['run', 'view', '--job', '7', '--log', '--repo', 'acme/web'],
+      ['run', 'view', '--job', '7', '--web', '--repo', 'acme/web'],
+      [...LOG, '--exit-status'],
+      ['run', 'view', '--log-failed', '--job', '7', '--repo', 'acme/web'],
+      ['run', 'view', '--job', '-7', '--log-failed', '--repo', 'acme/web'],
+      ['run', 'view', '--job', '07', '--log-failed', '--repo', 'acme/web'],
+      ['run', 'view', '--job', '--web', '--log-failed', '--repo', 'acme/web'],
+      ['run', 'view', '--job', '7', '--log-failed', '--repo', 'acme/..'],
+      ['run', 'view', '--job', '7', '--log-failed', '--repo', 'github.com/acme/web'],
+      ['run', 'view', '--job', '7', '--log-failed', '-R', 'acme/web'],
+      LOG.slice(0, 6),
+    ];
+    for (const args of refused) {
+      assert.equal(isJobLogRead(args), false, args.join(' '));
+      assert.equal(isAllowedGh(args), false, args.join(' '));
+    }
+  });
+});
+
 describe('nodeGhRunner', () => {
   it('passes each argument as a list item, never through a shell, and tells gh not to prompt', async () => {
     const gh = script('echo-args.mjs', 'process.stdout.write(JSON.stringify([process.argv.slice(2), process.env.GH_PROMPT_DISABLED]));');
@@ -654,7 +689,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, edit the body of, label, assign, close or link an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, and to read a failed job's log: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });

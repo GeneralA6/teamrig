@@ -6,7 +6,7 @@ import { pullPageArgs, type PullRead } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
 /** How a failed pull request read is worded, and the permission a fine-grained token needs for it. */
-export const PULL_READ: ReadKind = { noun: 'pull requests', permission: 'Pull requests' };
+export const PULL_READ: ReadKind = { noun: 'pull requests', permission: 'Pull requests', command: 'gh api graphql' };
 
 /** The most pull requests one read takes before it stops asking for pages; a read stopped with more on GitHub says so. */
 export const PULL_LIMIT = 200;

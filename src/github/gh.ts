@@ -15,9 +15,10 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
  * in, and the read of whether one login may be assigned (the status push), one login taken off one issue's
  * assignees (a claim the sync made that ran out), the creation of one of the labels teamrig makes (the status push
  * and issue label), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes,
- * conditional reads that tell whether a repository changed (isWatchProbe). The runner refuses any other command line
- * before it starts: no title or state edit besides the close, no reopen, removal of more than one assignee at once,
- * label create but teamrig's own, label edit or delete, link removal, merge or branch delete.
+ * conditional reads that tell whether a repository changed (isWatchProbe), and the read of one failed Actions job's
+ * log (the pull request monitor names its failed step). The runner refuses any other command line before it starts:
+ * no title or state edit besides the close, no reopen, removal of more than one assignee at once, label create but
+ * teamrig's own, label edit or delete, link removal, merge, branch delete, run rerun or cancel, or log download.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -463,6 +464,32 @@ function rawPairs(args: readonly string[]): Array<[string, string]> | null {
   return pairs;
 }
 
+/** The command line that reads the failed steps' log of one Actions job of `repo`, the job named by its id. */
+export function jobLogArgs(repo: string, jobId: number): string[] {
+  return ['run', 'view', '--job', String(jobId), '--log-failed', '--repo', repo];
+}
+
+/** An Actions job's id: a positive whole number, never a flag or a path. */
+const JOB_ID = /^[1-9][0-9]{0,15}$/;
+
+/**
+ * True for `gh run view --job <id> --log-failed --repo <owner>/<name>` and nothing more: the failed steps' log of one
+ * job printed, a read. Any other flag (`--web`, `--exit-status`, `--log`), order or subcommand (`rerun`, `cancel`,
+ * `download`) is refused, so the run cannot change a run, open a browser or write a file.
+ */
+export function isJobLogRead(args: readonly string[]): boolean {
+  return (
+    args.length === 7 &&
+    args[0] === 'run' &&
+    args[1] === 'view' &&
+    args[2] === '--job' &&
+    JOB_ID.test(args[3] ?? '') &&
+    args[4] === '--log-failed' &&
+    args[5] === '--repo' &&
+    REPO_NAME.test(args[6] ?? '')
+  );
+}
+
 /** One `gh` run: its arguments, passed as a list and never read by a shell, and the environment. */
 export interface GhRequest {
   readonly args: readonly string[];
@@ -546,12 +573,12 @@ export function isLinkAdd(args: readonly string[]): boolean {
   );
 }
 
-/** A command line the runner will not start: none of a shipped issue query's page, a watch probe, one issue's creation, comment, body, labels, close or link. */
+/** A command line the runner will not start: none of a shipped query's page, a watch probe, one issue's creation, comment, body, labels, close or link, or a failed job's log. */
 export class GhRefusedError extends Error {
   override readonly name = 'GhRefusedError';
 
   constructor(args: readonly string[]) {
-    super(`teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, edit the body of, label, assign, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+    super(`teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, and to read a failed job's log: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
   }
 }
 
@@ -574,7 +601,8 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isUserRead(args) ||
     isLabelCreate(args) ||
     isLinkAdd(args) ||
-    isWatchProbe(args)
+    isWatchProbe(args) ||
+    isJobLogRead(args)
   );
 }
 

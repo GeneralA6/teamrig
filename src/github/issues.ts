@@ -136,9 +136,11 @@ async function readPage(gh: GhRunner, access: RepoAccess, request: IssueListRequ
 export interface ReadKind {
   readonly noun: string;
   readonly permission: string;
+  /** The gh command the read runs, as a failure line names it. */
+  readonly command: string;
 }
 
-export const ISSUE_READ: ReadKind = { noun: 'issues', permission: 'Issues' };
+export const ISSUE_READ: ReadKind = { noun: 'issues', permission: 'Issues', command: 'gh api graphql' };
 
 /** What one gh run of a read printed, or the one line saying why it failed. */
 export type ReadRun = { readonly kind: 'read'; readonly stdout: string } | { readonly kind: 'failed'; readonly reason: string };
@@ -172,7 +174,7 @@ export function startFailureText(error: unknown): string {
  * or token GitHub refused, a repository it cannot see, or issues (or pull requests: `kind`) it may not read.
  */
 export function failureText(repo: string, result: GhResult, access: RepoAccess, kind: ReadKind): string {
-  const { noun, permission } = kind;
+  const { noun, permission, command } = kind;
   if (result.end.kind === 'signal') {
     return `gh was stopped (${result.end.signal}) before it listed the ${noun} of ${repo}; it gets ${GH_TIMEOUT_MS / 1000} s`;
   }
@@ -192,7 +194,7 @@ export function failureText(repo: string, result: GhResult, access: RepoAccess, 
         ? `${repo} is not visible to ${token}: check github.repos, and on GitHub give that token this repository`
         : `${repo} is not visible to the gh login: check github.repos, or ${saveOne}`;
     case undefined:
-      return plainLine(`gh api graphql for the ${noun} of ${repo} ${exitText(result.end.code, result.stderr)}`);
+      return plainLine(`${command} for the ${noun} of ${repo} ${exitText(result.end.code, result.stderr)}`);
   }
 }
 

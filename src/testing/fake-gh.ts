@@ -11,6 +11,7 @@ import {
   isIssueComment,
   isIssueCreate,
   isIssueRead,
+  isJobLogRead,
   isLabelAdd,
   isLabelCreate,
   isLabelRead,
@@ -218,6 +219,7 @@ export class FakeGh implements GhRunner {
   private readonly spellings = new Map<string, string>();
   private userAnswer: GhResult | undefined;
   private commentsAnswer: GhResult | undefined;
+  private readonly jobLogs = new Map<number, string>();
   /** Set by `pages`; else each query's own page size. */
   private pageSize: number | undefined;
   /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
@@ -263,6 +265,12 @@ export class FakeGh implements GhRunner {
   /** From now on, opening an issue in `repo` ends as given and opens nothing. */
   failsCreate(repo: string, result: GhResult): this {
     this.createFailures.set(repo, result);
+    return this;
+  }
+
+  /** From now on, a failed-log read of job `jobId` prints `stdout`; a job with none set is Not Found. */
+  holdsJobLog(jobId: number, stdout: string): this {
+    this.jobLogs.set(jobId, stdout);
     return this;
   }
 
@@ -353,6 +361,11 @@ export class FakeGh implements GhRunner {
     }
     if (isIssueRead(request.args)) {
       return this.issueRead(request.args[1] ?? '');
+    }
+    if (isJobLogRead(request.args)) {
+      const repo = request.args[6] ?? '';
+      const log = this.jobLogs.get(Number(request.args[3]));
+      return this.canned.get(repo) ?? (log === undefined ? notVisible(repo) : { end: { kind: 'exited', code: 0 }, stdout: log, stderr: '' });
     }
     if (isIssueComment(request.args) || isIssueBodyEdit(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args) || isIssueUnassign(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };

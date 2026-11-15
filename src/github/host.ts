@@ -6,6 +6,7 @@ import {
   type HostAssignee,
   type HostComments,
   type HostIssueId,
+  type HostJobLog,
   type HostLabel,
   type HostLinks,
   type HostList,
@@ -36,6 +37,7 @@ import {
   issueLabelAddArgs,
   issueLabelRemoveArgs,
   issueReadArgs,
+  jobLogArgs,
   labelReadArgs,
   isLogin,
   labelCreateArgs,
@@ -47,14 +49,18 @@ import {
   type GhRunner,
   type WatchPath,
 } from './gh.ts';
-import { probeAnswerOf, type ProbeAnswer } from './probe.ts';
-import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, readCommentsIn, startFailureText, type IssueList } from './issues.ts';
+import { type ProbeAnswer, probeAnswerOf } from './probe.ts';
+import { ghFailureKind, ISSUE_LIMIT, type IssueList, listIssues, plainLine, readCommentsIn, type ReadKind, runRead, startFailureText } from './issues.ts';
+import { failedLogExcerpt } from './job-log.ts';
 import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
 import { latestIssues } from './plan.ts';
 import { listPulls, PULL_LIMIT } from './pulls.ts';
 import { PULL_PAGE_SIZE } from './queries.ts';
 import { TokenReadError, type RepoAccess, type RepoTokens } from './tokens.ts';
+
+/** A failed job's log read, as a failure line words it: the Actions permission lets a token read it. */
+const JOB_LOG_READ: ReadKind = { noun: 'failed job logs', permission: 'Actions', command: 'gh run view' };
 
 /** What each use does with an access, as its ACCESS line words it. */
 const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'read with', open: 'opens issues with', write: 'writes with' };
@@ -135,6 +141,22 @@ export class GitHubIssueHost implements IssueHost {
       ...(unreadable > 0 ? [`${unreadable} item(s) gh printed did not read as pull requests and were left out`] : []),
     ];
     return { kind: 'listed', open: open.pulls, changed: changed.pulls, notes };
+  }
+
+  /**
+   * The end of one failed job's log (job-log.ts), as the owner's saved token or the gh login reads it; each line and
+   * a failure's reason have any secret shape redacted.
+   */
+  async jobLog(repo: string, jobId: number): Promise<HostJobLog> {
+    const access = await this.tokens.accessFor(repo);
+    if (access instanceof TokenReadError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    const run = await runRead(this.gh, access, repo, jobLogArgs(repo, jobId), JOB_LOG_READ);
+    if (run.kind === 'failed') {
+      return { kind: 'failed', reason: this.scanner.redact(run.reason) };
+    }
+    return { kind: 'read', ...failedLogExcerpt(run.stdout, (text) => this.scanner.redact(text)) };
   }
 
   /**

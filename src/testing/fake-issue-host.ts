@@ -1,4 +1,4 @@
-import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostPulls, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
+import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostJobLog, HostLabel, HostLinks, HostList, HostOpen, HostPulls, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 import type { HostPull } from '../issues/pull.ts';
 
@@ -111,6 +111,9 @@ export class FakeIssueHost implements IssueHost {
   readonly pullReads: { readonly repo: string; readonly since: string | undefined }[] = [];
   private readonly pullsOf = new Map<string, readonly HostPull[]>();
   private pullsFailure: string | undefined;
+  /** Each failed job's log read asked, in order. */
+  readonly jobLogReads: { readonly repo: string; readonly jobId: number }[] = [];
+  private readonly jobLogs = new Map<number, HostJobLog>();
 
   /** From now on, a links read of `repo` gives `issues`, with `notes` about the read. */
   withLinks(repo: string, issues: readonly LinkedIssue[], notes: readonly string[] = []): this {
@@ -181,6 +184,17 @@ export class FakeIssueHost implements IssueHost {
   failsPulls(reason: string): this {
     this.pullsFailure = reason;
     return this;
+  }
+
+  /** From now on, a log read of job `jobId` gives `log`; a job with none set reads as a log with no line. */
+  holdsJobLog(jobId: number, log: HostJobLog): this {
+    this.jobLogs.set(jobId, log);
+    return this;
+  }
+
+  jobLog(repo: string, jobId: number): Promise<HostJobLog> {
+    this.jobLogReads.push({ repo, jobId });
+    return Promise.resolve(this.jobLogs.get(jobId) ?? { kind: 'read', step: undefined, lines: [] });
   }
 
   pulls(repo: string, since: string | undefined): Promise<HostPulls> {

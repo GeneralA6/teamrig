@@ -94,6 +94,14 @@ export type HostPulls =
   | { readonly kind: 'listed'; readonly open: readonly HostPull[]; readonly changed: readonly HostPull[]; readonly notes: readonly string[] }
   | { readonly kind: 'failed'; readonly reason: string };
 
+/**
+ * The end of one failed CI job's log as a read found it: the step that failed last and its last lines, each one plain
+ * line with any secret shape redacted, outside input to show as data; or why it could not be read.
+ */
+export type HostJobLog =
+  | { readonly kind: 'read'; readonly step: string | undefined; readonly lines: readonly string[] }
+  | { readonly kind: 'failed'; readonly reason: string };
+
 /** One issue to open: its repository (`owner/name`), title, body and labels. */
 export interface IssueDraft {
   readonly repo: string;
@@ -118,6 +126,8 @@ export interface IssueHost {
    * recently changed ones, a page of them.
    */
   pulls(repo: string, since: string | undefined): Promise<HostPulls>;
+  /** The end of the log of the failed CI job `jobId` of `repo` (a pull request's FailedJob id). */
+  jobLog(repo: string, jobId: number): Promise<HostJobLog>;
   /** Opens one issue. */
   open(draft: IssueDraft): Promise<HostOpen>;
   /** Posts `body` as one comment. */
