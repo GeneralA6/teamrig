@@ -83,7 +83,8 @@ PowerShell or cmd, each measured on the real shell), so it finds a push wherever
 - a branch named alone, which goes where git sends it: under `push.default upstream`, `git push origin t1-x` asks
   when that branch's upstream is protected, and is refused with `--force`. It asks in doubt when `remote.<name>.push`
   is set for that remote, or when an earlier command in the line changes that config, makes a branch or gives one an
-  upstream. Write `git push origin t1-x:t1-x` to send a branch to its own name for certain;
+  upstream. A plain `git remote add up <url>` changes none of it; `--mirror`, or a word only known when it runs,
+  does. Write `git push origin t1-x:t1-x` to send a branch to its own name for certain;
 - bash variables set earlier in the line: `B=feat; git push -u origin $B` reads as `git push -u origin feat`,
   and `B=main; git push origin $B` still asks. `NAME=value` or `export NAME=value` must run before the push,
   through `;`, `&&`, a newline, a `for`, `while` or `until` loop, an `if` or a `{ }` group, in the same shell or
