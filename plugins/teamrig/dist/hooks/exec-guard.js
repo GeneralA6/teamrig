@@ -1,5 +1,6 @@
 import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
+import { SETTINGS_WRITERS, settingsWriteRefusal, WRITE_SWITCH } from "../core/settings-writers.js";
 import { placeProgram, placeScript } from "../exec/client-launch.js";
 import { runsOf } from "../package-guard/programs.js";
 import { programName } from "../push-guard/launchers.js";
@@ -47,9 +48,22 @@ function startsExec(words) {
 function startsOwner(words) {
     return startsGroup(words, 'owner', OWNER_COMMANDS);
 }
+/**
+ * The settings writer the words write with, or undefined when they run none or only its preview: its group, an action
+ * of it or one only known when it runs, and `--yes` or a word only known when it runs after them.
+ */
+function settingsWriteOf(words) {
+    const [group, action, ...tail] = words;
+    const actions = group === undefined || group.dynamic ? undefined : SETTINGS_WRITERS.get(group.text);
+    if (group === undefined || actions === undefined || action === undefined || !(action.dynamic || actions.has(action.text))) {
+        return undefined;
+    }
+    const writes = tail.some((word) => word.dynamic || word.text === `--${WRITE_SWITCH}`);
+    return writes ? (action.dynamic ? group.text : `${group.text} ${action.text}`) : undefined;
+}
 /** True when the words read as a command this guard checks, so a call through node and a script only known when it runs is one. */
-function startsExecOrOwner(words) {
-    return startsExec(words) || startsOwner(words);
+function startsGuarded(words) {
+    return startsExec(words) || startsOwner(words) || settingsWriteOf(words) !== undefined;
 }
 /** The owner command the words name after `owner`, or undefined when they name none the CLI has, or one only known when it runs. */
 function ownerActionOf(words) {
@@ -97,6 +111,10 @@ function guardedCallOf(words) {
     }
     if (group.text === 'owner') {
         return { kind: 'owner', action: ownerActionOf(words) };
+    }
+    const settings = settingsWriteOf(words);
+    if (settings !== undefined) {
+        return { kind: 'settings', command: settings };
     }
     if (group.text !== 'exec') {
         return undefined;
@@ -230,7 +248,8 @@ export function runsOfReadings(readings, context) {
  * but the tab's own session, named by `--session` (the flag wins over `$TEAMRIG_SESSION` in the CLI, so a variable
  * set on the line changes nothing), when the guard cannot read who it reviews as, or when it runs any `teamrig exec`
  * command through a client that is no install of this plugin, one only known when it runs, or one whose files differ
- * from its build; whenever the line runs a `teamrig owner` command, through any client, as it acts as the owner; and
+ * from its build; whenever the line runs a `teamrig owner` command, through any client, as it acts as the owner, or a
+ * settings writer's write (`permissions trim --yes` and the rest of SETTINGS_WRITERS), as it changes a permission; and
  * when a shell on the line takes its commands from a pipe the guard cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec` calls start
  * once, and reads the tab's session only for a line that holds a review. A Bash line on Windows is read in each
  * reading bash may run (`toolCommandReadings`), so a call the line as written escapes is still refused.
@@ -251,22 +270,25 @@ export async function execGuardOutput(payload, env) {
     };
     const runs = runsOfReadings(toolCommandReadings(tool, command, env.platform), context);
     const calls = runs.programs.flatMap((run) => {
-        const launch = teamrigLaunchOf(run, startsExecOrOwner);
+        const launch = teamrigLaunchOf(run, startsGuarded);
         const call = launch === undefined ? undefined : guardedCallOf(launch.words);
         const at = { dialect: run.dialect, dir: run.dir, home: env.home };
         return launch === undefined || call === undefined ? [] : [{ call, client: launch.client, at }];
     });
     const opaque = runs.opaque.filter((run) => startsExec(run.args));
     const opaqueOwner = runs.opaque.filter((run) => startsOwner(run.args));
+    const opaqueSettings = runs.opaque.flatMap((run) => settingsWriteOf(run.args) ?? []);
     const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
     const fed = runs.fedShells.length > 0;
-    if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && !unread && !fed) {
+    if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && opaqueSettings.length === 0 && !unread && !fed) {
         return '';
     }
     const reasons = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : [])];
     reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
     reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : [])));
     reasons.push(...opaqueOwner.map((run) => ownerRefusalOf(ownerActionOf(run.args))));
+    reasons.push(...calls.flatMap(({ call }) => (call.kind === 'settings' ? [settingsWriteRefusal(call.command)] : [])));
+    reasons.push(...opaqueSettings.map(settingsWriteRefusal));
     const roots = new Set();
     for (const { call, client, at } of calls) {
         if (call.kind === 'review' || call.kind === 'plain') {

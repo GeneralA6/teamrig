@@ -7,13 +7,41 @@ import { holdBackOutput, refusalOutput } from "./permission.js";
  * The service-role guard (T2984, security condition C2): a service role lets its holders run a few teamrig commands
  * past every permission check, so who holds one is a permission, an owner gate. A session's `teamrig roles grant` or
  * `revoke` therefore always asks the owner, whatever `--yes` says (refused when asks are off), and the route allow
- * never lets one through, as it allows only what every guard passed. A session's own write of `serviceRoles` is
- * refused: a file tool whose result changes the key in the team config, or cannot be read, and a shell line naming the
- * team config file at all, since a shell line's writes cannot be told from its reads (the Read tool stays open). Like
+ * never lets one through, as it allows only what every guard passed. A session's own write of an owner-gated key
+ * (OWNER_GATED_KEYS: `serviceRoles`, the roles, the guards and allow rules, the commands teamrig runs; T3083)
+ * is refused: a file tool whose result changes one in the team config, or cannot be read, and a shell line
+ * naming the team config file at all, since a shell line's writes cannot be told from its reads (the Read tool stays
+ * open). The config's other keys stay a session's to edit. Like
  * the pass-record guard it reads only the call: a script the session writes and starts still reaches the file, as
  * sessions and the owner share one account (stopgap T791). A teamrig call whose subcommand is only known when it runs,
  * and a shell fed by a pipe, are the exec guard's to refuse.
  */
+/**
+ * The team config keys only the owner changes, by path: each is a permission or an owner gate (core rule 6). Who
+ * holds a role or a service role; what is owner- or security-gated; who the owner is in the register; the asks, route
+ * and read-only allow rules; the exec review; the alerts; whose GitHub logins count as ours; the guards; and each
+ * repository's merge, deploy and check commands, which teamrig runs with the full environment.
+ */
+export const OWNER_GATED_KEYS = [
+    ['serviceRoles'],
+    ['roles'],
+    ['ownerGates'],
+    ['securityGates'],
+    ['register', 'ownerSource'],
+    ['prompts'],
+    ['readonlyShell'],
+    ['exec'],
+    ['alerts'],
+    ['github', 'owners'],
+    ['delivery', 'repos'],
+    ['delivery', 'passEnv'],
+    ['permissions'],
+    ['pushGuard'],
+    ['secretGuard'],
+    ['packageGuard'],
+    ['dbWriteGuard'],
+    ['commitGuard'],
+];
 /** The `teamrig roles` commands that change who holds a role. */
 export const ROLE_CHANGES = new Set(['grant', 'revoke']);
 /** The file tools, by the input field naming the file they write. */
@@ -44,19 +72,49 @@ function kitHomeOf(configPath, platform) {
     const path = platform === 'win32' ? win32 : posix;
     return path.dirname(path.dirname(path.dirname(configPath)));
 }
-/** `serviceRoles` as the config loader reads it, as text to compare; null when the text holds none or is no config. */
-function rolesKey(text) {
-    if (text === undefined) {
-        return 'null';
+/** A Git Bash drive path's head, `/c/`, which Windows tools read as the drive `c:/`. */
+const MSYS_DRIVE = /^\/([a-z])(?=\/)/i;
+/** A team config by its tail, `teams/<team>/config.json`, on a path in its compare form (one slash kind). */
+const TEAM_CONFIG_FILE = /(?:^|\/)teams\/+[^/]+\/+config\.json$/i;
+/**
+ * The absolute path of the team config a file tool's path names, or undefined for another file (T3083). Any team's
+ * config counts, not only the session's own, as each team's guards read their own; it is told by the same tail the
+ * shell check uses, so the kit home's spelling (a Git Bash `/c/` drive, a `\\?\` long path) cannot hide it, and a
+ * session with no team config of its own is still held to it.
+ */
+function teamConfigTarget(target, cwd, platform, configPath) {
+    const native = platform === 'win32' ? target.replace(MSYS_DRIVE, '$1:') : target;
+    const key = samePathKey(native, cwd, platform);
+    if (configPath !== undefined && key === samePathKey(configPath, cwd, platform)) {
+        return configPath;
     }
-    let raw;
+    return TEAM_CONFIG_FILE.test(key) ? (platform === 'win32' ? win32 : posix).resolve(cwd, native) : undefined;
+}
+/** The config text as JSON, or undefined when there is none or it is no JSON object. */
+function configOf(text) {
+    if (text === undefined) {
+        return undefined;
+    }
     try {
-        raw = JSON.parse(text);
+        const raw = JSON.parse(text);
+        return isRecord(raw) ? raw : undefined;
     }
     catch {
-        return 'null';
+        return undefined;
     }
-    return isRecord(raw) ? JSON.stringify(raw['serviceRoles'] ?? null) : 'null';
+}
+/** A key's value as text to compare, `null` when the config or any step of the path lacks it. */
+function valueAt(config, keyPath) {
+    let at = config;
+    for (const step of keyPath) {
+        at = isRecord(at) ? at[step] : undefined;
+    }
+    return JSON.stringify(at ?? null);
+}
+/** The owner-gated keys whose value differs between two config texts, dotted. */
+export function changedGatedKeys(before, after) {
+    const [old, next] = [configOf(before), configOf(after)];
+    return OWNER_GATED_KEYS.filter((keyPath) => valueAt(old, keyPath) !== valueAt(next, keyPath)).map((keyPath) => keyPath.join('.'));
 }
 function replacementOf(input) {
     const from = stringField(input, 'old_string');
@@ -93,14 +151,15 @@ function nextText(tool, input, current) {
     }
     return undefined;
 }
-/** Why a file tool's call on the team config is refused, or undefined when it leaves `serviceRoles` as it is. */
-async function fileRefusal(tool, input, path, env) {
-    const current = await env.readConfig();
+/** Why a file tool's call on the team config is refused, or undefined when it leaves every owner-gated key as it is. */
+async function fileRefusal(tool, input, path, configFile, env) {
+    const current = await env.readConfig(configFile);
     const next = nextText(tool, input, current);
     if (next === undefined) {
-        return `this ${tool} of the team config (${path}) cannot be read as a change of its text, so the guard cannot tell whether it changes serviceRoles`;
+        return `this ${tool} of the team config (${path}) cannot be read as a change of its text, so the guard cannot tell whether it changes an owner-gated key`;
     }
-    return rolesKey(next) === rolesKey(current) ? undefined : `this ${tool} changes serviceRoles in the team config (${path})`;
+    const changed = changedGatedKeys(current, next);
+    return changed.length === 0 ? undefined : `this ${tool} changes ${changed.join(', ')} in the team config (${path})`;
 }
 /** True when the shell line names the team config file. */
 function namesTeamConfig(command, cwd, env, configPath) {
@@ -119,12 +178,13 @@ const ROLE_CHANGE_ASK = 'teamrig service-role guard: `teamrig roles grant` and `
     'whatever --yes says. Owner: allow it only if you asked for this change. A session does not retry it or route ' +
     'around it: the lead puts the change to the owner, who runs it from their own terminal or prompt.';
 function editRefusalOf(reach) {
-    return (`teamrig service-role guard: ${reach}. Who holds a service role is the owner's to change, with ` +
-        '`teamrig roles grant` or `revoke`, which ask the owner; change the config\'s other keys without touching ' +
-        'serviceRoles, read it with the Read tool, and do not retry this or route around it.');
+    return (`teamrig config guard: ${reach}. Its owner-gated keys (${OWNER_GATED_KEYS.map((keyPath) => keyPath.join('.')).join(', ')}) ` +
+        'are permissions or owner gates, the owner\'s to change: a service role\'s holders with `teamrig roles grant` or ' +
+        '`revoke`, which ask the owner, the rest in the owner\'s own editor. Change the config\'s other keys without touching ' +
+        'them, read it with the Read tool, and do not retry this or route around it: the lead puts the change to the owner.');
 }
 /**
- * The PreToolUse output for a Bash, PowerShell or file tool call: a refusal when it writes `serviceRoles` or may (a
+ * The PreToolUse output for a Bash, PowerShell or file tool call: a refusal when it writes an owner-gated key or may (a
  * file tool on the team config, a shell line naming it), else an ask when it runs `teamrig roles grant` or `revoke`
  * through any client, else nothing, so the normal permission flow decides.
  */
@@ -138,13 +198,14 @@ export async function serviceRoleGuardOutput(payload, env) {
     const field = FILE_WRITERS.get(tool);
     if (field !== undefined) {
         const path = stringField(input, field);
-        if (path === undefined || env.configPath === undefined) {
+        if (path === undefined) {
             return '';
         }
-        if (samePathKey(path, cwd, env.platform) !== samePathKey(env.configPath, cwd, env.platform)) {
+        const configFile = teamConfigTarget(path, cwd, env.platform, env.configPath);
+        if (configFile === undefined) {
             return '';
         }
-        const reach = await fileRefusal(tool, input, path, env);
+        const reach = await fileRefusal(tool, input, path, configFile, env);
         return reach === undefined ? '' : refusalOutput(editRefusalOf(reach));
     }
     const command = stringField(input, 'command');

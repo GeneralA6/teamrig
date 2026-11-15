@@ -193,6 +193,6 @@ export function serviceRoleGuardOutputOf(runtime, guard, payload) {
         hookAsks: hookAsksOf(guard.load),
         platform: runtime.platform,
         configPath,
-        readConfig: () => (configPath === undefined ? Promise.resolve(undefined) : runtime.files.read(configPath)),
+        readConfig: (path) => runtime.files.read(path),
     });
 }
