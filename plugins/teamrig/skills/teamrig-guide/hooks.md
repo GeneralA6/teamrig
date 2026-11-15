@@ -820,12 +820,15 @@ only known when it runs), whatever `--yes` says; with asks off it refuses instea
 as waiting for the owner. The owner runs a grant from their own terminal, or types `/teamrig roles grant ...` in a
 tab. The route allow never lets one through, as it answers only once every guard passed.
 
-It also refuses a session's own write of `serviceRoles`: a Write, Edit or MultiEdit of the team config whose result
-changes the key (the guard applies the edit to the file as it is now and compares the key), or that it cannot work
-out (text not found, a notebook edit), and a shell line naming the team config file (`teams/<team>/config.json`, or
+It also refuses a session's own write of an owner-gated key of the team config, each a permission or an owner gate:
+`serviceRoles`, `roles`, `ownerGates`, `securityGates`, `register.ownerSource`, `prompts`, `readonlyShell`, `exec`,
+`alerts`, `github.owners`, `delivery.repos` (each repository's merge, deploy and check commands), `permissions` and the
+guards (`pushGuard`, `secretGuard`, `packageGuard`, `dbWriteGuard`, `commitGuard`). It refuses a Write, Edit or
+MultiEdit of the team config whose result changes one (the guard applies the edit to the file as it is now and compares
+each key, a key the file lacks reading as unset), or that it cannot work out (text not found, a notebook edit), and a shell line naming the team config file (`teams/<team>/config.json`, or
 `config.json` with `.teamrig` or `$TEAMRIG_HOME` on the line or the line running in the kit home), its reads too,
 since a shell line's writes cannot be told from its reads. An edit of the config's other keys stays open, and so
-does the Read tool. The reason: "teamrig service-role guard: this Edit changes serviceRoles in the team config (...). Who holds a service role is the owner's to change, with `teamrig roles grant` or `revoke`, which ask the owner; change the config's other keys without touching serviceRoles, read it with the Read tool, and do not retry this or route around it."
+does the Read tool. The reason names the keys the call changes: "teamrig config guard: this Edit changes roles, exec in the team config (...). Its owner-gated keys (...) are permissions or owner gates, the owner's to change: a service role's holders with `teamrig roles grant` or `revoke`, which ask the owner, the rest in the owner's own editor. ..."
 
 It has no setting, and a broken config keeps it on: the file is found and read again at each call. Like the
 pass-record guard it reads only the call, so it cannot see a script the line starts that writes the file: while
