@@ -125,7 +125,7 @@ function grepFindings(input: JsonRecord, dir: string, rules: SecretRules): Secre
  */
 function mayPick(rules: SecretRules, target: string, glob: string): boolean {
   const globs = glob.length > MAX_GREP_GLOB_LENGTH ? undefined : braceAlternatives(glob, MAX_GREP_ALTERNATIVES);
-  return globs === undefined || globs.some((one) => rules.paths.mayName(`${target}/${one}`, true));
+  return globs === undefined || globs.some((one) => rules.paths.mayName(`${target}/${one}`, { dotfiles: true, sets: 'ripgrep' }));
 }
 
 /**

@@ -1,10 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bashDrivePath, DEFAULT_SECRET_PATHS, normalisePath, SecretPaths, wordPath, type WordPlace } from './paths.ts';
+import { bashDrivePath, DEFAULT_SECRET_PATHS, normalisePath, SecretPaths, wordPath, type WordPlace, type WordReading } from './paths.ts';
 
 const HOME = 'C:/u';
 const REPO = 'C:/work/app';
 const secrets = new SecretPaths([...DEFAULT_SECRET_PATHS, 'k8s/secrets/secrets.yaml', '~/.teamrig/teams/*/tools/*/secrets/**'], HOME, true);
+/** A bash word, whose wildcards never reach a leading dot, and a word whose wildcards do (PowerShell, a script's glob). */
+const BASH_WORD: WordReading = { dotfiles: false, sets: 'bash' };
+const ANY_WORD: WordReading = { dotfiles: true, sets: 'bash' };
 
 describe('SecretPaths.listed', () => {
   it('lists the well-known credential homes and the team’s own globs', () => {
@@ -77,46 +80,71 @@ describe('SecretPaths.listed', () => {
 
 describe('SecretPaths.mayName', () => {
   it('takes a word with wildcards as naming a secret when a secret name fits it', () => {
-    assert.equal(secrets.mayName(`${REPO}/.env*`, false), true);
-    assert.equal(secrets.mayName(`${HOME}/.ssh/*`, false), true);
-    assert.equal(secrets.mayName(`${REPO}/infra/k8s/secrets/*`, true), true);
-    assert.equal(secrets.mayName(`${REPO}/*.txt`, false), false);
-    assert.equal(secrets.mayName(`${REPO}/certs/*.pem`, false), true);
+    assert.equal(secrets.mayName(`${REPO}/.env*`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${HOME}/.ssh/*`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/infra/k8s/secrets/*`, ANY_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/*.txt`, BASH_WORD), false);
+    assert.equal(secrets.mayName(`${REPO}/certs/*.pem`, BASH_WORD), true);
   });
 
   it('tries a name of wildcards alone only against names spelled out and secret folders', () => {
-    assert.equal(secrets.mayName(`${REPO}/certs/*`, false), false);
-    assert.equal(secrets.mayName(`${HOME}/.aws/*`, false), true);
+    assert.equal(secrets.mayName(`${REPO}/certs/*`, BASH_WORD), false);
+    assert.equal(secrets.mayName(`${HOME}/.aws/*`, BASH_WORD), true);
   });
 
   it('tries a name of wildcards alone against a plain name only where the glob spells out its folder', () => {
     const team = new SecretPaths([...DEFAULT_SECRET_PATHS, 'deploy_key', 'ops/vault_key'], HOME, true);
     assert.equal(team.listed(`${REPO}/src/deploy_key`), true);
-    assert.equal(team.mayName(`${REPO}/src/*`, false), false, 'else every grep x * would name a deploy_key');
-    assert.equal(team.mayName(`${REPO}/src/deploy*`, false), true);
-    assert.equal(team.mayName(`${REPO}/ops/*`, false), true);
-    assert.equal(secrets.mayName(`${REPO}/deploy/*`, false), false);
-    assert.equal(secrets.mayName(`${REPO}/deploy/id_*`, false), true);
+    assert.equal(team.mayName(`${REPO}/src/*`, BASH_WORD), false, 'else every grep x * would name a deploy_key');
+    assert.equal(team.mayName(`${REPO}/src/deploy*`, BASH_WORD), true);
+    assert.equal(team.mayName(`${REPO}/ops/*`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/deploy/*`, BASH_WORD), false);
+    assert.equal(secrets.mayName(`${REPO}/deploy/id_*`, BASH_WORD), true);
   });
 
   it('never lets a bash wildcard reach a dot file, as bash does not', () => {
-    assert.equal(secrets.mayName(`${REPO}/*`, false), false);
-    assert.equal(secrets.mayName(`${REPO}/*`, true), true);
+    assert.equal(secrets.mayName(`${REPO}/*`, BASH_WORD), false);
+    assert.equal(secrets.mayName(`${REPO}/*`, ANY_WORD), true);
   });
 
-  it('keeps an example a wildcard names readable', () => {
-    assert.equal(secrets.mayName(`${REPO}/.env.ex*`, false), false);
+  it('keeps an example a wildcard spells readable, but not a wildcard that also reaches past it (T2357)', () => {
+    assert.equal(secrets.mayName(`${REPO}/.env.exampl[e]`, BASH_WORD), false);
+    assert.equal(secrets.mayName(`${REPO}/.env.exampl?`, BASH_WORD), true, '.env.exampl? also reads .env.examplz');
+    assert.equal(secrets.mayName(`${REPO}/.env.ex*`, BASH_WORD), true, '.env.ex* also reads .env.export');
+  });
+
+  it('counts a word that spells a secret glob’s text or whose wildcard its wildcard covers (T2357)', () => {
+    assert.equal(secrets.mayName(`${REPO}/.env.l*`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/certs/b*.pem`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/certs/b?pem`, BASH_WORD), true);
+  });
+
+  it('never counts a word that meets a secret glob only where each one’s wildcard covers the other’s text (T2357)', () => {
+    assert.equal(secrets.mayName(`${REPO}/*.ts`, ANY_WORD), false, '*.ts fits .env.* only as .env.ts');
+    assert.equal(secrets.mayName(`${REPO}/*.json`, ANY_WORD), false);
+    assert.equal(secrets.mayName(`${REPO}/src/*.txt`, ANY_WORD), false);
+  });
+
+  it('reads a ripgrep set as reaching a slash, and a negated one as fitting it (T2357)', () => {
+    const grep: WordReading = { dotfiles: true, sets: 'ripgrep' };
+    const holes = ['b[./]pem', 'b[/.]pem', '[./]env*', 'b[!/]pem', 'b[^/]pem', 'b[!a]pem', 'b[^a]pem', 'b[]./]pem', 'b[.-/]pem', '*[/]e.pem'];
+    assert.deepEqual(holes.filter((glob) => !secrets.mayName(`${REPO}/${glob}`, grep)), []);
+  });
+
+  it('walks a word of many wildcards to its answer', () => {
+    assert.equal(secrets.mayName(`${REPO}/${'[ab]*'.repeat(40)}`, ANY_WORD), false, 'a name of wildcards alone, which no dot starts');
+    assert.equal(secrets.mayName(`${REPO}/${'[ab]*'.repeat(40)}.pem`, ANY_WORD), true);
   });
 
   it('sees a secret name behind a reversed range, as bash reaches it (T1960)', () => {
-    assert.equal(secrets.mayName(`${REPO}/.en[z-av]`, false), true);
-    assert.equal(secrets.mayName(`${REPO}/near[near.length-1]`, false), false);
+    assert.equal(secrets.mayName(`${REPO}/.en[z-av]`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/near[near.length-1]`, BASH_WORD), false);
   });
 
   it('reads a word with a set no character fits as the literal path bash leaves it (T1960)', () => {
-    assert.equal(secrets.mayName(`${REPO}/.env.[z-a]`, false), true);
-    assert.equal(secrets.mayName(`${REPO}/.env.[z-a]*`, false), true);
-    assert.equal(secrets.mayName(`${REPO}/[z-a]env`, false), false);
+    assert.equal(secrets.mayName(`${REPO}/.env.[z-a]`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/.env.[z-a]*`, BASH_WORD), true);
+    assert.equal(secrets.mayName(`${REPO}/[z-a]env`, BASH_WORD), false);
   });
 
   it("survives a team's own glob with a reversed range, which would else fail every call (T1960)", () => {

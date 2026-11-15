@@ -101,7 +101,7 @@ export function fileFindings(run: ProgramRun, rules: SecretRules): SecretFinding
     if (ENVIRON.test(text)) {
       return [{ kind: 'environment' }];
     }
-    return rules.paths.mayName(path, run.dialect !== 'bash') ? [{ kind: 'file', path: text }] : [];
+    return rules.paths.mayName(path, { dotfiles: run.dialect !== 'bash', sets: 'bash' }) ? [{ kind: 'file', path: text }] : [];
   });
 }
 

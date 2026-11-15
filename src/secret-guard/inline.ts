@@ -120,7 +120,7 @@ export function inlineFindings(run: ProgramRun, rules: SecretRules): SecretFindi
     texts
       .filter((text) => (homeJoined ? [wordPath(text, place), `${rules.home}/${text}`] : [wordPath(text, place)]).some(names))
       .map((text) => ({ kind: 'file', path: text }));
-  const expanded = (path: string): boolean => rules.paths.mayName(path, true);
+  const expanded = (path: string): boolean => rules.paths.mayName(path, { dotfiles: true, sets: 'bash' });
   const spelled = (path: string): boolean => rules.paths.listed(path);
   const literals = [...inline.code.matchAll(LITERAL)].map(([, , body]) => (body ?? '').replace(/\\(.)/g, '$1'));
   const expands = EXPANDS.test(inline.code) || FAMILY_EXPANDS[family].test(inline.code);
