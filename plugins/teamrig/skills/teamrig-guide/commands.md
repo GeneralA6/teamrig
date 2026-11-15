@@ -721,7 +721,9 @@ run under (the user's, the project folder's, each `delivery.repos` repository's 
 window has reached 80% [budget.fiveHourWarnPct] or rises fast enough to fill before it resets, and at 100% every
 session stalls until that reset; it is raised once a window, and a plan with no such window never shows it,
 RESET-EXPIRING: a reset grant in [budget.resets] with uses left expires within 14 days, and one not spent by then is
-lost; it is raised once a grant and again after each use, and from
+lost; it is raised once a grant and again after each use, GH-LATE: a GitHub issue has waited past its answer target
+(security 4 h, bug or a comment on an issue a task tracks 24 h, else 72 h) for an answer of ours, by the clocks the
+last writing `teamrig issue sync` kept; it is raised once a wait, and from
 the restore's record (`<kit home>/bin/launchers.json`, written by [restore install](#teamrig-restore-install),
 `uninstall` and a newer version's first session start) RESTORE-DEAD: a logon entry or shortcut teamrig set up that
 starts a Node or launcher that is gone, such as one left on a Node an upgrade removed, and RESTORE-STRAY: a `Restore
@@ -903,6 +905,11 @@ With none, the first line says what writes them.
   of these lines. W is raw, before `budget.subagentWeight`. A damaged rollup file is named on stderr and its day left
   out, so the range reads a day short, never a low day.
 
+A GITHUB line follows them when any of the team's tasks tracking a GitHub issue (ref `gh:<repo>#<n>`) has W on the
+meter: those tasks and their W, costliest first, at most six named. It reads the meter's stored use, whatever the
+range, and only the caller's team, `--session` narrowing it to that session's tasks. It is internal: nothing is posted
+to GitHub.
+
 Flags:
 
 - `--range 7d|30d|90d|180d|1y|all`: the days counted on the team's clock, today included (default `7d`): the last 7,
@@ -938,6 +945,7 @@ USE planned 64% of task W, target 70%, gap -6: planned 26.40M W, 201 min; unplan
 USE Roadmap 58% of task W, target 60%, gap -2: planned 19.60M W, 150 min; unplanned 4.30M W, 31 min
 USE Maintenance 30% of task W, target 25%, gap +5: planned 5.20M W, 38 min; unplanned 7.20M W, 52 min
 USE Improvements 12% of task W, target 15%, gap -3: planned 1.60M W, 13 min; unplanned 3.30M W, 28 min
+GITHUB 2 linked task(s) used 4.10M W as metered: T42 gh:acme/web#7 3.20M, T51 gh:acme/api#3 900k; internal, never posted
 ```
 
 ### teamrig report done
@@ -1234,6 +1242,11 @@ On its own: with `github.repos` listed and `github.everyMinutes` above 0 (15 by 
 session starts `teamrig issue sync --auto` hidden in the background once per that many minutes for the whole team (one
 state file under a lock; nothing keeps running between syncs). A new issue so reaches its owner while sessions work;
 a run by hand still works at any time.
+
+A run that writes also times each open issue's wait for an answer of ours (the targets are in
+[GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md#answer-times)): at 75% of its target
+the session that answers it gets one unwoken inbox line from `github` (a `REMINDED` line), and past it `teamrig check`
+shows the lead GH-LATE. A preview times nothing.
 
 Flags:
 

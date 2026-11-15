@@ -13,7 +13,8 @@ task tree on the issues ([Linking issues as the task tree](#linking-issues-as-th
 only host teamrig writes to so far.
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
-write. After that it runs on its own every 15 minutes while your sessions work.
+write. After that it runs on its own every 15 minutes while your sessions work, and reminds you of an issue waiting
+long for your answer ([Answer times](#answer-times)).
 
 ## 1. List the repositories
 
@@ -161,6 +162,32 @@ while every session is idle nothing is read; the next turn that ends catches up.
 - An outsider's issue left out for the first time is told to the lead's inbox once, by ref only, for example
   `github: GitHub sync left out 1 new open issue(s) by people outside the repository: gh:acme/web#12; add the
   "teamrig" label to one on GitHub to make it a task at the next sync`.
+
+## Answer times
+
+Each sync that writes (`--yes` or the automatic one) also times how long each open issue has waited for an answer of
+yours, so nobody outside waits unseen. An issue waits from the first post by someone outside the repository after your
+last reply (a member's, owner's or collaborator's post counts as yours; a bot's counts as nobody's), so a "any news?"
+follow-up does not restart the wait. The target depends on the issue:
+
+| Issue | Answer within |
+| --- | --- |
+| labelled `security` | 4 h |
+| labelled `bug` | 24 h |
+| on an issue one of your tasks tracks | 24 h |
+| any other: a feature ask or a question | 72 h |
+
+- At 75% of the target, the session that answers it (the owner of the task tracking it, else the one its import
+  would go to) gets one inbox line, without a wake, for example `github: GitHub gh:acme/web#9 (bug) has waited 18 h for
+  an answer of ours, since 11-15 08:00 UTC; answer it in words on GitHub by 11-16 08:00 UTC, its 24 h target, or
+  GH-LATE goes to the lead`.
+- At 100%, `teamrig check` shows the lead `GH-LATE gh:acme/web#9 (bug, web) has waited 25 h ...`, once per wait.
+- Your answer, or the issue closing, stops the clock. A repository that cannot be read keeps its clocks until it can.
+- `teamrig stats` shows the W your GitHub-linked tasks used on its `GITHUB` line. That number stays in teamrig:
+  nothing is posted to GitHub.
+
+The clocks live in `state/github-clocks.json` in the team's folder. Reading them costs no GitHub call: `check` reads
+what the last sync kept.
 
 `"everyMinutes": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
 `teamrig issue sync --yes` still works at any time.
@@ -336,7 +363,9 @@ again.
 ## Safety
 
 - **Read-only sync.** The sync runs only the issue queries teamrig ships, word for word, through `gh api graphql`, so
-  a token with **Issues: Read-only** is all it needs. Any other `gh` command or query is refused in code, except
+  a token with **Issues: Read-only** is all it needs. Of an issue's newest 20 comments it reads only when each was
+  posted, its author's tie to the repository and whether that author is a bot: never their text or login. Any other
+  `gh` command or query is refused in code, except
   the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
   one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label
