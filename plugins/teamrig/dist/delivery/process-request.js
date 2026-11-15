@@ -3,11 +3,22 @@ import { classOf } from "../register/focus.js";
 import { TASK_ID } from "../register/model.js";
 /**
  * What kind of work a queued step is: given with `queue --kind`, else read from its command (`kindOfCommand`); merge and
- * deploy name their own. A step's need is learned from the steps of its kind when its own label has no runs.
+ * deploy name their own, and a ship (a tool that builds, checks, pushes and merges a change) says so with `--kind ship`.
+ * A step's need is learned from the steps of its kind when its own label has no runs. A new kind goes at the end: an
+ * older kit reads a ticket or ledger record of a kind it does not know as naming none.
  */
-export const STEP_KINDS = ['build', 'test', 'lint', 'push', 'merge', 'deploy', 'other'];
+export const STEP_KINDS = ['build', 'test', 'lint', 'push', 'merge', 'deploy', 'other', 'ship'];
 export function isStepKind(value) {
     return STEP_KINDS.some((kind) => kind === value);
+}
+/**
+ * The kinds that move a main branch, which hold the host's one ship slot (T2727): two of them beside each other race to
+ * main, and the later one's rebase or merge fails after its whole run. A `push` is not one, as most push a branch.
+ */
+const SHIP_SLOT_KINDS = new Set(['ship', 'merge', 'deploy']);
+/** Whether a step of `kind` holds the ship slot; false for a step that names no kind (an older kit's). */
+export function takesShipSlot(kind) {
+    return kind !== undefined && SHIP_SLOT_KINDS.has(kind);
 }
 /** A request of `kind` for `task` at the task's `priority`, each left out when unset; a priority is kept only with its task. */
 export function processRequest(kind, task, priority) {

@@ -1,4 +1,5 @@
 import { NOW_PRIORITY } from "../config/priorities.js";
+import { takesShipSlot } from "./process-request.js";
 /**
  * How the host lock's line is ordered (`delivery.queue.admission`): `pipeline` orders it by urgency, class turn, aged
  * priority and arrival, with a cap on each session's running steps (T2210); `serial` keeps the line in arrival order with
@@ -86,10 +87,19 @@ function passesOnRoom(waiter, idle, now, memoryPassMinutes) {
     return idle || now - Date.parse(wait.since) < memoryPassMinutes * MINUTE_MS;
 }
 /**
+ * Whether a later step that does (`mine`) or does not hold the ship slot may pass `waiter`, which its last look found
+ * waiting on that slot (T2727): any step that holds no slot, for as long as the ship ahead runs, as the slot keeps the
+ * waiter out whatever ends; never another step that holds it, so ships take the slot in their order.
+ */
+function passesOnShipSlot(waiter, mine) {
+    return !mine && waiter.waitingOn?.reason === 'shipSlot';
+}
+/**
  * The place of the ticket named `name` in `order` (from {@link admissionOrder}) at `now`, given the steps each session
- * runs now (`running`); undefined when it is not in line. In `pipeline` mode two waiters are passed: one whose session
- * runs `perSessionRunning` steps, as it may not start anyway, and one waiting on the host's memory while it may be
- * passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757). The first waiter
+ * runs now (`running`); undefined when it is not in line. In `pipeline` mode three waiters are passed: one whose session
+ * runs `perSessionRunning` steps, as it may not start anyway, one waiting on the host's memory while it may be
+ * passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757), and one waiting on
+ * the ship slot, by a step that does not take it ({@link passesOnShipSlot}, T2727). The first waiter
  * not passed is the one that may take its turn, and while it waits on the lock or memory, it holds every later one
  * back. A step that passes still waits on its own memory gate. `serial` passes no one.
  */
@@ -107,7 +117,8 @@ export function placeInLine(order, name, running, rules, now) {
     const runs = (session) => running.get(session) ?? 0;
     const capped = (session) => cap > 0 && runs(session) >= cap;
     const idle = [...running.values()].every((count) => count === 0);
-    const ahead = before.filter(({ waiter }) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes));
+    const ships = takesShipSlot(mine.waiter.request?.kind);
+    const ahead = before.filter(({ waiter }) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes) && !passesOnShipSlot(waiter, ships));
     const own = runs(mine.waiter.session);
     return capped(mine.waiter.session) ? { kind: 'sessionCap', ahead, running: own, cap } : { kind: 'inLine', ahead };
 }
