@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Sleep } from '../core/lock.ts';
 import { formatWatchLease, parseWatchLease } from '../github/watch.ts';
+import type { HiddenRequest, StartOutcome } from '../open/processes.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
 import { APP, CLAUDE_SESSION, CLI_PID, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
@@ -38,6 +39,14 @@ async function leadRuns(kit: CliHarness): Promise<void> {
     claudeSession: CLAUDE_SESSION,
     at: '2030-01-08T07:00:00.000Z',
   });
+}
+
+/** A host whose hidden start throws, as a spawn the system refuses does. */
+class UnstartableProcesses extends FakeProcesses {
+  override async startHidden(request: HiddenRequest): Promise<StartOutcome> {
+    this.hidden.push(request);
+    throw new Error('spawn EPERM');
+  }
 }
 
 /** A sleep that moves the clock and then takes the next step of the world, one per wait. */
@@ -86,6 +95,18 @@ describe('the hooks start the GitHub watch', () => {
     kit.sessionProcesses.exit(OTHER_WATCH_PID);
     await stop(kit, processes);
     assert.deepEqual(started(processes), [WATCH_START]);
+  });
+
+  it('ends Stop and SessionStart well when the watch cannot be started, as a hook must never fail a turn', async () => {
+    const kit = new CliHarness(WATCH_TEAM);
+    const processes = new UnstartableProcesses();
+    await stop(kit, processes);
+    // The watch that never started leaves a lease no process beats: once it lapsed, SessionStart tries again.
+    kit.clock.advance(5 * MINUTE + 1);
+    const result = await kit.run(['hook', 'session-start'], { stdin: START, env: { TEAMRIG_SESSION: 'lead' }, processes });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.match(result.stdout.join('\n'), /hookSpecificOutput/);
+    assert.equal(processes.hidden.length, 2);
   });
 
   it('starts nothing with probeSeconds 0, no repository listed or TEAMRIG_GITHUB=off', async () => {
