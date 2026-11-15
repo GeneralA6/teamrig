@@ -283,6 +283,7 @@ export class FakeGh implements GhRunner {
   /** REST posts by `<repo> <list>`, and reviews by `<repo>#<number>`. */
   private readonly posts = new Map<string, readonly JsonRecord[]>();
   private readonly reviews = new Map<string, readonly JsonRecord[]>();
+  private readonly postFailures = new Map<string, GhResult>();
   /** Set by `pages`; else each query's own page size. */
   private pageSize: number | undefined;
   /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
@@ -304,6 +305,12 @@ export class FakeGh implements GhRunner {
   /** From now on, every run for `repo` ends as given, whatever it holds. */
   answers(repo: string, result: GhResult): this {
     this.canned.set(repo, result);
+    return this;
+  }
+
+  /** From now on, a mention list read of `repo` ends as given, while its issue and pull request queries still answer. */
+  failsPosts(repo: string, result: GhResult): this {
+    this.postFailures.set(repo, result);
     return this;
   }
 
@@ -522,7 +529,7 @@ export class FakeGh implements GhRunner {
   /** A page of a mention list as the REST API answers it: what a test set for the repository, else the posts held, oldest change first. */
   private postRead(path: string): GhResult {
     const [, repo = '', list = '', since = '', page = '1'] = MENTION_PAGE.exec(path) ?? [];
-    const canned = this.canned.get(repo);
+    const canned = this.canned.get(repo) ?? this.postFailures.get(repo);
     if (canned !== undefined) {
       return canned;
     }
@@ -603,7 +610,7 @@ export class FakeGh implements GhRunner {
       .filter((comment) => Date.parse(stringField(comment, 'createdAt') ?? '') >= since)
       .sort((a, b) => Date.parse(stringField(a, 'createdAt') ?? '') - Date.parse(stringField(b, 'createdAt') ?? ''))
       .slice(0, COMMENTS_PAGE)
-      .map(restComment);
+      .map(restCommentOfNode);
     return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify(comments), stderr: '' };
   }
 
@@ -692,7 +699,7 @@ const LINK_WRITE = /^repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/(sub_issues|dependenc
 const LABEL_PREFIX = 'labels[]=';
 
 /** A comment node of the issue queries' shape, as GitHub's REST API spells it. */
-function restComment(comment: JsonRecord): JsonRecord {
+function restCommentOfNode(comment: JsonRecord): JsonRecord {
   const author = recordField(comment, 'author');
   return {
     created_at: comment['createdAt'] ?? null,

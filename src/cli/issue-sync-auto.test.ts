@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
+import { REVIEW_READS_MAX } from '../github/posts.ts';
 import { isIssueQuery } from '../github/gh.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { SECURITY_ALERTS_PER_RUN } from '../github/security-alert.ts';
-import { FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
+import { FakeGh, ghIssue, ghPull, restComment, restIssue } from '../testing/fake-gh.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
 import { WakeAsks } from '../wake/asks.ts';
@@ -33,6 +34,9 @@ describe('teamrig issue sync --auto', () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const issues = [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] }), ghIssue('acme/web', 8, { title: 'Add search' })];
     const first = kit.clock.now();
+    // acme/web's scan starts at the first run, acme/api's at the first that reads it: both at this third run's time,
+    // since the second read of acme/web goes on from the time it was asked.
+    const SCAN_START = { cursor: '2030-01-08T10:30:00Z', seen: new Map() };
     const failing = (): FakeGh => new FakeGh().holds('acme/web', issues).answers('acme/api', REFUSED);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: failing() })).code, EXIT.failed);
     assert.deepEqual(githubLines(kit, 'bravo'), ['GitHub sync added 1 task(s) for you: T1 gh:acme/web#7 "Fix login"']);
@@ -48,7 +52,7 @@ describe('teamrig issue sync --auto', () => {
     kit.clock.advance(15 * MINUTE);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
     assert.equal(githubLines(kit, 'lead')[2], 'GitHub sync reads every repository again (acme/api failed before)');
-    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map(), mentions: new Map(), mentionWakes: new Map() });
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map(), mentions: new Map([['acme/web', SCAN_START], ['acme/api', SCAN_START]]), mentionWakes: new Map() });
   });
 
   it("tells the lead an outsider's issue it left out once, again only for a new one, also across a failed read", async () => {
@@ -201,6 +205,80 @@ describe('teamrig issue sync --auto', () => {
     const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'sync', '--auto', '--repo', 'acme/web'], { gh: new FakeGh() });
     assert.equal(result.code, EXIT.refused);
     assert.match([...result.stdout, ...result.stderr].join('\n'), /--auto reads every repository of github\.repos/);
+  });
+});
+
+describe('teamrig issue sync --auto, mentions of our users (T3070)', () => {
+  const MENTION_TEAM: JsonRecord = { ...TEAM, wake: { enabled: true }, github: { repos: ['acme/web'], owners: { octocat: 'bravo', hubber: 'alpha' } } };
+  const asks = async (kit: CliHarness, id: string): Promise<number> => (await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read(id)).length;
+
+  /** One `--auto` run a quarter of an hour on, against `gh`; it must end with `code`. */
+  async function run(kit: CliHarness, gh: FakeGh, code: number = EXIT.ok): Promise<void> {
+    kit.clock.advance(15 * MINUTE);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, code, [...result.stdout, ...result.stderr].join('\n'));
+  }
+
+  it('starts the scan quietly, then tells the session of a mentioned login once per post, waking it at most once per item every 30 minutes', async () => {
+    const kit = new CliHarness(MENTION_TEAM);
+    const comment = (id: number, body: string, updatedAt: string) => restComment('acme/web', 9, id, { author: 'visitor', body, updatedAt });
+    const posts = [
+      comment(1, '@octocat an ask from before the scan', '2030-01-08T09:00:00Z'),
+      comment(2, '@octocat could you look?', '2030-01-08T10:20:00Z'),
+      comment(3, 'ping @octocat', '2030-01-08T10:40:00Z'),
+      comment(4, 'and again @octocat', '2030-01-08T10:50:00Z'),
+    ];
+    for (const count of [1, 2, 3, 4]) {
+      await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', posts.slice(0, count)));
+      assert.equal(await asks(kit, 'bravo'), count < 2 ? 0 : count < 4 ? 1 : 2, `run ${count}`);
+    }
+    const lines = githubLines(kit, 'bravo');
+    assert.deepEqual(lines.map((line) => /issuecomment-([0-9]+)/.exec(line)?.[1]), ['2', '3', '4']);
+    assert.match(lines[0] ?? '', /^GitHub gh:acme\/web#9 mentions @octocat: visitor wrote at https:\/\/github\.com\/acme\/web\/issues\/9#issuecomment-2, it says ".*could you look\?"$/);
+    assert.deepEqual(githubLines(kit, 'lead'), []);
+  });
+
+  it("routes a mention on a task's issue to the task's owner, and none written by one of ours", async () => {
+    const kit = new CliHarness(MENTION_TEAM);
+    const issues = [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['hubber'] })];
+    const posts = [
+      restComment('acme/web', 7, 1, { author: 'visitor', body: '@octocat is this yours?', updatedAt: '2030-01-08T10:20:00Z' }),
+      restComment('acme/web', 7, 2, { author: 'HUBBER', body: '@octocat have a look', updatedAt: '2030-01-08T10:21:00Z' }),
+    ];
+    for (const held of [[], posts]) {
+      await run(kit, new FakeGh().holds('acme/web', issues).holdsPosts('acme/web', 'issues/comments', held));
+    }
+    assert.deepEqual(githubLines(kit, 'alpha').map((line) => line.replace(' visitor wrote at', '').replace(/, it says .*/, '')), [
+      'GitHub sync added 1 task(s) for you: T1 gh:acme/web#7 "Fix login"',
+      'GitHub gh:acme/web#7 mentions @octocat: https://github.com/acme/web/issues/7#issuecomment-1',
+    ]);
+    assert.deepEqual(githubLines(kit, 'bravo'), []);
+  });
+
+  it("fails the run on a refused posts read, keeping the repository's watch, so the next run still routes what was written meanwhile", async () => {
+    const kit = new CliHarness(MENTION_TEAM);
+    const ask = restComment('acme/web', 9, 1, { author: 'visitor', body: '@octocat could you look?', updatedAt: '2030-01-08T10:20:00Z' });
+    await run(kit, new FakeGh().holds('acme/web', []));
+    await run(kit, new FakeGh().holds('acme/web', []).failsPosts('acme/web', REFUSED), EXIT.failed);
+    assert.equal(parseSyncState(kit.files.get(STATE) ?? '')?.mentions.get('acme/web')?.cursor, '2030-01-08T10:15:00Z');
+    assert.match(githubLines(kit, 'lead')[0] ?? '', /^GitHub sync could not read acme\/web \(mentions: /);
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', [ask]));
+    assert.equal(githubLines(kit, 'bravo').length, 1);
+    assert.equal(githubLines(kit, 'lead')[1], 'GitHub sync reads every repository again (acme/web failed before)');
+  });
+
+  it('tells the watcher, unwoken, a repository whose posts one run could not read through, and goes on from the cut', async () => {
+    const kit = new CliHarness({ ...MENTION_TEAM, github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, watcher: 'alpha' } });
+    const minute = (index: number): string => new Date(Date.parse('2030-01-08T10:16:00Z') + index * 1000).toISOString().replace('.000Z', 'Z');
+    const pulls = Array.from({ length: REVIEW_READS_MAX + 1 }, (_, index) => restIssue('acme/web', 100 + index, { pull: true, author: 'visitor', updatedAt: minute(index) }));
+    await run(kit, new FakeGh().holds('acme/web', []));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues', pulls));
+    const cutAt = minute(REVIEW_READS_MAX);
+    assert.deepEqual(githubLines(kit, 'alpha'), [
+      `GitHub mentions of acme/web cut off: more posts changed than one sync reads (10 pages of 100 per list, the reviews of ${REVIEW_READS_MAX} pull requests); read through ${cutAt}, the next sync goes on from there`,
+    ]);
+    assert.equal(await asks(kit, 'alpha'), 0);
+    assert.equal(parseSyncState(kit.files.get(STATE) ?? '')?.mentions.get('acme/web')?.cursor, cutAt);
   });
 });
 
