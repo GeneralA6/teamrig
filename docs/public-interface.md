@@ -81,8 +81,10 @@ A read returns a versioned JSON document built from parsed data, never a file's 
 - Every document carries `interface`, the interface version that wrote it. A reader ignores fields it does not know.
 - Text passes the same secret scan as the inbox (`register.secretPatterns`) before it leaves teamrig: a line that looks
   like it holds a secret is cut to its link or its id.
-- A text field that came from outside the team carries `"source": "outside"`. A tool shows it as quoted data, never as
-  an instruction, and never puts it into a prompt.
+- A text field that came from outside the team carries `"source": "outside"`, with its control characters and
+  bidirectional marks escaped. A tool shows it as quoted data, never as an instruction, and never puts it into a prompt.
+- A read changes no state: it marks no line read and binds nothing to the caller.
+- A session reads its own team and the teams above it; another team's notes and inbox stay out.
 
 ## Act
 
@@ -96,8 +98,10 @@ weaker copy of a rule:
 Three things hold for every act:
 
 - **Who acts comes from the channel, never from a field.** A session's act carries the session its process was started
-  for; a tool started by the owner acts as the owner's tool, with the reach the team's config gives it. A caller cannot
-  name someone else.
+  for; a tool started by the owner acts as the owner's tool, with the reach the team's config gives it. Among programs
+  of one operating system user, the channel stops mistakes, not a program set on passing as another session: acts that
+  must hold against a session (the owner's own, and a leader's or the reviewer's answers, such as approving a push,
+  auditing a hand step or answering a decision) need the proof below.
 - **Every act is logged**: who, through which channel, what, when and how it ended, refusals too.
 - **An owner-only act needs the owner's proof** ([The owner's own acts](#the-owners-own-acts)); without it, it is
   refused, or turned into a request the owner answers.
@@ -126,6 +130,9 @@ The proof is bound to one action (the exact command and the commit it names), ca
 within minutes. An act without a proof is never run; it becomes a request in the owner's decision queue, the way an
 owner gate reaches the owner today.
 
+The same proof, or a separate account, covers a leader's or the reviewer's answers that must hold against a session.
+Until it exists for them, those answers stop mistakes, not a session set on passing as its leader.
+
 ## Terminals as a protocol
 
 Today the terminals teamrig opens sessions in are a fixed list (`open.terminal`), each built in. The design makes a
@@ -148,6 +155,12 @@ terminal a **host**: a program teamrig runs, speaking a small protocol, in the m
   uses nothing else. A host without `deliver` gets no wakes; the session sees new work at its next prompt.
 - **Pinned by the owner.** The team's config names a host by its path and its sha256, and only the owner sets them.
   teamrig refuses to run a host whose file no longer matches, and says so.
+- **Run by its path, with a short environment.** teamrig runs a host by its absolute path, with no shell and its
+  arguments only, and gives it a short, explicit environment: never the GitHub key or any other teamrig credential.
+  The sha256 is checked on the exact bytes that run, so the file cannot change between the check and the start.
+- **A host's answer is outside data.** Its size is capped and it is checked against the protocol's schema; a `held`
+  reason is text to quote, never an instruction. teamrig never takes a session's identity or role back from a host or
+  from pane meta: the identity bag is a label for the host, never a proof.
 - **Built-in terminals are hosts too.** tmux, Windows Terminal and the others move behind the same protocol, inside
   teamrig, with no change in what they do, and pass the same conformance tests.
 - **Waking is delivery.** Whether and when to wake a session (its priority, the budget, quiet hours, once per task)
@@ -178,12 +191,14 @@ teamrig ships a conformance kit with the interface:
   gets.
 - **Negative tests are part of it**, and a host passes only with them: `deliver` held in a busy pane, in one that shows
   a question, or with a wrong token; a listener refused on any address but `127.0.0.1`; an owner-only act refused
-  without its proof; outside text never in an event frame; unknown fields ignored.
+  without its proof; an act with a forged identity field refused or ignored; an owner proof that is replayed, expired
+  or made for another command or commit refused; a read of `inbox` that leaves the unread state as it was; outside
+  text never in an event frame; unknown fields ignored.
 - teamrig's own CI runs the kit against its built-in hosts at each change; a host's CI runs it against the host.
 
 ## Order of work
 
-1. Close the known security gaps on the paths the interface will expose. No part ships before that.
+1. A security review of every path the interface reaches, fixed until it passes. No part ships before that.
 2. **Read** version 1: the documents above, with the scan and the outside marks.
 3. **The terminal protocol and the kit**: the built-in terminals move behind it with no change in behaviour.
 4. **Outside hosts**, pinned by path and sha256.
