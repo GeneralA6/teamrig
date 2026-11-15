@@ -1,7 +1,7 @@
-import { ENV } from '../core/home.ts';
 import { MeetingSchedule, meetingsOnOf } from '../meeting/schedule.ts';
 import { MeetingStore, phaseOf } from '../meeting/state.ts';
 import type { TabFocus } from '../open/terminals.ts';
+import { underClaudeCode } from './claude-code-env.ts';
 import type { CliRuntime } from './runtime.ts';
 import { loadTree } from './tree.ts';
 
@@ -12,8 +12,7 @@ import { loadTree } from './tree.ts';
  * out of the meeting.
  */
 export async function tabFocusOf(runtime: CliRuntime): Promise<TabFocus> {
-  const claudeCode = runtime.env[ENV.claudeCode];
-  if (claudeCode !== undefined && claudeCode !== '') {
+  if (underClaudeCode(runtime)) {
     return 'keep';
   }
   const { teams } = await loadTree(runtime);

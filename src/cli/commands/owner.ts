@@ -3,6 +3,7 @@ import { ENV, KIT_NAME } from '../../core/home.ts';
 import type { Task } from '../../register/fold.ts';
 import type { OwnerNextPreview } from '../../register/register.ts';
 import { onePositional, type ParsedArgs } from '../args.ts';
+import { underClaudeCode } from '../claude-code-env.ts';
 import { taskRefOf } from '../inputs.ts';
 import { findTeam, openKit, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -34,8 +35,7 @@ const BUTTON = { note: 'Note', next: 'Next', wake: 'Wake' } as const;
  * passes: every session runs as the same OS user as the owner.
  */
 export function refuseUnderClaudeCode(runtime: CliRuntime, command: keyof typeof BUTTON): void {
-  const set = runtime.env[ENV.claudeCode];
-  if (set !== undefined && set !== '') {
+  if (underClaudeCode(runtime)) {
     throw new RefusedError(
       `${KIT_NAME} owner ${command} acts as the owner, so it is refused where Claude Code runs it (${ENV.claudeCode} is set: an agent's tool call, a script it runs or a hook); the owner presses ${BUTTON[command]} in the pane or types /${KIT_NAME} owner ${command} in a tab`,
     );
