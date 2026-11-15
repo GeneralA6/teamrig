@@ -1,4 +1,5 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { privateShapeIn } from '../core/private-shapes.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { taskIdIn } from '../issues/posted.ts';
 import type { Task } from '../register/fold.ts';
@@ -201,6 +202,11 @@ export function publicIssueText(who: string, title: string, body: string, scanne
   const secret = scanner.refusal(`${who}'s title or body`, `${shown}\n${body}`);
   if (secret !== undefined) {
     return { ok: false, error: secret };
+  }
+  // The same private-data check every other post runs: an issue opened at add has no preview a reviewer reads first.
+  const shape = privateShapeIn(`${shown}\n${body}`);
+  if (shape !== undefined) {
+    return { ok: false, error: `${who}'s title or body holds private data (${shape.description}): take it out, as a post may be read by anyone` };
   }
   const named = taskIdIn(`${shown}\n${body}`);
   if (named !== undefined) {

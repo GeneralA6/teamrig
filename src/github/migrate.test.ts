@@ -108,6 +108,14 @@ describe('parseMigrateRows', () => {
     assert.equal(refused(issueLine({ body: 'Needs T7.\nThen T8.' })), error('T7'));
   });
 
+  it('refuses a title or body holding private data, naming its shape but never the text', () => {
+    /** Built at runtime so no private-shaped literal sits in the source. */
+    const mail = ['dana', '@', 'acme.io'].join('');
+    const error = refused(issueLine({ body: `Ask ${mail} first.` }));
+    assert.equal(error, "line 1: T1: the issue's title or body holds private data (e-mail address): take it out, as a post may be read by anyone");
+    assert.ok(!error.includes(mail));
+  });
+
   it('takes a body linking issues by #number and words merely holding a T and digits', () => {
     const body = 'Follows #12; the UTF8 path and the T-shaped layout stay; `set <id> --waits task:<team>/<id>`.';
     assert.equal(parsed(issueLine({ title: 'Fix the TLS10 fallback', body })).length, 1);

@@ -64,6 +64,21 @@ describe('addIssuePlan', () => {
     assert.match(refused({ ...ISSUE, title: 'two\nlines' }, ONE_REPO), /^the new task: the title is one line/u);
   });
 
+  it('refuses wording holding private data of each shape, naming the shape but never the text', () => {
+    /** Built at runtime so no private-shaped literal sits in the source. */
+    const shapes = [
+      { text: ['/', 'home/dana/notes'].join(''), shape: 'absolute path inside a user home folder' },
+      { text: ['dana', '@', 'acme.io'].join(''), shape: 'e-mail address' },
+      { text: ['10', '20', '30', '40'].join('.'), shape: 'IPv4 address outside the loopback and documentation ranges' },
+      { text: ['build', 'corp'].join('.'), shape: 'internal host name' },
+    ];
+    for (const { text, shape } of shapes) {
+      const error = refused({ ...ISSUE, body: `Fails at ${text} today.` }, ONE_REPO);
+      assert.equal(error, `the new task's title or body holds private data (${shape}): take it out, as a post may be read by anyone`);
+      assert.ok(!error.includes(text));
+    }
+  });
+
   it('keeps a task local with its reason as its ref, and refuses a reason with an issue, a ref or no text', () => {
     assert.deepEqual(planned({ local: ' names an unfixed weakness ' }, AT_ADD), { kind: 'local', ref: 'local: names an unfixed weakness' });
     assert.equal(refused({ local: 'why', title: 'An issue' }, AT_ADD), '--local keeps the task off GitHub, so it takes no --issue, --issue-body or --issue-repo');
