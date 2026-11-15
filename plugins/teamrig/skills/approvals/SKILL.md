@@ -45,7 +45,8 @@ Approve only when every line holds:
   wakes it, to push or merge now, then set the task's next status; `check` flags it `READY` until then. Name the head
   you checked by its full sha in the note: a merge tool that reads approvals clears only a head the note names, so a
   later push needs a new approval, unless the tool checks the later head is a rebase of the named one that keeps
-  every commit's patch (`git range-diff` all `=`), its regenerated version and build files aside.
+  every commit's patch (`git range-diff` all `=`), its rebuilt dist and version numbers aside: any other edit to a
+  version file counts.
 - Decline what fails a line: `teamrig approve T<n> --session <lead> --decline --note "<the line it fails, and the
   fix>"`. Its owner gets an inbox line to fix that and ask again.
 - Owner-gated content: decline with a note that says so ("owner-gated: <what>; ask the owner with a card"), so its
