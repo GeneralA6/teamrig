@@ -4,11 +4,13 @@ import { readFileSync } from 'node:fs';
 import {
   holdersText,
   linuxCommitOf,
+  freeMbOf,
   nodeHostMemory,
   nodeMemoryProbe,
   parseHolders,
   parseMeminfoCommit,
   parseProcessRows,
+  parseVmStatAvailable,
   parseWindowsCommit,
   treeCommittedMb,
   treeMb,
@@ -17,6 +19,7 @@ import {
   type Every,
   type MemoryProbe,
   type ProcessRow,
+  type RunSync,
 } from './memory.ts';
 import { treeOf } from './processes.ts';
 
@@ -252,6 +255,77 @@ describe('nodeMemoryProbe', () => {
     }
     assert.ok(charge !== undefined, 'the host gives its commit charge');
     assert.ok(charge.usedMb > 0 && charge.limitMb > 0, `${charge.usedMb} of ${charge.limitMb} MB`);
+  });
+});
+
+/** vm_stat as an Apple silicon Mac prints it: 16 KB pages, 2,000 free, 150,000 inactive, 8,000 speculative. */
+const VM_STAT = [
+  'Mach Virtual Memory Statistics: (page size of 16384 bytes)',
+  'Pages free:                                2000.',
+  'Pages active:                            300000.',
+  'Pages inactive:                          150000.',
+  'Pages speculative:                         8000.',
+  'Pages throttled:                              0.',
+  'Pages wired down:                        120000.',
+  'Pages purgeable:                          12000.',
+  '"Translation faults":                 987654321.',
+  'File-backed pages:                       140000.',
+].join('\n');
+
+/** 160,000 pages of 16 KB: 2,500 MB. */
+const VM_STAT_AVAILABLE_MB = 2500;
+
+/** A runner that prints `output` for vm_stat and records what it ran. */
+function fakeRun(output: string | undefined): { readonly run: RunSync; readonly ran: string[] } {
+  const ran: string[] = [];
+  return {
+    ran,
+    run: (file, args) => {
+      ran.push([file, ...args].join(' '));
+      return output;
+    },
+  };
+}
+
+describe('parseVmStatAvailable (T2634)', () => {
+  it('sums free, inactive and speculative pages at the page size vm_stat prints', () => {
+    assert.equal(parseVmStatAvailable(VM_STAT), VM_STAT_AVAILABLE_MB * MB);
+    assert.equal(parseVmStatAvailable(VM_STAT.replace('16384', '4096').replaceAll('\n', '\r\n')), (VM_STAT_AVAILABLE_MB * MB) / 4);
+  });
+
+  it('reads nothing without the page size or one of the three counts', () => {
+    assert.equal(parseVmStatAvailable(VM_STAT.replace(/^Mach.*$/m, '')), undefined);
+    for (const label of ['free', 'inactive', 'speculative']) {
+      assert.equal(parseVmStatAvailable(VM_STAT.replace(new RegExp(`^Pages ${label}:.*$`, 'm'), '')), undefined, label);
+    }
+    assert.equal(parseVmStatAvailable(''), undefined);
+  });
+});
+
+describe('freeMbOf (T2634)', () => {
+  const nodeFree = (): number => 300 * MB;
+
+  it("reads vm_stat on macOS, not Node's free pages alone", () => {
+    const { run, ran } = fakeRun(VM_STAT);
+    assert.equal(freeMbOf('darwin', run, nodeFree), VM_STAT_AVAILABLE_MB);
+    assert.deepEqual(ran, ['vm_stat']);
+  });
+
+  it("falls back to Node's count on macOS when vm_stat fails or prints no counts", () => {
+    assert.equal(freeMbOf('darwin', fakeRun(undefined).run, nodeFree), 300);
+    assert.equal(freeMbOf('darwin', fakeRun('vm_stat: error').run, nodeFree), 300);
+  });
+
+  it("keeps Node's count on Windows and Linux, running nothing", () => {
+    for (const platform of ['win32', 'linux'] as const) {
+      const { run, ran } = fakeRun(VM_STAT);
+      assert.equal(freeMbOf(platform, run, nodeFree), 300, platform);
+      assert.deepEqual(ran, [], platform);
+    }
+  });
+
+  it('is what the node probe reads as free memory on macOS', () => {
+    assert.equal(nodeMemoryProbe('darwin', fakeRun(VM_STAT).run).freeMb(), VM_STAT_AVAILABLE_MB);
   });
 });
 
