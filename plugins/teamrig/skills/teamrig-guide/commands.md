@@ -502,7 +502,9 @@ An approved task shows `· lead approved`
 in its waiting text and `check` flags it `READY` until its owner sets the next status, which clears the answer.
 To hold an approved task until another task lands or a time comes, set it waiting again with the approval wait and the
 new one (`--waits approval:<lead>,task:T<id>`): that keeps the approval, and `check` flags the task `READY` once the
-new wait clears, so merge then. Restating the same waits, or adding a decision or another approval, asks anew.
+new wait clears, so merge then. Setting the same waits again keeps the approval too, say to log a refused merge,
+unless the note names another commit than the approval's: that asks anew, as adding a decision or another approval
+does, and a new head always needs one, since `ship.ts merge` takes only a head the approval's note names.
 Only the lead answers (or a sub-lead above the task's owner, or the security reviewer, `roles.securityReviewer`, on
 a task not its own), only a task waiting on its approval, always with a note; an approval of the owner's stays the
 owner's. The same answer clears a review hold or a gate hold that `teamrig merge` made on the task's branch

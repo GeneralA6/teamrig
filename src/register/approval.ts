@@ -19,7 +19,7 @@ export function waitAnswerersOf(tree: Pick<LeadTree, 'approversOf'>, roles: Pick
 /**
  * The task's answer to `reason` when it is an approval wait its giver answered, either way (`approve`, T684);
  * undefined otherwise. A new status clears the answer with the waits (fold.ts), so an answer covers only the step its
- * task asked about; a hold of an approved task behind another task or a time keeps it (T2117).
+ * task asked about; the approval wait set again keeps it while the note names no other head (T2117, T3044).
  */
 export function answerTo(task: Pick<Task, 'answer'>, reason: WaitReason): ApprovalAnswer | undefined {
   return reason.kind === 'approval' && task.answer !== null && task.answer.by === reason.who ? task.answer : undefined;

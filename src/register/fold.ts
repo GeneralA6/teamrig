@@ -1,5 +1,6 @@
 import type { DecisionCard } from './card.ts';
 import { withAudit, type HandStepAudit } from './hand-step.ts';
+import { namesUnapprovedCommit } from './head-sha.ts';
 import type { ProblemReview } from './review.ts';
 import type { SecurityVerdict } from './security-verdict.ts';
 import type { ApprovalVerdict, RegisterEvent, SizeBase, TaskFields, UpdateEvent } from './events.ts';
@@ -41,8 +42,8 @@ export interface Task extends TaskFields {
   readonly card: DecisionCard | null;
   /**
    * The lead's latest answer to the approval the task waits on, since its latest status change; null otherwise. A new
-   * status clears it with the waits, so an approval covers the push or merge asked for and nothing after it; only a
-   * hold behind another task or a time keeps an approval (`keptAnswer`, T2117).
+   * status clears it with the waits, so an approval covers the push or merge asked for and nothing after it; a wait
+   * on the same approval set again keeps it while its note names no other head (`keptAnswer`, T2117, T3044).
    */
   readonly answer: ApprovalAnswer | null;
   /**
@@ -229,25 +230,27 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
 }
 
 /**
- * The answer a status keeps (T2117): an approval, when the task stays waiting, names the approved wait again and adds
- * only waits on another task or a time. That holds the approved change behind them, so it is no new ask, and `check`
- * flags the task READY once they clear, which is the owner's wake to merge. Any other status, the same waits restated
- * (a new ask, T2089), a new decision or approval wait, or a declined answer clears it.
+ * The answer a status keeps: an approval, when the task stays waiting, names the approved wait again, adds only waits
+ * on another task or a time (T2117), and its note names no commit the approval's note does not (T3044). A hold behind
+ * other work keeps it, and `check` flags the task READY once that clears, the owner's wake to merge; so does the same
+ * wait set again to log a step, say a merge a classifier refused, which used to drop the approval of an unchanged head.
+ * A note naming another head is a new ask: `ship.ts merge` reads the approved head from the answer's note, so a new
+ * head always needs a new approval. Any other status, a new decision or approval wait, or a declined answer clears it.
  */
-function keptAnswer(task: Task, status: TaskStatus, waits: readonly WaitReason[]): ApprovalAnswer | null {
+function keptAnswer(task: Task, status: TaskStatus, waits: readonly WaitReason[], note: string | null): ApprovalAnswer | null {
   const { answer } = task;
-  if (answer === null || answer.verdict !== 'approved' || status !== 'waiting' || task.status !== 'waiting') {
+  if (answer === null || answer.verdict !== 'approved' || status !== 'waiting' || task.status !== 'waiting' || namesUnapprovedCommit(note, answer.note)) {
     return null;
   }
   const approved: WaitReason = { kind: 'approval', who: answer.by };
   const holds = [task.waits, waits].every((each) => each.some((reason) => sameWait(reason, approved)));
   const added = waits.filter((reason) => !task.waits.some((held) => sameWait(held, reason)));
-  return holds && added.length > 0 && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
+  return holds && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
 }
 
 function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }>): Task {
   const waits = WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [];
-  const answer = keptAnswer(task, event.status, waits);
+  const answer = keptAnswer(task, event.status, waits, event.note);
   return {
     ...task,
     status: event.status,
