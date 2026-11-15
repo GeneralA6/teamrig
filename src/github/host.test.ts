@@ -235,7 +235,7 @@ describe('GitHubIssueHost', () => {
     const gh = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Validation Failed (HTTP 422)\n' });
     const made = await hostWith(gh).createLabel('acme/web', label);
     assert.equal(made.kind, 'failed');
-    assert.match(made.kind === 'failed' ? made.reason : '', /^gh api to make the label "status:triaged" in acme\/web .*HTTP 422/u);
+    assert.match(made.kind === 'failed' ? made.reason : '', /^gh api to make the label "status:open" in acme\/web .*HTTP 422/u);
   });
 
   it('reads whether a login may be assigned, found or missing on Not Found, and assigns through the allowlisted call (T2999)', async () => {

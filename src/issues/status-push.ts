@@ -19,10 +19,10 @@ export const STATUS_LABEL_PREFIX = 'status:';
 
 /** The active statuses, each with the one label its issue shows. */
 export const STATUS_LABELS: Readonly<Record<'open' | 'in-progress' | 'waiting' | 'verifying', string>> = {
-  open: `${STATUS_LABEL_PREFIX}triaged`,
-  'in-progress': `${STATUS_LABEL_PREFIX}in-progress`,
+  open: `${STATUS_LABEL_PREFIX}open`,
+  'in-progress': `${STATUS_LABEL_PREFIX}in progress`,
   waiting: `${STATUS_LABEL_PREFIX}waiting`,
-  verifying: `${STATUS_LABEL_PREFIX}in-review`,
+  verifying: `${STATUS_LABEL_PREFIX}in review`,
 };
 
 /**
@@ -31,7 +31,7 @@ export const STATUS_LABELS: Readonly<Record<'open' | 'in-progress' | 'waiting' |
  * push never makes a label a person did not see in the docs. The colours read on light and dark backgrounds alike.
  */
 export const STATUS_LABEL_SPECS: readonly LabelSpec[] = [
-  { name: STATUS_LABELS.open, color: 'ededed', description: 'Open and triaged: work on it has not started' },
+  { name: STATUS_LABELS.open, color: 'ededed', description: 'Open: work on it has not started' },
   { name: STATUS_LABELS['in-progress'], color: '8957e5', description: 'Work on it is under way' },
   { name: STATUS_LABELS.waiting, color: 'fbca04', description: 'Waiting on an answer, a review or another issue' },
   { name: STATUS_LABELS.verifying, color: '0e8a16', description: 'Done, and in review until its proof exists' },

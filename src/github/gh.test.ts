@@ -345,7 +345,7 @@ describe('the status label create (T2999)', () => {
       good.map((arg) => (arg === '-f' ? '-F' : arg)),
       [...good, '-f', 'new_name=x'],
       [...good.slice(0, 4), ...good.slice(6), ...good.slice(4, 6)],
-      good.map((arg, at) => (at === 1 ? 'repos/acme/web/labels/status%3Atriaged' : arg)),
+      good.map((arg, at) => (at === 1 ? 'repos/acme/web/labels/status%3Aopen' : arg)),
       ['api', 'repos/acme/web/labels', '-X', 'POST', '--input', 'labels.json'],
     ]) {
       assert.equal(isLabelCreate(args), false, args.slice(1).join(' '));

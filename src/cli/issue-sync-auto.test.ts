@@ -97,15 +97,15 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     const gh = new FakeGh()
       .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] }), ghIssue('acme/web', 8, { title: 'Add search' })])
       .holds('acme/api', [])
-      .hasLabels('acme/web', ['status:triaged']);
+      .hasLabels('acme/web', ['status:open']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(writes(gh), [
-      'api repos/acme/web/labels/status%3Atriaged',
+      'api repos/acme/web/labels/status%3Aopen',
       'api users/acme',
       'api repos/acme/web/assignees/acme',
-      'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:triaged',
-      'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:triaged',
+      'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:open',
+      'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:open',
       'api repos/acme/web/issues/8/assignees -X POST -f assignees[]=acme',
     ]);
     assert.ok(result.stdout.includes('PUSHED 2 change(s), 3 write(s); at most 20 a run, the rest planned again on the next'), result.stdout.join('\n'));
@@ -117,7 +117,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 60 }));
     // Assigned already, so each change is one label write.
     const three = (repo: string): JsonRecord[] => [1, 2, 3].map((number) => ghIssue(repo, number, { title: `Work ${number}`, assignees: ['octocat'] }));
-    const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:triaged']).hasLabels('acme/api', ['status:triaged']);
+    const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:open']).hasLabels('acme/api', ['status:open']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(
@@ -138,9 +138,9 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     const dropped = await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'not planned'], asLead);
     assert.equal(dropped.code, EXIT.ok, [...dropped.stdout, ...dropped.stderr].join('\n'));
     const gh = new FakeGh()
-      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', labels: ['status:triaged'] })])
+      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', labels: ['status:open'] })])
       .holds('acme/api', [])
-      .hasLabels('acme/web', ['status:triaged']);
+      .hasLabels('acme/web', ['status:open']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(writes(gh), []);
@@ -148,7 +148,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
       result.stdout.filter((line) => /^(PUSH|HELD|PUSHED) /u.test(line)),
       [
         "PUSH acme/web: 0 to change, 0 unchanged, 1 close(s) held for a session's push",
-        "HELD acme/web#7 T1 dropped: close as not-planned, take off status:triaged; the automatic push never closes: a session's teamrig issue sync --push --yes sends the close",
+        "HELD acme/web#7 T1 dropped: close as not-planned, take off status:open; the automatic push never closes: a session's teamrig issue sync --push --yes sends the close",
         'PUSH acme/api: 0 to change, 0 unchanged',
         'PUSHED 0 change(s), 0 write(s); at most 20 a run, the rest planned again on the next',
       ],
@@ -169,7 +169,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     const gh = new FakeGh()
       .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login' })])
       .answers('acme/api', REFUSED)
-      .hasLabels('acme/web', ['status:triaged'])
+      .hasLabels('acme/web', ['status:open'])
       .failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.failed, [...result.stdout, ...result.stderr].join('\n'));

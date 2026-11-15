@@ -1261,8 +1261,8 @@ Flags:
   repository that fails.
 - `--push`: plans the other way, from the task list to the issues: for each issue a task holds by its
   `gh:<owner>/<name>#<number>` ref, the writes that make the issue show the task's status. An active task gives its
-  issue one label (`open` `status:triaged`, `in-progress` `status:in-progress`, `waiting` `status:waiting`,
-  `verifying` `status:in-review`) and any other `status:` label comes off; a done task closes it as completed, a
+  issue one label (`open` `status:open`, `in-progress` `status:in progress`, `waiting` `status:waiting`,
+  `verifying` `status:in review`) and any other `status:` label comes off; a done task closes it as completed, a
   dropped one as not planned. It plans against the issues as GitHub lists them now, so a label someone changed by
   hand is set back and a run that stopped half way is planned again whole. It never reopens an issue a person
   closed: a `KEPT` line names it, and an `UNLISTED` line an active task's issue that is not open on GitHub. A run

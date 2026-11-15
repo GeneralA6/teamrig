@@ -27,10 +27,10 @@ function holding(id: string, number: number, overrides: Partial<Task> = {}): Tas
 
 describe('issueGoal (T2682)', () => {
   it('gives each active status its one label', () => {
-    assert.deepEqual(issueGoal('open'), { open: true, label: 'status:triaged' });
-    assert.deepEqual(issueGoal('in-progress'), { open: true, label: 'status:in-progress' });
+    assert.deepEqual(issueGoal('open'), { open: true, label: 'status:open' });
+    assert.deepEqual(issueGoal('in-progress'), { open: true, label: 'status:in progress' });
     assert.deepEqual(issueGoal('waiting'), { open: true, label: 'status:waiting' });
-    assert.deepEqual(issueGoal('verifying'), { open: true, label: 'status:in-review' });
+    assert.deepEqual(issueGoal('verifying'), { open: true, label: 'status:in review' });
   });
 
   it('closes a done task as completed and a dropped one as not planned', () => {
@@ -52,19 +52,19 @@ describe('heldIssue (T2682)', () => {
 describe('planPush (T2682)', () => {
   it('labels an unlabelled open issue with its task status', () => {
     const plan = planPush(REPO, [testHostIssue(7)], [holding('T1', 7, { status: 'in-progress' })]);
-    assert.deepEqual(plan.changes, [{ target: { repo: REPO, number: 7 }, task: 'T1', status: 'in-progress', add: ['status:in-progress'], remove: [], close: undefined }]);
+    assert.deepEqual(plan.changes, [{ target: { repo: REPO, number: 7 }, task: 'T1', status: 'in-progress', add: ['status:in progress'], remove: [], close: undefined }]);
     assert.equal(plan.unchanged, 0);
   });
 
   it('swaps an old status label, and takes off a hand-made one in the namespace, keeping every other label', () => {
-    const issue = testHostIssue(7, { labels: ['bug', 'status:triaged', 'status:blocked'] });
+    const issue = testHostIssue(7, { labels: ['bug', 'status:open', 'status:blocked'] });
     const [change] = planPush(REPO, [issue], [holding('T1', 7, { status: 'waiting' })]).changes;
     assert.deepEqual(change?.add, ['status:waiting']);
-    assert.deepEqual(change?.remove, ['status:triaged', 'status:blocked']);
+    assert.deepEqual(change?.remove, ['status:open', 'status:blocked']);
   });
 
   it('counts an issue already showing its status as unchanged', () => {
-    const plan = planPush(REPO, [testHostIssue(7, { labels: ['status:in-review'] })], [holding('T1', 7, { status: 'verifying' })]);
+    const plan = planPush(REPO, [testHostIssue(7, { labels: ['status:in review'] })], [holding('T1', 7, { status: 'verifying' })]);
     assert.deepEqual(plan.changes, []);
     assert.equal(plan.unchanged, 1);
   });
@@ -72,20 +72,20 @@ describe('planPush (T2682)', () => {
   it('closes the open issue of a done task as completed and of a dropped one as not planned, taking off its status labels', () => {
     const plan = planPush(
       REPO,
-      [testHostIssue(7, { labels: ['status:in-review'] }), testHostIssue(8)],
+      [testHostIssue(7, { labels: ['status:in review'] }), testHostIssue(8)],
       [holding('T1', 7, { status: 'done' }), holding('T2', 8, { status: 'dropped' })],
     );
     assert.deepEqual(
       plan.changes.map((change) => [change.task, change.close, change.add, change.remove]),
       [
-        ['T1', 'completed', [], ['status:in-review']],
+        ['T1', 'completed', [], ['status:in review']],
         ['T2', 'not-planned', [], []],
       ],
     );
   });
 
   it('leaves a closed issue of a closed task as it is', () => {
-    const plan = planPush(REPO, [testHostIssue(7, { state: 'closed', stateReason: 'COMPLETED', labels: ['status:in-review'] })], [holding('T1', 7, { status: 'done' })]);
+    const plan = planPush(REPO, [testHostIssue(7, { state: 'closed', stateReason: 'COMPLETED', labels: ['status:in review'] })], [holding('T1', 7, { status: 'done' })]);
     assert.deepEqual(plan.changes, []);
     assert.equal(plan.unchanged, 1);
   });
@@ -136,7 +136,7 @@ describe('planPush (T2682)', () => {
     // Each change swaps a label: two writes, so the run's writes hold half as many changes.
     const count = PUSH_WRITES_PER_RUN / 2 + 3;
     const numbers = Array.from({ length: count }, (_, index) => count - index);
-    const issues = numbers.map((number) => testHostIssue(number, { labels: ['status:triaged'] }));
+    const issues = numbers.map((number) => testHostIssue(number, { labels: ['status:open'] }));
     const tasks = numbers.map((number) => holding(`T${number}`, number, { status: 'in-progress' }));
     const plan = planPush(REPO, issues, tasks);
     assert.equal(plan.changes.length, PUSH_WRITES_PER_RUN / 2);
@@ -159,7 +159,7 @@ describe('planPush (T2682)', () => {
   });
 
   it('sends at most the writes a run is given, deferring the rest', () => {
-    const issues = [1, 2, 3].map((number) => testHostIssue(number, { labels: ['status:triaged'] }));
+    const issues = [1, 2, 3].map((number) => testHostIssue(number, { labels: ['status:open'] }));
     const tasks = [1, 2, 3].map((number) => holding(`T${number}`, number, { status: 'in-progress' }));
     const plan = planPush(REPO, issues, tasks, { writesPerRun: 5, closes: true });
     assert.deepEqual(
@@ -174,7 +174,7 @@ describe('planPush (T2682)', () => {
   });
 
   it('without closes holds each closing change, printed apart, and gives the run writes to the label changes', () => {
-    const issues = [1, 2, 3].map((number) => testHostIssue(number, { labels: ['status:triaged'] }));
+    const issues = [1, 2, 3].map((number) => testHostIssue(number, { labels: ['status:open'] }));
     const tasks = [holding('T1', 1, { status: 'done' }), holding('T2', 2, { status: 'dropped' }), holding('T3', 3, { status: 'in-progress' })];
     const plan = planPush(REPO, issues, tasks, { writesPerRun: 2, closes: false });
     assert.deepEqual(
@@ -206,26 +206,26 @@ describe('the assignee (T2999)', () => {
   });
 
   it('assigns an open issue no one is assigned to, alone or with its label, and never one a person assigned', () => {
-    const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:triaged'] }), testHostIssue(9, { assignees: ['someone'] })];
+    const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:open'] }), testHostIssue(9, { assignees: ['someone'] })];
     const tasks = [holding('T1', 7, { owner: 'bravo', status: 'in-progress' }), holding('T2', 8, { owner: 'lead' }), holding('T3', 9, { owner: 'bravo' })];
     const plan = planPush(REPO, issues, tasks, undefined, logins);
     assert.deepEqual(
       plan.changes.map((change) => [change.task, change.add, change.assign, changeWrites(change)]),
       [
-        ['T1', ['status:in-progress'], 'octocat', 2],
+        ['T1', ['status:in progress'], 'octocat', 2],
         ['T2', [], 'acme', 1],
-        ['T3', ['status:triaged'], undefined, 1],
+        ['T3', ['status:open'], undefined, 1],
       ],
     );
     assert.deepEqual(plan.changes.map(changeLine), [
-      'LABEL acme/web#7 T1 in-progress: add status:in-progress, assign octocat',
+      'LABEL acme/web#7 T1 in-progress: add status:in progress, assign octocat',
       'ASSIGN acme/web#8 T2 open: assign acme',
-      'LABEL acme/web#9 T3 open: add status:triaged',
+      'LABEL acme/web#9 T3 open: add status:open',
     ]);
   });
 
   it('assigns no closing issue, and nobody without logins', () => {
-    const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:triaged'] })];
+    const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:open'] })];
     assert.equal(planPush(REPO, issues, [holding('T1', 7, { status: 'done' })], undefined, logins).changes[0]?.assign, undefined);
     assert.deepEqual(planPush(REPO, issues, [holding('T2', 8, { status: 'open' })]).changes, []);
   });
@@ -250,8 +250,8 @@ describe('changeLine (T2682)', () => {
   const target = { repo: REPO, number: 7 };
 
   it('prints a label swap', () => {
-    const change: IssueChange = { target, task: 'T1', status: 'waiting', add: [STATUS_LABELS.waiting], remove: ['status:triaged'], close: undefined };
-    assert.equal(changeLine(change), 'LABEL acme/web#7 T1 waiting: add status:waiting, take off status:triaged');
+    const change: IssueChange = { target, task: 'T1', status: 'waiting', add: [STATUS_LABELS.waiting], remove: ['status:open'], close: undefined };
+    assert.equal(changeLine(change), 'LABEL acme/web#7 T1 waiting: add status:waiting, take off status:open');
   });
 
   it('prints a close first', () => {

@@ -25,10 +25,10 @@ async function push(host: FakeIssueHost, pushed: PushPlan): Promise<{ outcome: A
 
 describe('applyPush', () => {
   it('reads each login once, then sends the assign after the labels', async () => {
-    const host = new FakeIssueHost().hasLabels('status:in-progress');
-    const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in-progress'], assign: 'octocat' }), change(8, { assign: 'octocat' })));
+    const host = new FakeIssueHost().hasLabels('status:in progress');
+    const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in progress'], assign: 'octocat' }), change(8, { assign: 'octocat' })));
     assert.deepEqual(outcome, { sent: 2, writes: 3, held: 0, failed: undefined });
-    assert.deepEqual(lines, ['SET acme/web#7 T7 in-progress: add status:in-progress, assign octocat', 'SET acme/web#8 T8 in-progress: assign octocat']);
+    assert.deepEqual(lines, ['SET acme/web#7 T7 in-progress: add status:in progress, assign octocat', 'SET acme/web#8 T8 in-progress: assign octocat']);
     assert.deepEqual(
       host.calls.map((call) => call.kind),
       ['label-add', 'assign', 'assign'],
@@ -36,12 +36,12 @@ describe('applyPush', () => {
   });
 
   it('sends a change without the assign of a login the repository may not assign, and skips one left empty', async () => {
-    const host = new FakeIssueHost().hasLabels('status:in-progress').cannotAssign('acme');
-    const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in-progress'], assign: 'acme' }), change(8, { assign: 'acme' })));
+    const host = new FakeIssueHost().hasLabels('status:in progress').cannotAssign('acme');
+    const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in progress'], assign: 'acme' }), change(8, { assign: 'acme' })));
     assert.deepEqual(outcome, { sent: 1, writes: 1, held: 0, failed: undefined });
     assert.deepEqual(lines, [
       'UNASSIGNED acme/web: acme may not be assigned there (not a person with access to it); its 2 issue(s) stay unassigned: map the owning session to a login that may under github.owners',
-      'SET acme/web#7 T7 in-progress: add status:in-progress',
+      'SET acme/web#7 T7 in-progress: add status:in progress',
     ]);
     assert.ok(host.calls.every((call) => call.kind !== 'assign'));
   });
@@ -63,13 +63,13 @@ describe('applyPush', () => {
   });
 
   it('sends each change whole, its labels added, then taken off, then the close', async () => {
-    const host = new FakeIssueHost().hasLabels('status:in-progress');
-    const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in-progress'], remove: ['status:triaged'] }), change(8, { status: 'done', remove: ['status:waiting'], close: 'completed' })));
+    const host = new FakeIssueHost().hasLabels('status:in progress');
+    const { outcome, lines } = await push(host, plan(change(7, { add: ['status:in progress'], remove: ['status:open'] }), change(8, { status: 'done', remove: ['status:waiting'], close: 'completed' })));
     assert.deepEqual(outcome, { sent: 2, writes: 4, held: 0, failed: undefined });
-    assert.deepEqual(lines, ['SET acme/web#7 T7 in-progress: add status:in-progress, take off status:triaged', 'SET acme/web#8 T8 done: close as completed, take off status:waiting']);
+    assert.deepEqual(lines, ['SET acme/web#7 T7 in-progress: add status:in progress, take off status:open', 'SET acme/web#8 T8 done: close as completed, take off status:waiting']);
     assert.deepEqual(host.calls, [
-      { kind: 'label-add', target: { repo: REPO, number: 7 }, labels: ['status:in-progress'] },
-      { kind: 'label-remove', target: { repo: REPO, number: 7 }, label: 'status:triaged' },
+      { kind: 'label-add', target: { repo: REPO, number: 7 }, labels: ['status:in progress'] },
+      { kind: 'label-remove', target: { repo: REPO, number: 7 }, label: 'status:open' },
       { kind: 'label-remove', target: { repo: REPO, number: 8 }, label: 'status:waiting' },
       { kind: 'close', target: { repo: REPO, number: 8 }, reason: 'completed' },
     ]);
@@ -85,15 +85,15 @@ describe('applyPush', () => {
 
   it('makes each status label the repository lacks, once and before any change, then sends the changes adding it (T2999)', async () => {
     const host = new FakeIssueHost().hasLabels('status:waiting');
-    const { outcome, lines } = await push(host, plan(change(1, { add: ['status:in-review'] }), change(2, { add: ['status:waiting'] }), change(3, { add: ['status:in-review'] })));
+    const { outcome, lines } = await push(host, plan(change(1, { add: ['status:in review'] }), change(2, { add: ['status:waiting'] }), change(3, { add: ['status:in review'] })));
     assert.deepEqual(outcome, { sent: 3, writes: 4, held: 0, failed: undefined });
     assert.deepEqual(lines, [
-      'MADE acme/web: the label "status:in-review", which the push sets',
-      'SET acme/web#1 T1 in-progress: add status:in-review',
+      'MADE acme/web: the label "status:in review", which the push sets',
+      'SET acme/web#1 T1 in-progress: add status:in review',
       'SET acme/web#2 T2 in-progress: add status:waiting',
-      'SET acme/web#3 T3 in-progress: add status:in-review',
+      'SET acme/web#3 T3 in-progress: add status:in review',
     ]);
-    assert.deepEqual(host.calls[0], { kind: 'label-create', repo: REPO, label: STATUS_LABEL_SPECS.find((spec) => spec.name === 'status:in-review') });
+    assert.deepEqual(host.calls[0], { kind: 'label-create', repo: REPO, label: STATUS_LABEL_SPECS.find((spec) => spec.name === 'status:in review') });
     assert.equal(host.calls.filter((call) => call.kind === 'label-create').length, 1);
   });
 
@@ -114,10 +114,10 @@ describe('applyPush', () => {
   });
 
   it('stops the repository at the first failed write, whichever step it is', async () => {
-    const added = await push(new FakeIssueHost().hasLabels('status:waiting').failsLabel('HTTP 403'), plan(change(1, { add: ['status:waiting'] }), change(2, { remove: ['status:triaged'] })));
+    const added = await push(new FakeIssueHost().hasLabels('status:waiting').failsLabel('HTTP 403'), plan(change(1, { add: ['status:waiting'] }), change(2, { remove: ['status:open'] })));
     assert.deepEqual(added.outcome, { sent: 0, writes: 0, held: 0, failed: 'HTTP 403' });
     assert.deepEqual(added.lines, ['FAILED acme/web#1 T1: HTTP 403; the rest of acme/web waits for the next run']);
-    const removed = await push(new FakeIssueHost().failsRemove('status:waiting', 'HTTP 404'), plan(change(4, { remove: ['status:triaged'] }), change(5, { remove: ['status:waiting'] }), change(6, { remove: ['status:triaged'] })));
+    const removed = await push(new FakeIssueHost().failsRemove('status:waiting', 'HTTP 404'), plan(change(4, { remove: ['status:open'] }), change(5, { remove: ['status:waiting'] }), change(6, { remove: ['status:open'] })));
     assert.deepEqual(removed.outcome, { sent: 1, writes: 1, held: 0, failed: 'HTTP 404' });
     const host = new FakeIssueHost().failsClose('HTTP 410');
     const closed = await push(host, plan(change(9, { status: 'dropped', close: 'not-planned' })));

@@ -309,15 +309,15 @@ changes and writes.
 ```text
 ACCESS acme: read with the token saved as teamrig-gh-acme
 PUSH acme/web: 3 to change, 3 unchanged, 1 closed on the host while the task is active
-LABEL acme/web#7 T41 in-progress: add status:in-progress, take off status:triaged
-CLOSE acme/web#9 T42 done: close as completed, take off status:in-review
+LABEL acme/web#7 T41 in-progress: add status:in progress, take off status:open
+CLOSE acme/web#9 T42 done: close as completed, take off status:in review
 ASSIGN acme/web#11 T43 open: assign acme
 KEPT acme/web#5 T30 open: closed on the host (not_planned) while the task is active; the push never reopens an issue, so set the task to match or reopen the issue
 PREVIEW nothing was written; a push would send 5 write(s) now, at most 40 a run, and plan the rest again on the next
 ```
 
-- **One status label.** `open` shows `status:triaged`, `in-progress` `status:in-progress`, `waiting`
-  `status:waiting`, `verifying` `status:in-review`; any other `status:` label comes off. Done closes the issue as
+- **One status label.** `open` shows `status:open`, `in-progress` `status:in progress`, `waiting`
+  `status:waiting`, `verifying` `status:in review`; any other `status:` label comes off. Done closes the issue as
   completed, dropped as not planned. A repository that lacks one of these labels gets it made first, with a
   `MADE` line: these four are the only labels teamrig ever makes, and only with `--yes` or the automatic push.
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
