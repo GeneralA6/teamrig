@@ -5,8 +5,13 @@ import { isBurstKind } from "./burst.js";
  * The team's append-only log of bursts, `<state>/usage/bursts.jsonl`, oldest first: each burst the lead
  * starts, and the lead's end of one before its time. Instants are stored as ISO strings, like the lift log.
  */
-/** The format of the burst log's records; a newer one is skipped on read and refuses a write. */
-export const BURST_FORMAT = 1;
+/**
+ * The format of the burst log's records; a newer one is skipped on read and refuses a write. Format 2 adds the rush
+ * kind and its `goal`, so a teamrig that knows no rush never writes beside one.
+ */
+export const BURST_FORMAT = 2;
+/** Format 1 records, written before the rush, read as they are: a surplus or deadline burst has no goal. */
+const PRE_RUSH_FORMAT = 1;
 function iso(at) {
     return new Date(at).toISOString();
 }
@@ -26,6 +31,7 @@ export function burstRecordOf(record) {
         endsAt: iso(record.endsAt),
         tasks: record.tasks,
         ...(record.deadline === undefined ? {} : { deadline: iso(record.deadline) }),
+        ...(record.goal === undefined ? {} : { goal: record.goal }),
         reason: record.reason,
         ...(record.approvedBy === undefined ? {} : { approvedBy: record.approvedBy }),
         by: record.by,
@@ -57,7 +63,11 @@ function parseStart(record) {
     const at = instantOf(record, 'at');
     const deadline = instantOf(record, 'deadline');
     const approvedBy = stringField(record, 'approvedBy');
+    const goal = stringField(record, 'goal');
     if (!isBurstKind(kind) ||
+        // A rush without its goal cannot say which work it speeds, so it is damaged.
+        (kind === 'rush' && goal === undefined) ||
+        ('goal' in record && goal === undefined) ||
         !isStringArray(sessions) ||
         !isNonNegativeInteger(helpers) ||
         !isNonNegativeInteger(hires) ||
@@ -82,6 +92,7 @@ function parseStart(record) {
         endsAt,
         tasks,
         ...(deadline === undefined ? {} : { deadline }),
+        ...(goal === undefined ? {} : { goal }),
         reason,
         ...(approvedBy === undefined ? {} : { approvedBy }),
         by,
@@ -104,7 +115,7 @@ export class BurstLog {
         const parse = parseJsonl((await this.files.read(this.path)) ?? '');
         const records = [];
         for (const { record, version } of parse.records) {
-            const parsed = version === BURST_FORMAT ? parseBurstRecord(record) : undefined;
+            const parsed = version === BURST_FORMAT || (version === PRE_RUSH_FORMAT && record['kind'] !== 'rush') ? parseBurstRecord(record) : undefined;
             if (parsed !== undefined) {
                 records.push(parsed);
             }

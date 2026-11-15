@@ -41,6 +41,7 @@ import { TASK_ID } from "../../register/model.js";
 import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } from "../account-teams.js";
 import { UsageError, onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
+import { rushLine, rushSegment } from "../../budget/rush.js";
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone } from "../kit.js";
 import { statusLineMeetingFor } from "../statusline-meeting.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -273,6 +274,8 @@ export async function budget(args, runtime) {
             const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
             const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
             lines = [
+                // A rush first: while it runs every hold the lines below report is report only (`openKit`'s overlay).
+                ...(kit.rush === undefined ? [] : [rushLine(kit.rush, zone)]),
                 ...todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone, overAction: config.budget.overAction }),
                 ...resetStockLines(config.budget.resets, now, zone),
             ];
@@ -640,7 +643,13 @@ function statusLineView(git, dir, show, reading) {
         ...(commit === undefined ? {} : { commit }),
         ...(reading.pacePct === undefined ? {} : { pacePct: reading.pacePct }),
         ...(reading.meeting === undefined ? {} : { meeting: reading.meeting }),
+        ...(reading.rush === undefined ? {} : { rush: reading.rush }),
     };
+}
+/** The rush segment of the team's status line; the kit read the rush when it opened (`openKit`), so this reads nothing. */
+function rushSegmentOf(runtime, team) {
+    const rush = team?.kit.rush;
+    return rush === undefined || team === undefined ? undefined : rushSegment(rush, teamZone(team.config, runtime));
 }
 /**
  * Folds the saved snapshot into the folder's summaries (`foldIntoWeekSummary`, `foldIntoFiveHourSummary`); a failure is
@@ -718,6 +727,7 @@ export async function statusline(args, runtime) {
         effort: effortOfStatus(input),
         pacePct: await pacePctOf(runtime, snapshot, shown),
         meeting: await meetingMarkOf(runtime, shown.team, snapshot.sessionId),
+        rush: rushSegmentOf(runtime, shown.team),
     };
     runtime.out.stdout(statusLineText(snapshot, statusLineView(runtime.git, dir, shown.show, reading)));
     return EXIT.ok;

@@ -13,6 +13,7 @@ import { ACTIVE_STATUSES } from "../../register/model.js";
 import { teamsOnAccountOf } from "../account-teams.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { readBursts } from "../burst-reading.js";
+import { KitTreeGoals } from "../tree-goals.js";
 import { callerOf, listOf } from "../inputs.js";
 import { leadOnly, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -138,7 +139,7 @@ export async function burst(args, runtime) {
 function kindOf(args) {
     const kind = onePositional(args, 'kind');
     if (!isBurstKind(kind)) {
-        throw new UsageError(`"${kind}" is not a burst kind: ${BURST_KINDS.join(' or ')}`);
+        throw new UsageError(`"${kind}" is not a burst kind: ${BURST_KINDS.slice(0, -1).join(', ')} or ${BURST_KINDS.slice(-1).join('')}`);
     }
     return kind;
 }
@@ -161,17 +162,36 @@ async function tasksOf(runtime, text) {
     });
     return { ids, owners };
 }
-/** The sessions a burst names: --sessions, else the whole team for a surplus and the tasks' owners for a deadline. */
+/**
+ * A rush's goal: a goal the team's tasks may serve, its own or one of a team above it (`KitTreeGoals`), so a rush
+ * never names a tag no task can carry. Undefined when --goal is absent; decideBurst refuses a rush without one.
+ */
+async function goalOf(runtime, kit, config, text) {
+    if (text === undefined) {
+        return undefined;
+    }
+    const goal = text.trim();
+    const known = await new KitTreeGoals(runtime, kit.paths, config).recorded();
+    if (!known.has(goal)) {
+        const tags = [...known].sort();
+        throw new RefusedError(`"${goal}" is not a goal of the team${tags.length === 0 ? ': it has none yet' : `: ${tags.join(', ')}`}`);
+    }
+    return goal;
+}
+/**
+ * The sessions a burst names: --sessions, else the whole team for a surplus or a rush, whose goal any session's task
+ * may serve, and the tasks' owners for a deadline.
+ */
 function sessionsOf(roster, flags, kind, owners) {
     const text = flags.get('sessions');
     if (text !== undefined) {
         return [...new Set(listOf('--sessions', text).map((each) => sessionIdOf(roster, each)))];
     }
-    return kind === 'surplus' ? [...roster.ids] : [...new Set(owners)].filter((owner) => roster.ids.includes(owner));
+    return kind === 'deadline' ? [...new Set(owners)].filter((owner) => roster.ids.includes(owner)) : [...roster.ids];
 }
 /**
- * `burst start <surplus|deadline> --reason "<why>" [--sessions <ids>] [--helpers <n>] [--hires <n>] [--stop-pct <n>]
- * [--by <time>] [--task <ids>] [--approved-by "<who>"] [--yes]`: the lead only.
+ * `burst start <surplus|deadline|rush> --reason "<why>" [--sessions <ids>] [--helpers <n>] [--hires <n>] [--stop-pct <n>]
+ * [--by <time>] [--task <ids>] [--goal <tag>] [--approved-by "<who>"] [--yes]`: the lead only.
  */
 export async function start(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
@@ -184,6 +204,12 @@ export async function start(args, runtime) {
     if (kind === 'surplus' && (flags.has('task') || flags.has('by'))) {
         throw new UsageError("--task and --by name a deadline burst's work: a surplus burst takes neither");
     }
+    if (kind !== 'rush' && flags.has('goal')) {
+        throw new UsageError('--goal names the goal a rush works: only a rush takes it');
+    }
+    if (kind === 'rush' && flags.has('task')) {
+        throw new UsageError("--task names a deadline burst's work: a rush works its --goal's tasks");
+    }
     const now = runtime.clock.now();
     const helpers = countFlag(flags, 'helpers');
     const hires = countFlag(flags, 'hires');
@@ -195,11 +221,12 @@ export async function start(args, runtime) {
     const roster = await rosterOf(runtime, kit, config);
     const by = leadOnly(roster, caller, 'starts a burst');
     const tasks = await tasksOf(runtime, flags.get('task'));
+    const goal = await goalOf(runtime, kit, config, flags.get('goal'));
     const sessions = sessionsOf(roster, flags, kind, tasks.owners);
     const { week, bySession } = await usageReadingOf(runtime, kit, config, roster);
     const log = new BurstLog(runtime.files, kit.paths.bursts);
     const { records } = await log.read();
-    const decision = decideBurst({ kind, sessions, helpers, hires, stopPct, deadline, tasks: tasks.ids, reason, approvedBy: flags.get('approved-by'), by, now }, {
+    const decision = decideBurst({ kind, sessions, helpers, hires, stopPct, deadline, tasks: tasks.ids, goal, reason, approvedBy: flags.get('approved-by'), by, now }, {
         usedPct: week.usedPct,
         window: week.window,
         targetPct: config.budget.targetPct,

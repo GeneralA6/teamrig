@@ -2,7 +2,7 @@ import { basename, dirname, join } from 'node:path';
 import { LeadTree } from "../../config/lead-tree.js";
 import { ownerAsk } from "../../config/tree.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
+import { activeBurst, burstFloorOf, RUSH_STOP_REASON, rushPastStop, withBurst } from "../../budget/burst.js";
 import { surplusHintOf } from "../../budget/burst-lines.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { activeCut, CutLog } from "../../budget/cut.js";
@@ -102,7 +102,15 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     }
     const funded = fundForDay({ split, others }, week);
     const shared = dailyBudgetOf(week.allowancePct, id, funded.split, funded.others);
-    const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
+    const burstLog = new BurstLog(files, kit.paths.bursts);
+    const { records: burstRecords } = await burstLog.read();
+    const inForce = activeBurst(burstRecords, now, week.usedPct);
+    const pastStop = rushPastStop(burstRecords, now, week.usedPct);
+    if (pastStop !== undefined) {
+        // openKit reads only the log, not the week (that would open every kit of the tree), so the stop % that ends a rush
+        // must be written down for its overlay to end. Two hooks may both write it: a second end record changes nothing.
+        await burstLog.append({ kind: 'end', burstAt: pastStop.at, reason: RUSH_STOP_REASON, by: id, at: now });
+    }
     const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
     const budgetPct = withBurst(shared, burst === undefined ? undefined : burstFloorOf(burst, week, byId, budget, now));
     if (budgetPct === undefined) {

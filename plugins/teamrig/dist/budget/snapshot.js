@@ -252,6 +252,9 @@ export function statusLineText(snapshot, view) {
     if (fiveHour !== null) {
         parts.push(`5h ${Math.round(fiveHour.usedPct)}%`);
     }
+    if (view.rush !== undefined) {
+        parts.push(view.rush);
+    }
     const meeting = view.meeting;
     if (meeting?.kind === 'held') {
         parts.push(meeting.text);
