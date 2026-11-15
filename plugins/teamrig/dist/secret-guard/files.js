@@ -91,7 +91,7 @@ export function fileFindings(run, rules) {
         if (ENVIRON.test(text)) {
             return [{ kind: 'environment' }];
         }
-        return rules.paths.mayName(path, run.dialect !== 'bash') ? [{ kind: 'file', path: text }] : [];
+        return rules.paths.mayName(path, { dotfiles: run.dialect !== 'bash', sets: 'bash' }) ? [{ kind: 'file', path: text }] : [];
     });
 }
 /** The texts a word may name a file by: the word, a `--file=x` option's value, `dd if=x`; never a bare option. */

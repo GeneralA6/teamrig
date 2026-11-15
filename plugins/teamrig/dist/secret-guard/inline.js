@@ -88,7 +88,7 @@ export function inlineFindings(run, rules) {
     const named = (texts, names) => texts
         .filter((text) => (homeJoined ? [wordPath(text, place), `${rules.home}/${text}`] : [wordPath(text, place)]).some(names))
         .map((text) => ({ kind: 'file', path: text }));
-    const expanded = (path) => rules.paths.mayName(path, true);
+    const expanded = (path) => rules.paths.mayName(path, { dotfiles: true, sets: 'bash' });
     const spelled = (path) => rules.paths.listed(path);
     const literals = [...inline.code.matchAll(LITERAL)].map(([, , body]) => (body ?? '').replace(/\\(.)/g, '$1'));
     const expands = EXPANDS.test(inline.code) || FAMILY_EXPANDS[family].test(inline.code);

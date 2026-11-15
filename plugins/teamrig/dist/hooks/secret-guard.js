@@ -99,7 +99,7 @@ function grepFindings(input, dir, rules) {
  */
 function mayPick(rules, target, glob) {
     const globs = glob.length > MAX_GREP_GLOB_LENGTH ? undefined : braceAlternatives(glob, MAX_GREP_ALTERNATIVES);
-    return globs === undefined || globs.some((one) => rules.paths.mayName(`${target}/${one}`, true));
+    return globs === undefined || globs.some((one) => rules.paths.mayName(`${target}/${one}`, { dotfiles: true, sets: 'ripgrep' }));
 }
 /**
  * The globs of a Grep's `glob` input that pick the files it reads. Claude Code splits the input at whitespace, then
