@@ -183,6 +183,14 @@ describe('teamrig queue', () => {
     assert.equal(request?.timeoutMs, 45 * MINUTE);
   });
 
+  it('starts the command without the credential variables delivery.passEnv does not name', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { passEnv: ['NPM_TOKEN'] } });
+    const env = { PROBE: 'yes', GH_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' };
+    await kit.run(['queue', '--session', 'alpha', '--what', 'install', '--', 'npm', 'ci'], { steps, env });
+    const [request] = steps.ran;
+    assert.deepEqual([request?.env['PROBE'], request?.env['GH_TOKEN'], request?.env['NPM_TOKEN']], ['yes', undefined, 'not-a-real-credential']);
+  });
+
   it('prints FAILED with the exit code and records it', async () => {
     const { kit, steps } = harness();
     const result = await kit.run(BUILD, { steps: steps.ends(3) });

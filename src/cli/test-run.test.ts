@@ -38,6 +38,14 @@ describe('teamrig test', () => {
     assert.equal(request?.env['PROBE'], 'yes');
   });
 
+  it('starts the command without the credential variables delivery.passEnv does not name', async () => {
+    const { kit, shell } = harness({ ...TEAM, delivery: { passEnv: ['NPM_TOKEN'] } });
+    const env = { PROBE: 'yes', GH_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' };
+    await kit.run(['test', '--', 'npm', 'test'], { shell, env });
+    const [request] = shell.ran;
+    assert.deepEqual([request?.env['PROBE'], request?.env['GH_TOKEN'], request?.env['NPM_TOKEN']], ['yes', undefined, 'not-a-real-credential']);
+  });
+
   it('passes every word after -- on, its flags and --help included', async () => {
     const { kit, shell } = harness();
     const result = await kit.run(['test', '--', 'npm test -- --help'], { shell });

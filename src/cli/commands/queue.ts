@@ -16,7 +16,8 @@ import { endedText, startedByGit, type StarterWatching } from '../../delivery/st
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../delivery/steps.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
-import { ENV } from '../../core/home.ts';
+import { withoutCredentials } from '../../core/child-env.ts';
+import { ENV, type Env } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -422,10 +423,10 @@ async function sessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster
  * holder as `holderText` writes it.
  */
 async function runUnderParent(runtime: CliRuntime, say: Say, parent: string, step: Step): Promise<ExitCode> {
-  const { what, words, maxRunMinutes, watching } = step;
+  const { what, words, maxRunMinutes, watching, env } = step;
   say(`running: ${what} under the host lock of ${parent} (killed after ${minutesText(maxRunMinutes)})`);
   await step.reporting.started();
-  const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop });
+  const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env, timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop });
   return report(runtime, say, end, step);
 }
 
@@ -541,6 +542,8 @@ interface Step {
   readonly maxRunMinutes: number;
   readonly watching: StarterWatching;
   readonly reporting: Reporting;
+  /** The caller's environment without the credential variables `delivery.passEnv` does not name (core/child-env.ts). */
+  readonly env: Env;
 }
 
 /**
@@ -603,7 +606,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       : await detachedReporting(runtime, kit, config, say, { id: detachedId, session, what, log: detachedLogOf(delivery, kit.paths, detachedId), record: runRecordPathOf(detachedDirOf(delivery, kit.paths), detachedId) });
   const watching = detachedId === undefined ? await watchStarters(runtime, say) : unwatched();
   try {
-    const step: Step = { what, words, maxRunMinutes, watching, reporting };
+    const step: Step = { what, words, maxRunMinutes, watching, reporting, env: withoutCredentials(runtime.env, delivery.passEnv) };
     const prePush: PrePush | undefined = args.switches.has('pre-push') ? { command: commandLine(words, runtime.platform), before: runtime.trees.checked(runtime.cwd) } : undefined;
     if (prePush !== undefined && (await reusedPass(runtime, say, prePush, zone))) {
       return EXIT.ok;
@@ -668,7 +671,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       }
       say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
       await reporting.started();
-      const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
+      const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(step.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
       const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined || taking.sharing.heavy ? {} : { shared: true as const }), request: run };
       const end = await runRecorded(runtime, { places, delivery, opened: (start) => reporting.opened({ ledger: places.ledger, start }) }, mark);
       const code = await report(runtime, say, end, step);

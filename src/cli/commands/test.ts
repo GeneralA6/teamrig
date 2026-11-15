@@ -1,12 +1,13 @@
 import { join } from 'node:path';
-import { DEFAULT_TESTS } from '../../config/defaults.ts';
+import { DEFAULT_PASS_ENV, DEFAULT_TESTS } from '../../config/defaults.ts';
+import { withoutCredentials } from '../../core/child-env.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { ENV, resolveKitHome } from '../../core/home.ts';
 import { resolveTeam } from '../../core/team.ts';
 import { commandHeader, logBody, pruneLogs, reserveLog } from '../../test-run/logs.ts';
 import { cleanOutput, parseTestOutput } from '../../test-run/parse.ts';
 import { labelOf, reportLines } from '../../test-run/report.ts';
-import { commandLine, type ShellResult } from '../../test-run/shell.ts';
+import { commandLine, type ShellRequest, type ShellResult } from '../../test-run/shell.ts';
 import type { ParsedArgs } from '../args.ts';
 import { sessionRef, shellWordsOf } from '../inputs.ts';
 import { openKit, rosterOf, teamFolders } from '../kit.ts';
@@ -18,6 +19,8 @@ interface LogPlace {
   /** The session the log is named after, null for none. */
   readonly session: string | null;
   readonly maxFailureChars: number;
+  /** The team's `delivery.passEnv`: the credential variables the command still gets; none outside a team. */
+  readonly passEnv: readonly string[];
 }
 
 /** The session the run is for, as given: `--session`, else the session variable, else none. */
@@ -38,21 +41,21 @@ function givenSession(args: ParsedArgs, runtime: CliRuntime): string | null {
 async function logPlace(runtime: CliRuntime, session: string | null): Promise<LogPlace> {
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
   if (found.kind !== 'team') {
-    return { dir: join(resolveKitHome(runtime.env, runtime.userHome), 'logs'), session, maxFailureChars: DEFAULT_TESTS.maxFailureChars };
+    return { dir: join(resolveKitHome(runtime.env, runtime.userHome), 'logs'), session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV };
   }
   const kit = await openKit(runtime, found.team);
   if (kit.load.status !== 'loaded') {
-    return { dir: kit.paths.logs, session, maxFailureChars: DEFAULT_TESTS.maxFailureChars };
+    return { dir: kit.paths.logs, session, maxFailureChars: DEFAULT_TESTS.maxFailureChars, passEnv: DEFAULT_PASS_ENV };
   }
   const { config } = kit.load;
   const known = session === null ? undefined : (await rosterOf(runtime, kit, config)).lookup(session);
-  return { dir: kit.paths.logs, session: known?.ok === true ? known.id : session, maxFailureChars: config.tests.maxFailureChars };
+  return { dir: kit.paths.logs, session: known?.ok === true ? known.id : session, maxFailureChars: config.tests.maxFailureChars, passEnv: config.delivery.passEnv };
 }
 
 /** Runs the command; when it cannot start, the log (holding the command line) says why before the error goes on. */
-async function runLogged(runtime: CliRuntime, command: string, log: string): Promise<ShellResult> {
+async function runLogged(runtime: CliRuntime, request: ShellRequest, log: string): Promise<ShellResult> {
   try {
-    return await runtime.shell.run({ command, cwd: runtime.cwd, env: runtime.env });
+    return await runtime.shell.run(request);
   } catch (error) {
     await runtime.files.append(log, `could not start: ${errorMessage(error)}\n`);
     throw error;
@@ -71,7 +74,7 @@ export async function test(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const command = commandLine(words, runtime.platform);
   const log = await reserveLog(runtime.files, place.dir, place.session, commandHeader(command));
   const started = runtime.clock.now();
-  const result = await runLogged(runtime, command, log);
+  const result = await runLogged(runtime, { command, cwd: runtime.cwd, env: withoutCredentials(runtime.env, place.passEnv) }, log);
   const tookMs = runtime.clock.now() - started;
   const output = cleanOutput(result.output);
   await runtime.files.append(log, logBody(output, result.end));
