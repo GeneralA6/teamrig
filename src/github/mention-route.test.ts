@@ -2,10 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import type { HostPost } from '../issues/post.ts';
+import type { HostPull } from '../issues/pull.ts';
 import {
   firstMentionWatch,
   MENTION_WAKE_GAP_MINUTES,
   mentionCutLine,
+  mentionItems,
   mentionLine,
   mentionReadSince,
   mentionRecipient,
@@ -98,6 +100,47 @@ describe('mentionRoutes', () => {
 
   it('routes nothing for a mention in code or a quote', () => {
     assert.deepEqual(routesOf([post('comment:1', '> @octocat wrote this\n`@hubber`')]), []);
+  });
+});
+
+describe('mentionItems', () => {
+  const pull = (number: number, head: string, author: string, fork = false): HostPull => ({
+    repo: 'acme/web',
+    number,
+    title: `Change ${number}`,
+    url: `https://github.com/acme/web/pull/${number}`,
+    state: 'merged',
+    draft: false,
+    createdAt: '2030-01-01T00:00:00Z',
+    updatedAt: '2030-01-01T00:00:00Z',
+    mergedAt: '2030-01-01T00:00:00Z',
+    closedAt: '2030-01-01T00:00:00Z',
+    authorAssociation: 'CONTRIBUTOR',
+    author,
+    head,
+    fork,
+    mergeable: 'unknown',
+    checks: 'none',
+    review: 'none',
+    failedJobs: [],
+  });
+  const itemOf = mentionItems(
+    'acme/web',
+    { issues: [{ number: 3, labels: ['area:docs'] }], pulls: [pull(20, 't5-docs', 'Hubber'), pull(21, 't5-docs', 'outsider'), pull(22, 't5-docs', 'hubber', true)] },
+    { ofRef: (ref) => (ref === 'gh:acme/web#4' ? 'alpha' : undefined), ofTask: (task) => (task === 'T5' ? 'charlie' : undefined) },
+    ROUTING.ours,
+  );
+
+  it("gives an issue's labels and its task's owner, and a pull request on one of our authors' own task branch that task's owner", () => {
+    assert.deepEqual([3, 4, 20].map(itemOf), [
+      { labels: ['area:docs'], taskOwner: undefined },
+      { labels: [], taskOwner: 'alpha' },
+      { labels: [], taskOwner: 'charlie' },
+    ]);
+  });
+
+  it("gives no task owner for an outsider's branch or a fork, even one named for a task, nor for an item it never read", () => {
+    assert.deepEqual([21, 22, 99].map((number) => itemOf(number).taskOwner), [undefined, undefined, undefined]);
   });
 });
 

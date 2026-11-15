@@ -1,9 +1,12 @@
 import type { SecretScanner } from '../core/secrets.ts';
+import type { HostIssue } from '../issues/issue.ts';
 import type { HostPost } from '../issues/post.ts';
+import type { HostPull } from '../issues/pull.ts';
 import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX } from './gh.ts';
 import { areaOwnerOf, issueRef, type ImportRules } from './map.ts';
 import { mentionsOf } from './mentions.ts';
 import { REVIEW_READS_MAX } from './posts.ts';
+import { ownBranchTask } from './pull-news.ts';
 import type { OurLogins } from './trust.ts';
 
 /**
@@ -101,6 +104,30 @@ export function mentionRoutes(
     }
   }
   return { routes, seen: after };
+}
+
+/**
+ * What routing needs of each issue or pull request of `repo`, from what this run read of them: an issue's labels, and
+ * the owner of the task that tracks the issue (`ownerOfRef`) or that one of our authors' own `t<id>-` branch names
+ * (`ownerOfTask`, pull-news.ts). An item this run did not read, such as an issue closed before `closedDays`, routes by
+ * its task alone.
+ */
+export function mentionItems(
+  repo: string,
+  read: { readonly issues: readonly Pick<HostIssue, 'number' | 'labels'>[]; readonly pulls: readonly HostPull[] },
+  owners: { readonly ofRef: (ref: string) => string | undefined; readonly ofTask: (task: string) => string | undefined },
+  ours: OurLogins,
+): (number: number) => MentionItem {
+  const labels = new Map(read.issues.map((issue) => [issue.number, issue.labels]));
+  const pulls = new Map(read.pulls.map((pull) => [pull.number, pull]));
+  return (number) => {
+    const pull = pulls.get(number);
+    const branchTask = pull === undefined ? undefined : ownBranchTask(pull, ours);
+    return {
+      labels: labels.get(number) ?? [],
+      taskOwner: owners.ofRef(issueRef(repo, number)) ?? (branchTask === undefined ? undefined : owners.ofTask(branchTask)),
+    };
+  };
 }
 
 /** What the mention scan keeps of one repository between runs: the time its next read starts at, and its seen marks. */
