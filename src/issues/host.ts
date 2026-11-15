@@ -5,6 +5,7 @@
  */
 
 import type { HostIssue, LinkedIssue, ReadComment } from './issue.ts';
+import type { HostPosts } from './post.ts';
 import type { HostPull } from './pull.ts';
 
 /** One issue or pull request: its repository (`owner/name`, in lowercase) and its number. */
@@ -128,6 +129,11 @@ export interface IssueHost {
   pulls(repo: string, since: string | undefined): Promise<HostPulls>;
   /** The end of the log of the failed CI job `jobId` of `repo` (a pull request's FailedJob id). */
   jobLog(repo: string, jobId: number): Promise<HostJobLog>;
+  /**
+   * The comments, review comments, reviews and issue and pull request bodies of `repo` written or edited at or after
+   * `since` (an ISO time in whole seconds, UTC), for the mention scan. Their text is outside input.
+   */
+  posts(repo: string, since: string): Promise<HostPosts>;
   /** Opens one issue. */
   open(draft: IssueDraft): Promise<HostOpen>;
   /** Posts `body` as one comment. */

@@ -5,7 +5,7 @@ import { FakeCredentials, TEST_OWNERS } from '../testing/fake-credentials.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
-import { commentNode, FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
+import { commentNode, FakeGh, ghIssue, ghPull, restComment } from '../testing/fake-gh.ts';
 import type { HostPull } from '../issues/pull.ts';
 import {
   assigneeReadArgs,
@@ -163,6 +163,28 @@ describe('GitHubIssueHost.jobLog', () => {
     const odd: GhResult = { end: { kind: 'exited', code: 2 }, stdout: '', stderr: 'boom tok_abcdefgh\n' };
     const failed = await hostWith(new FakeGh().answers('acme/web', odd)).jobLog('acme/web', 41);
     assert.deepEqual(failed.kind === 'failed' && failed.reason.startsWith('gh run view for the failed job logs of acme/web') && !failed.reason.includes('tok_abcdefgh'), true, JSON.stringify(failed));
+  });
+});
+
+describe('GitHubIssueHost.posts', () => {
+  it('reads the posts with the saved token and says how many items it left out', async () => {
+    const gh = new FakeGh().holdsPosts('acme/web', 'issues/comments', [restComment('acme/web', 3, 11, { body: 'hi @octocat' }), { id: 12, updated_at: '2030-01-10T00:00:00Z' }]);
+    const read = await hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'tok_zzzzzzzz')).posts('acme/web', '2030-01-01T00:00:00Z');
+    assert.deepEqual(read.kind === 'read' ? [read.posts.map((post) => post.key), read.cutAt, read.notes] : read, [
+      ['comment:11'],
+      undefined,
+      ['1 item(s) gh printed did not read as comments, reviews or bodies and were left out'],
+    ]);
+    assert.ok(gh.ran.every((request) => request.env['GH_TOKEN'] === 'tok_zzzzzzzz'));
+  });
+
+  it('gives the one line, naming the Issues permission, a secret shape redacted, when a read fails', async () => {
+    const forbidden: GhResult = { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 403: Resource not accessible by personal access token\n' };
+    const read = await hostWith(new FakeGh().answers('acme/web', forbidden), new FakeCredentials().saves('teamrig-gh-acme', 'k')).posts('acme/web', '2030-01-01T00:00:00Z');
+    assert.equal(read.kind === 'failed' && read.reason.includes('may not read the issue comments of acme/web') && read.reason.includes('set Issues to Read-only'), true, JSON.stringify(read));
+    const odd: GhResult = { end: { kind: 'exited', code: 2 }, stdout: '', stderr: 'boom tok_abcdefgh\n' };
+    const failed = await hostWith(new FakeGh().answers('acme/web', odd)).posts('acme/web', '2030-01-01T00:00:00Z');
+    assert.equal(failed.kind === 'failed' && !failed.reason.includes('tok_abcdefgh'), true, JSON.stringify(failed));
   });
 });
 

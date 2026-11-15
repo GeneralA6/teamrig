@@ -1,5 +1,6 @@
 import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostJobLog, HostLabel, HostLinks, HostList, HostOpen, HostPulls, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
+import type { HostPost, HostPosts } from '../issues/post.ts';
 import type { HostPull } from '../issues/pull.ts';
 
 /** What each use does, as the fake's access line words it. */
@@ -114,6 +115,10 @@ export class FakeIssueHost implements IssueHost {
   /** Each failed job's log read asked, in order. */
   readonly jobLogReads: { readonly repo: string; readonly jobId: number }[] = [];
   private readonly jobLogs = new Map<number, HostJobLog>();
+  /** Each posts read asked, in order. */
+  readonly postReads: { readonly repo: string; readonly since: string }[] = [];
+  private readonly postsOf = new Map<string, readonly HostPost[]>();
+  private postsFailure: string | undefined;
 
   /** From now on, a links read of `repo` gives `issues`, with `notes` about the read. */
   withLinks(repo: string, issues: readonly LinkedIssue[], notes: readonly string[] = []): this {
@@ -190,6 +195,27 @@ export class FakeIssueHost implements IssueHost {
   holdsJobLog(jobId: number, log: HostJobLog): this {
     this.jobLogs.set(jobId, log);
     return this;
+  }
+
+  /** From now on, a posts read of `repo` gives these, those changed at or after its time; a repository with none set has none. */
+  holdsPosts(repo: string, posts: readonly HostPost[]): this {
+    this.postsOf.set(repo, posts);
+    return this;
+  }
+
+  /** From now on, a posts read fails for `reason`. */
+  failsPosts(reason: string): this {
+    this.postsFailure = reason;
+    return this;
+  }
+
+  posts(repo: string, since: string): Promise<HostPosts> {
+    this.postReads.push({ repo, since });
+    if (this.postsFailure !== undefined) {
+      return Promise.resolve({ kind: 'failed', reason: this.postsFailure });
+    }
+    const posts = (this.postsOf.get(repo) ?? []).filter((post) => Date.parse(post.updatedAt) >= Date.parse(since));
+    return Promise.resolve({ kind: 'read', posts, cutAt: undefined, notes: [] });
   }
 
   jobLog(repo: string, jobId: number): Promise<HostJobLog> {

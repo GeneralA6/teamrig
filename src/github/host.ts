@@ -22,6 +22,7 @@ import {
   type WatchMarks,
 } from '../issues/host.ts';
 import type { IssueState } from '../issues/issue.ts';
+import type { HostPosts } from '../issues/post.ts';
 import { exitText } from '../open/processes.ts';
 import type { Env } from '../core/home.ts';
 import {
@@ -55,6 +56,7 @@ import { failedLogExcerpt } from './job-log.ts';
 import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
 import { latestIssues } from './plan.ts';
+import { readPosts } from './posts.ts';
 import { listPulls, PULL_LIMIT } from './pulls.ts';
 import { PULL_PAGE_SIZE } from './queries.ts';
 import { NoAccessError, type RepoAccess, type RepoTokens } from './tokens.ts';
@@ -157,6 +159,20 @@ export class GitHubIssueHost implements IssueHost {
       return { kind: 'failed', reason: this.scanner.redact(run.reason) };
     }
     return { kind: 'read', ...failedLogExcerpt(run.stdout, (text) => this.scanner.redact(text)) };
+  }
+
+  /** The posts of `repo` changed since `since` (posts.ts), as the owner's saved token reads them. */
+  async posts(repo: string, since: string): Promise<HostPosts> {
+    const access = await this.tokens.accessFor(repo);
+    if (access instanceof NoAccessError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    const read = await readPosts(this.gh, access, repo, since);
+    if (read.kind === 'failed') {
+      return { kind: 'failed', reason: this.scanner.redact(read.reason) };
+    }
+    const notes = read.unreadable > 0 ? [`${read.unreadable} item(s) gh printed did not read as comments, reviews or bodies and were left out`] : [];
+    return { kind: 'read', posts: read.posts, cutAt: read.cutAt, notes };
   }
 
   /**

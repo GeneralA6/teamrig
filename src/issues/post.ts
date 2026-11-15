@@ -15,3 +15,11 @@ export interface HostPost {
   /** When it was last written or edited (an ISO time). */
   readonly updatedAt: string;
 }
+
+/**
+ * A repository's posts changed since a time, as a read found them, or one plain line saying why there are none. A read
+ * cut short gives `cutAt`, the time it read every list through, from which the next read goes on.
+ */
+export type HostPosts =
+  | { readonly kind: 'read'; readonly posts: readonly HostPost[]; readonly cutAt: string | undefined; readonly notes: readonly string[] }
+  | { readonly kind: 'failed'; readonly reason: string };
