@@ -1,8 +1,10 @@
+import { resolve } from 'node:path';
 import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText } from "../../issues/host.js";
-import { labelIssue, labelRefusal, postRefusal, writeIssue } from "../../issues/write.js";
+import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue } from "../../issues/write.js";
 import { RegisterPolicy } from "../../register/policy.js";
+import { secretRulesOf } from "../../secret-guard/rules.js";
 import { onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { hostOf } from "../issue-hosts.js";
@@ -20,6 +22,41 @@ export async function issueComment(args, runtime) {
     const target = targetOf(args);
     return writeOn(args, runtime, { target, comment: requiredFlag(args.flags, 'body'), close: false }, '--body');
 }
+/**
+ * `issue edit <owner/name#n> --body-file <path>` (T3021): replaces the body (the description) of one issue or pull
+ * request of the team's repositories with the text of a file, through the same host and checks as `issue comment`;
+ * the title, state, labels and assignees stay. A file is the input, as a full description runs to many lines a shell
+ * argument would mangle; a byte-order mark an editor put at its start is dropped. Exit 1 when the host failed, else 0.
+ */
+export async function issueEdit(args, runtime) {
+    const target = targetOf(args);
+    const checked = await checkedRepo(args, runtime, target.repo);
+    const body = await bodyFileOf(requiredFlag(args.flags, 'body-file'), runtime, checked.config);
+    const host = hostAfter(checked, runtime, { flag: '--body-file', text: body });
+    if (host === undefined) {
+        return EXIT.ok;
+    }
+    return (await editIssueBody(host, { target, body }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
+}
+/**
+ * The text of the `--body-file` at `given`, resolved from the working folder, its byte-order mark dropped. A file the
+ * secret guard keeps sessions from reading (secretGuard.paths with the defaults) is refused before it is read: the
+ * guard sees a teamrig argument, not a file read, so without this the CLI would post a key file the text checks find
+ * no shape in. The refusal names the flag, never the file's text.
+ */
+async function bodyFileOf(given, runtime, config) {
+    const path = resolve(runtime.cwd, given);
+    if (secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform).paths.listed(path)) {
+        throw new RefusedError(`--body-file names a file the secret guard keeps (secretGuard.paths): ${given} is never read or posted`);
+    }
+    const text = await runtime.files.read(path);
+    if (text === undefined) {
+        throw new RefusedError(`no file ${path}: --body-file takes the file holding the new body`);
+    }
+    return text.startsWith(BYTE_ORDER_MARK) ? text.slice(BYTE_ORDER_MARK.length) : text;
+}
+/** The mark some Windows editors write first in a UTF-8 file; it is no part of the text. */
+const BYTE_ORDER_MARK = '﻿';
 /**
  * `issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate] [--duplicate-of
  * <owner/name#n>]` (T2660, T2679, T2999): closes one issue or pull request of the team's repositories, first posting
@@ -135,6 +172,10 @@ async function writeOn(args, runtime, write, textFlag) {
  * any) may be posted; undefined, after an OFF line, while GitHub is off on the machine.
  */
 async function hostFor(args, runtime, repo, posted) {
+    return hostAfter(await checkedRepo(args, runtime, repo), runtime, posted);
+}
+/** The team's config and `repo`'s host kind once the caller is on the team and the repository is one of the team's. */
+async function checkedRepo(args, runtime, repo) {
     const team = await openTeam(runtime, 'read');
     const notOnTeam = new RegisterPolicy(team.config, team.above).checkCaller(sessionIdOf(team.roster, callerOf(args.flags, runtime.env)));
     if (notOnTeam !== undefined) {
@@ -145,7 +186,12 @@ async function hostFor(args, runtime, repo, posted) {
         const listed = team.config.github.repos.join(', ');
         throw new RefusedError(`${repo} is not one of the team's repositories: list it under github.repos in the team config${listed === '' ? '' : ` (now ${listed})`}`);
     }
-    const scanner = new SecretScanner(team.config.register.secretPatterns);
+    return { config: team.config, kind };
+}
+/** The host of a checked repository once the text to post (if any) may be posted; undefined, after an OFF line, while GitHub is off. */
+function hostAfter(checked, runtime, posted) {
+    const { config, kind } = checked;
+    const scanner = new SecretScanner(config.register.secretPatterns);
     const refused = posted === undefined ? undefined : postRefusal(posted.flag, posted.text, scanner);
     if (refused !== undefined) {
         throw new RefusedError(refused);

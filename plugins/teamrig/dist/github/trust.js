@@ -6,16 +6,16 @@
 const TRUSTED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 /** The account kind of a person on GitHub; a `Bot` (an app or a workflow) or an `Organization` never accepts. */
 const PERSON = 'User';
+/** Whether an author of this tie to the repository is one of us: its owner, an organization member or a collaborator. */
+export function isInsider(association) {
+    return TRUSTED_ASSOCIATIONS.has(association.toUpperCase());
+}
 /**
  * How far the sync takes `issue`'s text. Only someone with triage rights can label an issue, so a label needs no
  * rights lookup; the two other ways a label lands are refused by its actor: an issue template applies it with the
  * author as actor, a workflow or app with a `Bot` one. An edit of the title or body at or after the accept undoes it
  * (the person who accepted read the older text), until someone adds the label again.
  */
-/** Whether an author of this tie to the repository is one of us: its owner, an organization member or a collaborator. */
-export function isInsider(association) {
-    return TRUSTED_ASSOCIATIONS.has(association.toUpperCase());
-}
 export function issueTrust(issue, acceptLabel) {
     if (isInsider(issue.authorAssociation)) {
         return 'trusted';

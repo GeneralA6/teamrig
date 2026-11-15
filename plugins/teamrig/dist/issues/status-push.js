@@ -1,4 +1,5 @@
 import { GITHUB_SOURCE, ISSUE_REF_PREFIX } from "../register/model.js";
+import { DESIGN_LABEL } from "./design-label.js";
 import { parseIssueTarget, targetText } from "./host.js";
 /**
  * The status push (T2682): each issue a task holds shows that task's status, so a reader of the issue list sees
@@ -9,16 +10,32 @@ import { parseIssueTarget, targetText } from "./host.js";
  * edited by hand is set back. A person's close is never undone here: the issue stays closed and the plan names it.
  * An open issue with no assignee gets one (T2999): the login of the task's owning session, else the repository's owner
  * account; an issue a person assigned keeps its assignees, and the push takes none off.
+ * An open task no session has scheduled leaves its issue open to anyone (T3021): `status:open` and no assignee, so a
+ * contributor sees what is free to take. A scheduled one, or one a person took, shows `status:claimed`. A goal, a
+ * task planned after its parts, shows no status label: its parts' issues carry theirs (T3056).
  */
 /** The label namespace the push owns: any label in it but the task's own is taken off. */
 export const STATUS_LABEL_PREFIX = 'status:';
-/** The active statuses, each with the one label its issue shows. */
+/** The labels an open issue shows: one per active status, and `claimed` for an open task that is taken. */
 export const STATUS_LABELS = {
-    open: `${STATUS_LABEL_PREFIX}triaged`,
-    'in-progress': `${STATUS_LABEL_PREFIX}in-progress`,
+    open: `${STATUS_LABEL_PREFIX}open`,
+    claimed: `${STATUS_LABEL_PREFIX}claimed`,
+    'in-progress': `${STATUS_LABEL_PREFIX}in progress`,
     waiting: `${STATUS_LABEL_PREFIX}waiting`,
-    verifying: `${STATUS_LABEL_PREFIX}in-review`,
+    verifying: `${STATUS_LABEL_PREFIX}in review`,
 };
+/**
+ * The status labels as the push makes them in a repository that lacks one: a new repository has none, and without
+ * them every change would be held. Only these five can be made (github/gh.ts allows no other label create), so a
+ * push never makes a label a person did not see in the docs. The colours read on light and dark backgrounds alike.
+ */
+export const STATUS_LABEL_SPECS = [
+    { name: STATUS_LABELS.open, color: 'ededed', description: 'Open to anyone: no one has taken it yet' },
+    { name: STATUS_LABELS.claimed, color: '1d76db', description: 'Taken: its assignee plans to work on it' },
+    { name: STATUS_LABELS['in-progress'], color: '8957e5', description: 'Work on it is under way' },
+    { name: STATUS_LABELS.waiting, color: 'fbca04', description: 'Waiting on an answer, a review or another issue' },
+    { name: STATUS_LABELS.verifying, color: '0e8a16', description: 'Done, and in review until its proof exists' },
+];
 /**
  * The writes one run sends at most. GitHub's secondary limit on content-creating calls is 80 a minute; half of it
  * leaves room for the team's other writes (comments, the ship's pull requests) in the same minute. The rest of the
@@ -43,15 +60,43 @@ export function autoPushWrites(probeSeconds) {
     }
     return Math.min(PUSH_WRITES_PER_RUN, Math.floor(PUSH_WRITES_PER_HOUR / Math.ceil(3600 / probeSeconds)));
 }
-/** The issue a task's status calls for. */
-export function issueGoal(status) {
-    switch (status) {
+/**
+ * Whether a session has taken the task on: started, or given a due date. An open one with neither is work no session
+ * has planned, so its issue stays open to anyone.
+ */
+export function scheduled(task) {
+    return task.status !== 'open' || task.due !== null;
+}
+/**
+ * Whether the task is a goal: a whole planned after its parts, which the issue links make the parent of their issues
+ * (issues/links.ts). Its parts carry the status, so its own issue shows none.
+ */
+export function isGoal(task) {
+    return task.after.length > 0;
+}
+/**
+ * The issue a task calls for. A design issue shows no status label and is assigned to no one: it is talk, not work
+ * to take, until it is agreed (T3096).
+ */
+export function issueGoal(task, issue) {
+    switch (task.status) {
         case 'done':
             return { open: false, reason: 'completed' };
         case 'dropped':
             return { open: false, reason: 'not-planned' };
-        default:
-            return { open: true, label: STATUS_LABELS[status] };
+        default: {
+            if (issue.design) {
+                return { open: true, label: undefined, claim: false };
+            }
+            const claim = scheduled(task);
+            if (isGoal(task)) {
+                return { open: true, label: undefined, claim };
+            }
+            if (task.status === 'open') {
+                return { open: true, label: claim || issue.assigned ? STATUS_LABELS.claimed : STATUS_LABELS.open, claim };
+            }
+            return { open: true, label: STATUS_LABELS[task.status], claim };
+        }
     }
 }
 /** The session-to-login map of `owners`, a login-to-session map such as `github.owners`. */
@@ -83,8 +128,8 @@ export const SESSION_PUSH = { writesPerRun: PUSH_WRITES_PER_RUN, closes: true };
  * show the task's status, planned against `issues` as the host listed them now (open ones and those closed lately).
  * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work.
  * The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
- * is held instead, taking none of the run's writes. With `logins` an open issue with no assignee is assigned
- * (assigneeOf); without, the plan assigns nobody.
+ * is held instead, taking none of the run's writes. With `logins` an open issue of a scheduled task with no assignee
+ * is assigned (assigneeOf); without, the plan assigns nobody.
  */
 export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
     const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
@@ -94,7 +139,7 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
     let unchanged = 0;
     for (const [target, task] of [...holders(repo, tasks)].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder])) {
         const issue = listed.get(target.number);
-        const goal = issueGoal(task.status);
+        const goal = issueGoal(task, { assigned: issue !== undefined && issue.assignees.length > 0, design: issue?.labels.includes(DESIGN_LABEL) ?? false });
         if (issue === undefined) {
             // The list holds every open issue, so one it left out is closed (or gone): as a closed task wants it.
             if (goal.open) {
@@ -109,7 +154,7 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
             closedActive.push({ target, task: task.id, status: task.status, stateReason: issue.stateReason });
             continue;
         }
-        const assign = goal.open && logins !== undefined && issue.assignees.length === 0 ? assigneeOf(repo, task.owner, logins) : undefined;
+        const assign = goal.open && goal.claim && logins !== undefined && issue.assignees.length === 0 ? assigneeOf(repo, task.owner, logins) : undefined;
         const change = changeFor(target, task, issue, goal, assign);
         if (change === undefined) {
             unchanged += 1;
@@ -155,8 +200,9 @@ function changeFor(target, task, issue, goal, assign) {
         }
         return { target, task: task.id, status: task.status, add: [], remove: statusLabels, close: goal.reason };
     }
-    const add = statusLabels.includes(goal.label) ? [] : [goal.label];
-    const remove = statusLabels.filter((label) => label !== goal.label);
+    const wanted = goal.label === undefined ? [] : [goal.label];
+    const add = wanted.filter((label) => !statusLabels.includes(label));
+    const remove = statusLabels.filter((label) => !wanted.includes(label));
     if (add.length === 0 && remove.length === 0 && assign === undefined) {
         return undefined;
     }

@@ -207,6 +207,7 @@ const COMMANDS = {
     'issue watch': { effect: 'internal', flags: [], load: async () => (await issueWatchCommands()).issueWatch },
     'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
     'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
+    'issue edit': { effect: 'write', flags: ['session', 'body-file'], load: async () => (await issueCommands()).issueEdit },
     'issue close': { effect: 'write', flags: ['session', 'comment', 'reason', 'duplicate-of'], load: async () => (await issueCommands()).issueClose },
     'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
     'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
@@ -674,7 +675,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
       sends the status push's labels and assignees too (a close it plans is held for --push --yes,
-      printed HELD),
+      printed HELD), and assigns an outside person who claims an open issue by a /take comment,
+      taking the assignee off after 7 days with no linked pull request,
       its writes lowered so an hour of runs sends at most 250
   issue watch   the team's one watch on github.repos, started hidden by the hooks: every
       github.probeSeconds (60 by default; 0 runs none) it asks GitHub whether each repository's issues,
@@ -685,13 +687,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       only as the watch starts), after 24 hours, and once no session of the team ran for 10 minutes;
       the next session's hook starts it again
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
-      gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
-      in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
-      status: label taken off; done closes it as completed, dropped as not planned; never reopens an
-      issue a person closed, and names it; an open issue no one is assigned to is assigned to the login
+      gh:), the writes that make it show the task's status: active tasks one label (open status:open,
+      status:claimed once it has a due date or an assignee, in-progress status:in progress, waiting
+      status:waiting, verifying status:in review; a goal, a task planned after its parts, and a design
+      issue, labelled design, none), any
+      other status: label taken off; done closes it as completed, dropped as not planned; never
+      reopens an issue a person closed, and names it; an open issue of a scheduled task (started or
+      with a due date), not a design issue, no one is assigned to is assigned to the login
       github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
-      --yes sends them, a repository stopping at its first failed write, a change adding a status label
-      the repository lacks held until it is made
+      --yes sends them, a repository stopping at its first failed write; a status label the repository
+      lacks is made first (MADE)
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
       from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
       title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
@@ -703,6 +708,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       owner, else the gh login; refuses an empty body, a secret shape, private data (a home folder
       path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
       gh login in its place
+  issue edit <owner/name#n> --body-file <path>   replaces the body (the description) of one issue or
+      pull request of the team's repositories with the file's text, with the same access and checks as
+      issue comment; the title, state, labels and assignees stay; the host keeps the old body in its
+      edit history
   issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
       [--duplicate-of <owner/name#n>]   closes one issue or pull request of the team's repositories,
       first posting --comment when given, with the same checks; a failed comment closes nothing;
@@ -710,7 +719,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       same repository, which the host links, and is refused when the host has no such issue
   issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
       labels off one issue or pull request of the team's repositories, with the same access; each
-      label to add must already be one of the repository's, and the first failure stops it
+      label to add must already be one of the repository's, but design (talk only, not work to take
+      until agreed), which it makes first (MADE); the first failure stops it
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and

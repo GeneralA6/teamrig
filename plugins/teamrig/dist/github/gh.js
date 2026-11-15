@@ -1,16 +1,20 @@
 import { spawn } from 'node:child_process';
 import { endOf } from "../test-run/shell.js";
+import { MANAGED_LABEL_SPECS } from "../issues/managed-labels.js";
 import { QUERY_VARIABLES, RAW_FIELD } from "./queries.js";
 /**
  * The kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import and the links read, which
  * never write to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), one
  * comment on or the close of one issue or pull request (issue comment and issue close, a close with or without its
- * reason), its labels: the read of one label of a repository, labels added to one issue, one label taken off it
- * (issue label), the read of one issue, for the id a duplicate close names (issue close --duplicate-of), logins
- * added to one issue's assignees and the read of whether one login may be assigned (the status push), one
- * sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes, conditional reads that tell
- * whether a repository changed (isWatchProbe). The runner refuses any other command line before it starts: no
- * issue edit, reopen, assignee removal, label create or delete, link removal, merge or branch delete.
+ * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
+ * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
+ * --duplicate-of), logins added to one issue's assignees, the read of one user, for the case GitHub spells its login
+ * in, and the read of whether one login may be assigned (the status push), one login taken off one issue's
+ * assignees (a claim the sync made that ran out), the creation of one of the labels teamrig makes (the status push
+ * and issue label), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes,
+ * conditional reads that tell whether a repository changed (isWatchProbe). The runner refuses any other command line
+ * before it starts: no title or state edit besides the close, no reopen, removal of more than one assignee at once,
+ * label create but teamrig's own, label edit or delete, link removal, merge or branch delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -98,6 +102,21 @@ export function issueCloseArgs(target, reason, duplicateId) {
 export function issueReadArgs(target) {
     return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'GET'];
 }
+/** The comments one read of an issue's new comments gives at most, oldest first: the first claim among them wins. */
+export const COMMENTS_PAGE = 30;
+/**
+ * The command line that reads the comments of one issue updated at or after `since` (an ISO time), oldest first, at
+ * most COMMENTS_PAGE: the only read of comment text, which the claim pass matches and drops (src/github/host.ts).
+ */
+export function commentsReadArgs(target, since) {
+    return ['api', `repos/${target.repo}/issues/${target.number}/comments`, '-X', 'GET', RAW_FIELD, `since=${since}`, RAW_FIELD, `per_page=${COMMENTS_PAGE}`];
+}
+/** A UTC time as Date.toISOString writes it. */
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+/** The command line that replaces the body of one issue or pull request, the body a raw field so it stays text. */
+export function issueBodyArgs(target, body) {
+    return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'PATCH', RAW_FIELD, `body=${body}`];
+}
 /** The command line that adds `labels` to one issue or pull request, each a raw item of the label list. */
 export function issueLabelAddArgs(target, labels) {
     return ['api', `repos/${target.repo}/issues/${target.number}/labels`, '-X', 'POST', ...labels.flatMap((label) => [RAW_FIELD, `${LABEL_FIELD}=${label}`])];
@@ -110,9 +129,21 @@ export function issueLabelRemoveArgs(target, label) {
 export function issueAssignArgs(target, logins) {
     return ['api', `repos/${target.repo}/issues/${target.number}/assignees`, '-X', 'POST', ...logins.flatMap((login) => [RAW_FIELD, `${ASSIGNEE_FIELD}=${login}`])];
 }
+/** The command line that takes one `login` off the assignees of one issue or pull request; any others stay. */
+export function issueUnassignArgs(target, login) {
+    return ['api', `repos/${target.repo}/issues/${target.number}/assignees`, '-X', 'DELETE', RAW_FIELD, `${ASSIGNEE_FIELD}=${login}`];
+}
 /** The command line that reads whether `login` may be assigned in `repo`, which fails when it may not. */
 export function assigneeReadArgs(repo, login) {
     return ['api', `repos/${repo}/assignees/${login}`];
+}
+/** The command line that reads one GitHub user, whose `login` is spelled in the case GitHub keeps; it fails when there is no such user. */
+export function userReadArgs(login) {
+    return ['api', `users/${login}`];
+}
+/** The command line that makes `label` in `repo`: its name, colour and description, each a raw field. */
+export function labelCreateArgs(repo, label) {
+    return ['api', `repos/${repo}/labels`, '-X', 'POST', '-f', `name=${label.name}`, '-f', `color=${label.color}`, '-f', `description=${label.description}`];
 }
 /** The command line that reads one label of a repository, which fails when the repository has no such label. */
 export function labelReadArgs(repo, label) {
@@ -202,6 +233,32 @@ export function isIssueRead(args) {
     return call?.method === 'GET' && call.part === 'issue' && args.length === 4;
 }
 /**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/comments -X GET -f since=<ISO time> -f per_page=30` and
+ * nothing more: one page of one issue's newest comments. Another field (which gh sends as a query), page size,
+ * `--paginate` or method is refused, so the read stays one bounded page.
+ */
+export function isCommentsRead(args) {
+    const call = issueCall(args);
+    const [since, page, ...rest] = rawPairs(args.slice(4)) ?? [];
+    return (call?.method === 'GET' &&
+        call.part === 'comments' &&
+        since?.[0] === 'since' &&
+        ISO_TIME.test(since[1]) &&
+        page?.[0] === 'per_page' &&
+        page[1] === String(COMMENTS_PAGE) &&
+        rest.length === 0);
+}
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number> -X PATCH -f body=<text>` and nothing more: the body of one
+ * issue or pull request replaced, the body the only field. A title, state, assignee, label or milestone field, or
+ * any field beside the body, is refused, so the edit changes the text and nothing else.
+ */
+export function isIssueBodyEdit(args) {
+    const call = issueCall(args);
+    const pairs = rawPairs(args.slice(4));
+    return call?.method === 'PATCH' && call.part === 'issue' && pairs?.length === 1 && pairs[0]?.[0] === 'body';
+}
+/**
  * True for `gh api repos/<owner>/<name>/issues/<number>/labels -X POST -f labels[]=<label> ...` and nothing more:
  * one or more labels added to one issue or pull request. Another field, flag or method (PUT, which would replace
  * every label) is refused.
@@ -222,13 +279,25 @@ export function isLabelRemove(args) {
 }
 /**
  * True for `gh api repos/<owner>/<name>/issues/<number>/assignees -X POST -f assignees[]=<login> ...` and nothing
- * more: one or more logins added to the assignees of one issue or pull request. Another field, flag or method (DELETE,
- * which would take assignees off) is refused, and each login must have a login's shape.
+ * more: one or more logins added to the assignees of one issue or pull request. Another field, flag or method (DELETE
+ * takes assignees off: isIssueUnassign) is refused, and each login must have a login's shape.
  */
 export function isIssueAssign(args) {
     const call = issueCall(args);
     const pairs = rawPairs(args.slice(4));
     return call?.method === 'POST' && call.part === 'assignees' && pairs !== null && pairs.length > 0 && pairs.every(([key, login]) => key === ASSIGNEE_FIELD && isLogin(login));
+}
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/assignees -X DELETE -f assignees[]=<login>` and nothing more:
+ * exactly one login, of a login's shape, taken off one issue or pull request. The sync sends it only for a claim it
+ * made itself whose login is still the assignee (issues/claim.ts); two logins, no login, another field or flag is
+ * refused, so no run can clear an issue's assignees.
+ */
+export function isIssueUnassign(args) {
+    const call = issueCall(args);
+    const pairs = rawPairs(args.slice(4));
+    const only = pairs?.length === 1 ? pairs[0] : undefined;
+    return call?.method === 'DELETE' && call.part === 'assignees' && only !== undefined && only[0] === ASSIGNEE_FIELD && isLogin(only[1]);
 }
 /** `repos/<owner>/<name>/assignees/<login>`: whether one login may be assigned in a repository. */
 const ASSIGNEE_PATH = /^repos\/([^/]+\/[^/]+)\/assignees\/([^/]+)$/;
@@ -239,6 +308,31 @@ const ASSIGNEE_PATH = /^repos\/([^/]+\/[^/]+)\/assignees\/([^/]+)$/;
 export function isAssigneeRead(args) {
     const match = ASSIGNEE_PATH.exec(args[1] ?? '');
     return args[0] === 'api' && args.length === 2 && match !== null && REPO_NAME.test(match[1] ?? '') && isLogin(match[2] ?? '');
+}
+/** `users/<login>`: one GitHub user. */
+const USER_PATH = /^users\/([^/]+)$/u;
+/**
+ * True for `gh api users/<login>` and nothing more: a read, gh's default GET, of one user's public profile, which
+ * gives the login in the case GitHub keeps. A method, a field or a path below the user is refused.
+ */
+export function isUserRead(args) {
+    const match = USER_PATH.exec(args[1] ?? '');
+    return args[0] === 'api' && args.length === 2 && match !== null && isLogin(match[1] ?? '');
+}
+/** `repos/<owner>/<name>/labels`: the labels of a repository, where a POST makes one. */
+const LABELS_PATH = /^repos\/([^/]+\/[^/]+)\/labels$/u;
+/**
+ * True for the command line labelCreateArgs builds for one of the labels teamrig makes (MANAGED_LABEL_SPECS: the
+ * status push's own and the design label) and nothing more: its name, colour and description word for word, in that order. So the runner makes no other label,
+ * and edits or deletes none, whatever a caller passes.
+ */
+export function isLabelCreate(args) {
+    const repo = LABELS_PATH.exec(args[1] ?? '')?.[1] ?? '';
+    return args[0] === 'api' && REPO_NAME.test(repo) && MANAGED_LABEL_SPECS.some((label) => sameArgs(args, labelCreateArgs(repo, label)));
+}
+/** True when the two command lines are the same, word for word. */
+function sameArgs(args, want) {
+    return args.length === want.length && want.every((arg, at) => args[at] === arg);
 }
 /** `repos/<owner>/<name>/labels/<label>`: one label of a repository. */
 const LABEL_PATH = /^repos\/([^/]+\/[^/]+)\/labels\/([^/]+)$/;
@@ -300,6 +394,19 @@ function rawPairs(args) {
 }
 /** How long one `gh` run may take before it is stopped: a page of a hundred issues takes seconds. */
 export const GH_TIMEOUT_MS = 60_000;
+/**
+ * The bytes one `gh` run may print, stdout and stderr together, before it is stopped. The largest answer teamrig
+ * asks for is a page of a hundred issues, each body at most 65,536 characters (about 20 MB in the worst UTF-8); the
+ * cap sits above it, so text people post can never grow one run's memory without bound.
+ */
+export const GH_OUTPUT_MAX_BYTES = 32 * 1024 * 1024;
+/** A `gh` run stopped for printing more than its cap; nothing it printed is used. */
+export class GhOutputCapError extends Error {
+    name = 'GhOutputCapError';
+    constructor(maxBytes) {
+        super(`gh printed more than ${maxBytes} bytes, so teamrig stopped it and used none of it`);
+    }
+}
 /** A host id as a link write sends it: 1 to 15 digits, so it stays an exact JavaScript number. */
 export const HOST_ID = /^[1-9][0-9]{0,14}$/;
 /** The id field of each link endpoint: a sub-issue's, and the blocking issue's. */
@@ -339,11 +446,11 @@ export function isLinkAdd(args) {
         field.slice(0, equals) === key &&
         HOST_ID.test(field.slice(equals + 1)));
 }
-/** A command line the runner will not start: none of a shipped issue query's page, a watch probe, one issue's creation, comment, labels, close or link. */
+/** A command line the runner will not start: none of a shipped issue query's page, a watch probe, one issue's creation, comment, body, labels, close or link. */
 export class GhRefusedError extends Error {
     name = 'GhRefusedError';
     constructor(args) {
-        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, label, assign, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, edit the body of, label, assign, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
     }
 }
 /** True for each command line the runner starts. */
@@ -351,22 +458,28 @@ export function isAllowedGh(args) {
     return (isIssueQuery(args) ||
         isIssueCreate(args) ||
         isIssueComment(args) ||
+        isCommentsRead(args) ||
         isIssueClose(args) ||
+        isIssueBodyEdit(args) ||
         isLabelAdd(args) ||
         isLabelRemove(args) ||
         isLabelRead(args) ||
         isIssueRead(args) ||
         isIssueAssign(args) ||
+        isIssueUnassign(args) ||
         isAssigneeRead(args) ||
+        isUserRead(args) ||
+        isLabelCreate(args) ||
         isLinkAdd(args) ||
         isWatchProbe(args));
 }
 /**
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a
  * command. gh is told never to prompt, as nobody is there to answer. `program` and `leading` let a test
- * stand a Node script in for gh.
+ * stand a Node script in for gh. A run that prints more than `maxBytes` is stopped and rejects with
+ * GhOutputCapError.
  */
-export function nodeGhRunner(program = 'gh', leading = [], timeoutMs = GH_TIMEOUT_MS) {
+export function nodeGhRunner(program = 'gh', leading = [], timeoutMs = GH_TIMEOUT_MS, maxBytes = GH_OUTPUT_MAX_BYTES) {
     return {
         run: (request) => {
             if (!isAllowedGh(request.args)) {
@@ -381,10 +494,33 @@ export function nodeGhRunner(program = 'gh', leading = [], timeoutMs = GH_TIMEOU
                 });
                 const stdout = [];
                 const stderr = [];
-                child.stdout.setEncoding('utf8').on('data', (chunk) => stdout.push(chunk));
-                child.stderr.setEncoding('utf8').on('data', (chunk) => stderr.push(chunk));
+                let printed = 0;
+                let over = false;
+                const keep = (into) => (chunk) => {
+                    if (over) {
+                        return;
+                    }
+                    printed += chunk.length;
+                    if (printed > maxBytes) {
+                        over = true;
+                        stdout.length = 0;
+                        stderr.length = 0;
+                        child.kill();
+                        return;
+                    }
+                    into.push(chunk);
+                };
+                child.stdout.on('data', keep(stdout));
+                child.stderr.on('data', keep(stderr));
                 child.once('error', reject);
-                child.once('close', (code, signal) => resolve({ end: endOf(code, signal), stdout: stdout.join(''), stderr: stderr.join('') }));
+                child.once('close', (code, signal) => {
+                    if (over) {
+                        reject(new GhOutputCapError(maxBytes));
+                        return;
+                    }
+                    // Joined before decoding, so a character split across two chunks reads whole.
+                    resolve({ end: endOf(code, signal), stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') });
+                });
             });
         },
     };

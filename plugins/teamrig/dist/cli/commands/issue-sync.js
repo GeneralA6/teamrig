@@ -12,6 +12,7 @@ import { hostOf, reposOf } from "../issue-hosts.js";
 import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
+import { claimBudget, recordClaims } from "./issue-claim.js";
 import { recordClocks, repoThreads } from "./issue-clock.js";
 import { issuePush, pushEndLine, pushRepos } from "./issue-push.js";
 import { GITHUB_OFF, githubOff, reportAutoSync } from "./issue-sync-auto.js";
@@ -55,7 +56,11 @@ export async function issueSync(args, runtime) {
     }
     const register = teamRegister(runtime, kit.paths, config);
     const rules = importRules(config);
-    const since = closedSince(new Date(runtime.clock.now()), config.github.closedDays);
+    const started = runtime.clock.now();
+    const since = closedSince(new Date(started), config.github.closedDays);
+    const pushing = auto && config.github.statusPush;
+    /** The issues of each repository read, for the claim pass, which writes to GitHub only when the run pushes. */
+    const claimRead = new Map();
     // github.repos is GitHub's list, so every repository it names is GitHub's.
     const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns));
     const told = new Set();
@@ -103,6 +108,7 @@ export async function issueSync(args, runtime) {
         // Against the tasks as written, so an issue the import just took is held by its new task.
         threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
         clocked.add(repo);
+        claimRead.set(repo, read.issues);
         [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
         written += outcomes.filter((outcome) => outcome.result.ok).length;
         added.push(...addedTasks(outcomes));
@@ -115,11 +121,13 @@ export async function issueSync(args, runtime) {
     if (write) {
         (await recordClocks(runtime, kit, config, clocked, threads)).forEach(say);
     }
-    const pushing = auto && config.github.statusPush;
     if (pushing) {
+        const writesPerRun = autoPushWrites(config.github.probeSeconds);
+        // Before the push, so it plans against the assignees the claims set; the claims' writes share the run's budget.
+        const claimed = await recordClaims(runtime, kit, config, { host, read: claimRead, started, writes: claimBudget(writesPerRun) });
+        claimed.lines.forEach(say);
         // The import's tasks are in the register now, so the push plans against them. A repository the import could
         // not read is not pushed: it would fail the same way, and its failure is already told.
-        const writesPerRun = autoPushWrites(config.github.probeSeconds);
         const pushed = await pushRepos({
             host,
             repos: config.github.repos.filter((repo) => !unread.has(repo)),
@@ -127,7 +135,7 @@ export async function issueSync(args, runtime) {
             tasks: async () => (await register.snapshot()).state.tasks.values(),
             send: true,
             // No closes: the automatic push sends labels and assignees only (security verdict F1 on T2876); it prints each close held.
-            limits: { writesPerRun, closes: false },
+            limits: { writesPerRun: Math.max(0, writesPerRun - claimed.writes), closes: false },
             logins: sessionLogins(config.github.owners),
             told,
         }, say);
