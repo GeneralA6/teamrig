@@ -8,12 +8,13 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
  * The kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import and the links read, which
  * never write to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), one
  * comment on or the close of one issue or pull request (issue comment and issue close, a close with or without its
- * reason), its labels: the read of one label of a repository, labels added to one issue, one label taken off it
- * (issue label), the read of one issue, for the id a duplicate close names (issue close --duplicate-of), logins
- * added to one issue's assignees and the read of whether one login may be assigned (the status push), one
- * sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes, conditional reads that tell
- * whether a repository changed (isWatchProbe). The runner refuses any other command line before it starts: no
- * issue edit, reopen, assignee removal, label create or delete, link removal, merge or branch delete.
+ * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
+ * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
+ * --duplicate-of), logins added to one issue's assignees and the read of whether one login may be assigned (the
+ * status push), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes, conditional
+ * reads that tell whether a repository changed (isWatchProbe). The runner refuses any other command line before it
+ * starts: no title or state edit besides the close, no reopen, assignee removal, label create or delete, link
+ * removal, merge or branch delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -121,6 +122,11 @@ export function issueCloseArgs(target: IssueNumber, reason?: CloseReason, duplic
 /** The command line that reads one issue or pull request, for its id. */
 export function issueReadArgs(target: IssueNumber): string[] {
   return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'GET'];
+}
+
+/** The command line that replaces the body of one issue or pull request, the body a raw field so it stays text. */
+export function issueBodyArgs(target: IssueNumber, body: string): string[] {
+  return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'PATCH', RAW_FIELD, `body=${body}`];
 }
 
 /** The command line that adds `labels` to one issue or pull request, each a raw item of the label list. */
@@ -239,6 +245,17 @@ export function isIssueClose(args: readonly string[]): boolean {
 export function isIssueRead(args: readonly string[]): boolean {
   const call = issueCall(args);
   return call?.method === 'GET' && call.part === 'issue' && args.length === 4;
+}
+
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number> -X PATCH -f body=<text>` and nothing more: the body of one
+ * issue or pull request replaced, the body the only field. A title, state, assignee, label or milestone field, or
+ * any field beside the body, is refused, so the edit changes the text and nothing else.
+ */
+export function isIssueBodyEdit(args: readonly string[]): boolean {
+  const call = issueCall(args);
+  const pairs = rawPairs(args.slice(4));
+  return call?.method === 'PATCH' && call.part === 'issue' && pairs?.length === 1 && pairs[0]?.[0] === 'body';
 }
 
 /**
@@ -419,12 +436,12 @@ export function isLinkAdd(args: readonly string[]): boolean {
   );
 }
 
-/** A command line the runner will not start: none of a shipped issue query's page, a watch probe, one issue's creation, comment, labels, close or link. */
+/** A command line the runner will not start: none of a shipped issue query's page, a watch probe, one issue's creation, comment, body, labels, close or link. */
 export class GhRefusedError extends Error {
   override readonly name = 'GhRefusedError';
 
   constructor(args: readonly string[]) {
-    super(`teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, label, assign, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+    super(`teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, edit the body of, label, assign, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
   }
 }
 
@@ -435,6 +452,7 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isIssueCreate(args) ||
     isIssueComment(args) ||
     isIssueClose(args) ||
+    isIssueBodyEdit(args) ||
     isLabelAdd(args) ||
     isLabelRemove(args) ||
     isLabelRead(args) ||

@@ -10,6 +10,7 @@ import {
   isAllowedGh,
   isAssigneeRead,
   isIssueAssign,
+  isIssueBodyEdit,
   issueAssignArgs,
   isIssueClose,
   isIssueComment,
@@ -21,6 +22,7 @@ import {
   isLabelRemove,
   isLinkAdd,
   isWatchProbe,
+  issueBodyArgs,
   issueCloseArgs,
   issueCommentArgs,
   issueCreateArgs,
@@ -208,6 +210,46 @@ describe('isIssueClose', () => {
     assert.ok([READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b')].every((args) => !isIssueClose(args)));
     assert.ok([READ, issueCreateArgs(DRAFT), CLOSE].every((args) => !isIssueComment(args)));
     assert.ok(!isIssueCreate(CLOSE) && !isIssueQuery(CLOSE) && !isIssueCreate(issueCommentArgs(ISSUE, 'b')));
+  });
+});
+
+describe('isIssueBodyEdit', () => {
+  const EDIT = issueBodyArgs(ISSUE, 'New spec: $(x) @file | y');
+
+  it('takes the command line issueBodyArgs builds, the body a raw field that stays text', () => {
+    assert.deepEqual(EDIT, ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=New spec: $(x) @file | y']);
+    assert.equal(isIssueBodyEdit(EDIT), true);
+    assert.equal(isAllowedGh(EDIT), true);
+  });
+
+  it('refuses any field beside the body, another method, flag or path, and a typed field', () => {
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=b', '-f', 'title=t'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'title=t', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=b', '-f', 'state=open'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=b', '-f', 'assignees[]=someone'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=b', '-f', 'milestone=1'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'title=t'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-F', 'body=@secret.txt'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '--input', 'body.json'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'POST', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PUT', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7/comments', '-X', 'PATCH', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/comments/7', '-X', 'PATCH', '-f', 'body=b'],
+      ['api', 'repos/acme/web/pulls/7', '-X', 'PATCH', '-f', 'body=b'],
+      ['api', 'repos/acme/../issues/7', '-X', 'PATCH', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues', '-X', 'PATCH', '-f', 'body=b'],
+    ]) {
+      assert.equal(isIssueBodyEdit(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it('is never taken for a close or a comment, nor they for a body edit', () => {
+    assert.ok([READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b'), issueCloseArgs(ISSUE, 'completed')].every((args) => !isIssueBodyEdit(args)));
+    assert.ok(!isIssueClose(EDIT) && !isIssueComment(EDIT) && !isIssueCreate(EDIT) && !isIssueQuery(EDIT));
   });
 });
 
@@ -500,7 +542,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, label, assign, close or link an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, edit the body of, label, assign, close or link an issue: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });
