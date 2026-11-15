@@ -7,7 +7,7 @@ import { MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from "../core/time.js";
 import { unreadSince } from "../inbox/inbox.js";
 import { wideAllowText } from "../permissions/report.js";
 import { describeRequirement } from "../requirements/requirements.js";
-import { TEAM_RULES_MAX_CHARS } from "../rules/pack.js";
+import { CONTEXT_MAX_CHARS, TEAM_RULES_MAX_CHARS } from "../rules/pack.js";
 import { missingDenyLines } from "./deny-lines.js";
 /**
  * Days an inbox may wait with unread lines and no read before doctor flags it. Hard-coded for now;
@@ -115,11 +115,11 @@ function inboxFindings(input) {
  * Each team rules file a session gets only a pointer to, as `renderSessionContext` shares TEAM_RULES_MAX_CHARS: in
  * order, a file is shown while it fits beside the files shown before it, so a file that fits alone is named with them.
  */
-function rulesFindings(input) {
+function pointedByShare(teamRules) {
     const shown = [];
     let used = 0;
-    const findings = [];
-    for (const rules of input.teamRules) {
+    const pointed = [];
+    for (const rules of teamRules) {
         if (rules.chars === 0) {
             continue;
         }
@@ -128,10 +128,38 @@ function rulesFindings(input) {
             used += rules.chars;
             continue;
         }
-        const detail = rules.chars > TEAM_RULES_MAX_CHARS
-            ? `${rules.path} is ${rules.chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`
-            : `${rules.path} is ${rules.chars} characters, but the team rules shown before it (${shown.join(', ')}) take ${used} of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`;
-        findings.push({ kind: 'rules-long', detail });
+        pointed.push({ path: rules.path, chars: rules.chars, shown: [...shown], used });
+    }
+    return pointed;
+}
+function rulesFindings(input) {
+    return pointedByShare(input.teamRules).map(({ path, chars, shown, used }) => ({
+        kind: 'rules-long',
+        detail: chars > TEAM_RULES_MAX_CHARS
+            ? `${path} is ${chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`
+            : `${path} is ${chars} characters, but the team rules shown before it (${shown.join(', ')}) take ${used} of the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten one of them`,
+    }));
+}
+/**
+ * The lead's real start, which holds more than any other session's (its lines, the resets): past CONTEXT_MAX_CHARS
+ * Claude Code shows it only a preview, and a rules file the TEAM_RULES_MAX_CHARS share holds (else `rules-long` names
+ * it) can still reach it only as a pointer, as the parts no start cuts grew into the room the rules files had (T2231).
+ */
+function leadStartFindings(input) {
+    const { lead, chars, room, pointed } = input.leadStart;
+    const findings = [];
+    if (chars > CONTEXT_MAX_CHARS) {
+        findings.push({
+            kind: 'lead-start',
+            detail: `the lead ${lead}'s start is ${count(chars)} characters, more than the ${count(CONTEXT_MAX_CHARS)} Claude Code shows at start, so the lead sees only a preview of it: shorten the team's rules.md files or the config values the lead's lines quote`,
+        });
+    }
+    const byShare = new Set(pointedByShare(input.teamRules).map((rules) => rules.path));
+    for (const path of pointed.filter((file) => !byShare.has(file))) {
+        findings.push({
+            kind: 'lead-start',
+            detail: `${path} reaches the lead ${lead} only as a pointer: its start keeps ${count(Math.max(0, room))} characters for the team rules files beside the core rules, the lead's lines and its notes, so the lead reads the file only when it follows the pointer: shorten the team's rules.md files`,
+        });
     }
     return findings;
 }
@@ -328,7 +356,7 @@ function quietHoursFindings({ budget, now, zone }) {
 }
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
+ * inboxes nobody reads, rules too long to show, a lead's start past the cap or with a rules file cut to a pointer, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
  * choice, a launch with a model but no effort, local allow rules that approve a whole tool or program or hold a credential,
  * quiet hours that ask before a helper launch nobody answers at night, secret deny lines no settings file holds, a configured project folder that is no folder here, a PowerShell history no profile keeps credentials out of, and a page webhook that gives no URL.
@@ -342,6 +370,7 @@ export function doctorFindings(input) {
         ...renameLogFindings(input),
         ...inboxFindings(input),
         ...rulesFindings(input),
+        ...leadStartFindings(input),
         ...contextSizeFindings(input),
         ...treeFindings(input),
         ...routingEnvFindings(input),

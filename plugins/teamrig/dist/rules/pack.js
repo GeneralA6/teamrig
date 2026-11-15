@@ -33,6 +33,14 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * and from 1,690 for the appeal line every lead prints (T2215).
  */
 export const LEAD_RULES_MAX_CHARS = 1_900;
+/**
+ * The room a large but real lead's start keeps for the team rules files, beside the parts it never cuts: the core
+ * pack, the lead's lines and the short notes (T2231). Each part has its own cap, but nothing held their sum, and a
+ * lead's room fell from 2,350 characters to 1,091 one line at a time; a CI spec holds this floor, so the next line
+ * that would eat into it takes shorter words instead. The worst case, every config value at its longest, has no room
+ * left at all; `teamrig doctor` warns a team whose real lead start gets there.
+ */
+export const TEAM_RULES_FLOOR_CHARS = 1_000;
 /** A list the pack names only to inform (a hook or check enforces it) prints in full up to this many characters. */
 export const LIST_MAX_CHARS = 120;
 function list(items) {
