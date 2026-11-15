@@ -460,7 +460,7 @@
           "default": "ask"
         },
         "routeAllow": {
-          "description": "While hookAsks is refuse: on lets a Bash line that runs a sanctioned route marked for it (teamrig merge, deploy, exec request, worktree remove, git commit) run with no permission check at all, once every teamrig guard passed it, logged by its route alone; off takes that allow away without a release. It only takes allows away: no config adds a route. Inert while hookAsks is ask.",
+          "description": "While hookAsks is refuse: on lets a Bash line that runs a sanctioned route marked for it (teamrig merge, deploy, exec request, worktree remove, git commit) run with no permission check at all, once every teamrig guard passed it, logged by its route alone; off takes that allow away without a release. It only takes allows away: no config adds a route. Inert for routes while hookAsks is ask. Whatever hookAsks says, on also lets a service role's holder run the role's calls from its own tab, up to serviceRoleDailyCap a day; off takes that away too.",
           "type": "string",
           "enum": ["on", "off"],
           "default": "on"

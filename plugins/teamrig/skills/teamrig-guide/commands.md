@@ -2409,8 +2409,9 @@ Service roles (`teamrig roles grant`, `revoke` and `list`) let a named session r
 service past every permission check, from its own tab only: the team's `serviceRoles` config [serviceRoles] maps
 each role to its holders and its commands. The commands come from teamrig's table, each a reviewed shape
 (`issue close`, `issue comment`); a name outside it fails the config load. `team` holds a role for every session
-only where each command checks its caller itself; the others name their sessions. The hook allow that
-lets a holder run them is not in place yet: today a grant is only recorded and listed. See
+only where each command checks its caller itself; the others name their sessions. `hook route-allow` lets the
+holder's own tab run them with no permission check, up to `prompts.serviceRoleDailyCap` calls a role in 24 hours
+([the service-role allow](hooks.md#before-a-shell-command-the-service-role-allow)). See also
 [the service-role guard](hooks.md#before-a-write-or-a-shell-command-the-service-role-guard).
 
 A grant or a revoke changes a permission, an owner gate: teamrig's guard asks the owner before any session's call

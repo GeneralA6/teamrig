@@ -325,7 +325,10 @@ export type SkipHooks = 'deny' | 'ask' | 'allow';
 export interface PromptsConfig {
   /** What a hook does with a call it would ask the human about. */
   readonly hookAsks: HookAsks;
-  /** Whether a sanctioned route's line runs with no permission check at all while asks are refused. */
+  /**
+   * Whether a sanctioned route's line runs with no permission check at all while asks are refused, and a service role's
+   * call for its holder's tab whatever asks say.
+   */
   readonly routeAllow: RouteAllow;
   /**
    * How many calls one service role lets run with no permission check in 24 hours (T2984, security condition C6), so a

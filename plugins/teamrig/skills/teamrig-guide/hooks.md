@@ -19,7 +19,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Asks the owner before a session's `teamrig roles grant` or `revoke`, and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
-| `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
+| `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)); with `prompts.routeAllow` on, whatever asks say, lets a service role's holder run the role's `teamrig issue close` or `issue comment` from its own tab, up to a daily cap ([the service-role allow](#before-a-shell-command-the-service-role-allow)) |
 | `PreToolUse` on `AskUserQuestion` and `Bash` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, to a sub-team's lead, and to a session in its own meeting with the owner, with the reason to decide it if it is the session's own, else record it on its task and go on, and a session's Bash `cd` compound Claude Code would hold on a permission prompt, quoting its form to rerun ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that runs a sanctioned route or provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one, and during a booked or on-the-spot meeting every message to the session met |
@@ -494,7 +494,8 @@ check, at `PreToolUse`: `teamrig merge`, `teamrig deploy`, `teamrig exec request
 `git commit`, as plain as above. It answers only once the push, package, secret, db-write, exec, pass-record and service-role guards
 all passed the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
 route, never the command (a commit message is free text). `prompts.routeAllow: off` takes this allow away without a
-release; no config adds a route. With asks on it never answers.
+release; no config adds a route. With asks on it never answers for a route; a service role's call it answers either
+way ([the service-role allow](#before-a-shell-command-the-service-role-allow)).
 
 ## Before a shell command or a read: the secret guard
 
@@ -874,6 +875,36 @@ does the Read tool. The reason names the keys the call changes: "teamrig config 
 It has no setting, and a broken config keeps it on: the file is found and read again at each call. Like the
 pass-record guard it reads only the call, so it cannot see a script the line starts that writes the file: while
 sessions and the owner share one account, it stops a slip, not a determined session.
+
+## Before a shell command: the service-role allow
+
+A service role is the owner's standing yes to one session running a few teamrig commands for an outside service, so
+its holder does not stall on a prompt for a job the owner gave it, such as closing the GitHub issue a fix landed for.
+With `prompts.routeAllow` on (its default), whatever `prompts.hookAsks` says, `hook route-allow` lets a Bash line run
+with no permission check when all of these hold:
+
+- **it is one role call, as written**: `teamrig issue close <owner/name#n> [--comment "<text>"]` or `teamrig issue
+  comment <owner/name#n> --body "<text>"`, through this install's own launcher, with `--session` the only other flag,
+  as one plain command (an output redirect such as `2>&1` aside). The issue's repository is on `github.repos`. A text
+  is double-quoted with no `"`, `\`, `$`, backtick or line break inside, and the line has no single quote or
+  backslash outside one, so bash runs the text as written. Every text the Bash tool's shell may run reads as the same
+  call;
+- **the tab is the holder's**: every inbox mark this Claude Code session ever wrote names one session, it is on the
+  roster, and the call runs as that same session (its `--session`, else `$TEAMRIG_SESSION`). A tab that ever read or
+  bound as two sessions holds no role, so `inbox read --session bravo` from alpha's tab never lends it bravo's role;
+- **a role gives it**: one of `serviceRoles` names the session among its holders and the command among its commands;
+- **every guard passed it**: the same push, package, secret, db-write, exec, pass-record and service-role guards as
+  the route allow; a guard that asks or refuses answers instead;
+- **the role is under its cap**: fewer than `prompts.serviceRoleDailyCap` (10 by default, 0 to 200) allows of the
+  role in the last 24 hours. Past it the call asks the owner (refused with asks off), with the reason
+  "teamrig: the service role github ran its 10 calls of the last 24 hours (prompts.serviceRoleDailyCap), so this one
+  asks the owner. ...".
+
+Each allow writes a line to `state/prompt-answers.jsonl` naming the session, the role, the command and the issue
+(`"answer": "role"`), never the text; the cap counts those lines, so a log it cannot write lets nothing past. A config
+with any issue, or one a newer teamrig wrote, gives no role, and `prompts.routeAllow: off` takes the allow away
+without a release. A permission rule or another hook that denies the call still wins: Claude Code applies a deny
+over any hook's allow. Anything else, a role call it does not allow included, goes on to the permission check.
 
 ## Before a shell command: the read-only allow
 
