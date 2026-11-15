@@ -1261,8 +1261,9 @@ wakes the tab at the check after it. The wake log marks the wake with `retry: ap
 An urgent line is an inbox line its sender also posts as a wake ask, one file under `state/wake-asks/<session>/`:
 the inbox line stays the record, and the ask makes it wake its receiver. The receiver's next wake check takes the
 asks once the oldest is `wake.batchSeconds` old, so the lines posted together wake it once, and its prompt quotes
-each line, one a line on the team's clock, before any work handed meanwhile. `wake.minGapMinutes`, the budget's hold
-and quiet hours do not hold them, since each is urgent by its sender's choice; the meeting's and the restart's holds
+each line, one a line on the team's clock, before any work handed meanwhile. An ask whose line the receiver already
+read or was shown goes at the next check unspent, so no later wake quotes that line again. `wake.minGapMinutes`, the
+budget's hold and quiet hours do not hold them, since each is urgent by its sender's choice; the meeting's and the restart's holds
 do, and the asks wait for the first check after them. The wake log marks such a wake with `asks`; an ask damaged or
 in another format goes at the next check. A session busy in a turn is not woken for them: at its next tool call's
 end (its own, not a helper's), `hook tool-end` shows it its new inbox lines, recorded as shown so its next prompt
