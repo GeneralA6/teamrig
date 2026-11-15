@@ -38,8 +38,8 @@ const RUNS_X: readonly (readonly [string, string])[] = [
   ['ssh host X', 'PUSH'], // was pass; then DOUBT, when the ssh check read the text only
   ['watch -n1 X', 'PUSH'], // was pass; then DOUBT
   ['tmux new-session -d X', 'PUSH'], // was pass; then DOUBT
-  ['tmux send-keys X Enter', 'DOUBT'], // was pass
-  ['screen -dm sh -c X', 'DOUBT'], // was pass
+  ['tmux send-keys X Enter', 'PUSH'], // was pass; then DOUBT
+  ['screen -dm sh -c X', 'PUSH'], // was pass; then DOUBT
   ['xterm -e X', 'DOUBT'], // was pass
   ['gnome-terminal -- sh -c X', 'DOUBT'], // was pass
   ['parallel ::: X', 'DOUBT'], // was pass

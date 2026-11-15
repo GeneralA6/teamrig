@@ -187,7 +187,7 @@ const ARGUMENT_RUNNERS: ReadonlySet<string> = new Set([
   ...['ssh', 'watch', 'tmux', 'screen', 'xterm', 'gnome-terminal', 'konsole', 'kitty', 'alacritty', 'xfce4-terminal', 'parallel'],
   ...['docker', 'podman', 'kubectl', 'oc', 'awk', 'gawk', 'mawk', 'nawk'],
   // Containers, multiplexers and programs with a command option.
-  ...['nerdctl', 'toolbox', 'distrobox', 'byobu', 'zellij', 'expect', 'vim', 'nvim', 'vi', 'ex', 'gdb'],
+  ...['nerdctl', 'toolbox', 'distrobox', 'byobu', 'zellij', 'expect', 'vim', 'nvim', 'vi', 'ex', 'gdb', 'machinectl'],
 ]);
 /** Container tools: only what follows their `exec`, `run` or `debug` is a command (`docker push` pushes an image). */
 const CONTAINER_TOOLS: ReadonlySet<string> = new Set(['docker', 'podman', 'kubectl', 'oc', 'nerdctl']);
@@ -197,7 +197,7 @@ const CONTAINER_TOOLS: ReadonlySet<string> = new Set(['docker', 'podman', 'kubec
  */
 const COMMAND_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ...['vim', 'nvim', 'vi', 'ex'].map((name): [string, ReadonlySet<string>] => [name, new Set(['-c', '--cmd'])]),
-  ['gdb', new Set(['-ex', '--ex', '-iex', '--iex', '--eval-command', '--init-eval-command'])],
+  ['gdb', new Set(['-ex', '--ex', '-iex', '--iex', '--eval-command', '--init-eval-command', '-eval-command', '-init-eval-command'])],
   ['expect', new Set(['-c'])],
 ]);
 const CONTAINER_COMMANDS: ReadonlySet<string> = new Set(['exec', 'run', 'debug']);
@@ -215,8 +215,9 @@ function runnerArgs(name: string, args: readonly ShellWord[]): readonly ShellWor
   }
   const options = COMMAND_OPTIONS.get(name);
   if (options !== undefined) {
-    // The value after a command option, or `-c` / `--eval-command=` joined to it, and a vim `+command`.
-    return args.filter((arg, at) => options.has(args[at - 1]?.text ?? '') || arg.text.startsWith('+') || [...options].some((option) => option.startsWith('--') && arg.text.startsWith(`${option}=`)));
+    // The value after a command option, or joined to it with `=` (`-ex=...`, `--eval-command=...`; gdb reads
+    // long options with one dash too), and a vim `+command`.
+    return args.filter((arg, at) => options.has(args[at - 1]?.text ?? '') || arg.text.startsWith('+') || [...options].some((option) => arg.text.startsWith(`${option}=`)));
   }
   return args;
 }
@@ -229,14 +230,54 @@ function runnerArgs(name: string, args: readonly ShellWord[]): readonly ShellWor
 const JOINED_RUNNERS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['ssh', new Set(['-B', '-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-l', '-m', '-O', '-o', '-p', '-Q', '-R', '-S', '-W', '-w'])],
   ['watch', new Set(['-n', '--interval', '-q', '--equexit'])],
-  ['tmux', new Set(['-c', '-e', '-F', '-n', '-s', '-t', '-x', '-y', '-f', '-l', '-L', '-S', '-T'])],
+  ['tmux', new Set()],
 ]);
-/** tmux's global options that take a value, before its subcommand. */
+/** tmux's global options that take a value, before its subcommand; `-c` is a shell command it runs. */
 const TMUX_GLOBAL_VALUED: ReadonlySet<string> = new Set(['-c', '-f', '-L', '-S', '-T']);
-/** tmux subcommands whose last words are a shell command. */
-const TMUX_SHELL_COMMANDS: ReadonlySet<string> = new Set(['new-session', 'new', 'new-window', 'neww', 'split-window', 'splitw', 'respawn-pane', 'respawnp', 'respawn-window', 'respawnw']);
+const TMUX_NEW_VALUED = ['-c', '-e', '-F', '-n', '-s', '-t', '-x', '-y', '-f', '-l'];
+/**
+ * tmux subcommands whose last words a shell runs, by the options of each that take a value (`send-keys` types its
+ * words into a shell, `if-shell` also runs tmux commands, read as shell too).
+ */
+const TMUX_SHELL_COMMANDS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ...['new-session', 'new', 'new-window', 'neww', 'respawn-pane', 'respawnp', 'respawn-window', 'respawnw'].map((name): [string, ReadonlySet<string>] => [name, new Set(TMUX_NEW_VALUED)]),
+  ...['split-window', 'splitw'].map((name): [string, ReadonlySet<string>] => [name, new Set(['-c', '-e', '-F', '-l', '-t', '-p'])]),
+  ...['run-shell', 'run'].map((name): [string, ReadonlySet<string>] => [name, new Set(['-c', '-d', '-t'])]),
+  ...['if-shell', 'if', 'pipe-pane', 'pipep'].map((name): [string, ReadonlySet<string>] => [name, new Set(['-t'])]),
+  ...['display-popup', 'popup'].map((name): [string, ReadonlySet<string>] => [name, new Set(['-b', '-c', '-d', '-e', '-h', '-s', '-S', '-t', '-T', '-w', '-x', '-y'])]),
+  ...['send-keys', 'send'].map((name): [string, ReadonlySet<string>] => [name, new Set(['-N', '-t'])]),
+]);
+/** Screen's options that take a value, and those that start nothing. */
+const SCREEN_VALUED: ReadonlySet<string> = new Set(['-S', '-t', '-c', '-e', '-h', '-p', '-T', '-s', '-Logfile']);
+const SCREEN_SESSION_OPTIONS: ReadonlySet<string> = new Set(['-X', '-x', '-r', '-R', '-RR', '-ls', '-list', '-wipe', '-Q']);
+/**
+ * What a cluster of short `screen` options (`-dmS n`) does. `valued`
+ * when its last letter takes the next word as its value, `session` when a letter talks to a session and starts
+ * nothing, `flags` otherwise. A valued letter with text after it (`-dmSn`) holds its value itself.
+ */
+function screenCluster(text: string): 'flags' | 'valued' | 'session' {
+  if (!/^-[A-Za-z]{2,}$/.test(text)) {
+    return 'flags';
+  }
+  for (let at = 1; at < text.length; at += 1) {
+    const letter = text[at] ?? '';
+    if (SCREEN_SESSION_OPTIONS.has(`-${letter}`)) {
+      return 'session';
+    }
+    if (SCREEN_VALUED.has(`-${letter}`)) {
+      return at === text.length - 1 ? 'valued' : 'flags';
+    }
+  }
+  return 'flags';
+}
+/** Builtins that set and export a variable, as `export` does. */
+const EXPORTING_PROGRAMS: ReadonlySet<string> = new Set(['export', 'env', 'declare', 'typeset', 'local', 'readonly', 'sudo', 'doas']);
+/** A bash option naming a startup file an interactive shell runs: `--rcfile f`, `--init-file f`. */
+const RC_FILE_OPTION = /^--(?:rcfile|init-file)(?:=(.*))?$/;
+/** Ssh options whose value a local or remote shell runs. */
+const SSH_COMMAND_OPTION = /^(?:ProxyCommand|RemoteCommand|LocalCommand|KnownHostsCommand)[=\s]+(.+)$/is;
 /** Programs that read a `<` file as commands: shells and stdin runners. */
-const FILE_STDIN_READERS = /^(?:sh|bash|dash|zsh|ksh|mksh|ash|su|sudo|ssh|at|batch|crontab|parallel|make|docker|podman|kubectl)$/;
+const FILE_STDIN_READERS = /^(?:sh|bash|dash|zsh|ksh|mksh|ash|su|runuser|sudo|doas|ssh|at|batch|crontab|parallel|make|docker|podman|kubectl)$/;
 /**
  * A variable naming a file a non-interactive shell runs first: `BASH_ENV`, or `ENV` when its value is a path
  * (`ENV=production` is a common setting of its own).
@@ -249,16 +290,22 @@ const STARTUP_FILE_VARIABLE = /^(?:BASH_ENV=|ENV=(?=\S*(?:\/|\.sh$)))/;
  * tmux's after the options of a subcommand that starts a shell command.
  */
 function joinedCommand(name: string, args: readonly ShellWord[]): readonly ShellWord[] | undefined {
-  const valued = JOINED_RUNNERS.get(name);
+  let valued = JOINED_RUNNERS.get(name);
   if (valued === undefined) {
     return undefined;
   }
   let index = 0;
   if (name === 'tmux') {
     while (index < args.length && (args[index]?.text ?? '').startsWith('-')) {
+      // `tmux -c command` runs command in a shell, as a login shell's -c does.
+      if (args[index]?.text === '-c') {
+        const command = args[index + 1];
+        return command === undefined ? undefined : [command];
+      }
       index += TMUX_GLOBAL_VALUED.has(args[index]?.text ?? '') ? 2 : 1;
     }
-    if (!TMUX_SHELL_COMMANDS.has(args[index]?.text ?? '')) {
+    valued = TMUX_SHELL_COMMANDS.get(args[index]?.text ?? '');
+    if (valued === undefined) {
       return undefined;
     }
     index += 1;
@@ -291,7 +338,7 @@ function joinedCommand(name: string, args: readonly ShellWord[]): readonly Shell
 }
 
 /** Programs that run commands they read on stdin. */
-const STDIN_RUNNERS: ReadonlySet<string> = new Set(['ssh', 'at', 'batch', 'crontab', 'parallel', 'make', 'docker', 'podman', 'kubectl', 'su']);
+const STDIN_RUNNERS: ReadonlySet<string> = new Set(['ssh', 'at', 'batch', 'crontab', 'parallel', 'make', 'docker', 'podman', 'kubectl', 'su', 'machinectl', 'expect']);
 /** Paths a process reads its own stdin through. */
 const STDIN_PATH = /^\/(?:dev\/stdin|dev\/fd\/0|proc\/self\/fd\/0)$/;
 /** Variables whose value a shell runs as commands later: before a prompt, at its start, or in a prompt. */
@@ -881,7 +928,7 @@ class GitInvocationFinder {
    * {@link ARGUMENT_RUNNERS}, {@link STDIN_RUNNERS}) when that command names a push.
    */
   private visitRunner(name: string, args: readonly ShellWord[], stdin: ShellWord | undefined, location: Location, depth: number): void {
-    this.visitJoined(name, args, location, depth);
+    this.visitJoined(name, args, stdin, location, depth);
     const reason = `it hands ${name} a command that names a push, which ${name} runs where the guard cannot read it`;
     if (ARGUMENT_RUNNERS.has(name) && runnerArgs(name, args).some((arg) => saysPush(arg.text))) {
       this.doubt(reason, false);
@@ -897,7 +944,20 @@ class GitInvocationFinder {
    * as the line's own commands, so a push the shell rebuilds (`git p\\ush`) is found. ssh runs it on another host,
    * in a folder the guard does not know. One built from variables is a doubt when the line names a push.
    */
-  private visitJoined(name: string, args: readonly ShellWord[], location: Location, depth: number): void {
+  private visitJoined(name: string, args: readonly ShellWord[], stdin: ShellWord | undefined, location: Location, depth: number): void {
+    if (name === 'ssh') {
+      this.visitSshOptions(args, location, depth);
+    }
+    // Ssh with no command runs its stdin in the remote login shell.
+    if (name === 'ssh' && stdin !== undefined && !stdin.dynamic && joinedCommand(name, args) === undefined) {
+      const remote = location.child();
+      remote.moveTo({ text: '$REMOTE_HOME', dynamic: true });
+      this.visitScript(stdin, 'bash', remote, depth + 1);
+    }
+    if (name === 'screen') {
+      this.visitScreen(args, location, depth);
+      return;
+    }
     const words = joinedCommand(name, args);
     if (words === undefined) {
       return;
@@ -914,12 +974,69 @@ class GitInvocationFinder {
   }
 
   /**
+   * Reads the commands an ssh `-o` option runs in a shell
+   * (`ProxyCommand`, `LocalCommand` here, `RemoteCommand` on the host); one built from variables is a doubt when
+   * the line names a push.
+   */
+  private visitSshOptions(args: readonly ShellWord[], location: Location, depth: number): void {
+    args.forEach((arg, at) => {
+      const value = arg.text === '-o' ? args[at + 1] : arg.text.startsWith('-o') ? { text: arg.text.slice(2), dynamic: arg.dynamic } : undefined;
+      const command = value === undefined ? undefined : SSH_COMMAND_OPTION.exec(value.text)?.[1];
+      if (value === undefined || command === undefined) {
+        return;
+      }
+      if (value.dynamic) {
+        this.doubt('ssh runs a command line only known when it runs', true);
+        return;
+      }
+      const inner = location.child();
+      if (/^RemoteCommand/i.test(value.text)) {
+        inner.moveTo({ text: '$REMOTE_HOME', dynamic: true });
+      }
+      this.visitScript(staticWord(command), 'bash', inner, depth + 1);
+    });
+  }
+
+  /**
+   * Reads the program `screen` starts after its options as a command
+   * of its own (`screen -dm sh -c '...'`). `-X`, `-x`, `-r`, `-R`, `-ls` and `-wipe` talk to a session and start
+   * nothing; the text rule of {@link ARGUMENT_RUNNERS} still checks them.
+   */
+  private visitScreen(args: readonly ShellWord[], location: Location, depth: number): void {
+    let index = 0;
+    for (; index < args.length; index += 1) {
+      const text = args[index]?.text ?? '';
+      if (SCREEN_SESSION_OPTIONS.has(text)) {
+        return;
+      }
+      if (!text.startsWith('-')) {
+        break;
+      }
+      if (SCREEN_VALUED.has(text)) {
+        index += 1;
+        continue;
+      }
+      const cluster = screenCluster(text);
+      if (cluster === 'session') {
+        return;
+      }
+      if (cluster === 'valued') {
+        index += 1;
+      }
+    }
+    const rest = args.slice(index);
+    if (rest.length > 0) {
+      this.visitCommand(rest, 'bash', location.child(), depth + 1);
+    }
+  }
+
+  /**
    * The text a `<` redirection feeds a shell or a stdin runner (see
    * {@link FILE_STDIN_READERS}) from a file, read as the line writes it or from disk. A file the guard cannot
    * read is a doubt when the line names a push.
    */
   private fileStdin(command: ShellCommand, location: Location): ShellWord | undefined {
-    const input = command.redirections.findLast((redirection) => /^0?<$/.test(redirection.operator));
+    const input = command.redirections.findLast((redirection) => /^0?<>?$/.test(redirection.operator));
     if (input?.target === undefined || !command.words.some((word) => !word.dynamic && FILE_STDIN_READERS.test(programName(word.text)))) {
       return undefined;
     }
@@ -945,8 +1062,18 @@ class GitInvocationFinder {
       return;
     }
     const program = words.findIndex((word) => !isAssignment(word.text));
-    const exported = words[program]?.text === 'export';
+    // `env`, `declare -x` and friends set it as `export` does.
+    const exported = EXPORTING_PROGRAMS.has(words[program]?.text ?? '');
     for (const [index, word] of words.entries()) {
+      // `bash --rcfile f -i` runs f first.
+      const rc = RC_FILE_OPTION.exec(word.text);
+      if (rc !== null && !word.dynamic) {
+        const file = rc[1] === undefined ? words[index + 1] : { text: rc[1], dynamic: false };
+        if (file !== undefined) {
+          this.visitScriptFile(file, [], [], false, false, location, depth);
+        }
+        continue;
+      }
       if (!STARTUP_FILE_VARIABLE.test(word.text) || (index > program && program !== -1 && !exported)) {
         continue;
       }

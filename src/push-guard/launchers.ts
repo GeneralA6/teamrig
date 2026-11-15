@@ -120,7 +120,7 @@ const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>(
       shell: ['-s', '--shell', '-i', '--login'],
     },
   ],
-  ['doas', { valued: ['-u', '-C'] }],
+  ['doas', { valued: ['-u', '-C'], shell: ['-s'] }],
   ['timeout', { valued: ['-s', '-k', '--signal', '--kill-after'], leading: 1 }],
   ['stdbuf', { valued: ['-i', '-o', '-e', '--input', '--output', '--error'] }],
   [
@@ -163,7 +163,7 @@ const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>(
   // More programs that run the command after their options: with
   // other privileges, in a sandbox, under a tracer, or with a CPU or scheduling setting.
   ['pkexec', { valued: ['--user'] }],
-  ['firejail', {}],
+  ['firejail', { valued: ['--profile', '--name'] }],
   [
     'bwrap',
     {
@@ -412,7 +412,9 @@ class LaunchReader {
       }
       // Su with no -c starts the user's shell, which runs the heredoc,
       // here-string or `<` file the line feeds it; a pipe into it is the finder's doubt.
-      if (name === 'su' && this.stdin !== undefined && !this.stdinArgs) {
+      // So does runuser without its `-u` command form.
+      const userForm = name === 'runuser' && args.some((arg) => arg.text === '-u' || arg.text === '--user' || arg.text.startsWith('--user='));
+      if ((name === 'su' || (name === 'runuser' && !userForm)) && this.stdin !== undefined && !this.stdinArgs) {
         return this.fromStdin('bash');
       }
     }

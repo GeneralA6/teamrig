@@ -8,6 +8,7 @@ const FILES: Readonly<Record<string, string>> = {
   '/work/app/x.sh': 'git push origin main\n',
   '/work/app/env.sh': 'git push origin main\n',
   '/work/app/ok.sh': 'echo fine\n',
+  '/work/app/q.sh': 'git p\\ush origin main\n',
 };
 
 function find(command: string): GitInvocations {
@@ -37,7 +38,7 @@ const RUNS_X: readonly (readonly [string, string])[] = [
   ['/usr/bin/watch X', 'PUSH'],
   ['/usr/bin/docker exec c sh -c X', 'DOUBT'],
   // ssh fed a file on stdin
-  ['ssh host < x.sh', 'DOUBT'],
+  ['ssh host < x.sh', 'PUSH'], // DOUBT before
   ['ssh host bash < x.sh', 'DOUBT'],
   ['ssh host bash -s < x.sh', 'DOUBT'],
   ['bash < x.sh', 'PUSH'],
@@ -140,5 +141,60 @@ describe('findGitInvocations: launcher residuals of a first security review', ()
       find('export BASH_ENV=missing.sh; bash -c true; echo push').doubts.map((doubt) => doubt.reason),
       ['it runs a shell script file the guard cannot read'],
     );
+  });
+});
+
+// The residuals of a second security review.
+describe('findGitInvocations: launcher residuals of a second security review', () => {
+  /** O is a push written so only a shell rebuilds it; each row passed before this change. */
+  const O = "'git p\\ush origin main'";
+  const ROWS: readonly (readonly [string, string])[] = [
+    // gdb's other spellings of a command option
+    ["gdb -batch -eval-command '!git push origin main'", 'DOUBT'],
+    ["gdb -batch -ex='!git push origin main'", 'DOUBT'],
+    // BASH_ENV set by env, a builtin or sudo, and an interactive shell's startup file
+    ['env BASH_ENV=x.sh bash -c true', 'PUSH'],
+    ['declare -x BASH_ENV=x.sh; bash -c true', 'PUSH'],
+    ['typeset -x BASH_ENV=x.sh; bash -c true', 'PUSH'],
+    ['sudo BASH_ENV=x.sh bash -c true', 'PUSH'],
+    ['bash --rcfile x.sh -ic true', 'PUSH'],
+    ['bash --init-file=x.sh -i <<< true', 'PUSH'],
+    // stdin from a `<>` file, and more shells that read stdin
+    ['ssh host 0<> x.sh', 'PUSH'],
+    ['doas -s < x.sh', 'PUSH'],
+    ['doas -s <<< X', 'PUSH'],
+    ['runuser -l root <<< X', 'PUSH'],
+    ['machinectl shell <<< X', 'DOUBT'],
+    ["expect <<< 'spawn git push origin main'", 'DOUBT'],
+    ['firejail --profile x sh -c X', 'PUSH'],
+    // a push only a shell rebuilds
+    ['ssh host < q.sh', 'PUSH'],
+    ['ssh -o ProxyCommand=O host', 'PUSH'],
+    ['ssh -o RemoteCommand=O host', 'PUSH'],
+    ['ssh -o PermitLocalCommand=yes -o LocalCommand=O host', 'PUSH'],
+    ['tmux -c O', 'PUSH'],
+    ['tmux run-shell O', 'PUSH'],
+    ['tmux display-popup -E O', 'PUSH'],
+    ['tmux pipe-pane -o O', 'PUSH'],
+    ['tmux send-keys O Enter', 'PUSH'],
+    ['tmux splitw -f O', 'PUSH'],
+    ['tmux splitw -p 50 O', 'PUSH'],
+    ['screen -dm sh -c O', 'PUSH'],
+    // a short option cluster ending in a valued letter
+    ['screen -dmS n sh -c O', 'PUSH'],
+    ['screen -dmSn sh -c O', 'PUSH'],
+    ['screen -dmS n -L sh -c O', 'PUSH'],
+  ];
+
+  it('finds or doubts the push', () => {
+    for (const [shape, expected] of ROWS) {
+      assert.equal(outcome(shape.replaceAll('X', X).replaceAll('O', O)), expected, shape);
+    }
+  });
+
+  it('leaves data and other programs as they were', () => {
+    for (const shape of ['gdb ./a.out', 'gdb -ex=run ./a.out', 'su', 'ssh -o Port=22 host ls', 'tmux send-keys -t 0 C-c', 'screen -ls', 'screen -dm make build', 'screen -dmS n make build', 'screen -dRR n', 'screen -dr n', 'env BASH_ENV=ok.sh bash -c true', 'ENV=production make', 'machinectl list']) {
+      assert.equal(outcome(shape), 'pass', shape);
+    }
   });
 });
