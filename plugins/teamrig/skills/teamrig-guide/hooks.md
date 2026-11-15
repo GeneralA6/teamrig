@@ -500,8 +500,9 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   a glob call or by starting a program, so `'*'` as a fallback or `'.*'` in a regex passes), the Read tool on one, or
   a Grep that shows content (`output_mode: content`) of one by its path or glob (each glob of the input apart, as
   ripgrep gets them, and each of its `{a,b}` alternatives, so `*.{ts,pem}` names `*.pem`; ripgrep reads away a `\`
-  and a `}` no `{` opened, so `*.\pem` and `*.pem}` name it too; a `[...]` set in a group is read as ripgrep reads
-  it, a `/` and a `{` in it members, so `{[{/],*.pem}` names `*.pem`; a glob over 1,024 characters or with over 64
+  and a `}` no `{` opened, so `*.\pem` and `*.pem}` name it too; a `[...]` set is read as ripgrep reads it, a `/`
+  and a `{` in it members and a negated one fitting a `/`, so `b[./]pem`, `*[/]e.pem` and `{[{/],*.pem}` name a
+  `.pem`; a glob over 1,024 characters or with over 64
   alternatives counts as naming one; a `!glob` skips files, so it names none).
   The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
   `~/.aws/credentials`, `**/.kube/config`, `~/.docker/config.json`, `**/.git-credentials`, `~/.config/gh/hosts.yml`,
@@ -512,7 +513,9 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   `**/id_rsa`, `**/id_ecdsa` and `**/id_ed25519` (their `.pub` halves are not listed), and Terraform's state
   `**/*.tfstate` and `**/*.tfstate.backup` (it holds secrets in plain text); `.env.example`, `.env.sample` and
   `~/.ssh/*.pub` stay readable. A word with
-  wildcards counts when a secret name fits them (`cat .env*`). So a session no longer reads, nor edits, a
+  wildcards counts when a secret name fits them (`cat .env*`, `cat .env.ex*`, which also fits `.env.export`), unless
+  they meet only where each one's wildcard covers the other's text: `grep x *.ts` fits `.env.*` only as `.env.ts`,
+  and passes. So a session no longer reads, nor edits, a
   `settings.local.json` (its permissions are the owner's to change), while a count over one of these files
   (`grep -c`, `wc -l`, a Grep count) still passes.
 - **the whole environment**: `env`, `printenv`, `export -p`, `declare -x`, cmd's `set`, `Get-ChildItem Env:`,
