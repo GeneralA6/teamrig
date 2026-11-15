@@ -1272,7 +1272,8 @@ Flags:
   repository's owner or a login in `github.owners`, or an outsider's new pull request, when `wake.enabled`). When its own pull request's checks start failing, it reads the
   end of each failed job's log (at most 5 a run) into `state/github-ci/<owner>-<name>-<number>.md` and the line names
   the job, its failed step and that file. An open issue labelled `security` wakes the session it routes to and pages
-  the owner through the `alerts` page webhook, once per issue; the lead is woken when no page goes. It reads every
+  the owner through the `alerts` page webhook, once per issue ever and for at most 3 issues a run (the rest go to the
+  lead in one line and one page); the lead is woken when no page goes. It reads every
   repository, so it refuses `--repo`. With `github.statusPush` on it
   then sends the status push (`--push --yes`) too, labels only: a close it plans is printed as a `HELD` line and
   sent only by a session's `--push --yes`. Its writes per run are lowered so an hour of runs sends at most 250

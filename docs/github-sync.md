@@ -209,9 +209,12 @@ again while it lasts; the first run on a repository only notes what is there.
 An open issue labelled `security` (any case, set by the issue form or by a maintainer) goes to its task's owner,
 else where the import would route it, an outsider's left-out report too. The automatic run wakes that session with a
 line naming only the issue's ref and URL, never its title, which may describe the hole, and pages the owner through
-the page webhook the team's `alerts` name (`teamrig page test` checks it). Each issue pages once: the sync state
-keeps the numbers paged, so a label set after the issue was imported pages too, and one that stays open never pages
-again. When no page goes, the lead is woken with why.
+the page webhook the team's `alerts` name (`teamrig page test` checks it). Each issue pages once ever: the sync
+state keeps every number paged for good, so a label set after the issue was imported pages too, and one that stays
+open, is closed and reopened, or loses the label and gets it again never pages again. A run pages and wakes for at
+most 3 such issues; anyone can open issues with the form, so the rest of a burst go to the lead in one line and one
+page that count them and name their refs (ten at most), and their sessions are not told. When no page goes, the lead
+is woken with why.
 
 ## Answer times
 
