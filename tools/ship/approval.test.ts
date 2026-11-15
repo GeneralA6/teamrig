@@ -4,9 +4,16 @@ import { EXIT, RefusedError } from '../../src/cli/runtime.ts';
 import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
 import { CliHarness } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type StandingOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
+import { changePatch, clearMerge, clearMergeFrom, mergeClearance, shipWritesOf, type StandingOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
+import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
+const MANIFEST = 'plugins/teamrig/.claude-plugin/plugin.json';
+const VERSION_TS = 'src/core/version.ts';
+/** A key a plugin manifest runs commands by, in every session that loads it. */
+const HOOKS_KEY = ',\n  "hooks": "./hooks/hooks.json"';
+const manifest = (version: string, more = ''): string => `{\n  "name": "teamrig",\n  "version": "${version}",\n  "description": "the kit"${more}\n}\n`;
+const versionTs = (version: string): string => `/** The kit's version. */\nexport const KIT_VERSION = '${version}';\n`;
 
 /** Team app with T1, alpha's, waiting on the lead's approval; `answer` is the lead's answer, if any. */
 async function waitingKit(answer?: readonly string[]): Promise<CliHarness> {
@@ -127,8 +134,21 @@ describe('clearMerge', () => {
   });
 });
 
+describe('shipWritesOf: how an approval reads the paths a ship writes again (T2914 F1)', () => {
+  it('leaves a folder out of the hash and masks a known version file', () => {
+    assert.deepEqual(shipWritesOf(['dist/', VERSION_TS], TEAMRIG_VERSION_FILES), {
+      generated: ['dist/'],
+      versionFiles: TEAMRIG_VERSION_FILES.filter((file) => file.path === VERSION_TS),
+    });
+  });
+
+  it('refuses a file that is neither a folder nor a version file the ship rewrites', () => {
+    assert.throws(() => shipWritesOf(['dist/', 'src/hooks.json'], TEAMRIG_VERSION_FILES), /regenerated path src\/hooks\.json is no folder the build rebuilds and no version file/);
+  });
+});
+
 describe('changePatch: the fingerprint of what a branch changes over main', () => {
-  const REGENERATED = ['dist/', 'version.txt'];
+  const WRITES = shipWritesOf(['dist/', MANIFEST, VERSION_TS], TEAMRIG_VERSION_FILES);
   let repo: TempRepo;
   const git = (args: readonly string[]): string => repo.git(...args);
   const commitFiles = (subject: string, files: Readonly<Record<string, string>>): string => {
@@ -137,13 +157,14 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     repo.git('commit', '-q', '-m', subject);
     return repo.git('rev-parse', 'HEAD').trim();
   };
-  const patch = (rev = 'HEAD'): string => changePatch(git, rev, 'main', REGENERATED);
+  const raise = (version: string): string => commitFiles(`plugin: version ${version}`, { [MANIFEST]: manifest(version), [VERSION_TS]: versionTs(version) });
+  const patch = (rev = 'HEAD'): string => changePatch(git, rev, 'main', WRITES);
   const lines = (from: number, to: number): string => Array.from({ length: to - from + 1 }, (_, i) => `line ${from + i}\n`).join('');
 
   beforeEach(() => {
     repo = new TempRepo('approval').init();
     repo.git('symbolic-ref', 'HEAD', 'refs/heads/main');
-    commitFiles('base', { 'src/a.ts': lines(1, 20), 'src/b.ts': 'b\n', 'dist/a.js': 'a\n', 'version.txt': '1\n' });
+    commitFiles('base', { 'src/a.ts': lines(1, 20), 'src/b.ts': 'b\n', 'dist/a.js': 'a\n', [MANIFEST]: manifest('0.1.0'), [VERSION_TS]: versionTs('0.1.0') });
     repo.git('checkout', '-q', '-b', 't1-change');
     commitFiles('core: a', { 'src/a.ts': lines(1, 20).replace('line 15\n', 'line fifteen\n'), 'src/new.ts': 'new\n' });
   });
@@ -155,24 +176,51 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     assert.equal(patch(), patch());
   });
 
-  it('keeps the fingerprint when the branch is rebased over main lines above its own, and its regenerated files move', () => {
+  it('keeps the fingerprint when the branch is rebased over main lines above its own, its version raised and its dist rebuilt', () => {
     const approved = patch();
     repo.git('checkout', '-q', 'main');
-    commitFiles('main: more', { 'src/a.ts': `line 0\n${lines(1, 20)}`, 'src/b.ts': 'b2\n', 'dist/a.js': 'a2\n', 'version.txt': '2\n' });
+    commitFiles('main: more', { 'src/a.ts': `line 0\n${lines(1, 20)}`, 'src/b.ts': 'b2\n', 'dist/a.js': 'a2\n' });
+    raise('0.2.0');
     repo.git('checkout', '-q', 't1-change');
     repo.git('rebase', '-q', 'main');
-    commitFiles('plugin: version 3', { 'version.txt': '3\n' });
+    raise('0.3.0');
     commitFiles('build: dist', { 'dist/a.js': 'a3\n', 'dist/new.js': 'new\n' });
     assert.equal(patch(), approved);
   });
 
-  it('moves the fingerprint on any change to the branch outside its regenerated files', () => {
+  it('moves the fingerprint on any change to the branch outside its generated folders', () => {
     const approved = patch();
     const sneaked = commitFiles('core: more', { 'src/b.ts': 'b, changed\n' });
     assert.notEqual(patch(sneaked), approved, 'a new file change');
     repo.git('checkout', '-q', '-b', 't1-edited', 'HEAD~1');
     commitFiles('core: a, edited', { 'src/new.ts': 'new, edited\n' });
     assert.notEqual(patch(), approved, 'an edit of a line the approved change made');
+  });
+
+  it('moves the fingerprint on an edit to a version file beyond its version, a raise with it too (T2914 F1)', () => {
+    raise('0.2.0');
+    const approved = patch();
+    commitFiles('core: version line', { [VERSION_TS]: `${versionTs('0.2.0')}import './later.ts';\n` });
+    assert.notEqual(patch(), approved, 'a line added to version.ts');
+    repo.git('checkout', '-q', '-b', 't1-hooks', 'HEAD~1');
+    commitFiles('plugin: version 0.3.0', { [MANIFEST]: manifest('0.3.0', HOOKS_KEY), [VERSION_TS]: versionTs('0.3.0') });
+    assert.notEqual(patch(), approved, 'a hooks key added to plugin.json in the version raise');
+  });
+
+  it('hashes a path git reads as binary by its content (T2914 F2)', () => {
+    repo.git('checkout', '-q', 'main');
+    commitFiles('main: attributes', { '.gitattributes': 'notes.txt -diff\n' });
+    repo.git('checkout', '-q', 't1-change');
+    repo.git('rebase', '-q', 'main');
+    const base = repo.git('rev-parse', 'HEAD').trim();
+    commitFiles('docs: notes', { 'notes.txt': 'one\n', 'src/blob.bin': 'a\u0000b\n' });
+    const approved = patch();
+    repo.git('checkout', '-q', '-b', 't1-notes', base);
+    commitFiles('docs: notes', { 'notes.txt': 'two\n', 'src/blob.bin': 'a\u0000b\n' });
+    assert.notEqual(patch(), approved, 'a path .gitattributes marks -diff');
+    repo.git('checkout', '-q', '-b', 't1-blob', base);
+    commitFiles('docs: notes', { 'notes.txt': 'one\n', 'src/blob.bin': 'a\u0000c\n' });
+    assert.notEqual(patch(), approved, 'a binary file');
   });
 
   it('reads the change from the merge base, so commits main gains after the fork never count', () => {
@@ -184,11 +232,11 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
   });
 
   describe('workCommitsOf: the commits a branch carries, with their patch ids (T2913)', () => {
-    const work = (rev = 'HEAD'): WorkCommit[] => workCommitsOf(git, rev, 'main', REGENERATED);
+    const work = (rev = 'HEAD'): WorkCommit[] => workCommitsOf(git, rev, 'main', WRITES);
 
-    it('lists the work commits oldest first, and leaves out a commit that changes only regenerated paths', () => {
+    it('lists the work commits oldest first, and leaves out a version raise and a dist rebuild', () => {
       commitFiles('docs: b', { 'src/b.ts': 'b, documented\n' });
-      commitFiles('plugin: version 2', { 'version.txt': '2\n' });
+      raise('0.2.0');
       commitFiles('build: dist', { 'dist/a.js': 'a2\n' });
       assert.deepEqual(work().map(({ subject, merge }) => ({ subject, merge })), [{ subject: 'core: a', merge: false }, { subject: 'docs: b', merge: false }]);
       assert.match(work()[0]?.patch ?? '', /^[0-9a-f]{64}$/);
@@ -196,15 +244,35 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
 
     it('keeps every patch id over a rebase onto main lines away from its own, so the two heads compare equal', () => {
       commitFiles('docs: b', { 'src/b.ts': 'b, documented\n' });
-      commitFiles('plugin: version 2', { 'version.txt': '2\n' });
+      raise('0.2.0');
       const approved = repo.git('rev-parse', 'HEAD').trim();
       repo.git('checkout', '-q', 'main');
-      commitFiles('main: more', { 'src/a.ts': `line 0\n${lines(1, 20)}`, 'version.txt': '2\n', 'dist/a.js': 'a2\n' });
+      commitFiles('main: more', { 'src/a.ts': `line 0\n${lines(1, 20)}`, 'dist/a.js': 'a2\n' });
+      raise('0.2.0');
       repo.git('checkout', '-q', 't1-change');
       repo.git('rebase', '-q', 'main');
-      commitFiles('plugin: version 3', { 'version.txt': '3\n' });
+      raise('0.3.0');
       assert.notEqual(repo.git('rev-parse', 'HEAD').trim(), approved);
       assert.deepEqual(workChanges(work(approved), work()), []);
+    });
+
+    it('counts a commit that adds a line to version.ts or a hooks key to plugin.json as work, so it refuses (T2914 F1)', () => {
+      raise('0.2.0');
+      const approved = repo.git('rev-parse', 'HEAD').trim();
+      const line = commitFiles('plugin: version 0.2.0', { [VERSION_TS]: `${versionTs('0.2.0')}import './later.ts';\n` });
+      assert.deepEqual(workChanges(work(approved), work()), [`added ${line.slice(0, 9)} "plugin: version 0.2.0"`]);
+      repo.git('checkout', '-q', '-b', 't1-hooks', approved);
+      const hooks = commitFiles('plugin: version 0.3.0', { [MANIFEST]: manifest('0.3.0', HOOKS_KEY), [VERSION_TS]: versionTs('0.3.0') });
+      assert.deepEqual(workChanges(work(approved), work()), [`added ${hooks.slice(0, 9)} "plugin: version 0.3.0"`]);
+    });
+
+    it('tells apart two contents of a path git reads as binary (T2914 F2)', () => {
+      const base = repo.git('rev-parse', 'HEAD').trim();
+      commitFiles('docs: notes', { '.gitattributes': 'notes.txt -diff\n', 'notes.txt': 'one\n' });
+      const approved = repo.git('rev-parse', 'HEAD').trim();
+      repo.git('checkout', '-q', '-b', 't1-notes', base);
+      const swapped = commitFiles('docs: notes', { '.gitattributes': 'notes.txt -diff\n', 'notes.txt': 'two\n' });
+      assert.deepEqual(workChanges(work(approved), work()), [`changed ${approved.slice(0, 9)} "docs: notes", now ${swapped.slice(0, 9)}`]);
     });
 
     it('moves the patch id of a commit whose own lines or context changed', () => {
