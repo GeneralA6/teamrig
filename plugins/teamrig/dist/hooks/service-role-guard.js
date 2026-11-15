@@ -1,7 +1,7 @@
 import { posix, win32 } from 'node:path';
 import { toolCommandReadings } from "../core/bash-tool-readings.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
-import { runsOfReadings, teamrigLaunchOf } from "./exec-guard.js";
+import { opaqueGuardedWords, runsOfReadings, teamrigLaunchOf } from "./exec-guard.js";
 import { holdBackOutput, refusalOutput } from "./permission.js";
 /**
  * The service-role guard (T2984, security condition C2): a service role lets its holders run a few teamrig commands
@@ -220,6 +220,6 @@ export async function serviceRoleGuardOutput(payload, env) {
     const changes = runs.programs.some((run) => {
         const launch = teamrigLaunchOf(run, startsRoleChange);
         return launch !== undefined && startsRoleChange(launch.words);
-    }) || runs.opaque.some((run) => startsRoleChange(run.args));
+    }) || runs.opaque.some((run) => opaqueGuardedWords(run, startsRoleChange) !== undefined);
     return changes ? holdBackOutput('ask', ROLE_CHANGE_ASK, env.hookAsks) : '';
 }

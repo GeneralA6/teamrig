@@ -68,6 +68,17 @@ export class BranchMoves {
         return this.change;
     }
     /** Updates the views after one git command runs. */
+    /** True when `invocation` may move the branch of a folder. */
+    moves(invocation) {
+        return this.moveOf(invocation) !== undefined;
+    }
+    /** Forgets where every folder's branch is: the moves seen may not have run. */
+    forget() {
+        for (const key of this.views.keys()) {
+            this.views.set(key, UNKNOWN);
+        }
+        this.othersUnknown = true;
+    }
     observe(invocation) {
         const change = mapChangeOf(invocation);
         if (change === 'config' || (change === 'upstream' && this.change === 'none')) {

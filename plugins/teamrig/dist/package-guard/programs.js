@@ -1,18 +1,21 @@
 import { launch, programName, staticWord } from "../push-guard/launchers.js";
+import { packagedStartOf } from "./packaged.js";
 import { Location } from "../push-guard/location.js";
 import { redirectsInput, stdinUse } from "../push-guard/stdin.js";
 import { parseShell } from "../push-guard/tokenizer.js";
 import { resolveLiteralVariables } from "../push-guard/variables.js";
 /** The outlet of the line's own commands: the screen. */
 const SCREEN = { pipe: undefined, substitution: undefined };
+/** The scope of the line's own commands: its shell starts them. */
+const TOP = { runner: false, packageRunner: undefined };
 /** Nested scripts deeper than this are not read, as in the push guard. */
 const MAX_SCRIPT_DEPTH = 8;
 /** A separator that pipes a command's output into the next one: `|`, `|&`, `)|` after a group, or `|(` before a subshell, not `||`. */
 const PIPE_END = /(?:^|[^|])\|&?[\n(]*$/;
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command, context) {
-    const runs = { programs: [], bare: [], opaque: [], fedShells: [] };
-    visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN, false);
+    const runs = { programs: [], bare: [], opaque: [], fedShells: [], foreignShells: [] };
+    visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, TOP, runs, SCREEN, false);
     return runs;
 }
 /** The programs `command` starts, in the order it starts them. */
@@ -21,10 +24,10 @@ export function programsOf(command, context) {
 }
 /**
  * Visits each command of a script; a plain `cat` hands its stdin down a pipe, so `cat <<EOF | bash` runs the body.
- * `runner` is true when a teamrig runner started the script; `outlet` takes the output of its commands that send it nowhere else;
+ * `scope` says who started the script; `outlet` takes the output of its commands that send it nowhere else;
  * `fed` is true when the command that started it has a fed stdin, which its own commands inherit.
  */
-function visitScript(script, dialect, location, depth, runner, runs, outlet, fed) {
+function visitScript(script, dialect, location, depth, scope, runs, outlet, fed) {
     if (depth > MAX_SCRIPT_DEPTH) {
         return;
     }
@@ -64,7 +67,7 @@ function visitScript(script, dialect, location, depth, runner, runs, outlet, fed
         }
         location.enter(command.subshells);
         const inlet = { fromPipe: pipeIn !== undefined, text: stdin, fed: pipeIn !== undefined || stdin !== undefined || (fed && command.nesting === 0) };
-        const visited = visitCommand(command, inlet, { pipe, substitution }, dialect, location, depth, runner, runs);
+        const visited = visitCommand(command, inlet, { pipe, substitution }, dialect, location, depth, scope, runs);
         if (pipeIn !== undefined) {
             pipeIn.into = visited?.run;
         }
@@ -85,7 +88,7 @@ function visitScript(script, dialect, location, depth, runner, runs, outlet, fed
     }
 }
 /** Visits one simple command; returns what it starts, or undefined for a `cd`. */
-function visitCommand(command, inlet, outlet, dialect, location, depth, runner, runs) {
+function visitCommand(command, inlet, outlet, dialect, location, depth, scope, runs) {
     if (location.apply(command.words, dialect)) {
         return undefined;
     }
@@ -93,7 +96,7 @@ function visitCommand(command, inlet, outlet, dialect, location, depth, runner, 
     if (launched.kind === 'script') {
         const inner = location.child();
         launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
-        visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet, inlet.fed);
+        visitScript(launched.script, launched.dialect, inner, depth + 1, { ...scope, runner: scope.runner || launched.runner }, runs, outlet, inlet.fed);
         if (launched.sameShell) {
             location.adopt(inner);
         }
@@ -110,12 +113,14 @@ function visitCommand(command, inlet, outlet, dialect, location, depth, runner, 
             redirections: command.redirections,
             stdin: inlet.text,
             piped: inlet.fromPipe,
-            runner: runner || launched.runner,
+            runner: scope.runner || launched.runner,
+            packageRunner: scope.packageRunner,
             pipe: outlet.pipe,
             captured: launched.captured,
             substitution: outlet.substitution,
         };
         runs.programs.push(run);
+        visitPackaged(run, launched.env, command, inlet, outlet, inner, depth, runs);
         return { launched, run, bare: undefined };
     }
     else if (launched.kind === 'opaque' && launched.command !== undefined) {
@@ -130,6 +135,28 @@ function visitCommand(command, inlet, outlet, dialect, location, depth, runner, 
         return { launched, run: undefined, bare };
     }
     return { launched, run: undefined, bare: undefined };
+}
+/**
+ * Visits what a package runner or a version manager starts besides itself (T3069), one script level deeper, in the
+ * folder, stdin and outlet of the run that starts it: the words as a command of their own, a shell mode's line as a
+ * script, in every dialect it may run in. Each run it finds names the outermost runner in `packageRunner`; a shell
+ * the line names that the walker cannot read is kept in `foreignShells`.
+ */
+function visitPackaged(run, env, command, inlet, outlet, location, depth, runs) {
+    const starts = depth < MAX_SCRIPT_DEPTH ? packagedStartOf(run.name, run.args, env) : [];
+    const scope = { runner: run.runner, packageRunner: run.packageRunner ?? run.program };
+    for (const start of starts) {
+        switch (start.kind) {
+            case 'words':
+                visitCommand({ ...command, words: start.words }, inlet, outlet, run.dialect, location.child(), depth + 1, scope, runs);
+                break;
+            case 'script':
+                visitScript(start.script, start.dialect, location.child(), depth + 1, scope, runs, outlet, inlet.fed);
+                break;
+            case 'foreign-shell':
+                runs.foreignShells.push(start.shell);
+        }
+    }
 }
 /** PowerShell: opens `group` at each `(` of the terminator, and closes one at each `)`. */
 function trackGroups(terminator, group, groups) {

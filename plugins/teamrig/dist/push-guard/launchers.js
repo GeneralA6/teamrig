@@ -84,7 +84,7 @@ const CMD_START_VALUED = new Set(['/node', '/affinity', '/machine']);
  */
 const TEAMRIG_RUNNERS = new Set(['queue', 'heavy', 'test']);
 /** The shell Node's `spawn` starts with `shell: true`, which runs a teamrig runner's command given as one word. */
-const SPAWN_SHELL = process.platform === 'win32' ? 'cmd' : 'bash';
+export const SPAWN_SHELL = process.platform === 'win32' ? 'cmd' : 'bash';
 /** How many wrappers deep one command may go before the guard stops reading it. */
 const MAX_STEPS = 16;
 const NOTHING = { kind: 'nothing' };
