@@ -78,8 +78,8 @@ export interface ServiceRoleGuardEnv {
   readonly platform: NodeJS.Platform;
   /** The team config file, or undefined when the hook found no team config to keep. */
   readonly configPath: string | undefined;
-  /** The team config's text now, or undefined when there is none. */
-  readonly readConfig: () => Promise<string | undefined>;
+  /** A team config's text now, by its absolute path, or undefined when there is none. */
+  readonly readConfig: (path: string) => Promise<string | undefined>;
 }
 
 /** True when the words run `roles grant` or `roles revoke`, or a `roles` command only known when it runs. */
@@ -97,6 +97,24 @@ function samePathKey(path: string, cwd: string, platform: NodeJS.Platform): stri
 function kitHomeOf(configPath: string, platform: NodeJS.Platform): string {
   const path = platform === 'win32' ? win32 : posix;
   return path.dirname(path.dirname(path.dirname(configPath)));
+}
+
+/**
+ * The absolute path of the team config a file tool's path names, or undefined for another file. Every team under the
+ * kit home counts, not only the session's own (T3083): each team's guards read their own config, so loosening a
+ * neighbour's is the same reach, and the shell check already names any team's config.
+ */
+function teamConfigTarget(target: string, cwd: string, platform: NodeJS.Platform, configPath: string): string | undefined {
+  const key = samePathKey(target, cwd, platform);
+  if (key === samePathKey(configPath, cwd, platform)) {
+    return configPath;
+  }
+  const teams = `${samePathKey(kitHomeOf(configPath, platform), cwd, platform)}/teams/`;
+  if (!key.startsWith(teams)) {
+    return undefined;
+  }
+  const rest = key.slice(teams.length).split('/');
+  return rest.length === 2 && rest[0] !== '' && rest[1] === 'config.json' ? (platform === 'win32' ? win32 : posix).resolve(cwd, target) : undefined;
 }
 
 /** The config text as JSON, or undefined when there is none or it is no JSON object. */
@@ -173,8 +191,8 @@ function nextText(tool: string, input: JsonRecord, current: string | undefined):
 }
 
 /** Why a file tool's call on the team config is refused, or undefined when it leaves every owner-gated key as it is. */
-async function fileRefusal(tool: string, input: JsonRecord, path: string, env: ServiceRoleGuardEnv): Promise<string | undefined> {
-  const current = await env.readConfig();
+async function fileRefusal(tool: string, input: JsonRecord, path: string, configFile: string, env: ServiceRoleGuardEnv): Promise<string | undefined> {
+  const current = await env.readConfig(configFile);
   const next = nextText(tool, input, current);
   if (next === undefined) {
     return `this ${tool} of the team config (${path}) cannot be read as a change of its text, so the guard cannot tell whether it changes an owner-gated key`;
@@ -229,10 +247,11 @@ export async function serviceRoleGuardOutput(payload: unknown, env: ServiceRoleG
     if (path === undefined || env.configPath === undefined) {
       return '';
     }
-    if (samePathKey(path, cwd, env.platform) !== samePathKey(env.configPath, cwd, env.platform)) {
+    const configFile = teamConfigTarget(path, cwd, env.platform, env.configPath);
+    if (configFile === undefined) {
       return '';
     }
-    const reach = await fileRefusal(tool, input, path, env);
+    const reach = await fileRefusal(tool, input, path, configFile, env);
     return reach === undefined ? '' : refusalOutput(editRefusalOf(reach));
   }
   const command = stringField(input, 'command');

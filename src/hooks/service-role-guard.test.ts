@@ -10,6 +10,11 @@ const ROLES = { github: { holders: ['alpha'], commands: ['issue close'] } };
 
 const TEXT = `${JSON.stringify({ sessions: ['lead', 'alpha'], serviceRoles: ROLES }, null, 2)}\n`;
 
+/** Another team's config under the same kit home, with gated keys of its own. */
+const OTHER = 'C:/u/.teamrig/teams/other/config.json';
+
+const OTHER_TEXT = `${JSON.stringify({ sessions: ['boss'], ownerGates: ['budget'], pushGuard: { pushToProtected: 'ask' } }, null, 2)}\n`;
+
 function env(options: { readonly asks?: HookAsks; readonly configPath?: string | undefined; readonly text?: string | undefined } = {}): ServiceRoleGuardEnv {
   const text = 'text' in options ? options.text : TEXT;
   return {
@@ -18,7 +23,7 @@ function env(options: { readonly asks?: HookAsks; readonly configPath?: string |
     hookAsks: options.asks ?? 'ask',
     platform: 'win32',
     configPath: 'configPath' in options ? options.configPath : CONFIG,
-    readConfig: () => Promise.resolve(text),
+    readConfig: (path) => Promise.resolve(/[\\/]teams[\\/]other[\\/]/i.test(path) ? OTHER_TEXT : text),
   };
 }
 
@@ -84,11 +89,20 @@ describe('service-role guard: the team config', () => {
     assert.equal(await decide(call('Write', { file_path: CONFIG, content: JSON.stringify({ serviceRoles: ROLES }) }), created), 'deny');
   });
 
-  it("passes an edit of the config's other keys, and a file that is not the config", async () => {
+  it("passes an edit of the config's other keys, and a file that is no team config", async () => {
     assert.equal(await decide(call('Edit', { file_path: CONFIG, old_string: '"lead",', new_string: '"lead", "bravo",' })), undefined);
     assert.equal(await decide(call('Write', { file_path: CONFIG, content: JSON.stringify({ serviceRoles: ROLES, sessions: ['lead'] }) })), undefined);
-    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/other/config.json', old_string: 'a', new_string: 'b' })), undefined);
+    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/other/notes/config.json', old_string: 'a', new_string: 'b' })), undefined);
+    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/config.json', old_string: 'a', new_string: 'b' })), undefined);
     assert.equal(await decide(call('Edit', { file_path: CONFIG, old_string: '"lead"', new_string: '"boss"' }), env({ configPath: undefined })), undefined);
+  });
+
+  it("guards every team's config under the kit home, each against its own text (T3083)", async () => {
+    assert.equal(await decide(call('Edit', { file_path: OTHER, old_string: '"budget"', new_string: '' })), 'deny');
+    assert.equal(await decide(call('Edit', { file_path: 'c:\\U\\.TEAMRIG\\teams\\other\\config.json', old_string: '"budget"', new_string: '' })), 'deny');
+    const loosened = OTHER_TEXT.replace('"ask"', '"allow"');
+    assert.equal(await decide(call('Write', { file_path: OTHER, content: loosened })), 'deny');
+    assert.equal(await decide(call('Edit', { file_path: OTHER, old_string: '"boss"', new_string: '"boss", "bravo"' })), undefined);
   });
 
   it('refuses a config edit it cannot read as a change: text not found, an Edit of no file, a notebook edit', async () => {
