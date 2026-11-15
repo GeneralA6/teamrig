@@ -755,8 +755,8 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
 - **a program known only when it runs**: `$T exec approve ...`, `node "$SCRIPT" exec run ...` or a relative client
   path from a folder only known when the line runs, whenever the words after it are an `exec` command, as no
   file can be checked; write the program out. `$DOCKER exec ctr ls` is not one.
-- **a changed client**: any `exec` command while the files (`bin`, `dist`, `hooks`) of the install it starts
-  differ from the SHA-256 list its build wrote (`dist/integrity.json`), or that list is missing, since an approved
+- **a changed client**: any `exec` command while the files (`bin`, `dist`, `hooks`; not their test files) of the install
+  it starts differ from the SHA-256 list its build wrote (`dist/integrity.json`), or that list is missing, since an approved
   command runs inside that client. Each install a line starts is checked once; the reason names up to five changed
   files, and the install when it is not the hook's own; reinstall the plugin.
 - **the owner's actions**: any `owner` command ([owner note](commands.md#teamrig-owner-note),
