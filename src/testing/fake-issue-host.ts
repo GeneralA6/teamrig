@@ -1,4 +1,4 @@
-import type { CloseReason, HostAssignee, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, IssueDraft, IssueHost, IssueTarget } from '../issues/host.ts';
+import type { CloseReason, HostAssignee, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, WatchMarks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 
 /** What each use does, as the fake's access line words it. */
@@ -193,5 +193,10 @@ export class FakeIssueHost implements IssueHost {
   assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd> {
     this.calls.push({ kind: 'assign', target, logins });
     return Promise.resolve(this.assignEnd);
+  }
+
+  /** Each repository changed when no marks are given (it holds no issue to change later), else unchanged. */
+  watch(_repo: string, marks: WatchMarks): Promise<HostWatch> {
+    return Promise.resolve(marks.size === 0 ? { kind: 'changed', marks: new Map([['all', 'seen']]) } : { kind: 'unchanged' });
   }
 }

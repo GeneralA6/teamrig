@@ -117,7 +117,24 @@ export interface IssueHost {
   assigneeExists(repo: string, login: string): Promise<HostAssignee>;
   /** Adds `logins` to the assignees of the issue or pull request; those already on it stay. */
   assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd>;
+  /**
+   * Whether `repo` changed since the host gave `marks`, cheaply enough to ask every minute: no list is read. Empty
+   * marks always read as changed.
+   */
+  watch(repo: string, marks: WatchMarks): Promise<HostWatch>;
 }
+
+/** What a host gave for its last answers about one repository: the caller keeps them between looks and never reads them. */
+export type WatchMarks = ReadonlyMap<string, string>;
+
+/**
+ * Whether a repository changed since its marks were given: changed, with the marks to keep once the change is read;
+ * unchanged; or the look failed, with one plain line saying why.
+ */
+export type HostWatch =
+  | { readonly kind: 'changed'; readonly marks: WatchMarks }
+  | { readonly kind: 'unchanged' }
+  | { readonly kind: 'failed'; readonly reason: string };
 
 /** The hosts teamrig has an adapter for, by the team config list that names their repositories. */
 export type HostKind = 'github';

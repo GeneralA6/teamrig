@@ -17,6 +17,7 @@ import {
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
+  isWatchProbe,
   type GhRequest,
   type GhResult,
   type GhRunner,
@@ -246,6 +247,7 @@ describe('GitHubIssueHost', () => {
     assert.deepEqual(await host.open(DRAFT), { kind: 'failed', reason });
     assert.deepEqual(await host.comment(TARGET, 'Thanks'), { kind: 'failed', reason });
     assert.deepEqual(await host.close(TARGET), { kind: 'failed', reason });
+    assert.deepEqual(await host.watch('acme/web', new Map()), { kind: 'failed', reason });
     assert.deepEqual(gh.ran, []);
   });
 
@@ -311,5 +313,61 @@ describe('GitHubIssueHost links', () => {
     assert.deepEqual(await host.addSubIssue(TARGET, 1008), { kind: 'failed', reason });
     assert.deepEqual(await host.addBlockedBy(TARGET, 1008), { kind: 'failed', reason });
     assert.deepEqual(gh.ran, []);
+  });
+});
+
+describe('GitHubIssueHost.watch', () => {
+  const ISSUES = 'issues?state=all&sort=updated&per_page=1';
+  const RUNS = 'actions/runs?per_page=5';
+
+  it('reads a repository with no marks as changed, then unchanged until GitHub moves, at no list read', async () => {
+    const gh = new FakeGh().holds('acme/web', []);
+    const host = hostWith(gh);
+    const first = await host.watch('acme/web', new Map());
+    assert.deepEqual(first, { kind: 'changed', marks: new Map([[ISSUES, 'W/"v1"'], [RUNS, 'W/"v1"']]) });
+    assert.ok(first.kind === 'changed');
+    assert.deepEqual(await host.watch('acme/web', first.marks), { kind: 'unchanged' });
+    gh.changes('acme/web', RUNS);
+    assert.deepEqual(await host.watch('acme/web', first.marks), { kind: 'changed', marks: new Map([[ISSUES, 'W/"v1"'], [RUNS, 'W/"v2"']]) });
+    assert.deepEqual(gh.probes(), Array.from({ length: 3 }, () => [`acme/web/${ISSUES}`, `acme/web/${RUNS}`]).flat());
+    assert.ok(gh.ran.every((request) => isWatchProbe(request.args)));
+  });
+
+  it('sends each path its own tag, with the token the repository is read with', async () => {
+    const gh = new FakeGh().holds('acme/web', []);
+    await hostWith(gh, new FakeCredentials().saves('teamrig-gh-acme', 'k')).watch('acme/web', new Map([[ISSUES, 'W/"a"']]));
+    assert.deepEqual(
+      gh.ran.map((request) => request.args),
+      [
+        ['api', '-i', '-H', 'If-None-Match: W/"a"', `repos/acme/web/${ISSUES}`],
+        ['api', '-i', `repos/acme/web/${RUNS}`],
+      ],
+    );
+    assert.ok(gh.ran.every((request) => request.env['GH_TOKEN'] === 'k'));
+  });
+
+  it('fails only when nothing changed, naming the probe, a secret shape redacted', async () => {
+    const secret = ['tok', '_abcd1234'].join('');
+    const gh = new FakeGh().failsProbe('acme/web', { end: { kind: 'exited', code: 1 }, stdout: 'HTTP/2.0 403 Forbidden\r\n\r\n{}', stderr: `gh: denied ${secret}\n` });
+    const failed = await hostWith(gh).watch('acme/web', new Map([[ISSUES, 'W/"v1"'], [RUNS, 'W/"v1"']]));
+    assert.ok(failed.kind === 'failed' && failed.reason.startsWith('acme/web issues: GitHub answered HTTP 403: gh: denied [redacted') && !failed.reason.includes(secret));
+    const absent = new FakeGh().failsWith(Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }));
+    const notInstalled = await hostWith(absent).watch('acme/web', new Map());
+    assert.ok(notInstalled.kind === 'failed' && notInstalled.reason.startsWith('acme/web issues: gh, the GitHub CLI, is not installed'));
+  });
+
+  it('reads one changed path as changed though the other failed, the failed one keeping its old tag', async () => {
+    const runsFail: GhRunner = {
+      run: async (request) =>
+        request.args.at(-1)?.endsWith(RUNS) === true
+          ? { end: { kind: 'exited', code: 1 }, stdout: 'HTTP/2.0 502 Bad Gateway\r\n\r\n', stderr: '' }
+          : { end: { kind: 'exited', code: 0 }, stdout: 'HTTP/2.0 200 OK\r\nEtag: "n"\r\n\r\n[]', stderr: '' },
+    };
+    assert.deepEqual(await hostWith(runsFail).watch('acme/web', new Map([[ISSUES, '"o"'], [RUNS, '"r"']])), { kind: 'changed', marks: new Map([[ISSUES, '"n"'], [RUNS, '"r"']]) });
+  });
+
+  it('drops the mark of a path whose answer has no usable tag, so the next probe reads it whole', async () => {
+    const untagged: GhRunner = { run: async () => ({ end: { kind: 'exited', code: 0 }, stdout: 'HTTP/2.0 200 OK\r\n\r\n[]', stderr: '' }) };
+    assert.deepEqual(await hostWith(untagged).watch('acme/web', new Map([[ISSUES, '"o"']])), { kind: 'changed', marks: new Map() });
   });
 });

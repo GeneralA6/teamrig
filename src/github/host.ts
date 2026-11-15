@@ -11,12 +11,15 @@ import {
   type HostOpen,
   type HostReach,
   type HostUse,
+  type HostWatch,
   type IssueDraft,
   type IssueHost,
   type IssueTarget,
+  type WatchMarks,
 } from '../issues/host.ts';
 import type { IssueState } from '../issues/issue.ts';
 import { exitText } from '../open/processes.ts';
+import type { Env } from '../core/home.ts';
 import {
   assigneeReadArgs,
   blockedByAddArgs,
@@ -29,9 +32,13 @@ import {
   issueReadArgs,
   labelReadArgs,
   subIssueAddArgs,
+  WATCH_PATHS,
+  watchProbeArgs,
   type GhResult,
   type GhRunner,
+  type WatchPath,
 } from './gh.ts';
+import { probeAnswerOf, type ProbeAnswer } from './probe.ts';
 import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, startFailureText, type IssueList } from './issues.ts';
 import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
@@ -222,6 +229,47 @@ export class GitHubIssueHost implements IssueHost {
 
   assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd> {
     return this.write(target, issueAssignArgs(target, logins), 'assign');
+  }
+
+  /**
+   * Probes each of WATCH_PATHS with the tag `marks` holds for it (gh.ts isWatchProbe), each mark keyed by its path.
+   * Changed when any answer changed, the new tags in the marks it gives (a path that failed keeps its old tag, so it
+   * reads as changed again later); failed when none changed and one failed, with that line, any secret shape
+   * redacted; else unchanged. GitHub answers an unchanged probe 304, which does not count against the rate limit.
+   */
+  async watch(repo: string, marks: WatchMarks): Promise<HostWatch> {
+    const access = await this.tokens.accessFor(repo);
+    if (access instanceof TokenReadError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    const next = new Map(marks);
+    let changed = false;
+    let failure: string | undefined;
+    for (const path of WATCH_PATHS) {
+      const answer = await this.probe(repo, path, marks.get(path), access.env);
+      if (answer.kind === 'changed') {
+        changed = true;
+        if (answer.tag === undefined) {
+          next.delete(path);
+        } else {
+          next.set(path, answer.tag);
+        }
+      } else if (answer.kind === 'failed') {
+        failure ??= `${repo} ${path.slice(0, path.indexOf('?'))}: ${answer.reason}`;
+      }
+    }
+    if (changed) {
+      return { kind: 'changed', marks: next };
+    }
+    return failure === undefined ? { kind: 'unchanged' } : { kind: 'failed', reason: this.scanner.redact(failure) };
+  }
+
+  private async probe(repo: string, path: WatchPath, tag: string | undefined, env: Env): Promise<ProbeAnswer> {
+    try {
+      return probeAnswerOf(await this.gh.run({ args: watchProbeArgs(repo, path, tag), env }));
+    } catch (error) {
+      return { kind: 'failed', reason: startFailureText(error) };
+    }
   }
 
   /** One write; `missing`, when given, says what a Not Found means for it in place of the issue not being there. */

@@ -10,9 +10,12 @@ import {
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
+  isWatchProbe,
+  WATCH_PATHS,
   type GhRequest,
   type GhResult,
   type GhRunner,
+  type WatchPath,
 } from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
@@ -149,6 +152,9 @@ export class FakeGh implements GhRunner {
   private readonly labels = new Map<string, readonly string[]>();
   private readonly unassignable = new Map<string, readonly string[]>();
   private pageSize = ISSUE_PAGE_SIZE;
+  /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
+  private readonly versions = new Map<string, number>();
+  private readonly probeFailures = new Map<string, GhResult>();
 
   /** From now on, `repo` holds these issues (as ghIssue builds them). */
   holds(repo: string, issues: readonly JsonRecord[]): this {
@@ -198,10 +204,33 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
+  /** From now on, the watch probes of `repo` (all, or the one `path`) see a change they were not told of yet. */
+  changes(repo: string, path?: WatchPath): this {
+    for (const probe of path === undefined ? WATCH_PATHS : [path]) {
+      const key = `${repo} ${probe}`;
+      this.versions.set(key, (this.versions.get(key) ?? 1) + 1);
+    }
+    return this;
+  }
+
+  /** From now on, every watch probe of `repo` ends as given. */
+  failsProbe(repo: string, result: GhResult): this {
+    this.probeFailures.set(repo, result);
+    return this;
+  }
+
+  /** The watch probes run so far, each as the repository and path it read. */
+  probes(): string[] {
+    return this.ran.filter((request) => isWatchProbe(request.args)).map((request) => (request.args[request.args.length - 1] ?? '').slice('repos/'.length));
+  }
+
   async run(request: GhRequest): Promise<GhResult> {
     this.ran.push(request);
     if (this.failure !== undefined) {
       throw this.failure;
+    }
+    if (isWatchProbe(request.args)) {
+      return this.probe(request.args);
     }
     if (isIssueCreate(request.args)) {
       return this.create(request.args);
@@ -247,6 +276,28 @@ export class FakeGh implements GhRunner {
     const nodes = held.slice(offset, offset + this.pageSize);
     const pageInfo = { hasNextPage: offset + nodes.length < held.length, endCursor: nodes.length === 0 ? null : String(offset + nodes.length) };
     return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository: { issues: { pageInfo, nodes } } } }), stderr: '' };
+  }
+
+  /**
+   * A probe as `gh api -i` prints GitHub's answer: 304, gh exiting 1, when the tag sent is the current one, else 200
+   * with the current tag; a repository it holds nothing for answers 404.
+   */
+  private probe(args: readonly string[]): GhResult {
+    const target = (args[args.length - 1] ?? '').slice('repos/'.length);
+    const path = WATCH_PATHS.find((probe) => target.endsWith(`/${probe}`)) ?? '';
+    const repo = target.slice(0, target.length - path.length - 1);
+    const failure = this.probeFailures.get(repo);
+    if (failure !== undefined) {
+      return failure;
+    }
+    if (!this.issues.has(repo)) {
+      return { end: { kind: 'exited', code: 1 }, stdout: 'HTTP/2.0 404 Not Found\r\n\r\n{"message":"Not Found"}', stderr: 'gh: Not Found (HTTP 404)\n' };
+    }
+    const tag = `W/"v${this.versions.get(`${repo} ${path}`) ?? 1}"`;
+    if (args[3] === `If-None-Match: ${tag}`) {
+      return { end: { kind: 'exited', code: 1 }, stdout: `HTTP/2.0 304 Not Modified\r\nEtag: ${tag.slice(2)}\r\n\r\n`, stderr: 'gh: HTTP 304\n' };
+    }
+    return { end: { kind: 'exited', code: 0 }, stdout: `HTTP/2.0 200 OK\r\nEtag: ${tag}\r\n\r\n[]`, stderr: '' };
   }
 
   /** A label read as GitHub answers it: what a test set for the repository, else the label when the repository has it, else Not Found. */
