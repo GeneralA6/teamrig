@@ -1423,7 +1423,8 @@ with the same access and checks as `teamrig issue comment`: the text is refused,
 past 65,536 characters, looks like it holds a secret, holds private data or names a task id. The title, state,
 labels and assignees stay, and GitHub keeps the old body in the issue's edit history. The text comes from a file, as
 a full description runs to many lines a shell argument would mangle; a byte-order mark at its start is dropped, and a
-relative path is read from the working folder. It prints `EDITED <target>: its body is now <n> characters`, or
+relative path is read from the working folder. A file the secret guard keeps (`secretGuard.paths`, such as `.env` or
+a key file) is refused before it is read. It prints `EDITED <target>: its body is now <n> characters`, or
 `FAILED <target>: <reason>; the body is as it was`. Exit 1 when it failed, 2 when refused, else 0.
 
 Flags:
