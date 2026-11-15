@@ -149,7 +149,8 @@ Flags:
   stays waiting until every reason has cleared. A new decision or approval wait posts the lead one inbox line
   (`T1 waits on your approval: <the card's question, else the note>`; an owner wait too, since the lead keeps the
   owner's queue), unless the lead set it. A task wait (or an `--ask`) that would close a loop is refused with the fix
-  ([errors](errors.md)).
+  ([errors](errors.md)). `--waits none` clears a verifying task's waits; with `register.requireProofOnVerifying` on, its
+  proof must still name when it runs.
 - `--question "<what is decided>"`: the decision card's question. The card (this flag, `--options`, `--recommend`
   and `--default`) is required on a wait on the owner's decision or approval (`register.requireDecisionCard`),
   allowed on any decision or approval wait, refused otherwise. Each part says at least 3 plain words besides task
