@@ -12,16 +12,17 @@ import { helperDefaultClause } from './helper-default.ts';
  * fit CONTEXT_MAX_CHARS, with 3 characters to spare: a longer rule needs shorter words elsewhere, not a higher cap,
  * unless it takes over text a team's rules file carried, when the cap moves over from TEAM_RULES_MAX_CHARS with it.
  * Moved up from 7,225 for rule 11's hand-step sentence (T2309), which takes over a team rules file's stopgap line, and
- * as the worst case now counts the security reviewer, whom it had left unset.
+ * as the worst case now counts the security reviewer, whom it had left unset; up from 7,645 for rule 11's private
+ * reporting of a security hole (T3098), an owner order for every team, which no team rules file need carry now.
  */
-export const CORE_PACK_MAX_CHARS = 7_645;
+export const CORE_PACK_MAX_CHARS = 7_721;
 /** The kept local rules the core pack lists [ruleConflicts] fit in this many characters (see `renderKeptRules`). */
 export const KEPT_RULES_MAX_CHARS = 420;
 /**
  * The team rules files a session is shown in full, its own and those of the teams above it, share this size; one that
- * does not fit gets a pointer. Down from 2,750 as rules moved into the core pack (CORE_PACK_MAX_CHARS).
+ * does not fit gets a pointer. Down from 2,750 as rules moved into the core pack (CORE_PACK_MAX_CHARS), 2,330 the last.
  */
-export const TEAM_RULES_MAX_CHARS = 2_330;
+export const TEAM_RULES_MAX_CHARS = 2_254;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
 export const CONTEXT_MAX_CHARS = 10_000;
 /**
@@ -258,7 +259,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
     messages: messagesRule(config, command) + timesClause(zone, clock.now),
     register:
       `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
-      ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain description of what and why; ${statusDemands(config, command)}` +
+      ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, plainly saying what and why; ${statusDemands(config, command)}` +
       ' Wait on a peer by its task.' +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
@@ -308,7 +309,12 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
       ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
       handStepClause(roles.securityReviewer) +
-      ' Never print secrets; bind local services to 127.0.0.1, never 0.0.0.0.',
+      ' Never print secrets; bind local services to 127.0.0.1, never 0.0.0.0.' +
+      // Owner order 11-15 (T3098): a public repository shows its issues, pull requests, commits and tests to anyone,
+      // so a hole told there is an attack guide until the fix is out. The steps (private vulnerability reporting, the
+      // SECURITY.md route, the fix's wording until release) live in the security skill; to fit CORE_PACK_MAX_CHARS,
+      // rules 4 and 16 took shorter words and the rest of the room came over from TEAM_RULES_MAX_CHARS.
+      ' Report a security hole only privately (SECURITY.md); fixes name the hardening, never the attack.',
     contracts:
       'Tell the other side before changing a contract it reads (API, table or file).' +
       // T1189: a route removal named the pages it would break, had no answer and shipped; its proof saw the routes
@@ -332,7 +338,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       // into the main checkout's folder and empties it (T1279).
       (platform === 'win32' ? ` Remove a worktree only with \`${command} worktree remove <path>\`: any other removal may empty the main node_modules.` : '') +
       // A reader of the code has only the repo: a task id is a trace, a path into a team's home leads nowhere (T1869).
-      ' Comments say why plainly, no path outside the repo, and change with their code or go;' +
+      ' Comments say why, no path outside the repo, and change with their code or go;' +
       ' verify a load-bearing one or recorded number at its source;' +
       ' fix a stale comment, doc or proven-dead code you find in its own commit and tell its area.',
   };
