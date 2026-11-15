@@ -6,8 +6,9 @@ import { ABSOLUTE, type KitContext } from './route-kit.ts';
  * [--what "<text>"] [--task <id>] [--max-minutes <n>] -- node [--disable-warning=ExperimentalWarning] <shipTool>` then
  * either `<worktree> <plan> [--merge [--approved <sha>] [--note-file <file>]]` or `merge <worktree> [--approved <sha>]
  * [--note-file <file>]`. Every path is absolute and each flag comes once; a base, a head, a timeout or any other word
- * is no ship call (a missing `--session` too, T3069: service-role-call.ts), so the line runs exactly the tool the team configured on the files this reader names. Whether the
- * worktree, the files and the tool may be used is the allow's to check (hook-role-allow.ts): this reader reads only.
+ * is no ship call, so the line runs exactly the tool the team configured on the files this reader names; a line naming
+ * no `--session` is none either (T2984, service-role-call.ts). Whether the worktree, the files and the tool may be
+ * used is the allow's to check (hook-role-allow.ts): this reader reads only.
  */
 
 /** What a ship call runs, for the allow to check. */
