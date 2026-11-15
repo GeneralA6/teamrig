@@ -1,6 +1,7 @@
 import { errorMessage } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { LockBusyError } from "../../core/lock.js";
+import { SecretScanner } from "../../core/secrets.js";
 import { hooklessReader } from "../../restore/hookless.js";
 import { SessionLog } from "../../sessions/log.js";
 import { SessionRecordStore } from "../../sessions/record.js";
@@ -14,6 +15,7 @@ import { postUrgentLine } from "../urgent-line.js";
 import { sessionFoldersOf } from "./setup.js";
 import { fileLockOf } from "../file-locks.js";
 import { sweepDeadDetachedRuns } from "../detached-sweep.js";
+import { pagePromptHolds } from "../prompt-hold-page.js";
 /** The team's reopened tabs no teamrig hook started in, from its session log and its sessions' start records. */
 async function hooklessReopensNow(runtime, kit, roster, now) {
     const { records } = await new SessionLog(runtime.files, kit.paths.sessionLog).read();
@@ -124,7 +126,8 @@ async function passOnce(runtime, kit, config, roster, from, previous, now) {
  * a failed pass logs its error once until the error changes. It logs once each reopened tab no teamrig hook started
  * in (src/cli/hookless-reopen.ts). In dry-run it changes nothing else; in `on` it starts the closes and the reopen
  * its steps ask for, and tells the lead of each hookless reopen with an urgent line. In both it tells each of the team's
- * detached queue runs that died with no end of its own (src/cli/detached-sweep.ts). With mode off it reads nothing.
+ * detached queue runs that died with no end of its own (src/cli/detached-sweep.ts), and pages the owner once for each
+ * tab held on a permission prompt (src/cli/prompt-hold-page.ts). With mode off it reads nothing.
  */
 export async function runIdlePass(runtime, kit, config, roster, from) {
     if (config.open.idle.mode === 'off') {
@@ -142,6 +145,7 @@ export async function runIdlePass(runtime, kit, config, roster, from) {
             if (isPassDue(previous, now)) {
                 await files.write(kit.paths.idlePass, formatIdlePassState(await passOnce(runtime, kit, config, roster, from, previous, now)));
                 (await sweepDeadDetachedRuns(runtime, kit, config)).problems.forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
+                (await pagePromptHolds(runtime, kit, new SecretScanner(config.register.secretPatterns), now)).forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
             }
         });
     }
