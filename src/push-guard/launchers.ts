@@ -8,6 +8,17 @@ export interface Assignment {
   readonly value: ShellWord;
 }
 
+/**
+ * What one command changes in the environment, whatever it starts: the variables it sets for its program
+ * (`NAME=value` before the program, `env NAME=value`) or for its own PowerShell session (`$env:NAME = value`), those
+ * it removes (`env -u NAME`), and whether it starts the program with an empty environment (`env -i`, `env -`).
+ */
+export interface EnvEdits {
+  readonly set: readonly Assignment[];
+  readonly unset: readonly ShellWord[];
+  readonly emptied: boolean;
+}
+
 /** What a launcher sets around the program it starts. */
 interface Surroundings {
   /** Variables set for it, such as `GIT_DIR=x git push` or `env GIT_DIR=x git push`. */
@@ -71,9 +82,16 @@ interface WrapperSpec {
   readonly leading?: number;
   /** True when `NAME=value` words before the program set its environment. */
   readonly assignments?: boolean;
+  /** Options whose value names a variable removed from the program's environment, such as `env -u`. */
+  readonly unset?: readonly string[];
+  /** Options that start the program with an empty environment, such as `env -i`. */
+  readonly emptyEnv?: readonly string[];
   /** True when the program also gets arguments from stdin. */
   readonly stdinArgs?: boolean;
 }
+
+/** PowerShell: an assignment target in the env drive, `$env:NAME` or `${env:NAME}`, naming the variable. */
+const ENV_TARGET = /^\$(?:\{env:([^}]+)\}|env:([A-Za-z0-9_]+))/i;
 
 const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>([
   ['command', { inspect: ['-v', '-V'] }],
@@ -90,7 +108,17 @@ const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>(
   ['time', { valued: ['-o', '-f', '--output', '--format'] }],
   ['nice', { valued: ['-n', '--adjustment'] }],
   ['ionice', { valued: ['-c', '-n', '-p', '-P', '-u', '--class', '--classdata', '--pid', '--pgid', '--uid'] }],
-  ['env', { valued: ['-u', '--unset', '-a', '--argv0'], chdir: ['-C', '--chdir'], split: ['-S', '--split-string'], assignments: true }],
+  [
+    'env',
+    {
+      valued: ['-u', '--unset', '-a', '--argv0'],
+      chdir: ['-C', '--chdir'],
+      split: ['-S', '--split-string'],
+      assignments: true,
+      unset: ['-u', '--unset'],
+      emptyEnv: ['-i', '--ignore-environment', '-'],
+    },
+  ],
   [
     'sudo',
     {
@@ -216,6 +244,15 @@ type Step = Launch | { readonly kind: 'next'; readonly words: readonly ShellWord
  */
 class LaunchReader {
   private readonly env: Assignment[] = [];
+  /** The variables a wrapper removes from the environment (`env -u NAME`). */
+  private readonly unsets: ShellWord[] = [];
+  /** True once a wrapper empties the environment (`env -i`). */
+  private emptied = false;
+  /**
+   * The variables a PowerShell assignment sets in the shell's own environment (`$env:NAME = ...`): every later command
+   * of the shell gets them, but not the program on its right side, which only feeds the value.
+   */
+  private readonly shellSets: Assignment[] = [];
   private readonly chdirs: ShellWord[] = [];
   private readonly dialect: ShellDialect;
   /** What the command reads on stdin from the line itself: a heredoc's body or a here-string. */
@@ -231,6 +268,11 @@ class LaunchReader {
   constructor(dialect: ShellDialect, stdin: ShellWord | undefined) {
     this.dialect = dialect;
     this.stdin = stdin;
+  }
+
+  /** What the command read so far changes in the environment of what it starts, or of the shell's later commands. */
+  edits(): EnvEdits {
+    return { set: [...this.env, ...this.shellSets], unset: this.unsets, emptied: this.emptied };
   }
 
   read(words: readonly ShellWord[]): Launch {
@@ -301,6 +343,11 @@ class LaunchReader {
     if (right === undefined) {
       return NOTHING;
     }
+    const variable = ENV_TARGET.exec(head.text.replace(/^(?:\[[^\]]+\])+/, ''));
+    const name = variable?.[1] ?? variable?.[2];
+    if (name !== undefined) {
+      this.shellSets.push({ name, value: right[0] ?? staticWord('') });
+    }
     this.captured = true;
     return { kind: 'next', words: right };
   }
@@ -366,6 +413,10 @@ class LaunchReader {
         index += 1;
         break;
       }
+      if (has(spec.emptyEnv, text)) {
+        this.emptied = true;
+        continue;
+      }
       let option: string | undefined;
       let value: ShellWord | undefined;
       if (/^--[^-]/.test(text)) {
@@ -380,6 +431,7 @@ class LaunchReader {
           if (has(spec.inspect, short)) {
             return NOTHING;
           }
+          this.emptied ||= has(spec.emptyEnv, short);
           if (takesValue(short)) {
             option = short;
             value = at + 1 < text.length ? { text: text.slice(at + 1), dynamic: word.dynamic } : args[(index += 1)];
@@ -400,6 +452,9 @@ class LaunchReader {
       }
       if (option !== undefined && value !== undefined && has(spec.chdir, option)) {
         this.chdirs.push(value);
+      }
+      if (option !== undefined && value !== undefined && has(spec.unset, option)) {
+        this.unsets.push(value);
       }
       if (option !== undefined && value !== undefined && has(spec.split, option)) {
         if (value.dynamic) {
@@ -664,7 +719,12 @@ function startProcessParameter(text: string): string | undefined {
   return found.length === 1 ? found[0]?.[0] : undefined;
 }
 
-/** What one simple command starts, given what it reads on stdin from the line, if anything; see {@link LaunchReader}. */
-export function launch(words: readonly ShellWord[], dialect: ShellDialect, stdin?: ShellWord): Launch {
-  return new LaunchReader(dialect, stdin).read(words);
+/**
+ * What one simple command starts, given what it reads on stdin from the line, if anything (see {@link LaunchReader}),
+ * and what it changes in the environment of what it starts, whatever that is.
+ */
+export function launch(words: readonly ShellWord[], dialect: ShellDialect, stdin?: ShellWord): Launch & { readonly edits: EnvEdits } {
+  const reader = new LaunchReader(dialect, stdin);
+  const launched = reader.read(words);
+  return { ...launched, edits: reader.edits() };
 }

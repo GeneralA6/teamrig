@@ -299,6 +299,24 @@ describe('runsOf', () => {
     assert.deepEqual(holders('$X $(cat f)', 'bash'), ['cat in ?']);
   });
 
+  it('keeps what each command changes in the environment, and nothing for a command that changes none', () => {
+    const edits = (command: string, dialect: ShellDialect = 'bash'): string[] =>
+      runsOf(command, context(dialect)).envEdits.map(
+        ({ set, unset, emptied }) =>
+          [...set.map((assignment) => `set ${assignment.name}`), ...unset.map((word) => `unset ${word.dynamic ? '~' : ''}${word.text}`), ...(emptied ? ['emptied'] : [])].join(', '),
+      );
+    assert.deepEqual(edits('A=1 git status'), ['set A']);
+    assert.deepEqual(edits('A='), ['set A']);
+    assert.deepEqual(edits('env -u A -uB --unset=C git status'), ['unset A, unset B, unset C']);
+    assert.deepEqual(edits('env -u "$V" git status'), ['unset ~$V']);
+    assert.deepEqual(edits('env -i PATH=/bin git status'), ['set PATH, emptied']);
+    assert.deepEqual(edits('env - git status'), ['emptied']);
+    assert.deepEqual(edits('bash -c "A=1 git status"'), ['set A']);
+    assert.deepEqual(edits("$env:A = ''; ${env:B}=1; [string]$env:C = git rev-parse HEAD", 'powershell'), ['set A', 'set B', 'set C']);
+    assert.deepEqual(edits('$x = 1; git status', 'powershell'), []);
+    assert.deepEqual(edits('git status && echo "$A"'), []);
+  });
+
   it('marks a program whose output a PowerShell assignment takes', () => {
     const captured = (command: string): boolean[] => runsOf(command, context('powershell')).programs.map((run) => run.captured);
     assert.deepEqual(captured('$c = Get-Content a; $n=Get-Content b; Get-Content c'), [true, true, false]);

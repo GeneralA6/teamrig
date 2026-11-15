@@ -1,4 +1,4 @@
-import { launch, programName, staticWord, type Assignment, type Launch } from '../push-guard/launchers.ts';
+import { launch, programName, staticWord, type Assignment, type EnvEdits, type Launch } from '../push-guard/launchers.ts';
 import { packagedStartOf } from './packaged.ts';
 import { Location } from '../push-guard/location.ts';
 import { redirectsInput, stdinUse } from '../push-guard/stdin.ts';
@@ -131,6 +131,12 @@ export interface LineRuns {
    * `ComSpec`) and the walker cannot read, so no reading of the line is sure to be the one it runs.
    */
   readonly foreignShells: ShellWord[];
+  /**
+   * What each command that changes the environment of what it starts changes: `NAME=value cmd`, `env NAME=value cmd`,
+   * `env -u NAME cmd`, `env -i cmd`. A command that only sets a shell variable (`NAME=value` alone) starts nothing and
+   * stays in `bare`.
+   */
+  readonly envEdits: EnvEdits[];
 }
 
 export interface ProgramsContext {
@@ -160,7 +166,7 @@ const PIPE_END = /(?:^|[^|])\|&?[\n(]*$/;
 
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command: string, context: ProgramsContext): LineRuns {
-  const runs: LineRuns = { programs: [], bare: [], opaque: [], fedShells: [], foreignShells: [] };
+  const runs: LineRuns = { programs: [], bare: [], opaque: [], fedShells: [], foreignShells: [], envEdits: [] };
   visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, TOP, runs, SCREEN, false);
   return runs;
 }
@@ -250,6 +256,9 @@ function visitCommand(
     return undefined;
   }
   const launched = launch(command.words, dialect, inlet.text);
+  if (launched.edits.set.length > 0 || launched.edits.unset.length > 0 || launched.edits.emptied) {
+    runs.envEdits.push(launched.edits);
+  }
   if (launched.kind === 'script') {
     const inner = location.child();
     launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
