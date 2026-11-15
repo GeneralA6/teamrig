@@ -174,6 +174,14 @@ export const CLIENT_RECEIVER_PATTERN = /^[A-Za-z_$][\w$]*$/;
 export const BUDGET_ACCOUNT_MAX_LENGTH = 100;
 /** The longest `github.acceptLabel`: GitHub caps a label name at 50 characters. */
 export const GITHUB_LABEL_MAX_LENGTH = 50;
+/**
+ * Bounds on `serviceRoles` (T2984): how many roles a team declares, and the shape of a role's name, which a log line
+ * and the classifier's briefing line name it by.
+ */
+export const SERVICE_ROLE_LIMITS = {
+    maxRoles: 16,
+    namePattern: /^[a-z][a-z0-9-]{0,31}$/,
+};
 /** Bounds on the fields of one review gate entry (`pushGuard.reviewPaths`). */
 export const REVIEW_PATH_LIMITS = {
     globMaxLength: 200,

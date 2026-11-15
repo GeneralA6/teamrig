@@ -9,12 +9,13 @@ import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_ST
 import { isItemType, ITEM_TYPES } from "../register/events.js";
 import { branchPatternProblem, isBranchType } from "../worktree/branch-name.js";
 import { KEEP_RULE_PATTERN } from "../permissions/allow-rules.js";
+import { isServiceCommand, SERVICE_COMMANDS, TEAM_HELD_COMMANDS } from "../permissions/service-commands.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
 import { isNeedKind, NEED_KINDS } from "../tabs/need-kind.js";
 import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_RUSH, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_FREEZES, DEFAULT_DECISIONS, DEFAULT_DELIVERY_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_QUEUE, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_NEEDS_YOU, DEFAULT_MEETING_NOTICES, DEFAULT_LOOPS, DEFAULT_MERGE_REMOTE, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_IDLE, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_SECURITY_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_DB_WRITE_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PERMISSIONS, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_FOCUS, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_STABLE_PERIODS, DEFAULT_BRANCHES, DEFAULT_MEETING, QUEUE_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
-import { APPLY_FLAG_PATTERN, BUDGET_ACCOUNT_MAX_LENGTH, CLIENT_RECEIVER_PATTERN, CONFIG_LIMITS, DB_PROGRAM_NAME_PATTERN, DB_WRITE_ENTRYPOINT_LIMITS, DB_WRITE_NAME_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, NODE_MODULE_PATTERN, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, } from "./limits.js";
+import { APPLY_FLAG_PATTERN, BUDGET_ACCOUNT_MAX_LENGTH, CLIENT_RECEIVER_PATTERN, CONFIG_LIMITS, DB_PROGRAM_NAME_PATTERN, DB_WRITE_ENTRYPOINT_LIMITS, DB_WRITE_NAME_LIMITS, GITHUB_LABEL_MAX_LENGTH, MEETING_COLOUR_PATTERN, MEETING_HELD_TEXT_MAX_LENGTH, NODE_MODULE_PATTERN, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS, SERVICE_ROLE_LIMITS, } from "./limits.js";
 import { HIRE_CAP_DROPPED, IDLE_RETIRE_DROPPED } from "./migrate.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
 import { AUTO_RESTART_LEAD, AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, DB_CLIENT_VOCABULARIES, DB_PROGRAM_SHAPES, DB_WRITES, ESCALATIONS, GOALS_MODES, isDbClientVocabulary, isDbProgramShape, isDbWrites, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isGoalsMode, isHiringPolicy, isOverAction, isHookAsks, isIdleMode, isOtherAreaListing, isPushToProtected, isReviewClass, isReviewPathMode, isRouteAllow, isSecretReads, isSecretWrites, isSkipHooks, isTerminalChoice, isResetKind, isReviewMode, isVerifyGate, isWeekday, RESET_KINDS, HOOK_ASKS, IDLE_MODES, OTHER_AREA_LISTINGS, OVER_ACTIONS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, SECRET_READS, SECRET_WRITES, SKIP_HOOKS, TERMINALS, REVIEW_MODES, VERIFY_GATES, WEEKDAYS, isWipMode, WIP_MODES, } from "./types.js";
@@ -336,6 +337,7 @@ export function parseConfig(raw, above) {
             maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
         },
         github: parseGithub(read, read.section(raw, 'github', ''), sessions),
+        serviceRoles: parseServiceRoles(read, read.section(raw, 'serviceRoles', ''), sessions),
         alerts: parseAlerts(read, read.section(raw, 'alerts', '')),
         decisions: {
             batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
@@ -508,6 +510,99 @@ function readGithubSessions(read, raw, repos, team) {
         }
     }
     return owned;
+}
+/** The keys a service role takes: a misspelt one would otherwise be read as absent and grant nothing silently. */
+const SERVICE_ROLE_KEYS = new Set(['holders', 'commands']);
+/**
+ * `serviceRoles` (T2984): each role's commands and holders. A role names commands only from teamrig's fixed table and
+ * sessions of this team only, so a config chooses among reviewed call shapes and never adds one; every problem is an
+ * issue that fails the load loudly, and the role with it is left out, so it lets nothing run.
+ */
+function parseServiceRoles(read, raw, sessions) {
+    const names = Object.keys(raw);
+    if (names.length > SERVICE_ROLE_LIMITS.maxRoles) {
+        read.report('serviceRoles', `declares ${names.length} roles; at most ${SERVICE_ROLE_LIMITS.maxRoles}`);
+        return {};
+    }
+    const roles = {};
+    for (const name of names) {
+        const path = `serviceRoles.${name}`;
+        if (!SERVICE_ROLE_LIMITS.namePattern.test(name)) {
+            read.report(path, 'expected a lowercase role name: a letter, then letters, digits or -, at most 32');
+            continue;
+        }
+        const entry = read.objectItem(raw[name], path);
+        if (entry === undefined) {
+            continue;
+        }
+        const stray = Object.keys(entry).filter((key) => !SERVICE_ROLE_KEYS.has(key));
+        for (const key of stray) {
+            read.report(`${path}.${key}`, 'is no key of a service role; it takes holders and commands');
+        }
+        const commands = readServiceCommands(read, entry, path);
+        const holders = readServiceHolders(read, entry, path, sessions, commands ?? []);
+        if (stray.length === 0 && commands !== undefined && holders !== undefined) {
+            roles[name] = { holders, commands };
+        }
+    }
+    return roles;
+}
+/** A role's commands: a non-empty list of names from the table, each once; undefined when any is wrong. */
+function readServiceCommands(read, entry, path) {
+    const at = `${path}.commands`;
+    const value = entry['commands'];
+    if (!Array.isArray(value) || value.length === 0) {
+        read.report(at, `expected a non-empty list of command names, each one of: ${SERVICE_COMMANDS.join(', ')}`);
+        return undefined;
+    }
+    const commands = [];
+    value.forEach((item, index) => {
+        const itemAt = `${at}[${index}]`;
+        if (typeof item !== 'string' || !isServiceCommand(item)) {
+            read.report(itemAt, `${describe(item)} is no command a service role may hold; one of: ${SERVICE_COMMANDS.join(', ')}`);
+        }
+        else if (commands.includes(item)) {
+            read.report(itemAt, `${describe(item)} is listed twice`);
+        }
+        else {
+            commands.push(item);
+        }
+    });
+    return commands.length === value.length ? commands : undefined;
+}
+/**
+ * A role's holders: `team`, only when every command checks its own caller (TEAM_HELD_COMMANDS), else a non-empty list
+ * of this team's session ids, each once; undefined when any is wrong.
+ */
+function readServiceHolders(read, entry, path, sessions, commands) {
+    const at = `${path}.holders`;
+    const value = entry['holders'];
+    if (value === 'team') {
+        const ungated = commands.filter((command) => !TEAM_HELD_COMMANDS.has(command));
+        if (ungated.length > 0) {
+            read.report(at, `"team" would give every session ${ungated.join(', ')}, which acts as whoever runs it; name the sessions that hold it`);
+            return undefined;
+        }
+        return 'team';
+    }
+    if (!Array.isArray(value) || value.length === 0) {
+        read.report(at, 'expected "team" or a non-empty list of session ids');
+        return undefined;
+    }
+    const holders = [];
+    value.forEach((item, index) => {
+        const itemAt = `${at}[${index}]`;
+        if (typeof item !== 'string' || !sessions.includes(item)) {
+            read.report(itemAt, `${describe(item)} is not one of the sessions`);
+        }
+        else if (holders.includes(item)) {
+            read.report(itemAt, `${describe(item)} is listed twice`);
+        }
+        else {
+            holders.push(item);
+        }
+    });
+    return holders.length === value.length ? holders : undefined;
 }
 /** `github.owners`: a session for each GitHub login; a wrong login or a session not on the team is reported and left out. */
 function readGithubOwners(read, raw, sessions) {

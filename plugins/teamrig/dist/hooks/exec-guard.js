@@ -35,7 +35,7 @@ export const OWNER_COMMANDS = new Set(['note', 'next', 'wake']);
 /** teamrig's own entry point when a line runs it through node: `node <plugin>/dist/cli/main.js exec ...`. */
 const CLI_ENTRY = /[\\/]cli[\\/]main\.[jt]s$/i;
 /** True when the words a program only known when it runs takes read as a command of the teamrig group: `exec approve`, `exec "$CMD"`. */
-function startsGroup(words, name, commands) {
+export function startsGroup(words, name, commands) {
     const [group, command] = words;
     return group !== undefined && !group.dynamic && group.text === name && command !== undefined && (command.dynamic || commands.has(command.text));
 }
@@ -47,13 +47,20 @@ function startsExec(words) {
 function startsOwner(words) {
     return startsGroup(words, 'owner', OWNER_COMMANDS);
 }
+/** True when the words read as a command this guard checks, so a call through node and a script only known when it runs is one. */
+function startsExecOrOwner(words) {
+    return startsExec(words) || startsOwner(words);
+}
 /** The owner command the words name after `owner`, or undefined when they name none the CLI has, or one only known when it runs. */
 function ownerActionOf(words) {
     const action = words[1];
     return action === undefined || action.dynamic || !OWNER_COMMANDS.has(action.text) ? undefined : action.text;
 }
-/** How a run starts the teamrig CLI, or undefined when it does not: by name, by node and teamrig's entry, or by node and a script only known when it runs. */
-function teamrigLaunchOf(run) {
+/**
+ * How a run starts the teamrig CLI, or undefined when it does not: by name, by node and teamrig's entry, or by node and a
+ * script only known when it runs whose words `guarded` reads as a command its guard checks.
+ */
+export function teamrigLaunchOf(run, guarded) {
     if (run.name === 'teamrig' || run.name === 'teamrig.ps1') {
         return { client: { kind: 'program', word: run.program }, words: run.args };
     }
@@ -69,10 +76,10 @@ function teamrigLaunchOf(run) {
     if (!script.dynamic) {
         return entry === -1 ? undefined : { client: { kind: 'script', word: script }, words };
     }
-    return entry !== -1 || startsExec(words) || startsOwner(words) ? { client: { kind: 'opaque', word: script }, words } : undefined;
+    return entry !== -1 || guarded(words) ? { client: { kind: 'opaque', word: script }, words } : undefined;
 }
 /** True for a teamrig call whose subcommand is only known when it runs (`teamrig "$G" approve R1`), which the walker leaves unread. */
-function hidesSubcommand(run) {
+export function hidesSubcommand(run) {
     return !run.program.dynamic && programName(run.program.text) === 'teamrig';
 }
 /**
@@ -209,7 +216,7 @@ function reviewRefusalOf(call, identity) {
  * What every reading of a tool call runs, reading after reading. Joining them is safe, unlike the push guard's
  * checkouts: each run carries its own folder and shell, and the guard refuses a run whatever else the line runs.
  */
-function runsOfReadings(readings, context) {
+export function runsOfReadings(readings, context) {
     const each = readings.map((text) => runsOf(text, context));
     return {
         programs: each.flatMap((runs) => runs.programs),
@@ -244,7 +251,7 @@ export async function execGuardOutput(payload, env) {
     };
     const runs = runsOfReadings(toolCommandReadings(tool, command, env.platform), context);
     const calls = runs.programs.flatMap((run) => {
-        const launch = teamrigLaunchOf(run);
+        const launch = teamrigLaunchOf(run, startsExecOrOwner);
         const call = launch === undefined ? undefined : guardedCallOf(launch.words);
         const at = { dialect: run.dialect, dir: run.dir, home: env.home };
         return launch === undefined || call === undefined ? [] : [{ call, client: launch.client, at }];
