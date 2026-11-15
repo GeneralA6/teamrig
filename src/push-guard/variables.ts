@@ -75,6 +75,8 @@ interface Deferred {
  */
 interface LineBindings {
   readonly bound: ReadonlyMap<string, Bound>;
+  /** The names bound to more than one literal text (see {@link Choices}). */
+  readonly choices: Choices;
   readonly assigned: ReadonlySet<string>;
   readonly deferred: readonly Deferred[];
 }
@@ -89,10 +91,34 @@ interface LineBindings {
  */
 export function resolveLiteralVariables(parsed: ShellParse, home?: string): readonly ShellCommand[] {
   return (parsed.readings ?? [parsed]).flatMap((reading) => {
-    const bindings = LiteralBindings.read(reading, home);
-    return reading.commands.map((command, index) => ({ ...command, words: bindings.resolveWords(command.words, index) }));
+    const variants = LiteralBindings.read(reading, home);
+    // One copy of the line per choice of values, each in a subshell of
+    // its own as the tokenizer keeps differing readings, so a `cd` in one does not move the next.
+    return variants.flatMap((bindings, at) =>
+      reading.commands.map((command, index) => ({
+        ...command,
+        words: bindings.resolveWords(command.words, index),
+        ...(variants.length > 1 ? { subshells: [VARIANT_SUBSHELL - at, ...command.subshells] } : {}),
+      })),
+    );
   });
 }
+
+/**
+ * The subshell id of the first copy of a line read once per choice of
+ * values, far below the tokenizer's ids for differing readings.
+ */
+const VARIANT_SUBSHELL = -1_000_000;
+
+/** The most copies of a line read once per choice of values. */
+const MAX_VARIANTS = 16;
+
+/**
+ * Each name the line binds only by binding statements whose values
+ * are literal text, and not all the same text (`T=a; true && T=b`), with each statement's text and index. Where
+ * one of them surely ran, the name holds one of these texts, so the line is read once for each.
+ */
+type Choices = ReadonlyMap<string, readonly { readonly text: string; readonly at: number }[]>;
 
 /**
  * The values a bash line gives its variables, and where they surely hold. It trusts only a binding statement
@@ -114,25 +140,41 @@ class LiteralBindings {
   private readonly inherited: ReadonlyMap<string, string>;
   /** The line's function definitions (see {@link FunctionDefinitions}). */
   private readonly functions: FunctionDefinitions;
+  /** The names bound to more than one text, and the text this reading gives each. */
+  private readonly choices: Choices;
+  private readonly chosen: ReadonlyMap<string, string>;
 
-  private constructor(commands: readonly ShellCommand[], bound: ReadonlyMap<string, Bound>, inherited: ReadonlyMap<string, string>) {
+  private constructor(
+    commands: readonly ShellCommand[],
+    bound: ReadonlyMap<string, Bound>,
+    inherited: ReadonlyMap<string, string>,
+    choices: Choices = new Map(),
+    chosen: ReadonlyMap<string, string> = new Map(),
+  ) {
     this.commands = commands;
     this.bound = bound;
     this.inherited = inherited;
     this.functions = new FunctionDefinitions(commands);
+    this.choices = choices;
+    this.chosen = chosen;
   }
 
-  static read(parsed: ShellParse, home: string | undefined): LiteralBindings {
-    const none = new LiteralBindings(parsed.commands, new Map(), new Map());
+  /**
+   * The bindings of a line: one, or, for a line with names bound to more than one literal text (see
+   * {@link Choices}), one per choice of a text for each, up to {@link MAX_VARIANTS}. A line that can set
+   * variables unseen in any of them resolves nothing.
+   */
+  static read(parsed: ShellParse, home: string | undefined): readonly LiteralBindings[] {
+    const none = [new LiteralBindings(parsed.commands, new Map(), new Map())];
     const line = parsed.bindingsUnclear ? undefined : boundNames(parsed.commands);
     if (line === undefined) {
       return none;
     }
     // A Windows home goes to bash with forward slashes, which keep an unquoted `$HOME` from reading as a pattern.
     const inherited = home === undefined || line.assigned.has('HOME') ? new Map<string, string>() : new Map([['HOME', home.replaceAll('\\', '/')]]);
-    const bindings = new LiteralBindings(parsed.commands, line.bound, inherited);
-    const unseen = line.deferred.some(({ index, words }) => expandedSetsVariablesUnseen(bindings.resolveWords(words, index)));
-    return unseen ? none : bindings;
+    const variants = chosenTexts(line.choices).map((chosen) => new LiteralBindings(parsed.commands, line.bound, inherited, line.choices, chosen));
+    const unseen = variants.some((bindings) => line.deferred.some(({ index, words }) => expandedSetsVariablesUnseen(bindings.resolveWords(words, index))));
+    return unseen ? none : variants;
   }
 
   /** The words of command `index` with their variables replaced by the values that hold there. */
@@ -164,6 +206,10 @@ class LiteralBindings {
     if (inherited !== undefined) {
       return [{ kind: 'text', text: inherited }];
     }
+    const chosen = this.chosenAt(name, index);
+    if (chosen !== undefined) {
+      return [{ kind: 'text', text: chosen }];
+    }
     const bound = this.bound.get(name);
     const at = bound?.at.find((statement) => statement < index && this.reaches(statement, index));
     if (bound === undefined || at === undefined) {
@@ -172,6 +218,32 @@ class LiteralBindings {
     return bound.value.flatMap((part): readonly ValuePiece[] =>
       part.kind === 'text' ? [part] : (this.valueAt(part.name, at) ?? [{ kind: 'unknown', written: `\${${part.name}}` }]),
     );
+  }
+
+  /**
+   * The text a name bound to more than one literal text holds at command
+   * `index` in this reading, when one of its statements surely ran there: the chosen text when a statement that
+   * may have run last gives it, else the first such statement's. The statements that may have run last are those
+   * before `index` whose shell holds it, from the last that surely ran on; with a function in the line, whose body
+   * may run after a later statement, every one before `index`. A command in a function's body, which runs where
+   * the function is called, resolves none.
+   */
+  private chosenAt(name: string, index: number): string | undefined {
+    const statements = this.choices.get(name);
+    const target = this.commands[index];
+    if (statements === undefined || target === undefined || this.functions.definitionOf(index) !== undefined) {
+      return undefined;
+    }
+    const sure = statements.findLast((statement) => statement.at < index && this.reaches(statement.at, index));
+    if (sure === undefined) {
+      return undefined;
+    }
+    const from = this.functions.any ? 0 : sure.at;
+    const texts = statements
+      .filter((statement) => from <= statement.at && statement.at < index && runsInside(target, this.commands[statement.at] ?? target))
+      .map((statement) => statement.text);
+    const chosen = this.chosen.get(name);
+    return chosen !== undefined && texts.includes(chosen) ? chosen : texts[0];
   }
 
   /**
@@ -283,6 +355,11 @@ class FunctionDefinitions {
         this.ends.set(index, end);
       }
     }
+  }
+
+  /** True when the line defines a function. */
+  get any(): boolean {
+    return this.ends.size > 0;
   }
 
   /** The last command of the definition whose `NAME()` is at `index`. */
@@ -465,13 +542,23 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
     return undefined;
   }
   const bound = new Map<string, Bound>();
+  const choices = new Map<string, { readonly text: string; readonly at: number }[]>();
   for (const [name, list] of statements) {
     const value = agreedValue(list.map((statement) => statement.value));
     if (value !== undefined && !tainted.has(name)) {
       bound.set(name, { value, at: list.map((statement) => statement.at) });
+      continue;
+    }
+    // Differing literal texts bound in one shell give a choice; a
+    // variable in one, or a statement in a subshell of its own (`( )`, `$( )`), does not.
+    const texts = list.map((statement) => ({ text: textOf(statement.value), at: statement.at }));
+    const shell = commands[list[0]?.at ?? -1];
+    const oneShell = list.every((statement) => sameShell(commands[statement.at], shell));
+    if (!tainted.has(name) && oneShell && texts.every((statement) => statement.text !== undefined && statement.text !== '')) {
+      choices.set(name, texts.map((statement) => ({ text: statement.text ?? '', at: statement.at })));
     }
   }
-  return { bound, assigned: new Set([...statements.keys(), ...tainted]), deferred };
+  return { bound, choices: usedChoices(choices, commands), assigned: new Set([...statements.keys(), ...tainted]), deferred };
 }
 
 /**
@@ -619,6 +706,27 @@ function agreedValue(values: readonly (readonly ValuePart[])[]): readonly ValueP
   return text !== undefined && texts.size === 1 ? [{ kind: 'text', text }] : undefined;
 }
 
+/**
+ * The choices a word of the line uses, or none when reading the line once
+ * per choice of their texts would take more than {@link MAX_VARIANTS} copies; then each stays unresolved.
+ */
+function usedChoices(choices: Choices, commands: readonly ShellCommand[]): Choices {
+  const used = new Set(commands.flatMap((command) => command.words.flatMap((word) => (word.parts ?? []).flatMap((part) => (part.kind === 'text' ? [] : [part.name])))));
+  const kept = new Map([...choices].filter(([name]) => used.has(name)));
+  const copies = [...kept.values()].reduce((product, statements) => product * new Set(statements.map((statement) => statement.text)).size, 1);
+  return copies <= MAX_VARIANTS ? kept : new Map();
+}
+
+/** Every way to choose one text for each name of `choices`. */
+function chosenTexts(choices: Choices): readonly ReadonlyMap<string, string>[] {
+  let ways: readonly ReadonlyMap<string, string>[] = [new Map()];
+  for (const [name, statements] of choices) {
+    const texts = [...new Set(statements.map((statement) => statement.text))];
+    ways = ways.flatMap((way) => texts.map((text) => new Map([...way, [name, text]])));
+  }
+  return ways;
+}
+
 /** A value's text, or undefined when it holds a variable, whose value may differ from statement to statement. */
 function textOf(value: readonly ValuePart[]): string | undefined {
   let text = '';
@@ -675,10 +783,13 @@ function setsVariablesUnseen(words: readonly ShellWord[]): boolean {
   if (program === undefined) {
     return false;
   }
+  const args = words.slice(start + 1);
+  if (program.text === 'command' && describesOnly(args[0])) {
+    return false;
+  }
   if (program.dynamic || UNSAFE_PROGRAMS.has(program.text)) {
     return true;
   }
-  const args = words.slice(start + 1);
   switch (program.text) {
     case 'printf':
       // `printf -v NAME` assigns; so may a format only known when it runs.
@@ -688,6 +799,14 @@ function setsVariablesUnseen(words: readonly ShellWord[]): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * True for the first argument of `command` when it is a static cluster
+ * of its options holding `-v` or `-V` (`command -v git`), which only prints what each name is and runs none.
+ */
+function describesOnly(word: ShellWord | undefined): boolean {
+  return word !== undefined && !word.dynamic && /^-[pvV]*[vV][pvV]*$/.test(word.text);
 }
 
 /**

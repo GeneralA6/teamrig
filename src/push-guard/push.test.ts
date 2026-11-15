@@ -716,7 +716,8 @@ describe('evaluatePushes: the fail-safe', () => {
       ['B=feat git push origin $B', 'ask', 'doubt'],
       ['B=$(git rev-parse --abbrev-ref HEAD); git push origin $B', 'ask', 'doubt'],
       ['B=$OTHER; git push origin $B', 'ask', 'doubt'],
-      ['B=feat; B=main; git push origin $B', 'ask', 'doubt'],
+      // B=main surely ran last, so this is a push to main, no longer a doubt.
+      ['B=feat; B=main; git push origin $B', 'ask'],
       ['B=feat; (B=main); git push origin $B', 'ask', 'doubt'],
       ['(B=feat); git push origin $B', 'ask', 'doubt'],
       ['false && B=feat; git push origin $B', 'ask', 'doubt'],
@@ -1001,6 +1002,36 @@ describe('evaluatePushes: an interpreter whose output feeds a shell', () => {
       ['python3 -c \'print("git push origin main")\' > out.txt', 'allow'],
       ['python3 -c \'print("pushed")\' | grep push', 'allow'],
       ["python3 -c 'print(1)' | sh", 'allow'],
+    ]);
+  });
+});
+
+// A program a name gives one of several literal texts.
+describe('evaluatePushes: a program bound to one of several literals', () => {
+  it('runs each text the program may be, and asks only when one of them pushes or launches', () => {
+    expectRows([
+      ['T=a; true && T=b\n$T set T1 --note "push main"', 'allow'],
+      ['T=/opt/t/bin/t; command -v t >/dev/null && T=t\n$T set T1 --note "Merged; ran on push to main."', 'allow'],
+      ['T=a; true || T=b; $T set T1 --note "push main"', 'allow'],
+      ['T=echo; true && T=git; $T push origin main', 'ask'],
+      ['T=git; true && T=echo; $T push origin main', 'ask'],
+      ['T=echo; true && T=git; $T push --force origin main', 'deny'],
+      ['T=echo; true && T=bash; $T -c "git push origin main"', 'ask'],
+      ['T=echo; true && T=sudo; $T git push origin main', 'ask'],
+      ['B=feat; true && B=main; git push origin $B', 'ask'],
+      ['B=feat; true && B=main; git push --force origin $B', 'deny'],
+      ['B=main; B=feat; git push origin $B', 'allow'],
+    ]);
+  });
+
+  it('keeps the doubt for a value that is not literal, a loop, a substitution or a subshell', () => {
+    expectRows([
+      ['T=a; true && T="$X"; $T set T1 --note "push main"', 'ask', 'doubt'],
+      ['T=a; true && T=$(which t); $T set T1 --note "push main"', 'ask', 'doubt'],
+      ['T=a; for x in b; do T=b; done; $T set T1 --note "push main"', 'ask', 'doubt'],
+      ['T=a; x=$(T=git); $T push origin main', 'ask', 'doubt'],
+      ['false && T=a; true && T=b; $T set T1 --note "push main"', 'ask', 'doubt'],
+      ['T=a; true && T=b; command $T set T1 --note "push main"', 'ask', 'doubt'],
     ]);
   });
 });

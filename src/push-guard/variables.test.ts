@@ -236,7 +236,6 @@ describe('resolveLiteralVariables: the home folder', () => {
   it('keeps HOME unknown when the line assigns it in a way it does not follow, or the caller does not know it', () => {
     for (const line of [
       'HOME=/h true; $HOME/git push',
-      'HOME=/a; HOME=/b; $HOME/git push',
       'HOME+=/x; $HOME/git push',
       'for HOME in /a; do :; done; $HOME/git push',
       '(HOME=/h); G=~/git; $G push',
@@ -272,9 +271,6 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       '\\B=feat; git push origin $B',
       'B+=feat; git push origin $B',
       'B=feat; B+=x; git push origin $B',
-      'B=feat; B=main; git push origin $B',
-      'B=feat; export B=main; git push origin $B',
-      'B=feat; (B=main); git push origin $B',
       'B=feat; x=$(B=main); git push origin $B',
       'B=feat >/dev/null; git push origin $B',
       'export B=feat 2>/dev/null; git push origin $B',
@@ -451,5 +447,69 @@ describe('resolveLiteralVariables: function bodies', () => {
     ]) {
       assert.match(pushCommand(line), /~\$B/, line);
     }
+  });
+});
+
+// A name bound to more than one literal text.
+describe('resolveLiteralVariables: a choice of literal texts', () => {
+  /** Each distinct resolved form of the line's commands that mention a push, over every reading; `~` marks a word left dynamic. */
+  function pushForms(line: string): readonly string[] {
+    const commands = resolveLiteralVariables(parseShell(line, 'bash'));
+    const forms = commands
+      .filter((command) => command.words.some((word) => word.text.includes('push')))
+      .map((command) => command.words.map((word) => (word.dynamic ? `~${word.text}` : word.text)).join(' '));
+    return [...new Set(forms)].sort();
+  }
+
+  it('reads the line once for each text the name may hold where one of its statements surely ran', () => {
+    const rows: readonly (readonly [line: string, expected: readonly string[]])[] = [
+      ['T=a; true && T=b\n$T set T1 --note "push main"', ['a set T1 --note push main', 'b set T1 --note push main']],
+      ['T=/opt/t/bin/t; command -v t >/dev/null && T=t\n$T set T1 --note "push main"', ['/opt/t/bin/t set T1 --note push main', 't set T1 --note push main']],
+      ['B=feat; true && B=main; git push origin $B', ['git push origin feat', 'git push origin main']],
+      ['B=feat; true || B=main; git push origin $B', ['git push origin feat', 'git push origin main']],
+      ['B=feat; true && B=x || B=main; git push origin $B', ['git push origin feat', 'git push origin main', 'git push origin x']],
+      ['B=main; B=feat; git push origin $B', ['git push origin feat']],
+      ['B=feat; export B=main; git push origin $B', ['git push origin main']],
+      ['HOME=/a; HOME=/b; $HOME/git push', ['/b/git push']],
+      ['(B=feat; true && B=x; git push origin $B)', ['git push origin feat', 'git push origin x']],
+      ['B=feat; true && B=x; (git push origin $B)', ['git push origin feat', 'git push origin x']],
+      ['B=feat; f() { :; }; true && B=main; git push origin $B', ['git push origin feat', 'git push origin main']],
+      ['A=a; true && A=b; C=c; true && C=d; git push $A $C', ['git push a c', 'git push a d', 'git push b c', 'git push b d']],
+      ['B=feat; true && B=main; H="git push origin $B"; bash -c "$H"', ['H=git push origin feat', 'H=git push origin main', 'bash -c git push origin feat', 'bash -c git push origin main']],
+    ];
+    for (const [line, expected] of rows) {
+      assert.deepEqual(pushForms(line), expected, line);
+    }
+  });
+
+  it('keeps the name unresolved when a text is not literal, no statement surely ran, or the copies would be too many', () => {
+    for (const line of [
+      'B=feat; true && B="$C"; git push origin $B',
+      'B=feat; true && B=$(cat b); git push origin $B',
+      'B=feat; for x in a; do B=main; done; git push origin $B',
+      'B=feat; if c; then B=main; fi; git push origin $B',
+      'false && B=feat; true && B=main; git push origin $B',
+      'B=feat; true && B=; git push origin $B',
+      'B=feat; true && B=main; f() { git push origin $B; }; f',
+      'B=feat; true && B=main; B+=x; git push origin $B',
+      'B=feat; (B=main); git push origin $B',
+      'B=feat; x=$(B=main); git push origin $B',
+      'B=feat; (B=x; git push origin $B)',
+      'B=feat; (true && B=x; git push origin $B)',
+      'A=1; true && A=2; C=1; true && C=2; D=1; true && D=2; E=1; true && E=2; F=1; true && F=2; git push $A$C$D$E$F origin $B',
+    ]) {
+      assert.ok(pushForms(line).every((form) => form.includes('~')), line);
+    }
+  });
+
+  it('keeps every variable of a line where a chosen program can set one unseen, and of `command` running a program', () => {
+    for (const line of [
+      'T=echo; true && T=eval; $T B=main; B=feat; git push origin $B',
+      'B=feat; command eval B=main; git push origin $B',
+      'B=feat; command -p read B; git push origin $B',
+    ]) {
+      assert.ok(pushForms(line).every((form) => form.includes('~')), line);
+    }
+    assert.deepEqual(pushForms('B=feat; command -v git >/dev/null; git push origin $B'), ['git push origin feat']);
   });
 });
