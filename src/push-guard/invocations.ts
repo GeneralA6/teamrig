@@ -1,5 +1,5 @@
 import { isAssignment, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
-import { Location, resolveDir } from './location.ts';
+import { bashNativeWord, Location, resolveDir } from './location.ts';
 import { splitGitAlias } from './program-split.ts';
 import { redirectsInput, stdinUse } from './stdin.ts';
 import { parseHeldText, parseShell, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
@@ -396,7 +396,7 @@ class GitInvocationFinder {
         break;
       case 'script': {
         const inner = location.child();
-        launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
+        launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
         if (launched.script.dynamic && launched.dialect !== dialect) {
           this.doubt(`it hands ${DIALECT_NAMES[launched.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true);
         }
@@ -413,8 +413,9 @@ class GitInvocationFinder {
           break;
         }
         const inner = location.child();
-        launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-        const args = subcommand === undefined ? launched.args : [staticWord(subcommand), ...launched.args];
+        launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
+        const words = dialect === 'bash' ? launched.args.map((word) => bashNativeWord(word, location.home)) : launched.args;
+        const args = subcommand === undefined ? words : [staticWord(subcommand), ...words];
         const tail = launched.stdinArgs ? [...args, { text: '<stdin>', dynamic: true }] : args;
         this.visitGit(tail, this.gitState(inner.dir, launched.env), depth, 0);
       }

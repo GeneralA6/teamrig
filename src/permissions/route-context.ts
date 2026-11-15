@@ -1,6 +1,5 @@
 import type { GitConfigReader } from '../push-guard/invocations.ts';
-import { resolveDir } from '../push-guard/location.ts';
-import { bashDrivePath } from '../secret-guard/paths.ts';
+import { bashDrivePath, resolveDir } from '../push-guard/location.ts';
 import type { GitContext } from './route-git.ts';
 
 /**
