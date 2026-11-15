@@ -4,7 +4,7 @@ import { EXIT, RefusedError } from '../../src/cli/runtime.ts';
 import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
 import { CliHarness } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type StandingOf, taskOfBranch } from './approval.ts';
+import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type StandingOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
 
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
 
@@ -181,5 +181,76 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     commitFiles('main: other', { 'src/c.ts': 'c\n' });
     repo.git('checkout', '-q', 't1-change');
     assert.equal(patch(), approved);
+  });
+
+  describe('workCommitsOf: the commits a branch carries, with their patch ids (T2913)', () => {
+    const work = (rev = 'HEAD'): WorkCommit[] => workCommitsOf(git, rev, 'main', REGENERATED);
+
+    it('lists the work commits oldest first, and leaves out a commit that changes only regenerated paths', () => {
+      commitFiles('docs: b', { 'src/b.ts': 'b, documented\n' });
+      commitFiles('plugin: version 2', { 'version.txt': '2\n' });
+      commitFiles('build: dist', { 'dist/a.js': 'a2\n' });
+      assert.deepEqual(work().map(({ subject, merge }) => ({ subject, merge })), [{ subject: 'core: a', merge: false }, { subject: 'docs: b', merge: false }]);
+      assert.match(work()[0]?.patch ?? '', /^[0-9a-f]{64}$/);
+    });
+
+    it('keeps every patch id over a rebase onto main lines away from its own, so the two heads compare equal', () => {
+      commitFiles('docs: b', { 'src/b.ts': 'b, documented\n' });
+      commitFiles('plugin: version 2', { 'version.txt': '2\n' });
+      const approved = repo.git('rev-parse', 'HEAD').trim();
+      repo.git('checkout', '-q', 'main');
+      commitFiles('main: more', { 'src/a.ts': `line 0\n${lines(1, 20)}`, 'version.txt': '2\n', 'dist/a.js': 'a2\n' });
+      repo.git('checkout', '-q', 't1-change');
+      repo.git('rebase', '-q', 'main');
+      commitFiles('plugin: version 3', { 'version.txt': '3\n' });
+      assert.notEqual(repo.git('rev-parse', 'HEAD').trim(), approved);
+      assert.deepEqual(workChanges(work(approved), work()), []);
+    });
+
+    it('moves the patch id of a commit whose own lines or context changed', () => {
+      const approved = repo.git('rev-parse', 'HEAD').trim();
+      repo.git('checkout', '-q', 'main');
+      commitFiles('main: near', { 'src/a.ts': lines(1, 20).replace('line 12\n', 'line twelve\n') });
+      repo.git('checkout', '-q', 't1-change');
+      repo.git('rebase', '-q', 'main');
+      assert.deepEqual(workChanges(work(approved), work()), [`changed ${approved.slice(0, 9)} "core: a", now ${repo.git('rev-parse', 'HEAD').trim().slice(0, 9)}`]);
+    });
+
+    it('lists a merge commit as one, with no patch', () => {
+      repo.git('checkout', '-q', '-b', 'side', 'main');
+      commitFiles('side: c', { 'src/c.ts': 'c\n' });
+      repo.git('checkout', '-q', 't1-change');
+      repo.git('merge', '-q', '--no-ff', '-m', 'merge side', 'side');
+      const listed = work().map(({ subject, merge, patch: id }) => ({ subject, merge, empty: id === '' }));
+      assert.deepEqual(listed.toSorted((a, b) => a.subject.localeCompare(b.subject)), [
+        { subject: 'core: a', merge: false, empty: false },
+        { subject: 'merge side', merge: true, empty: true },
+        { subject: 'side: c', merge: false, empty: false },
+      ]);
+    });
+  });
+});
+
+describe('workChanges: how a head differs from the approved one, commit for commit (T2913)', () => {
+  const commit = (sha: string, subject: string, patch: string, merge = false): WorkCommit => ({ sha, subject, merge, patch });
+  const A = commit('aaaaaaaaaa', 'core: a', 'pa');
+  const B = commit('bbbbbbbbbb', 'docs: b', 'pb');
+
+  it('finds none when the patches match in order, whatever the shas', () => {
+    assert.deepEqual(workChanges([A, B], [commit('a2', 'core: a', 'pa'), commit('b2', 'docs: b', 'pb')]), []);
+    assert.deepEqual(workChanges([], []), []);
+  });
+
+  it('names a changed commit by its subject, a dropped and an added one', () => {
+    assert.deepEqual(workChanges([A, B], [commit('a222222222', 'core: a', 'pa2'), B]), ['changed aaaaaaaaa "core: a", now a22222222']);
+    assert.deepEqual(workChanges([A, B], [A]), ['dropped bbbbbbbbb "docs: b"']);
+    assert.deepEqual(workChanges([A], [A, B]), ['added bbbbbbbbb "docs: b"']);
+  });
+
+  it('names a reorder and any merge commit on either side', () => {
+    assert.deepEqual(workChanges([A, B], [B, A]), ['reordered, now bbbbbbbbb, aaaaaaaaa']);
+    const merge = commit('mmmmmmmmmm', 'merge main', '', true);
+    assert.deepEqual(workChanges([A], [A, merge]), ['merge commit mmmmmmmmm "merge main": rebase it away']);
+    assert.deepEqual(workChanges([A, merge], [A]), ['merge commit mmmmmmmmm "merge main": rebase it away']);
   });
 });

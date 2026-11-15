@@ -121,12 +121,80 @@ export type GitText = (args: readonly string[]) => string;
  */
 export function changePatch(git: GitText, rev: string, mainRef: string, regenerated: readonly string[]): string {
   const from = git(['merge-base', rev, mainRef]).trim();
-  const excluded = regenerated.map((path) => `:(exclude)${path}`);
-  const diff = git(['diff', '--unified=0', '--no-renames', '--no-color', '--no-ext-diff', from, rev, '--', '.', ...excluded]);
+  return diffHash(git(['diff', '--unified=0', '--no-renames', '--no-color', '--no-ext-diff', from, rev, '--', '.', ...excludedOf(regenerated)]));
+}
+
+const excludedOf = (regenerated: readonly string[]): string[] => regenerated.map((path) => `:(exclude)${path}`);
+
+/** The sha256 of a diff with its blob ids and hunk positions dropped, so moving the lines it changes keeps it. */
+function diffHash(diff: string): string {
   const normalized = diff
     .split('\n')
     .filter((line) => !line.startsWith('index '))
     .map((line) => (line.startsWith('@@') ? '@@' : line))
     .join('\n');
   return createHash('sha256').update(normalized).digest('hex');
+}
+
+/** One commit a branch carries over main. */
+export interface WorkCommit {
+  readonly sha: string;
+  readonly subject: string;
+  /** A merge commit, whose own changes no patch shows. */
+  readonly merge: boolean;
+  /**
+   * The commit's patch id, like `git patch-id` (what `git range-diff` marks `=`): the hash of its diff with 3 lines of
+   * context, blob ids and hunk positions dropped, so a rebase over other lines keeps it; whitespace counts, unlike in
+   * git's, so a whitespace edit moves it too. Empty for a merge commit.
+   */
+  readonly patch: string;
+}
+
+/**
+ * The work commits `rev` carries over `mainRef`, oldest first: every commit not on main that changes a path outside
+ * `regenerated` (a folder ends in `/`), with its patch id over those paths, and every merge commit. A commit that
+ * changes only regenerated paths (the version raise, the dist) is no work commit: a ship sets those again each run.
+ */
+export function workCommitsOf(git: GitText, rev: string, mainRef: string, regenerated: readonly string[]): WorkCommit[] {
+  const rows = git(['rev-list', '--reverse', '--parents', rev, `^${mainRef}`]).split('\n').filter((row) => row.trim() !== '');
+  return rows.flatMap((row): WorkCommit[] => {
+    const [sha = '', ...parents] = row.trim().split(' ');
+    const subject = (): string => git(['log', '-1', '--format=%s', sha]).trim();
+    if (parents.length > 1) return [{ sha, subject: subject(), merge: true, patch: '' }];
+    const diff = git(['diff-tree', '-p', '-r', '--root', '--no-commit-id', '--unified=3', '--no-renames', '--no-color', '--no-ext-diff', sha, '--', '.', ...excludedOf(regenerated)]);
+    return diff.trim() === '' ? [] : [{ sha, subject: subject(), merge: false, patch: diffHash(diff) }];
+  });
+}
+
+const named = (commit: WorkCommit): string => `${commit.sha.slice(0, 9)} "${commit.subject}"`;
+
+/**
+ * How `head`'s work commits differ from `approved`'s, each change named (changed, dropped, added, reordered); empty
+ * when they are the same patches in the same order, all a rebase leaves that `git range-diff` marks `=` throughout.
+ * A merge commit on either side always differs: its own changes have no patch to compare.
+ */
+export function workChanges(approved: readonly WorkCommit[], head: readonly WorkCommit[]): string[] {
+  const merges = [...approved, ...head].filter((commit) => commit.merge).map((commit) => `merge commit ${named(commit)}: rebase it away`);
+  const unmatched = head.filter((commit) => !commit.merge);
+  const missing: WorkCommit[] = [];
+  for (const commit of approved.filter((one) => !one.merge)) {
+    const at = unmatched.findIndex((other) => other.patch === commit.patch);
+    if (at === -1) missing.push(commit);
+    else unmatched.splice(at, 1);
+  }
+  const changes = [...merges];
+  for (const commit of missing) {
+    const at = unmatched.findIndex((other) => other.subject === commit.subject);
+    if (at === -1) {
+      changes.push(`dropped ${named(commit)}`);
+    } else {
+      changes.push(`changed ${named(commit)}, now ${unmatched[at]?.sha.slice(0, 9) ?? ''}`);
+      unmatched.splice(at, 1);
+    }
+  }
+  changes.push(...unmatched.map((commit) => `added ${named(commit)}`));
+  if (changes.length === 0 && approved.some((commit, i) => commit.patch !== head[i]?.patch)) {
+    changes.push(`reordered, now ${head.map((commit) => commit.sha.slice(0, 9)).join(', ')}`);
+  }
+  return changes;
 }
