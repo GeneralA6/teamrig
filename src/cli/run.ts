@@ -808,8 +808,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       below-normal CPU priority (nice 10 on POSIX), which every process it starts inherits, so your
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
       delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
-      ledger, with its --kind (build, test, lint, push, merge, deploy or other; default read from the
-      command) and --task (default the first task id in --what); once the shell that started it ends, it kills a running step (exit 129); a
+      ledger, with its --kind (build, test, lint, push, merge, deploy, other or ship; default read from the
+      command; a ship, merge or deploy holds the host's one ship slot: a second one waits as shipSlot while other steps
+      pass it) and --task (default the first task id in --what); once the shell that started it ends, it kills a running step (exit 129); a
       waiting one goes on as a detached run that keeps its place in line while the tab's Claude Code runs (not a git hook's
       step), its session told, else stops; REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
       moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
