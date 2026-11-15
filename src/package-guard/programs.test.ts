@@ -8,9 +8,12 @@ import { programsOf, runsOf, type BareCommand, type ProgramRun } from './program
 const APP = resolve('/', 'work', 'app');
 const HOME = resolve('/', 'u');
 
-/** Each program the line starts, as `name args @ dir`, with `?` for a folder only known when it runs. */
+/**
+ * Each program the line's own shells start, as `name args @ dir`, with `?` for a folder only known when it runs. What a
+ * package runner starts (`eslint` in `npx eslint`) is left out here; `packaged` lists it.
+ */
 function runs(command: string, dialect: ShellDialect = 'bash'): string[] {
-  return programsOf(command, { cwd: APP, home: HOME, dialect }).map(
+  return programsOf(command, { cwd: APP, home: HOME, dialect }).filter((run) => run.packageRunner === undefined).map(
     (run) => `${[run.name, ...run.args.map((arg) => arg.text)].join(' ')} @ ${run.dir ?? '?'}`,
   );
 }
@@ -86,7 +89,7 @@ describe('programsOf', () => {
     assert.deepEqual(marked('npm test'), ['npm']);
     assert.deepEqual(marked('teamrig queue --what x -- npm test && npm run build'), ['npm runner', 'npm']);
     assert.deepEqual(marked('teamrig queue --what x -- "tsc && bash -c \'node --test\'"'), ['tsc runner', 'node runner']);
-    assert.deepEqual(marked('teamrig test -- teamrig queue --what x -- npx jest'), ['npx runner']);
+    assert.deepEqual(marked('teamrig test -- teamrig queue --what x -- npx jest'), ['npx runner', 'jest runner']);
     assert.deepEqual(marked('teamrig start --session a; teamrig queue --what x'), ['teamrig', 'teamrig']);
   });
 
@@ -106,6 +109,27 @@ describe('programsOf', () => {
   it('names a program under the home folder that $HOME or a leading ~ in a value names', () => {
     assert.deepEqual(runs('N=~/bin/npx; $N eslint'), [`npx eslint @ ${APP}`]);
     assert.deepEqual(runs('$HOME/bin/npx eslint'), [`npx eslint @ ${APP}`]);
+  });
+
+  it('reads what a package runner or a version manager starts, naming the outermost one, in its folder and scope (T3069)', () => {
+    const packaged = (command: string, dialect: ShellDialect = 'bash'): string[] =>
+      programsOf(command, { cwd: APP, home: HOME, dialect })
+        .filter((run) => run.packageRunner !== undefined)
+        .map((run) => `${[run.name, ...run.args.map((arg) => arg.text)].join(' ')} < ${run.packageRunner?.text ?? ''}${run.runner ? ' runner' : ''} @ ${run.dir ?? '?'}`);
+    const sub = join(APP, 'sub');
+    assert.deepEqual(packaged('npx bash -c "teamrig exec approve R1"'), [`teamrig exec approve R1 < npx @ ${APP}`]);
+    assert.deepEqual(packaged('npx -c "teamrig exec approve R1 && git status"'), [`teamrig exec approve R1 < npx @ ${APP}`, `git status < npx @ ${APP}`]);
+    assert.deepEqual(packaged('C:/nodejs/npx.cmd -c "teamrig status"'), [`teamrig status < C:/nodejs/npx.cmd @ ${APP}`]);
+    assert.deepEqual(packaged('corepack pnpm exec teamrig status'), [`pnpm exec teamrig status < corepack @ ${APP}`, `teamrig status < corepack @ ${APP}`]);
+    assert.deepEqual(packaged('cd sub && env -C .. npx -c "cd sub && teamrig status"'), [`teamrig status < npx @ ${sub}`]);
+    assert.deepEqual(packaged('teamrig queue --what x -- npx jest'), [`jest < npx runner @ ${APP}`]);
+    assert.deepEqual(packaged('npx.cmd teamrig status', 'powershell'), [`teamrig status < npx.cmd @ ${APP}`]);
+    assert.deepEqual(packaged('npm test && npm run build && yarn build'), []);
+  });
+
+  it('keeps a word a package runner starts that is only known when it runs as an opaque run (T3069)', () => {
+    const opaque = runsOf('npx "$P" exec approve R1', { cwd: APP, home: HOME, dialect: 'bash' }).opaque;
+    assert.deepEqual(opaque.map((run) => [run.program.text, ...run.args.map((arg) => arg.text)].join(' ')), ['$P exec approve R1']);
   });
 
   it('names no program only known when the line runs, and stops at a script nested too deep', () => {
@@ -129,7 +153,7 @@ describe('runsOf', () => {
 
   it('keeps each program word as the line writes it, after its literal variables', () => {
     const words = (command: string): string[] => runsOf(command, context('bash')).programs.map((run) => `${run.name}: ${run.program.text}`);
-    assert.deepEqual(words('C:/nodejs/npx.cmd tsc && teamrig list'), ['npx: C:/nodejs/npx.cmd', 'teamrig: teamrig']);
+    assert.deepEqual(words('C:/nodejs/npx.cmd tsc && teamrig list'), ['npx: C:/nodejs/npx.cmd', 'tsc: tsc', 'teamrig: teamrig']);
     assert.deepEqual(words('T=/opt/kit/bin/teamrig; $T exec status R1'), ['teamrig: /opt/kit/bin/teamrig']);
   });
 

@@ -162,7 +162,7 @@ const CMD_START_VALUED: ReadonlySet<string> = new Set(['/node', '/affinity', '/m
  */
 const TEAMRIG_RUNNERS: ReadonlySet<string> = new Set(['queue', 'heavy', 'test']);
 /** The shell Node's `spawn` starts with `shell: true`, which runs a teamrig runner's command given as one word. */
-const SPAWN_SHELL: ShellDialect = process.platform === 'win32' ? 'cmd' : 'bash';
+export const SPAWN_SHELL: ShellDialect = process.platform === 'win32' ? 'cmd' : 'bash';
 
 /** How many wrappers deep one command may go before the guard stops reading it. */
 const MAX_STEPS = 16;
