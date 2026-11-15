@@ -99,7 +99,7 @@ describe('runCli: help, version and usage errors', () => {
     const head = USAGE.split('\n')[0] ?? '';
     const setLines = [
       '  set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]',
-      '      [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]',
+      '      [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>|none]',
       '      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".." --affects ".."]',
       '      [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]',
       '      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security]',
@@ -121,7 +121,7 @@ describe('runCli: help, version and usage errors', () => {
       "      --ask (with waiting only): adds the work as that session's task and waits on it; --due is then the",
       "      asked task's due date",
       '      verifying needs --waits for when its proof runs: a time, or a task in progress or verifying (the',
-      "      owner's approval may stand beside one); set verifying again without --waits keeps them",
+      "      owner's approval may stand beside one); set verifying again without --waits keeps them, --waits none clears them",
       "      a wait on the owner's decision or approval needs a card the owner decides from alone",
       '      (register.requireDecisionCard): --question "<what is decided>" --options "<a, its numbers> | <b>"',
       '      --recommend "<which, and why>" --default "<what happens with no answer>"; each part at least 3 words',

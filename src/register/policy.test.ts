@@ -713,6 +713,15 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     assert.deepEqual(kept.ok ? kept.value.waits : undefined, passed.waits);
   });
 
+  it("clears a verifying task's waits on --waits none, unless its proof must name when it runs (GeneralA6/teamrig#682)", () => {
+    const held: Task = { ...VERIFYING, waits: [{ kind: 'approval', who: 'lead' }, ...RUN_TONIGHT] };
+    const none = { status: 'verifying' as const, note: 'approval dropped', waits: [], followups: [] };
+    const relaxed = new RegisterPolicy(testConfig({ register: { requireProofOnVerifying: false } }));
+    const cleared = relaxed.setStatus(held, 'alpha', none, CTX);
+    assert.equal(cleared.ok ? cleared.value.waits : 'refused', undefined, 'a verifying line with no waits clears them (fold.ts)');
+    assert.equal(error(policy.setStatus(held, 'alpha', none, CTX)), PROOF_RUN_NEEDED);
+  });
+
   it('refuses putting the proof off to other waits past register.maxReparks, and lets the same waits or a reopen through', () => {
     const parked: Task = { ...VERIFYING, waits: [{ kind: 'time', at: '2030-01-09 02:00' }], reparks: 2 };
     const later = { status: 'verifying' as const, note: 'the run moved', waits: [{ kind: 'time' as const, at: '2030-01-10 02:00' }], followups: [] };
