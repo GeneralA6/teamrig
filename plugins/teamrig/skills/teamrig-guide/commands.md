@@ -1264,7 +1264,8 @@ Flags:
   issue one label (`open` `status:open` while no one scheduled or took it, `status:claimed` once it has a due date
   or an assignee, `in-progress` `status:in progress`, `waiting` `status:waiting`, `verifying` `status:in review`)
   and any other `status:` label comes off; a goal, a task planned after its parts, shows none, as its parts' issues
-  carry theirs; a done task closes it as completed, a
+  carry theirs, and so does a design issue (labelled `design`: talk, not work to take until agreed), which is also
+  assigned to no one; a done task closes it as completed, a
   dropped one as not planned. It plans against the issues as GitHub lists them now, so a label someone changed by
   hand is set back and a run that stopped half way is planned again whole. It never reopens an issue a person
   closed: a `KEPT` line names it, and an `UNLISTED` line an active task's issue that is not open on GitHub. A run
@@ -1483,14 +1484,16 @@ CLOSED acme/web#12
 Adds labels to and takes labels off one issue or pull request of the team's repositories, with the same access as
 `teamrig issue comment`. `--add` and `--remove` are comma-separated lists; give at least one, and no label in both.
 Each label to add must already be one of the repository's, read before any change, so a typo never makes a new
-label: make it on the host first. Labels to add go in one call, then each label to remove comes off in turn; the
+label: make it on the host first. The one exception is `design`, the label of a design issue (talk about how
+something should work, not work to take until agreed): a repository that lacks it gets it made first, with a `MADE`
+line. Labels to add go in one call, then each label to remove comes off in turn; the
 first failure stops it, and a `FAILED` line after a change says what it already did. Exit 1 when it failed, 2 when
 refused, else 0.
 
 Flags:
 
 - `--session <id|name>`: the caller, a session of the team.
-- `--add <label,...>`: the labels to add, each already one of the repository's.
+- `--add <label,...>`: the labels to add, each already one of the repository's, or `design`.
 - `--remove <label,...>`: the labels to take off.
 
 Example:

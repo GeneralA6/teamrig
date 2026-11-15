@@ -371,10 +371,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:open,
       status:claimed once it has a due date or an assignee, in-progress status:in progress, waiting
-      status:waiting, verifying status:in review; a goal, a task planned after its parts, none), any
+      status:waiting, verifying status:in review; a goal, a task planned after its parts, and a design
+      issue, labelled design, none), any
       other status: label taken off; done closes it as completed, dropped as not planned; never
       reopens an issue a person closed, and names it; an open issue of a scheduled task (started or
-      with a due date) no one is assigned to is assigned to the login
+      with a due date), not a design issue, no one is assigned to is assigned to the login
       github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
       --yes sends them, a repository stopping at its first failed write; a status label the repository
       lacks is made first (MADE)
@@ -400,7 +401,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       same repository, which the host links, and is refused when the host has no such issue
   issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
       labels off one issue or pull request of the team's repositories, with the same access; each
-      label to add must already be one of the repository's, and the first failure stops it
+      label to add must already be one of the repository's, but design (talk only, not work to take
+      until agreed), which it makes first (MADE); the first failure stops it
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and

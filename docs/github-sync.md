@@ -241,7 +241,8 @@ teamrig issue migrate rows.jsonl --yes               # opens the issues
 ## Commenting on, labelling and closing
 
 `teamrig issue comment` posts one comment on an issue or pull request, `teamrig issue label` adds and takes off its
-labels, and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
+labels (it makes the `design` label first where the repository lacks it, with a `MADE` line; any other label must
+already be there), and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
 unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only);
 `--duplicate-of` closes it as a duplicate of another issue of the same repository, which GitHub links as the
 original. `teamrig issue edit` replaces the body (the description) with the text of a file, so a spec of many lines
@@ -321,12 +322,16 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
   `status:in progress`, `waiting` `status:waiting`, `verifying` `status:in review`; any other `status:` label comes
   off. A goal, a task planned after its parts, shows none: its parts' issues carry theirs. Done closes the issue as
   completed, dropped as not planned. A repository that lacks one of these labels gets it made first, with a
-  `MADE` line: these five are the only labels teamrig ever makes, and only with `--yes` or the automatic push.
+  `MADE` line: these five and `design` are the only labels teamrig ever makes, and the push makes its five only with
+  `--yes` or the automatic push.
+- **A design issue shows none.** An issue labelled `design` is talk about how something should work, not work to
+  take until it is agreed: the push takes every `status:` label off it and assigns it to no one, whatever its task's
+  status. Done or dropped still closes it.
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
-- **Someone answers for it.** An open issue of a scheduled task (started, or with a due date) no one is assigned
-  to gets an assignee: the login `github.owners` maps to the task's owning session, else the account that owns the
+- **Someone answers for it.** An open issue of a scheduled task (started, or with a due date), not a design issue,
+  no one is assigned to gets an assignee: the login `github.owners` maps to the task's owning session, else the account that owns the
   repository (sessions are not GitHub users). An issue a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may
   not assign (not a person with access to it) gets an `UNASSIGNED` line and its issues keep their label changes, as
   GitHub would drop it silently and every run would send it again.
@@ -401,7 +406,9 @@ again.
   (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only, a duplicate's also with the
   original's `duplicate_issue_id`, digits only) and the read of that original (`.../issues/<number> -X GET`, no
   field), the status push's read of whether one login may be assigned (`repos/<owner>/<name>/assignees/<login>`)
-  and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), and
+  and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), the create of a label
+  teamrig makes (`repos/<owner>/<name>/labels -X POST` with the name, colour and description of one of the five
+  status labels or `design`, word for word), and
   `teamrig issue links`'s one link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST`
   with one issue id only). No link is ever removed.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
