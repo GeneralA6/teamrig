@@ -229,14 +229,15 @@ teamrig issue migrate rows.jsonl --yes               # opens the issues
 
 `teamrig issue comment` posts one comment on an issue or pull request, `teamrig issue label` adds and takes off its
 labels, and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
-unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only).
-Each names its target as `owner/name#number`:
+unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only);
+`--duplicate-of` closes it as a duplicate of another issue of the same repository, which GitHub links as the
+original. Each names its target as `owner/name#number`:
 
 ```sh
 teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."
 teamrig issue label acme/web#7 --add "type: bug,p1" --remove "needs triage"
 teamrig issue close acme/web#12 --comment "Merged as #14 with your commits credited. Thank you!"
-teamrig issue close acme/web#15 --reason duplicate --comment "Same as #7."
+teamrig issue close acme/web#15 --duplicate-of acme/web#7
 ```
 
 ```text
@@ -371,9 +372,10 @@ again.
   one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label
   (`repos/<owner>/<name>/labels/<label>`), add (`.../issues/<number>/labels -X POST` with its labels only) and take
   off (`.../issues/<number>/labels/<label> -X DELETE`), `teamrig issue close`'s close
-  (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only), and `teamrig issue links`'s one
-  link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST` with one issue id only). No link
-  is ever removed.
+  (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only, a duplicate's also with the
+  original's `duplicate_issue_id`, digits only) and the read of that original (`.../issues/<number> -X GET`, no
+  field), and `teamrig issue links`'s one link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`,
+  `-X POST` with one issue id only). No link is ever removed.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
   is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
   that one run.

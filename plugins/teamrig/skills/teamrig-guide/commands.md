@@ -1394,6 +1394,9 @@ Flags:
 - `--comment <text>`: a comment posted before the close.
 - `--reason <completed|not-planned|duplicate>`: why it closes, which the host shows beside it (GitHub keeps it on an
   issue only, not on a pull request); refused when it is none of the three.
+- `--duplicate-of <owner/name#n>`: closes it as a duplicate of that issue, which GitHub links as the original;
+  implies `--reason duplicate`. Refused with another reason, for the issue itself or one of another repository. The
+  original is read before anything is written: when the host has no such issue, nothing is written.
 
 Example:
 
