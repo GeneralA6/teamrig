@@ -57,7 +57,7 @@ describe("a team's decision batch", () => {
       (await teamDecisions(files, PATHS, CONFIG, [own(TASKS)], NOW)).pending.map((wait) => wait.task.id),
       ['T2'],
     );
-    await new MeetingStore(files, PATHS.meeting).write({ startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null, carried: [] });
+    await new MeetingStore(files, PATHS.meeting).write({ startedAt: '2030-01-08T09:30:00.000Z', by: 'lead', endedAt: null, since: null, carried: [], kind: 'daily' });
     assert.deepEqual((await teamDecisions(files, PATHS, CONFIG, [own(TASKS)], NOW)).pending, []);
   });
 

@@ -1,19 +1,22 @@
 import type { MeetingConfig } from '../config/types.ts';
 import { meetingInTabOf, meetingTitleOf, type ScheduledMeeting } from './schedule.ts';
-import { phaseOf, type Meeting } from './state.ts';
+import { phaseOf, type Meeting, type MeetingKind } from './state.ts';
 
 /**
- * How a tab's status line marks an open meeting (T2513): the meeting tab, the one whose session started the daily
+ * How a tab's status line marks an open meeting (T2513): the meeting tab, the one whose session started its team's
  * meeting or is met in a booked one, leads its line with `Meeting: <title>` in the meeting colour; every other tab a
- * daily meeting covers ends its line in the held text, in the same colour. Only the mark takes the colour, so the rest
+ * team's meeting covers ends its line in the held text, in the same colour. Only the mark takes the colour, so the rest
  * of the line reads as usual (T2985).
  */
 export type StatusLineMeeting =
   | { readonly kind: 'tab'; readonly colour: string; readonly title: string }
   | { readonly kind: 'held'; readonly colour: string; readonly text: string };
 
-/** The short title of the owner's daily meeting, the one a team's `meeting start` opens. */
-export const DAILY_MEETING_TITLE = 'daily';
+/**
+ * The short title of a meeting a team's bare `meeting start` opens, by its kind (T3137): the day's first is the
+ * owner's daily meeting, one after it the same day an extra one.
+ */
+export const MEETING_TITLES: Readonly<Record<MeetingKind, string>> = { daily: 'daily', extra: 'extra' };
 
 export interface StatusLineMeetingInput {
   readonly shown: MeetingConfig['statusLine'];
@@ -29,9 +32,9 @@ export interface StatusLineMeetingInput {
 }
 
 /**
- * The tab's meeting mark: the meeting tab's when its session started its team's open daily meeting (titled daily), or
+ * The tab's meeting mark: the meeting tab's when its session started its team's open meeting (titled by its kind), or
  * is met in a booked or on-the-spot meeting on now (titled by what it is about); else the held text while its team or
- * a team above has its daily meeting open; undefined with the marks off or none on, ended or lapsed alike.
+ * a team above has its meeting open, daily or extra; undefined with the marks off or none on, ended or lapsed alike.
  */
 export function statusLineMeetingOf(input: StatusLineMeetingInput): StatusLineMeeting | undefined {
   const { shown, own, above, booked, now, tab } = input;
@@ -39,8 +42,8 @@ export function statusLineMeetingOf(input: StatusLineMeetingInput): StatusLineMe
     return undefined;
   }
   const open = (meeting: Meeting | undefined): boolean => meeting !== undefined && phaseOf(meeting, now).kind === 'open';
-  if (open(own) && own?.by === tab) {
-    return { kind: 'tab', colour: shown.colour, title: DAILY_MEETING_TITLE };
+  if (own !== undefined && open(own) && own.by === tab) {
+    return { kind: 'tab', colour: shown.colour, title: MEETING_TITLES[own.kind] };
   }
   const inTab = tab === undefined ? undefined : meetingInTabOf(booked, tab, now);
   if (inTab !== undefined) {

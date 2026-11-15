@@ -7,7 +7,7 @@ import type { Meeting } from './state.ts';
 import { coloured, statusLineMeetingOf } from './status-line.ts';
 
 const START = Date.parse('2030-01-08T08:00:00Z');
-const OPEN: Meeting = { startedAt: new Date(START).toISOString(), by: 'lead', endedAt: null, since: null, carried: [] };
+const OPEN: Meeting = { startedAt: new Date(START).toISOString(), by: 'lead', endedAt: null, since: null, carried: [], kind: 'daily' };
 const SHOWN = DEFAULT_MEETING.statusLine;
 const TAB = { kind: 'tab', colour: '#8b57e3', title: 'daily' };
 const HELD = { kind: 'held', colour: '#8b57e3', text: 'meeting on: held' };
@@ -42,6 +42,14 @@ describe('statusLineMeetingOf', () => {
     assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], booked: [], now, tab: 'lead' }), TAB);
     assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], booked: [], now, tab: 'front' }), HELD);
     assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], booked: [], now, tab: undefined }), HELD);
+  });
+
+  // T3137: a meeting started after the day's daily one has ended is not the daily meeting.
+  it("marks the lead's tab with the extra title for an extra meeting, and holds every other tab's as for the daily one", () => {
+    const now = START + 60_000;
+    const extra: Meeting = { ...OPEN, kind: 'extra' };
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: extra, above: [], booked: [], now, tab: 'lead' }), { ...TAB, title: 'extra' });
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: extra, above: [], booked: [], now, tab: 'front' }), HELD);
   });
 
   it("holds a sub-team's tabs while a team above meets, and colours its lead's tab for its own meeting (T2985)", () => {

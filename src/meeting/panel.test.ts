@@ -10,7 +10,7 @@ import { decisionOf, meetingPanelOf, SUMMARY_CHARS, summaryOf, type PanelInput, 
 import type { Meeting } from './state.ts';
 
 const STARTED = '2030-01-08T10:00:00.000Z';
-const MEETING: Meeting = { startedAt: STARTED, by: 'lead', endedAt: null, since: null, carried: [] };
+const MEETING: Meeting = { startedAt: STARTED, by: 'lead', endedAt: null, since: null, carried: [], kind: 'daily' };
 const TREE = new TaskTree(new Map(), new Date(STARTED), TimeZone.UTC);
 
 function asked(task: Task, team?: string): Decision {

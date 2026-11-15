@@ -15,7 +15,7 @@ import { mergeDigestLines, type MergeDigestInput, type MergeLogAt } from '../../
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { SPOTLIGHT_LOG, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
-import { MEETING_LAPSE_MS, MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
+import { MEETING_LAPSE_MS, MeetingStore, phaseOf, startingKindOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { MergeLog } from '../../merge/merge-log.ts';
 import { goalScores, type BoardTeam, type GoalScore } from '../../register/goal-board.ts';
 import type { Goal } from '../../register/goals.ts';
@@ -272,9 +272,11 @@ export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promi
     endedAt: null,
     since: before === undefined ? null : new Date(before).toISOString(),
     carried: phase.kind === 'none' ? [] : phase.meeting.carried,
+    kind: startingKindOf(phase, mk.now, mk.zone),
   };
   await mk.store.write(meeting);
-  runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
+  const extra = meeting.kind === 'extra' ? ", an extra meeting after the day's daily one" : '';
+  runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}${extra}: messages to ${mk.leadName} are held but CRITICAL ones (the hook tells each sender)`);
   const spotlit: SpotlightPlace = {
     title: sessionDisplay(mk.kit.paths.team, mk.leadName),
     meetingFile: mk.kit.paths.meeting,

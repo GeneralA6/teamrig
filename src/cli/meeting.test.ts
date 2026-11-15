@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MeterLog } from '../budget/calibration.ts';
 import { SPOTLIGHT_VARS } from '../meeting/spotlight.ts';
-import { MEETING_LAPSE_MS } from '../meeting/state.ts';
+import { MEETING_LAPSE_MS, MeetingStore } from '../meeting/state.ts';
 import { MergeLog, type SelfMerge } from '../merge/merge-log.ts';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -110,6 +110,25 @@ describe('runCli: the daily meeting', () => {
     assert.equal(again.stdout[0], 'MEETING already open since Tue 01-08 10:00 UTC: messages to app-lead are held but CRITICAL ones');
     assert.equal(again.stdout[2], 'DECISIONS 1 waiting on owner (decision or approval)');
     assert.match((await inboxOf(kit, 'alpha'))[0] ?? '', /^READ alpha: nothing new/);
+  });
+
+  // T3137: only the day's first meeting is the owner's daily one; the status line titles each by its kind.
+  it("opens an extra meeting after the day's daily one ended, and the next day's first as daily again", async () => {
+    const kit = await teamBeforeTheMeeting();
+    const kindOf = async (): Promise<string | undefined> => (await new MeetingStore(kit.files, join(TEAM_HOME, 'state', 'meeting.json')).read())?.kind;
+    await kit.run(['meeting', 'start', '--session', 'lead']);
+    assert.equal(await kindOf(), 'daily');
+    kit.clock.advance(30 * MINUTE);
+    await kit.run(['meeting', 'end', '--session', 'lead']);
+    kit.clock.advance(60 * MINUTE);
+    const extra = await kit.run(['meeting', 'start', '--session', 'lead']);
+    assert.equal(extra.stdout[0], "MEETING started Tue 01-08 11:30 UTC, an extra meeting after the day's daily one: messages to app-lead are held but CRITICAL ones (the hook tells each sender)");
+    assert.equal(await kindOf(), 'extra');
+    kit.clock.advance(30 * MINUTE);
+    await kit.run(['meeting', 'end', '--session', 'lead']);
+    kit.clock.advance(24 * 60 * MINUTE);
+    assert.match((await kit.run(['meeting', 'start', '--session', 'lead'])).stdout[0] ?? '', /^MEETING started Wed 01-09 12:00 UTC: messages/);
+    assert.equal(await kindOf(), 'daily');
   });
 
   // T2517: the spotlight dims every screen but the lead's window while the meeting is open.

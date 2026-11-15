@@ -5,7 +5,7 @@ import { JERUSALEM } from '../testing/zone.ts';
 import { bookedHoldReason, isBreakthrough, isCritical, quietHoldReason, type BookedQuietFacts, type QuietFacts } from './quiet.ts';
 
 const FACTS: QuietFacts = {
-  meeting: { startedAt: '2030-01-08T09:00:00.000Z', by: 'lead', endedAt: null, since: null, carried: [] },
+  meeting: { startedAt: '2030-01-08T09:00:00.000Z', by: 'lead', endedAt: null, since: null, carried: [], kind: 'daily' },
   to: 'lead',
   lead: 'lead',
   from: 'alpha',

@@ -1,7 +1,8 @@
 import type { Files } from '../core/files.ts';
 import { isStringArray, stringField } from '../core/guards.ts';
-import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 import { MS_PER_HOUR } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 
 /**
  * The owner's daily meeting with the lead (`meeting start|agenda|end`): while one is open, the cold-send hook holds
@@ -9,10 +10,26 @@ import { MS_PER_HOUR } from '../core/time.ts';
  * (src/refresh/decide.ts). One small file holds the latest meeting, written only by the lead's own `meeting` commands.
  */
 
-/** The format of the meeting file this code reads and writes; a file in another format reads as no meeting. */
-export const MEETING_FORMAT = 1;
+/**
+ * The format of the meeting file this code writes: 2 added the meeting's `kind` (T3137). It reads format 1 too, as a
+ * daily meeting; a file in any other format reads as no meeting.
+ */
+export const MEETING_FORMAT = 2;
+/** The format before the meeting's kind, read as a daily meeting. */
+const MEETING_FORMAT_NO_KIND = 1;
 /** A meeting never ended stops holding messages this long after it started, so a forgotten `meeting end` never silences the lead for good. */
 export const MEETING_LAPSE_MS = 4 * MS_PER_HOUR;
+
+/**
+ * Which meeting a bare `meeting start` opened (T3137): the day's first is the owner's `daily` meeting, and one started
+ * after it on the same day, on the team's clock, is an `extra` one, so the status line does not call it daily.
+ */
+export const MEETING_KINDS = ['daily', 'extra'] as const;
+export type MeetingKind = (typeof MEETING_KINDS)[number];
+
+function isMeetingKind(value: unknown): value is MeetingKind {
+  return MEETING_KINDS.some((kind) => kind === value);
+}
 
 export interface Meeting {
   /** When it started and the session that started it, the lead. */
@@ -28,6 +45,7 @@ export interface Meeting {
    * written before carry-over had none.
    */
   readonly carried: readonly string[];
+  readonly kind: MeetingKind;
 }
 
 /**
@@ -56,6 +74,14 @@ export function inMeeting(meeting: Meeting | undefined, session: string, now: nu
   return meeting?.by === session && phaseOf(meeting, now).kind === 'open';
 }
 
+/**
+ * The kind of meeting a bare `meeting start` opens now, after the latest meeting's `phase` (T3137): an extra one when
+ * the latest started earlier the same day on the team's clock, so only the day's first is the owner's daily meeting.
+ */
+export function startingKindOf(phase: MeetingPhase, now: number, zone: Pick<TimeZone, 'day'>): MeetingKind {
+  return phase.kind !== 'none' && zone.day(new Date(phase.meeting.startedAt)) === zone.day(new Date(now)) ? 'extra' : 'daily';
+}
+
 /** When the meeting a phase names stopped: its end, or its lapse; undefined for an open meeting or none. */
 export function stoppedAt(phase: MeetingPhase): number | undefined {
   return phase.kind === 'closed' || phase.kind === 'lapsed' ? phase.until : undefined;
@@ -64,7 +90,8 @@ export function stoppedAt(phase: MeetingPhase): number | undefined {
 /** A meeting file's content; undefined when it is damaged or from another format. */
 export function parseMeeting(text: string): Meeting | undefined {
   const record = parseObject(text.trim());
-  if (record === undefined || record[VERSION_FIELD] !== MEETING_FORMAT) {
+  const format = record?.[VERSION_FIELD];
+  if (record === undefined || (format !== MEETING_FORMAT && format !== MEETING_FORMAT_NO_KIND)) {
     return undefined;
   }
   const startedAt = stringField(record, 'startedAt');
@@ -72,18 +99,19 @@ export function parseMeeting(text: string): Meeting | undefined {
   const endedAt = record['endedAt'];
   const since = record['since'];
   const carried = record['carried'] ?? [];
+  const kind = format === MEETING_FORMAT_NO_KIND ? 'daily' : record['kind'];
   if (startedAt === undefined || by === undefined || Number.isNaN(Date.parse(startedAt))) {
     return undefined;
   }
-  if ((endedAt !== null && typeof endedAt !== 'string') || (since !== null && typeof since !== 'string') || !isStringArray(carried)) {
+  if ((endedAt !== null && typeof endedAt !== 'string') || (since !== null && typeof since !== 'string') || !isStringArray(carried) || !isMeetingKind(kind)) {
     return undefined;
   }
-  return { startedAt, by, endedAt, since, carried };
+  return { startedAt, by, endedAt, since, carried, kind };
 }
 
 export function formatMeeting(meeting: Meeting): string {
-  const { startedAt, by, endedAt, since, carried } = meeting;
-  return toJsonlLine({ [VERSION_FIELD]: MEETING_FORMAT, startedAt, by, endedAt, since, carried: [...carried] });
+  const { startedAt, by, endedAt, since, carried, kind } = meeting;
+  return toJsonlLine({ [VERSION_FIELD]: MEETING_FORMAT, startedAt, by, endedAt, since, carried: [...carried], kind });
 }
 
 /** The latest meeting, one small JSON file (`state/meeting.json`). */
@@ -102,7 +130,9 @@ export class MeetingStore {
     return text === undefined ? undefined : parseMeeting(text);
   }
 
+  /** Writes over the latest meeting; refuses (NewerDataError) a file a newer teamrig wrote, so none of its fields is lost. */
   async write(meeting: Meeting): Promise<void> {
+    writableObject(this.path, await this.files.read(this.path), MEETING_FORMAT);
     await this.files.write(this.path, formatMeeting(meeting));
   }
 }
