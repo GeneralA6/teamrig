@@ -21,7 +21,17 @@ type PriorityLabel = (typeof PRIORITY_LABELS)[number];
 
 /** A row's kind of work, and the GitHub label each one gets: a bug stays `bug`, a task is an `enhancement`. */
 const TYPE_LABELS = { bug: 'bug', task: 'enhancement' } as const;
-type RowType = keyof typeof TYPE_LABELS;
+export type RowType = keyof typeof TYPE_LABELS;
+
+/** The priority label of a task's priority: p0 and p1 are `p1`, the sync's highest, p2 is `p2`, any lower `p3`. */
+export function priorityLabelOf(priority: number): PriorityLabel {
+  return priority <= 1 ? 'p1' : priority === 2 ? 'p2' : 'p3';
+}
+
+/** The labels an issue gets: its kind of work, then its priority. */
+export function issueLabels(type: RowType, priority: PriorityLabel): string[] {
+  return [TYPE_LABELS[type], priority];
+}
 
 /** The keys an issue row holds, and no other. */
 const ISSUE_KEYS: ReadonlySet<string> = new Set(['id', 'decision', 'repo', 'type', 'priority', 'title', 'body']);
@@ -201,7 +211,7 @@ export function publicIssueText(who: string, title: string, body: string, scanne
 
 /** The labels an issue row's issue gets: its kind of work, then its priority. */
 export function rowLabels(row: IssueRow): string[] {
-  return [TYPE_LABELS[row.type], row.priority];
+  return issueLabels(row.type, row.priority);
 }
 
 /**
