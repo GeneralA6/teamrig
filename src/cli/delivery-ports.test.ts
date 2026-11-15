@@ -9,7 +9,10 @@ import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { TabHolds, tabHoldsDir } from '../sessions/tab-holds.ts';
-import { freezesLockOf, hostLockOf } from './delivery-ports.ts';
+import type { QueueConfig } from '../config/types.ts';
+import { testConfig } from '../testing/config.ts';
+import { fixedAdmission } from '../testing/fixed-admission.ts';
+import { admissionRulesOf, freezesLockOf, hostLockOf, teamAdmissionOf } from './delivery-ports.ts';
 import type { CliRuntime } from './runtime.ts';
 
 const PATH = '/kit/host.lock';
@@ -17,6 +20,11 @@ const QUEUE = { lockTtlMinutes: 150, memoryFloorMb: 4096, heavyReserveMb: 4096, 
 const HEADROOM = { commitMaxPct: 92 };
 const FOCUS = { defaultClass: 'Improvements' };
 const PID = 4242;
+
+/** The host lock at {@link PATH} over `runtime`, its line ordered by `queue`'s admission keys. */
+function lockOf(runtime: Parameters<typeof hostLockOf>[0], queue: Pick<QueueConfig, keyof typeof QUEUE>) {
+  return hostLockOf(runtime, PATH, queue, HEADROOM, fixedAdmission(admissionRulesOf(queue, FOCUS)), TimeZone.UTC);
+}
 
 /** A small step's ask: to share the host with 100 MB held for it. */
 const SMALL = { need: { shares: true, reserveMb: 100 } };
@@ -65,7 +73,7 @@ describe('hostLockOf (T2210)', () => {
   const running = (): FakeSessionProcesses => new FakeSessionProcesses().add({ pid: PID, parentPid: 1, name: 'node', commandLine: 'node cli.ts queue' });
 
   it('orders the line by delivery.queue.admission: in pipeline mode a session running perSessionRunning steps waits on its cap', async () => {
-    const lock = hostLockOf(runtimeOf(new FakeHostMemory(16_000), running()), PATH, QUEUE, HEADROOM, FOCUS, TimeZone.UTC);
+    const lock = lockOf(runtimeOf(new FakeHostMemory(16_000), running()), QUEUE);
     const first = heldLock(await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL));
 
     const second = await lock.acquire('alpha', 'heavy: lint', 0, 30_000, () => undefined, SMALL);
@@ -75,7 +83,7 @@ describe('hostLockOf (T2210)', () => {
   });
 
   it('caps no session in serial mode, the line in arrival order as before', async () => {
-    const lock = hostLockOf(runtimeOf(new FakeHostMemory(16_000), running()), PATH, { ...QUEUE, admission: 'serial' }, HEADROOM, FOCUS, TimeZone.UTC);
+    const lock = lockOf(runtimeOf(new FakeHostMemory(16_000), running()), { ...QUEUE, admission: 'serial' });
     heldLock(await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL));
 
     const second = await lock.acquire('alpha', 'heavy: lint', 0, 30_000, () => undefined, SMALL);
@@ -84,7 +92,7 @@ describe('hostLockOf (T2210)', () => {
   });
 
   it('caps no session when delivery.queue.perSessionRunning is 0', async () => {
-    const lock = hostLockOf(runtimeOf(new FakeHostMemory(16_000), running()), PATH, { ...QUEUE, perSessionRunning: 0 }, HEADROOM, FOCUS, TimeZone.UTC);
+    const lock = lockOf(runtimeOf(new FakeHostMemory(16_000), running()), { ...QUEUE, perSessionRunning: 0 });
     heldLock(await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL));
 
     const second = await lock.acquire('alpha', 'heavy: lint', 0, 30_000, () => undefined, SMALL);
@@ -100,7 +108,7 @@ describe('hostLockOf (T2700)', () => {
     const results: unknown[] = [];
     for (const heavyIdleCpuPct of [25, 0]) {
       const runtime = runtimeOf(new FakeHostMemory(16_000), running(), new FakeClock('2030-01-08T10:00:00Z'), new FakeHostCpu(10));
-      const lock = hostLockOf(runtime, PATH, { ...QUEUE, heavyIdleCpuPct }, HEADROOM, FOCUS, TimeZone.UTC);
+      const lock = lockOf(runtime, { ...QUEUE, heavyIdleCpuPct });
       const first = heldLock(await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined));
       const second = await lock.acquire('beta', 'heavy: build', 0, 30_000, () => undefined);
       results.push(second.kind === 'busy' ? second.holder : second.kind, first);
@@ -112,7 +120,7 @@ describe('hostLockOf (T2700)', () => {
 
 describe('hostLockOf (T2192)', () => {
   it('gates a step on free memory over delivery.queue.memoryFloorMb plus heavyReserveMb', async () => {
-    const lock = hostLockOf(runtimeOf(new FakeHostMemory(100)), PATH, QUEUE, HEADROOM, FOCUS, TimeZone.UTC);
+    const lock = lockOf(runtimeOf(new FakeHostMemory(100)), QUEUE);
 
     const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
 
@@ -121,7 +129,7 @@ describe('hostLockOf (T2192)', () => {
 
   it('gates a step on the commit charge under open.headroom.commitMaxPct, the reserve counted', async () => {
     const memory = new FakeHostMemory(16_000).lists([], { usedMb: 28_000, limitMb: 32_000 });
-    const lock = hostLockOf(runtimeOf(memory), PATH, QUEUE, HEADROOM, FOCUS, TimeZone.UTC);
+    const lock = lockOf(runtimeOf(memory), QUEUE);
 
     const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
 
@@ -133,7 +141,7 @@ describe('hostLockOf (T2192)', () => {
     const runtime = runtimeOf(new FakeHostMemory(10_000), new FakeSessionProcesses(), clock);
     const tabs = new TabHolds(tabHoldsDir(PATH), runtime);
     await tabs.add({ id: 'h1', team: 'alpha', session: 'web', needMb: 2500, needCommittedMb: 5000, openedAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T10:05:00.000Z' });
-    const lock = hostLockOf(runtime, PATH, QUEUE, HEADROOM, FOCUS, TimeZone.UTC);
+    const lock = lockOf(runtime, QUEUE);
 
     const waiting = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
     clock.advance(5 * 60_000);
@@ -147,7 +155,7 @@ describe('hostLockOf (T2192)', () => {
   });
 
   it('holds a lock taken on a roomy host for delivery.queue.lockTtlMinutes', async () => {
-    const lock = hostLockOf(runtimeOf(new FakeHostMemory(16_000)), PATH, QUEUE, HEADROOM, FOCUS, TimeZone.UTC);
+    const lock = lockOf(runtimeOf(new FakeHostMemory(16_000)), QUEUE);
 
     const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined);
 
@@ -162,5 +170,27 @@ describe('freezesLockOf (T2192)', () => {
     const taking = await lock.acquire('alpha', 'freeze: write', 0, 30_000, () => undefined);
 
     assert.equal(heldMinutes(heldLock(taking)), FREEZES_LOCK_TTL_MS / 60_000);
+  });
+});
+
+describe('teamAdmissionOf (T2942)', () => {
+  const launched = testConfig({ delivery: { queue: { maxHeavyParallel: 1 } }, focus: { defaultClass: 'Maintenance' } });
+
+  it('gives the rules of the config as each look reads it, so a raised cap reaches a step already waiting', async () => {
+    let current = launched;
+    const source = teamAdmissionOf(launched, () => Promise.resolve({ status: 'loaded', config: current, issues: [], path: '/kit/config.json' }));
+    assert.deepEqual(await source.rules(), admissionRulesOf(launched.delivery.queue, launched.focus));
+    current = testConfig({ delivery: { queue: { maxHeavyParallel: 3, admission: 'serial' } }, focus: { defaultClass: 'Improvements' } });
+    assert.deepEqual(await source.rules(), { ...admissionRulesOf(launched.delivery.queue, launched.focus), mode: 'serial', maxHeavyParallel: 3, defaultClass: 'Improvements' });
+  });
+
+  it('keeps the last rules read while the config is missing, so an edit in progress never reorders the line', async () => {
+    const reads = [testConfig({ delivery: { queue: { maxHeavyParallel: 3 } } }), undefined];
+    const source = teamAdmissionOf(launched, () => {
+      const config = reads.shift();
+      return Promise.resolve(config === undefined ? { status: 'missing', path: '/kit/config.json' } : { status: 'loaded', config, issues: [], path: '/kit/config.json' });
+    });
+    assert.equal((await source.rules()).maxHeavyParallel, 3);
+    assert.equal((await source.rules()).maxHeavyParallel, 3);
   });
 });

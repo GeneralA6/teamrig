@@ -9,6 +9,7 @@ import { refusalOf, takeWhenClear, type ClearancePhase, type ClearanceRequest, t
 import { lineRequests } from '../testing/line-tickets.ts';
 import { withdrawnLock } from '../testing/withdrawn-lock.ts';
 import type { AdmissionRules } from './admission.ts';
+import { fixedAdmission } from '../testing/fixed-admission.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
 import { MemoryGate } from './memory-gate.ts';
 import type { LineRequest } from './process-request.ts';
@@ -66,7 +67,7 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     newId: () => 'mine',
     zone: TimeZone.UTC,
     ...(memory === undefined ? {} : { memory: new MemoryGate(memory, async () => undefined, { floorMb: 4096, heavyReserveMb: 4096, commitMaxPct: 92 }, noLoadingTabs) }),
-    ...(admission === undefined ? {} : { admission }),
+    ...(admission === undefined ? {} : { admission: fixedAdmission(admission) }),
   });
   const [waits, causes]: [string[], WaitCause[]] = [[], []];
   const onWait: ClearanceRequest['onWait'] = (told) => {

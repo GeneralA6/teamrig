@@ -14,7 +14,8 @@ import type { Files } from '../core/files.ts';
 import { FakeHostCpu } from '../testing/fake-host-cpu.ts';
 import { FakeHostMemory, noLoadingTabs } from '../testing/fake-host-memory.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import type { AdmissionRules } from './admission.ts';
+import type { AdmissionRules, AdmissionSource } from './admission.ts';
+import { fixedAdmission, SettableAdmission } from '../testing/fixed-admission.ts';
 import type { OpenCharge } from './class-turns.ts';
 import { CpuGate } from './cpu.ts';
 import {
@@ -92,10 +93,10 @@ const CPU_NEED_PCT = 25;
 /**
  * The host lock over files in memory at 10:00, with this process and `OTHER` running; `sleep` default the clock's.
  * With `memory`, every step passes a memory gate ({@link GATE}) over that host first; with `admission`, the line is
- * ordered by those rules; with `cpu`, a heavy step joining another passes a CPU gate over that host needing
+ * ordered by those rules, or by the ones that source gives at each look; with `cpu`, a heavy step joining another passes a CPU gate over that host needing
  * {@link CPU_NEED_PCT} idle.
  */
-function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep, memory?: FakeHostMemory, admission?: AdmissionRules, cpu?: FakeHostCpu): World {
+function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: FakeClock, files: MemoryFiles) => Sleep, memory?: FakeHostMemory, admission?: AdmissionRules | AdmissionSource, cpu?: FakeHostCpu): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
   const running = new Set([ME, OTHER]);
@@ -112,7 +113,7 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
       return `t${ids}`;
     },
     ...(memory === undefined ? {} : { memory: new MemoryGate(memory, noGap, GATE, noLoadingTabs) }),
-    ...(admission === undefined ? {} : { admission }),
+    ...(admission === undefined ? {} : { admission: 'rules' in admission ? admission : fixedAdmission(admission) }),
     ...(cpu === undefined ? {} : { cpu: new CpuGate(cpu, noGap, CPU_NEED_PCT) }),
   });
   return { files, clock, running, lock };
@@ -153,7 +154,7 @@ function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep
       ids += 1;
       return `t${ids}`;
     },
-    ...(admission === undefined ? {} : { admission }),
+    ...(admission === undefined ? {} : { admission: fixedAdmission(admission) }),
   });
 }
 
@@ -1668,6 +1669,20 @@ describe('HostLock heavy shares (T2210)', () => {
     const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: REQUEST });
     assert.deepEqual([taking, await files.list(SHARED)], [{ kind: 'busy', holder: { kind: 'heavyCap', cap: 1, running: [running] } }, ['other.json']]);
     assert.equal(taking.kind === 'busy' ? busyText(taking.holder, TimeZone.UTC) : '', 'heavy cap still reached: 1 heavy step running, the cap 1: po (heavy: build) since 2030-01-08 09:50 UTC');
+  });
+
+  it('reads the heavy cap again at each look, so a heavy step waiting at maxHeavyParallel 1 is let in once the team raises it (T2942)', async () => {
+    const running = heavyOf();
+    const admission = new SettableAdmission({ ...PIPELINE, maxHeavyParallel: 1 });
+    const told: string[] = [];
+    const raise = (time: FakeClock) => async (ms: number) => {
+      admission.set(PIPELINE);
+      await time.sleep(ms);
+    };
+    const { lock } = world(Object.fromEntries([shareFile(running)]), raise, undefined, admission);
+    const taking = await lock.acquire('alpha', 'heavy: build', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)), { request: REQUEST });
+    assert.deepEqual(told, ['1 heavy step running, the cap 1: po (heavy: build) since 2030-01-08 09:50 UTC']);
+    assert.deepEqual([taking.kind === 'taken' ? taking.sharing : undefined, admission.reads], [{ others: [running], heavy: true }, 3]);
   });
 
   it('lets a small step share the host beside the heavy steps running at their cap', async () => {

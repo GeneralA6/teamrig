@@ -4,9 +4,9 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { redeployTargets } from '../../deploy/deploy.ts';
 import { deployRepo, type DeployRequest } from '../../deploy/run.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { hostLockOf, logLineOf, nextResetFrom } from '../delivery-ports.ts';
+import { hostLockOf, logLineOf, nextResetFrom, teamAdmissionOf } from '../delivery-ports.ts';
 import { callerOf, commandWordsOf, listOf } from '../inputs.ts';
-import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
+import { findTeam, openKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { refuseUnderParentLock } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
@@ -52,7 +52,7 @@ export async function deploy(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const { delivery, budget } = config;
   const places = deliveryPlaces(delivery, kit.paths);
   const say = logLineOf(runtime, zone);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
   await refuseUnderParentLock(runtime, lock, say, zone, 'teamrig deploy');
   const watching = await watchStarters(runtime, say);
   try {

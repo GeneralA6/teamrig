@@ -1,8 +1,9 @@
 import { resolveReset } from '../budget/pace.ts';
 import { weekUseAt } from '../budget/snapshot.ts';
 import { readFolderWeek } from '../budget/week-summary.ts';
-import type { BudgetConfig, FocusConfig, HeadroomConfig, QueueConfig } from '../config/types.ts';
-import type { AdmissionRules } from '../delivery/admission.ts';
+import type { ConfigLoad } from '../config/load.ts';
+import type { BudgetConfig, FocusConfig, HeadroomConfig, KitConfig, QueueConfig } from '../config/types.ts';
+import type { AdmissionRules, AdmissionSource } from '../delivery/admission.ts';
 import { CpuGate } from '../delivery/cpu.ts';
 import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import { HostLock, type HostLockPorts } from '../delivery/host-lock.ts';
@@ -33,22 +34,31 @@ type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessi
  * stale. Every step that takes it or shares the host passes its memory gate first: free memory over
  * `delivery.queue.memoryFloorMb` plus the step's reserve (`heavyReserveMb` at least for a step that takes the lock),
  * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted, the tabs still loading beside the
- * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered as
- * `delivery.queue.admission` says, a ticket naming no class counting as `focus.defaultClass`; a heavy step joins another
+ * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered by the rules `admission`
+ * gives at each look ({@link teamAdmissionOf}); a heavy step joins another
  * heavy one only while `delivery.queue.heavyIdleCpuPct` of the host's CPU is idle. A waiter's ticket says what it waits
  * on with the times on `zone`'s clock.
  */
 export function hostLockOf(
   runtime: LockRuntime & Pick<CliRuntime, 'memory' | 'cpu'>,
   path: string,
-  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb' | 'admission' | 'agingMinutes' | 'memoryPassMinutes' | 'perSessionRunning' | 'maxHeavyParallel' | 'heavyIdleCpuPct'>,
+  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb' | 'heavyIdleCpuPct'>,
   headroom: Pick<HeadroomConfig, 'commitMaxPct'>,
-  focus: Pick<FocusConfig, 'defaultClass'>,
+  admission: AdmissionSource,
   zone: TimeZone,
 ): HostLock {
   const tabs = new TabHolds(tabHoldsDir(path), runtime);
   const memory = new MemoryGate(runtime.memory, runtime.sleep, { floorMb: queue.memoryFloorMb, heavyReserveMb: queue.heavyReserveMb, commitMaxPct: headroom.commitMaxPct }, () => tabs.live());
-  const admission: AdmissionRules = {
+  const cpu = new CpuGate(runtime.cpu, runtime.sleep, queue.heavyIdleCpuPct);
+  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission });
+}
+
+/** The `delivery.queue` keys that order the host lock's line. */
+type AdmissionQueue = Pick<QueueConfig, 'admission' | 'agingMinutes' | 'memoryPassMinutes' | 'perSessionRunning' | 'maxHeavyParallel'>;
+
+/** The rules the host lock's line is ordered by: `delivery.queue.admission` and its keys, a ticket naming no class counting as `focus.defaultClass`. */
+export function admissionRulesOf(queue: AdmissionQueue, focus: Pick<FocusConfig, 'defaultClass'>): AdmissionRules {
+  return {
     mode: queue.admission,
     agingMinutes: queue.agingMinutes,
     memoryPassMinutes: queue.memoryPassMinutes,
@@ -56,8 +66,25 @@ export function hostLockOf(
     maxHeavyParallel: queue.maxHeavyParallel,
     defaultClass: focus.defaultClass,
   };
-  const cpu = new CpuGate(runtime.cpu, runtime.sleep, queue.heavyIdleCpuPct);
-  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission });
+}
+
+/**
+ * The admission rules of the team's config as `reload` reads it at each look, starting from `config`'s, the one the
+ * command launched on (T2942): a step waits in line for hours, and one that kept its launch's rules never saw a
+ * raised `maxHeavyParallel`. A read that finds no config, or one that does not parse (mid-edit), keeps the last rules
+ * read, so a bad edit never reorders the line.
+ */
+export function teamAdmissionOf(config: Pick<KitConfig, 'delivery' | 'focus'>, reload: () => Promise<ConfigLoad>): AdmissionSource {
+  let last = admissionRulesOf(config.delivery.queue, config.focus);
+  return {
+    async rules() {
+      const load = await reload();
+      if (load.status === 'loaded') {
+        last = admissionRulesOf(load.config.delivery.queue, load.config.focus);
+      }
+      return last;
+    },
+  };
 }
 
 /**

@@ -6,7 +6,7 @@ import type { Clock, Sleep } from '../core/lock.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { AdmitFile } from './admit-file.ts';
-import { admissionOrder, classOf, placeInLine, type AdmissionRules } from './admission.ts';
+import { admissionOrder, classOf, placeInLine, type AdmissionRules, type AdmissionSource } from './admission.ts';
 import type { CpuGate } from './cpu.ts';
 import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
@@ -291,9 +291,10 @@ export interface HostLockPorts {
   readonly cpu?: CpuGate;
   /**
    * How the line is ordered (T2210): absent or `serial`, in arrival order, with no admit file and no session cap;
-   * `pipeline`, in admission order (see the class).
+   * `pipeline`, in admission order (see the class). Read again at each look, so a rule the team changes reaches the
+   * steps already in line (T2942).
    */
-  readonly admission?: AdmissionRules;
+  readonly admission?: AdmissionSource;
 }
 
 type Seen = { readonly kind: 'missing' } | { readonly kind: 'unknown'; readonly text: string } | { readonly kind: 'held'; readonly info: HostLockInfo };
@@ -835,7 +836,7 @@ export class HostLock {
    */
   async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, ask: StepAsk = {}, stop?: AbortSignal): Promise<Taking> {
     const patience = new Patience(this.ports.clock.now(), maxWaitMs);
-    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask), ask.arrivedAt);
+    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask, await this.rulesNow()), ask.arrivedAt);
     const reports = new WaitReports(onWait, this.ports.zone);
     try {
       const waited = await this.waitInLine(ticket, patience, pollMs, reports, ask, stop);
@@ -894,7 +895,7 @@ export class HostLock {
    */
   async line(): Promise<LockWaiter[]> {
     const line = await this.tickets();
-    const { admission } = this.ports;
+    const admission = await this.rulesNow();
     if (admission === undefined || admission.mode === 'serial') {
       return line.map(({ waiter }) => waiter);
     }
@@ -952,7 +953,7 @@ export class HostLock {
     for (;;) {
       stop?.throwIfAborted();
       const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
-      const looked = await this.lookInLine(ticket, removeUnknown, ask);
+      const looked = await this.lookInLine(ticket, removeUnknown, ask, await this.rulesNow());
       if (looked === undefined) {
         return { kind: 'withdrawn' };
       }
@@ -975,23 +976,23 @@ export class HostLock {
   }
 
   /**
-   * One look in line: in arrival order (no admission rules, or `serial`), or in admission order (`pipeline`), where a
+   * One look in line under `admission`, the rules as this look read them: in arrival order (none, or `serial`), or in
+   * admission order (`pipeline`), where a
    * step that finds itself first looks again under the admit file and takes its turn there, keeping the class turns
    * ({@link keepTurns}); while another step holds that file, it waits on it (`admitting`). Undefined once its ticket is
    * gone, withdrawn.
    */
-  private async lookInLine(ticket: OwnTicket, removeUnknown: boolean, ask: StepAsk): Promise<LineLook | undefined> {
-    const { admission } = this.ports;
+  private async lookInLine(ticket: OwnTicket, removeUnknown: boolean, ask: StepAsk, admission: AdmissionRules | undefined): Promise<LineLook | undefined> {
     if (admission === undefined || admission.mode === 'serial') {
       const ahead = await this.waitersAhead(ticket.name);
-      return ahead === undefined ? undefined : { ahead, look: await this.inTurn(ticket.waiter, ahead, removeUnknown, ask) };
+      return ahead === undefined ? undefined : { ahead, look: await this.inTurn(ticket.waiter, ahead, removeUnknown, ask, admission) };
     }
     const view = await this.placeOf(ticket, admission);
     if (view === undefined) {
       return undefined;
     }
     if (view.place.capped !== undefined || view.place.ahead.length > 0) {
-      return this.lookFrom(view.place, ticket.waiter, removeUnknown, ask);
+      return this.lookFrom(view.place, ticket.waiter, removeUnknown, ask, admission);
     }
     const claim = await this.admit.claim(ticket.waiter.id);
     if (claim === undefined) {
@@ -1002,7 +1003,7 @@ export class HostLock {
       if (again === undefined) {
         return undefined;
       }
-      const looked = await this.lookFrom(again.place, ticket.waiter, removeUnknown, ask);
+      const looked = await this.lookFrom(again.place, ticket.waiter, removeUnknown, ask, admission);
       await this.keepTurns(again, looked.look.kind === 'taken' ? this.openCharge(ticket.waiter, ask.need) : undefined);
       return looked;
     } finally {
@@ -1011,14 +1012,14 @@ export class HostLock {
   }
 
   /** One look from `place`: its session's cap when reached, else its turn behind the waiters ahead ({@link inTurn}). */
-  private async lookFrom(place: LinePlace, waiter: LockWaiter, removeUnknown: boolean, ask: StepAsk): Promise<LineLook> {
-    const look: Look = place.capped === undefined ? await this.inTurn(waiter, place.ahead, removeUnknown, ask) : { kind: 'busy', holder: place.capped };
+  private async lookFrom(place: LinePlace, waiter: LockWaiter, removeUnknown: boolean, ask: StepAsk, rules: AdmissionRules): Promise<LineLook> {
+    const look: Look = place.capped === undefined ? await this.inTurn(waiter, place.ahead, removeUnknown, ask, rules) : { kind: 'busy', holder: place.capped };
     return { ahead: place.ahead, look };
   }
 
   /** One look in its turn behind the waiters `ahead`: the lock for a step that takes the whole host ({@link takeInTurn}), else a share of it ({@link shareInTurn}). */
-  private async inTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, ask: StepAsk): Promise<Look> {
-    const hold = this.holdOf(ask);
+  private async inTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, ask: StepAsk, rules: AdmissionRules | undefined): Promise<Look> {
+    const hold = this.holdOf(ask, rules);
     return hold.kind === 'whole' ? this.takeInTurn(waiter, ahead, removeUnknown, ask.need) : this.shareInTurn(waiter, ahead, removeUnknown, ask.need, hold);
   }
 
@@ -1026,8 +1027,12 @@ export class HostLock {
    * How a step that asks `ask` holds the host: the whole of it (the lock file) when exclusive; a small share when its
    * need shares; a heavy share in admission's `pipeline` mode, at most `maxHeavyParallel` at once; else the whole host.
    */
-  private holdOf(ask: StepAsk): Hold {
-    const { admission } = this.ports;
+  /** The rules the line is ordered by as the team's config reads now ({@link HostLockPorts.admission}); none for a lock with no rules. */
+  private async rulesNow(): Promise<AdmissionRules | undefined> {
+    return this.ports.admission?.rules();
+  }
+
+  private holdOf(ask: StepAsk, admission: AdmissionRules | undefined): Hold {
     if (ask.exclusive === true) {
       return { kind: 'whole' };
     }
@@ -1375,12 +1380,12 @@ export class HostLock {
    * What the ticket of a step that asks `ask` says it asks: its request, with the MB its need holds ({@link heldMbOf}),
    * whether it is a heavy step and whether it takes the whole host ({@link holdOf}). Undefined without a request.
    */
-  private ticketRequestOf(ask: StepAsk): TicketRequest | undefined {
+  private ticketRequestOf(ask: StepAsk, rules: AdmissionRules | undefined): TicketRequest | undefined {
     const { need, request } = ask;
     if (request === undefined) {
       return undefined;
     }
-    const hold = this.holdOf(ask);
+    const hold = this.holdOf(ask, rules);
     return { ...request, needMb: this.heldMbOf(need), heavy: hold.kind !== 'small', exclusive: hold.kind === 'whole' };
   }
 

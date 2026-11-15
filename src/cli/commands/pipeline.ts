@@ -8,8 +8,8 @@ import { liveFreezes, parsePipelineFreezes, pipelineFreezeText } from '../../del
 import { minutesText } from '../../delivery/schedule.ts';
 import { TabHolds, tabHoldsDir, type TabHold } from '../../sessions/tab-holds.ts';
 import type { ParsedArgs } from '../args.ts';
-import { hostLockOf } from '../delivery-ports.ts';
-import { openTeamKit, requireConfig, teamZone } from '../kit.ts';
+import { hostLockOf, teamAdmissionOf } from '../delivery-ports.ts';
+import { openTeamKit, reloadTeamConfig, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 const MINUTE_MS = 60_000;
@@ -133,7 +133,7 @@ export async function pipeline(_args: ParsedArgs, runtime: CliRuntime): Promise<
   const { delivery } = config;
   const zone = teamZone(config, runtime);
   const places = deliveryPlaces(delivery, kit.paths);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
   const state = await lock.state();
   const shares = await lock.shares();
   const tabs = await new TabHolds(tabHoldsDir(places.hostLock), runtime).held();

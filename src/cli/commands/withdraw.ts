@@ -4,8 +4,8 @@ import { deliveryPlaces } from '../../delivery/places.ts';
 import { ENV } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
-import { hostLockOf } from '../delivery-ports.ts';
-import { openTeamKit, requireConfig, rosterOf, teamZone, type Kit } from '../kit.ts';
+import { hostLockOf, teamAdmissionOf } from '../delivery-ports.ts';
+import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { tabSessionOf } from './tab-session.ts';
 
@@ -74,7 +74,7 @@ export async function withdraw(args: ParsedArgs, runtime: CliRuntime): Promise<E
   const config = requireConfig(kit, runtime, 'read');
   const session = await ownSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config));
   const zone = teamZone(config, runtime);
-  const lock = hostLockOf(runtime, deliveryPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue, config.open.headroom, config.focus, zone);
+  const lock = hostLockOf(runtime, deliveryPlaces(config.delivery, kit.paths).hostLock, config.delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
   if (chosen === undefined) {
     const waiting = (await lock.line()).filter((waiter) => waiter.session === session);
     if (waiting.length === 0) {

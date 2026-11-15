@@ -33,6 +33,14 @@ export interface AdmissionRules {
   readonly defaultClass: string;
 }
 
+/**
+ * Where the host lock reads the rules its line is ordered by, once per look (T2942): a step waits in line for hours, so
+ * rules read once at its launch would keep it on a cap the team has since raised.
+ */
+export interface AdmissionSource {
+  rules(): Promise<AdmissionRules>;
+}
+
 /** The priority a step counts at when its ticket names none: one with no task, the register lacking its task, or an older kit's. */
 export const UNNAMED_PRIORITY = 2;
 

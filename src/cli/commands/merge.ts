@@ -8,9 +8,9 @@ import { MergeLog } from '../../merge/merge-log.ts';
 import { ReviewHolds } from '../../merge/review-holds.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import type { ParsedArgs } from '../args.ts';
-import { hostLockOf, logLineOf, nextResetFrom } from '../delivery-ports.ts';
+import { hostLockOf, logLineOf, nextResetFrom, teamAdmissionOf } from '../delivery-ports.ts';
 import { callerOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
+import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { refuseUnderParentLock } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
@@ -37,7 +37,7 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const places = deliveryPlaces(delivery, kit.paths);
   const say = logLineOf(runtime, zone);
   const tree = new LeadTree(config);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
   await refuseUnderParentLock(runtime, lock, say, zone, 'teamrig merge');
   const watching = await watchStarters(runtime, say);
   try {

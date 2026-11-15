@@ -8,8 +8,8 @@ import { jobsOf, type Job } from '../../delivery/stable-periods.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { deployRepos, plural, readPending, short, type PendingRead } from '../../deploy/pending.ts';
 import type { ParsedArgs } from '../args.ts';
-import { hostLockOf, nextResetFrom } from '../delivery-ports.ts';
-import { openTeamKit, requireConfig, teamZone } from '../kit.ts';
+import { hostLockOf, nextResetFrom, teamAdmissionOf } from '../delivery-ports.ts';
+import { openTeamKit, reloadTeamConfig, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 function lockText(state: LockState, zone: TimeZone): string {
@@ -77,7 +77,7 @@ export async function deployStatus(_args: ParsedArgs, runtime: CliRuntime): Prom
   const zone = teamZone(config, runtime);
   const places = deliveryPlaces(delivery, kit.paths);
   const say = (line: string): void => runtime.out.stdout(line);
-  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
+  const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
   say(`host lock: ${lockText(await lock.state(), zone)}`);
   const shares = await lock.shares();
   if (shares.length > 0) {
