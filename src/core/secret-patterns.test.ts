@@ -103,6 +103,11 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
       join("'api", "_key': ", "'xyz'"),
       join('pass', 'word', ': ', 'hunter2 for the db'),
       join('api', '_key', ': ', 'sk_live then retry'),
+      // A newline never makes a value prose, and a passphrase is a value (GeneralA6/teamrig#852).
+      join('DB_PASS', 'WORD', ': ', 'supersecret\nDB_USER: app'),
+      join('pass', 'word', ': ', 'letmein\nhost: db1'),
+      join('pass', 'word', ': ', 'Letmein\nuser: bob'),
+      join('pass', 'word', ': ', 'correct horse battery staple'),
     ],
     misses: [
       'rotate the password via the vault runbook',

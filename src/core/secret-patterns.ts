@@ -77,12 +77,15 @@ export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
     pattern: /\bauthorization["']?\s*[:=]\s*["']?(?:bearer|basic|token|digest)\s+((?![$<{%])[^\s"']{8,})/i,
     secretGroup: 1,
   },
-  // After a colon, a letters-only word followed by more words is a sentence going on ("api_key: to the vault"), not
-  // a value, so a register text in plain words is not refused (GeneralA6/teamrig#852); `=` is never prose.
+  // After a colon, one of a few prose words then more words on the same line is a sentence going on ("api_key: to the
+  // vault"), not a value, so a register text in plain words is not refused (GeneralA6/teamrig#852). Any other word is a
+  // value, a passphrase included, and a newline never joins the words, so a pasted YAML or .env block is still caught;
+  // `=` is never prose.
   {
     id: 'secret-assignment',
     description: 'password or key assignment',
-    pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*(?:=\s*\S|:\s*(?![a-z]+[\s,.;]+[a-z])\S)/i,
+    pattern:
+      /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*(?:=\s*\S|:\s*(?!(?:to|see|none|in|from|at|the|is|are|was|not|still|now|moved|removed|rotated|missing|tbd)[ \t,.;]+[a-z])\S)/i,
   },
 ];
 
