@@ -35,9 +35,9 @@ const RUNS_X: readonly (readonly [string, string])[] = [
   ['. /dev/stdin <<< X', 'PUSH'], // was pass
   ['source /dev/stdin <<< X', 'PUSH'], // was pass
   // programs that run X where the guard cannot read it: a doubt when X names a push
-  ['ssh host X', 'DOUBT'], // was pass
-  ['watch -n1 X', 'DOUBT'], // was pass
-  ['tmux new-session -d X', 'DOUBT'], // was pass
+  ['ssh host X', 'PUSH'], // was pass; then DOUBT, when the ssh check read the text only
+  ['watch -n1 X', 'PUSH'], // was pass; then DOUBT
+  ['tmux new-session -d X', 'PUSH'], // was pass; then DOUBT
   ['tmux send-keys X Enter', 'DOUBT'], // was pass
   ['screen -dm sh -c X', 'DOUBT'], // was pass
   ['xterm -e X', 'DOUBT'], // was pass

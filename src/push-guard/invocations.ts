@@ -205,8 +205,77 @@ function runnerArgs(name: string, args: readonly ShellWord[]): readonly ShellWor
   return args;
 }
 
+/**
+ * Programs that hand their command words, joined, to a shell, so the
+ * shell reads them as a command line (`ssh host 'git p\\ush'` runs a push). Each maps to the options that take a
+ * value before the command; `tmux` reads them after the subcommands that start a shell command.
+ */
+const JOINED_RUNNERS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['ssh', new Set(['-B', '-b', '-c', '-D', '-E', '-e', '-F', '-I', '-i', '-J', '-L', '-l', '-m', '-O', '-o', '-p', '-Q', '-R', '-S', '-W', '-w'])],
+  ['watch', new Set(['-n', '--interval', '-q', '--equexit'])],
+  ['tmux', new Set(['-c', '-e', '-F', '-n', '-s', '-t', '-x', '-y', '-f', '-l', '-L', '-S', '-T'])],
+]);
+/** tmux's global options that take a value, before its subcommand. */
+const TMUX_GLOBAL_VALUED: ReadonlySet<string> = new Set(['-c', '-f', '-L', '-S', '-T']);
+/** tmux subcommands whose last words are a shell command. */
+const TMUX_SHELL_COMMANDS: ReadonlySet<string> = new Set(['new-session', 'new', 'new-window', 'neww', 'split-window', 'splitw', 'respawn-pane', 'respawnp', 'respawn-window', 'respawnw']);
+/** Programs that read a `<` file as commands: shells and stdin runners. */
+const FILE_STDIN_READERS = /^(?:sh|bash|dash|zsh|ksh|mksh|ash|su|sudo|ssh|at|batch|crontab|parallel|make|docker|podman|kubectl)$/;
+/**
+ * A variable naming a file a non-interactive shell runs first: `BASH_ENV`, or `ENV` when its value is a path
+ * (`ENV=production` is a common setting of its own).
+ */
+const STARTUP_FILE_VARIABLE = /^(?:BASH_ENV=|ENV=(?=\S*(?:\/|\.sh$)))/;
+
+/**
+ * The command words a {@link JOINED_RUNNERS} program hands a shell, or
+ * undefined when it runs none: ssh's words after its host, watch's after its options (none under `-x`), and
+ * tmux's after the options of a subcommand that starts a shell command.
+ */
+function joinedCommand(name: string, args: readonly ShellWord[]): readonly ShellWord[] | undefined {
+  const valued = JOINED_RUNNERS.get(name);
+  if (valued === undefined) {
+    return undefined;
+  }
+  let index = 0;
+  if (name === 'tmux') {
+    while (index < args.length && (args[index]?.text ?? '').startsWith('-')) {
+      index += TMUX_GLOBAL_VALUED.has(args[index]?.text ?? '') ? 2 : 1;
+    }
+    if (!TMUX_SHELL_COMMANDS.has(args[index]?.text ?? '')) {
+      return undefined;
+    }
+    index += 1;
+  }
+  for (; index < args.length; index += 1) {
+    const text = args[index]?.text ?? '';
+    if (text === '--') {
+      index += 1;
+      break;
+    }
+    if (!text.startsWith('-') || text === '-') {
+      break;
+    }
+    if (name === 'watch' && (text === '-x' || text === '--exec')) {
+      return undefined;
+    }
+    if (valued.has(text)) {
+      index += 1;
+    } else if (!text.startsWith('--')) {
+      // A short cluster takes the next word when its last valued letter ends it (`-p22` holds its value).
+      const at = [...text.slice(1)].findIndex((letter) => valued.has(`-${letter}`));
+      if (at !== -1 && at === text.length - 2) {
+        index += 1;
+      }
+    }
+  }
+  // ssh's first operand is its host.
+  const rest = args.slice(name === 'ssh' ? index + 1 : index);
+  return rest.length === 0 ? undefined : rest;
+}
+
 /** Programs that run commands they read on stdin. */
-const STDIN_RUNNERS: ReadonlySet<string> = new Set(['ssh', 'at', 'batch', 'crontab', 'parallel', 'make', 'docker', 'podman', 'kubectl']);
+const STDIN_RUNNERS: ReadonlySet<string> = new Set(['ssh', 'at', 'batch', 'crontab', 'parallel', 'make', 'docker', 'podman', 'kubectl', 'su']);
 /** Paths a process reads its own stdin through. */
 const STDIN_PATH = /^\/(?:dev\/stdin|dev\/fd\/0|proc\/self\/fd\/0)$/;
 /** Variables whose value a shell runs as commands later: before a prompt, at its start, or in a prompt. */
@@ -494,7 +563,7 @@ class GitInvocationFinder {
     const commands = dialect === 'bash' ? resolveLiteralVariables(parsed, depth === 0 ? location.home : undefined) : parsed.commands;
     let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
     for (const command of commands) {
-      let stdin = command.stdin;
+      let stdin = command.stdin ?? this.fileStdin(command, location);
       // A substitution's commands, read before the command that holds them, sit between a pipe's two ends.
       if (piped !== undefined && command.nesting <= piped.nesting) {
         stdin ??= command.nesting === piped.nesting && !redirectsInput(command) ? piped.body : undefined;
@@ -504,6 +573,7 @@ class GitInvocationFinder {
       const before = commands[commands.indexOf(command) - 1];
       this.fedByPipe = before !== undefined && before.nesting === command.nesting && PIPE_TERMINATOR.test(before.terminator);
       this.noteCodeAssignments(command.words, dialect);
+      this.visitStartupFiles(command.words, dialect, location, depth);
       const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
       // An interpreter's words and stdin are its script, judged by visitCommand, not shell words that name a push:
       // a python heredoc that posts a message saying "push" arms no doubt about the line. Its output feeding another
@@ -756,6 +826,8 @@ class GitInvocationFinder {
         }
         if (dialect === 'bash' && programText !== undefined && programText.includes('/') && interpreterOf(launched) === undefined) {
           this.visitScriptFile(launched.program, launched.chdirs, launched.env, false, true, location, depth);
+          // A runner named by its path (`/usr/bin/ssh`) runs the same.
+          this.visitRunner(programName(programText), launched.args, stdin, location, depth);
           // Git, or one of git's own commands, run by its path may be git's
           // binary, which the script reader leaves alone, or a script of that name (`./git-status`): read it as both.
           if (!isGitProgram(programName(programText))) {
@@ -773,7 +845,7 @@ class GitInvocationFinder {
           break;
         }
         const name = programName(launched.program.text);
-        this.visitRunner(name, launched.args, stdin);
+        this.visitRunner(name, launched.args, stdin, location, depth);
         const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
         if (name !== 'git' && (subcommand === undefined || !BUILTINS.has(subcommand))) {
           break;
@@ -792,7 +864,8 @@ class GitInvocationFinder {
    * Doubts a program that runs a command the guard cannot read (see
    * {@link ARGUMENT_RUNNERS}, {@link STDIN_RUNNERS}) when that command names a push.
    */
-  private visitRunner(name: string, args: readonly ShellWord[], stdin: ShellWord | undefined): void {
+  private visitRunner(name: string, args: readonly ShellWord[], stdin: ShellWord | undefined, location: Location, depth: number): void {
+    this.visitJoined(name, args, location, depth);
     const reason = `it hands ${name} a command that names a push, which ${name} runs where the guard cannot read it`;
     if (ARGUMENT_RUNNERS.has(name) && runnerArgs(name, args).some((arg) => saysPush(arg.text))) {
       this.doubt(reason, false);
@@ -800,6 +873,72 @@ class GitInvocationFinder {
       this.doubt(reason, false);
     } else if (STDIN_RUNNERS.has(name) && stdin === undefined && this.fedByPipe) {
       this.doubt(`it pipes commands into ${name}, which runs them where the guard cannot read them`, true);
+    }
+  }
+
+  /**
+   * Reads the command line a {@link JOINED_RUNNERS} program hands a shell
+   * as the line's own commands, so a push the shell rebuilds (`git p\\ush`) is found. ssh runs it on another host,
+   * in a folder the guard does not know. One built from variables is a doubt when the line names a push.
+   */
+  private visitJoined(name: string, args: readonly ShellWord[], location: Location, depth: number): void {
+    const words = joinedCommand(name, args);
+    if (words === undefined) {
+      return;
+    }
+    if (words.some((word) => word.dynamic)) {
+      this.doubt(`${name} runs a command line only known when it runs`, true);
+      return;
+    }
+    const inner = location.child();
+    if (name === 'ssh') {
+      inner.moveTo({ text: '$REMOTE_HOME', dynamic: true });
+    }
+    this.visitScript(staticWord(words.map((word) => word.text).join(' ')), 'bash', inner, depth + 1);
+  }
+
+  /**
+   * The text a `<` redirection feeds a shell or a stdin runner (see
+   * {@link FILE_STDIN_READERS}) from a file, read as the line writes it or from disk. A file the guard cannot
+   * read is a doubt when the line names a push.
+   */
+  private fileStdin(command: ShellCommand, location: Location): ShellWord | undefined {
+    const input = command.redirections.findLast((redirection) => /^0?<$/.test(redirection.operator));
+    if (input?.target === undefined || !command.words.some((word) => !word.dynamic && FILE_STDIN_READERS.test(programName(word.text)))) {
+      return undefined;
+    }
+    const path = filePath(input.target, location.dir);
+    const { writtenText, diskText } = path === undefined ? { writtenText: undefined, diskText: undefined } : this.fileTexts(path);
+    const texts = [writtenText, diskText].filter((text): text is string => text !== undefined);
+    if (texts.length === 0) {
+      // A shell fed a file it cannot read doubts already that it reads its commands from stdin.
+      if (command.words.some((word) => !word.dynamic && STDIN_RUNNERS.has(programName(word.text)))) {
+        this.doubt('it feeds a program commands from a file the guard cannot read', true);
+      }
+      return undefined;
+    }
+    return staticWord(texts.join('\n'));
+  }
+
+  /**
+   * Reads the file `BASH_ENV` or `ENV` names, which a later
+   * non-interactive shell runs first, as a script; one the guard cannot read is a doubt when the line names a push.
+   */
+  private visitStartupFiles(words: readonly ShellWord[], dialect: ShellDialect, location: Location, depth: number): void {
+    if (dialect !== 'bash') {
+      return;
+    }
+    const program = words.findIndex((word) => !isAssignment(word.text));
+    const exported = words[program]?.text === 'export';
+    for (const [index, word] of words.entries()) {
+      if (!STARTUP_FILE_VARIABLE.test(word.text) || (index > program && program !== -1 && !exported)) {
+        continue;
+      }
+      const value = word.text.slice(word.text.indexOf('=') + 1);
+      if (value === '') {
+        continue;
+      }
+      this.visitScriptFile({ text: value, dynamic: word.dynamic }, [], [], false, false, location, depth);
     }
   }
 

@@ -85,6 +85,11 @@ interface WrapperSpec {
   readonly assignments?: boolean;
   /** True when the program also gets arguments from stdin. */
   readonly stdinArgs?: boolean;
+  /**
+   * Options that start a shell (`sudo -s`, `sudo -i`), which reads its
+   * commands from stdin when no program follows.
+   */
+  readonly shell?: readonly string[];
 }
 
 const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>([
@@ -110,6 +115,7 @@ const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>(
       chdir: ['-D', '--chdir'],
       inspect: ['-l', '--list', '-e', '--edit', '-V', '--version', '-K', '--remove-timestamp', '-v', '--validate', '--help'],
       assignments: true,
+      shell: ['-s', '--shell', '-i', '--login'],
     },
   ],
   ['doas', { valued: ['-u', '-C'] }],
@@ -385,6 +391,11 @@ class LaunchReader {
       if (command !== undefined) {
         return command === null ? { kind: 'opaque', reason: `${name} -c runs a command line only known when it runs`, gated: true } : this.script(command, 'bash', false);
       }
+      // Su with no -c starts the user's shell, which runs the heredoc,
+      // here-string or `<` file the line feeds it; a pipe into it is the finder's doubt.
+      if (name === 'su' && this.stdin !== undefined && !this.stdinArgs) {
+        return this.fromStdin('bash');
+      }
     }
     const found = this.dialect === 'bash' && name === 'find' ? this.findExec(args) : undefined;
     if (found !== undefined) {
@@ -469,6 +480,7 @@ class LaunchReader {
     const takesValue = (option: string): boolean => has(spec.valued, option) || has(spec.chdir, option) || has(spec.split, option);
     let leading = spec.leading ?? 0;
     let index = 0;
+    let shell = false;
     for (; index < args.length; index += 1) {
       const word = args[index] ?? staticWord('');
       const text = word.text;
@@ -508,6 +520,7 @@ class LaunchReader {
       if (option !== undefined && has(spec.inspect, option)) {
         return NOTHING;
       }
+      shell ||= has(spec.shell, option ?? '') || (!text.startsWith('--') && text.startsWith('-') && [...text.slice(1)].some((letter) => has(spec.shell, `-${letter}`)));
       if (option !== undefined && value !== undefined && has(spec.chdir, option)) {
         this.chdirs.push(value);
       }
@@ -523,7 +536,9 @@ class LaunchReader {
         return this.wrapper(spec, [...split.words, ...args.slice(index + 1)]);
       }
     }
-    return { kind: 'next', words: args.slice(index + leading) };
+    const rest = args.slice(index + leading);
+    // `sudo -s` with no program is a shell reading stdin.
+    return shell && rest.length === 0 ? this.fromStdin('bash') : { kind: 'next', words: rest };
   }
 
   /** `sh`, `bash`, `zsh`, ...: `-c` runs the first operand as a script; with no operand, or `-s`, they read stdin; otherwise they run a script file. */
