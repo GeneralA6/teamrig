@@ -38,7 +38,7 @@ const quotedPaths = (doc: DocFile): string[] =>
 
 describe('the contributor kit', () => {
   it('reads the project skills from .claude/skills', () => {
-    assert.deepEqual(folders, ['dev-add-command', 'dev-add-config-key', 'dev-design-issue', 'dev-ship-change', 'dev-update-docs']);
+    assert.deepEqual(folders, ['dev-add-command', 'dev-add-config-key', 'dev-design-issue', 'dev-github-intake', 'dev-ship-change', 'dev-update-docs']);
   });
 
   for (const skill of skills) {

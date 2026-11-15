@@ -29,6 +29,7 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
 | [`dev-update-docs`](.claude/skills/dev-update-docs/SKILL.md) | the docs a change must update, and the checks that hold them to the code |
 | [`dev-ship-change`](.claude/skills/dev-ship-change/SKILL.md) | from the last commit to the merge: dist, version raise, checks, push, pull request |
 | [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.md) | joining a design issue: a reasoned comment, nothing taken until it is agreed, no sensitive data |
+| [`dev-github-intake`](.claude/skills/dev-github-intake/SKILL.md) | a maintainer taking in issues and pull requests: labels, best fix first, landing with credit, design issues |
 
 - **One branch per change**, cut from the newest `origin/main` (see [Branches and releases](#branches-and-releases)).
 - **One logical change per commit**: a fix with its tests, a refactor apart from what it enables, a mechanical change

@@ -35,3 +35,4 @@ project skills in `.claude/skills/` hold the steps of each repeated job.
 | `dev-update-docs` | the docs a change must update, and the checks that hold them to the code |
 | `dev-ship-change` | from the last commit to the merge: dist, version raise, checks, push, pull request |
 | `dev-design-issue` | joining a design issue: a reasoned comment, nothing taken until it is agreed, no sensitive data |
+| `dev-github-intake` | a maintainer taking in issues and pull requests: labels, best fix first, landing with credit, design issues |
