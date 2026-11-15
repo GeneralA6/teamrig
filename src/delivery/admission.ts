@@ -1,5 +1,5 @@
 import { NOW_PRIORITY } from '../config/priorities.ts';
-import type { LineRequest } from './process-request.ts';
+import { takesShipSlot, type LineRequest } from './process-request.ts';
 import type { WaitCause } from './wait-cause.ts';
 
 /**
@@ -64,7 +64,7 @@ export interface InLine {
   readonly waiter: {
     readonly session: string;
     readonly arrivedAt: string;
-    readonly request?: Pick<LineRequest, 'priority' | 'class'>;
+    readonly request?: Pick<LineRequest, 'priority' | 'class'> & Partial<Pick<LineRequest, 'kind'>>;
     /** What its last look found it waiting on, and since when; left out before its first look. */
     readonly waitingOn?: { readonly reason: WaitCause; readonly since: string };
   };
@@ -154,10 +154,20 @@ function passesOnRoom(waiter: InLine['waiter'], idle: boolean, now: number, memo
 }
 
 /**
+ * Whether a later step that does (`mine`) or does not hold the ship slot may pass `waiter`, which its last look found
+ * waiting on that slot (T2727): any step that holds no slot, for as long as the ship ahead runs, as the slot keeps the
+ * waiter out whatever ends; never another step that holds it, so ships take the slot in their order.
+ */
+function passesOnShipSlot(waiter: InLine['waiter'], mine: boolean): boolean {
+  return !mine && waiter.waitingOn?.reason === 'shipSlot';
+}
+
+/**
  * The place of the ticket named `name` in `order` (from {@link admissionOrder}) at `now`, given the steps each session
- * runs now (`running`); undefined when it is not in line. In `pipeline` mode two waiters are passed: one whose session
- * runs `perSessionRunning` steps, as it may not start anyway, and one waiting on the host's memory while it may be
- * passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757). The first waiter
+ * runs now (`running`); undefined when it is not in line. In `pipeline` mode three waiters are passed: one whose session
+ * runs `perSessionRunning` steps, as it may not start anyway, one waiting on the host's memory while it may be
+ * passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757), and one waiting on
+ * the ship slot, by a step that does not take it ({@link passesOnShipSlot}, T2727). The first waiter
  * not passed is the one that may take its turn, and while it waits on the lock or memory, it holds every later one
  * back. A step that passes still waits on its own memory gate. `serial` passes no one.
  */
@@ -175,7 +185,8 @@ export function placeInLine<T extends InLine>(order: readonly T[], name: string,
   const runs = (session: string): number => running.get(session) ?? 0;
   const capped = (session: string): boolean => cap > 0 && runs(session) >= cap;
   const idle = [...running.values()].every((count) => count === 0);
-  const ahead = before.filter(({ waiter }) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes));
+  const ships = takesShipSlot(mine.waiter.request?.kind);
+  const ahead = before.filter(({ waiter }) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes) && !passesOnShipSlot(waiter, ships));
   const own = runs(mine.waiter.session);
   return capped(mine.waiter.session) ? { kind: 'sessionCap', ahead, running: own, cap } : { kind: 'inLine', ahead };
 }

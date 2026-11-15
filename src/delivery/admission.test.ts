@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { admissionOrder, agedPriority, isAdmissionMode, placeInLine, UNNAMED_PRIORITY, type AdmissionRules, type InLine } from './admission.ts';
+import type { StepKind } from './process-request.ts';
 import type { WaitCause } from './wait-cause.ts';
 
 const MINUTE = 60_000;
@@ -16,14 +17,19 @@ interface Asked {
   readonly waitedMinutes?: number;
   readonly priority?: number;
   readonly class?: string;
+  /** Its step's kind, on its request; a request is made for it with the default class when no class is given. */
+  readonly kind?: StepKind;
   /** What its last look found it waiting on, for this many minutes before NOW. */
   readonly waitingOn?: { readonly reason: WaitCause; readonly forMinutes: number };
 }
 
-/** A ticket that arrived `waitedMinutes` before NOW, its name in arrival order like the line's; a request only when a class is given. */
+/** A ticket that arrived `waitedMinutes` before NOW, its name in arrival order like the line's; a request only when a class or kind is given. */
 function ticket(id: string, asked: Asked = {}): InLine {
   const arrived = NOW - (asked.waitedMinutes ?? 0) * MINUTE;
-  const request = asked.class === undefined ? undefined : asked.priority === undefined ? { class: asked.class } : { class: asked.class, priority: asked.priority };
+  const asks = asked.class !== undefined || asked.kind !== undefined;
+  const request = asks
+    ? { class: asked.class ?? PIPELINE.defaultClass, ...(asked.priority === undefined ? {} : { priority: asked.priority }), ...(asked.kind === undefined ? {} : { kind: asked.kind }) }
+    : undefined;
   const waitingOn = asked.waitingOn === undefined ? undefined : { reason: asked.waitingOn.reason, since: new Date(NOW - asked.waitingOn.forMinutes * MINUTE).toISOString() };
   return {
     name: `${String(arrived).padStart(15, '0')}-${id}.json`,
@@ -195,6 +201,36 @@ describe('placeInLine', () => {
       const line = behind({ reason: 'memory', forMinutes: 0 });
       const place = placeInLine(line, line[1]?.name ?? '', new Map([['beta', 2]]), PIPELINE, NOW);
       assert.deepEqual(place === undefined ? undefined : { ...place, ahead: idsOf(place.ahead) }, { kind: 'sessionCap', ahead: [], running: 2, cap: 2 });
+    });
+  });
+
+  describe('a waiter on the ship slot (T2727)', () => {
+    const behind = (kind: StepKind | undefined, reason: WaitCause = 'shipSlot'): InLine[] => [
+      ticket('ship', { session: 'alpha', waitedMinutes: 30, kind: 'ship', waitingOn: { reason, forMinutes: 20 } }),
+      ticket('later', { session: 'beta', waitedMinutes: 1, ...(kind === undefined ? {} : { kind }) }),
+    ];
+    const aheadOf = (line: readonly InLine[], rules: AdmissionRules | undefined): string[] => idsOf(placeInLine(line, line[1]?.name ?? '', new Map([['charlie', 1]]), rules, NOW)?.ahead ?? []);
+
+    it('is passed by a step that holds no ship slot, or names no kind, as the slot keeps it out whatever ends', () => {
+      assert.deepEqual(aheadOf(behind('build'), PIPELINE), []);
+      assert.deepEqual(aheadOf(behind('test'), PIPELINE), []);
+      assert.deepEqual(aheadOf(behind('push'), PIPELINE), []);
+      assert.deepEqual(aheadOf(behind(undefined), PIPELINE), []);
+    });
+
+    it('is never passed by another step that holds the slot, so ships take it in their order', () => {
+      for (const kind of ['ship', 'merge', 'deploy'] as const) {
+        assert.deepEqual(aheadOf(behind(kind), PIPELINE), ['ship'], kind);
+      }
+    });
+
+    it('is never passed in serial mode or without rules', () => {
+      assert.deepEqual(aheadOf(behind('build'), SERIAL), ['ship']);
+      assert.deepEqual(aheadOf(behind('build'), undefined), ['ship']);
+    });
+
+    it('holds a later step back while it waits on anything else', () => {
+      assert.deepEqual(aheadOf(behind('build', 'heavyCap'), PIPELINE), ['ship']);
     });
   });
 });
