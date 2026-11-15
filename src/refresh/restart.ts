@@ -1,5 +1,6 @@
 import type { EffortLevel, RefreshConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
+import type { Env } from '../core/home.ts';
 import { typedEffortsOf } from '../effort/typed-effort.ts';
 import { CLAIM_END, CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId, type ClaimOutcome, type ClearMode, type PersonHold } from '../mod/clear-hand.ts';
 import { endAndWait, tabProcessOf, workCutOffBy, type TabEnder } from '../open/end-tab.ts';
@@ -39,6 +40,8 @@ export interface RestartPlan {
   readonly delayMs: number;
   /** `refresh.endCommand`: run with SessionEnd's input once the session's process ended; empty for none. */
   readonly endCommand: readonly string[];
+  /** The end command's environment: teamrig's own without the credential variables `delivery.passEnv` does not name. */
+  readonly endEnv: Env;
   /** Where the end command runs when the session's own folder is unknown. */
   readonly fallbackCwd: string;
   /** How the tab's mod holds the /clear for the person, which each ask carries to it. */
@@ -113,7 +116,7 @@ async function runEndCommand(deps: RestartDeps, plan: RestartPlan, request: Rest
     hook_event_name: 'SessionEnd',
     reason: 'clear',
   });
-  return deps.processes.feed({ command, args, cwd: request.cwd ?? plan.fallbackCwd, input });
+  return deps.processes.feed({ command, args, cwd: request.cwd ?? plan.fallbackCwd, env: plan.endEnv, input });
 }
 
 /**

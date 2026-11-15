@@ -124,6 +124,13 @@ describe('teamrig restart', () => {
     assert.match(kit.files.get(INBOX) ?? '', /teamrig: you were restarted, but refresh\.endCommand failed \(exit code 1\)/);
   });
 
+  it('runs refresh.endCommand without the credential variables delivery.passEnv does not name', async () => {
+    const { kit, processes } = await armed(true, { ...TEAM, refresh: { autoRestart: true, endCommand: ['node', 'end.cjs'] }, delivery: { passEnv: ['NPM_TOKEN'] } });
+    const env = { GH_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' };
+    assert.equal((await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32', env })).code, EXIT.ok);
+    assert.deepEqual([processes.fed[0]?.env['GH_TOKEN'], processes.fed[0]?.env['NPM_TOKEN']], [undefined, 'not-a-real-credential']);
+  });
+
   it("restarts the lead by default and cancels a member's restart, the default automatic restart being on for the lead only", async () => {
     const lead = await armed(true, TEAM, null, 'lead');
     const restarted = await lead.kit.run(['restart', 'lead', '--team', 'app', '--at', AT, '--project', APP], { sessionProcesses: lead.processes, platform: 'win32' });

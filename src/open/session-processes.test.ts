@@ -401,16 +401,22 @@ describe('nodeSessionProcesses on this machine', () => {
   it('feeds a program its input, and reports one that fails or is missing', async () => {
     const out = join(DIR, 'fed.txt');
     const reader = `let t='';process.stdin.on('data',d=>t+=d).on('end',()=>require('fs').writeFileSync(${JSON.stringify(out)},t))`;
-    assert.deepEqual(await processes.feed({ command: NODE, args: ['-e', reader], cwd: DIR, input: '{"reason":"clear"}' }), { kind: 'done' });
+    assert.deepEqual(await processes.feed({ command: NODE, args: ['-e', reader], cwd: DIR, env: process.env, input: '{"reason":"clear"}' }), { kind: 'done' });
     assert.equal(readFileSync(out, 'utf8'), '{"reason":"clear"}');
-    const failing = await processes.feed({ command: NODE, args: ['-e', 'console.error("bad input"); process.exit(2)'], cwd: DIR, input: 'x' });
+    const failing = await processes.feed({ command: NODE, args: ['-e', 'console.error("bad input"); process.exit(2)'], cwd: DIR, env: process.env, input: 'x' });
     assert.deepEqual(failing, { kind: 'failed', error: 'exited with code 2: bad input' });
-    assert.deepEqual(await processes.feed({ command: 'teamrig-no-such-program', args: [], cwd: DIR, input: '' }), { kind: 'missing' });
+    assert.deepEqual(await processes.feed({ command: 'teamrig-no-such-program', args: [], cwd: DIR, env: process.env, input: '' }), { kind: 'missing' });
+  });
+
+  it('runs a fed program in the environment it is given', async () => {
+    const probe = "process.exit(process.env.TEAMRIG_FED_PROBE === 'given' ? 0 : 3)";
+    const outcome = await processes.feed({ command: NODE, args: ['-e', probe], cwd: DIR, env: { ...process.env, TEAMRIG_FED_PROBE: 'given' }, input: '' });
+    assert.deepEqual(outcome, { kind: 'done' });
   });
 
   it('stops a fed program at its time limit', async () => {
     const quick = nodeSessionProcesses({ feedTimeoutMs: 200 });
-    const outcome = await quick.feed({ command: NODE, args: ['-e', 'setTimeout(() => {}, 30000)'], cwd: DIR, input: '' });
+    const outcome = await quick.feed({ command: NODE, args: ['-e', 'setTimeout(() => {}, 30000)'], cwd: DIR, env: process.env, input: '' });
     assert.equal(outcome.kind, 'failed');
   });
 
@@ -472,7 +478,7 @@ describe('FakeSessionProcesses', () => {
     assert.deepEqual(await fake.end(30, 'force'), { kind: 'ended' });
     assert.deepEqual(await fake.end(30, 'force'), { kind: 'gone' });
     assert.equal(fake.ends.length, 5);
-    assert.deepEqual(await fake.onFeed('node', { kind: 'missing' }).feed({ command: 'node', args: [], cwd: '/', input: '' }), { kind: 'missing' });
+    assert.deepEqual(await fake.onFeed('node', { kind: 'missing' }).feed({ command: 'node', args: [], cwd: '/', env: {}, input: '' }), { kind: 'missing' });
     assert.equal(fake.fed.length, 1);
   });
 

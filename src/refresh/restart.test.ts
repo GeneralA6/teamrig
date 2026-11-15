@@ -29,7 +29,7 @@ const ASK_DIR = '/kit/clear-asks';
 const LIVE_HELPER = '1 agent of this session still live';
 /** What a give-up says of a session that stayed busy. */
 const BUSY_HOUR = 'it stayed busy for 60 minutes';
-const PLAN: RestartPlan = { team: 'app', id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], fallbackCwd: '/project', hold: { countdownMs: 20_000, afterActivityMs: 300_000 } };
+const PLAN: RestartPlan = { team: 'app', id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], endEnv: { PATH: '/bin' }, fallbackCwd: '/project', hold: { countdownMs: 20_000, afterActivityMs: 300_000 } };
 
 /** What Claude Code writes once a turn has ended. */
 const TURN_END = JSON.stringify({ type: 'system', subtype: 'turn_duration' });
@@ -219,7 +219,7 @@ describe('runRestart', () => {
     assert.equal((await world.store.restart('alpha'))?.phase, 'ending');
     const [fed] = world.processes.fed;
     assert.ok(fed);
-    assert.deepEqual([fed.command, fed.args, fed.cwd], ['node', ['tracker.cjs', 'end'], '/project/sub']);
+    assert.deepEqual([fed.command, fed.args, fed.cwd, fed.env], ['node', ['tracker.cjs', 'end'], '/project/sub', { PATH: '/bin' }]);
     assert.deepEqual(JSON.parse(fed.input), { session_id: SESSION, transcript_path: TRANSCRIPT, cwd: '/project/sub', hook_event_name: 'SessionEnd', reason: 'clear' });
   });
 

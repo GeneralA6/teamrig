@@ -1,6 +1,7 @@
 import { launchOf } from '../../config/launch.ts';
 import { autoRestartOf } from '../../config/refresh.ts';
 import { errorMessage } from '../../core/guards.ts';
+import { withoutCredentials } from '../../core/child-env.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
@@ -101,7 +102,7 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
         return load.status === 'loaded' ? launchOf(load.config, id).effort : undefined;
       },
     },
-    { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project, hold: personHoldOf(config.refresh) },
+    { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, endEnv: withoutCredentials(runtime.env, config.delivery.passEnv), fallbackCwd: project, hold: personHoldOf(config.refresh) },
   );
   const line = inboxLineOf(result);
   if (line !== undefined) {

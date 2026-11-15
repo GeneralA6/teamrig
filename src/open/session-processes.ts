@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
 import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import type { Env } from '../core/home.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { UTF8_OUTPUT } from '../core/powershell.ts';
 import { sweepTree, windowsSweepHost, type SweepHost } from '../delivery/tree-kill.ts';
@@ -33,6 +34,8 @@ export interface FeedRequest {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;
+  /** Its whole environment: it inherits nothing else from teamrig's own. */
+  readonly env: Env;
   readonly input: string;
 }
 
@@ -310,7 +313,7 @@ function feedProgram(request: FeedRequest, timeoutMs: number): Promise<FeedOutco
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(request.command, request.args, { cwd: request.cwd, stdio: ['pipe', 'ignore', 'pipe'], timeout: timeoutMs, windowsHide: true });
+      child = spawn(request.command, request.args, { cwd: request.cwd, env: request.env, stdio: ['pipe', 'ignore', 'pipe'], timeout: timeoutMs, windowsHide: true });
     } catch (error) {
       resolve(outcomeOfError(error));
       return;
