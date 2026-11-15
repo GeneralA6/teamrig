@@ -154,7 +154,8 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
   const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
   const prompt = args.flags.get('prompt');
-  const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), focus: await tabFocusOf(runtime), ...(prompt === undefined ? {} : { prompt }) });
+  const given = args.flags.get('project') !== undefined;
+  const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), focus: await tabFocusOf(runtime), ...(prompt === undefined ? {} : { prompt }), ...(given ? { projectGiven: true } : {}) });
   return printOpenResult(runtime, opened);
 }
 
@@ -185,6 +186,8 @@ export interface OpenRequest {
   readonly urgent?: readonly WakeAsk[];
   /** A new Claude Code session whatever the session's state, never a resumed one: `meet`'s small context (T1295). */
   readonly fresh?: boolean;
+  /** Whether `project` came from `--project`, which then wins over the folder a closed session ran in (GeneralA6/teamrig#819). */
+  readonly projectGiven?: boolean;
 }
 
 /** A tab that opened, with its OPENED line, or no terminal, with why and the command line to run instead, in `folder`. */
@@ -211,7 +214,7 @@ export async function openSession(runtime: CliRuntime, kit: Kit, config: KitConf
   // A closed session whose refresh is ready starts from its handover: a resume keeps the old context, and a start
   // takes a ready handover only when fresh, so a resume would lose it (T2354).
   const handover = closed === undefined || fresh ? undefined : await readyHandoverOf(new RefreshStore(runtime.files, kit.paths), id);
-  const closedIn = closed?.claudeSession === undefined || fresh ? undefined : handover === undefined ? await reopenOf(runtime, config, closed, project) : { verdict: READY_FRESH, folder: project };
+  const closedIn = closed?.claudeSession === undefined || fresh ? undefined : handover === undefined ? await reopenOf(runtime, config, closed, project, request.projectGiven === true) : { verdict: READY_FRESH, folder: project };
   const reopen = closedIn?.verdict;
   // A closed session opened fresh still logs its reopen below, so the idle pass knows it runs again.
   const resume = fresh ? undefined : await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
@@ -263,9 +266,14 @@ interface ClosedReopen {
 /**
  * A closed session's reopen. It resumes in the folder its close recorded, which holds its transcript (T1408), or the
  * project for a close that recorded none; a recorded folder since removed (a worktree) opens it fresh in the project.
+ * A `--project` (`given`) other than that folder opens it fresh there: a session once opened in the wrong folder
+ * must be movable, and its transcript resumes only in the folder it ran in (GeneralA6/teamrig#819).
  */
-async function reopenOf(runtime: CliRuntime, config: KitConfig, closed: CloseRecord, project: string): Promise<ClosedReopen> {
+async function reopenOf(runtime: CliRuntime, config: KitConfig, closed: CloseRecord, project: string, given: boolean): Promise<ClosedReopen> {
   const folder = closed.folder ?? project;
+  if (given && !samePath(folder, project, runtime.platform)) {
+    return { verdict: { kind: 'fresh', detail: `--project ${project} is not ${folder}, the folder it ran in` }, folder: project };
+  }
   if (!samePath(folder, project, runtime.platform) && (await runtime.probe.kind(folder)) !== 'folder') {
     return { verdict: { kind: 'fresh', detail: `${folder}, the folder it ran in, is gone` }, folder: project };
   }

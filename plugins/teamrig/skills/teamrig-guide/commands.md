@@ -3072,7 +3072,8 @@ Flags:
   `x-terminal-emulator` or `print`; default the config's `open.terminal` (`auto`). With [open.teamWindow] on, a
   Windows Terminal tab opens in the team's own window, `teamrig-<team>`.
 - `--project <dir>`: the folder to open in; default the config's `launch.<id>.project`, else `team.project`, else
-  the folder holding the team's `.teamrig.json`.
+  the folder holding the team's `.teamrig.json`. A closed session whose last Claude Code session ran in another folder
+  opens fresh in this one, since Claude Code resumes a transcript only in its own folder.
 
 Example:
 

@@ -140,6 +140,16 @@ describe('opening a session teamrig closed', () => {
     assert.ok(ok(gone.result).stdout[0]?.endsWith(`, fresh (${fix}, the folder it ran in, is gone)`), gone.result.stdout[0]);
     assert.equal(resumedOf(gone.argv), undefined);
     assert.equal(projectOf(gone.argv), APP);
+
+    // --project wins over the folder it ran in: a session opened once in the wrong folder can move (GeneralA6/teamrig#819).
+    const moved = await open(await inWorktree([APP, fix]), ['--project', APP]);
+    assert.ok(ok(moved.result).stdout[0]?.endsWith(`, fresh (--project ${APP} is not ${fix}, the folder it ran in)`), moved.result.stdout[0]);
+    assert.equal(resumedOf(moved.argv), undefined);
+    assert.equal(projectOf(moved.argv), APP);
+    const same = await open(await inWorktree([APP, fix]), ['--project', fix]);
+    assert.equal(resumedOf(same.argv), CLAUDE_SESSION, 'a --project naming the folder it ran in still resumes');
+    const refused = await open(await inWorktree([APP, fix]), ['--project', APP, '--resume']);
+    assert.match(refused.result.stdout[0] ?? '', /^REFUSED not resumed: --project .* is not .*, the folder it ran in; teamrig open alpha opens it fresh$/);
   });
 
   it('opens a hire that started home as a new hire, never resumed, and logs its reopen (T1364)', async () => {
