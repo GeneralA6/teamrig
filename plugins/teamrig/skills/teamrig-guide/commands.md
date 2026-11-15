@@ -2318,6 +2318,82 @@ DEMOTED backend leads no one; importer, search go back to lead; the old config i
 NOTE backend has an inbox line: lead took back the sessions you led (importer, search); you lead no one now
 ```
 
+### teamrig roles grant
+
+Service roles (`teamrig roles grant`, `revoke` and `list`) let a named session run a few teamrig commands for an outside
+service past every permission check, from its own tab only: the team's `serviceRoles` config [serviceRoles] maps
+each role to its holders and its commands. The commands come from teamrig's table, each a reviewed shape
+(`issue close`, `issue comment`); a name outside it fails the config load. `team` holds a role for every session
+only where each command checks its caller itself; the others name their sessions. The hook allow that
+lets a holder run them is not in place yet: today a grant is only recorded and listed.
+
+A grant or a revoke changes a permission, an owner gate: teamrig's guard asks the owner before any session's call
+of either, whatever `--yes` says, and refuses a session's direct edit of `serviceRoles`, so the owner runs them
+from their own terminal or prompt. Without `--yes` each shows the change and writes nothing. With it, the old
+config goes into the backups folder and `serviceRoles` is rewritten; the next call reads it.
+
+`roles grant <role> --holder <id|name|team> [--commands <a,b>]` creates the role (it needs `--commands`), or adds
+the holder and any new commands to it. It refuses a grant that changes nothing.
+
+Flags:
+
+- `--holder <id|name|team>`: the session that holds the role, or `team` for every session.
+- `--commands <a,b>`: the commands the role runs, from teamrig's table.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig roles grant github --holder backend --commands "issue close,issue comment" --yes
+```
+
+Output:
+
+```text
+GRANTED github: held by backend; runs issue close, issue comment; the old config is at ~/.teamrig/teams/shop/backups/config.roles-grant.json
+```
+
+### teamrig roles revoke
+
+Takes a service role off one holder (`teamrig roles revoke <role> --holder <id|name>`), or the whole role off the
+team without `--holder`; the last holder's leaving drops the role. A session cannot be taken off a role `team`
+holds: revoke the role. The owner runs it, as for a grant (see `teamrig roles grant`).
+
+Flags:
+
+- `--holder <id|name>`: the session to take the role off.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig roles revoke github --holder backend --yes
+```
+
+Output:
+
+```text
+REVOKED github: no role; the old config is at ~/.teamrig/teams/shop/backups/config.roles-revoke.json
+```
+
+### teamrig roles list
+
+Prints each service role [serviceRoles], who holds it and what it runs, one line each. It only reads.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig roles list
+```
+
+Output:
+
+```text
+github: held by backend; runs issue close, issue comment
+```
+
 ### teamrig rules
 
 Prints the team rules and who the session is, exactly as a session start injects them. Run it when you did

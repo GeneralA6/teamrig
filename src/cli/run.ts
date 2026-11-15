@@ -105,6 +105,7 @@ const decisionsCommands = () => import('./commands/decisions.ts');
 const hireCommands = () => import('./commands/hire.ts');
 const retireCommands = () => import('./commands/retire.ts');
 const promoteCommands = () => import('./commands/promote.ts');
+const rolesCommands = () => import('./commands/roles.ts');
 const slashCommands = () => import('./commands/slash.ts');
 const restoreCommands = () => import('./commands/restore.ts');
 const restoreInstallCommands = () => import('./commands/restore-install.ts');
@@ -211,6 +212,9 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   retire: { effect: 'write', flags: ['session', 'to', 'no-handover', 'reason'], switches: ['yes'], load: async () => (await retireCommands()).retire },
   promote: { effect: 'write', flags: ['session', 'members'], switches: ['yes'], load: async () => (await promoteCommands()).promote },
   demote: { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await promoteCommands()).demote },
+  'roles grant': { effect: 'write', flags: ['holder', 'commands'], switches: ['yes'], load: async () => (await rolesCommands()).grant },
+  'roles revoke': { effect: 'write', flags: ['holder'], switches: ['yes'], load: async () => (await rolesCommands()).revoke },
+  'roles list': { effect: 'read', flags: [], load: async () => (await rolesCommands()).list },
   refresh: { effect: 'write', flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
   doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
   'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
@@ -660,6 +664,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       directly: their decision and approval waits may go to it, and it approves them; without --yes it shows
       the change and writes nothing
   demote <id|name> [--yes]     (its own leader) takes a sub-lead's members back; without --yes it shows it
+  roles grant <role> --holder <id|name|team> [--commands <a,b>] [--yes]
+      (the owner) lets the holder run a service role's teamrig commands past every permission check, from its
+      own tab only: names from teamrig's table (issue close, issue comment); team for every session only where
+      each command checks its caller; teamrig's guard asks before a session's call; without --yes it writes nothing
+  roles revoke <role> [--holder <id|name>] [--yes]   (the owner) takes the role off one holder, or off the
+      team when no --holder; the next call reads it; without --yes it shows the change and writes nothing
+  roles list                   each service role, who holds it and what it runs
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover the turn end asked to fix is complete as it is (the turn end takes one with both sections itself)
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
