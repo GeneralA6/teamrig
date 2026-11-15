@@ -509,8 +509,9 @@ An approved task shows `· lead approved`
 in its waiting text and `check` flags it `READY` until its owner sets the next status, which clears the answer.
 To hold an approved task until another task lands or a time comes, set it waiting again with the approval wait and the
 new one (`--waits approval:<lead>,task:T<id>`): that keeps the approval, and `check` flags the task `READY` once the
-new wait clears, so merge then. Setting the same waits again keeps the approval too, say to log a refused merge,
-unless the note names another commit than the approval's: that asks anew, as adding a decision or another approval
+new wait clears, so merge then. Setting the same waits again keeps the approval only when the note names the
+approved head, as fully as the approval wrote it, and no other commit, say `merge refused, head <sha>`; a note with
+no head ("new head ready, please re-approve") or another commit asks anew, as adding a decision or another approval
 does, and a new head always needs one, since `ship.ts merge` takes only a head the approval's note names.
 Any set before the step ends (a status but `verifying`, `done` or `dropped`) that would clear the approval, a new
 head's ask included, would leave a merge waiting on it refused, so `set` refuses it: record progress with
