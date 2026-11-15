@@ -15,15 +15,42 @@ const OTHER = 'C:/u/.teamrig/teams/other/config.json';
 
 const OTHER_TEXT = `${JSON.stringify({ sessions: ['boss'], ownerGates: ['budget'], pushGuard: { pushToProtected: 'ask' } }, null, 2)}\n`;
 
-function env(options: { readonly asks?: HookAsks; readonly configPath?: string | undefined; readonly text?: string | undefined } = {}): ServiceRoleGuardEnv {
+/** A path's spelling as the fake filesystem keys it: one slash, any case. */
+function fileKey(path: string): string {
+  return path.replaceAll('\\', '/').toLowerCase();
+}
+
+/** The real path of each spelling the fake filesystem knows: the kit home, the config, and what links to it. */
+const REAL: Readonly<Record<string, string>> = {
+  [fileKey('C:/u/.teamrig')]: 'C:/u/.teamrig',
+  [fileKey(CONFIG)]: CONFIG,
+  [fileKey('C:/w/link.json')]: CONFIG,
+  [fileKey('C:/u/.teamrig/teams/shop/CONFIG~1.JSO')]: CONFIG,
+  [fileKey('C:/u/TEAMRI~1/teams/shop/config.json')]: CONFIG,
+};
+
+interface GuardOptions {
+  readonly asks?: HookAsks;
+  readonly configPath?: string | undefined;
+  readonly text?: string | undefined;
+  readonly platform?: NodeJS.Platform;
+  /** Collects the path of each file the guard reads. */
+  readonly reads?: string[];
+}
+
+function env(options: GuardOptions = {}): ServiceRoleGuardEnv {
   const text = 'text' in options ? options.text : TEXT;
   return {
     cwd: 'C:/w',
     home: 'C:/u',
     hookAsks: options.asks ?? 'ask',
-    platform: 'win32',
+    platform: options.platform ?? 'win32',
     configPath: 'configPath' in options ? options.configPath : CONFIG,
-    readConfig: (path) => Promise.resolve(/[\\/]teams[\\/]other[\\/]/i.test(path) ? OTHER_TEXT : text),
+    readConfig: (path) => {
+      options.reads?.push(path);
+      return Promise.resolve(/[\\/]teams[\\/]other[\\/]/i.test(path) ? OTHER_TEXT : text);
+    },
+    canonical: (path) => Promise.resolve(REAL[fileKey(path)]),
   };
 }
 
@@ -111,8 +138,15 @@ describe('service-role guard: the team config', () => {
   it("passes an edit of the config's other keys, and a file that is no team config", async () => {
     assert.equal(await decide(call('Edit', { file_path: CONFIG, old_string: '"lead",', new_string: '"lead", "bravo",' })), undefined);
     assert.equal(await decide(call('Write', { file_path: CONFIG, content: JSON.stringify({ serviceRoles: ROLES, sessions: ['lead'] }) })), undefined);
-    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/other/notes/config.json', old_string: 'a', new_string: 'b' })), undefined);
-    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/config.json', old_string: 'a', new_string: 'b' })), undefined);
+    for (const file_path of [
+      'C:/u/.teamrig/config.json',
+      'C:/u/.teamrig/teams/other/notes/config.json',
+      'C:/u/.teamrig/teams/shop/plans/config.json',
+      'C:/w/config.json',
+      'C:/w/x.json',
+    ]) {
+      assert.equal(await decide(call('Edit', { file_path, old_string: 'a', new_string: 'b' })), undefined, file_path);
+    }
     assert.equal(await decide(call('Edit', { file_path: CONFIG, old_string: '"lead"', new_string: '"boss"' }), env({ configPath: undefined })), undefined);
     assert.equal(await decide(call('Edit', { file_path: '/c/u/.teamrig/teams/other/notes.json', old_string: 'a', new_string: 'b' })), undefined);
   });
@@ -134,6 +168,46 @@ describe('service-role guard: the team config', () => {
     assert.equal(await decide(call('Edit', { file_path: '/c/u/.teamrig/teams/shop/config.json', ...ownRoles })), 'deny');
   });
 
+  it("guards every team's config under the kit home, reading that team's file (T2984)", async () => {
+    const reads: string[] = [];
+    const added = { old_string: '"alpha"\n      ]', new_string: '"alpha",\n        "bravo"\n      ]' };
+    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/web/config.json', ...added }), env({ reads })), 'deny');
+    assert.deepEqual(reads, ['C:\\u\\.teamrig\\teams\\web\\config.json']);
+    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/web/config.json', old_string: '"lead"', new_string: '"boss"' })), undefined);
+  });
+
+  it('holds every other spelling of a team config to the file: links, short names, trailing dots, and refuses device, share and stream forms (T2984)', async () => {
+    const added = { old_string: '"alpha"\n      ]', new_string: '"alpha",\n        "bravo"\n      ]' };
+    for (const file_path of [
+      'C:/w/link.json',
+      'C:/u/.teamrig/teams/shop/CONFIG~1.JSO',
+      'C:/u/TEAMRI~1/teams/shop/config.json',
+      'C:/u/.teamrig/teams/shop/config.json. ',
+      'C:/u/.teamrig/teams./shop/config.json',
+    ]) {
+      assert.equal(await decide(call('Edit', { file_path, ...added })), 'deny', file_path);
+    }
+    for (const [file_path, form] of [
+      ['C:\\u\\.teamrig\\teams\\shop\\config.json::$DATA', 'an alternate data stream'],
+      ['C:/u/.teamrig/teams/shop/config.json:roles', 'an alternate data stream'],
+      ['\\\\?\\C:\\u\\.teamrig\\teams\\shop\\config.json', 'a device path'],
+      ['//./C:/u/.teamrig/teams/shop/CONFIG~1.JSO', 'a device path'],
+      ['\\\\localhost\\c$\\u\\.teamrig\\teams\\shop\\config.json', 'a network share path'],
+    ]) {
+      const output = decisionOf(await serviceRoleGuardOutput(call('Write', { file_path, content: '{}' }), env()));
+      assert.equal(output?.decision, 'deny', file_path);
+      assert.match(output?.reason ?? '', new RegExp(`names a config\\.json through ${form}`), file_path);
+    }
+    assert.equal(await decide(call('Write', { file_path: '\\\\localhost\\c$\\w\\notes.md', content: 'x' })), undefined);
+    assert.equal(await decide(call('Write', { file_path: 'C:config.json', content: 'x' })), undefined);
+  });
+
+  it('reads POSIX paths as written: a colon or leading slashes are plain characters there', async () => {
+    const posixEnv = env({ platform: 'linux', configPath: '/srv/kit/teams/shop/config.json' });
+    assert.equal(await decide(call('Write', { file_path: '/srv/notes/config.json:x', content: '{}' }, '/srv'), posixEnv), undefined);
+    assert.equal(await decide(call('Write', { file_path: '/srv/kit/teams/web/config.json', content: '{}' }, '/srv'), posixEnv), 'deny');
+  });
+
   it('refuses a config edit it cannot read as a change: text not found, an Edit of no file, a notebook edit', async () => {
     assert.equal(await decide(call('Edit', { file_path: CONFIG, old_string: 'not there', new_string: 'x' })), 'deny');
     assert.equal(await decide(call('Edit', { file_path: CONFIG, old_string: 'a', new_string: 'b' }), env({ text: undefined })), 'deny');
@@ -147,6 +221,9 @@ describe('service-role guard: the team config', () => {
       "sed -i 's/x/y/' ~/.teamrig/teams/*/config.json",
       'jq . "$TEAMRIG_HOME/teams/$T/config.json"',
       'cp x.json config.json',
+      'cp x.json ~/.teamrig/teams/shop/CONFIG~1.JSO',
+      'cp x.json ~/.teamrig/teams/shop/config.json.',
+      'cp x.json "C:/u/.teamrig/teams/shop/config.json::$DATA"',
     ];
     for (const command of refused) {
       assert.equal(await decide(call('Bash', { command }, 'C:/u/.teamrig/teams/shop')), 'deny', command);
