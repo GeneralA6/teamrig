@@ -160,8 +160,13 @@ function settingsWriteOf(words: readonly ShellWord[]): string | undefined {
 }
 
 /** True when the words read as a command this guard checks, so a call through node and a script only known when it runs is one. */
+/** True when the words read as a settings writer's write. */
+function writesSettings(words: readonly ShellWord[]): boolean {
+  return settingsWriteOf(words) !== undefined;
+}
+
 function startsGuarded(words: readonly ShellWord[]): boolean {
-  return startsExec(words) || startsOwner(words) || settingsWriteOf(words) !== undefined;
+  return startsExec(words) || startsOwner(words) || writesSettings(words);
 }
 
 /** The owner command the words name after `owner`, or undefined when they name none the CLI has, or one only known when it runs. */
@@ -455,7 +460,7 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     const words = opaqueGuardedWords(run, startsOwner);
     return words === undefined ? [] : [words];
   });
-  const opaqueSettings = runs.opaque.flatMap((run) => settingsWriteOf(run.args) ?? []);
+  const opaqueSettings = runs.opaque.flatMap((run) => settingsWriteOf(opaqueGuardedWords(run, writesSettings) ?? []) ?? []);
   const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
   const fed = runs.fedShells.length > 0;
   const foreign = runs.foreignShells.length > 0;

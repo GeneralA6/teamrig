@@ -419,6 +419,8 @@ describe('execGuardOutput', () => {
       [bash('teamrig permissions trim "$FLAG"'), 'permissions trim'],
       [bash('teamrig automode "$WHAT" --yes'), 'automode'],
       [bash('$T permissions trim --yes'), 'permissions trim'],
+      [bash('$T --verbose permissions trim --yes'), 'permissions trim'],
+      [bash('echo teamrig permissions trim --yes'), 'permissions trim'],
       [bash('node $SCRIPT automode install --yes'), 'automode install'],
     ] as const) {
       const found = await verdict(payload, quiet);
@@ -440,7 +442,7 @@ describe('execGuardOutput', () => {
       'teamrig config validate',
       'teamrig setup backup',
       '$T permissions trim',
-      'echo teamrig permissions trim --yes',
+      'echo "teamrig permissions trim --yes"',
     ]) {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
