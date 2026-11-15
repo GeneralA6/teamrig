@@ -333,6 +333,8 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
   terminal's `-e`, `parallel`, `at`, `crontab`, `docker`/`kubectl`/`nerdctl exec`, `toolbox`, `distrobox`, `byobu`,
   `zellij`, awk's `system()` and `vim -c`/`gdb -ex`/`expect -c` are a doubt when the command they are handed names a
   push, as is a push written into a shell startup file, `PROMPT_COMMAND` or an alias.
+  A name `hash -p PATH NAME` or `alias NAME=VALUE` renames runs what it names (`hash -p /usr/bin/git x; x push`
+  is read as a git push); one `enable -f` loads, or a PATH only known when it runs, is a doubt.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,

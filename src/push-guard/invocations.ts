@@ -337,6 +337,13 @@ function joinedCommand(name: string, args: readonly ShellWord[]): readonly Shell
   return rest.length === 0 ? undefined : rest;
 }
 
+/** Bash builtins, which `hash -p` leaves running as themselves. */
+const BASH_BUILTINS: ReadonlySet<string> = new Set([
+  ...['echo', 'printf', 'cd', 'pwd', 'true', 'false', 'test', '[', 'read', 'export', 'set', 'unset', 'shift', 'exit'],
+  ...['return', 'source', '.', 'eval', 'exec', 'command', 'builtin', 'type', 'alias', 'unalias', 'hash', 'kill', 'wait'],
+  ...['jobs', 'fg', 'bg', 'declare', 'typeset', 'local', 'readonly', 'let', 'shopt', 'trap', 'umask', 'ulimit', 'times'],
+  ...['enable', 'help', 'history', 'mapfile', 'readarray', 'pushd', 'popd', 'dirs', 'disown', 'suspend', 'caller', ':'],
+]);
 /** Programs that run commands they read on stdin. */
 const STDIN_RUNNERS: ReadonlySet<string> = new Set(['ssh', 'at', 'batch', 'crontab', 'parallel', 'make', 'docker', 'podman', 'kubectl', 'su', 'machinectl', 'expect']);
 /** Paths a process reads its own stdin through. */
@@ -634,6 +641,11 @@ class GitInvocationFinder {
   private readonly writtenFiles = new Map<string, string | undefined>();
   /** True while the command being visited reads a pipe from the one before it. */
   private fedByPipe = false;
+  /**
+   * The program names the line gives another meaning (see {@link noteRenames}): the words a name runs instead,
+   * or undefined when that is not known.
+   */
+  private readonly renamed = new Map<string, readonly ShellWord[] | undefined>();
   private readonly context: FinderContext;
 
   constructor(context: FinderContext) {
@@ -697,7 +709,10 @@ class GitInvocationFinder {
       this.fedByPipe = before !== undefined && before.nesting === command.nesting && PIPE_TERMINATOR.test(before.terminator);
       this.noteCodeAssignments(command.words, dialect);
       this.visitStartupFiles(command.words, dialect, location, depth);
-      const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
+      const launched = this.visitCommand(dialect === 'bash' ? this.unrenamed(command.words) : command.words, dialect, location, depth, stdin);
+      if (dialect === 'bash') {
+        this.noteRenames(command.words);
+      }
       // An interpreter's words and stdin are its script, judged by visitCommand, not shell words that name a push:
       // a python heredoc that posts a message saying "push" arms no doubt about the line. Its output going on (a pipe,
       // a substitution, a file) may be shell code it prints, so there its words and stdin still name a push for the
@@ -720,6 +735,78 @@ class GitInvocationFinder {
       }
       this.noteWrites(command, launched, stdin, location);
     }
+  }
+
+  /**
+   * Records the program names a command gives another meaning for the commands after it: `hash -p PATH NAME...`
+   * runs PATH for each NAME (a builtin keeps its own meaning), `enable -f FILE NAME...` loads each NAME as a builtin
+   * the guard cannot read, and `alias NAME=VALUE` runs VALUE's words. A PATH or VALUE only known when it runs is not
+   * known either.
+   */
+  private noteRenames(words: readonly ShellWord[]): void {
+    const start = words.findIndex((word) => !isAssignment(word.text));
+    const program = words[start];
+    if (program === undefined || program.dynamic) {
+      return;
+    }
+    const args = words.slice(start + 1);
+    switch (program.text) {
+      case 'hash': {
+        const at = args.findIndex((arg) => arg.text === '-p');
+        const path = args[at + 1];
+        if (at === -1 || path === undefined) {
+          return;
+        }
+        for (const name of args.slice(at + 2).filter((arg) => !arg.dynamic && !arg.text.startsWith('-') && !BASH_BUILTINS.has(arg.text))) {
+          this.renamed.set(name.text, path.dynamic ? undefined : [path]);
+        }
+        return;
+      }
+      case 'enable': {
+        const at = args.findIndex((arg) => /^-[a-z]*f$/.test(arg.text));
+        if (at !== -1) {
+          args.slice(at + 2).filter((arg) => !arg.dynamic && !arg.text.startsWith('-')).forEach((name) => this.renamed.set(name.text, undefined));
+        }
+        return;
+      }
+      case 'alias':
+        for (const arg of args) {
+          const equals = arg.text.indexOf('=');
+          if (equals > 0) {
+            const value = arg.text.slice(equals + 1);
+            this.renamed.set(arg.text.slice(0, equals), arg.dynamic ? undefined : value.split(/\s+/).filter(Boolean).map((text) => staticWord(text)));
+          }
+        }
+        return;
+      default:
+    }
+  }
+
+  /**
+   * `words` with a program name an earlier command renamed (see {@link noteRenames}) replaced by what it runs,
+   * also after `command` or `exec`; a name whose meaning is not known is a doubt when the line names a push.
+   */
+  private unrenamed(words: readonly ShellWord[]): readonly ShellWord[] {
+    if (this.renamed.size === 0) {
+      return words;
+    }
+    let at = words.findIndex((word) => !isAssignment(word.text));
+    while (words[at] !== undefined && words[at]?.dynamic !== true && ['command', 'exec'].includes(words[at]?.text ?? '')) {
+      at += 1;
+      while (words[at]?.text.startsWith('-') === true) {
+        at += 1;
+      }
+    }
+    const name = words[at];
+    if (name === undefined || name.dynamic || !this.renamed.has(name.text)) {
+      return words;
+    }
+    const replacement = this.renamed.get(name.text);
+    if (replacement === undefined) {
+      this.doubt(`it runs ${name.text}, a program name the line gives a meaning only known when it runs`, true);
+      return words;
+    }
+    return [...words.slice(0, at), ...replacement, ...words.slice(at + 1)];
   }
 
   /**

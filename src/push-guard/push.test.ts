@@ -1064,3 +1064,32 @@ describe('evaluatePushes: a program bound to one of several literals', () => {
     ]);
   });
 });
+
+// A program name the line gives another meaning.
+describe('evaluatePushes: a program name hash -p, enable -f or alias renames', () => {
+  it('reads the program a renamed name runs, and doubts one it cannot know', () => {
+    expectRows([
+      ['hash -p /usr/bin/git x; x push origin main', 'ask'],
+      ['hash -p /usr/bin/git x; x push --force origin main', 'deny'],
+      ['hash -p /usr/bin/git x y; y push origin main', 'ask'],
+      ['hash -p /usr/bin/git x; command x push origin main', 'ask'],
+      ['hash -p /usr/bin/git x; exec x push origin main', 'ask'],
+      ['hash -p /usr/bin/git x\nx push origin main', 'ask'],
+      ['shopt -s expand_aliases; alias x=git; x push origin main', 'ask'],
+      ["alias x='git push'\nx origin main", 'ask'],
+      ['hash -p "$G" x; x push origin main', 'ask', 'doubt'],
+      ['enable -f ./lib.so x; x push origin main', 'ask', 'doubt'],
+    ]);
+  });
+
+  it('leaves a builtin, another program and a name used as data as they were', () => {
+    expectRows([
+      ['hash -p /usr/bin/git echo; echo push origin main', 'allow'],
+      ['hash -p /usr/bin/ls x; x push origin main', 'allow'],
+      ['hash -p /usr/bin/git x; echo x push', 'allow'],
+      ['hash -r; hash ls; ls', 'allow'],
+      ['enable -n echo; echo push', 'allow'],
+      ["alias ll='ls -l'; ll", 'allow'],
+    ]);
+  });
+});
