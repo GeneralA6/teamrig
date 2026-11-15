@@ -215,6 +215,25 @@ export class TeamFolders {
     return { name: segments.slice(0, 2).join('/') || 'the team folder', owner: named.find((segment) => this.others.has(segment)) };
   }
 
+  /**
+   * The task a path names anywhere, by a folder or file whose name starts `t<id>` (`backups/t12-db.sql`, a task's
+   * worktree `t12-fix`), in the register's spelling; undefined when none does.
+   */
+  taskNamed(path: string): string | undefined {
+    for (const segment of this.placeOf(path).split('/')) {
+      const id = /^t(\d+)(?=[-_.]|$)/.exec(segment)?.[1];
+      if (id !== undefined && TASK_ID.test(`T${id}`)) {
+        return `T${id}`;
+      }
+    }
+    return undefined;
+  }
+
+  /** The register gives the lead task `id`: a file named for it is the lead's own (GeneralA6/teamrig#751). */
+  leadsTask(id: string): boolean {
+    return this.taskOwners.get(id)?.toLowerCase() === this.lead;
+  }
+
   /** The research a shell search is, from the first path in the team's or a sub-team's folder it names that is research. */
   researchNamed(command: string): TeamResearch | undefined {
     for (const match of normalized(command, this.home).matchAll(this.mentioned)) {
@@ -308,13 +327,17 @@ function callWorkOf(tool: ToolUse, paths: LeadPaths): CallWork | undefined {
     return shellWorkOf(tool.command ?? '', dialect, paths);
   }
   const path = tool.path;
-  const mine = path !== undefined && paths.own.owns(path);
+  // A path named for a task the lead holds (a backup it made for it, its worktree) is its own; the task rides on the
+  // work so the register is read for its owner (tasksSearched) before the lead is flagged (GeneralA6/teamrig#751).
+  const task = path === undefined ? undefined : paths.team.taskNamed(path);
+  const mine = path !== undefined && (paths.own.owns(path) || (task !== undefined && paths.team.leadsTask(task)));
   const name = path === undefined ? 'shell' : basename(path.replace(/\\/g, '/'));
+  const named = task === undefined ? {} : { task };
   if (kindOf(tool) === 'edit') {
-    return mine ? undefined : { work: 'edit', name };
+    return mine ? undefined : { work: 'edit', name, ...named };
   }
   if (tool.name === 'Read') {
-    return path !== undefined && CODE_FILE.test(path) && !mine ? { work: 'search', name } : undefined;
+    return path !== undefined && CODE_FILE.test(path) && !mine ? { work: 'search', name, ...named } : undefined;
   }
   if (!SEARCH_TOOLS.has(tool.name)) {
     return undefined;
@@ -323,7 +346,7 @@ function callWorkOf(tool: ToolUse, paths: LeadPaths): CallWork | undefined {
   if (research !== undefined) {
     return researchWork(research);
   }
-  return mine ? undefined : { work: 'search', name };
+  return mine ? undefined : { work: 'search', name, ...named };
 }
 
 /** What one of the lead's calls did that it hands off; undefined for its own job. */
@@ -332,8 +355,9 @@ export function leadWorkOf(tool: ToolUse, paths: LeadPaths): LeadWork | undefine
 }
 
 /**
- * The tasks whose folders the calls search as research, each once: the register is read for their owners only when
- * there are some (T1467), since `paths` without an owner reads the lead's own task's folder as research too.
+ * The tasks whose folders the calls search as research, or whose named files they flag (GeneralA6/teamrig#751), each
+ * once: the register is read for their owners only when there are some (T1467), since `paths` without an owner reads
+ * the lead's own task's places as hand-off work too.
  */
 export function tasksSearched(turn: readonly ToolUse[], paths: LeadPaths): string[] {
   const tasks: string[] = [];
