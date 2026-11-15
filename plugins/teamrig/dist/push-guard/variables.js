@@ -48,10 +48,23 @@ const OPERATOR_LINKS = new Map([
  */
 export function resolveLiteralVariables(parsed, home) {
     return (parsed.readings ?? [parsed]).flatMap((reading) => {
-        const bindings = LiteralBindings.read(reading, home);
-        return reading.commands.map((command, index) => ({ ...command, words: bindings.resolveWords(command.words, index) }));
+        const variants = LiteralBindings.read(reading, home);
+        // One copy of the line per choice of values, each in a subshell of
+        // its own as the tokenizer keeps differing readings, so a `cd` in one does not move the next.
+        return variants.flatMap((bindings, at) => reading.commands.map((command, index) => ({
+            ...command,
+            words: bindings.resolveWords(command.words, index),
+            ...(variants.length > 1 ? { subshells: [VARIANT_SUBSHELL - at, ...command.subshells] } : {}),
+        })));
     });
 }
+/**
+ * The subshell id of the first copy of a line read once per choice of
+ * values, far below the tokenizer's ids for differing readings.
+ */
+const VARIANT_SUBSHELL = -1_000_000;
+/** The most copies of a line read once per choice of values. */
+const MAX_VARIANTS = 16;
 /**
  * The values a bash line gives its variables, and where they surely hold. It trusts only a binding statement
  * (a command of nothing but `NAME=value` words, or `export` with such words and bare names), with no
@@ -70,22 +83,35 @@ class LiteralBindings {
     bound;
     /** The values names the line never assigns hold from its start: HOME, when the caller knows it. */
     inherited;
-    constructor(commands, bound, inherited) {
+    /** The line's function definitions (see {@link FunctionDefinitions}). */
+    functions;
+    /** The names bound to more than one text, and the text this reading gives each. */
+    choices;
+    chosen;
+    constructor(commands, bound, inherited, choices = new Map(), chosen = new Map()) {
         this.commands = commands;
         this.bound = bound;
         this.inherited = inherited;
+        this.functions = new FunctionDefinitions(commands);
+        this.choices = choices;
+        this.chosen = chosen;
     }
+    /**
+     * The bindings of a line: one, or, for a line with names bound to more than one literal text (see
+     * {@link Choices}), one per choice of a text for each, up to {@link MAX_VARIANTS}. A line that can set
+     * variables unseen in any of them resolves nothing.
+     */
     static read(parsed, home) {
-        const none = new LiteralBindings(parsed.commands, new Map(), new Map());
+        const none = [new LiteralBindings(parsed.commands, new Map(), new Map())];
         const line = parsed.bindingsUnclear ? undefined : boundNames(parsed.commands);
         if (line === undefined) {
             return none;
         }
         // A Windows home goes to bash with forward slashes, which keep an unquoted `$HOME` from reading as a pattern.
         const inherited = home === undefined || line.assigned.has('HOME') ? new Map() : new Map([['HOME', home.replaceAll('\\', '/')]]);
-        const bindings = new LiteralBindings(parsed.commands, line.bound, inherited);
-        const unseen = line.deferred.some(({ index, words }) => expandedSetsVariablesUnseen(bindings.resolveWords(words, index)));
-        return unseen ? none : bindings;
+        const variants = chosenTexts(line.choices).map((chosen) => new LiteralBindings(parsed.commands, line.bound, inherited, line.choices, chosen));
+        const unseen = variants.some((bindings) => line.deferred.some(({ index, words }) => expandedSetsVariablesUnseen(bindings.resolveWords(words, index))));
+        return unseen ? none : variants;
     }
     /** The words of command `index` with their variables replaced by the values that hold there. */
     resolveWords(words, index) {
@@ -115,6 +141,10 @@ class LiteralBindings {
         if (inherited !== undefined) {
             return [{ kind: 'text', text: inherited }];
         }
+        const chosen = this.chosenAt(name, index);
+        if (chosen !== undefined) {
+            return [{ kind: 'text', text: chosen }];
+        }
         const bound = this.bound.get(name);
         const at = bound?.at.find((statement) => statement < index && this.reaches(statement, index));
         if (bound === undefined || at === undefined) {
@@ -123,17 +153,50 @@ class LiteralBindings {
         return bound.value.flatMap((part) => part.kind === 'text' ? [part] : (this.valueAt(part.name, at) ?? [{ kind: 'unknown', written: `\${${part.name}}` }]));
     }
     /**
+     * The text a name bound to more than one literal text holds at command
+     * `index` in this reading, when one of its statements surely ran there: the chosen text when a statement that
+     * may have run last gives it, else the first such statement's. The statements that may have run last are those
+     * before `index` whose shell holds it, from the last that surely ran on; with a function in the line, whose body
+     * may run after a later statement, every one before `index`. A command in a function's body, which runs where
+     * the function is called, resolves none.
+     */
+    chosenAt(name, index) {
+        const statements = this.choices.get(name);
+        const target = this.commands[index];
+        if (statements === undefined || target === undefined || this.functions.definitionOf(index) !== undefined) {
+            return undefined;
+        }
+        const sure = statements.findLast((statement) => statement.at < index && this.reaches(statement.at, index));
+        if (sure === undefined) {
+            return undefined;
+        }
+        const from = this.functions.any ? 0 : sure.at;
+        const texts = statements
+            .filter((statement) => from <= statement.at && statement.at < index && runsInside(target, this.commands[statement.at] ?? target))
+            .map((statement) => statement.text);
+        const chosen = this.chosen.get(name);
+        return chosen !== undefined && texts.includes(chosen) ? chosen : texts[0];
+    }
+    /**
      * True when the binding statement at `from` has surely run whenever the command at `to` runs: in the same
      * shell, or in a subshell (a `( )` group or a substitution) started after it, which starts with a copy of
      * its variables. Read on the list the statement's shell runs (see {@link listItems}).
+     *
+     * A command in a function's body runs only when the function is called, which is after
+     * the definition runs, so the statement reaches it when it reaches the definition. Its name holds the same
+     * value wherever it is bound, and nowhere else in the line is it assigned, so a call finds that value.
      */
     reaches(from, to) {
+        const definition = this.functions.definitionOf(to);
+        if (definition !== undefined && !this.functions.contains(definition, from)) {
+            return from < definition && this.reaches(from, definition);
+        }
         const statement = this.commands[from];
         const target = this.commands[to];
         if (statement === undefined || target === undefined || !runsInside(target, statement)) {
             return false;
         }
-        const items = listItems(this.commands, statement);
+        const items = listItems(this.commands, statement, this.functions);
         const start = items.findIndex((item) => item.last === from);
         const end = items.findIndex((item) => item.first <= to && to <= item.last);
         const between = start < 0 || end <= start ? [] : items.slice(start, end).map((item) => item.link);
@@ -153,14 +216,26 @@ class LiteralBindings {
  * and each `( )` group inside it as one item. A group keeps the nesting of the shell around it while a
  * substitution adds one, which tells them apart.
  */
-function listItems(commands, shell) {
+function listItems(commands, shell, functions) {
     const depth = shell.subshells.length;
     const inside = [...commands.entries()].filter(([, command]) => runsInside(command, shell));
     const groups = new Set(inside.flatMap(([, command]) => (command.nesting === shell.nesting ? command.subshells.slice(depth, depth + 1) : [])));
     const items = [];
     let held;
+    let skipTo = -1;
     for (const [index, command] of inside) {
+        if (index <= skipTo) {
+            continue;
+        }
         const child = command.subshells[depth];
+        // A function definition runs none of its body, so it is one item up to its closing `}`.
+        const end = child === undefined ? functions.endOf(index) : undefined;
+        if (end !== undefined) {
+            items.push({ first: held ?? index, last: end, link: linkOf(commands[end]?.terminator ?? '') });
+            held = undefined;
+            skipTo = end;
+            continue;
+        }
         const link = linkOf(command.terminator);
         const previous = items.at(-1);
         if (child !== undefined && !groups.has(child)) {
@@ -175,6 +250,86 @@ function listItems(commands, shell) {
         }
     }
     return items;
+}
+/** `NAME()` at the end of a command, which declares a function, before any newlines. */
+const DECLARES_FUNCTION = /^\(\)\n*$/;
+/**
+ * The function definitions of a line written `NAME() { ...; }`: the command `NAME()`, then a
+ * `{ }` group in the same shell. Each covers the commands from the `NAME()` to the group's `}`, with the
+ * substitutions in them. A body of any other form (a `( )` group, a loop) or a group that does not close is
+ * not read as one, and a binding keeps reaching nothing past its `()`.
+ */
+class FunctionDefinitions {
+    /** The last command of each definition, by the index of its `NAME()`. */
+    ends = new Map();
+    constructor(commands) {
+        for (const [index, command] of commands.entries()) {
+            const name = command.words[0];
+            if (command.words.length !== 1 || name === undefined || name.dynamic || !DECLARES_FUNCTION.test(command.terminator)) {
+                continue;
+            }
+            const end = groupEnd(commands, index);
+            if (end !== undefined) {
+                this.ends.set(index, end);
+            }
+        }
+    }
+    /** True when the line defines a function. */
+    get any() {
+        return this.ends.size > 0;
+    }
+    /** The last command of the definition whose `NAME()` is at `index`. */
+    endOf(index) {
+        return this.ends.get(index);
+    }
+    /** True when `index` is the `NAME()` of `definition` or a command of its body. */
+    contains(definition, index) {
+        const end = this.ends.get(definition);
+        return end !== undefined && definition <= index && index <= end;
+    }
+    /** The `NAME()` of the innermost definition whose body holds the command at `index`. */
+    definitionOf(index) {
+        let innermost;
+        for (const [definition, end] of this.ends) {
+            if (definition < index && index <= end && (innermost === undefined || definition > innermost)) {
+                innermost = definition;
+            }
+        }
+        return innermost;
+    }
+}
+/**
+ * The index of the `}` that closes the `{ }` group a function's `NAME()` at `at` opens: the
+ * next command in its shell must start with `{`, and every `{` and `}` that starts a command there counts.
+ */
+function groupEnd(commands, at) {
+    const head = commands[at];
+    let open = 0;
+    for (let index = at + 1; index < commands.length; index += 1) {
+        const command = commands[index];
+        if (command === undefined || head === undefined || !runsInside(command, head)) {
+            return undefined;
+        }
+        if (!sameShell(command, head) || command.nesting !== head.nesting) {
+            // A substitution in the body, listed before the command that holds it.
+            continue;
+        }
+        let words = command.words;
+        if (open === 0 && reservedWord(words[0]) !== '{') {
+            return undefined;
+        }
+        while (reservedWord(words[0]) === '{') {
+            open += 1;
+            words = words.slice(1);
+        }
+        if (reservedWord(words[0]) === '}' && words.length === 1) {
+            open -= 1;
+            if (open === 0) {
+                return index;
+            }
+        }
+    }
+    return undefined;
 }
 /** True when the item at `at` starts a list: first in its shell, or after `;`, `&` or a newline. */
 function startsList(items, at) {
@@ -283,7 +438,7 @@ function boundNames(commands) {
             }
         }
         for (const word of statement === undefined ? words : []) {
-            const assigned = ASSIGNMENT_LIKE.exec(word.text);
+            const assigned = assigns(words, word) ? ASSIGNMENT_LIKE.exec(word.text) : null;
             if (assigned?.[2] === '[' || assigned?.[1] === 'IFS') {
                 return undefined;
             }
@@ -297,13 +452,23 @@ function boundNames(commands) {
         return undefined;
     }
     const bound = new Map();
+    const choices = new Map();
     for (const [name, list] of statements) {
         const value = agreedValue(list.map((statement) => statement.value));
         if (value !== undefined && !tainted.has(name)) {
             bound.set(name, { value, at: list.map((statement) => statement.at) });
+            continue;
+        }
+        // Differing literal texts bound in one shell give a choice; a
+        // variable in one, or a statement in a subshell of its own (`( )`, `$( )`), does not.
+        const texts = list.map((statement) => ({ text: textOf(statement.value), at: statement.at }));
+        const shell = commands[list[0]?.at ?? -1];
+        const oneShell = list.every((statement) => sameShell(commands[statement.at], shell));
+        if (!tainted.has(name) && oneShell && texts.every((statement) => statement.text !== undefined && statement.text !== '')) {
+            choices.set(name, texts.map((statement) => ({ text: statement.text ?? '', at: statement.at })));
         }
     }
-    return { bound, assigned: new Set([...statements.keys(), ...tainted]), deferred };
+    return { bound, choices: usedChoices(choices, commands), assigned: new Set([...statements.keys(), ...tainted]), deferred };
 }
 /** The keywords that open a compound command, and the part each starts. */
 const OPENERS = new Map([
@@ -420,6 +585,25 @@ function agreedValue(values) {
     const [text] = texts;
     return text !== undefined && texts.size === 1 ? [{ kind: 'text', text }] : undefined;
 }
+/**
+ * The choices a word of the line uses, or none when reading the line once
+ * per choice of their texts would take more than {@link MAX_VARIANTS} copies; then each stays unresolved.
+ */
+function usedChoices(choices, commands) {
+    const used = new Set(commands.flatMap((command) => command.words.flatMap((word) => (word.parts ?? []).flatMap((part) => (part.kind === 'text' ? [] : [part.name])))));
+    const kept = new Map([...choices].filter(([name]) => used.has(name)));
+    const copies = [...kept.values()].reduce((product, statements) => product * new Set(statements.map((statement) => statement.text)).size, 1);
+    return copies <= MAX_VARIANTS ? kept : new Map();
+}
+/** Every way to choose one text for each name of `choices`. */
+function chosenTexts(choices) {
+    let ways = [new Map()];
+    for (const [name, statements] of choices) {
+        const texts = [...new Set(statements.map((statement) => statement.text))];
+        ways = ways.flatMap((way) => texts.map((text) => new Map([...way, [name, text]])));
+    }
+    return ways;
+}
 /** A value's text, or undefined when it holds a variable, whose value may differ from statement to statement. */
 function textOf(value) {
     let text = '';
@@ -449,6 +633,21 @@ function expandedSetsVariablesUnseen(words) {
     const program = programOf(words);
     return program === undefined || program.dynamic || program.text === 'export' || setsVariablesUnseen(words);
 }
+/**
+ * True when `word` of a command can assign a variable: an assignment before its program word, or an argument of
+ * `export` (or of `env`, read the same way). The other builtins that assign from their arguments (`declare`, `local`, ...) keep the whole line
+ * unresolved already (see {@link setsVariablesUnseen}). Any other program's argument is data to it, such as the
+ * grep pattern `"T[0-9]*"` or `"a=b"`, and sets nothing.
+ */
+function assigns(words, word) {
+    const start = words.findIndex((each) => !ASSIGNMENT_LIKE.test(each.text));
+    const at = words.indexOf(word);
+    if (start === -1 || at < start) {
+        return true;
+    }
+    const program = words[start];
+    return program !== undefined && !program.dynamic && (program.text === 'export' || program.text === 'env');
+}
 /** True for a command that can set a variable in a way the guard does not follow, or run code that can. */
 function setsVariablesUnseen(words) {
     const start = words.findIndex((word) => !ASSIGNMENT_LIKE.test(word.text));
@@ -456,10 +655,13 @@ function setsVariablesUnseen(words) {
     if (program === undefined) {
         return false;
     }
+    const args = words.slice(start + 1);
+    if (program.text === 'command' && describesOnly(args[0])) {
+        return false;
+    }
     if (program.dynamic || UNSAFE_PROGRAMS.has(program.text)) {
         return true;
     }
-    const args = words.slice(start + 1);
     switch (program.text) {
         case 'printf':
             // `printf -v NAME` assigns; so may a format only known when it runs.
@@ -469,6 +671,13 @@ function setsVariablesUnseen(words) {
         default:
             return false;
     }
+}
+/**
+ * True for the first argument of `command` when it is a static cluster
+ * of its options holding `-v` or `-V` (`command -v git`), which only prints what each name is and runs none.
+ */
+function describesOnly(word) {
+    return word !== undefined && !word.dynamic && /^-[pvV]*[vV][pvV]*$/.test(word.text);
 }
 /**
  * True for an `export` argument that can set only the name it shows: a static word, or `NAME=` with any

@@ -24,9 +24,10 @@ const WRAPPERS = new Map([
             chdir: ['-D', '--chdir'],
             inspect: ['-l', '--list', '-e', '--edit', '-V', '--version', '-K', '--remove-timestamp', '-v', '--validate', '--help'],
             assignments: true,
+            shell: ['-s', '--shell', '-i', '--login'],
         },
     ],
-    ['doas', { valued: ['-u', '-C'] }],
+    ['doas', { valued: ['-u', '-C'], shell: ['-s'] }],
     ['timeout', { valued: ['-s', '-k', '--signal', '--kill-after'], leading: 1 }],
     ['stdbuf', { valued: ['-i', '-o', '-e', '--input', '--output', '--error'] }],
     [
@@ -37,7 +38,60 @@ const WRAPPERS = new Map([
         },
     ],
     ['wsl', { valued: ['-d', '--distribution', '-u', '--user', '--shell-type', '--distribution-id'], chdir: ['--cd'] }],
+    // Programs that run the command after their options, in another
+    // namespace, root, privilege set or systemd unit.
+    ['nsenter', { valued: ['-t', '--target', '-S', '--setuid', '-G', '--setgid', '-Z'] }],
+    ['chroot', { valued: ['--userspec', '--groups'], leading: 1 }],
+    [
+        'unshare',
+        {
+            valued: ['--map-user', '--map-group', '--map-users', '--map-groups', '--propagation', '--setgroups', '-S', '--setuid', '-G', '--setgid', '-R', '--root', '--monotonic', '--boottime'],
+            chdir: ['-w', '--wd'],
+        },
+    ],
+    [
+        'setpriv',
+        {
+            valued: ['--reuid', '--regid', '--ruid', '--euid', '--rgid', '--egid', '--groups', '--inh-caps', '--ambient-caps', '--bounding-set', '--securebits', '--selinux-label', '--apparmor-profile', '--pdeathsig', '--landlock-access', '--landlock-rule'],
+        },
+    ],
+    [
+        'systemd-run',
+        {
+            valued: [
+                ...['-u', '--unit', '-p', '--property', '--description', '--slice', '-E', '--setenv', '-M', '--machine', '-H', '--host', '--uid', '--gid', '--nice', '--service-type'],
+                ...['--on-active', '--on-boot', '--on-startup', '--on-unit-active', '--on-unit-inactive', '--on-calendar', '--timer-property', '--path-property', '--socket-property'],
+            ],
+            chdir: ['--working-directory'],
+        },
+    ],
+    ['runuser', { valued: ['-u', '--user', '-g', '--group', '-G', '--supp-group', '-w', '--whitelist-environment', '-s', '--shell'] }],
+    ['flock', { valued: ['-w', '--timeout', '-E', '--conflict-exit-code'], leading: 1 }],
+    // More programs that run the command after their options: with
+    // other privileges, in a sandbox, under a tracer, or with a CPU or scheduling setting.
+    ['pkexec', { valued: ['--user'] }],
+    ['firejail', { valued: ['--profile', '--name'] }],
+    [
+        'bwrap',
+        {
+            valued: [...['--args', '--userns', '--userns2', '--pidns', '--uid', '--gid', '--hostname', '--unsetenv', '--lock-file', '--sync-fd', '--info-fd', '--json-status-fd'], ...['--block-fd', '--userns-block-fd', '--seccomp', '--add-seccomp-fd', '--exec-label', '--file-label', '--remount-ro', '--tmpfs', '--proc', '--dev', '--dir', '--mqueue', '--cap-add', '--cap-drop', '--size', '--perms', '--argv0']],
+            paired: [...['--bind', '--bind-try', '--dev-bind', '--dev-bind-try', '--ro-bind', '--ro-bind-try', '--overlay-src', '--tmp-overlay', '--ro-overlay', '--bind-fd', '--ro-bind-fd'], ...['--setenv', '--symlink', '--file', '--bind-data', '--ro-bind-data', '--chmod']],
+            chdir: ['--chdir'],
+        },
+    ],
+    ['fakeroot', { valued: ['-l', '--lib', '--faked', '-s', '-i', '-b'] }],
+    ['strace', { valued: ['-e', '-o', '-p', '-s', '-u', '-a', '-b', '-E', '-I', '-O', '-P', '-S', '-X', '-U'], inspect: ['-V', '--version', '-h', '--help'] }],
+    ['ltrace', { valued: ['-e', '-o', '-p', '-s', '-u', '-a', '-n', '-A', '-D', '-F', '-l', '-w', '-x', '-L'] }],
+    ['taskset', { valued: [], inspect: ['-p', '--pid'], leading: 1 }],
+    ['chrt', { valued: ['-T', '--sched-runtime', '-P', '--sched-period', '-D', '--sched-deadline'], inspect: ['-p', '--pid', '-m', '--max'], leading: 1 }],
 ]);
+/**
+ * Programs whose `-c` / `--command` option is a command line a shell
+ * runs (`su -c`, `runuser user -c`, `flock f -c`, `script -c`), anywhere among their options.
+ */
+const COMMAND_OPTION_PROGRAMS = new Set(['su', 'runuser', 'flock', 'script']);
+/** `find`'s actions that run a command, ended by `;` or `+`. */
+const FIND_EXEC = new Set(['-exec', '-execdir', '-ok', '-okdir']);
 const POSIX_SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish']);
 const POWERSHELLS = new Set(['pwsh', 'powershell', 'pwsh-preview']);
 /** Bash options that take the next word as their value. */
@@ -110,6 +164,29 @@ export function isAssignment(text) {
 function assignmentOf(word) {
     const equals = word.text.indexOf('=');
     return { name: word.text.slice(0, equals), value: { text: word.text.slice(equals + 1), dynamic: word.dynamic } };
+}
+/**
+ * The value of a `-c` / `--command` option among `args` (a short
+ * cluster such as `-qc` takes the next word), undefined when there is none, null when its value is missing.
+ */
+function commandOption(args) {
+    for (const [index, arg] of args.entries()) {
+        const text = arg.text;
+        if (text === '--') {
+            return undefined;
+        }
+        if (text === '--command' || text === '--session-command') {
+            return args[index + 1] ?? null;
+        }
+        if (text.startsWith('--command=') || text.startsWith('--session-command=')) {
+            return { text: text.slice(text.indexOf('=') + 1), dynamic: arg.dynamic };
+        }
+        if (/^-[A-Za-z]+$/.test(text) && text.includes('c')) {
+            const at = text.indexOf('c');
+            return at === text.length - 1 ? (args[index + 1] ?? null) : { text: text.slice(at + 1), dynamic: arg.dynamic };
+        }
+    }
+    return undefined;
 }
 /** Joins words into one command line; for cmd a word with spaces or separators is quoted, as the caller's process start would. */
 function joinWords(words, quote) {
@@ -209,6 +286,31 @@ class LaunchReader {
         return { kind: 'next', words: right };
     }
     named(name, args, head) {
+        // A `-c` command line, `find -exec`, and `trap`'s handler.
+        if (this.dialect === 'bash' && COMMAND_OPTION_PROGRAMS.has(name)) {
+            const command = commandOption(args);
+            if (command !== undefined) {
+                return command === null ? { kind: 'opaque', reason: `${name} -c runs a command line only known when it runs`, gated: true } : this.script(command, 'bash', false);
+            }
+            // Su with no -c starts the user's shell, which runs the heredoc,
+            // here-string or `<` file the line feeds it; a pipe into it is the finder's doubt.
+            // So does runuser without its `-u` command form.
+            const userForm = name === 'runuser' && args.some((arg) => arg.text === '-u' || arg.text === '--user' || arg.text.startsWith('--user='));
+            if ((name === 'su' || (name === 'runuser' && !userForm)) && this.stdin !== undefined && !this.stdinArgs) {
+                return this.fromStdin('bash');
+            }
+        }
+        const found = this.dialect === 'bash' && name === 'find' ? this.findExec(args) : undefined;
+        if (found !== undefined) {
+            return found;
+        }
+        if (this.dialect === 'bash' && name === 'trap') {
+            const handler = args.find((arg) => arg.text !== '--');
+            const first = args[0]?.text ?? '';
+            if (handler !== undefined && first !== '-l' && first !== '-p' && handler.text !== '-' && handler.text !== '' && args.length >= 2) {
+                return this.script(handler, 'bash', true);
+            }
+        }
         const wrapper = WRAPPERS.get(name);
         if (wrapper !== undefined) {
             this.called = true;
@@ -242,6 +344,24 @@ class LaunchReader {
         }
         return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner, captured: this.captured };
     }
+    /**
+     * `find ... -exec cmd args ;` runs `cmd args` for each file: the
+     * words of its one command. More than one command is a doubt, as one launch names one program. Undefined for a
+     * find that runs no command, which is the program `find` itself.
+     */
+    findExec(args) {
+        const starts = args.flatMap((arg, index) => (FIND_EXEC.has(arg.text) ? [index] : []));
+        const start = starts[0];
+        if (start === undefined) {
+            return undefined;
+        }
+        if (starts.length > 1) {
+            return { kind: 'opaque', reason: 'find runs more than one command', gated: true };
+        }
+        const rest = args.slice(start + 1);
+        const end = rest.findIndex((arg) => arg.text === ';' || arg.text === '+');
+        return { kind: 'next', words: end === -1 ? rest : rest.slice(0, end) };
+    }
     script(script, dialect, sameShell) {
         return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs, runner: this.runner, captured: this.captured };
     }
@@ -256,9 +376,10 @@ class LaunchReader {
     wrapper(spec, args) {
         this.stdinArgs ||= spec.stdinArgs === true;
         const has = (list, option) => list?.includes(option) === true;
-        const takesValue = (option) => has(spec.valued, option) || has(spec.chdir, option) || has(spec.split, option);
+        const takesValue = (option) => has(spec.valued, option) || has(spec.chdir, option) || has(spec.split, option) || has(spec.paired, option);
         let leading = spec.leading ?? 0;
         let index = 0;
+        let shell = false;
         for (; index < args.length; index += 1) {
             const word = args[index] ?? staticWord('');
             const text = word.text;
@@ -273,6 +394,9 @@ class LaunchReader {
                 option = equals === -1 ? text : text.slice(0, equals);
                 if (takesValue(option)) {
                     value = equals === -1 ? args[(index += 1)] : { text: text.slice(equals + 1), dynamic: word.dynamic };
+                }
+                if (has(spec.paired, option)) {
+                    index += 1;
                 }
             }
             else if (text.startsWith('-')) {
@@ -302,6 +426,7 @@ class LaunchReader {
             if (option !== undefined && has(spec.inspect, option)) {
                 return NOTHING;
             }
+            shell ||= has(spec.shell, option ?? '') || (!text.startsWith('--') && text.startsWith('-') && [...text.slice(1)].some((letter) => has(spec.shell, `-${letter}`)));
             if (option !== undefined && value !== undefined && has(spec.chdir, option)) {
                 this.chdirs.push(value);
             }
@@ -317,7 +442,9 @@ class LaunchReader {
                 return this.wrapper(spec, [...split.words, ...args.slice(index + 1)]);
             }
         }
-        return { kind: 'next', words: args.slice(index + leading) };
+        const rest = args.slice(index + leading);
+        // `sudo -s` with no program is a shell reading stdin.
+        return shell && rest.length === 0 ? this.fromStdin('bash') : { kind: 'next', words: rest };
     }
     /** `sh`, `bash`, `zsh`, ...: `-c` runs the first operand as a script; with no operand, or `-s`, they read stdin; otherwise they run a script file. */
     posixShell(args) {
@@ -343,9 +470,18 @@ class LaunchReader {
         }
         const operand = args[index];
         if (command) {
+            // Under xargs, a script that is one word without a blank, such as `{}`, is a placeholder
+            // for what stdin hands it: `echo X | xargs -I{} sh -c {}`.
+            if (this.stdinArgs && (operand === undefined || !/\s/.test(operand.text))) {
+                return STDIN_SCRIPT;
+            }
             return operand === undefined ? NOTHING : this.script(operand, 'bash', false);
         }
-        return operand === undefined || stdin ? this.fromStdin('bash') : NOTHING;
+        if (operand === undefined || stdin) {
+            return this.fromStdin('bash');
+        }
+        // The script file it runs, for the finder to read.
+        return { kind: 'nothing', scriptFile: operand, env: this.env, chdirs: this.chdirs };
     }
     /**
      * `pwsh` and `powershell`: `-Command` runs the rest of the line, `-EncodedCommand` a base64 UTF-16LE script,
