@@ -5,7 +5,8 @@ description: Add a teamrig CLI command, or a flag to one, with its help text, gu
 
 # Add a command
 
-A command is an entry in `COMMANDS` in `src/cli/run.ts`. Three docs are held to the CLI by specs, so a command or
+A command is for all users (CONTRIBUTING.md, Where a change lives): build it for any team, with what differs per team
+read from the team config, never one team's names or paths. A command is an entry in `COMMANDS` in `src/cli/run.ts`. Three docs are held to the CLI by specs, so a command or
 flag missing from any of them fails `npm test`.
 
 1. Write the handler in `src/cli/commands/` (a new file, or its group's file such as `inbox.ts`), with its spec

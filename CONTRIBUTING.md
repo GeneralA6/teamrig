@@ -41,6 +41,30 @@ the rules that apply on every turn, and the project skills in `.claude/skills/` 
   template's `## Alternatives` (the options weighed and why this one won). There is no decisions folder: the reasons
   live in the code, its issues and its pull requests, and [how it works](docs/how-it-works.md) shows how the parts fit.
 - When a step in a skill turns out wrong, fix the skill in the same pull request.
+- **Generic first**: every change has a reach, decided before it is built and stated in its task and its pull request
+  (see [Where a change lives](#where-a-change-lives)).
+
+## Where a change lives
+teamrig is its own main user: its own sessions build it with it, so a fix they need is most often one every team
+needs. Each change has one of three reaches, and generic is the default:
+
+| Reach | Where it lives | Such as |
+| --- | --- | --- |
+| **all users** | the plugin: a command or flag (`src/`), a config key with a default, a hook, a plugin skill (`plugins/teamrig/skills/`), the core rules | a check flag, a guard, a step of the guide |
+| **teamrig development** | this repository's own tooling: `.claude/skills/dev-*`, `tools/`, `.github/`, CONTRIBUTING.md, CLAUDE.md | the ship tool, the docs checks, a CI gate |
+| **one team** | that team's own files: its team rules, its sessions' skills and memory, outside this repository | a team's repository names, its owner's decisions |
+
+Decide it by asking, in order:
+
+1. Would a team that never touches teamrig's code need this, maybe with values of its own? Then it is for **all
+   users**: ship it in the plugin, and put any value that differs per team in a config key with a default, never
+   hard-coded.
+2. Is it about building, testing, documenting or releasing teamrig itself? Then it is **teamrig development**.
+3. Only what neither answers is for **one team**. A one-team stopgap for a need that is really generic names the
+   all-users task that replaces it (`stopgap T<id>`).
+
+A task says its reach in its description, an approval request in its note, and a pull request in its `## Reach`
+section. A reviewer who reads a one-team or teamrig-development reach on what is really generic asks for it to move.
 
 ## Sign-off (DCO)
 Every commit must carry a `Signed-off-by:` line that matches the commit author, certifying the
@@ -172,7 +196,7 @@ is turned off.
   `tools/ci/github-format.test.ts` holds the forms, `labels.json` and the template to it.
 
 ## Pull requests
-- **The description**: the template asks for What, Why, Changes, Old-code proof (for a fix, the regression test that
+- **The description**: the template asks for What, Why, Reach (see [Where a change lives](#where-a-change-lives)), Changes, Old-code proof (for a fix, the regression test that
   fails on the old code), Tests and Issue (`Fixes #<n>` or `Refs #<n>`), then the checklist.
 - **From a fork**: fork the repository, branch off its `main`, and open the pull request against this repository's
   `main`. CI runs it with no secrets and a read-only token, and an outside contributor's run waits for the
