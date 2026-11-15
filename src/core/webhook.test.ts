@@ -42,6 +42,11 @@ describe('httpWebhook', () => {
         if (request.url === '/slow') {
           return;
         }
+        if (request.url === '/moved') {
+          response.writeHead(307, { location: `${base}/elsewhere` });
+          response.end();
+          return;
+        }
         response.writeHead(request.url === '/gone' ? 404 : 204);
         response.end();
       });
@@ -71,6 +76,12 @@ describe('httpWebhook', () => {
   it('names the status of a refused post, and a post with no answer in time', async () => {
     assert.equal(await httpWebhook().post(`${base}/gone`, 'RAN R1'), 'the webhook answered HTTP 404');
     assert.equal(await httpWebhook(50).post(`${base}/slow`, 'RAN R1'), 'the webhook did not answer within 50 ms');
+  });
+
+  it('follows no redirect: the post fails and the address it points to hears nothing', async () => {
+    heard.length = 0;
+    assert.match((await httpWebhook().post(`${base}/moved`, 'RAN R1')) ?? '', /^the webhook could not be reached/);
+    assert.deepEqual(heard.map((request) => request.path), ['/moved']);
   });
 
   it('never quotes the URL when it is not one or cannot be reached', async () => {

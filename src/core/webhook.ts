@@ -53,8 +53,8 @@ export function chatWebhook(timeoutMs: number = WEBHOOK_TIMEOUT_MS): ChatWebhook
 
 /**
  * A chat webhook over HTTP: a JSON POST of `content`, with every mention turned off so a note that names
- * `@everyone` or a role pings no one. It sends to any URL it is given; teamrig posts through `chatWebhook`, which
- * keeps it to https.
+ * `@everyone` or a role pings no one, and following no redirect. It sends to any URL it is given; teamrig posts
+ * through `chatWebhook`, which keeps it to https.
  */
 export function httpWebhook(timeoutMs: number = WEBHOOK_TIMEOUT_MS): ChatWebhook {
   return {
@@ -65,6 +65,8 @@ export function httpWebhook(timeoutMs: number = WEBHOOK_TIMEOUT_MS): ChatWebhook
       try {
         const response = await fetch(url, {
           method: 'POST',
+          // A redirect would carry the post to an address the config never named, http included: it fails instead.
+          redirect: 'error',
           signal: AbortSignal.timeout(timeoutMs),
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ content: fitted(content), allowed_mentions: { parse: [] } }),
