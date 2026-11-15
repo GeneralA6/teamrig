@@ -104,6 +104,19 @@ describe('teamrig open', () => {
       assert.deepEqual(after.keptFocus, []);
       assert.equal(after.started.length, 1);
     });
+
+    it("keeps the focus while a session's own meeting with the owner is on, and gives it once it ended (T2985)", async () => {
+      const kit = new CliHarness(TEAM);
+      assert.equal((await kit.run(['meeting', 'start', '--about', 'the cache design', '--session', 'bravo'])).code, EXIT.ok);
+      const during = new FakeProcesses().onRun('powershell.exe', { kind: 'exited', code: 0 });
+      assert.equal((await kit.run(['open', 'alpha'], { probe: FOLDERS, processes: during, platform: 'win32' })).code, EXIT.ok);
+      assert.deepEqual(during.keptFocus, ['wt.exe']);
+
+      assert.equal((await kit.run(['meeting', 'end', '--session', 'bravo'])).code, EXIT.ok);
+      const after = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+      assert.equal((await kit.run(['open', 'alpha'], { probe: FOLDERS, processes: after, platform: 'win32' })).code, EXIT.ok);
+      assert.deepEqual(after.keptFocus, []);
+    });
   });
 
   it('refuses a session the host has no room for, and opens the lead whatever the room', async () => {
