@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { braceAlternatives, globRegExp, hasWildcard } from './glob.ts';
+import { braceAlternatives, globRegExp, hasWildcard, type GlobOptions } from './glob.ts';
 
-const ANY = { ignoreCase: false, dotfiles: true };
-const BASH = { ignoreCase: false, dotfiles: false };
+const ANY: GlobOptions = { ignoreCase: false, dotfiles: true, sets: 'bash' };
+const BASH: GlobOptions = { ignoreCase: false, dotfiles: false, sets: 'bash' };
 
 describe('globRegExp', () => {
   it('spans folders with **, none too, and keeps * and ? inside one name', () => {
@@ -88,8 +88,32 @@ describe('globRegExp', () => {
   });
 
   it('ignores case when told', () => {
-    assert.equal(globRegExp('C:/Users/*/.npmrc', { ignoreCase: true, dotfiles: true }).test('c:/users/u/.NPMRC'), true);
+    assert.equal(globRegExp('C:/Users/*/.npmrc', { ignoreCase: true, dotfiles: true, sets: 'bash' }).test('c:/users/u/.NPMRC'), true);
     assert.equal(globRegExp('/a/.npmrc', ANY).test('/a/.NPMRC'), false);
+  });
+});
+
+describe('globRegExp, a set read as bash or as ripgrep (T2357)', () => {
+  const GREP: GlobOptions = { ...ANY, sets: 'ripgrep' };
+
+  it('reads a set holding a / as plain text in bash, and as a set that fits the / in ripgrep', () => {
+    assert.deepEqual(['b[./]pem', 'b.pem', 'b/pem'].map((path) => globRegExp('b[./]pem', ANY).test(path)), [true, false, false]);
+    assert.deepEqual(['b[./]pem', 'b.pem', 'b/pem'].map((path) => globRegExp('b[./]pem', GREP).test(path)), [false, true, true]);
+    assert.equal(hasWildcard('b[./]pem', 'bash'), false);
+    assert.equal(hasWildcard('b[./]pem', 'ripgrep'), true);
+  });
+
+  it('keeps a negated set off a / in bash, and lets it fit one in ripgrep', () => {
+    assert.equal(globRegExp('b[!a]pem', ANY).test('b/pem'), false);
+    assert.equal(globRegExp('b[!a]pem', GREP).test('b/pem'), true);
+    assert.equal(globRegExp('*[/]e.pem', GREP).test('sub/e.pem'), true);
+  });
+
+  it('takes a ] right after the [ or its ! as a member, in both readings', () => {
+    for (const options of [ANY, GREP]) {
+      assert.deepEqual(['xb', 'x]', 'xa'].map((path) => globRegExp('x[!]a]', options).test(path)), [true, false, false]);
+      assert.deepEqual(['x]', 'xa', 'xb'].map((path) => globRegExp('x[]a]', options).test(path)), [true, true, false]);
+    }
   });
 });
 
@@ -160,14 +184,14 @@ describe('braceAlternatives', () => {
 
 describe('hasWildcard', () => {
   it('finds *, ? and a [...] set, not a lone bracket', () => {
-    assert.deepEqual(['.env*', 'a?b', 'x[12]', 'a[', 'plain/.env'].map(hasWildcard), [true, true, true, false, false]);
+    assert.deepEqual(['.env*', 'a?b', 'x[12]', 'a[', 'plain/.env'].map((text) => hasWildcard(text, 'bash')), [true, true, true, false, false]);
   });
 
   it('finds none in a word with a set no character fits, as bash keeps that word as typed (T1960)', () => {
-    assert.deepEqual(['[z-a]', '.env[z-a]', '[z-a]*', 'a?[z-a]', '[z-a][12]'].map(hasWildcard), [false, false, false, false, false]);
+    assert.deepEqual(['[z-a]', '.env[z-a]', '[z-a]*', 'a?[z-a]', '[z-a][12]'].map((text) => hasWildcard(text, 'bash')), [false, false, false, false, false]);
   });
 
   it('finds a set that keeps a member beside a reversed range, or is negated (T1960)', () => {
-    assert.deepEqual(['[z-av]', '[!z-a]', '[^z-a]'].map(hasWildcard), [true, true, true]);
+    assert.deepEqual(['[z-av]', '[!z-a]', '[^z-a]'].map((text) => hasWildcard(text, 'bash')), [true, true, true]);
   });
 });

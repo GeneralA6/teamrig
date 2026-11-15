@@ -1,7 +1,9 @@
 import * as nodePath from 'node:path';
 import { resolveDir } from '../push-guard/location.ts';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
-import { globRegExp, hasWildcard, type GlobOptions } from './glob.ts';
+import { characterClasses, GlobAutomaton, telltaleCharacters } from './glob-automaton.ts';
+import { globNodes, globRegExp, hasWildcard, type GlobOptions } from './glob.ts';
+import { fitsSecret, type WalkedGlob } from './secret-walk.ts';
 
 /**
  * The files whose content is a secret, and how a word on a command line names one. A team's own globs come after
@@ -46,11 +48,21 @@ export const DEFAULT_SECRET_PATHS: readonly string[] = [
 /** Stands for a part of a path only known when the line runs: it matches inside a `*` or `**`, never a name a glob spells out. */
 const UNKNOWN = '\u0000';
 
+/**
+ * The most states `mayName` walks a word and the secret globs through before it counts the word as naming a secret,
+ * the safe side. A word of a few wildcards next to the default globs walks a few hundred.
+ */
+const MAX_WALK_STATES = 20_000;
+
+/** How a word with wildcards reads: `dotfiles` false for a bash word; `sets` as `SetReading` says. */
+export type WordReading = Pick<GlobOptions, 'dotfiles' | 'sets'>;
+
 interface CompiledGlob {
   readonly keep: boolean;
+  /** The glob anchored (`~/` at home, a relative one at any depth), as `pattern` and `automaton` read it. */
+  readonly anchored: string;
   readonly pattern: RegExp;
-  /** A name the glob's last part matches, to try a word with wildcards against: `x.pem` for `**\/*.pem`. */
-  readonly sampleName: string;
+  readonly automaton: GlobAutomaton;
   /**
    * True when a word whose last name is wildcards alone (`dir/*`) is tried against the glob: a secret folder
    * (`~/.ssh/**`), or a name spelled out in a folder spelled out (`~/.aws/credentials`) or starting with a dot
@@ -78,25 +90,22 @@ export class SecretPaths {
   }
 
   /**
-   * True when a word naming `path` may name a secret file: the path itself is one, or, when it holds wildcards, one
-   * of the secret names fits them (`.env*` fits `.env`). A last name of wildcards alone (`dir/*`) is tried only
-   * against the globs that let it (see `CompiledGlob.wildcardAlone`), else every `grep x *` would name a `*.pem` it
-   * cannot see. `dotfiles` is false for a bash word, whose wildcards never match a leading dot.
+   * True when a word naming `path` may name a secret file: the path itself is one, or, when it holds wildcards, some
+   * path fits both them and a secret glob, and no later `!glob` keeps that path (`.env.l*` fits `.env.local`;
+   * `b*.pem` fits `b.pem`), unless they only meet by coincidence (`fitsSecret`: `*.ts` and `.env.ts`). A last name
+   * of wildcards alone (`dir/*`) is tried only against the globs that let it (see `CompiledGlob.wildcardAlone`), else
+   * every `grep x *` would name a `*.pem` it cannot see.
    */
-  mayName(path: string, dotfiles: boolean): boolean {
+  mayName(path: string, reading: WordReading): boolean {
     const normal = normalisePath(path);
-    if (!hasWildcard(normal)) {
+    if (!hasWildcard(normal, reading.sets)) {
       return this.decide(normal);
     }
-    const options: GlobOptions = { ignoreCase: this.ignoreCase, dotfiles };
-    const word = globRegExp(normal, options);
-    const folder = normal.slice(0, normal.lastIndexOf('/') + 1).replace(/[*?]|\[[^\]/]+\]/g, 'x');
+    const word = new GlobAutomaton(globNodes(normal, { ...reading, ignoreCase: this.ignoreCase }), this.ignoreCase);
     const onlyWildcards = /^(?:[*?]|\[[^\]/]+\])+$/.test(normal.slice(normal.lastIndexOf('/') + 1));
-    return this.globs.some((glob) => {
-      const candidate = `${folder}${glob.sampleName}`;
-      const tried = !onlyWildcards || glob.wildcardAlone;
-      return tried && !glob.keep && word.test(candidate) && this.decide(candidate);
-    });
+    const walked = this.globs.map((glob): WalkedGlob => ({ ...glob, tried: !glob.keep && (!onlyWildcards || glob.wildcardAlone) }));
+    const chars = telltaleCharacters([normal, ...this.globs.map(({ anchored }) => anchored)]);
+    return fitsSecret(word, walked, characterClasses(chars, [word, ...this.globs.map(({ automaton }) => automaton)]), MAX_WALK_STATES);
   }
 
   private decide(path: string): boolean {
@@ -114,18 +123,19 @@ export class SecretPaths {
 function compileGlob(glob: string, home: string, ignoreCase: boolean): CompiledGlob {
   const keep = glob.startsWith('!');
   const body = (keep ? glob.slice(1) : glob).replaceAll('\\', '/');
-  const options: GlobOptions = { ignoreCase, dotfiles: true };
+  const options: GlobOptions = { ignoreCase, dotfiles: true, sets: 'bash' };
   const anchored = body === '~' || body.startsWith('~/') ? `${escapeGlob(home)}${body.slice(1)}` : isAbsolute(body) ? body : `**/${body.replace(/^\*\*\//, '')}`;
   const last = anchored.slice(anchored.lastIndexOf('/') + 1);
   const folderSpelled = anchored
     .slice(0, anchored.lastIndexOf('/'))
     .split('/')
-    .some((part) => part !== '' && !hasWildcard(part));
+    .some((part) => part !== '' && !hasWildcard(part, 'bash'));
   return {
     keep,
+    anchored,
     pattern: globRegExp(anchored, options),
-    sampleName: last.replace(/\*\*?|\?/g, 'x').replace(/\[[^\]]*\]/g, 'x'),
-    wildcardAlone: last === '**' || (!hasWildcard(last) && (folderSpelled || last.startsWith('.'))),
+    automaton: new GlobAutomaton(globNodes(anchored, options), ignoreCase),
+    wildcardAlone: last === '**' || (!hasWildcard(last, 'bash') && (folderSpelled || last.startsWith('.'))),
   };
 }
 

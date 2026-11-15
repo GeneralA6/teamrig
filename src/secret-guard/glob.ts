@@ -1,18 +1,51 @@
 /**
  * Globs as the secret guard reads them, compiled to regular expressions over a normalised path (forward slashes):
- * `**` spans folders (`**\/` also none), `*` and `?` stay inside one name, `[...]` is one character of a set, read as
- * bash reads it: a reversed range fits nothing, the members around it still do, and a set left empty is literal text.
+ * `**` spans folders (`**\/` also none), `*` and `?` stay inside one name, `[...]` is one character of a set: a `!` or
+ * `^` after the `[` negates it, its first member may be a `]`, a reversed range fits nothing, the members around it
+ * still do, and a set left empty is literal text.
  */
+
+/**
+ * How a glob's `[...]` sets read a `/`. `bash`, as a shell reads a word: a set holding a `/` is plain text, and a
+ * negated set never fits one. `ripgrep`, as a Grep's glob picks files: a `/` is a member like any other, and a negated
+ * set fits one, so `*[/]e.pem` picks `sub/e.pem` and `b[!a]pem` picks `b/pem`.
+ */
+export type SetReading = 'bash' | 'ripgrep';
 
 export interface GlobOptions {
   /** True on hosts whose file names ignore case (Windows, macOS). */
   readonly ignoreCase: boolean;
   /** False for a bash word, whose `*`, `?` and `[...]` never match the leading dot of a name. */
   readonly dotfiles: boolean;
+  readonly sets: SetReading;
 }
 
-/** A `[...]` set in a word, its inside captured. */
-const SET = /\[([^\]/]+)\]/g;
+/**
+ * What part of a glob a character comes from: text it spells, a one-character wildcard (`?`, a set), a `*`, or a `**`
+ * spanning folders. `SecretPaths.mayName` weighs which part of a word meets which part of a secret glob.
+ */
+export type CharRole = 'literal' | 'one' | 'star' | 'folders';
+
+/**
+ * One piece of a glob, as `globRegExp` writes it out and `GlobAutomaton` walks it: one character that the
+ * one-character expression `source` fits, a lookahead that the next character is no `.`, or pieces repeated or optional.
+ */
+export type GlobNode =
+  | { readonly kind: 'char'; readonly source: string; readonly role: CharRole }
+  | { readonly kind: 'notDot' }
+  | { readonly kind: 'repeat'; readonly body: readonly GlobNode[] }
+  | { readonly kind: 'optional'; readonly body: readonly GlobNode[] };
+
+const FOLDERS_CHAR: GlobNode = { kind: 'char', source: '.', role: 'folders' };
+const FOLDERS_NAME_CHAR: GlobNode = { kind: 'char', source: '[^/]', role: 'folders' };
+const FOLDERS_SLASH: GlobNode = { kind: 'char', source: '/', role: 'folders' };
+const STAR_CHAR: GlobNode = { kind: 'char', source: '[^/]', role: 'star' };
+const ONE_CHAR: GlobNode = { kind: 'char', source: '[^/]', role: 'one' };
+const NOT_DOT: GlobNode = { kind: 'notDot' };
+const repeat = (...body: GlobNode[]): GlobNode => ({ kind: 'repeat', body });
+const optional = (...body: GlobNode[]): GlobNode => ({ kind: 'optional', body });
+/** A name that never starts with a dot: what a bash `**` spans each folder of. */
+const BARE_NAME: readonly GlobNode[] = [NOT_DOT, repeat(FOLDERS_NAME_CHAR)];
 
 /** A character a regular expression's set reads as syntax. */
 const SET_SYNTAX = /[\\\]^-]/;
@@ -136,66 +169,105 @@ function setEnd(glob: string, index: number): number | undefined {
  * True when `text` holds a wildcard a shell or the guard expands: `*`, `?` or a `[...]` set. One set no character fits
  * (`[z-a]`) means none: the word can match no file, so bash keeps all of it as typed, and it names that literal path.
  */
-export function hasWildcard(text: string): boolean {
-  const sets = [...text.matchAll(SET)].map(([, body = '']) => setExpression(body));
-  return !sets.includes(undefined) && (sets.length > 0 || /[*?]/.test(text));
+export function hasWildcard(text: string, sets: SetReading): boolean {
+  let wildcard = false;
+  for (let index = 0; index < text.length; ) {
+    const set = setAt(text, index, sets);
+    if (set?.expression === undefined && set !== undefined) {
+      return false;
+    }
+    wildcard ||= set !== undefined || text[index] === '*' || text[index] === '?';
+    index = set?.end ?? index + 1;
+  }
+  return wildcard;
 }
 
 /** `glob` as a regular expression that matches a whole path. */
 export function globRegExp(glob: string, options: GlobOptions): RegExp {
-  let source = '';
+  return new RegExp(`^${nodesSource(globNodes(glob, options))}$`, options.ignoreCase ? 'i' : '');
+}
+
+/** The pieces of `glob`, read as `options` say. */
+export function globNodes(glob: string, options: GlobOptions): GlobNode[] {
+  const nodes: GlobNode[] = [];
   let index = 0;
   while (index < glob.length) {
     const nameStart = index === 0 || glob[index - 1] === '/';
-    const noDot = !options.dotfiles && nameStart ? '(?!\\.)' : '';
     if (glob.startsWith('**/', index) && nameStart) {
-      source += options.dotfiles ? '(?:.*/)?' : '(?:(?!\\.)[^/]*/)*';
+      nodes.push(options.dotfiles ? optional(repeat(FOLDERS_CHAR), FOLDERS_SLASH) : repeat(...BARE_NAME, FOLDERS_SLASH));
       index += 3;
     } else if (glob.startsWith('**', index) && nameStart && index + 2 === glob.length) {
-      source += options.dotfiles ? '.*' : '(?:(?!\\.)[^/]*(?:/|$))*';
+      nodes.push(...(options.dotfiles ? [repeat(FOLDERS_CHAR)] : [repeat(...BARE_NAME, FOLDERS_SLASH), ...BARE_NAME]));
       index += 2;
     } else if (glob.startsWith('/**', index) && index + 3 === glob.length) {
-      source += options.dotfiles ? '(?:/.*)?' : '(?:/(?!\\.)[^/]*)*';
+      nodes.push(options.dotfiles ? optional(FOLDERS_SLASH, repeat(FOLDERS_CHAR)) : repeat(FOLDERS_SLASH, ...BARE_NAME));
       index += 3;
     } else {
-      const [part, next] = globPart(glob, index);
-      source += (part.startsWith('[') || part.startsWith('(?:[^/]') ? noDot : '') + part;
-      index = next;
+      const part = globPart(glob, index, options.sets);
+      if (part.wildcard && nameStart && !options.dotfiles) {
+        nodes.push(NOT_DOT);
+      }
+      nodes.push(part.node);
+      index = part.end;
     }
   }
-  return new RegExp(`^${source}$`, options.ignoreCase ? 'i' : '');
+  return nodes;
 }
 
-/** The expression for one glob character, or a `[...]` set, at `index`, and the index after it. */
-function globPart(glob: string, index: number): [string, number] {
+/** `nodes` as the source of a regular expression. */
+function nodesSource(nodes: readonly GlobNode[]): string {
+  return nodes
+    .map((node) => {
+      switch (node.kind) {
+        case 'char':
+          return node.source;
+        case 'notDot':
+          return '(?!\\.)';
+        case 'repeat':
+          return `(?:${nodesSource(node.body)})*`;
+        case 'optional':
+          return `(?:${nodesSource(node.body)})?`;
+      }
+    })
+    .join('');
+}
+
+/** One glob character, a run of `*`, or a `[...]` set, at `index`: its piece, whether it is a wildcard, and the index after it. */
+function globPart(glob: string, index: number, sets: SetReading): { readonly node: GlobNode; readonly wildcard: boolean; readonly end: number } {
   const char = glob[index] ?? '';
   if (char === '*') {
     let end = index;
     while (glob[end] === '*') {
       end += 1;
     }
-    return ['(?:[^/]*)', end];
+    return { node: repeat(STAR_CHAR), wildcard: true, end };
   }
   if (char === '?') {
-    return ['(?:[^/])', index + 1];
+    return { node: ONE_CHAR, wildcard: true, end: index + 1 };
   }
-  if (char === '[') {
-    const close = glob.indexOf(']', index + 2);
-    const body = close === -1 ? '' : glob.slice(index + 1, close);
-    const set = close === -1 || body.includes('/') ? undefined : setExpression(body);
-    if (set !== undefined) {
-      return [set, close + 1];
-    }
+  const set = setAt(glob, index, sets);
+  if (set?.expression !== undefined) {
+    return { node: { kind: 'char', source: set.expression, role: 'one' }, wildcard: true, end: set.end };
   }
-  return [char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), index + 1];
+  return { node: { kind: 'char', source: char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), role: 'literal' }, wildcard: false, end: index + 1 };
+}
+
+/**
+ * The `[...]` set at `index`, as `sets` reads it: its expression (undefined when no character fits it) and the index
+ * after it. Undefined where the `[` is a plain character: no set closes there, or, read as bash, the set holds a `/`.
+ */
+function setAt(glob: string, index: number, sets: SetReading): { readonly expression: string | undefined; readonly end: number } | undefined {
+  const end = setEnd(glob, index);
+  const body = end === undefined ? '' : glob.slice(index + 1, end - 1);
+  return end === undefined || (sets === 'bash' && body.includes('/')) ? undefined : { expression: setExpression(body, sets), end };
 }
 
 /** The expression for the `[...]` set with inside `body`, or undefined when no character fits it. */
-function setExpression(body: string): string | undefined {
+function setExpression(body: string, sets: SetReading): string | undefined {
   const negated = body.startsWith('!') || body.startsWith('^');
   const members = setMembers(negated ? body.slice(1) : body);
   if (negated) {
-    return `[^/${members}]`;
+    return sets === 'bash' ? `[^/${members}]` : `[^${members}]`;
   }
   return members === '' ? undefined : `[${members}]`;
 }
