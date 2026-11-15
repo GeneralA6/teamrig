@@ -89,9 +89,10 @@ describe('teamrig issue sync --push', () => {
     assert.equal(lines[SHOWN_CHANGES + 1], '... and 2 more');
   });
 
-  it('refuses --auto, as the push is run by hand', async () => {
+  it("refuses --auto, as the hooks' sync sends the push itself when github.statusPush is on", async () => {
     const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'sync', '--push', '--auto'], { gh: issues(), ...AS_LEAD });
     assert.equal(result.code, EXIT.refused, result.stdout.join('\n'));
+    assert.match([...result.stdout, ...result.stderr].join('\n'), /github\.statusPush/u);
   });
 
   it('with --yes sends the plan through the shipped label and close calls', async () => {

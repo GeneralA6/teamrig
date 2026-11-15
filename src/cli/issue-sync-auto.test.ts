@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
+import { isIssueQuery } from '../github/gh.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
@@ -130,5 +131,70 @@ describe('teamrig issue sync --auto', () => {
     const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'sync', '--auto', '--repo', 'acme/web'], { gh: new FakeGh() });
     assert.equal(result.code, EXIT.refused);
     assert.match([...result.stdout, ...result.stderr].join('\n'), /--auto reads every repository of github\.repos/);
+  });
+});
+
+describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
+  const pushTeam = (github: JsonRecord): JsonRecord => ({ ...TEAM, github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' }, ...github } });
+  /** The GitHub calls a run made besides its issue lists: label reads and writes. */
+  const writes = (gh: FakeGh): string[] => gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' '));
+
+  it('after the import, labels each issue a task holds with its status, at most autoPushWrites(everyMinutes) a run', async () => {
+    const kit = new CliHarness(pushTeam({ statusPush: true, everyMinutes: 5 }));
+    const gh = new FakeGh()
+      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] }), ghIssue('acme/web', 8, { title: 'Add search' })])
+      .holds('acme/api', [])
+      .hasLabels('acme/web', ['status:triaged']);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(writes(gh), [
+      'api repos/acme/web/labels/status%3Atriaged',
+      'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:triaged',
+      'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:triaged',
+    ]);
+    assert.ok(result.stdout.includes('PUSHED 2 change(s), 2 write(s); at most 20 a run, the rest planned again on the next'), result.stdout.join('\n'));
+    const wrote = result.stdout.find((line) => line.startsWith('WROTE ')) ?? '';
+    assert.ok(!wrote.includes('GitHub was only read'), wrote);
+  });
+
+  it('shares the run writes across the repositories, in their order, leaving the rest for the next run', async () => {
+    const kit = new CliHarness(pushTeam({ statusPush: true, everyMinutes: 1 }));
+    const three = (repo: string): JsonRecord[] => [1, 2, 3].map((number) => ghIssue(repo, number, { title: `Work ${number}` }));
+    const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:triaged']).hasLabels('acme/api', ['status:triaged']);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(
+      result.stdout.filter((line) => /^(PUSH|PUSHED) /u.test(line)),
+      [
+        'PUSH acme/web: 3 to change, 0 unchanged',
+        'PUSH acme/api: 1 to change, 0 unchanged, 2 left for the next run',
+        'PUSHED 4 change(s), 4 write(s); at most 4 a run, the rest planned again on the next',
+      ],
+    );
+  });
+
+  it('sends nothing to GitHub when github.statusPush is off, as by default', async () => {
+    const kit = new CliHarness(pushTeam({ everyMinutes: 5 }));
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login' })]).holds('acme/api', []);
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(writes(gh), []);
+    assert.ok(result.stdout.some((line) => line.startsWith('WROTE ') && line.endsWith('; GitHub was only read')), result.stdout.join('\n'));
+  });
+
+  it('fails the run on a refused write and tells the lead once, never pushing a repository the import could not read', async () => {
+    const kit = new CliHarness(pushTeam({ statusPush: true }));
+    const gh = new FakeGh()
+      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login' })])
+      .answers('acme/api', REFUSED)
+      .hasLabels('acme/web', ['status:triaged'])
+      .failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.equal(result.code, EXIT.failed, [...result.stdout, ...result.stderr].join('\n'));
+    assert.ok(!writes(gh).some((args) => args.includes('acme/api')), writes(gh).join('\n'));
+    const told = githubLines(kit, 'lead').find((line) => line.startsWith('GitHub sync could not read ')) ?? '';
+    assert.match(told, /acme\/web \(status push: the gh login may not label acme\/web#7: save a token for acme /u);
+    assert.match(told, /acme\/api \(/u);
+    assert.deepEqual([...(parseSyncState(kit.files.get(STATE) ?? '')?.failing ?? [])].sort(), ['acme/api', 'acme/web']);
   });
 });
