@@ -1240,7 +1240,9 @@ Flags:
 - `--auto`: what the hooks start. It writes as `--yes` does, then posts one inbox line, from `github`, to each owner
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
-  ref only, at most ten named). It reads every repository, so it refuses `--repo`.
+  ref only, at most ten named). It reads every repository, so it refuses `--repo`. With `github.statusPush` on it
+  then sends the status push (`--push --yes`) too, its writes per run lowered so an hour of runs sends at most 250
+  (every 15 minutes 40 a run, every 5 minutes 20); a failed write is told to the lead like a repository that fails.
 - `--push`: plans the other way, from the task list to the issues: for each issue a task holds by its
   `gh:<owner>/<name>#<number>` ref, the writes that make the issue show the task's status. An active task gives its
   issue one label (`open` `status:triaged`, `in-progress` `status:in-progress`, `waiting` `status:waiting`,
@@ -1248,11 +1250,13 @@ Flags:
   dropped one as not planned. It plans against the issues as GitHub lists them now, so a label someone changed by
   hand is set back and a run that stopped half way is planned again whole. It never reopens an issue a person
   closed: a `KEPT` line names it, and an `UNLISTED` line an active task's issue that is not open on GitHub. A run
-  sends at most 40 writes (half GitHub's limit of 80 a minute) and leaves the rest for the next. On its own it only
+  sends at most 40 writes (half GitHub's limit of 80 a minute), shared by the repositories in order, and leaves the
+  rest for the next. On its own it only
   plans: it reads the issues and writes nothing. With `--yes` a session on the team sends the plan, a `SET` line for
   each change and a `PUSHED` line with the counts. A change that adds a `status:` label the repository lacks is held,
   with a `MISSING` line, until someone makes the label, since adding it would make a new one. The first failed write
-  stops that repository, and the next run plans it again from GitHub as it is. It refuses `--auto`. When a team task
+  stops that repository, and the next run plans it again from GitHub as it is. It refuses `--auto`: the hooks' sync
+  sends the push itself when `github.statusPush` is on. When a team task
   and an imported one hold the same issue, the team task speaks for it.
 
 Example:

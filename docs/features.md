@@ -115,7 +115,7 @@ teamrig runs with Claude Code in a terminal today; other AI tools and more task 
 | --- | --- | --- |
 | AI coding tools | Claude Code | Codex (T204) |
 | Editors | Any terminal Claude Code runs in; `teamrig open` opens tabs in six ([which](setup-by-hand.md#configuration)), each team's in a Windows Terminal window of its own with `open.teamWindow`; a new tab takes the focus only when you typed the open outside a meeting, and in tmux, macOS Terminal and Windows Terminal every other one leaves you in the tab you were in | VS Code family, JetBrains |
-| Task tools | Its own task list; GitHub issues imported into it, read-only (`teamrig issue sync`); its tasks moved to issues once (`teamrig issue migrate`); each held issue shows its task status as a `status:` label or a close, planned as a dry run, then sent (`teamrig issue sync --push`, `--yes` to send); comments on, labels and closes issues and pull requests by hand (`teamrig issue comment`, `teamrig issue label`, `teamrig issue close`); names the files a pull request conflicts on against its newest base (`teamrig pr conflicts`) | Jira, Linear, Asana (T206) |
+| Task tools | Its own task list; GitHub issues imported into it, read-only (`teamrig issue sync`); its tasks moved to issues once (`teamrig issue migrate`); each held issue shows its task status as a `status:` label or a close, planned as a dry run, then sent (`teamrig issue sync --push`, `--yes` to send), or sent by the automatic sync with `github.statusPush` on; comments on, labels and closes issues and pull requests by hand (`teamrig issue comment`, `teamrig issue label`, `teamrig issue close`); names the files a pull request conflicts on against its newest base (`teamrig pr conflicts`) | Jira, Linear, Asana (T206) |
 
 ## How it works
 

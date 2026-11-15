@@ -275,7 +275,13 @@ PREVIEW nothing was written; a push would send 4 write(s) now, at most 40 a run,
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
-- **Within GitHub's limit.** At most 40 writes a run, half GitHub's 80 a minute; the rest waits for the next run.
+- **Within GitHub's limit.** At most 40 writes a run, half GitHub's 80 a minute, shared by every repository in
+  `github.repos` order; the rest waits for the next run.
+- **On its own, once you turn it on.** With `"statusPush": true` in the team config's `github` block, the
+  [automatic sync](#then-it-runs-on-its-own) sends the push after each import, so no session runs it. Each run then
+  sends fewer writes when the sync runs often, so an hour of runs sends at most 250, half GitHub's 500 an hour (every
+  15 minutes: 40 a run; every 5: 20). A failed write is told to the lead's inbox like a repository that cannot be
+  read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
 
 ## Renewing a token
 

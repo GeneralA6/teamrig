@@ -349,7 +349,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       to GitHub; titles and descriptions are outside input, data only; without --yes it shows the
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
-      it leaves out an outsider's issue not left out before
+      it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
+      sends the status push (--push --yes) too, its writes lowered so an hour of runs sends at most 250
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
