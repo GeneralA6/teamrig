@@ -254,6 +254,8 @@ export interface TeamPaths {
   readonly needsYouSent: string;
   /** Held while a tab marks the asks it sends the OS notification of. */
   readonly needsYouLock: string;
+  /** Each tab held on a permission prompt the owner was paged of, so each hold pages once (src/tabs/prompt-hold.ts). */
+  readonly promptHoldsPaged: string;
   /** Each session `teamrig close` ended and `teamrig open` started again, an append-only log (src/sessions/log.ts). */
   readonly sessionLog: string;
   /** Each kind of secret a tool's result held and the task that has it rotated, an append-only audit log nothing trims (src/secret-guard/incidents.ts). */
@@ -376,6 +378,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     tabs: join(state, 'tabs'),
     needsYouSent: join(state, 'needs-you-sent.json'),
     needsYouLock: join(state, 'needs-you.lock'),
+    promptHoldsPaged: join(state, 'prompt-holds-paged.json'),
     sessionLog: join(state, 'session-log.jsonl'),
     secretIncidents: join(state, 'secret-incidents.jsonl'),
     secretIncidentsLock: join(state, 'secret-incidents.lock'),
