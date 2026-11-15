@@ -273,7 +273,7 @@ describe('teamrig issue edit', () => {
     const denied = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)\n' });
     const failed = await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', SPEC], { ...AS_LEAD, gh: denied });
     assert.equal(failed.code, EXIT.failed);
-    assert.match(failed.stdout.join('\n'), /^FAILED acme\/web#7: the gh login may not edit the body of acme\/web#7: .*; the body is as it was$/mu);
+    assert.match(failed.stdout.join('\n'), /^FAILED acme\/web#7: the token saved as teamrig-gh-acme may not edit the body of acme\/web#7: .*; the body is as it was$/mu);
     const gh = new FakeGh();
     const off = await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', SPEC], { gh, env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' } });
     assert.equal(off.code, EXIT.ok);

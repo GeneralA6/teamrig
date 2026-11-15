@@ -111,7 +111,7 @@ describe('listIssues', () => {
 
   it('reads no pull request link from an issue GitHub gives no count for', async () => {
     const node = { ...ghIssue('acme/web', 7), closedByPullRequestsReferences: { totalCount: 'many' } };
-    const list = await listIssues(new FakeGh().holds('acme/web', [node]), LOGIN, OPEN);
+    const list = await listIssues(new FakeGh().holds('acme/web', [node]), TOKEN, OPEN);
     assert.deepEqual(list.kind === 'listed' ? list.issues.map((issue) => issue.linkedPulls) : [], [0]);
   });
 
