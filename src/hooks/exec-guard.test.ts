@@ -133,7 +133,7 @@ describe('execGuardOutput', () => {
       bash("printf 'teamrig owner next T1\\n' | sh"),
       bash('echo dGVhbXJpZw== | base64 -d | bash'),
       bash('cat cmd.txt | bash -s'),
-      bash('echo "teamrig owner next T1" | env -i bash'),
+      bash('echo "teamrig owner next T1" | env TERM=dumb bash'),
       bash('echo "teamrig owner next T1" | bash -c bash'),
       bash("bash -c 'echo x | sh'"),
       powershell("'teamrig owner next T1' | pwsh -Command -"),
@@ -593,7 +593,7 @@ describe('execGuardOutput', () => {
     const typed = `echo '{"origin":"composer","args":"exec approve R1 --session lead"}' | `;
     for (const [payload, command] of [
       [bash(`${typed}teamrig hook slash-command`), 'teamrig hook slash-command'],
-      [bash(`${typed}env -u CLAUDECODE teamrig hook slash-command`), 'teamrig hook slash-command'],
+      [bash(`${typed}env -u TERM teamrig hook slash-command`), 'teamrig hook slash-command'],
       [bash('teamrig hook session-start < start.json'), 'teamrig hook session-start'],
       [bash('git status && teamrig hook inbox-reminder < prompt.json'), 'teamrig hook inbox-reminder'],
       [bash("bash -c 'teamrig hook slash-command < typed.json'"), 'teamrig hook slash-command'],
@@ -617,6 +617,9 @@ describe('execGuardOutput', () => {
     }
     assert.equal(quiet.reads(), 0);
     assert.equal(quiet.checks(), 0);
+    const cleared = await verdict(bash(`${typed}env -u CLAUDECODE teamrig hook slash-command`), quiet);
+    assert.equal(cleared?.decision, 'deny');
+    assert.match(cleared.reason, /changes \$CLAUDECODE.*`teamrig hook slash-command` takes the tab/);
   });
 
   it('refuses a teamrig hook call through a program only known when it runs, and no other hook command such a program runs', async () => {
@@ -682,5 +685,102 @@ describe('execGuardOutput: a Bash line on Windows (T2319)', () => {
     assert.equal(await verdict(bash(`teamrig exec approve R1 --session alpha --note 'a${bs(2)}b'`), quiet), undefined);
     assert.equal(quiet.reads(), 1);
     assert.deepEqual(quiet.checked(), [INSTALL]);
+  });
+});
+
+describe('execGuardOutput, binding the tab to a session', () => {
+  const UNBOUND: TabIdentity = { kind: 'unbound', why: 'this tab is not bound to a session of the team' };
+
+  it('refuses a start or inbox read naming another session of the team, through any client', async () => {
+    for (const payload of [
+      bash('teamrig start --session bravo'),
+      bash('teamrig inbox read --session bravo'),
+      bash('teamrig inbox read --session lead --wait'),
+      bash('npx teamrig start --session bravo'),
+      bash('node ./copy/main.js inbox read --session bravo'),
+      bash('bash -c "teamrig start --session bravo"'),
+      powershell('& teamrig.cmd start --session bravo'),
+    ]) {
+      const found = await verdict(payload);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.match(found.reason, /names --session (bravo|lead), but this tab is alpha's/);
+    }
+  });
+
+  it("passes the tab's own session, by id or by a name it has had, and a session the team has not", async () => {
+    for (const command of ['teamrig start --session alpha', 'teamrig inbox read --session app-alpha', 'teamrig start --session nobody']) {
+      assert.equal(await verdict(bash(command)), undefined, command);
+    }
+  });
+
+  it('refuses another session with the Claude Code variable cleared, for both reasons', async () => {
+    for (const payload of [
+      bash('env -u CLAUDECODE teamrig inbox read --session bravo'),
+      bash('CLAUDECODE= teamrig start --session bravo'),
+      bash('env -i PATH=/usr/bin teamrig inbox read --session bravo'),
+      powershell("$env:CLAUDECODE=''; teamrig start --session bravo"),
+    ]) {
+      const found = await verdict(payload);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.match(found.reason, /changes \$CLAUDECODE.*names --session bravo, but this tab is alpha's/);
+    }
+  });
+
+  it('lets a tab no mark binds yet bind to any session', async () => {
+    assert.equal(await verdict(bash('teamrig start --session bravo'), env(UNBOUND)), undefined);
+  });
+
+  it('refuses a bind whose session is only known when it runs, or that a changed session variable steers', async () => {
+    for (const payload of [
+      bash('teamrig start --session "$S"'),
+      bash('teamrig inbox "$C" --session bravo'),
+      bash('TEAMRIG_SESSION=bravo teamrig start'),
+      bash('export TEAMRIG_SESSION=bravo; teamrig inbox read'),
+      bash('env CLAUDE_CODE_SESSION_ID=00000000-0000-0000-0000-000000000000 teamrig start'),
+      powershell("$env:TEAMRIG_SESSION = 'bravo'; teamrig start"),
+    ]) {
+      assert.equal((await verdict(payload))?.decision, 'deny', JSON.stringify(payload));
+    }
+  });
+
+  it('reads the identity only for a bind that names a session or runs on a line that steers one', async () => {
+    const quiet = env();
+    assert.equal(await verdict(bash('teamrig start'), quiet), undefined);
+    assert.equal(await verdict(bash('teamrig inbox read'), quiet), undefined);
+    assert.equal(await verdict(bash('teamrig inbox add --to bravo --text hi'), quiet), undefined);
+    assert.equal(quiet.reads(), 0);
+    assert.equal(await verdict(bash('teamrig start --session alpha'), quiet), undefined);
+    assert.equal(quiet.reads(), 1);
+  });
+
+  it('passes a line that only mentions the words', async () => {
+    assert.equal(await verdict(bash('echo "teamrig start --session bravo"')), undefined);
+    assert.equal(await verdict(bash('npm start')), undefined);
+  });
+});
+
+describe('execGuardOutput, the variable Claude Code marks its tool calls with', () => {
+  it('refuses a line that clears CLAUDECODE, in any shell, without reading the identity', async () => {
+    for (const payload of [
+      bash('env -u CLAUDECODE teamrig inbox read'),
+      bash('CLAUDECODE= teamrig start'),
+      bash('env -i PATH=/usr/bin teamrig list'),
+      bash('unset CLAUDECODE'),
+      bash('export -n CLAUDECODE && teamrig list'),
+      powershell("$env:CLAUDECODE=''; teamrig start"),
+      powershell('Remove-Item Env:CLAUDECODE'),
+      powershell("[Environment]::SetEnvironmentVariable('CLAUDECODE', $null)"),
+    ]) {
+      const quiet = env();
+      const found = await verdict(payload, quiet);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.match(found.reason, /changes \$CLAUDECODE/);
+      assert.equal(quiet.reads(), 0);
+    }
+  });
+
+  it('passes a line that reads it', async () => {
+    assert.equal(await verdict(bash('echo "$CLAUDECODE"')), undefined);
+    assert.equal(await verdict(powershell('Write-Output $env:CLAUDECODE')), undefined);
   });
 });

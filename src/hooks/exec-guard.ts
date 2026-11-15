@@ -1,6 +1,7 @@
 import type { HookAsks } from '../config/types.ts';
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
+import { ENV } from '../core/home.ts';
 import { SETTINGS_WRITERS, settingsWriteRefusal, WRITE_SWITCH } from '../core/settings-writers.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { placeProgram, placeScript, type ClientFile, type ClientInstalls, type ClientSearch, type WordAt } from '../exec/client-launch.ts';
@@ -9,6 +10,7 @@ import { runsOf, type LineRuns, type OpaqueRun, type ProgramRun, type ProgramsCo
 import { programName } from '../push-guard/launchers.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
 import { holdBackOutput } from './permission.ts';
+import { changesVariable } from './variable-change.ts';
 
 /**
  * The exec guard (T755, spec §7): an agent tab may run a `teamrig exec` review (approve, refuse, escalate) only as
@@ -248,6 +250,68 @@ function hookNameOf(words: readonly ShellWord[]): string | undefined {
   return commandOf(words, HOOK_COMMANDS);
 }
 
+/**
+ * True when the words start a command that binds the tab to a session, `start` or `inbox read`: the CLI marks the
+ * tab with the session it names, by `--session` or `$TEAMRIG_SESSION`. It finds them after any program's words.
+ */
+function startsBind(words: readonly ShellWord[]): boolean {
+  const [group, command] = words;
+  return group?.dynamic === false && (group.text === 'start' || (group.text === 'inbox' && command?.dynamic === false && command.text === 'read'));
+}
+
+/** A bind call a line runs: its command, every `--session` value it names, and whether a word of it is only known when it runs. */
+interface BindCall {
+  readonly command: string;
+  readonly sessions: readonly string[];
+  readonly unread: boolean;
+}
+
+/**
+ * The bind call a teamrig call's words run, read as the CLI reads them (only `--session <name>` names a session), or
+ * undefined when they run none. An `inbox` command only known when it runs may be `read`, so it counts as one.
+ */
+function bindCallOf(words: readonly ShellWord[]): BindCall | undefined {
+  const [group, command] = words;
+  const start = group?.dynamic === false && group.text === 'start';
+  const inbox = group?.dynamic === false && group.text === 'inbox' && command !== undefined && (command.dynamic || command.text === 'read');
+  if (!start && !inbox) {
+    return undefined;
+  }
+  const sessions = words.flatMap((word, index) => {
+    const value = words[index + 1];
+    return word.text === '--session' && value !== undefined ? [value.text] : [];
+  });
+  return { command: start ? 'teamrig start' : 'teamrig inbox read', sessions, unread: words.some((word) => word.dynamic) };
+}
+
+/**
+ * Why the guard refuses a bind call from a bound tab, or undefined when it binds the tab to its own session (T3081):
+ * a tab reads its inbox and starts only as itself, so a tool call can never move it to another session, whichever
+ * client runs it. `steered` is true when the line changes a variable the CLI binds by (`$TEAMRIG_SESSION`, the Claude
+ * Code session id). A tab no mark binds yet binds freely: that is how it first binds.
+ */
+function bindRefusalOf(call: BindCall, identity: TabIdentity, steered: boolean): string | undefined {
+  if (identity.kind === 'unbound') {
+    return undefined;
+  }
+  const command = `\`${call.command}\``;
+  const own = `--session ${identity.session}`;
+  if (call.unread) {
+    return `${command} here has a word only known when it runs, so the guard cannot tell which session it binds this tab to; write it out (${own}).`;
+  }
+  const other = call.sessions.find((named) => {
+    const id = identity.idOf(named);
+    return id !== undefined && id !== identity.session;
+  });
+  if (other !== undefined) {
+    return `${command} names --session ${other}, but this tab is ${identity.session}'s; a tab reads its inbox and starts only as its own session (${own}).`;
+  }
+  if (steered) {
+    return `${command} runs on a line that sets the session the CLI binds the tab by ($${ENV.session} or $${ENV.claudeSession}); name this tab's own (${own}) and leave those as they are.`;
+  }
+  return undefined;
+}
+
 /** A guarded command's words in a command, and the word before them, which names the client that runs them. */
 interface GuardedStart {
   readonly client: ShellWord;
@@ -378,6 +442,9 @@ const UNREADABLE =
 
 const FED_SHELL =
   'a shell here reads its commands from a pipe, so the guard cannot tell whether they review a request or act as the owner; run them directly, or hand the shell a heredoc, which the guard reads.';
+
+const CLAUDE_CODE_CHANGED =
+  `this line changes $${ENV.claudeCode}, which Claude Code sets so teamrig knows a command runs under it and keeps the checks that hold there; leave it as Claude Code set it.`;
 
 const FOREIGN_SHELL =
   'a package runner here hands its command line to a shell the line names (--script-shell, npm_config_script_shell or ComSpec) that the guard cannot read, so it cannot tell whether the line reviews a request or acts as the owner; leave the runner its own shell, or run the commands directly.';
@@ -515,11 +582,15 @@ export function runsOfReadings(readings: readonly string[], context: ProgramsCon
  * command through a client that is no install of this plugin, one only known when it runs, or one whose files differ
  * from its build; whenever the line runs a `teamrig owner` command, through any client, as it acts as the owner, or a
  * settings writer's write (`permissions trim --yes` and the rest of SETTINGS_WRITERS), as it changes a permission, or
- * a `teamrig hook` command, as it trusts the stdin the line gives it; and
- * when a shell on the line takes its commands from a pipe the guard cannot read, or a package runner hands its line to
- * a shell the line names that the guard cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec` calls start
- * once, and reads the tab's session only for a line that holds a review. A Bash line on Windows is read in each
- * reading bash may run (`toolCommandReadings`), so a call the line as written escapes is still refused.
+ * a `teamrig hook` command, as it trusts the stdin the line gives it; whenever a bound tab's `teamrig start` or `teamrig
+ * inbox read`, through any client, binds it to another session (`bindRefusalOf`); whenever the line changes
+ * `$CLAUDECODE`, which tells teamrig a command runs under Claude Code; and when a shell on the line takes its commands
+ * from a pipe the guard cannot read, or a package runner hands its line to a shell the line names that the guard
+ * cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec`
+ * calls start once, and reads the tab's session only for a line that holds a review, or a bind that names a session
+ * or runs where the line changes one. A Bash line on Windows is read in each reading bash may run
+ * (`toolCommandReadings`), so a call the line as written escapes is still refused. It reads only the line's own words:
+ * a script the line runs is not covered, so these are checks against mistakes.
  */
 export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Promise<string> {
   if (!isRecord(payload)) {
@@ -552,14 +623,30 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     const words = opaqueGuardedWords(run, startsHook);
     return words === undefined ? [] : [words];
   });
+  const binds = [
+    ...runs.programs.flatMap((run) => {
+      const launch = teamrigLaunchOf(run, startsBind);
+      const call = launch === undefined ? undefined : bindCallOf(launch.words);
+      return call === undefined ? [] : [call];
+    }),
+    ...runs.opaque.flatMap((run) => {
+      const words = opaqueGuardedWords(run, startsBind);
+      const call = words === undefined ? undefined : bindCallOf(words);
+      return call === undefined ? [] : [call];
+    }),
+  ];
   const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
   const fed = runs.fedShells.length > 0;
   const foreign = runs.foreignShells.length > 0;
-  const quiet = calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && opaqueSettings.length === 0 && opaqueHook.length === 0;
-  if (quiet && !unread && !fed && !foreign) {
+  const cleared = changesVariable(runs, ENV.claudeCode);
+  const steered = changesVariable(runs, ENV.session) || changesVariable(runs, ENV.claudeSession);
+  const checkedBinds = binds.filter((call) => call.unread || call.sessions.length > 0 || steered);
+  const quiet =
+    calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && opaqueSettings.length === 0 && opaqueHook.length === 0 && checkedBinds.length === 0;
+  if (quiet && !unread && !fed && !foreign && !cleared) {
     return '';
   }
-  const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : [])];
+  const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : []), ...(cleared ? [CLAUDE_CODE_CHANGED] : [])];
   reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : call.kind === 'hook' ? [hookRefusalOf(call.name)] : [])));
   reasons.push(...opaqueOwner.map((words) => ownerRefusalOf(ownerActionOf(words))));
@@ -584,9 +671,10 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     }
   }
   const reviews = calls.map(({ call }) => call).filter((call) => call.kind === 'review');
-  if (reviews.length > 0) {
+  if (reviews.length > 0 || checkedBinds.length > 0) {
     const identity = await env.identity();
     reasons.push(...reviews.map((call) => reviewRefusalOf(call, identity)).filter((reason) => reason !== undefined));
+    reasons.push(...checkedBinds.map((call) => bindRefusalOf(call, identity, steered)).filter((reason) => reason !== undefined));
   }
   return reasons.length === 0 ? '' : holdBackOutput('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`, env.hookAsks);
 }
