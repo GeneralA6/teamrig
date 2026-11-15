@@ -75,8 +75,8 @@ On Windows Terminal, the meeting also dims every screen but the lead's window un
 dimming, a CRITICAL message that breaks through to the lead lifts it for two minutes
 (`meeting.spotlight.breakthroughSeconds`), and `meeting.spotlight.enabled: false` turns it off
 ([the spotlight](../../plugins/teamrig/skills/teamrig-guide/hooks.md#meeting-start-the-spotlight)).
-Under `teamrig statusline`, the lead's status line takes the meeting colour and every other tab's ends in
-`meeting on: held`, so a glance at any tab tells the team waits; `meeting.statusLine` sets the colour and the text
+Under `teamrig statusline`, the lead's status line starts with `Meeting: daily` in the meeting colour and every other
+tab's ends in `meeting on: held`, so a glance at any tab tells the team waits; `meeting.statusLine` sets the colour and the text
 ([teamrig statusline](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline)).
 
 The start counts as asking you every decision it lists. Between meetings the lead asks the new ones in batches:
@@ -84,8 +84,9 @@ The start counts as asking you every decision it lists. Between meetings the lea
 when a batch is due (`decisions.batchTimesUtc`, `decisions.batchAt`); a wait due before the next batch is asked at
 once. A decision that frees only Improvements work waits for the weekly Improvements batch on
 `focus.improvementsDay`, as on your agenda, and a dedicated session's is in no batch: it waits for its own meeting.
-In a tree of teams only the root team's lead holds the meeting, and its
-`DECISIONS` lists the waits of every team under it as `<team>/<id>`.
+In a tree of teams each team's lead holds its own meeting with you, over its subtree: its
+`DECISIONS` lists the waits of every team under it as `<team>/<id>`, and a card decided there never comes back on the
+root's agenda.
 
 ## Never stuck on a question
 

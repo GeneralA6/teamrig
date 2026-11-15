@@ -2534,8 +2534,10 @@ lead runs it. A start counts as asking the owner the decisions it lists: `teamri
 waits set since and the asked ones past due (since 0.126.0). `teamrig decisions` has no batch: it still lists a
 decision the agenda holds for the Improvements day.
 
-In a tree of teams only the root team's lead holds it; a child team's lead is refused: `REFUSED team web meets no
-owner: the owner's daily meeting is app/lead's, whose agenda lists web's waits on the owner`. The root lead's
+In a tree of teams each team's lead holds its own, in its own tab, at its own scope: a child team's lead's agenda
+covers its team and every team under it, holds messages to it alone and its `end` tells their sessions; a card it
+records `--decided` or `--later` there (`teamrig update ui/T3 --decided`, a lead above noting a task below) leaves the
+waits on the owner, so the root's meeting never asks it again (T2985). The root lead's
 `DECISIONS` ranks its own team's waits and those of each team under it in one list, a tie keeping its own first, then
 the teams depth first, named `<team>/<id>` (`web/T2`), each carded by its own team's rule; its hints add `--team
 <team>` to ask a question of a team under it and `<team>/<id>` to record an answer there. `GOALS` counts every team's
@@ -5914,13 +5916,14 @@ the team's `budget.targetPct`, `budget.paceEndHoursBeforeReset` and `budget.quie
 team's hooks last said the week's use counts from (`usage/team.week.json`), after a reset inside the week from that
 reset, and over the seven days before the week's reset only until those hooks name a start for this week. Outside a
 team, or once the reading's week reset, no pace is shown. The team config's `statusLine` turns `folder`, `branch` and `pace` off one by one (each is
-on by default; with `branch` off, git is never asked). While the owner's daily meeting is open on the root team
-(`teamrig meeting start`, until `meeting end` or its lapse), the lead's tab that started it prints its whole line
-in `meeting.statusLine.colour` (`#d75fd7` by default) and every other tab, a sub-team's too, adds
-`meeting.statusLine.heldText` (`meeting on: held`) last; `meeting.statusLine.enabled: false` turns both off. While
-a rush is in force ([teamrig burst start](#teamrig-burst-start)), every tab of the team adds `RUSH <goal> to <end>`
-after the five-hour use. The
-tab is known by `$TEAMRIG_SESSION` or its inbox mark, and the root team's meeting file is read once a tick. To go on in a session by hand,
+on by default; with `branch` off, git is never asked). While the owner's meeting is open on a team or a team above
+it (`teamrig meeting start`, until `meeting end` or its lapse), the lead's tab that started it leads its line with
+`Meeting: daily | ` and every other tab, a sub-team's too, adds `meeting.statusLine.heldText` (`meeting on: held`)
+last; only that mark takes `meeting.statusLine.colour` (`#8b57e3`, teamrig's purple, by default), and
+`meeting.statusLine.enabled: false` turns both off. While a rush is in force
+([teamrig burst start](#teamrig-burst-start)), every tab of the team adds `RUSH <goal> to <end>` after the five-hour
+use. The tab is known by `$TEAMRIG_SESSION` or its inbox mark, and the meeting files of its team and the teams above
+are read once a tick. To go on in a session by hand,
 [teamrig restore](#teamrig-restore) brings it back by its recorded Claude session. It also removes the folder's snapshots written more than
 8 days ago, which hold no reading of the current week, and the temporary files over an hour old that a status line
 stopped before its rename left, sweeping the folder at most once an hour (its `.pruned` file says when it last did),

@@ -60,8 +60,10 @@ status, and tell the human in the meeting as an FYI.
 Tell the human the meeting started in one line. `teamrig meeting agenda --session lead` prints the agenda again,
 during the meeting or to prepare the next one.
 
-In a tree of teams only the root team's lead holds the meeting: its `DECISIONS` also lists the waits of every team
-under it, named `<team>/<id>` (`web/T2`), and a child team's lead holds none.
+In a tree of teams each team's lead holds its own meeting with the human, in its own tab, over its subtree: its
+`DECISIONS` also lists the waits of every team under it, named `<team>/<id>` (`web/T2`). Record each answer with
+`teamrig update <team>/<id> --decided` (or `--later`): a card decided at a sub-team's meeting leaves the waits on the
+owner, so the root's meeting never asks it again.
 
 Your context refresh waits for the meeting: no handover ask and no restart until it ends, unless your context
 reaches `refresh.compactCeilingTokens` (185,000 by default), past which it goes on so you never run out of room.
