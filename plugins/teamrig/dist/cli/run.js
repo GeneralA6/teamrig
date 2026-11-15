@@ -196,7 +196,7 @@ const COMMANDS = {
     doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
     'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
     compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
-    'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await issueSyncCommands()).issueSync },
+    'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
     'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
     'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
     'issue close': { effect: 'write', flags: ['session', 'comment'], load: async () => (await issueCommands()).issueClose },
@@ -648,6 +648,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before
+  issue sync --push [--repo <owner/name>]   plans the other way: for each issue a task holds (ref gh:),
+      the writes that make it show the task's status: active tasks one label (open status:triaged,
+      in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
+      status: label taken off; done closes it as completed, dropped as not planned; never reopens an
+      issue a person closed, and names it; at most 40 writes a run; this version
+      only plans: it reads and writes nothing
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
       from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
       title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
