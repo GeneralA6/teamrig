@@ -104,20 +104,24 @@ export async function labelIssue(host: IssueHost, write: LabelWrite, say: (line:
       return false;
     }
   }
+  // A label made stays in the repository, so a later failure names it rather than saying nothing changed.
+  const done: string[] = [];
+  const failed = (reason: string): false => {
+    say(`FAILED ${shown}: ${reason}${done.length === 0 ? '; nothing was changed' : `; it already ${done.join(', ')}`}`);
+    return false;
+  };
   for (const label of toMake) {
     const made = await host.createLabel(write.target.repo, label);
     if (made.kind === 'failed') {
-      say(`FAILED ${shown}: ${made.reason}; nothing was changed`);
-      return false;
+      return failed(made.reason);
     }
     say(`MADE ${write.target.repo}: the label ${JSON.stringify(label.name)}, one teamrig makes`);
+    done.push(`made the label ${JSON.stringify(label.name)}`);
   }
-  const done: string[] = [];
   if (write.add.length > 0) {
     const added = await host.addLabels(write.target, write.add);
     if (added.kind === 'failed') {
-      say(`FAILED ${shown}: ${added.reason}; nothing was changed`);
-      return false;
+      return failed(added.reason);
     }
     say(`LABELED ${shown}: ${labelsText(write.add)}`);
     done.push(`added ${labelsText(write.add)}`);

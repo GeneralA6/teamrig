@@ -187,6 +187,14 @@ describe('labelIssue', () => {
     ]);
   });
 
+  it('names the label it made when the add after it fails, as a made label stays in the repository', async () => {
+    const refused = new FakeIssueHost().failsLabel('HTTP 403');
+    assert.deepEqual((await label(refused, { add: ['design'], remove: [] })).lines.slice(1), [
+      'MADE acme/web: the label "design", one teamrig makes',
+      'FAILED acme/web#7: HTTP 403; it already made the label "design"',
+    ]);
+  });
+
   it('changes nothing on the issue when the make fails, nor when a managed label is asked in another case', async () => {
     const refused = new FakeIssueHost().failsLabelCreate('HTTP 403');
     assert.deepEqual((await label(refused, { add: ['design'], remove: [] })).lines.slice(1), ['FAILED acme/web#7: HTTP 403; nothing was changed']);
