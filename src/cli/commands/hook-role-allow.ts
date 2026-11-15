@@ -3,14 +3,13 @@ import { recordField, stringField, type JsonRecord } from '../../core/guards.ts'
 import { toJsonlLine } from '../../core/jsonl.ts';
 import { ROLE_CAP_WINDOW_MS, roleAllowOutput, roleAllowRecord, roleAllowsSince, roleCapOutput, roleHolding } from '../../hooks/service-role-allow.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
-import { soleAreaOf } from '../../inbox/marks.ts';
 import { toolRoleCallOf } from '../../permissions/service-role-call.ts';
 import type { CommandTable } from '../../slash/plan.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { rosterOf, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
+import { tabSessionOf } from '../tab-session.ts';
 import { kitContextOf } from './hook-route-context.ts';
-import { inboxDepsOf } from './inbox.ts';
 
 /**
  * The session the tab holds roles as (T2984, condition C1): the one area its every inbox mark names, on the roster, and
@@ -19,10 +18,7 @@ import { inboxDepsOf } from './inbox.ts';
  */
 async function holderOf(runtime: CliRuntime, kit: Kit, config: KitConfig, claudeSession: string, caller: string): Promise<string | undefined> {
   const roster = await rosterOf(runtime, kit, config);
-  const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
-  const bound = soleAreaOf(marks, claudeSession);
-  const found = roster.lookup(caller);
-  return bound !== undefined && roster.ids.includes(bound) && found?.ok === true && found.id === bound ? bound : undefined;
+  return tabSessionOf(runtime.files, kit.paths.inboxMarks, roster, claudeSession, caller);
 }
 
 /**
