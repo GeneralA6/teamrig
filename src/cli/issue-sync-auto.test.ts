@@ -48,7 +48,7 @@ describe('teamrig issue sync --auto', () => {
     kit.clock.advance(15 * MINUTE);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
     assert.equal(githubLines(kit, 'lead')[2], 'GitHub sync reads every repository again (acme/api failed before)');
-    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map() });
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map(), mentions: new Map(), mentionWakes: new Map() });
   });
 
   it("tells the lead an outsider's issue it left out once, again only for a new one, also across a failed read", async () => {

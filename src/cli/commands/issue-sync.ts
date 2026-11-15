@@ -198,7 +198,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
   }
   if (auto) {
-    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security })).forEach(say);
+    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security, mentions: new Map(), mentionRoutes: [], mentionCuts: new Map() })).forEach(say);
   } else if (news.size > 0) {
     say(`NOTE only ${KIT_NAME} issue sync --auto tells the pull request news and keeps what it read, so the next run names it again`);
   }
