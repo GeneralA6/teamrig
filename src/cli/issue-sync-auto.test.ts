@@ -100,6 +100,23 @@ describe('teamrig issue sync --auto', () => {
     }
   });
 
+  it("reads the failed job's log of a session's own red pull request into a file the owner's line names, and wakes it", async () => {
+    const kit = new CliHarness({ ...TEAM, wake: { enabled: true }, github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } });
+    const issues = [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] })];
+    const failing = { checks: 'FAILURE', contexts: [{ __typename: 'CheckRun', name: 'test', conclusion: 'FAILURE', databaseId: 41 }] } as const;
+    const log = 'test\tRun tests\t2030-01-02T00:00:00.0000000Z not ok 3 - reads\ntest\tRun tests\t2030-01-02T00:00:01.0000000Z Error: exit code 1\n';
+    for (const pull of [ghPull('acme/web', 20, { head: 't1-login', checks: 'SUCCESS' }), ghPull('acme/web', 20, { head: 't1-login', ...failing, updatedAt: '2030-01-02T00:00:00Z' })]) {
+      kit.clock.advance(15 * MINUTE);
+      const gh = new FakeGh().holds('acme/web', issues).holdsPulls('acme/web', [pull]).holdsJobLog(41, log);
+      const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+      assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    }
+    const file = join(TEAM_HOME, 'state', 'github-ci', 'acme-web-20.md');
+    assert.deepEqual(githubLines(kit, 'bravo').at(-1), `GitHub pull requests: gh:acme/web#20 "Change 20": checks failing ("test" at "Run tests"; log end in ${file})`);
+    assert.match(kit.files.get(file) ?? '', /## Job "test", step "Run tests"\n\n```text\nnot ok 3 - reads\nError: exit code 1\n```/);
+    assert.equal((await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read('bravo')).length, 1);
+  });
+
   it('never overwrites a state file a newer teamrig wrote: --auto fails', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const newer = `{"v":${SYNC_STATE_FORMAT + 1},"startedAt":1,"failing":[],"later":true}\n`;

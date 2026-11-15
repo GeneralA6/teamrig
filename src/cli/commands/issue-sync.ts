@@ -3,6 +3,7 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
 import { importRules } from '../../github/map.ts';
 import { importedTasks, linkedRefs, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
+import { withCiExcerpts } from '../../github/ci-excerpt.ts';
 import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
 import type { IssueHost } from '../../issues/host.ts';
@@ -148,7 +149,10 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   }
   const owners = new Map([...(await register.snapshot()).state.tasks.values()].map((task) => [task.id, task.owner]));
   const watcher = config.github.watcher ?? config.roles.lead;
-  const news = eventsByRecipient(pullNews, (pull) => pullRecipient(pull, (task) => owners.get(task), watcher));
+  // Only --auto tells the news, so only it reads the failed jobs' logs for it and writes their excerpts.
+  const ci = auto ? await withCiExcerpts({ host, files: runtime.files, dir: kit.paths.githubCi, now: new Date(runtime.clock.now()).toISOString() }, pullNews) : { events: pullNews, lines: [] };
+  ci.lines.forEach(say);
+  const news = eventsByRecipient(ci.events, (pull) => pullRecipient(pull, (task) => owners.get(task), watcher));
   for (const [to, events] of news) {
     const { text, wake } = pullNewsText(events);
     say(`PULL NEWS ${to}${wake ? ' (wakes)' : ''}: ${text}`);

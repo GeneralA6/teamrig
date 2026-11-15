@@ -33,6 +33,14 @@ export type PullEventKind = 'opened' | 'merged' | 'closed' | 'conflict' | 'check
 export interface PullEvent {
   readonly kind: PullEventKind;
   readonly pull: HostPull;
+  /** For failing checks of a session's own pull request: the file its failed jobs' log ends went to (ci-excerpt.ts). */
+  readonly ci?: CiExcerpt;
+}
+
+/** Where a pull request's failed jobs' log ends were written, and each job's name and failed step (undefined when unread). */
+export interface CiExcerpt {
+  readonly file: string;
+  readonly jobs: readonly { readonly name: string; readonly step: string | undefined }[];
 }
 
 /** The events since the last read, and what the next read compares with. */
@@ -122,7 +130,7 @@ export function pullRecipient(pull: HostPull, ownerOf: (task: string) => string 
 }
 
 /** The task an inside author's own branch of the repository names (`t<id>-...`); undefined for a fork, an outsider or another branch name. */
-function ownBranchTask(pull: HostPull): string | undefined {
+export function ownBranchTask(pull: HostPull): string | undefined {
   return pull.fork || !isInsideAuthor(pull.authorAssociation) ? undefined : branchTaskOf(pull.head);
 }
 
@@ -140,6 +148,8 @@ export function eventsByRecipient(events: readonly PullEvent[], recipientOf: (pu
 const NAMED_PULLS = 8;
 /** How much of a pull request title an inbox line repeats. */
 const TITLE_CHARS = 60;
+/** How much of a CI job or step name an inbox line repeats. */
+const JOB_CHARS = 40;
 
 /** How each event reads in a line. */
 const EVENT_WORDS: Readonly<Record<PullEventKind, string>> = {
@@ -160,20 +170,21 @@ export interface PullNews {
 
 /**
  * The inbox line for `events`, one entry per pull request in the order first seen, at most NAMED_PULLS named and
- * the rest counted. A title is outside input: quoted, as data, and cut short. It wakes the session only for what
+ * the rest counted. A title is outside input: quoted, as data, and cut short. Failing checks with an excerpt name
+ * each failed job and step, quoted and cut the same way, and the file holding its log's end. It wakes the session only for what
  * needs its hand now (T3021 section 3): an outsider's new pull request, and a conflict or failing checks on a
  * session's own pull request (an inside author's branch that names a task). The rest (a merge, a close, a review, an
  * outsider's conflict or red checks, which are the outsider's to fix) waits for the session's next turn.
  */
 export function pullNewsText(events: readonly PullEvent[]): PullNews {
-  const byPull = new Map<string, { pull: HostPull; kinds: PullEventKind[] }>();
-  for (const { kind, pull } of events) {
-    const key = issueRef(pull.repo, pull.number);
-    const entry = byPull.get(key) ?? { pull, kinds: [] };
-    entry.kinds.push(kind);
+  const byPull = new Map<string, { pull: HostPull; events: PullEvent[] }>();
+  for (const event of events) {
+    const key = issueRef(event.pull.repo, event.pull.number);
+    const entry = byPull.get(key) ?? { pull: event.pull, events: [] };
+    entry.events.push(event);
     byPull.set(key, entry);
   }
-  const entries = [...byPull].map(([ref, { pull, kinds }]) => `${ref} ${JSON.stringify(cut(pull.title, TITLE_CHARS))}: ${kinds.map((kind) => eventWords(kind, pull)).join(', ')}`);
+  const entries = [...byPull].map(([ref, { pull, events: own }]) => `${ref} ${JSON.stringify(cut(pull.title, TITLE_CHARS))}: ${own.map(eventWords).join(', ')}`);
   const more = entries.length - NAMED_PULLS;
   return {
     text: `GitHub pull requests: ${entries.slice(0, NAMED_PULLS).join('; ')}${more > 0 ? `; and ${more} more` : ''}`,
@@ -197,7 +208,11 @@ function wakes(kind: PullEventKind, pull: HostPull): boolean {
   }
 }
 
-function eventWords(kind: PullEventKind, pull: HostPull): string {
+function eventWords({ kind, pull, ci }: PullEvent): string {
+  if (kind === 'checks-failing' && ci !== undefined) {
+    const jobs = ci.jobs.map(({ name, step }) => `${JSON.stringify(cut(name, JOB_CHARS))}${step === undefined ? '' : ` at ${JSON.stringify(cut(step, JOB_CHARS))}`}`);
+    return `${EVENT_WORDS[kind]} (${jobs.join(', ')}; log end in ${ci.file})`;
+  }
   if (kind !== 'opened') {
     return EVENT_WORDS[kind];
   }

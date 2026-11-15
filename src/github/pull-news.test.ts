@@ -145,6 +145,12 @@ describe('pullNewsText', () => {
     assert.equal(news.wake, true);
   });
 
+  it('names each failed job, its step and the excerpt file of failing checks that carry one', () => {
+    const ci = { file: '/state/github-ci/acme-web-2.md', jobs: [{ name: 'test (ubuntu-latest)', step: 'Run tests' }, { name: `j${'x'.repeat(60)}`, step: undefined }] };
+    const news = pullNewsText([{ kind: 'checks-failing', pull: pull(2), ci }]);
+    assert.equal(news.text, `GitHub pull requests: gh:acme/web#2 "Change 2": checks failing ("test (ubuntu-latest)" at "Run tests", "j${'x'.repeat(38)}…"; log end in /state/github-ci/acme-web-2.md)`);
+  });
+
   it('says who opened one and from where', () => {
     const outside = pull(3, { authorAssociation: 'NONE', author: 'stranger', fork: true, draft: true });
     assert.equal(pullNewsText([{ kind: 'opened', pull: outside }]).text, 'GitHub pull requests: gh:acme/web#3 "Change 3": opened by stranger (outside, fork, draft)');

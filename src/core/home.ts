@@ -209,6 +209,8 @@ export interface TeamPaths {
   readonly logs: string;
   /** The automatic GitHub sync's last start, finish and failing repositories (github/auto.ts). */
   readonly githubSync: string;
+  /** The end of each failed CI job's log of a session's own pull request, one `<owner>-<name>-<number>.md` per pull request (github/ci-excerpt.ts). */
+  readonly githubCi: string;
   /** Held while a sync records its finish. */
   readonly githubSyncLock: string;
   /** The response clock of each GitHub thread waiting on an answer of ours (github/clock.ts). */
@@ -357,6 +359,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     warn: join(state, 'usage', 'warn'),
     logs: join(state, 'logs'),
     githubSync: join(state, 'github-sync.json'),
+    githubCi: join(state, 'github-ci'),
     githubSyncLock: join(state, 'github-sync.lock'),
     githubClocks: join(state, 'github-clocks.json'),
     githubWatch: join(state, 'github-watch.json'),
