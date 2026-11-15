@@ -13,7 +13,7 @@ export function waitAnswerersOf(tree, roles, owner) {
 /**
  * The task's answer to `reason` when it is an approval wait its giver answered, either way (`approve`, T684);
  * undefined otherwise. A new status clears the answer with the waits (fold.ts), so an answer covers only the step its
- * task asked about.
+ * task asked about; a hold of an approved task behind another task or a time keeps it (T2117).
  */
 export function answerTo(task, reason) {
     return reason.kind === 'approval' && task.answer !== null && task.answer.by === reason.who ? task.answer : undefined;

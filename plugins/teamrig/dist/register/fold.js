@@ -1,6 +1,6 @@
 import { withAudit } from "./hand-step.js";
 import { WAIT_STATUSES } from "./model.js";
-import { namesNewWait } from "./waits.js";
+import { namesNewWait, sameWait } from "./waits.js";
 /** The numeric part of a task id (`T12` → 12). */
 export function taskNumber(id) {
     return Number(id.slice(1));
@@ -100,19 +100,36 @@ function created(id, fields, at, by) {
         ownerSeenAt: by === fields.owner ? at : null,
     };
 }
+/**
+ * The answer a status keeps (T2117): an approval, when the task stays waiting, names the approved wait again and adds
+ * only waits on another task or a time. That holds the approved change behind them, so it is no new ask, and `check`
+ * flags the task READY once they clear, which is the owner's wake to merge. Any other status, the same waits restated
+ * (a new ask, T2089), a new decision or approval wait, or a declined answer clears it.
+ */
+function keptAnswer(task, status, waits) {
+    const { answer } = task;
+    if (answer === null || answer.verdict !== 'approved' || status !== 'waiting' || task.status !== 'waiting') {
+        return null;
+    }
+    const approved = { kind: 'approval', who: answer.by };
+    const holds = [task.waits, waits].every((each) => each.some((reason) => sameWait(reason, approved)));
+    const added = waits.filter((reason) => !task.waits.some((held) => sameWait(held, reason)));
+    return holds && added.length > 0 && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
+}
 function withStatus(task, event) {
     const waits = WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [];
+    const answer = keptAnswer(task, event.status, waits);
     return {
         ...task,
         status: event.status,
         statusAt: event.status === task.status ? task.statusAt : event.at,
-        waitsAt: namesNewWait(task.answer === null ? task.waits : [], waits) ? event.at : task.waitsAt,
+        waitsAt: namesNewWait(task.answer === null || answer !== null ? task.waits : [], waits) ? event.at : task.waitsAt,
         note: event.note,
         evidence: event.evidence ?? task.evidence,
         skill: event.skill,
         waits,
         card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
-        answer: null,
+        answer,
         decided: null,
         proof: event.status === 'verifying' ? (event.proof ?? null) : null,
         watch: event.status === 'done' ? (event.watch ?? null) : null,
