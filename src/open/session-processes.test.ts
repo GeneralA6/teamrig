@@ -8,6 +8,7 @@ import type { StartedProcess, SweepHost } from '../delivery/tree-kill.ts';
 import type { ProgramRequest, ProgramResult } from '../github/credentials.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeSweepHost } from '../testing/fake-sweep-host.ts';
+import { FakeWindowsPowerShell } from '../testing/fake-windows-powershell.ts';
 import {
   EXEC_STUB_MS,
   isClaudeProcess,
@@ -220,6 +221,22 @@ describe('parseWindowsListing, parsePosixListing and lineageOf', () => {
 
 /** One process as the Windows sweep lists it. */
 const swept = (pid: number, parent: number, startedMs: number): StartedProcess => ({ pid, parent, startedMs });
+
+describe('nodeSessionProcesses on Windows PowerShell output (T2947)', () => {
+  it('reads the processes while one command line holds a section sign, which the OEM code page writes as a control byte', async () => {
+    const signed = 'bash -c "grep -n § notes.md"';
+    const shell = new FakeWindowsPowerShell([
+      { pid: 41, parentPid: 7, name: 'claude.exe', commandLine: 'claude --name web', startedMs: 100 },
+      { pid: 51, parentPid: 41, name: 'bash.exe', commandLine: signed, startedMs: 200 },
+      { pid: 53, parentPid: 51, name: 'node.exe', commandLine: 'node cli.js', startedMs: 300 },
+    ]);
+    const processes = nodeSessionProcesses({ platform: 'win32', run: shell.run });
+    assert.deepEqual((await processes.lineage(53))?.map((info) => info.pid), [53, 51, 41]);
+    assert.equal((await processes.describe(51))?.commandLine, signed);
+    assert.deepEqual((await processes.children(41))?.map((info) => info.commandLine), [signed]);
+    assert.equal(shell.asked.length, 3);
+  });
+});
 
 describe('nodeSessionProcesses with a scripted system', () => {
   it("lists a process's starters from one full listing: PowerShell with each start on Windows, ps elsewhere", async () => {

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
 import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
+import { UTF8_OUTPUT } from '../core/powershell.ts';
 import { sweepTree, windowsSweepHost, type SweepHost } from '../delivery/tree-kill.ts';
 import { nodeProgramRunner, type ProgramRunner } from '../github/credentials.ts';
 import { exitText, outcomeOfError } from './processes.ts';
@@ -113,25 +114,30 @@ function isPid(pid: number): boolean {
   return Number.isSafeInteger(pid) && pid > 0;
 }
 
+/** Windows PowerShell's arguments for `script`, its output in UTF-8 so a command line's every character reaches the JSON intact. */
+function windowsArgs(script: string): readonly string[] {
+  return ['-NoProfile', '-NonInteractive', '-Command', UTF8_OUTPUT + script];
+}
+
 function windowsLookup(pid: number): readonly string[] {
   const script =
     `$p = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; ` +
     'if ($p) { $p | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress }';
-  return ['-NoProfile', '-NonInteractive', '-Command', script];
+  return windowsArgs(script);
 }
 
 function windowsChildren(pid: number): readonly string[] {
   const script =
     `$c = @(Get-CimInstance Win32_Process -Filter 'ParentProcessId=${pid}' | Select-Object ProcessId,ParentProcessId,Name,CommandLine); ` +
     'ConvertTo-Json -Compress -InputObject $c';
-  return ['-NoProfile', '-NonInteractive', '-Command', script];
+  return windowsArgs(script);
 }
 
 /** Every process, with when it started in milliseconds since 1970 (0 where Windows does not say, as for its own). */
 function windowsListing(): readonly string[] {
   const started = "@{n='Started';e={if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 }}}";
   const script = `$a = @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,${started}); ConvertTo-Json -Compress -InputObject $a`;
-  return ['-NoProfile', '-NonInteractive', '-Command', script];
+  return windowsArgs(script);
 }
 
 /** One process of a full listing, with when it started where the system says (Windows), to tell a starter from a later process with its id. */
