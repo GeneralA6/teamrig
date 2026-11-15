@@ -49,6 +49,8 @@ export interface IssueSpec {
   readonly comments?: readonly JsonRecord[];
   /** GitHub's own id for it, which a link write names; 1000 plus its number unless set. */
   readonly hostId?: number;
+  /** The open pull requests that close it; none unless set. */
+  readonly linkedPulls?: number;
   /** Its parent issue; none unless set. */
   readonly parent?: IssueAt;
   /** The issues it is blocked by, in this repository or another. */
@@ -93,6 +95,7 @@ export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): Jso
     parent: spec.parent === undefined ? null : issueNode(spec.parent),
     blockedBy: { nodes: (spec.blockedBy ?? []).map(issueNode) },
     comments: { nodes: spec.comments ?? [] },
+    closedByPullRequestsReferences: { totalCount: spec.linkedPulls ?? 0 },
   };
 }
 
@@ -101,9 +104,12 @@ export function labeledEvent(label: string, actor: string, at: string, kind = 'U
   return { __typename: 'LabeledEvent', createdAt: at, actor: { __typename: kind, login: actor }, label: { name: label } };
 }
 
-/** A comment as the issue queries read it: posted at `at` by an author of `association` and account `kind`. */
-export function commentNode(at: string, association: string, kind = 'User'): JsonRecord {
-  return { createdAt: at, authorAssociation: association, author: { __typename: kind } };
+/**
+ * A comment as the issue queries read it: posted at `at` by an author of `association` and account `kind`, with the
+ * login and text given (none and empty unless set).
+ */
+export function commentNode(at: string, association: string, kind = 'User', text: { readonly login?: string; readonly body?: string } = {}): JsonRecord {
+  return { createdAt: at, authorAssociation: association, author: { __typename: kind, ...(text.login === undefined ? {} : { login: text.login }) }, body: text.body ?? '' };
 }
 
 /** A timeline item: the issue's title was changed at `at`. */

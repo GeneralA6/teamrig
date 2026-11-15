@@ -1,6 +1,7 @@
 import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { exitText } from '../open/processes.ts';
 import { GH_TIMEOUT_MS, type GhResult, type GhRunner } from './gh.ts';
+import { isClaim } from '../issues/claim.ts';
 import type { HostIssue, IssueComment, LabelEvent } from '../issues/issue.ts';
 import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
@@ -242,7 +243,14 @@ function issueOf(item: unknown, repo: string): HostIssue | null {
     renamedAt: latestRename(events),
     createdAt: timeField(item, 'createdAt'),
     comments: nodesOf(item['comments']).flatMap(commentOf),
+    linkedPulls: countOf(recordField(item, 'closedByPullRequestsReferences')),
   };
+}
+
+/** A connection's `totalCount`, 0 when GitHub gives none or not a count. */
+function countOf(connection: JsonRecord | undefined): number {
+  const count = connection?.['totalCount'];
+  return typeof count === 'number' && Number.isSafeInteger(count) && count > 0 ? count : 0;
 }
 
 /** A label event of the timeline, or nothing when the item is another kind or lacks its label or time. */
@@ -257,10 +265,16 @@ function labelEventOf(event: JsonRecord): LabelEvent[] {
   return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
 }
 
-/** A comment's time and author kind and tie, or nothing when it lacks its time; a deleted author reads as an empty kind. */
+/**
+ * A comment's time, author and whether it claims the issue, or nothing when it lacks its time; a deleted author reads
+ * as an empty login and kind. Its text is matched here and not kept.
+ */
 function commentOf(comment: JsonRecord): IssueComment[] {
   const at = timeField(comment, 'createdAt');
-  return at === undefined ? [] : [{ at, authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(recordField(comment, 'author')) }];
+  const author = recordField(comment, 'author');
+  return at === undefined
+    ? []
+    : [{ at, login: loginOf(author), authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(author), claims: isClaim(stringField(comment, 'body') ?? '') }];
 }
 
 /** The time of the newest change of title among the timeline events. */

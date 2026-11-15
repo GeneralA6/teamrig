@@ -19,16 +19,21 @@ export interface LabelEvent {
 }
 
 /**
- * A comment on an issue, as far as the response clock reads it (src/github/clock.ts): when, and its author's kind and
- * tie to the repository. Never its text or its author's login.
+ * A comment on an issue, as far as the response clock (src/github/clock.ts) and a claim (issues/claim.ts) read it:
+ * when, its author's login, kind and tie to the repository, and whether it claims the issue. Never its text: the
+ * reader keeps only the claim match, so an outsider's words reach no task, file or session.
  */
 export interface IssueComment {
   /** When it was posted, an ISO time. */
   readonly at: string;
+  /** Its author's login, empty when the host no longer has that account. */
+  readonly login: string;
   /** Its author's tie to the repository, as the host names it; empty when it gives none. */
   readonly authorAssociation: string;
   /** What kind of account its author is (`User`, `Bot`, `Organization`); empty when the host gives none. */
   readonly authorKind: string;
+  /** True when its text holds a claim line (issues/claim.ts isClaim). */
+  readonly claims: boolean;
 }
 
 /** An issue as the import reads it. */
@@ -66,6 +71,8 @@ export interface HostIssue {
   readonly createdAt: string | undefined;
   /** Its newest comments, oldest first, as many as the host reads. */
   readonly comments: readonly IssueComment[];
+  /** The open pull requests that close it when they merge (GitHub's closing references); 0 when none. */
+  readonly linkedPulls: number;
 }
 
 /** One issue of a repository with the links the host has on it. `hostId` is the host's own id, which a link write names. */

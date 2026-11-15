@@ -35,6 +35,7 @@ function issue(overrides: Partial<HostIssue> = {}): HostIssue {
     renamedAt: undefined,
     createdAt: undefined,
     comments: [],
+    linkedPulls: 0,
     ...overrides,
   };
 }
