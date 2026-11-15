@@ -149,7 +149,7 @@ describe('opening a session teamrig closed', () => {
     const same = await open(await inWorktree([APP, fix]), ['--project', fix]);
     assert.equal(resumedOf(same.argv), CLAUDE_SESSION, 'a --project naming the folder it ran in still resumes');
     const refused = await open(await inWorktree([APP, fix]), ['--project', APP, '--resume']);
-    assert.match(refused.result.stdout[0] ?? '', /^REFUSED not resumed: --project .* is not .*, the folder it ran in; teamrig open alpha opens it fresh$/);
+    assert.equal(refused.result.stdout[0], `REFUSED not resumed: --project ${APP} is not ${fix}, the folder it ran in; teamrig open alpha --project ${APP} opens it fresh`);
   });
 
   it('opens a hire that started home as a new hire, never resumed, and logs its reopen (T1364)', async () => {
