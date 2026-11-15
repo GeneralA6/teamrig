@@ -133,3 +133,14 @@ export function tabsOf(marks: readonly InboxMark[], area: string, limit: number)
   }
   return tabs;
 }
+
+/**
+ * The one area a Claude Code session ever marked (T2984, security condition C1): a service role binds to the tab that
+ * holds it, so a tab that has read or bound as two areas holds no role, and neither does one with no mark. Every mark
+ * counts, not the newest: a tab of `alpha` that once ran `inbox read --session bravo` must not run bravo's role.
+ */
+export function soleAreaOf(marks: readonly InboxMark[], claudeSession: string): string | undefined {
+  const areas = new Set(marks.filter((mark) => mark.claudeSession === claudeSession).map((mark) => mark.area));
+  const [area] = areas;
+  return areas.size === 1 ? area : undefined;
+}

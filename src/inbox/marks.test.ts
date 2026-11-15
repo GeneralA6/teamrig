@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { recordVersion } from '../core/jsonl.ts';
-import { boundElsewhereOf, indexMarks, lastClaudeSessionOf, parseMark, type InboxMark } from './marks.ts';
+import { boundElsewhereOf, indexMarks, lastClaudeSessionOf, parseMark, soleAreaOf, type InboxMark } from './marks.ts';
 
 const SESSION = '0a1b2c3d-1111-2222-3333-444455556666';
 
@@ -72,5 +72,22 @@ describe('boundElsewhereOf', () => {
     assert.equal(boundElsewhereOf(marks, 'ffffffff-0000-4000-8000-000000000001', 'bravo', onRoster), undefined, 'a tab no mark binds');
     const left: InboxMark[] = [{ v: 1, area: 'gone', line: 0, at, claudeSession: SESSION, lastLineHash: null }];
     assert.equal(boundElsewhereOf(left, SESSION, 'bravo', onRoster), undefined, 'bound to a session that left the roster');
+  });
+});
+
+describe('soleAreaOf', () => {
+  const at = '2030-01-07T09:00:00.000Z';
+  const other = 'ffffffff-0000-4000-8000-000000000001';
+  const mark = (area: string, claudeSession: string | null): InboxMark => ({ v: 1, area, line: 1, at, claudeSession, lastLineHash: null });
+
+  it('gives the area when every mark of the Claude Code session names it', () => {
+    const marks = [mark('alpha', SESSION), mark('bravo', other), mark('alpha', SESSION), mark('bravo', null)];
+    assert.equal(soleAreaOf(marks, SESSION), 'alpha');
+    assert.equal(soleAreaOf(marks, other), 'bravo');
+  });
+
+  it('gives none to a tab that marked two areas, even when its newest names one, or that marked none', () => {
+    assert.equal(soleAreaOf([mark('alpha', SESSION), mark('bravo', SESSION), mark('alpha', SESSION)], SESSION), undefined);
+    assert.equal(soleAreaOf([mark('alpha', other), mark('alpha', null)], SESSION), undefined);
   });
 });
