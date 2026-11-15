@@ -12,11 +12,12 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
  * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
  * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
  * --duplicate-of), logins added to one issue's assignees, the read of one user, for the case GitHub spells its login
- * in, and the read of whether one login may be assigned (the status push), the creation of one of the labels teamrig
- * makes (the status push and issue label), one sub-issue or blocked-by link added (issue links), and `issue watch`'s
- * two probes, conditional reads that tell whether a repository changed (isWatchProbe). The runner refuses any other
- * command line before it starts: no title or state edit besides the close, no reopen, assignee removal, label create
- * but teamrig's own, label edit or delete, link removal, merge or branch delete.
+ * in, and the read of whether one login may be assigned (the status push), one login taken off one issue's
+ * assignees (a claim the sync made that ran out), the creation of one of the labels teamrig makes (the status push
+ * and issue label), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes,
+ * conditional reads that tell whether a repository changed (isWatchProbe). The runner refuses any other command line
+ * before it starts: no title or state edit besides the close, no reopen, removal of more than one assignee at once,
+ * label create but teamrig's own, label edit or delete, link removal, merge or branch delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -144,6 +145,11 @@ export function issueLabelRemoveArgs(target: IssueNumber, label: string): string
 /** The command line that adds `logins` to the assignees of one issue or pull request; those already on it stay. */
 export function issueAssignArgs(target: IssueNumber, logins: readonly string[]): string[] {
   return ['api', `repos/${target.repo}/issues/${target.number}/assignees`, '-X', 'POST', ...logins.flatMap((login) => [RAW_FIELD, `${ASSIGNEE_FIELD}=${login}`])];
+}
+
+/** The command line that takes one `login` off the assignees of one issue or pull request; any others stay. */
+export function issueUnassignArgs(target: IssueNumber, login: string): string[] {
+  return ['api', `repos/${target.repo}/issues/${target.number}/assignees`, '-X', 'DELETE', RAW_FIELD, `${ASSIGNEE_FIELD}=${login}`];
 }
 
 /** The command line that reads whether `login` may be assigned in `repo`, which fails when it may not. */
@@ -293,13 +299,26 @@ export function isLabelRemove(args: readonly string[]): boolean {
 
 /**
  * True for `gh api repos/<owner>/<name>/issues/<number>/assignees -X POST -f assignees[]=<login> ...` and nothing
- * more: one or more logins added to the assignees of one issue or pull request. Another field, flag or method (DELETE,
- * which would take assignees off) is refused, and each login must have a login's shape.
+ * more: one or more logins added to the assignees of one issue or pull request. Another field, flag or method (DELETE
+ * takes assignees off: isIssueUnassign) is refused, and each login must have a login's shape.
  */
 export function isIssueAssign(args: readonly string[]): boolean {
   const call = issueCall(args);
   const pairs = rawPairs(args.slice(4));
   return call?.method === 'POST' && call.part === 'assignees' && pairs !== null && pairs.length > 0 && pairs.every(([key, login]) => key === ASSIGNEE_FIELD && isLogin(login));
+}
+
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/assignees -X DELETE -f assignees[]=<login>` and nothing more:
+ * exactly one login, of a login's shape, taken off one issue or pull request. The sync sends it only for a claim it
+ * made itself whose login is still the assignee (issues/claim.ts); two logins, no login, another field or flag is
+ * refused, so no run can clear an issue's assignees.
+ */
+export function isIssueUnassign(args: readonly string[]): boolean {
+  const call = issueCall(args);
+  const pairs = rawPairs(args.slice(4));
+  const only = pairs?.length === 1 ? pairs[0] : undefined;
+  return call?.method === 'DELETE' && call.part === 'assignees' && only !== undefined && only[0] === ASSIGNEE_FIELD && isLogin(only[1]);
 }
 
 /** `repos/<owner>/<name>/assignees/<login>`: whether one login may be assigned in a repository. */
@@ -500,6 +519,7 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isLabelRead(args) ||
     isIssueRead(args) ||
     isIssueAssign(args) ||
+    isIssueUnassign(args) ||
     isAssigneeRead(args) ||
     isUserRead(args) ||
     isLabelCreate(args) ||

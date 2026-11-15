@@ -25,6 +25,7 @@ import {
   assigneeReadArgs,
   blockedByAddArgs,
   issueAssignArgs,
+  issueUnassignArgs,
   issueBodyArgs,
   issueCloseArgs,
   issueCommentArgs,
@@ -317,6 +318,10 @@ export class GitHubIssueHost implements IssueHost {
     } catch (error) {
       return { kind: 'failed', reason: startFailureText(error) };
     }
+  }
+
+  unassign(target: IssueTarget, login: string): Promise<HostEnd> {
+    return this.write(target, issueUnassignArgs(target, login), `take ${login} off the assignees of`);
   }
 
   /** One write; `missing`, when given, says what a Not Found means for it in place of the issue not being there. */

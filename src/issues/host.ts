@@ -136,6 +136,8 @@ export interface IssueHost {
    * marks always read as changed.
    */
   watch(repo: string, marks: WatchMarks): Promise<HostWatch>;
+  /** Takes `login` off the assignees of the issue or pull request; any others stay. Only for a claim the sync made. */
+  unassign(target: IssueTarget, login: string): Promise<HostEnd>;
 }
 
 /** What a host gave for its last answers about one repository: the caller keeps them between looks and never reads them. */

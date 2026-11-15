@@ -3,6 +3,7 @@ import {
   isAssigneeRead,
   isUserRead,
   isIssueAssign,
+  isIssueUnassign,
   isIssueBodyEdit,
   isIssueClose,
   isIssueComment,
@@ -276,7 +277,7 @@ export class FakeGh implements GhRunner {
     if (isIssueRead(request.args)) {
       return this.issueRead(request.args[1] ?? '');
     }
-    if (isIssueComment(request.args) || isIssueBodyEdit(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args)) {
+    if (isIssueComment(request.args) || isIssueBodyEdit(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args) || isIssueUnassign(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
     if (isLinkAdd(request.args)) {

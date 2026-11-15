@@ -16,6 +16,7 @@ import {
   isIssueCreate,
   isIssueQuery,
   isIssueRead,
+  isIssueUnassign,
   isLabelAdd,
   isLabelCreate,
   isLabelRead,
@@ -30,6 +31,7 @@ import {
   issueLabelAddArgs,
   issueLabelRemoveArgs,
   issueReadArgs,
+  issueUnassignArgs,
   isUserRead,
   labelCreateArgs,
   labelReadArgs,
@@ -385,9 +387,28 @@ describe('the assignee calls (T2999)', () => {
     assert.ok(isAllowedGh(ASSIGN) && isAllowedGh(assigneeReadArgs('acme/web', 'octocat')));
   });
 
-  it('refuses a removal, another field or flag, a login of another shape, and a read with a method', () => {
+  it('takes the one-login removal issueUnassignArgs builds, and refuses two logins, none, another field, flag or shape', () => {
+    const unassign = issueUnassignArgs(ISSUE, 'octocat');
+    assert.deepEqual(unassign, ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat']);
+    assert.ok(isIssueUnassign(unassign) && isAllowedGh(unassign) && !isIssueAssign(unassign));
     for (const args of [
-      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat', '-f', 'assignees[]=mona'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'labels[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-F', 'assignees[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=../x'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat', '--paginate'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'PUT', '-f', 'assignees[]=octocat'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'DELETE', '-f', 'assignees[]=octocat'],
+    ]) {
+      assert.equal(isIssueUnassign(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it('refuses a removal, another field or flag, a login of another shape, and a read with a method', () => {
+    assert.equal(isIssueAssign(['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat']), false);
+    for (const args of [
       ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST'],
       ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'labels[]=octocat'],
       ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-F', 'assignees[]=octocat'],

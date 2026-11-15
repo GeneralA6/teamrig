@@ -16,6 +16,7 @@ import {
   isIssueCreate,
   isIssueQuery,
   isIssueRead,
+  isIssueUnassign,
   isLabelAdd,
   isLabelCreate,
   isLabelRead,
@@ -244,8 +245,10 @@ describe('GitHubIssueHost', () => {
     assert.deepEqual(await host.assigneeExists('acme/web', 'octocat'), { kind: 'found', login: 'octocat' });
     assert.deepEqual(await host.assigneeExists('acme/web', 'acme'), { kind: 'missing' });
     assert.deepEqual(await host.assign(TARGET, ['octocat']), { kind: 'done' });
-    const [user, found, acme, missing, assign] = gh.ran.map((request) => request.args);
+    assert.deepEqual(await host.unassign(TARGET, 'octocat'), { kind: 'done' });
+    const [user, found, acme, missing, assign, unassign] = gh.ran.map((request) => request.args);
     assert.ok(isUserRead(user ?? []) && isUserRead(acme ?? []) && isAssigneeRead(found ?? []) && isAssigneeRead(missing ?? []) && isIssueAssign(assign ?? []));
+    assert.ok(isIssueUnassign(unassign ?? []));
     const stopped = new FakeGh().answers('acme/web', { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
     assert.deepEqual(await hostWith(stopped).assigneeExists('acme/web', 'octocat'), { kind: 'failed', reason: 'gh was stopped (SIGTERM) while reading whether octocat may be assigned in acme/web' });
   });

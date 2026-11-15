@@ -15,7 +15,8 @@ export type HostCall =
   | { readonly kind: 'label-create'; readonly repo: string; readonly label: LabelSpec }
   | { readonly kind: 'sub-issue'; readonly parent: IssueTarget; readonly childId: number }
   | { readonly kind: 'blocked-by'; readonly target: IssueTarget; readonly blockerId: number }
-  | { readonly kind: 'assign'; readonly target: IssueTarget; readonly logins: readonly string[] };
+  | { readonly kind: 'assign'; readonly target: IssueTarget; readonly logins: readonly string[] }
+  | { readonly kind: 'unassign'; readonly target: IssueTarget; readonly login: string };
 
 /**
  * An issue host that reaches nothing and holds no issue: a list is empty, each write is recorded, and ends done
@@ -44,6 +45,13 @@ export class FakeIssueHost implements IssueHost {
   private readonly spellings = new Map<string, string>();
   private assigneeRead: HostAssignee | undefined;
   private assignEnd: HostEnd = { kind: 'done' };
+  private unassignEnd: HostEnd = { kind: 'done' };
+
+  /** From now on, taking an assignee off fails for `reason`. */
+  failsUnassign(reason: string): this {
+    this.unassignEnd = { kind: 'failed', reason };
+    return this;
+  }
 
   /** From now on, these logins may not be assigned in any repository; every other login may. */
   cannotAssign(...logins: string[]): this {
@@ -235,5 +243,10 @@ export class FakeIssueHost implements IssueHost {
   /** Each repository changed when no marks are given (it holds no issue to change later), else unchanged. */
   watch(_repo: string, marks: WatchMarks): Promise<HostWatch> {
     return Promise.resolve(marks.size === 0 ? { kind: 'changed', marks: new Map([['all', 'seen']]) } : { kind: 'unchanged' });
+  }
+
+  unassign(target: IssueTarget, login: string): Promise<HostEnd> {
+    this.calls.push({ kind: 'unassign', target, login });
+    return Promise.resolve(this.unassignEnd);
   }
 }
