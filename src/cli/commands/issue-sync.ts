@@ -130,11 +130,12 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     (await recordClocks(runtime, kit, config, clocked, threads)).forEach(say);
   }
   if (pushing) {
-    // Before the push, so it plans against the assignees the claims set.
-    (await recordClaims(runtime, kit, config, { host, read: claimRead, started })).forEach(say);
+    const writesPerRun = autoPushWrites(config.github.probeSeconds);
+    // Before the push, so it plans against the assignees the claims set; the claims' writes share the run's budget.
+    const claimed = await recordClaims(runtime, kit, config, { host, read: claimRead, started, writes: writesPerRun });
+    claimed.lines.forEach(say);
     // The import's tasks are in the register now, so the push plans against them. A repository the import could
     // not read is not pushed: it would fail the same way, and its failure is already told.
-    const writesPerRun = autoPushWrites(config.github.probeSeconds);
     const pushed = await pushRepos(
       {
         host,
@@ -143,7 +144,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
         tasks: async () => (await register.snapshot()).state.tasks.values(),
         send: true,
         // No closes: the automatic push sends labels and assignees only (security verdict F1 on T2876); it prints each close held.
-        limits: { writesPerRun, closes: false },
+        limits: { writesPerRun: writesPerRun - claimed.writes, closes: false },
         logins: sessionLogins(config.github.owners),
         told,
       },

@@ -28,10 +28,31 @@ export interface ClaimRun {
   readonly read: ReadonlyMap<string, readonly HostIssue[]>;
   /** Taken before any read, so the next pass reads every comment posted after this run's reads began. */
   readonly started: number;
+  /** The writes this run may send in all; the claims spend from it first and the status push gets what is left. */
+  readonly writes: number;
 }
 
-/** Makes and ends the claims of each repository in `run.read`; gives one line per claim made, ended or failed. */
-export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitConfig, run: ClaimRun): Promise<string[]> {
+/** What a claim pass did: one line per claim made, ended, held or failed, and the writes it counted against the run. */
+export interface ClaimOutcome {
+  readonly lines: readonly string[];
+  readonly writes: number;
+}
+
+/**
+ * The writes making or ending one claim may send: the assign or unassign, the status swap (the new label made when
+ * the repository lacks it, then added, the old one taken off) and the reply. Counted before the claim starts, so a
+ * claim never stops halfway for the run's budget.
+ */
+export function claimWrites(swaps: boolean): number {
+  return 2 + (swaps ? 3 : 0);
+}
+
+/**
+ * Makes and ends the claims of each repository in `run.read`, within `run.writes`. A claim the budget leaves out is
+ * held for the next run: an expired one stays in the file, and a repository with a held new claim keeps its old pass
+ * time, so the next run reads that comment again (an issue assigned meanwhile is no longer claimable).
+ */
+export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitConfig, run: ClaimRun): Promise<ClaimOutcome> {
   const lock = fileLockOf(runtime, kit.paths.githubSyncLock, config.lock);
   const before = await lock.run(async (): Promise<ClaimState> => parseClaims((await runtime.files.read(kit.paths.githubClaims)) ?? ''));
   const now = runtime.clock.now();
@@ -39,30 +60,40 @@ export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitCon
   const say = (line: string): void => {
     lines.push(line);
   };
+  let left = run.writes;
+  const spend = (claim: Claim, labels: readonly string[], swapFrom: string): boolean => {
+    const cost = claimWrites(labels.includes(swapFrom));
+    if (cost > left) {
+      say(`HELD ${targetText(targetOf(claim))}: ${claim.login}'s claim waits for the next run, as this run's ${run.writes} write(s) are spent`);
+      return false;
+    }
+    left -= cost;
+    return true;
+  };
   const claims: Claim[] = before.claims.filter((claim) => !run.read.has(claim.repo));
   const checked = new Map(before.checked);
   for (const [repo, issues] of run.read) {
-    const plan = planClaims(
-      issues,
-      before.claims.filter((claim) => claim.repo === repo),
-      { now, since: before.checked.get(repo) ?? run.started, acceptLabel: config.github.acceptLabel },
-    );
+    const since = before.checked.get(repo) ?? run.started;
+    const plan = planClaims(issues, before.claims.filter((claim) => claim.repo === repo), { now, since, acceptLabel: config.github.acceptLabel });
     const labelsOf = (claim: Claim): readonly string[] => issues.find((issue) => issue.number === claim.number)?.labels ?? [];
     claims.push(...plan.kept);
+    let held = false;
     for (const claim of plan.made) {
-      if (await makeClaim(run.host, claim, labelsOf(claim), say)) {
+      if (!spend(claim, labelsOf(claim), STATUS_LABELS.open)) {
+        held = true;
+      } else if (await makeClaim(run.host, claim, labelsOf(claim), say)) {
         claims.push(claim);
       }
     }
     for (const claim of plan.expired) {
-      if (!(await endClaim(run.host, claim, labelsOf(claim), say))) {
+      if (!spend(claim, labelsOf(claim), STATUS_LABELS.claimed) || !(await endClaim(run.host, claim, labelsOf(claim), say))) {
         claims.push(claim);
       }
     }
-    checked.set(repo, run.started);
+    checked.set(repo, held ? since : run.started);
   }
   await lock.run(async () => runtime.files.write(kit.paths.githubClaims, formatClaims({ claims, checked })));
-  return lines;
+  return { lines, writes: run.writes - left };
 }
 
 function targetOf(claim: Claim): IssueTarget {

@@ -2,11 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueAssign, isIssueComment, isIssueUnassign } from '../github/gh.ts';
-import { CLAIM_DAYS, formatClaims, parseClaims } from '../issues/claim.ts';
+import { isIssueAssign, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueCreate, isIssueUnassign, isLabelAdd, isLabelCreate, isLabelRemove, isLinkAdd } from '../github/gh.ts';
+import { CLAIM_DAYS, CLAIMS_PER_DAY, formatClaims, parseClaims } from '../issues/claim.ts';
+import { autoPushWrites } from '../issues/status-push.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
-import { CLAIM_REPLY, RELEASE_REPLY } from './commands/issue-claim.ts';
+import { CLAIM_REPLY, claimWrites, RELEASE_REPLY } from './commands/issue-claim.ts';
 import { EXIT } from './runtime.ts';
 
 const REPO = 'acme/web';
@@ -30,6 +31,13 @@ async function autoSync(kit: CliHarness, gh: FakeGh): Promise<readonly string[]>
 }
 
 const at = (kit: CliHarness): string => new Date(kit.clock.now()).toISOString();
+
+const WRITES = [isIssueAssign, isIssueUnassign, isIssueComment, isLabelAdd, isLabelRemove, isLabelCreate, isIssueClose, isIssueBodyEdit, isIssueCreate, isLinkAdd];
+
+/** Whether a request writes to GitHub. */
+function isWrite(args: readonly string[]): boolean {
+  return WRITES.some((kind) => kind(args));
+}
 
 describe('claims in the automatic sync (T3021)', () => {
   it("assigns an outside contributor's claim posted since the last pass, swaps status:open for status:claimed and replies once", async () => {
@@ -101,6 +109,42 @@ describe('claims in the automatic sync (T3021)', () => {
     await autoSync(kit, gh);
     assert.deepEqual(writes(gh, isIssueAssign), []);
     assert.equal(kit.files.get(CLAIMS), undefined);
+  });
+
+  it("counts its writes in the run's budget and holds a claim past it for the next run", async () => {
+    const kit = new CliHarness(team(true));
+    await autoSync(kit, new FakeGh().holds(REPO, []));
+    kit.clock.advance(HOUR);
+    const budget = autoPushWrites(5);
+    const fits = Math.floor(budget / claimWrites(true));
+    assert.ok(fits < CLAIMS_PER_DAY, 'the run must hold fewer claims than a day allows');
+    const posted = at(kit);
+    const free = (assigned: number): FakeGh =>
+      new FakeGh()
+        .holds(
+          REPO,
+          Array.from({ length: fits + 1 }, (_, index) =>
+            ghIssue(REPO, index + 1, {
+              title: `Issue ${String(index + 1)}`,
+              authorAssociation: 'MEMBER',
+              labels: [index < assigned ? 'status:claimed' : 'status:open'],
+              assignees: index < assigned ? [`user${String(index)}`] : [],
+              comments: [commentNode(posted, 'NONE', 'User', { login: `user${String(index)}`, body: '/take' })],
+            }),
+          ),
+        )
+        .hasLabels(REPO, ['status:open', 'status:claimed']);
+
+    const first = free(0);
+    const out = await autoSync(kit, first);
+    assert.equal(writes(first, isIssueAssign).length, fits);
+    assert.ok(out.includes(`HELD ${REPO}#${String(fits + 1)}: user${String(fits)}'s claim waits for the next run, as this run's ${String(budget)} write(s) are spent`), out.join('\n'));
+    assert.ok(writes(first, isWrite).length <= budget, writes(first, isWrite).join('\n'));
+
+    kit.clock.advance(HOUR);
+    const second = free(fits);
+    await autoSync(kit, second);
+    assert.deepEqual(writes(second, isIssueAssign), [`api repos/${REPO}/issues/${String(fits + 1)}/assignees -X POST -f assignees[]=user${String(fits)}`]);
   });
 
   it('makes no claim on an outsider issue no one accepted', async () => {
