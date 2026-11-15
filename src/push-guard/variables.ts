@@ -1,4 +1,7 @@
-import type { ShellCommand, ShellParse, ShellWord, WordPart } from './tokenizer.ts';
+import type { Redirection, ShellCommand, ShellParse, ShellWord, WordPart } from './tokenizer.ts';
+
+/** A heredoc's operator, `<<` or `<<-` with any descriptor; its target is the delimiter, never expanded. */
+const HEREDOC_OPERATOR = /^\d*<<-?$/;
 
 /**
  * bash keywords and builtins that can set a variable in a way this module does not follow (`case`, a
@@ -85,12 +88,17 @@ interface LineBindings {
  * it. A word with a variable left unresolved stays as it was; a resolved word has no parts, and is dynamic only
  * where the value holds a variable only known when it runs. `home` is the folder HOME names when the line
  * starts, given where the caller knows it: then `$HOME`, and a value's leading `~`, which bash expands to it,
- * resolve too while the line assigns HOME nowhere.
+ * resolve too while the line assigns HOME nowhere. Redirection targets resolve the same way, so `cat > $S/x`
+ * writes to the same file as `cat > /s/x` once `S=/s` (see {@link LiteralBindings.resolveRedirection}).
  */
 export function resolveLiteralVariables(parsed: ShellParse, home?: string): readonly ShellCommand[] {
   return (parsed.readings ?? [parsed]).flatMap((reading) => {
     const bindings = LiteralBindings.read(reading, home);
-    return reading.commands.map((command, index) => ({ ...command, words: bindings.resolveWords(command.words, index) }));
+    return reading.commands.map((command, index) => ({
+      ...command,
+      words: bindings.resolveWords(command.words, index),
+      redirections: command.redirections.map((redirection) => bindings.resolveRedirection(redirection, index)),
+    }));
   });
 }
 
@@ -135,6 +143,20 @@ class LiteralBindings {
   /** The words of command `index` with their variables replaced by the values that hold there. */
   resolveWords(words: readonly ShellWord[], index: number): readonly ShellWord[] {
     return words.flatMap((word) => this.resolve(word, index));
+  }
+
+  /**
+   * `redirection` at command `index` with its target resolved, when bash expands it to one word. A heredoc's
+   * delimiter stays as written, as bash never expands it; a target that splits into more words, which bash
+   * refuses as an ambiguous redirect, or that does not resolve, stays as it was.
+   */
+  resolveRedirection(redirection: Redirection, index: number): Redirection {
+    const { target } = redirection;
+    if (target === undefined || HEREDOC_OPERATOR.test(redirection.operator)) {
+      return redirection;
+    }
+    const [only, ...more] = this.resolve(target, index);
+    return only === undefined || more.length > 0 ? redirection : { ...redirection, target: only };
   }
 
   /** The words `word` becomes at command `index`, or `word` itself when a variable in it does not resolve. */
