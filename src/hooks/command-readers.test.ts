@@ -9,13 +9,14 @@ import ts from 'typescript';
  * Every hook that reads a shell tool call's command weighs each text bash may run (T2332). On Windows Claude Code
  * hands a Bash line to Git Bash through a Windows command line that halves backslash runs, so a guard reading only
  * the line as written can pass what bash then runs (core/bash-tool-readings.ts). A guard takes its readings from
- * `toolCommandReadings`, or a route from `toolRouteOf`, which holds only when every reading is that route; a reader
- * whose verdict cannot change under the halving sits in EXEMPT with the reason it holds. The spec fails on a new
- * reader with neither, and on an exemption whose file no longer reads a command.
+ * `toolCommandReadings`, a route from `toolRouteOf` or a service role's call from `toolRoleCallOf`, each of which holds
+ * only when every reading is that route or call; a reader whose verdict cannot change under the halving sits in EXEMPT
+ * with the reason it holds. The spec fails on a new reader with none, and on an exemption whose file no longer reads a
+ * command.
  */
 
 /** The functions that hand a reader every text a shell call may run. */
-const READINGS_IMPORTS: ReadonlySet<string> = new Set(['toolCommandReadings', 'toolRouteOf']);
+const READINGS_IMPORTS: ReadonlySet<string> = new Set(['toolCommandReadings', 'toolRouteOf', 'toolRoleCallOf']);
 
 /** Readers whose verdict is the same in every reading, by the path under src/ with `/` separators, with why. */
 const EXEMPT: Readonly<Record<string, string>> = {
@@ -36,6 +37,7 @@ const KNOWN_GUARDS: readonly string[] = [
   'hooks/readonly-shell.ts',
   'hooks/secret-guard.ts',
   'hooks/service-role-guard.ts',
+  'cli/commands/hook-role-allow.ts',
   'cli/commands/hook-route-context.ts',
 ];
 

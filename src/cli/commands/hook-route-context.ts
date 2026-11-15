@@ -4,7 +4,7 @@ import { clientRootOf } from '../../exec/client-integrity.ts';
 import { ClientInstalls, ShellPathSearch } from '../../exec/client-launch.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { gitContextOf } from '../../permissions/route-context.ts';
-import { ownClientOf } from '../../permissions/route-kit.ts';
+import { ownClientOf, type KitContext } from '../../permissions/route-kit.ts';
 import { toolRouteOf, type RouteContext, type SanctionedRoute } from '../../permissions/sanctioned.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import type { CommandTable } from '../../slash/plan.ts';
@@ -13,17 +13,25 @@ import type { CliRuntime } from '../runtime.ts';
 import { teamSessionOf } from './hook-input.ts';
 
 /**
- * A hook's sanctioned-route lookup (T679): the context `routeOf` needs, read from the hook's runtime and payload. The
- * program word is placed as the Bash tool's shell would place it from the call's folder, the payload's first (Claude
- * Code may start the hook elsewhere); the tab's session and the register are read only when a push line asks.
+ * What a hook reads a teamrig line with: the CLI's table, and whether the program word is this install's own launcher,
+ * placed as the Bash tool's shell would place it from the call's folder, the payload's first (Claude Code may start the
+ * hook elsewhere).
  */
-export function routeContextOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord, cli: CommandTable): RouteContext {
+export function kitContextOf(runtime: CliRuntime, payload: JsonRecord, cli: CommandTable): KitContext {
   const cwd = stringField(payload, 'cwd') ?? runtime.cwd;
   const search = new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe });
   const installs = new ClientInstalls(clientRootOf(runtime.self.script), runtime.platform);
+  return { cli, ownClient: ownClientOf(search, installs, { dialect: 'bash', dir: cwd, home: runtime.userHome }) };
+}
+
+/**
+ * A hook's sanctioned-route lookup (T679): the context `routeOf` needs, read from the hook's runtime and payload; the
+ * tab's session and the register are read only when a push line asks.
+ */
+export function routeContextOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord, cli: CommandTable): RouteContext {
+  const cwd = stringField(payload, 'cwd') ?? runtime.cwd;
   return {
-    cli,
-    ownClient: ownClientOf(search, installs, { dialect: 'bash', dir: cwd, home: runtime.userHome }),
+    ...kitContextOf(runtime, payload, cli),
     ...gitContextOf({
       cwd,
       home: runtime.userHome,
