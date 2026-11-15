@@ -10,7 +10,7 @@ import { admissionOrder, classOf, placeInLine, type AdmissionRules } from './adm
 import type { CpuGate } from './cpu.ts';
 import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
-import { isLineRequest, type LineRequest } from './process-request.ts';
+import { isLineRequest, takesShipSlot, type LineRequest } from './process-request.ts';
 import { WAIT_CAUSES, type WaitCause } from './wait-cause.ts';
 import { causeOfLockWait } from './wait-log.ts';
 
@@ -214,11 +214,22 @@ export interface CpuWait {
 }
 
 /**
+ * A step that moves a main branch (`takesShipSlot`: a ship, a merge, a deploy) first in line while another such step
+ * shares the host (`running`, T2727): the two would race to main, and the later one's rebase or merge would fail after
+ * its whole run.
+ */
+export interface ShipSlotWait {
+  readonly kind: 'shipSlot';
+  readonly running: readonly HostShare[];
+}
+
+/**
  * What a waiter waits on: the lock's holder, the earlier waiter the free lock goes to next, the steps sharing the host
  * that a step that took the lock waits to end, or, for the first in line, the host's free memory or commit charge
  * (`MemoryWait`). In admission's `pipeline` mode also its session's cap (`sessionCap`), the heavy steps sharing the
- * host at their cap (`heavyCap`) or with the CPU too busy for one more (`cpu`), and, for a moment, another step being
- * admitted (`admitting`), which holds the admit file.
+ * host at their cap (`heavyCap`) or with the CPU too busy for one more (`cpu`), another step that moves a main branch
+ * holding the ship slot (`shipSlot`), and, for a moment, another step being admitted (`admitting`), which holds the
+ * admit file.
  */
 export type LockWait =
   | LockHolder
@@ -228,6 +239,7 @@ export type LockWait =
   | SessionCapWait
   | HeavyCapWait
   | CpuWait
+  | ShipSlotWait
   | { readonly kind: 'admitting' };
 
 /**
@@ -495,6 +507,8 @@ export function holderText(holder: LockWait, zone: TimeZone): string {
       return `${stepsText(holder.running.length, 'heavy ')} running, the cap ${holder.cap}: ${heldText(holder.running, zone)}`;
     case 'cpu':
       return `host CPU ${holder.idlePct}% idle, ${holder.needPct}% needed (delivery.queue.heavyIdleCpuPct) beside ${stepsText(holder.running.length, 'heavy ')}: ${heldText(holder.running, zone)}`;
+    case 'shipSlot':
+      return `the ship slot, held by ${heldText(holder.running, zone)}`;
     case 'admitting':
       return 'another step being admitted';
   }
@@ -568,6 +582,8 @@ export function busyText(holder: LockWait, zone: TimeZone): string {
       return `heavy cap still reached: ${holderText(holder, zone)}`;
     case 'cpu':
       return `host CPU still busy: ${holderText(holder, zone)}`;
+    case 'shipSlot':
+      return `ship slot still held: ${heldText(holder.running, zone)}`;
     case 'held':
     case 'unknown':
     case 'queued':
@@ -598,6 +614,7 @@ function waitKey(holder: LockWait, ahead: number): string {
     case 'sessionCap':
     case 'heavyCap':
     case 'cpu':
+    case 'shipSlot':
       return `${holder.kind} ${idsOf(holder.running)} ${ahead}`;
     case 'admitting':
       return `admitting ${ahead}`;
@@ -636,7 +653,8 @@ class WaitReports {
 
 /**
  * The ids of the steps a waiter stands behind at one look: the waiters ahead, the lock's holder and the steps it
- * waits for, the steps sharing the host, its own session's steps running at its cap, the heavy steps at their cap.
+ * waits for, the steps sharing the host, its own session's steps running at its cap, the heavy steps at their cap, the
+ * step holding the ship slot.
  */
 function standingBehind(ahead: readonly LockWaiter[], holder: LockWait): Set<string> {
   const ids = new Set(ahead.map((waiter) => waiter.id));
@@ -660,6 +678,7 @@ function standingBehind(ahead: readonly LockWaiter[], holder: LockWait): Set<str
     case 'sessionCap':
     case 'heavyCap':
     case 'cpu':
+    case 'shipSlot':
       for (const info of holder.running) {
         ids.add(info.id);
       }
@@ -726,6 +745,8 @@ class Patience {
  * In admission's `pipeline` mode a heavy step shares the host too, its share marked `heavy`, while fewer than
  * `maxHeavyParallel` heavy shares run, else it waits in its place on them (`heavyCap`). An exclusive step (a merge, a
  * deploy) and every heavy step in `serial` mode take the lock file instead, which waits for every share to end.
+ * A step that moves a main branch (`takesShipSlot`) shares the host only while no other such step does, else it waits
+ * in its place on the one ship slot (`shipSlot`, T2727), which other steps pass.
  * With a memory gate in its ports, the first in line takes the lock or a share only once the gate finds the host's
  * memory has room for it, the MB held for the small steps sharing the host counted as taken; until then it waits in
  * its place, and a lone step is gated as much as one beside others. In arrival order a later step never passes a step
@@ -1208,7 +1229,8 @@ export class HostLock {
 
   /**
    * One look in line for a step that shares the host as `hold` says, with `need`. A live lock is waited on, and so is an
-   * earlier waiter, and a heavy step waits while `cap` heavy steps share the host. Else the step shares the host, under
+   * earlier waiter, a step that moves a main branch while another such step shares the host (the ship slot), and a
+   * heavy step while `cap` heavy steps share it. Else the step shares the host, under
    * its ticket's id, holding its need's MB ({@link heldMbOf}), once the memory gate finds room for it beside the steps
    * already sharing it (at once with no gate); a stale lock is left for the next step that takes the lock.
    */
@@ -1228,6 +1250,13 @@ export class HostLock {
       await this.removeAt(this.path, (text) => text === seen.text);
     }
     const others = await this.liveShares();
+    // Only shares need the check: a whole-lock holder (an exclusive merge or deploy) already keeps every step out.
+    if (takesShipSlot(waiter.request?.kind)) {
+      const running = others.filter((share) => takesShipSlot(share.request?.kind));
+      if (running.length > 0) {
+        return { kind: 'busy', holder: { kind: 'shipSlot', running } };
+      }
+    }
     const heavy = hold.kind === 'heavy';
     if (heavy) {
       const running = others.filter(isHeavyShare);

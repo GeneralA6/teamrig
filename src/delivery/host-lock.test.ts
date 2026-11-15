@@ -1763,6 +1763,63 @@ describe('HostLock heavy shares (T2210)', () => {
   });
 });
 
+describe('HostLock ship slot (T2727)', () => {
+  const SHIP: LineRequest = { ...REQUEST, kind: 'ship' };
+  /** A heavy share whose step is of `kind`, as its ticket asked it. */
+  const runningOf = (kind: LineRequest['kind'], overrides: Partial<HostShare> = {}): HostShare =>
+    heavyOf({ purpose: `heavy: ${kind}`, request: { ...REQUEST, kind, needMb: 4096, heavy: true, exclusive: false }, ...overrides });
+  const SLOT_TEXT = 'the ship slot, held by po (heavy: ship) since 2030-01-08 09:50 UTC';
+
+  it('keeps a ship waiting while another ship shares the host, naming it on its ticket, and lets it in when that one ends', async () => {
+    const ship = runningOf('ship', { id: 's1' });
+    const seen: (WaitingOn | undefined)[] = [];
+    const { lock } = world(
+      Object.fromEntries([shareFile(ship)]),
+      (time, store) => async (ms) => {
+        seen.push(await waitingOnOf(store, time));
+        await time.sleep(ms);
+        await store.remove(shareFile(ship)[0]);
+      },
+      undefined,
+      PIPELINE,
+    );
+    const told: string[] = [];
+    const taking = await lock.acquire('alpha', 'heavy: ship', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)), { request: SHIP });
+    assert.deepEqual(told, [SLOT_TEXT]);
+    assert.deepEqual(seen, [{ reason: 'shipSlot', text: 'the ship slot, held by po (heavy: ship) since 2030-01-08 11:50 IST', since: '2030-01-08T10:00:00.000Z' }]);
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { others: [], heavy: true });
+  });
+
+  it('holds the slot for a merge or a deploy share as for a ship, and refuses the ship when its wait runs out, writing no share', async () => {
+    for (const kind of ['ship', 'merge', 'deploy'] as const) {
+      const running = runningOf(kind);
+      const { files, lock } = world(Object.fromEntries([shareFile(running)]), undefined, undefined, PIPELINE);
+      const taking = await lock.acquire('alpha', 'heavy: ship', 0, 30_000, () => undefined, { request: SHIP });
+      assert.deepEqual([taking, await files.list(SHARED)], [{ kind: 'busy', holder: { kind: 'shipSlot', running: [running] } }, ['other.json']], kind);
+    }
+  });
+
+  it('lets a ship share the host beside steps that hold no slot, and a build or a step that names no request beside a ship', async () => {
+    const beside = [runningOf('build', { id: 'b1' }), runningOf('push', { id: 'p1', session: 'web' }), shareOf({ id: 'old' })];
+    const shipping = world(Object.fromEntries(beside.map((share) => shareFile(share))), undefined, undefined, { ...PIPELINE, maxHeavyParallel: 3 });
+    const ship = await shipping.lock.acquire('alpha', 'heavy: ship', 0, 30_000, () => undefined, { request: SHIP });
+    assert.equal(ship.kind, 'taken');
+    for (const ask of [{ request: { ...REQUEST, kind: 'build' } }, {}] as const) {
+      const building = world(Object.fromEntries([shareFile(runningOf('ship'))]), undefined, undefined, PIPELINE);
+      const taking = await building.lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, ask);
+      assert.equal(taking.kind, 'taken');
+    }
+  });
+
+  it('names the step holding the slot while it waits and when its wait runs out', () => {
+    const slot: LockWait = { kind: 'shipSlot', running: [runningOf('ship')] };
+    assert.deepEqual(
+      [holderText(slot, TimeZone.UTC), busyText(slot, TimeZone.UTC), waitText(slot, 1, TimeZone.UTC)],
+      [SLOT_TEXT, 'ship slot still held: po (heavy: ship) since 2030-01-08 09:50 UTC', `${SLOT_TEXT}; 1 ahead in line`],
+    );
+  });
+});
+
 describe('HostLock CPU room for a second heavy step (T2700)', () => {
   const busyCpuText = 'host CPU 10% idle, 25% needed (delivery.queue.heavyIdleCpuPct) beside 1 heavy step: po (heavy: build) since 2030-01-08 09:50 UTC';
 
