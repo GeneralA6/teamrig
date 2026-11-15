@@ -20,9 +20,12 @@ const JOINS = /[;&|<>`#]|\$[({'"]/;
 /** A leading `NAME=value` word, which sets a variable for the command instead of naming its program. */
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
 
-/** The words of `line` when it is one plain bash command, else undefined. */
-export function plainWordsOf(line: string): readonly string[] | undefined {
-  if (!scansPlain(line)) {
+/**
+ * The words of `line` when it is one plain bash command, else undefined. `scanned` is the text the raw scan reads: the
+ * line itself, or a copy whose parts a narrower reader proved literal were masked (service-role-call.ts).
+ */
+export function plainWordsOf(line: string, scanned: string = line): readonly string[] | undefined {
+  if (!scansPlain(scanned)) {
     return undefined;
   }
   const command = onlyCommandOf(parseShell(line, 'bash'));
