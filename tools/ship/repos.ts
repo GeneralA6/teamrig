@@ -38,6 +38,11 @@ export interface RepoProfile {
    * `/`: a remote branch whose other commits main holds is a leftover (leftovers.ts). Empty when not listed.
    */
   regenerated: readonly string[];
+  /**
+   * Checks whose failure a merge re-runs once on the same sha before it fails (T2988): tests that fail under load and
+   * pass alone (T2532). Each is one of `checks`, never the summary, which echoes them (github.ts). Empty when not listed.
+   */
+  flaky: readonly string[];
 }
 
 export const PROFILES_PATH = new URL('./repos.json', import.meta.url);
@@ -60,6 +65,15 @@ function parseSummary(slug: string, value: unknown, checks: readonly string[]): 
   return value;
 }
 
+function parseFlaky(slug: string, value: unknown, checks: readonly string[], summary: string | null): readonly string[] {
+  if (value === undefined) return [];
+  if (!isNameList(value) || value.some(name => !checks.includes(name) || name === summary)) {
+    throw new Error(`repos.json: ${slug} "flaky" needs a list of its "checks", the summary apart`);
+  }
+  if (new Set(value).size !== value.length) throw new Error(`repos.json: ${slug} lists a flaky check twice`);
+  return value;
+}
+
 function parseRegenerated(slug: string, value: unknown): readonly string[] {
   if (value === undefined) return [];
   if (!isNameList(value) || value.some(path => path.startsWith('/') || path.split('/').includes('..'))) {
@@ -71,21 +85,23 @@ function parseRegenerated(slug: string, value: unknown): readonly string[] {
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
     if (new Set(entry['checks']).size !== entry['checks'].length) throw new Error(`repos.json: ${slug} lists a check twice`);
     const gate = entry['gate'];
     if (!isGate(gate)) throw new Error(`repos.json: ${slug} needs a "gate": "ci" (GitHub checks) or "local" (checks run on this machine)`);
+    const summary = parseSummary(slug, entry['summary'], entry['checks']);
     profiles.set(slug.toLowerCase(), {
       slug,
       main: entry['main'],
       gate,
       checks: entry['checks'],
-      summary: parseSummary(slug, entry['summary'], entry['checks']),
+      summary,
       local: parseLocalChecks(slug, entry['local']),
       regenerated: parseRegenerated(slug, entry['regenerated']),
+      flaky: parseFlaky(slug, entry['flaky'], entry['checks'], summary),
     });
   }
   return profiles;

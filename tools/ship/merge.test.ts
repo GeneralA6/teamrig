@@ -117,7 +117,7 @@ const request = (overrides: Partial<MergeRequest> = {}): MergeRequest => ({
 });
 
 const POLLING = { timeoutMs: 10 * MINUTE, intervalMs: MINUTE };
-const CHECKS: RequiredChecks = { names: ['gates', 'test'], summary: null };
+const CHECKS: RequiredChecks = { names: ['gates', 'test'], summary: null, flaky: [] };
 
 /** mergeThroughPull on the `ci` gate: checks gates and test on GitHub. */
 const mergeOnCi = (gh: Gh, main: MainBranch, log: (line: string) => void): Promise<MergeResult> =>
@@ -247,7 +247,7 @@ test('a re-run GitHub refuses fails the unstarted check with its error; one stil
 });
 
 test('the summary job failing beside an unstarted leg is re-run with it; failing again on the next attempt refuses (T2675)', async () => {
-  const withSummary: RequiredChecks = { names: ['gates', 'test', 'all'], summary: 'all' };
+  const withSummary: RequiredChecks = { names: ['gates', 'test', 'all'], summary: 'all', flaky: [] };
   const echo: readonly JobState[] = [['gates', 'completed', 'success'], macosUnstarted, ['all', 'completed', 'failure']];
   const recovers = fakeGitHub({ rounds: [echo, [...green, ['all', 'completed', 'success']]] });
   const passed = await waitForChecks(recovers.gh, REPO, SHA, HEAD, withSummary,fakeWaiter(), POLLING);
@@ -863,4 +863,65 @@ test('--note-file opens the body of the pull request it opens, and a missing not
   const missing = runFixture();
   await assert.rejects(runMerge({ ...ARGS, noteFile: 'C:/notes/none.md' }, missing.deps), /--note-file C:\/notes\/none\.md: no such file/);
   assert.equal(missing.ghFor.mock.callCount(), 0);
+});
+
+const FLAKY: RequiredChecks = { names: ['gates', 'test'], summary: null, flaky: ['test'] };
+const testFails: readonly JobState[] = [
+  ['gates', 'completed', 'success'],
+  ['test', 'completed', 'failure'],
+];
+
+test('a flaky check failing in the first attempt is re-run once on the same sha and passes; failing again fails (T2988)', async () => {
+  const recovers = fakeGitHub({ rounds: [testFails, green] });
+  const log: string[] = [];
+  const passed = await waitForChecks(recovers.gh, REPO, SHA, HEAD, FLAKY, fakeWaiter(), POLLING, line => log.push(line));
+  assert.equal(passed.verdict, 'passed');
+  assert.equal(recovers.writes.filter(args => args[1] === RERUN_PATH).length, 1);
+  assert.deepEqual(log, ['re-ran run 1: test failed on a check listed as flaky (repos.json), so the same sha goes once more; waiting again, once']);
+
+  const again = fakeGitHub({ rounds: [testFails] });
+  const failed = await waitForChecks(again.gh, REPO, SHA, HEAD, FLAKY, fakeWaiter(), POLLING);
+  assert.equal(failed.verdict, 'failed');
+  assert.equal(again.writes.filter(args => args[1] === RERUN_PATH).length, 1, 'one re-run only');
+
+  const notFlaky = fakeGitHub({ rounds: [testFails, green] });
+  assert.equal((await waitForChecks(notFlaky.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING)).verdict, 'failed');
+  assert.equal(notFlaky.writes.length, 0, 'a check not listed as flaky is never re-run');
+});
+
+test('a check read GitHub gives no answer to is read once more at the next poll; a second in a row, or a 4xx, ends the wait (T2988)', async () => {
+  const failingReads = (failures: readonly (string | undefined)[], rounds: readonly (readonly JobState[])[] = [green]): { gh: Gh; reads: () => number } => {
+    const { gh } = fakeGitHub({ rounds });
+    let reads = 0;
+    return {
+      gh: args => {
+        if (args[1]?.includes('/actions/runs?head_sha=') === true) {
+          const failure = failures[reads];
+          reads += 1;
+          if (failure !== undefined) throw new Error(`gh api ${args[1]}: ${failure}`);
+        }
+        return gh(args);
+      },
+      reads: () => reads,
+    };
+  };
+  const once = failingReads(['HTTP 502: Bad Gateway']);
+  const waiter = fakeWaiter();
+  const log: string[] = [];
+  assert.equal((await waitForChecks(once.gh, REPO, SHA, HEAD, CHECKS, waiter, POLLING, line => log.push(line))).verdict, 'passed');
+  assert.deepEqual(waiter.slept, [MINUTE]);
+  assert.match(log[0] ?? '', /^reading the checks got no answer from GitHub \(gh api repos\/Owner\/repo\/actions\/runs\?head_sha=abc1234def&per_page=100: HTTP 502: Bad Gateway\): reading them once more at the next poll$/);
+
+  const twice = failingReads(['HTTP 502: Bad Gateway', 'timeout awaiting response headers']);
+  await assert.rejects(waitForChecks(twice.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING), /timeout awaiting response headers/);
+  assert.equal(twice.reads(), 2);
+
+  const refused = failingReads(['HTTP 404: Not Found']);
+  await assert.rejects(waitForChecks(refused.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING), /HTTP 404/);
+  assert.equal(refused.reads(), 1);
+
+  // Bad reads with a good one between are each read once more: only two in a row end the wait.
+  const apart = failingReads(['HTTP 503', undefined, 'HTTP 503'], [[['gates', 'queued', null]], green]);
+  assert.equal((await waitForChecks(apart.gh, REPO, SHA, HEAD, CHECKS, fakeWaiter(), POLLING)).verdict, 'passed');
+  assert.equal(apart.reads(), 4);
 });

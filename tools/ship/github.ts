@@ -65,14 +65,17 @@ export interface CommitStatus {
   state: string;
 }
 
-/** `unstarted`: every run of the check that did not pass is a job GitHub cancelled before any step ran, in a run's first attempt. */
-export type CheckState = 'passed' | 'failed' | 'pending' | 'missing' | 'unstarted';
+/**
+ * `unstarted`: every run of the check that did not pass is a job GitHub cancelled before any step ran, in a run's first
+ * attempt. `flaky`: the same, but among them a check listed as flaky failed in its run's first attempt (T2988).
+ */
+export type CheckState = 'passed' | 'failed' | 'pending' | 'missing' | 'unstarted' | 'flaky';
 
 export interface CheckOutcome {
   name: string;
   state: CheckState;
   detail: string;
-  /** For an `unstarted` check, the runs whose cancelled jobs a re-run would start again; empty otherwise. */
+  /** For an `unstarted` or `flaky` check, the runs whose jobs a re-run would start again; empty otherwise. */
   reruns: readonly number[];
 }
 
@@ -134,39 +137,54 @@ export interface RequiredChecks {
   readonly names: readonly string[];
   /** The job that fails whenever any other job of its run did not succeed (`every check passed`), or null. */
   readonly summary: string | null;
+  /** Checks a failure of which is re-run once before it fails the merge (repos.ts `flaky`). */
+  readonly flaky: readonly string[];
 }
 
 const firstAttemptUnstarted = (job: Job): boolean => cancelledUnstarted(job) && job.runAttempt === 1;
 
 /**
- * The runs whose summary job's failure only echoes legs cancelled before any step ran: every other job of the run
- * that did not succeed is one, in the run's first attempt. A re-run starts the summary again with them.
+ * A job of a check listed as flaky that failed in its run's first attempt: a test that fails under load and passes
+ * alone (T2532) says nothing sure about the change until it fails again on a re-run of the same sha (T2988).
  */
-function echoingRuns(jobs: readonly Job[], summary: string | null): ReadonlySet<number> {
+const firstAttemptFlaky = (flaky: readonly string[]) => (job: Job): boolean =>
+  flaky.includes(job.name) && job.status === 'completed' && job.conclusion === 'failure' && job.started && job.runAttempt === 1;
+
+/**
+ * The runs whose summary job's failure only echoes legs a re-run may still prove: every other job of the run that
+ * did not succeed was cancelled before any step ran, or is a flaky check's failure, in the run's first attempt. A
+ * re-run starts the summary again with them.
+ */
+function echoingRuns(jobs: readonly Job[], summary: string | null, rerunnable: (job: Job) => boolean): ReadonlySet<number> {
   if (summary === null) return new Set();
   const short = new Map<number, Job[]>();
   for (const job of jobs) {
     if (job.name === summary || job.conclusion === 'success') continue;
     short.set(job.runId, [...(short.get(job.runId) ?? []), job]);
   }
-  return new Set([...short].filter(([, legs]) => legs.every(firstAttemptUnstarted)).map(([runId]) => runId));
+  return new Set([...short].filter(([, legs]) => legs.every(rerunnable)).map(([runId]) => runId));
 }
 
 const ECHO = 'an echo of legs cancelled before any step ran';
+const FLAKY_ECHO = "an echo of a flaky leg's failure";
 
 /**
  * Each listed check must show up and every run of it must pass; skipped or neutral is not a pass. A check whose only
  * runs short of a pass are jobs cancelled before any step ran, in a run's first attempt, is `unstarted`: a re-run may
- * still prove it. The same in a later attempt is a fail, so a runner that never comes is re-run once only. The
- * `summary` job's failure counts as such a job when it only echoes them (`echoingRuns`); any other failure fails.
+ * still prove it. The same in a later attempt is a fail, so a runner that never comes is re-run once only. A check in
+ * `flaky` whose only runs short of a pass failed in a run's first attempt is `flaky`, re-run once the same way (T2988).
+ * The `summary` job's failure counts as such a job when it only echoes them (`echoingRuns`); any other failure fails.
  */
-export function evaluate(required: readonly string[], jobs: readonly Job[], statuses: readonly CommitStatus[], summary: string | null = null): CheckOutcome[] {
-  const echoing = echoingRuns(jobs, summary);
+export function evaluate(required: readonly string[], jobs: readonly Job[], statuses: readonly CommitStatus[], summary: string | null = null, flaky: readonly string[] = []): CheckOutcome[] {
+  const flakyFailure = firstAttemptFlaky(flaky);
+  const echoing = echoingRuns(jobs, summary, (job) => firstAttemptUnstarted(job) || flakyFailure(job));
+  const flakyRuns = new Set(jobs.filter(flakyFailure).map((job) => job.runId));
   const echoes = (job: Job): boolean => job.name === summary && job.status === 'completed' && job.conclusion === 'failure' && echoing.has(job.runId);
-  const awaitsRerun = (job: Job): boolean => firstAttemptUnstarted(job) || echoes(job);
+  const awaitsRerun = (job: Job): boolean => firstAttemptUnstarted(job) || flakyFailure(job) || echoes(job);
+  const isFlaky = (job: Job): boolean => flakyFailure(job) || (echoes(job) && flakyRuns.has(job.runId));
   const jobResult = (job: Job): string => {
     if (job.status !== 'completed') return job.status;
-    if (echoes(job)) return `failure, ${ECHO}`;
+    if (echoes(job)) return `failure, ${flakyRuns.has(job.runId) ? FLAKY_ECHO : ECHO}`;
     if (!cancelledUnstarted(job)) return job.conclusion ?? 'none';
     return job.runAttempt === 1 ? UNSTARTED : `${UNSTARTED}, again on attempt ${job.runAttempt}`;
   };
@@ -181,19 +199,19 @@ export function evaluate(required: readonly string[], jobs: readonly Job[], stat
     if (running) return { name, state: 'pending', detail, reruns: [] };
     const short = ownJobs.filter(job => job.conclusion !== 'success');
     if (short.every(awaitsRerun) && ownStatuses.every(status => status.state === 'success')) {
-      return { name, state: 'unstarted', detail, reruns: [...new Set(short.map(job => job.runId))] };
+      return { name, state: short.some(isFlaky) ? 'flaky' : 'unstarted', detail, reruns: [...new Set(short.map(job => job.runId))] };
     }
     return { name, state: 'failed', detail, reruns: [] };
   });
 }
 
-/** `rerun`: nothing failed or runs, and some check waits only on jobs cancelled before any step ran. */
+/** `rerun`: nothing failed or runs, and some check waits only on a re-run (jobs cancelled before any step ran, a flaky failure). */
 export type Verdict = 'passed' | 'failed' | 'waiting' | 'rerun';
 
 export function verdictOf(outcomes: readonly CheckOutcome[]): Verdict {
   if (outcomes.some(outcome => outcome.state === 'failed')) return 'failed';
   if (outcomes.some(outcome => outcome.state === 'pending' || outcome.state === 'missing')) return 'waiting';
-  return outcomes.some(outcome => outcome.state === 'unstarted') ? 'rerun' : 'passed';
+  return outcomes.some(outcome => outcome.state === 'unstarted' || outcome.state === 'flaky') ? 'rerun' : 'passed';
 }
 
 /** Starts the failed and cancelled jobs of a completed run again, as a new attempt of it (Actions: write). */
@@ -211,5 +229,5 @@ export function readChecks(gh: Gh, repo: string, sha: string, branch: string, re
   const runs = newestRuns(parseRuns(gh(['api', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`])).filter(run => run.branch === branch));
   const jobs = runs.flatMap(run => parseJobs(gh(['api', `repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`]), run));
   const statuses = parseStatuses(gh(['api', `repos/${repo}/commits/${sha}/status`]));
-  return evaluate(required.names, jobs, statuses, required.summary);
+  return evaluate(required.names, jobs, statuses, required.summary, required.flaky);
 }

@@ -128,7 +128,7 @@ test('reads the newest runs\' latest jobs and the commit statuses of the sha', (
     if (path === `repos/${REPO}/commits/${SHA}/status`) return JSON.stringify({ statuses: [{ context: 'ext/ci', state: 'success' }] });
     throw new Error(`unexpected ${path}`);
   });
-  assert.deepEqual(readChecks(gh, REPO, SHA, 'dev', { names: ['gates', 'ext/ci'], summary: null }).map(({ state }) => state), ['passed', 'passed']);
+  assert.deepEqual(readChecks(gh, REPO, SHA, 'dev', { names: ['gates', 'ext/ci'], summary: null, flaky: [] }).map(({ state }) => state), ['passed', 'passed']);
   assert.equal(gh.mock.callCount(), 3);
 });
 
@@ -154,10 +154,30 @@ test('reads only the runs of the merged branch, so a cancelled run of the same s
     if (jobs === undefined) throw new Error(`unexpected ${path}`);
     return jobs;
   };
-  const required = { names: ['windows'], summary: null };
+  const required = { names: ['windows'], summary: null, flaky: [] };
   const before = readChecks(ghFor(false), REPO, SHA, 't2657-b', required);
   assert.deepEqual(before.map(({ state }) => state), ['missing']);
   assert.equal(verdictOf(before), 'waiting');
   assert.deepEqual(readChecks(ghFor(true), REPO, SHA, 't2657-b', required).map(({ state, detail }) => `${state}: ${detail}`), ['pending: in_progress']);
   assert.deepEqual(readChecks(ghFor(true), REPO, SHA, 't2657', required).map(({ state }) => state), ['failed'], 'the earlier branch keeps its own verdict');
+});
+
+test('a flaky check that failed in its run\'s first attempt waits on a re-run; failing again on attempt 2 fails (T2988)', () => {
+  const [first] = evaluate(['test'], [job('test', 'failure')], [], null, ['test']);
+  assert.deepEqual(first, { name: 'test', state: 'flaky', detail: 'failure', reruns: [1] });
+  assert.equal(verdictOf(evaluate(['gates', 'test'], [job('gates', 'success'), job('test', 'failure')], [], null, ['test'])), 'rerun');
+  assert.equal(evaluate(['test'], [{ ...job('test', 'failure'), runAttempt: 2 }], [], null, ['test'])[0]?.state, 'failed', 'a second failure is the change');
+  assert.equal(evaluate(['test'], [job('test', 'failure')], [])[0]?.state, 'failed', 'a check not listed as flaky fails at once');
+  assert.equal(evaluate(['test'], [job('test', 'cancelled')], [], null, ['test'])[0]?.state, 'failed', 'only a failure is re-run as flaky');
+  assert.equal(evaluate(['test'], [job('test', 'failure')], [{ context: 'test', state: 'error' }], null, ['test'])[0]?.state, 'failed', 'a failed status is no flake');
+});
+
+test('a flaky failure beside any other failure fails at once; the summary echoing only a flaky leg waits on its re-run (T2988)', () => {
+  assert.equal(verdictOf(evaluate(['gates', 'test'], [job('gates', 'failure'), job('test', 'failure')], [], null, ['test'])), 'failed');
+  const [, , all] = evaluate(['gates', 'test', 'all'], [job('gates', 'success'), job('test', 'failure'), job('all', 'failure')], [], 'all', ['test']);
+  assert.deepEqual(all, { name: 'all', state: 'flaky', detail: "failure, an echo of a flaky leg's failure", reruns: [1] });
+  const [, , beside] = evaluate(['gates', 'test', 'all'], [job('gates', 'failure'), job('test', 'failure'), job('all', 'failure')], [], 'all', ['test']);
+  assert.equal(beside?.state, 'failed');
+  const [mac, , unstartedAll] = evaluate(['mac', 'gates', 'all'], [unstarted('mac', 1), job('gates', 'success'), job('all', 'failure')], [], 'all', ['test']);
+  assert.deepEqual([mac?.state, unstartedAll?.state], ['unstarted', 'unstarted'], 'a runner that never came stays unstarted');
 });

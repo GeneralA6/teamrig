@@ -44,16 +44,39 @@ export interface Polling {
 
 export type ChecksResult = { verdict: 'passed' | 'failed' | 'timeout'; outcomes: CheckOutcome[] };
 
+const awaitsRerun = (outcome: CheckOutcome): boolean => outcome.state === 'unstarted' || outcome.state === 'flaky';
+
 /** The checks that wait on a re-run, failed for the re-run call's error: nothing else can prove them. */
 const rerunRefused = (outcomes: readonly CheckOutcome[], message: string): ChecksResult => ({
   verdict: 'failed',
-  outcomes: outcomes.map(outcome => (outcome.state === 'unstarted' ? { ...outcome, state: 'failed', detail: `${outcome.detail}; the re-run failed: ${message}`, reruns: [] } : outcome)),
+  outcomes: outcomes.map(outcome => (awaitsRerun(outcome) ? { ...outcome, state: 'failed', detail: `${outcome.detail}; the re-run failed: ${message}`, reruns: [] } : outcome)),
 });
+
+/** Why a run is re-run: what its checks that wait on it show. */
+const rerunWhy = (outcomes: readonly CheckOutcome[]): string =>
+  outcomes.some(outcome => outcome.state === 'flaky') ? 'failed on a check listed as flaky (repos.json), so the same sha goes once more' : 'cancelled before any step ran (no runner came)';
+
+/**
+ * The required checks of `sha`, or the error of a read GitHub gave no answer to (a 5xx, a timeout, a reset: T2988),
+ * which the wait reads once more at its next poll, so one bad read does not end a wait of up to 45 minutes. GitHub's
+ * own refusal (a 4xx) and a second bad read in a row throw.
+ */
+function readOnceMore(read: () => CheckOutcome[], failedBefore: boolean, log: (line: string) => void): CheckOutcome[] | Error {
+  try {
+    return read();
+  } catch (error) {
+    const message = messageOf(error);
+    if (failedBefore || REFUSAL.test(message)) throw error;
+    log(`reading the checks got no answer from GitHub (${message}): reading them once more at the next poll`);
+    return error instanceof Error ? error : new Error(message);
+  }
+}
 
 /**
  * Polls the required checks until they pass, one fails, or the deadline. A run whose required jobs GitHub cancelled
- * before any step ran (no runner came) is re-run once, then waited on again; `evaluate` fails the same in a later
- * attempt, and a run already re-run here is not re-run again while GitHub starts the new attempt.
+ * before any step ran (no runner came), or whose only failures are checks listed as flaky (T2532, T2988), is re-run
+ * once, then waited on again; `evaluate` fails the same in a later attempt, and a run already re-run here is not
+ * re-run again while GitHub starts the new attempt. A read with no answer from GitHub is tried once more (readOnceMore).
  */
 export async function waitForChecks(
   gh: Gh,
@@ -67,21 +90,30 @@ export async function waitForChecks(
 ): Promise<ChecksResult> {
   const deadline = waiter.now() + polling.timeoutMs;
   const rerun = new Set<number>();
+  let readFailed = false;
   for (;;) {
-    const outcomes = readChecks(gh, repo, sha, branch, required);
+    const read = readOnceMore(() => readChecks(gh, repo, sha, branch, required), readFailed, log);
+    readFailed = read instanceof Error;
+    if (read instanceof Error) {
+      if (waiter.now() >= deadline) throw read;
+      await waiter.sleep(Math.min(polling.intervalMs, Math.max(deadline - waiter.now(), 0)));
+      continue;
+    }
+    const outcomes = read;
     const verdict = verdictOf(outcomes);
     if (verdict === 'passed' || verdict === 'failed') return { verdict, outcomes };
     if (verdict === 'rerun') {
       for (const runId of new Set(outcomes.flatMap(outcome => outcome.reruns))) {
         if (rerun.has(runId)) continue;
         rerun.add(runId);
-        const names = outcomes.filter(outcome => outcome.reruns.includes(runId)).map(outcome => outcome.name);
+        const waiting = outcomes.filter(outcome => outcome.reruns.includes(runId));
+        const names = waiting.map(outcome => outcome.name);
         try {
           rerunFailedJobs(gh, repo, runId);
         } catch (error) {
           return rerunRefused(outcomes, error instanceof Error ? error.message : String(error));
         }
-        log(`re-ran run ${runId}: ${names.join(', ')} cancelled before any step ran (no runner came); waiting again, once`);
+        log(`re-ran run ${runId}: ${names.join(', ')} ${rerunWhy(waiting)}; waiting again, once`);
       }
     }
     if (waiter.now() >= deadline) return { verdict: 'timeout', outcomes };
@@ -122,7 +154,7 @@ export function ciProof(gh: Gh, repo: string, branch: string, required: Required
       for (const outcome of checks.outcomes) log(`check ${outcome.state}: ${outcome.name} (${outcome.detail})`);
       if (checks.verdict === 'failed') return `failed: ${listed(checks.outcomes, 'failed')}`;
       if (checks.verdict === 'timeout') {
-        const open = [listed(checks.outcomes, 'pending'), listed(checks.outcomes, 'missing'), listed(checks.outcomes, 'unstarted')].filter(part => part !== '').join('; ');
+        const open = [listed(checks.outcomes, 'pending'), listed(checks.outcomes, 'missing'), listed(checks.outcomes, 'unstarted'), listed(checks.outcomes, 'flaky')].filter(part => part !== '').join('; ');
         return `not green after ${Math.round(polling.timeoutMs / 60_000)} min: ${open}`;
       }
       return null;
@@ -470,7 +502,7 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
   const gh = deps.ghFor(credential.secret);
   const proof =
     profile.gate === 'ci'
-      ? ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
+      ? ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
       : localProof(args.dir, profile.local, deps.gate);
   const result = await mergeThroughPull(
     { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },

@@ -17,7 +17,8 @@
     "local": {
       "runner": "tools/ci/local.ts"
     },
-    "regenerated": ["plugins/teamrig/dist/", "plugins/teamrig/.claude-plugin/plugin.json", "src/core/version.ts"]
+    "regenerated": ["plugins/teamrig/dist/", "plugins/teamrig/.claude-plugin/plugin.json", "src/core/version.ts"],
+    "flaky": ["test (ubuntu-latest, node 22)", "test (windows-latest, node 22)", "test (macos-latest, node 22)"]
   },
   "GeneralA6/teamrig-pane": {
     "main": "main",

@@ -9,7 +9,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [] });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [] });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -129,4 +129,20 @@ test('both repos keep their own local CI runner, which a ship runs before it pus
   for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) {
     assert.deepEqual(profileFor(profiles, slug).local, { runner: 'tools/ci/local.ts' }, slug);
   }
+});
+
+test('reads the flaky checks, and refuses one not among the checks, the summary, a blank or a repeat (T2988)', () => {
+  const entry = (flaky: string): string => `{"O/R":{"main":"main","gate":"ci","checks":["a","t","all"],"summary":"all","flaky":${flaky}}}`;
+  assert.deepEqual(profileFor(parseProfiles(entry('["t"]')), 'O/R').flaky, ['t']);
+  assert.deepEqual(profileFor(parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a"]}}'), 'O/R').flaky, []);
+  for (const flaky of ['["b"]', '["all"]', '[""]', '"t"']) {
+    assert.throws(() => parseProfiles(entry(flaky)), /O\/R "flaky" needs a list of its "checks", the summary apart/, flaky);
+  }
+  assert.throws(() => parseProfiles(entry('["t","t"]')), /O\/R lists a flaky check twice/);
+});
+
+test('the shipped repos.json re-runs only teamrig\'s test legs once as flaky (T2532, T2988)', () => {
+  const profiles = readProfiles();
+  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').flaky, ['test (ubuntu-latest, node 22)', 'test (windows-latest, node 22)', 'test (macos-latest, node 22)']);
+  assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').flaky, []);
 });
