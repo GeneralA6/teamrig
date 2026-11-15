@@ -1543,9 +1543,9 @@
               "default": true
             },
             "colour": {
-              "description": "The lead's status line colour while a meeting is open, as #rrggbb; the terminal must show 24-bit colour.",
+              "description": "The colour of the meeting marks in the status lines while a meeting is open, as #rrggbb: the meeting tab's leading Meeting title and every other tab's held text; the terminal must show 24-bit colour.",
               "type": "string",
-              "default": "#d75fd7",
+              "default": "#8b57e3",
               "pattern": "^#[0-9a-fA-F]{6}$"
             },
             "heldText": {

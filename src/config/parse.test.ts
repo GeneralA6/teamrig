@@ -358,7 +358,7 @@ describe('parseConfig', () => {
   });
 
   it('reads meeting.statusLine, on in magenta with "meeting on: held" by default, and refuses a bad colour or held text (T2513)', () => {
-    const defaults = { enabled: true, colour: '#d75fd7', heldText: 'meeting on: held' };
+    const defaults = { enabled: true, colour: '#8b57e3', heldText: 'meeting on: held' };
     assert.deepEqual(parseConfig(ROSTER).config.meeting.statusLine, defaults);
     const set = { enabled: false, colour: '#FF8800', heldText: 'held for the meeting' };
     assert.deepEqual(parseConfig({ ...ROSTER, meeting: { statusLine: set } }).config.meeting.statusLine, set);

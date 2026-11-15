@@ -334,15 +334,16 @@ describe('statusLineText', () => {
     assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), { effort: 'xhigh' }), 'Claude (xhigh)');
   });
 
-  it("colours the meeting tab's whole line and adds the held text last on every other tab", () => {
+  it("leads the meeting tab's line with the coloured meeting title, and ends every other tab's in the coloured held text (T2985)", () => {
     const view = { folder: 'app', branch: 'main' };
     assert.equal(
-      statusLineText(both, { ...view, meeting: { kind: 'tab', colour: '#d75fd7' } }),
-      '\x1b[38;2;215;95;215mOpus 5.5, app on main, week 57%, 5h 6%\x1b[0m',
+      statusLineText(both, { ...view, meeting: { kind: 'tab', colour: '#8b57e3', title: 'daily' } }),
+      '\x1b[38;2;139;87;227mMeeting: daily\x1b[0m | Opus 5.5, app on main, week 57%, 5h 6%',
+      'only the mark takes the colour',
     );
     assert.equal(
-      statusLineText(both, { ...view, meeting: { kind: 'held', text: 'meeting on: held' } }),
-      'Opus 5.5, app on main, week 57%, 5h 6%, meeting on: held',
+      statusLineText(both, { ...view, meeting: { kind: 'held', colour: '#8b57e3', text: 'meeting on: held' } }),
+      'Opus 5.5, app on main, week 57%, 5h 6%, \x1b[38;2;139;87;227mmeeting on: held\x1b[0m',
     );
   });
 });

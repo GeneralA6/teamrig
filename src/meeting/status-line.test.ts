@@ -8,22 +8,31 @@ import { coloured, statusLineMeetingOf } from './status-line.ts';
 const START = Date.parse('2030-01-08T08:00:00Z');
 const OPEN: Meeting = { startedAt: new Date(START).toISOString(), by: 'lead', endedAt: null, since: null, carried: [] };
 const SHOWN = DEFAULT_MEETING.statusLine;
+const TAB = { kind: 'tab', colour: '#8b57e3', title: 'daily' };
+const HELD = { kind: 'held', colour: '#8b57e3', text: 'meeting on: held' };
 
 describe('statusLineMeetingOf', () => {
-  it("colours the tab of the lead that started an open meeting and holds every other tab's", () => {
+  it("marks the tab of the lead that started its team's open meeting with the daily title, and holds every other tab's", () => {
     const now = START + 60_000;
-    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, meeting: OPEN, now, tab: 'lead' }), { kind: 'tab', colour: '#d75fd7' });
-    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, meeting: OPEN, now, tab: 'front' }), { kind: 'held', text: 'meeting on: held' });
-    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, meeting: OPEN, now, tab: undefined }), { kind: 'held', text: 'meeting on: held' });
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], now, tab: 'lead' }), TAB);
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], now, tab: 'front' }), HELD);
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [], now, tab: undefined }), HELD);
+  });
+
+  it("holds a sub-team's tabs while a team above meets, and colours its lead's tab for its own meeting (T2985)", () => {
+    const now = START + 60_000;
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: undefined, above: [undefined, OPEN], now, tab: 'lead' }), HELD, "the root's lead shares the id, not the tab");
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [OPEN], now, tab: 'lead' }), TAB);
+    assert.deepEqual(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [undefined], now, tab: 'front' }), HELD);
   });
 
   it('marks nothing with no meeting, an ended or lapsed one, or the marks off', () => {
     const now = START + 60_000;
-    assert.equal(statusLineMeetingOf({ shown: SHOWN, meeting: undefined, now, tab: 'lead' }), undefined);
+    assert.equal(statusLineMeetingOf({ shown: SHOWN, own: undefined, above: [], now, tab: 'lead' }), undefined);
     const ended = { ...OPEN, endedAt: new Date(START + 30_000).toISOString() };
-    assert.equal(statusLineMeetingOf({ shown: SHOWN, meeting: ended, now, tab: 'front' }), undefined);
-    assert.equal(statusLineMeetingOf({ shown: SHOWN, meeting: OPEN, now: START + 5 * MS_PER_HOUR, tab: 'front' }), undefined);
-    assert.equal(statusLineMeetingOf({ shown: { ...SHOWN, enabled: false }, meeting: OPEN, now, tab: 'lead' }), undefined);
+    assert.equal(statusLineMeetingOf({ shown: SHOWN, own: ended, above: [ended], now, tab: 'front' }), undefined);
+    assert.equal(statusLineMeetingOf({ shown: SHOWN, own: OPEN, above: [OPEN], now: START + 5 * MS_PER_HOUR, tab: 'front' }), undefined);
+    assert.equal(statusLineMeetingOf({ shown: { ...SHOWN, enabled: false }, own: OPEN, above: [], now, tab: 'lead' }), undefined);
   });
 });
 
