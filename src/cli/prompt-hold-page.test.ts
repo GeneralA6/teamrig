@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import type { JsonRecord } from '../core/guards.ts';
+import { SecretScanner } from '../core/secrets.ts';
 import { formatTabNeed, type TabNeed } from '../tabs/need.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
@@ -25,7 +26,7 @@ async function harness(config: JsonRecord = PAGED, need: TabNeed = HELD): Promis
 
 async function pageOnce(kit: CliHarness, webhook: FakeWebhook): Promise<string[]> {
   const runtime = kit.runtime({ webhook });
-  return pagePromptHolds(runtime, await openKit(runtime, 'app'), NOW);
+  return pagePromptHolds(runtime, await openKit(runtime, 'app'), new SecretScanner(), NOW);
 }
 
 describe('pagePromptHolds (T2927)', () => {

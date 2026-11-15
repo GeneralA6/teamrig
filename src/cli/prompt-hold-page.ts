@@ -1,4 +1,5 @@
 import type { TeamPaths } from '../core/home.ts';
+import type { SecretScanner } from '../core/secrets.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import { TabNeedStore } from '../tabs/need.ts';
@@ -21,7 +22,7 @@ async function heldNow(runtime: Pick<CliRuntime, 'files'> & { readonly sessionPr
  * the team pages each hold. A hold with no webhook up the tree counts as paged: `check` still shows it. A post that
  * fails is left unpaged for the next pass to try again, and its problem is returned for the caller to warn of.
  */
-export async function pagePromptHolds(runtime: CliRuntime, kit: Kit, now: number): Promise<string[]> {
+export async function pagePromptHolds(runtime: CliRuntime, kit: Kit, scanner: Pick<SecretScanner, 'find'>, now: number): Promise<string[]> {
   const { team } = kit.paths;
   const held = await heldNow(runtime, kit.paths, now);
   const store = new PromptHoldsPaged(runtime.files, kit.paths.promptHoldsPaged);
@@ -29,7 +30,7 @@ export async function pagePromptHolds(runtime: CliRuntime, kit: Kit, now: number
   const problems: string[] = [];
   for (const need of await store.unpaged(held)) {
     const where = `${team}/${need.session}`;
-    const page = await sendOwnerPage(runtime, team, (zone) => promptHoldText(where, need, (at) => zone.clock(at), now));
+    const page = await sendOwnerPage(runtime, team, (zone) => promptHoldText(where, need, (at) => zone.clock(at), scanner, now));
     if (page.status === 'problem') {
       failed.push(need);
       problems.push(`the page of ${where}'s permission prompt hold failed (${page.problem}); the next idle pass tries again`);
@@ -44,11 +45,11 @@ export async function pagePromptHolds(runtime: CliRuntime, kit: Kit, now: number
  * since the held session cannot see it and only a person at that tab can answer; it goes to the lead. Its key names
  * the hold, so the lead is told once a hold.
  */
-export async function promptHoldWarnings(runtime: Pick<CliRuntime, 'files'> & { readonly sessionProcesses: Pick<SessionProcesses, 'alive'> }, paths: Pick<TeamPaths, 'tabs' | 'team'>, zone: TimeZone, now: number): Promise<UnownedWarning[]> {
+export async function promptHoldWarnings(runtime: Pick<CliRuntime, 'files'> & { readonly sessionProcesses: Pick<SessionProcesses, 'alive'> }, paths: Pick<TeamPaths, 'tabs' | 'team'>, zone: TimeZone, scanner: Pick<SecretScanner, 'find'>, now: number): Promise<UnownedWarning[]> {
   const held = await heldNow(runtime, paths, now);
   return held.map((need) => ({
     key: `prompt-hold ${need.session} ${need.since}`,
     source: 'the prompt-hold check of the tab files',
-    text: `PROMPT-HELD ${promptHoldText(`${paths.team}/${need.session}`, need, (at) => zone.clock(at), now)}`,
+    text: `PROMPT-HELD ${promptHoldText(`${paths.team}/${need.session}`, need, (at) => zone.clock(at), scanner, now)}`,
   }));
 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { SecretScanner } from '../core/secrets.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import type { TabNeed } from './need.ts';
 import type { AskingTab } from './needs-you.ts';
@@ -11,6 +12,9 @@ const HELD: AskingTab = { session: 'bravo', state: 'waiting', kind: 'permission'
 const ANSWERED: TabNeed = { ...HELD, session: 'alpha', state: 'working', kind: null, text: null };
 const QUESTION: AskingTab = { ...HELD, session: 'charlie', kind: 'question', text: 'Which one?' };
 const alive = (): boolean => true;
+const SCANNER = new SecretScanner();
+/** A GitHub token's shape, built here so no token-looking text sits in the source. */
+const TOKEN = `gh${'p'}_${'aB3'.repeat(12)}`;
 
 describe('heldPrompts', () => {
   it('keeps a permission prompt unanswered for the hold time, and no other ask', () => {
@@ -29,21 +33,31 @@ describe('heldPrompts', () => {
 
 describe('promptWords', () => {
   it('names the tool and the first plain words, at most three', () => {
-    assert.equal(promptWords('Bash: git status --short'), 'Bash git status');
-    assert.equal(promptWords('Bash: npm run check now'), 'Bash npm run check');
+    assert.equal(promptWords('Bash: git status --short', SCANNER), 'Bash git status');
+    assert.equal(promptWords('Bash: npm run check now', SCANNER), 'Bash npm run check');
   });
 
   it('stops at the first word that may hold a path, an address or a value', () => {
-    assert.equal(promptWords('Bash: rm -rf /srv/data/x'), 'Bash rm');
-    assert.equal(promptWords('Edit: D:/work/repo/file.ts'), 'Edit');
-    assert.equal(promptWords('Bash: TOKEN=abc curl https://example.test'), 'Bash');
-    assert.equal(promptWords('WebFetch'), 'WebFetch');
+    assert.equal(promptWords('Bash: rm -rf /srv/data/x', SCANNER), 'Bash rm');
+    assert.equal(promptWords('Edit: D:/work/repo/file.ts', SCANNER), 'Edit');
+    assert.equal(promptWords('Bash: TOKEN=abc curl https://example.test', SCANNER), 'Bash');
+    assert.equal(promptWords('WebFetch', SCANNER), 'WebFetch');
+  });
+
+  it('stops at a bare token: an echoed token, a long lowercase hex key, a mixed-case word', () => {
+    assert.equal(promptWords(`Bash: echo ${TOKEN} | gh auth login --with-token`, SCANNER), 'Bash echo');
+    assert.equal(promptWords(`Bash: deploy ${'a3f9'.repeat(10)} now`, SCANNER), 'Bash deploy');
+    assert.equal(promptWords('Bash: login Xk9vQ2 now', SCANNER), 'Bash login');
+  });
+
+  it('names the tool alone when the words match a secret shape the team configured', () => {
+    assert.equal(promptWords('Bash: login hunter2 now', new SecretScanner(['hunter2'])), 'Bash');
   });
 });
 
 describe('promptHoldText', () => {
   it('names the tab, the time on its clock, the minutes held and the first words', () => {
-    const text = promptHoldText('app/bravo', HELD, () => '12:00 IST', SINCE + 12 * 60_000);
+    const text = promptHoldText('app/bravo', HELD, () => '12:00 IST', SCANNER, SINCE + 12 * 60_000);
     assert.equal(text, 'app/bravo holds on a permission prompt since 12:00 IST (12 min): Bash git status; answer it in that tab');
   });
 });
