@@ -252,6 +252,18 @@ describe('evaluatePushes: the decision', () => {
 });
 
 describe('evaluatePushes: where a push hides', () => {
+  // A push written as literal text in an issue body runs nothing, unless the line reads it again.
+  it('allows a push named in quoted text that nothing on the line reads again', () => {
+    expectRows([
+      ['gh issue create --title x --body "steps: run \\`git push origin main\\` after review"', 'allow'],
+      ["gh issue create --body 'run `git push origin main`'", 'allow'],
+      ["gh issue create --body 'run `git push origin main`'; eval \"$y\"", 'ask', 'doubt'],
+      ["echo 'run `git push origin main`' > f.sh; chmod +x f.sh; ./f.sh", 'ask', 'doubt'],
+      ['gh issue create --body "run `git push origin main` now"', 'ask'],
+      ['gh issue create --body "run $(git push origin main) now"', 'ask'],
+    ]);
+  });
+
   it('asks about a push held in quoted text, which bash runs if an expansion reads the text again', () => {
     expectRows([
       ["x='$(git push origin main)'; echo ${x@P}", 'ask', 'doubt'],

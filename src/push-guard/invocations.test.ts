@@ -271,14 +271,75 @@ describe('findGitInvocations: scripts and shells', () => {
     }
   });
 
+  // Quoted or escaped text is literal to bash; only a re-reader on the line makes it code.
+  it('reads quoted or escaped text as literal unless the line can read it again', () => {
+    const held = 'g:it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again';
+    const body = "gh issue create --body 'run `git push`'";
+    expectInvocations([
+      ['gh issue create --title x --body "steps: run \\`git push\\` after review"', []],
+      [body, []],
+      [`${body} > /dev/null 2>&1`, []],
+      ['gh pr comment 7 --body "run \\$(git push) after review"', []],
+      ["git commit -m 'run `git push` later'", [`${CWD}|commit|-m run \`git push\` later`]],
+      ["echo 'a[$(git p)]'", []],
+      ["echo '$(git push) $('", []],
+      ["echo '$(git $SUB)'", []],
+      ["echo 'run `git push`' > notes.md", []],
+    ]);
+    // A re-reader's name as an argument is data: only the program a command runs counts.
+    for (const line of [`${body}; git add .`, `${body}; grep eval notes.md`, `${body}; find . -name '*.sh'`, `${body}; echo read export source bash`]) {
+      assert.deepEqual(doubts(line), [], line);
+    }
+    // Something on the line reads text again as code: the held push stays a doubt.
+    for (const line of [
+      `${body}; eval "$y"`,
+      `${body}; bash -c 'echo hi'`,
+      `${body}; sh -c 'echo hi'`,
+      `${body}; zsh -c 'echo hi'`,
+      `${body}; dash -c 'echo hi'`,
+      `${body}; source f.sh`,
+      `${body}; . f.sh`,
+      "echo 'run `git push`' | xargs echo",
+      `${body}; env -S 'echo hi'`,
+      `${body}; bash <<< 'echo hi'`,
+      "echo 'run `git push`' | bash",
+      `${body}; echo \${!v}`,
+      `${body}; echo \${v@P}`,
+      `${body}; echo $((v))`,
+      `${body}; [[ $v -eq 1 ]]`,
+      `${body}; read v`,
+      `${body}; printf -v v x`,
+      `${body}; unset v`,
+      `${body}; declare v`,
+      `${body}; sudo bash f.sh`,
+      `${body}; timeout 5 bash f.sh`,
+      `${body}; ((v++))`,
+      // A file the line writes and runs: the guard never reads a shell script file, so the text may run.
+      "echo 'run `git push`' > f.sh; bash f.sh",
+      "echo 'run `git push`' > f.sh; chmod +x f.sh; ./f.sh",
+      "echo 'run `git push`' | tee f.sh; ./f.sh",
+    ]) {
+      assert.ok(doubts(line).includes(held), line);
+    }
+    // A re-reader that takes the quoted text as its script runs the push: found as a push.
+    for (const line of ['eval "a \\`git push\\` b"', "bash -c '`git push`'", "sh -c '`git push`'", "zsh -c '`git push`'", "bash <<< 'run `git push`'"]) {
+      assert.deepEqual(invocations(line), [`${CWD}|push|`], line);
+    }
+    // Unescaped backticks and $( ) in double quotes run now.
+    expectInvocations([
+      ['gh issue create --body "run `git push` now"', [`${CWD}|push|`]],
+      ['gh issue create --body "run $(git push) now"', [`${CWD}|push|`]],
+    ]);
+  });
+
   it('doubts a push held in quoted text, and reads a substitution a shell runs as commands', () => {
     const held = 'g:it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again';
     // bash expands held text left to right, so a push before the point where it never closes still runs.
-    for (const line of ["x='$(git push origin main)'; echo ${x@P}", "x='a[$(git push)]'; echo $((x))", "export X='`git push`'", "echo 'a[$(git p)]'", 'x="a[\\$(git push)]"; let y=x', "echo '$(git push) $('"]) {
+    for (const line of ["x='$(git push origin main)'; echo ${x@P}", "x='a[$(git push)]'; echo $((x))", "export X='`git push`'", "echo 'a[$(git p)]'; let n=1", 'x="a[\\$(git push)]"; let y=x', "echo '$(git push) $('; let n=1"]) {
       expectDoubt(line, held);
     }
-    expectDoubt("echo '$(git $SUB)'", 'g:the git command it runs is only known when it runs');
-    expectDoubt(`echo "\\\${x:-'\\$(git push)'}"`, 'g:it holds quoted text the guard cannot read for the commands bash runs if an expansion reads it again');
+    expectDoubt("echo '$(git $SUB)'; let n=1", 'g:the git command it runs is only known when it runs');
+    expectDoubt(`echo "\\\${x:-'\\$(git push)'}"; let n=1`, 'g:it holds quoted text the guard cannot read for the commands bash runs if an expansion reads it again');
     expectInvocations([
       [`grep -n "^##\\|push(\\\`##\\|'## " file`, []],
       ["echo '$(git status'", []],

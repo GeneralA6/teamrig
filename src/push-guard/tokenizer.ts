@@ -28,7 +28,9 @@ export interface ShellWord {
    * substitution (`$(` or a backtick), as `'a[$(git push)]'` does. The substitution is data here, but bash runs
    * it if an expansion reads the text again: prompt expansion (`${NAME@P}`), an indirect `${!NAME}`, arithmetic
    * (`$(( ))`, `let`, `[[ -eq ]]`) and a subscripted name (`read`, `printf -v`, `unset`, `declare`), in this
-   * line or a later one. See {@link parseHeldText}.
+   * line or a later one. See {@link parseHeldText}. Until then it is literal text, so the push
+   * guard doubts it only when it may be read again: as an assignment's value, or on a line that has a re-reader
+   * (see `visitHeld` in invocations.ts).
    */
   readonly held?: string;
   /**

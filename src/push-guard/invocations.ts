@@ -1,5 +1,5 @@
 import { interpreterDoubt, interpreterOf, interpreterText, readScriptFile, scriptMayPush } from './interpreters.ts';
-import { isAssignment, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
+import { isAssignment, isShell, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
 import { Location, resolveDir } from './location.ts';
 import { splitGitAlias } from './program-split.ts';
 import { redirectsInput, stdinUse } from './stdin.ts';
@@ -94,6 +94,51 @@ const FILTER_OPTIONS: ReadonlySet<string> = new Set(['--setup', '--env-filter', 
 
 /** How deep scripts (`bash -c "eval ..."`) and git aliases may nest before the guard stops reading. */
 const MAX_SCRIPT_DEPTH = 8;
+
+/**
+ * Bash builtins that read a word's text again as code, or as a name whose subscript bash
+ * evaluates (`read 'a[$(x)]'`, `unset`, `declare`, `let`, `test -v`), and `eval` / `source` / `.`, which run it.
+ * Only the program a command runs counts: as an argument (`git add .`, `grep eval notes.md`) the word is data.
+ */
+const REREADERS: ReadonlySet<string> = new Set([
+  ...['eval', 'source', '.', 'let', 'read', 'readarray', 'mapfile', 'getopts', 'unset', 'wait', 'test', '[', '[['],
+  ...['declare', 'typeset', 'local', 'export', 'readonly', 'trap', 'fc', 'alias'],
+]);
+/**
+ * The wrappers whose words come before the program they run (see launchers.ts WRAPPERS); a
+ * shell or re-reader after one is still in command position: `sudo bash f.sh`, `timeout 5 bash f.sh`.
+ */
+const COMMAND_WRAPPERS: ReadonlySet<string> = new Set(['env', 'nice', 'timeout', 'command', 'builtin', 'exec', 'sudo', 'nohup', 'time', 'stdbuf', 'ionice', 'setsid', 'xargs', 'doas']);
+/** An expansion in a word that reads a value again as code: `${!x}`, `${x@P}`, `$(( ))`. */
+const REREADING_EXPANSION = /\$\{!|@P\}|\$\(\(/;
+/** An arithmetic command `(( ))` where a command starts. */
+const ARITHMETIC_COMMAND = /(?:^|[;&|(\n{]|\b(?:then|else|do|elif|if|while|until)\b)\s*\(\(/;
+/** An assignment word, its name maybe subscripted: `x=`, `x+=`, `a[i]=`. */
+const ASSIGNMENT_WORD = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/;
+/** A redirection that writes a file: `>`, `>>`, `>|`, `2>`, `&>`, `&>>`. */
+const WRITES_FILE = /^(?:\d*|&)>[>|]?$/;
+
+/**
+ * The program names in command position of `words`: the first word after assignments, and
+ * through each wrapper (with its options and a `timeout` duration) the word it runs.
+ */
+function commandNames(words: readonly ShellWord[]): string[] {
+  const names: string[] = [];
+  let wrapped = false;
+  for (const word of words) {
+    if (ASSIGNMENT_WORD.test(word.text) || (wrapped && (word.text.startsWith('-') || /^\d+(?:\.\d+)?[smhd]?$/.test(word.text)))) {
+      continue;
+    }
+    const name = word.dynamic ? '' : programName(word.text);
+    names.push(name);
+    wrapped = COMMAND_WRAPPERS.has(name);
+    if (!wrapped) {
+      break;
+    }
+  }
+  return names;
+}
+
 const MAX_ALIAS_DEPTH = 8;
 const DIALECT_NAMES: Readonly<Record<ShellDialect, string>> = { bash: 'bash', powershell: 'PowerShell', cmd: 'cmd' };
 
@@ -298,6 +343,16 @@ class GitInvocationFinder {
    * set in it earlier in the line, or one its launcher or parent git set, which a child shell inherits.
    */
   private shellHooksOverride: string | undefined;
+  /**
+   * The doubts held text raises (see {@link visitHeld}), kept until the whole line is read: they
+   * count only when something on the line can read that text again (see {@link rereads}).
+   */
+  private readonly heldDoubts: Doubt[] = [];
+  /** True once the line has something that reads text again as code; see {@link noteRereader}. */
+  private rereads = false;
+  /** True once the line writes a file, and once it runs a program by its path. */
+  private writesFile = false;
+  private runsPath = false;
   private readonly context: FinderContext;
 
   constructor(context: FinderContext) {
@@ -306,6 +361,11 @@ class GitInvocationFinder {
 
   find(command: string): GitInvocations {
     this.visitScript(staticWord(command), this.context.dialect, new Location(this.context.cwd, this.context.home), 0);
+    // A file the line writes and then runs by its path is a script the guard never reads (only interpreter
+    // scripts are), so text written into it may run.
+    if (this.rereads || (this.writesFile && this.runsPath)) {
+      this.doubts.push(...this.heldDoubts);
+    }
     return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.mentionsPush };
   }
 
@@ -365,6 +425,7 @@ class GitInvocationFinder {
       if (launched?.kind !== 'script') {
         this.visitHeld(command.words, location, depth);
       }
+      this.noteRereader(command, launched, source);
       if (stdin !== undefined) {
         const use = launched === undefined ? 'read' : stdinUse(command, launched);
         if (use !== 'stored' && !script) {
@@ -376,11 +437,13 @@ class GitInvocationFinder {
   }
 
   /**
-   * Reads the command substitutions words hold as text (see `ShellWord.held`), which bash runs when an expansion
-   * reads the text again, in this line or a later one the guard never sees. One that pushes, or text the guard
-   * leaves unread, is a doubt: the push is not judged as written, as nothing on the line says when it runs.
-   * Text that only never closes, such as a grep pattern's escaped backtick, still shows every substitution
-   * bash runs there (see {@link parseHeldText}).
+   * Reads the command substitutions words hold as text (see `ShellWord.held`), which bash runs only when an
+   * expansion reads the text again; until then the text is literal, as in an issue body that names a push. One
+   * that pushes, or text the guard leaves unread, is a doubt when the text may be read again: at once for an
+   * assignment's value, which a later expansion, on this line or one the guard never sees, may read; for any
+   * other word only when the line has a re-reader (see {@link noteRereader}) or writes a file and runs a program
+   * by its path, decided once the whole line is read (see {@link find}). Text that only never closes, such as a
+   * grep pattern's escaped backtick, still shows every substitution bash runs there (see {@link parseHeldText}).
    */
   private visitHeld(words: readonly ShellWord[], location: Location, depth: number): void {
     for (const word of words) {
@@ -391,11 +454,42 @@ class GitInvocationFinder {
       const unread = parsed.skipped ? 'it holds quoted text the guard cannot read for the commands bash runs if an expansion reads it again' : undefined;
       const held = new GitInvocationFinder(this.context);
       held.visitParsed(parsed, word.held, unread, 'bash', location.child(), depth + 1);
-      this.doubts.push(...held.doubts);
+      const found = [...held.doubts, ...held.heldDoubts];
       if (held.invocations.some((invocation) => invocation.subcommand === 'push')) {
-        this.doubt('it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again', true);
+        found.push({ reason: 'it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again', gated: true });
       }
+      // Quoted or escaped text is literal to bash: a `gh issue create --body 'run \`git push\`'`
+      // runs nothing. A value a variable stores may be read again later, so an assignment doubts at once; any
+      // other word only when the line has a re-reader (see find).
+      (ASSIGNMENT_WORD.test(word.text) ? this.doubts : this.heldDoubts).push(...found);
     }
+  }
+
+  /**
+   * Notes what in `command` can read held text again as code, counting only the program it
+   * runs, never an argument: a shell or `eval` running a script, a command the guard cannot read, a shell or a
+   * re-reading builtin as the program (see {@link REREADERS}), `xargs`, `env -S`, `printf -v`, a re-reading
+   * expansion (see {@link REREADING_EXPANSION}) or an arithmetic command; and whether it writes a file or runs a
+   * program by its path.
+   */
+  private noteRereader(command: ShellCommand, launched: Launch | undefined, source: string): void {
+    const names = commandNames(command.words);
+    const program = launched?.kind === 'program' ? programName(launched.program.text) : undefined;
+    const args = launched?.kind === 'program' ? launched.args : [];
+    this.rereads ||=
+      launched?.kind === 'script' ||
+      launched?.kind === 'opaque' ||
+      names.some((name) => REREADERS.has(name) || isShell(name)) ||
+      (program !== undefined && (REREADERS.has(program) || isShell(program))) ||
+      (launched?.kind === 'program' && launched.stdinArgs) ||
+      (names.includes('env') && command.words.some((word) => /^(?:-[^-]*S|--split-string)/.test(word.text))) ||
+      (program === 'printf' && args.some((word) => word.text.startsWith('-v'))) ||
+      command.words.some((word) => word.dynamic && REREADING_EXPANSION.test(word.text)) ||
+      ARITHMETIC_COMMAND.test(source);
+    this.writesFile ||=
+      program === 'tee' ||
+      command.redirections.some((redirection) => WRITES_FILE.test(redirection.operator) && !/^\/dev\/null$/.test(redirection.target?.text ?? '/dev/null'));
+    this.runsPath ||= launched?.kind === 'program' && /[\\/]/.test(launched.program.text);
   }
 
   /** Visits one simple command, given what it reads on stdin from the line; returns what it starts, or undefined for a `cd`. */

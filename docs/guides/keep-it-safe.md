@@ -104,7 +104,10 @@ When it cannot read part of a line with confidence, it asks and says why: a quot
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
 too deep, a push held in quoted text as a command substitution (`x='a[$(git push origin main)]'`), which bash runs
 if an expansion reads the text again (`${x@P}`, `${!x}`, `$((x))`, `let`, `[[ -eq ]]`, or `read`, `printf -v`,
-`unset` or `declare` given it as a name), in this line or a later one. A line whose words depend on the shell's
+`unset` or `declare` given it as a name), in this line or a later one. Text a variable stores counts
+always; text in any other word, such as an issue body or a commit message, counts only when the same line also
+reads text again: one of those expansions, `eval`, a shell, `source`, `xargs`, `env -S`, or a file it writes and
+runs. A line whose words depend on the shell's
 version, its host or how it is started also counts: a NUL or a `` `u{2d} `` in PowerShell, a CR in bash, a caret
 before a line end in cmd, or a `"`, a `\`, an empty value, a bare comma or a `--%` handed to a program from
 PowerShell, as Windows PowerShell 5.1 rebuilds that program's line and the words it gets can differ from the words
