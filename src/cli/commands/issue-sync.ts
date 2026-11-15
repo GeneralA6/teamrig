@@ -13,6 +13,8 @@ import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 import type { Thread } from '../../github/clock.ts';
+import type { HostIssue } from '../../issues/issue.ts';
+import { recordClaims } from './issue-claim.ts';
 import { recordClocks, repoThreads } from './issue-clock.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, reportAutoSync } from './issue-sync-auto.ts';
@@ -62,7 +64,11 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   }
   const register = teamRegister(runtime, kit.paths, config);
   const rules = importRules(config);
-  const since = closedSince(new Date(runtime.clock.now()), config.github.closedDays);
+  const started = runtime.clock.now();
+  const since = closedSince(new Date(started), config.github.closedDays);
+  const pushing = auto && config.github.statusPush;
+  /** The issues of each repository read, for the claim pass, which writes to GitHub only when the run pushes. */
+  const claimRead = new Map<string, readonly HostIssue[]>();
   // github.repos is GitHub's list, so every repository it names is GitHub's.
   const host = hostOf('github', runtime, new SecretScanner(config.register.secretPatterns));
   const told = new Set<string>();
@@ -110,6 +116,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     // Against the tasks as written, so an issue the import just took is held by its new task.
     threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
     clocked.add(repo);
+    claimRead.set(repo, read.issues);
     [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
     written += outcomes.filter((outcome) => outcome.result.ok).length;
     added.push(...addedTasks(outcomes));
@@ -122,8 +129,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   if (write) {
     (await recordClocks(runtime, kit, config, clocked, threads)).forEach(say);
   }
-  const pushing = auto && config.github.statusPush;
   if (pushing) {
+    // Before the push, so it plans against the assignees the claims set.
+    (await recordClaims(runtime, kit, config, { host, read: claimRead, started })).forEach(say);
     // The import's tasks are in the register now, so the push plans against them. A repository the import could
     // not read is not pushed: it would fail the same way, and its failure is already told.
     const writesPerRun = autoPushWrites(config.github.probeSeconds);

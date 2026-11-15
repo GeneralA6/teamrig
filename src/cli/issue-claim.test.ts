@@ -1,0 +1,105 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import type { JsonRecord } from '../core/guards.ts';
+import { isIssueAssign, isIssueComment, isIssueUnassign } from '../github/gh.ts';
+import { CLAIM_DAYS, formatClaims, parseClaims } from '../issues/claim.ts';
+import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { CLAIM_REPLY, RELEASE_REPLY } from './commands/issue-claim.ts';
+import { EXIT } from './runtime.ts';
+
+const REPO = 'acme/web';
+const CLAIMS = join(TEAM_HOME, 'state', 'github-claims.json');
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
+function team(statusPush: boolean): JsonRecord {
+  return { ...TEAM, github: { repos: [REPO], owners: { octocat: 'bravo' }, statusPush, everyMinutes: 5 } };
+}
+
+/** The GitHub writes a run made: assigns, unassigns, comments and label writes, as command lines. */
+function writes(gh: FakeGh, kind: (args: readonly string[]) => boolean): string[] {
+  return gh.ran.filter((request) => kind(request.args)).map((request) => request.args.join(' '));
+}
+
+async function autoSync(kit: CliHarness, gh: FakeGh): Promise<readonly string[]> {
+  const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+  assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+  return result.stdout;
+}
+
+const at = (kit: CliHarness): string => new Date(kit.clock.now()).toISOString();
+
+describe('claims in the automatic sync (T3021)', () => {
+  it("assigns an outside contributor's claim posted since the last pass, swaps status:open for status:claimed and replies once", async () => {
+    const kit = new CliHarness(team(true));
+    const free = (comments: readonly JsonRecord[]): FakeGh =>
+      new FakeGh().holds(REPO, [ghIssue(REPO, 8, { title: 'Add search', authorAssociation: 'MEMBER', labels: ['status:open'], comments })]).hasLabels(REPO, ['status:open', 'status:claimed']);
+    const old = commentNode(at(kit), 'NONE', 'User', { login: 'ada', body: '/take' });
+
+    kit.clock.advance(HOUR);
+    const first = free([old]);
+    await autoSync(kit, first);
+    assert.deepEqual(writes(first, isIssueAssign), [], 'a comment from before the first pass claims nothing');
+    assert.deepEqual(parseClaims(kit.files.get(CLAIMS) ?? '').checked.get(REPO), kit.clock.now());
+
+    kit.clock.advance(HOUR);
+    const second = free([old, commentNode(at(kit), 'NONE', 'User', { login: 'bob', body: "I'll take this one" })]);
+    const out = await autoSync(kit, second);
+    assert.deepEqual(writes(second, isIssueAssign), [`api repos/${REPO}/issues/8/assignees -X POST -f assignees[]=bob`]);
+    assert.ok(out.includes(`CLAIMED ${REPO}#8: bob took it by a comment and is assigned for ${CLAIM_DAYS} days, or until a linked pull request lands`), out.join('\n'));
+    assert.ok(out.includes(`LABELED ${REPO}#8: "status:claimed"`) && out.includes(`UNLABELED ${REPO}#8: "status:open"`), out.join('\n'));
+    assert.deepEqual(writes(second, isIssueComment), [`api repos/${REPO}/issues/8/comments -X POST -f body=${CLAIM_REPLY}`]);
+    assert.deepEqual(
+      parseClaims(kit.files.get(CLAIMS) ?? '').claims.map(({ number, login }) => ({ number, login })),
+      [{ number: 8, login: 'bob' }],
+    );
+  });
+
+  it('takes off an assignee its claim made once the claim ran its days with no linked pull request, and leaves one a person assigned', async () => {
+    const kit = new CliHarness(team(true));
+    const made = kit.clock.now() - (CLAIM_DAYS * DAY + HOUR);
+    await kit.files.write(CLAIMS, formatClaims({ claims: [{ repo: REPO, number: 8, login: 'ada', at: made }, { repo: REPO, number: 9, login: 'cy', at: made }], checked: new Map([[REPO, made]]) }));
+    const gh = new FakeGh()
+      .holds(REPO, [
+        ghIssue(REPO, 8, { title: 'Add search', authorAssociation: 'MEMBER', assignees: ['ada'], labels: ['status:claimed'] }),
+        ghIssue(REPO, 9, { title: 'Fix login', authorAssociation: 'MEMBER', assignees: ['cy'], labels: ['status:claimed'], linkedPulls: 1 }),
+        ghIssue(REPO, 10, { title: 'Docs', authorAssociation: 'MEMBER', assignees: ['dee'], labels: ['status:claimed'] }),
+      ])
+      .hasLabels(REPO, ['status:open', 'status:claimed']);
+    const out = await autoSync(kit, gh);
+    assert.deepEqual(writes(gh, isIssueUnassign), [`api repos/${REPO}/issues/8/assignees -X DELETE -f assignees[]=ada`]);
+    assert.ok(out.includes(`RELEASED ${REPO}#8: ada's claim ran ${CLAIM_DAYS} days with no linked pull request; the assignee is taken off`), out.join('\n'));
+    assert.ok(out.includes(`LABELED ${REPO}#8: "status:open"`) && out.includes(`UNLABELED ${REPO}#8: "status:claimed"`), out.join('\n'));
+    assert.ok(writes(gh, isIssueComment).includes(`api repos/${REPO}/issues/8/comments -X POST -f body=${RELEASE_REPLY}`));
+    assert.deepEqual(
+      parseClaims(kit.files.get(CLAIMS) ?? '').claims.map(({ number, login }) => ({ number, login })),
+      [{ number: 9, login: 'cy' }],
+      'the claim with a linked pull request holds',
+    );
+  });
+
+  it('keeps a claim whose unassign failed, to try again on the next run', async () => {
+    const kit = new CliHarness(team(true));
+    const made = kit.clock.now() - (CLAIM_DAYS * DAY + HOUR);
+    await kit.files.write(CLAIMS, formatClaims({ claims: [{ repo: REPO, number: 8, login: 'ada', at: made }], checked: new Map([[REPO, made]]) }));
+    const gh = new FakeGh()
+      .holds(REPO, [ghIssue(REPO, 8, { title: 'Add search', authorAssociation: 'MEMBER', assignees: ['ada'], labels: ['status:claimed'] })])
+      .hasLabels(REPO, ['status:open', 'status:claimed'])
+      .failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 502\n' });
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh });
+    assert.ok(result.stdout.some((line) => line.startsWith(`FAILED ${REPO}#8: ending ada's claim: `) && line.endsWith('; tried again on the next run')), result.stdout.join('\n'));
+    assert.deepEqual(writes(gh, isIssueComment), []);
+    assert.deepEqual(parseClaims(kit.files.get(CLAIMS) ?? '').claims.map(({ login }) => login), ['ada']);
+  });
+
+  it('makes no claim and writes no claims file when the run does not push', async () => {
+    const kit = new CliHarness(team(false));
+    kit.clock.advance(HOUR);
+    const gh = new FakeGh().holds(REPO, [ghIssue(REPO, 8, { title: 'Add search', authorAssociation: 'MEMBER', comments: [commentNode(at(kit), 'NONE', 'User', { login: 'bob', body: '/take' })] })]);
+    await autoSync(kit, gh);
+    assert.deepEqual(writes(gh, isIssueAssign), []);
+    assert.equal(kit.files.get(CLAIMS), undefined);
+  });
+});
