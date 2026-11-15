@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { constants } from 'node:os';
 import { STEP_PRIORITY } from '../delivery/priority.ts';
 import { nodeTreeKill } from '../delivery/tree-kill.ts';
-import { hookEndText, hookExitCode, nodeHookRunner, succeeded, type HookEnd, type HookRequest } from './hooks.ts';
+import { FakeHooks } from '../testing/fake-hooks.ts';
+import { credentialFreeHooks, hookEndText, hookExitCode, nodeHookRunner, succeeded, type HookEnd, type HookRequest } from './hooks.ts';
 
 const ENDS: readonly HookEnd[] = [{ kind: 'exited', code: 3 }, { kind: 'timedOut' }, { kind: 'signal', signal: 'SIGKILL' }, { kind: 'notStarted', error: 'ENOENT' }, { kind: 'stopped' }];
 
@@ -33,6 +34,15 @@ function request(script: string, overrides: Partial<HookRequest> = {}): { readon
     request: { argv: [process.execPath, '-e', script], cwd: process.cwd(), env: { ...process.env, HOOK_PROBE: 'set' }, timeoutMs: NO_TIME_LIMIT_MS, onLine: (line) => lines.push(line), ...overrides },
   };
 }
+
+describe('credentialFreeHooks', () => {
+  it('runs each hook without the credential variables but those it passes on, the rest of the request as it was', async () => {
+    const inner = new FakeHooks();
+    const request = { argv: ['node', 'deploy.js'], cwd: '/srv/app', env: { PATH: '/usr/bin', GH_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' }, timeoutMs: 1000, onLine: () => undefined };
+    await credentialFreeHooks(inner, ['NPM_TOKEN']).run(request);
+    assert.deepEqual(inner.ran, [{ ...request, env: { PATH: '/usr/bin', NPM_TOKEN: 'not-a-real-credential' } }]);
+  });
+});
 
 describe('nodeHookRunner', () => {
   const runner = nodeHookRunner(process.platform);

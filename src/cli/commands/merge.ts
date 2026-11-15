@@ -13,6 +13,7 @@ import { callerOf } from '../inputs.ts';
 import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { refuseUnderParentLock } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { credentialFreeHooks } from '../../deploy/hooks.ts';
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
 
 /**
@@ -58,7 +59,7 @@ export async function merge(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
         {
           git: runtime.mergeGit,
           steps: stoppableSteps(runtime.steps, stop),
-          hooks: stoppableHooks(runtime.hooks, stop),
+          hooks: credentialFreeHooks(stoppableHooks(runtime.hooks, stop), config.delivery.passEnv),
           scanner: new SecretScanner(config.register.secretPatterns),
           files: runtime.files,
           memory: runtime.memory,

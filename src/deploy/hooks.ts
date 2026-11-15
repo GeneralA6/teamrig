@@ -4,6 +4,7 @@ import { lowerStep, NODE_PRIORITIES, type Priorities } from '../delivery/priorit
 import { NOT_STARTED_EXIT } from '../delivery/recorded-step.ts';
 import { exitCodeOf, type StepEnd } from '../delivery/steps.ts';
 import { nodeTreeKill, type RunKill, type TreeKill } from '../delivery/tree-kill.ts';
+import { withoutCredentials } from '../core/child-env.ts';
 import type { Env } from '../core/home.ts';
 import { endOf } from '../test-run/shell.ts';
 
@@ -35,6 +36,11 @@ export type HookEnd = StepEnd | { readonly kind: 'notStarted'; readonly error: s
 
 export interface HookRunner {
   run(request: HookRequest): Promise<HookEnd>;
+}
+
+/** `hooks`, each hook started without the credential variables (core/child-env.ts) but those `pass` names. */
+export function credentialFreeHooks(hooks: HookRunner, pass: readonly string[]): HookRunner {
+  return { run: (request) => hooks.run({ ...request, env: withoutCredentials(request.env, pass) }) };
 }
 
 /** True when the hook exited 0. */

@@ -9,6 +9,7 @@ import { callerOf, commandWordsOf, listOf } from '../inputs.ts';
 import { findTeam, openKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { refuseUnderParentLock } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { credentialFreeHooks } from '../../deploy/hooks.ts';
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
 
 /** What a deploy that pulls nothing restarts, why, and the command that does it. */
@@ -60,7 +61,7 @@ export async function deploy(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     const setup = { team, delivery, places, zone, inTeam: (path: string) => teamPlace(kit.paths, path), focus: config.focus };
     const ports = {
       git: runtime.mergeGit,
-      hooks: stoppableHooks(runtime.hooks, stop),
+      hooks: credentialFreeHooks(stoppableHooks(runtime.hooks, stop), delivery.passEnv),
       files: runtime.files,
       memory: runtime.memory,
       pid: runtime.pid,

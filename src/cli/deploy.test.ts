@@ -24,8 +24,8 @@ interface World {
 }
 
 /** A team whose main checkout is two commits behind origin. */
-function world(): World {
-  const kit = new CliHarness(DEPLOYING);
+function world(config: Readonly<Record<string, unknown>> = DEPLOYING): World {
+  const kit = new CliHarness(config);
   const git = new FakeMergeGit();
   git.origin.set('main', 'c2');
   git.ancestry.add('base>c2');
@@ -69,6 +69,14 @@ describe('teamrig deploy', () => {
       rolledAt: '2030-01-08T10:01:02.000Z',
     });
     assert.equal(kit.files.get(LOCK), undefined, 'the host lock is released');
+  });
+
+  it('starts the deploy command without the credential variables delivery.passEnv does not name', async () => {
+    const { kit, git, hooks } = world({ ...TEAM, delivery: { ...DEPLOYING.delivery, passEnv: ['NPM_TOKEN'] } });
+    const env = { ...ELSEWHERE.env, GH_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' };
+    assert.equal((await kit.run(DEPLOY, { ...ELSEWHERE, env, mergeGit: git, hooks })).code, 0);
+    assert.deepEqual(hooks.commands, ['node tools/deploy.js']);
+    assert.deepEqual([hooks.ran[0]?.env['GH_TOKEN'], hooks.ran[0]?.env['NPM_TOKEN']], [undefined, 'not-a-real-credential']);
   });
 
   it('is DONE with nothing run when nothing is pending', async () => {

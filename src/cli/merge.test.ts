@@ -161,6 +161,16 @@ describe('teamrig merge', () => {
     assert.ok(kit.files.get(join(TEAM_HOME, 'state', 'deploys', 'pending-merges', 'app%2Ffeat.json'))?.includes('"note": "https://forge/pr/7"'));
   });
 
+  it('starts the merge command without the credential variables delivery.passEnv does not name', async () => {
+    const MERGE = ['node', 'merge.ts'];
+    const { kit, git, steps } = world({ ...TEAM, delivery: { passEnv: ['NPM_TOKEN'], repos: { app: { mainCheckout: MAIN_CHECKOUT, merge: { command: MERGE } } } } });
+    const hooks = new FakeHooks(kit.clock).answer(MERGE, { end: 75 });
+    const env = { ...IN_WORKTREE.env, GITHUB_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' };
+    await kit.run(MERGE_RUN, { ...IN_WORKTREE, env, mergeGit: git, steps, hooks });
+    assert.deepEqual(hooks.commands, ['node merge.ts']);
+    assert.deepEqual([hooks.ran[0]?.env['GITHUB_TOKEN'], hooks.ran[0]?.env['NPM_TOKEN']], [undefined, 'not-a-real-credential']);
+  });
+
   it('refuses a folder outside git', async () => {
     const { kit, git, steps } = world();
     assert.deepEqual(await kit.run(MERGE_RUN, { cwd: APP, mergeGit: git, steps }), { code: 2, stdout: [`REFUSED ${APP} is not in a git checkout`], stderr: [] });

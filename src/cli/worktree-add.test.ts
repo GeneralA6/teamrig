@@ -51,6 +51,16 @@ describe('runCli: worktree add (T1305)', () => {
     assert.equal(hooks.ran[0]?.env['TEAMRIG_MAIN_CHECKOUT'], MAIN);
   });
 
+  it('runs the setup without the credential variables delivery.passEnv does not name', async () => {
+    const { ports } = world();
+    const hooks = new FakeHooks().answer(SETUP, { lines: [] });
+    const config = { ...LISTED, delivery: { ...LISTED.delivery, passEnv: ['NPM_TOKEN'] } };
+    const env = { ...IN_TEAM, GH_TOKEN: 'not-a-real-credential', NPM_TOKEN: 'not-a-real-credential' };
+    const result = await new CliHarness(config).run(['worktree', 'add', 't9-parser'], { worktrees: ports, hooks, cwd: '/w/t4', env });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.deepEqual([hooks.ran[0]?.env['GH_TOKEN'], hooks.ran[0]?.env['NPM_TOKEN']], [undefined, 'not-a-real-credential']);
+  });
+
   it('adds to the repository --repo names from any folder, and refuses one the team does not list', async () => {
     const { git, ports } = world({ worktrees: undefined });
     const kit = new CliHarness(LISTED);

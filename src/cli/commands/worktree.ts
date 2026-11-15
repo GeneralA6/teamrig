@@ -13,6 +13,7 @@ import { createWorktree, type AddRequest } from '../../worktree/add.ts';
 import { isBranchType, taskBranchName } from '../../worktree/branch-name.ts';
 import { removalRefusal } from '../../worktree/owner.ts';
 import { carryOut, clearLeftover, describeLeftover, describePlan, planRemoval, type RemovalPlan, type WorktreeFolder } from '../../worktree/remove.ts';
+import { credentialFreeHooks } from '../../deploy/hooks.ts';
 import { onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { taskIdOf } from '../inputs.ts';
 import { openKit, requireConfig, rosterOf, teamFolders, type Kit } from '../kit.ts';
@@ -32,7 +33,7 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const branch = await branchToAdd(args, runtime, team);
   const place = addPlace(args.flags.get('repo'), runtime, team);
   const { git, files } = runtime.worktrees;
-  const end = await createWorktree({ branch, ...place, env: runtime.env }, { git, files, hooks: runtime.hooks }, (line) => runtime.out.stdout(line));
+  const end = await createWorktree({ branch, ...place, env: runtime.env }, { git, files, hooks: credentialFreeHooks(runtime.hooks, team?.config.delivery.passEnv ?? []) }, (line) => runtime.out.stdout(line));
   switch (end.kind) {
     case 'refused':
       throw new RefusedError(end.reason);
