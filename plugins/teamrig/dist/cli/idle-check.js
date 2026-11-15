@@ -12,7 +12,7 @@ import { measureSessions } from "../sessions/measure.js";
 import { resumeFolderOf } from "../sessions/resume-folder.js";
 import { SessionRecordStore } from "../sessions/record.js";
 import { REPLY_TAIL_BYTES } from "../turn-log/reply.js";
-import { unseenLinesOf } from "../inbox/inbox.js";
+import { seenLinesOf, unseenLinesOf } from "../inbox/inbox.js";
 import { asksNowOf, urgentLinesText, WakeAsks } from "../wake/asks.js";
 import { startableTasks } from "../wake/day-start.js";
 import { inboxDepsOf } from "./commands/inbox.js";
@@ -45,7 +45,7 @@ export async function idleFactsOf(runtime, kit, config, roster) {
     const asks = new Map();
     for (const id of roster.ids) {
         // A timed ask counts from its time, and only while its line is unseen.
-        asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
+        asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id), () => seenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
     }
     const { meetings } = await new MeetingSchedule(runtime.files, kit.paths.meetings).read();
     return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, now, zone: teamZone(config, runtime) };
