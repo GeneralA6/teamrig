@@ -1,4 +1,15 @@
 import { WEEKDAYS } from "../config/types.js";
+/**
+ * A card's key across the registers a meeting covers: its task's id in the lead's own register (`team` undefined),
+ * `<team>/<id>` in a team under it, as the agenda's rows and the panel's items name it.
+ */
+export function cardLabel(team, id) {
+    return team === undefined ? id : `${team}/${id}`;
+}
+/** A decision's key (cardLabel). */
+export function decisionKey({ task, team }) {
+    return cardLabel(team, task.id);
+}
 /** The band a task with no ranked place reads as: after every other. */
 const LAST_BAND = 2;
 /** The task and every active task of its register that needs it, directly or not, each once. */

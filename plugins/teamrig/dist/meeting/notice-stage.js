@@ -1,10 +1,11 @@
 import { MS_PER_HOUR, MS_PER_MINUTE } from "../core/time.js";
 import { endOf } from "./schedule.js";
 /**
- * When a booked meeting tells the person of itself (T2405): `before` its slot, at its `start`, and `missed` once it is
- * past its slot's time with no `meeting start`. Each stage goes out once. The meeting's `notifiedAt` is when its last
- * notice went out, so a stage whose time is at or before it has gone out, and a move (which clears it) sends each
- * again. A tab that first looks late sends only the latest stage due, never the ones it slept through.
+ * When a booked meeting tells the person of itself (T2405): `before` its slot, at its `start`, and `missed`
+ * `missedAfterMinutes` past its slot's start with no `meeting start`. Each stage goes out once. The meeting's
+ * `notifiedAt` is when its last notice went out, so a stage whose time is at or before it has gone out, and a move
+ * (which clears it) sends each again. A tab that first looks late sends only the latest stage due, never the ones it
+ * slept through.
  */
 export const NOTICE_STAGES = ['before', 'start', 'missed'];
 /**
