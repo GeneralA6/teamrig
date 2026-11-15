@@ -828,7 +828,7 @@ tab. The route allow never lets one through, as it answers only once every guard
 
 It also refuses a session's own write of an owner-gated key of the team config, each a permission or an owner gate:
 `serviceRoles`, `roles`, `ownerGates`, `securityGates`, `register.ownerSource`, `prompts`, `readonlyShell`, `exec`,
-`alerts`, `github.owners`, `delivery.repos` (each repository's merge, deploy and check commands), `permissions` and the
+`alerts`, `github.owners`, `delivery.repos` (each repository's merge, deploy and check commands), `delivery.passEnv`, `permissions` and the
 guards (`pushGuard`, `secretGuard`, `packageGuard`, `dbWriteGuard`, `commitGuard`). It refuses a Write, Edit or
 MultiEdit of the team config whose result changes one (the guard applies the edit to the file as it is now and compares
 each key, a key the file lacks reading as unset), or that it cannot work out (text not found, a notebook edit), and a shell line naming the team config file (`teams/<team>/config.json`, or

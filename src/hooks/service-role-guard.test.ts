@@ -141,6 +141,7 @@ describe('config guard: every owner-gated key (T3083)', () => {
       ['exec', changed((c) => ({ ...c, exec: { webhookEnv: 'OTHER' } }))],
       ['github.owners', changed((c) => ({ ...c, github: { ...c.github, owners: { octo: 'alpha', mallory: 'alpha' } } }))],
       ['delivery.repos', changed((c) => ({ ...c, delivery: { ...c.delivery, repos: { web: { merge: { command: ['sh', '-c', 'x'] } } } } }))],
+      ['delivery.passEnv', changed((c) => ({ ...c, delivery: { ...c.delivery, passEnv: ['GH_TOKEN'] } }))],
       ['pushGuard', changed((c) => ({ ...c, pushGuard: { pushToProtected: 'allow' } }))],
       ['alerts', changed((c) => ({ ...c, alerts: { webhookEnv: 'X' } }))],
     ];

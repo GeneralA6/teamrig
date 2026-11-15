@@ -39,6 +39,7 @@ export const OWNER_GATED_KEYS: readonly (readonly string[])[] = [
   ['alerts'],
   ['github', 'owners'],
   ['delivery', 'repos'],
+  ['delivery', 'passEnv'],
   ['permissions'],
   ['pushGuard'],
   ['secretGuard'],
