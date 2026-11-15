@@ -682,13 +682,13 @@ The owner's daily meeting with the lead, in the lead's tab.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `panel` | [object](#meetingpanel) |  | The agenda panel beside the chat of the session the owner meets while a meeting is open (the lead's daily one, or a started M<n>). |
+| `panel` | [object](#meetingpanel) |  | The agenda panel beside the chat of the session the owner meets while a meeting is open (the lead's daily one, or a started M\<n>). |
 | `spotlight` | [object](#meetingspotlight) |  | The spotlight while a meeting is open: every screen dimmed but the window holding the lead's tab. Windows Terminal on Windows only. |
 | `statusLine` | [object](#meetingstatusline) |  | The status line while a meeting is open: the lead's tab shows its line in the meeting colour, every other tab adds the held text, so a glance at any tab tells the meeting is on. |
 
 ## `meeting.panel`
 
-The agenda panel beside the chat of the session the owner meets while a meeting is open (the lead's daily one, or a started M<n>).
+The agenda panel beside the chat of the session the owner meets while a meeting is open (the lead's daily one, or a started M\<n>).
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
