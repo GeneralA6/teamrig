@@ -2920,6 +2920,11 @@ count line before its rows, which leave out its Other work. `MERGES` reads each 
 `delivery.dir` is the root's shares the root's rows, unlabelled; it shows when any team of the tree is gated. `GOALS`
 stays the root's ranked goals: a team's own goals are its lead's to steer, never the owner's scoreboard. `UNGATED`
 stays the root team's own.
+The day's first `meeting start` opens the owner's daily meeting. One started after it the same day, on the team's
+clock, is an extra meeting: it holds messages and prints the agenda as the daily one does, its start line says so
+(`MEETING started Thu 10-15 15:00 IDT, an extra meeting after the day's daily one: ...`) and the lead's status line
+reads `Meeting: extra`. The next day's first start opens the daily meeting again.
+
 
 With a meeting id, `meeting start M3` starts a scheduled meeting instead, one booked with `meeting schedule`: any
 session runs it, as the owner starts it from whichever tab is at hand. The session met gets the opening prompt (the
@@ -6412,7 +6417,8 @@ reset, and over the seven days before the week's reset only until those hooks na
 team, or once the reading's week reset, no pace is shown. The team config's `statusLine` turns `folder`, `branch` and `pace` off one by one (each is
 on by default; with `branch` off, git is never asked). While the owner's meeting is open on a team or a team above
 it (`teamrig meeting start`, until `meeting end` or its lapse), the lead's tab that started it leads its line with
-`Meeting: daily | ` and every other tab, a sub-team's too, adds `meeting.statusLine.heldText` (`meeting on: held`)
+`Meeting: daily | ` (`Meeting: extra | ` for one started after the day's daily meeting) and every other tab, a
+sub-team's too, adds `meeting.statusLine.heldText` (`meeting on: held`)
 last; only that mark takes `meeting.statusLine.colour` (`#8b57e3`, teamrig's purple, by default), and
 `meeting.statusLine.enabled: false` turns both off. The tab of a session the owner meets in a booked or on-the-spot
 meeting, any session's, a worker's too, leads its line with `Meeting: <its title> | `, what the meeting is about cut
