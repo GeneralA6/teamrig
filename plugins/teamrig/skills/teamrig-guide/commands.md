@@ -4077,9 +4077,15 @@ Lists every key of the team config, or with `<key>` those at and under it (`mess
 value as the team's file holds it, or its default when unset, the default beside a changed one, and why a key is
 read-only. The roster (`team`, `sessions`, `names`, `leads`, `roles`) changes only through hire, retire, rename,
 promote and demote; `configVersion` only through `config migrate`; maps and lists of records only in config.json or
-their own command; and the budget, `focus.allocation`, `burst`, permissions, `prompts`, `ownerGates`,
-`leadBoundary`, `exec`, `readonlyShell` and every guard (each `<name>Guard`) are owner gates the owner decides. A value `config validate` finds wrong is named
-with its problem, read as its default meanwhile.
+their own command; the folders teamrig keeps records in (`paths`, `delivery.dir`, `refresh.handoverDir`) when the
+team is made or in config.json. Owner gates the owner decides: the budget, `focus.allocation`, `burst`,
+`hiring.policy`, permissions, `prompts`, `ownerGates`, `securityGates`, `leadBoundary`, `exec`, `readonlyShell`,
+every guard (each `<name>Guard`), `alerts`, `refresh.endCommand`, `register.ownerSource`, `register.secretPatterns`,
+`skills.forbidFrontmatter`, `commits.gate`, and the host's shared resources (`delivery.queue`, `open.headroom`,
+`open.idle`). The lead may set only the keys on teamrig's list of lead keys, so a key a new release adds stays the
+owner's until that list names it. Three listed keys rest on the lead's judgment: `register.review.mode` and
+`register.review.requireOn` (what a bug's review needs) and `github.repos` (the repositories teamrig writes issues
+to). A value `config validate` finds wrong is named with its problem, read as its default meanwhile.
 
 Flags:
 

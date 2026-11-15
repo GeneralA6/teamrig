@@ -19,7 +19,12 @@ default that suits a team that never set it, so every user gets the feature with
 6. `npm run docs:config` redraws `docs/configuration.md` from the schema; `npm run check` fails until it is redrawn.
 7. Name the key in brackets (`[block.key]`) where the guide (`plugins/teamrig/skills/teamrig-guide/`) describes the
    behaviour it sets.
-8. Land it with `dev-ship-change`: the schema is under `plugins/teamrig/`, so the change raises the version.
+8. Decide who may change it with `teamrig config set`. A key is the owner's unless listed in `LEAD_KEYS`
+   (`src/config/lead-keys.ts`); list it only when changing it grants or takes away nothing a session may do, runs
+   no program, moves no folder, and leaves the budget, the host's shared resources and every guard as they are.
+   A key that is an owner gate also goes in `GATED_KEYS` (`src/config/settings.ts`) with its gate's name. The
+   shipped-schema specs in `src/config/settings.test.ts` fail on a listed key that is not editable.
+9. Land it with `dev-ship-change`: the schema is under `plugins/teamrig/`, so the change raises the version.
 
 ## Traps
 
@@ -28,4 +33,4 @@ default that suits a team that never set it, so every user gets the feature with
 - An object inside a list or a map takes its parent's description; give its own keys theirs.
 - Never edit `docs/configuration.md` by hand: the next redraw drops the edit, and the check fails before that.
 
-Last verified: 2026-10-21
+Last verified: 2026-11-15

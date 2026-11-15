@@ -842,7 +842,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       counts plugins' skills, and the user's ones used only in other projects; it names the newest setup
       backup, or NO BACKUP; works before a team exists; it only reads
   config get [<key>] [--json]   every key of the team config, or those at and under <key>: its value
-      against its default, and read-only with why (the roster, an owner gate, a map); --json for a screen
+      against its default, and read-only with why (the roster, an owner gate, a folder, a map, a key off
+      the lead's list); --json for a screen
   config set <key> <value> | config set <key> --unset [--yes] [--session <id|name>]   the lead only:
       changes one key config get marks editable, the value read by the key's type (a list as JSON or
       a,b); --unset removes it to read its default; without --yes it shows the change; the whole new
