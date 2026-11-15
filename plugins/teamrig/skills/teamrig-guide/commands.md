@@ -3520,7 +3520,7 @@ restore now, which teamrig check reads`): each part it set up with the Node and 
 of that name it left as it was. `teamrig check` reads it to warn the lead when one of those files is gone
 (RESTORE-DEAD) or a part starts something else (RESTORE-STRAY).
 macOS and Linux have no logon entry or shortcut yet: there it is `REFUSED`, and `teamrig restore run` after a crash
-or reboot does the same by hand.
+or reboot does the same by hand. Its `--yes` changes a permission, the owner's to make, so it is refused where Claude Code runs it (an agent's tool call, a `!` line, a script it runs or a hook: `$CLAUDECODE` is set there), and the [exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses a tool call that runs it; its preview stays open. The owner types `/teamrig restore install --yes` in a tab, or runs it in their own terminal.
 
 Flags:
 
@@ -4003,7 +4003,7 @@ It refuses a key the config does not have, and a config it cannot read.
 
 ### teamrig config migrate
 
-Shows an older config rewritten in the current format; `--yes` writes it and keeps the old file in `backups/`.
+Shows an older config rewritten in the current format; `--yes` writes it and keeps the old file in `backups/`. Its `--yes` changes a permission, the owner's to make, so it is refused where Claude Code runs it (an agent's tool call, a `!` line, a script it runs or a hook: `$CLAUDECODE` is set there), and the [exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses a tool call that runs it; its preview stays open. The owner types `/teamrig config migrate --yes` in a tab, or runs it in their own terminal.
 
 Flags:
 
@@ -4050,8 +4050,9 @@ are. With no list yet, the new one starts with `"$defaults"`, so Claude Code's b
 already have is left without it if it has none. Run it again after a config change or a teamrig upgrade: it
 rewrites only lines that differ. Without `--yes` it shows the change and writes nothing; with `--yes` it first keeps
 the old settings file in the kit's `backups` folder. It changes your settings, not a team's, so it takes no
-`--session`. Claude Code's auto mode refuses a session that edits its own settings, so type
-`! teamrig automode install --yes` in Claude Code.
+`--session`. Claude Code's auto mode refuses a session that edits its own settings, and teamrig
+refuses `--yes` where Claude Code runs it, a `!` line too, so type `/teamrig automode install --yes` in a tab, or run
+it in your own terminal.
 
 Flags:
 
@@ -4085,7 +4086,7 @@ object and an `autoMode.environment` that is not a list of strings are `REFUSED`
 Takes the team's tagged lines back out of `autoMode.environment`, leaving every other line. A list left as only
 `"$defaults"` is dropped, and so is an `autoMode` left empty; a list left empty stays, since dropping it would turn
 Claude Code's built-in entries back on. Like `install`, it shows the change without `--yes` and keeps the old
-settings file first.
+settings file first. Its `--yes` changes a permission, the owner's to make, so it is refused where Claude Code runs it (an agent's tool call, a `!` line, a script it runs or a hook: `$CLAUDECODE` is set there), and the [exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses a tool call that runs it; its preview stays open. The owner types `/teamrig automode uninstall --yes` in a tab, or runs it in their own terminal.
 
 Flags:
 
@@ -4123,7 +4124,7 @@ stays (`:*` and ` *` read the same, a kept `Bash(x *)` keeps `Bash(x)` too, and 
 `MSYS_NO_PATHCONV=1 ` reads as absent); by default only the rules off it that approve a whole tool or program or
 hold a credential (text in a secret's shape: the built-in shapes and [register.secretPatterns]) go, and with `--all`
 every rule off it goes. A committed `.claude/settings.json` is only reported: change it by a commit
-in its repo.
+in its repo. Its `--yes` changes a permission, the owner's to make, so it is refused where Claude Code runs it (an agent's tool call, a `!` line, a script it runs or a hook: `$CLAUDECODE` is set there), and the [exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses a tool call that runs it; its preview stays open. The owner types `/teamrig permissions trim --yes` in a tab, or runs it in their own terminal.
 
 It never prints a rule, since a rule can hold a value such as a password: each file shows its counts before and
 after, and the rules it removes or keeps off the list as counts by class (the tool, `mcp`, `other` or
@@ -4304,7 +4305,7 @@ Without a stamp, lists the setup backups: `BACKUPS <n> in <folder>`, then each b
 writes: each file changed since the backup (`RESTORE`), deleted since (`RECREATE`), and each file in the setup's
 places made since (`NEW`, kept unless `--remove-new`); the files that match count as one `UNCHANGED` line. A copy in
 the backup that no longer matches its sha256 in the manifest is `DAMAGED` and never written. It writes only where the
-backup's files came from: a manifest edited to name any other path is refused, and nothing is written.
+backup's files came from: a manifest edited to name any other path is refused, and nothing is written. Its `--yes` changes a permission, the owner's to make, so it is refused where Claude Code runs it (an agent's tool call, a `!` line, a script it runs or a hook: `$CLAUDECODE` is set there), and the [exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses a tool call that runs it; its preview stays open. The owner types `/teamrig setup restore --yes` in a tab, or runs it in their own terminal.
 
 Without `--yes` it writes nothing. With `--yes` it first backs the setup up as `setup backup` does, then writes each
 file from the backup, checking the copy's sha256 again as it writes and reading each file back, and prints
@@ -6208,8 +6209,8 @@ hands the same input on, so your status line runs and shows as before. A status 
 it in a script, make the script the status line, and run install again. Without `--yes` it shows the change and
 writes nothing; with `--yes` it first keeps the old settings file in the kit's `backups` folder
 (`claude-settings.json`, or with a timestamp when that name is taken). It changes your settings, not a team's, so
-it takes no `--session`. When Claude may not change its own settings from its Bash tool, type
-`! teamrig statusline install --yes` in Claude Code. When it writes the launcher and `<kit home>/bin/launchers.json`
+it takes no `--session`. Its `--yes` is refused where Claude Code runs it (a tool call, a `!` line,
+a script or a hook), so type `/teamrig statusline install --yes` in a tab, or run it in your own terminal. When it writes the launcher and `<kit home>/bin/launchers.json`
 names a newer teamrig than this one, an older teamrig on the PATH, its first step lowers that record to this version,
 as [restore install](#teamrig-restore-install) does, so the newer one's next session start writes its own launcher
 back. With `--yes`, install and uninstall first wait for a session start's refresh in progress, at most 2 minutes, so

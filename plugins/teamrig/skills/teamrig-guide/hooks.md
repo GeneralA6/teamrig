@@ -765,6 +765,12 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
   [owner next](commands.md#teamrig-owner-next)), whatever client starts it, `$T owner next ...` too: it writes as
   the owner whoever runs it. The owner runs it in their own terminal, or types `/teamrig owner next T<n>` in a tab,
   which [the mod](#the-mod-the-teamrig-command) runs as a write only when the person types it.
+- **a settings writer's write**: `automode install` or `uninstall`, `permissions trim`, `statusline install`,
+  `setup restore`, `config migrate` or `restore install` with `--yes` (or a word only known when the line runs
+  after the command), whatever client starts it: each changes Claude Code's settings, the team config's format or
+  what runs at login, permissions only the owner changes. The CLI refuses the same `--yes` wherever `$CLAUDECODE`
+  is set. Its preview, without `--yes`, runs; the owner types `/teamrig permissions trim --yes` in a tab, or runs it
+  in their own terminal.
 - **a shell fed from a pipe**: a shell on the line that takes its commands from a pipe (`echo ... | bash`,
   `... | iex`, `x | bash -c bash`), whatever feeds it, as the pipe can carry a review the line never shows. Run the
   commands directly, or hand the shell a heredoc, which the guard reads as written. A shell with no pipe into it
