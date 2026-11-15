@@ -222,6 +222,23 @@ describe('findGitInvocations: variables', () => {
     expectInvocations([['G=git; $G a; grep -o "G[0-9]*" f; $G push', [`${CWD}|push|`]]]);
   });
 
+  // A function body sees the bindings made before its definition.
+  it('runs the program a variable names inside a function whose definition follows the binding', () => {
+    for (const command of [
+      'T=/usr/bin/tool; cd /w\nn(){ $T inbox add --to $1 --text "$2 No reply needed." --wake now 2>&1|tail -1; }\nn x "Merged the fix. Set next status."',
+      'T=/usr/bin/tool; n() { $T a "$@"; }; n x; n y',
+    ]) {
+      assert.deepEqual(doubts(command), [], command);
+    }
+    expectInvocations([
+      ['G=git; f() { $G push; }; f', [`${CWD}|push|`]],
+      ['G=git; f() { echo "$($G push)"; }; f', [`${CWD}|push|`]],
+    ]);
+    for (const command of ['n() { $T a; }; T=/usr/bin/tool; n', 'T=$(which tool); n() { $T a; }; n', 'n() { T=/usr/bin/tool; $T a; }; n']) {
+      assert.deepEqual(doubts(command), ['g:the program it runs is only known when it runs'], command);
+    }
+  });
+
   it('still keeps a variable unknown that a real assignment may change', () => {
     expectInvocations([['export T=git; $T push', [`${CWD}|push|`]]]);
     for (const command of ['T=git; declare a[1]=x; $T push', 'T=git; export T[0]=x; $T push', 'T=git; a[1]=x; $T push']) {

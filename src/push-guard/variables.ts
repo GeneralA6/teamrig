@@ -112,11 +112,14 @@ class LiteralBindings {
   private readonly bound: ReadonlyMap<string, Bound>;
   /** The values names the line never assigns hold from its start: HOME, when the caller knows it. */
   private readonly inherited: ReadonlyMap<string, string>;
+  /** The line's function definitions (see {@link FunctionDefinitions}). */
+  private readonly functions: FunctionDefinitions;
 
   private constructor(commands: readonly ShellCommand[], bound: ReadonlyMap<string, Bound>, inherited: ReadonlyMap<string, string>) {
     this.commands = commands;
     this.bound = bound;
     this.inherited = inherited;
+    this.functions = new FunctionDefinitions(commands);
   }
 
   static read(parsed: ShellParse, home: string | undefined): LiteralBindings {
@@ -175,14 +178,22 @@ class LiteralBindings {
    * True when the binding statement at `from` has surely run whenever the command at `to` runs: in the same
    * shell, or in a subshell (a `( )` group or a substitution) started after it, which starts with a copy of
    * its variables. Read on the list the statement's shell runs (see {@link listItems}).
+   *
+   * A command in a function's body runs only when the function is called, which is after
+   * the definition runs, so the statement reaches it when it reaches the definition. Its name holds the same
+   * value wherever it is bound, and nowhere else in the line is it assigned, so a call finds that value.
    */
   private reaches(from: number, to: number): boolean {
+    const definition = this.functions.definitionOf(to);
+    if (definition !== undefined && !this.functions.contains(definition, from)) {
+      return from < definition && this.reaches(from, definition);
+    }
     const statement = this.commands[from];
     const target = this.commands[to];
     if (statement === undefined || target === undefined || !runsInside(target, statement)) {
       return false;
     }
-    const items = listItems(this.commands, statement);
+    const items = listItems(this.commands, statement, this.functions);
     const start = items.findIndex((item) => item.last === from);
     const end = items.findIndex((item) => item.first <= to && to <= item.last);
     const between = start < 0 || end <= start ? [] : items.slice(start, end).map((item) => item.link);
@@ -214,14 +225,26 @@ interface ListItem {
  * and each `( )` group inside it as one item. A group keeps the nesting of the shell around it while a
  * substitution adds one, which tells them apart.
  */
-function listItems(commands: readonly ShellCommand[], shell: ShellCommand): readonly ListItem[] {
+function listItems(commands: readonly ShellCommand[], shell: ShellCommand, functions: FunctionDefinitions): readonly ListItem[] {
   const depth = shell.subshells.length;
   const inside = [...commands.entries()].filter(([, command]) => runsInside(command, shell));
   const groups = new Set(inside.flatMap(([, command]) => (command.nesting === shell.nesting ? command.subshells.slice(depth, depth + 1) : [])));
   const items: ListItem[] = [];
   let held: number | undefined;
+  let skipTo = -1;
   for (const [index, command] of inside) {
+    if (index <= skipTo) {
+      continue;
+    }
     const child = command.subshells[depth];
+    // A function definition runs none of its body, so it is one item up to its closing `}`.
+    const end = child === undefined ? functions.endOf(index) : undefined;
+    if (end !== undefined) {
+      items.push({ first: held ?? index, last: end, link: linkOf(commands[end]?.terminator ?? '') });
+      held = undefined;
+      skipTo = end;
+      continue;
+    }
     const link = linkOf(command.terminator);
     const previous = items.at(-1);
     if (child !== undefined && !groups.has(child)) {
@@ -234,6 +257,89 @@ function listItems(commands: readonly ShellCommand[], shell: ShellCommand): read
     }
   }
   return items;
+}
+
+/** `NAME()` at the end of a command, which declares a function, before any newlines. */
+const DECLARES_FUNCTION = /^\(\)\n*$/;
+
+/**
+ * The function definitions of a line written `NAME() { ...; }`: the command `NAME()`, then a
+ * `{ }` group in the same shell. Each covers the commands from the `NAME()` to the group's `}`, with the
+ * substitutions in them. A body of any other form (a `( )` group, a loop) or a group that does not close is
+ * not read as one, and a binding keeps reaching nothing past its `()`.
+ */
+class FunctionDefinitions {
+  /** The last command of each definition, by the index of its `NAME()`. */
+  private readonly ends = new Map<number, number>();
+
+  constructor(commands: readonly ShellCommand[]) {
+    for (const [index, command] of commands.entries()) {
+      const name = command.words[0];
+      if (command.words.length !== 1 || name === undefined || name.dynamic || !DECLARES_FUNCTION.test(command.terminator)) {
+        continue;
+      }
+      const end = groupEnd(commands, index);
+      if (end !== undefined) {
+        this.ends.set(index, end);
+      }
+    }
+  }
+
+  /** The last command of the definition whose `NAME()` is at `index`. */
+  endOf(index: number): number | undefined {
+    return this.ends.get(index);
+  }
+
+  /** True when `index` is the `NAME()` of `definition` or a command of its body. */
+  contains(definition: number, index: number): boolean {
+    const end = this.ends.get(definition);
+    return end !== undefined && definition <= index && index <= end;
+  }
+
+  /** The `NAME()` of the innermost definition whose body holds the command at `index`. */
+  definitionOf(index: number): number | undefined {
+    let innermost: number | undefined;
+    for (const [definition, end] of this.ends) {
+      if (definition < index && index <= end && (innermost === undefined || definition > innermost)) {
+        innermost = definition;
+      }
+    }
+    return innermost;
+  }
+}
+
+/**
+ * The index of the `}` that closes the `{ }` group a function's `NAME()` at `at` opens: the
+ * next command in its shell must start with `{`, and every `{` and `}` that starts a command there counts.
+ */
+function groupEnd(commands: readonly ShellCommand[], at: number): number | undefined {
+  const head = commands[at];
+  let open = 0;
+  for (let index = at + 1; index < commands.length; index += 1) {
+    const command = commands[index];
+    if (command === undefined || head === undefined || !runsInside(command, head)) {
+      return undefined;
+    }
+    if (!sameShell(command, head) || command.nesting !== head.nesting) {
+      // A substitution in the body, listed before the command that holds it.
+      continue;
+    }
+    let words = command.words;
+    if (open === 0 && reservedWord(words[0]) !== '{') {
+      return undefined;
+    }
+    while (reservedWord(words[0]) === '{') {
+      open += 1;
+      words = words.slice(1);
+    }
+    if (reservedWord(words[0]) === '}' && words.length === 1) {
+      open -= 1;
+      if (open === 0) {
+        return index;
+      }
+    }
+  }
+  return undefined;
 }
 
 /** True when the item at `at` starts a list: first in its shell, or after `;`, `&` or a newline. */

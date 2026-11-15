@@ -414,3 +414,42 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
     assert.match(pushCommand("bash -c 'B=feat'; git push origin $B"), /~\$B/);
   });
 });
+
+// A binding made before a function's definition reaches its body, which runs when it is called.
+describe('resolveLiteralVariables: function bodies', () => {
+  it('resolves a variable bound before the definition inside the body, and past the definition', () => {
+    const rows: readonly (readonly [line: string, expected: string])[] = [
+      ['B=feat; f() { git push origin $B; }; f', '{ git push origin feat'],
+      ['B=feat\nf() {\n  git push origin "$B"\n}\nf', 'git push origin feat'],
+      ['B=feat; f(){ git push origin $B 2>&1 | tail -1; }; f', '{ git push origin feat'],
+      ['B=feat; f() { g() { git push origin $B; }; g; }; f', '{ git push origin feat'],
+      ['B=feat; f() { { git push origin $B; }; }; f', '{ { git push origin feat'],
+      ['cd /w && B=feat && f() { git push origin $B; } && f', '{ git push origin feat'],
+      ['B=feat; f() { :; }; git push origin $B', 'git push origin feat'],
+      ['B=feat; f() { :; }\ng() { :; }\ngit push origin $B', 'git push origin feat'],
+    ];
+    for (const [line, expected] of rows) {
+      assert.equal(pushCommand(line), expected, line);
+    }
+  });
+
+  it('keeps a variable bound after the definition, in the body, in a loop, from a substitution, or maybe not at all', () => {
+    for (const line of [
+      'f() { git push origin $B; }; B=feat; f',
+      'f() { B=feat; git push origin $B; }; f',
+      'B=feat; f() { B=main; }; g() { git push origin $B; }; f; g',
+      'B=feat; f() { git push origin $B; B=main; }; f',
+      'for x in a; do B=feat; done; f() { git push origin $B; }; f',
+      'B=$(cat b); f() { git push origin $B; }; f',
+      'false && B=feat; f() { git push origin $B; }; f',
+      '(B=feat); f() { git push origin $B; }; f',
+      'B=feat & f() { git push origin $B; }; f',
+      'f() { local B=main; git push origin $B; }; B=feat; f',
+      'B=feat; f() ( git push origin $B ); f',
+      'B=feat; function f { git push origin $B; }; f',
+      'B=feat; f() { git push origin $B',
+    ]) {
+      assert.match(pushCommand(line), /~\$B/, line);
+    }
+  });
+});

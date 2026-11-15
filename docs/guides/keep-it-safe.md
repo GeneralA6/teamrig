@@ -96,9 +96,10 @@ PowerShell or cmd, each measured on the real shell), so it finds a push wherever
   (`B=x git push origin $B`), an assignment in a subshell, a loop, an
   `if` or a `{ }` group, a `for` loop's own variable, or anything else on the line that can set a variable unseen
   (a `${...}` that assigns or runs arithmetic, such as `${B:=x}` or `${B:1}`, or reads a name indirectly,
-  `${!R}`; `case`, `select`, `[[ ]]`, functions, `read`, `source`, `eval`, `declare`, arithmetic, arrays, a
+  `${!R}`; `case`, `select`, `[[ ]]`, `function NAME`, `read`, `source`, `eval`, `declare`, arithmetic, arrays, a
   heredoc that never closes) leaves it unknown. A `${...}` that only reads, such as `${B:-x}` or `${x%%|*}`, is
-  fine.
+  fine. A function written `NAME() { ...; }` sees a value bound before its definition, since its body runs only
+  when it is called; one bound after the definition, or assigned in the body, stays unknown there.
 
 When it cannot read part of a line with confidence, it asks and says why: a quote that never closes, a git
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
