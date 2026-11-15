@@ -8,10 +8,12 @@ import {
   changeLine,
   changeWrites,
   heldIssue,
+  isGoal,
   issueGoal,
   planPush,
   PUSH_WRITES_PER_HOUR,
   PUSH_WRITES_PER_RUN,
+  scheduled,
   STATUS_LABELS,
   assigneeOf,
   sessionLogins,
@@ -26,16 +28,41 @@ function holding(id: string, number: number, overrides: Partial<Task> = {}): Tas
 }
 
 describe('issueGoal (T2682)', () => {
-  it('gives each active status its one label', () => {
-    assert.deepEqual(issueGoal('open'), { open: true, label: 'status:open' });
-    assert.deepEqual(issueGoal('in-progress'), { open: true, label: 'status:in progress' });
-    assert.deepEqual(issueGoal('waiting'), { open: true, label: 'status:waiting' });
-    assert.deepEqual(issueGoal('verifying'), { open: true, label: 'status:in review' });
+  const task = (overrides: Partial<Task>): Task => testTask(overrides);
+
+  it('gives each started status its one label, its issue claimed', () => {
+    assert.deepEqual(issueGoal(task({ status: 'in-progress' }), false), { open: true, label: 'status:in progress', claim: true });
+    assert.deepEqual(issueGoal(task({ status: 'waiting' }), false), { open: true, label: 'status:waiting', claim: true });
+    assert.deepEqual(issueGoal(task({ status: 'verifying' }), false), { open: true, label: 'status:in review', claim: true });
   });
 
-  it('closes a done task as completed and a dropped one as not planned', () => {
-    assert.deepEqual(issueGoal('done'), { open: false, reason: 'completed' });
-    assert.deepEqual(issueGoal('dropped'), { open: false, reason: 'not-planned' });
+  it('leaves an open task no one scheduled or took open to anyone, and claims one with a due date or an assignee (T3021)', () => {
+    assert.deepEqual(issueGoal(task({ status: 'open' }), false), { open: true, label: 'status:open', claim: false });
+    assert.deepEqual(issueGoal(task({ status: 'open', due: '2030-01-09' }), false), { open: true, label: 'status:claimed', claim: true });
+    assert.deepEqual(issueGoal(task({ status: 'open' }), true), { open: true, label: 'status:claimed', claim: false });
+  });
+
+  it('gives a goal, a task planned after its parts, no status label (T3056)', () => {
+    assert.deepEqual(issueGoal(task({ status: 'open', after: ['T2'] }), false), { open: true, label: undefined, claim: false });
+    assert.deepEqual(issueGoal(task({ status: 'in-progress', after: ['T2'] }), false), { open: true, label: undefined, claim: true });
+  });
+
+  it('closes a done task as completed and a dropped one as not planned, goal or not', () => {
+    assert.deepEqual(issueGoal(task({ status: 'done' }), false), { open: false, reason: 'completed' });
+    assert.deepEqual(issueGoal(task({ status: 'dropped', after: ['T2'] }), false), { open: false, reason: 'not-planned' });
+  });
+});
+
+describe('scheduled and isGoal (T3021)', () => {
+  it('counts a task as scheduled once started or given a due date', () => {
+    assert.equal(scheduled({ status: 'open', due: null }), false);
+    assert.equal(scheduled({ status: 'open', due: '2030-01-09' }), true);
+    assert.equal(scheduled({ status: 'waiting', due: null }), true);
+  });
+
+  it('counts a task as a goal when it is planned after parts', () => {
+    assert.equal(isGoal({ after: [] }), false);
+    assert.equal(isGoal({ after: ['T2', 'T3'] }), true);
   });
 });
 
@@ -205,23 +232,37 @@ describe('the assignee (T2999)', () => {
     assert.equal(assigneeOf(REPO, 'lead', logins), 'acme');
   });
 
-  it('assigns an open issue no one is assigned to, alone or with its label, and never one a person assigned', () => {
-    const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:open'] }), testHostIssue(9, { assignees: ['someone'] })];
-    const tasks = [holding('T1', 7, { owner: 'bravo', status: 'in-progress' }), holding('T2', 8, { owner: 'lead' }), holding('T3', 9, { owner: 'bravo' })];
+  it('assigns an open issue of a scheduled task no one is assigned to, alone or with its label, and never one a person assigned', () => {
+    const issues = [testHostIssue(7), testHostIssue(8, { labels: ['status:claimed'] }), testHostIssue(9, { assignees: ['someone'] })];
+    const tasks = [holding('T1', 7, { owner: 'bravo', status: 'in-progress' }), holding('T2', 8, { owner: 'lead', due: '2030-01-09' }), holding('T3', 9, { owner: 'bravo' })];
     const plan = planPush(REPO, issues, tasks, undefined, logins);
     assert.deepEqual(
       plan.changes.map((change) => [change.task, change.add, change.assign, changeWrites(change)]),
       [
         ['T1', ['status:in progress'], 'octocat', 2],
         ['T2', [], 'acme', 1],
-        ['T3', ['status:open'], undefined, 1],
+        ['T3', ['status:claimed'], undefined, 1],
       ],
     );
     assert.deepEqual(plan.changes.map(changeLine), [
       'LABEL acme/web#7 T1 in-progress: add status:in progress, assign octocat',
       'ASSIGN acme/web#8 T2 open: assign acme',
-      'LABEL acme/web#9 T3 open: add status:open',
+      'LABEL acme/web#9 T3 open: add status:claimed',
     ]);
+  });
+
+  it('assigns no one to the issue of an open task no one scheduled, and claims it once a person is assigned (T3021)', () => {
+    const issues = [testHostIssue(7, { labels: ['status:open'] }), testHostIssue(8, { labels: ['status:open'], assignees: ['someone'] })];
+    const plan = planPush(REPO, issues, [holding('T1', 7, { owner: 'bravo' }), holding('T2', 8, { owner: 'bravo' })], undefined, logins);
+    assert.equal(plan.unchanged, 1);
+    assert.deepEqual(plan.changes.map(changeLine), ['LABEL acme/web#8 T2 open: add status:claimed, take off status:open']);
+  });
+
+  it('takes every status label off a goal, and still assigns it once scheduled (T3056)', () => {
+    const issues = [testHostIssue(7, { labels: ['feature', 'status:open'] }), testHostIssue(8)];
+    const tasks = [holding('T1', 7, { owner: 'bravo', after: ['T3'] }), holding('T2', 8, { owner: 'bravo', status: 'in-progress', after: ['T3'] })];
+    const plan = planPush(REPO, issues, tasks, undefined, logins);
+    assert.deepEqual(plan.changes.map(changeLine), ['LABEL acme/web#7 T1 open: take off status:open', 'ASSIGN acme/web#8 T2 in-progress: assign octocat']);
   });
 
   it('assigns no closing issue, and nobody without logins', () => {

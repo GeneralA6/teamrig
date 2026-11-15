@@ -54,6 +54,7 @@ describe('teamrig issue sync --push', () => {
     // The import added T1 (#7, bravo), T2 (#8, lead) and T3 (#9, lead); #5 is closed, so it added no task for it.
     await step(kit, ['set', 'T1', '--status', 'in-progress', '--note', 'on it'], AS_BRAVO);
     await step(kit, ['set', 'T2', '--status', 'dropped', '--note', 'not planned'], AS_LEAD);
+    await step(kit, ['update', 'T3', '--due', '2030-01-10'], AS_LEAD);
     await addHolding(kit, 'Revive the old idea', 'gh:acme/web#5');
     await addHolding(kit, 'Long gone issue', 'gh:acme/web#3');
     const log = kit.files.get(EVENTS_PATH);
@@ -62,12 +63,13 @@ describe('teamrig issue sync --push', () => {
       'PUSH acme/web: 3 to change, 0 unchanged, 1 closed on the host while the task is active, 1 not listed',
       'LABEL acme/web#7 T1 in-progress: add status:in progress',
       'CLOSE acme/web#8 T2 dropped: close as not-planned, take off status:open',
-      // #9 already shows status:open, but no one is assigned: the lead's session maps to no login, so the repository's owner.
-      'ASSIGN acme/web#9 T3 open: assign acme',
+      // #9's task is open with a due date, so the issue is claimed and goes to someone: the lead's session maps to no
+      // login, so the repository's owner.
+      'LABEL acme/web#9 T3 open: add status:claimed, take off status:open, assign acme',
       'KEPT acme/web#5 T4 open: closed on the host (not_planned) while the task is active; the push never reopens an issue, so set the task to match or reopen the issue',
       'UNLISTED acme/web#3 T5 open: not open on the host (closed before github.closedDays, or gone) while the task is active; the push never reopens an issue',
       'PUSH acme/api: 0 to change, 0 unchanged',
-      `PREVIEW nothing was written; a push would send 4 write(s) now, at most ${PUSH_WRITES_PER_RUN} a run, and plan the rest again on the next`,
+      `PREVIEW nothing was written; a push would send 6 write(s) now, at most ${PUSH_WRITES_PER_RUN} a run, and plan the rest again on the next`,
     ]);
     assert.ok(gh.ran.length > 0 && gh.ran.every((request) => isIssueQuery(request.args)), 'gh was asked for something other than a shipped issue query');
     assert.equal(kit.files.get(EVENTS_PATH), log);
@@ -102,23 +104,27 @@ describe('teamrig issue sync --push', () => {
     await expectRun(kit, ['issue', 'sync', '--yes'], issues(), EXIT.ok);
     await step(kit, ['set', 'T1', '--status', 'in-progress', '--note', 'on it'], AS_BRAVO);
     await step(kit, ['set', 'T2', '--status', 'dropped', '--note', 'not planned'], AS_LEAD);
-    const gh = issues().hasLabels('acme/web', ['status:in progress']);
+    await step(kit, ['update', 'T3', '--due', '2030-01-10'], AS_LEAD);
+    const gh = issues().hasLabels('acme/web', ['status:in progress', 'status:claimed']);
     const lines = await expectRun(kit, ['issue', 'sync', '--push', '--yes'], gh, EXIT.ok);
     assert.deepEqual(lines.filter((line) => /^(SET|PUSHED) /u.test(line)), [
       'SET acme/web#7 T1 in-progress: add status:in progress',
       'SET acme/web#8 T2 dropped: close as not-planned, take off status:open',
-      'SET acme/web#9 T3 open: assign acme',
-      `PUSHED 3 change(s), 4 write(s); at most ${PUSH_WRITES_PER_RUN} a run, the rest planned again on the next`,
+      'SET acme/web#9 T3 open: add status:claimed, take off status:open, assign acme',
+      `PUSHED 3 change(s), 6 write(s); at most ${PUSH_WRITES_PER_RUN} a run, the rest planned again on the next`,
     ]);
     assert.deepEqual(
       gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' ')),
       [
         'api repos/acme/web/labels/status%3Ain%20progress',
+        'api repos/acme/web/labels/status%3Aclaimed',
         'api users/acme',
         'api repos/acme/web/assignees/acme',
         'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:in progress',
         'api repos/acme/web/issues/8/labels/status%3Aopen -X DELETE',
         'api repos/acme/web/issues/8 -X PATCH -f state=closed -f state_reason=not_planned',
+        'api repos/acme/web/issues/9/labels -X POST -f labels[]=status:claimed',
+        'api repos/acme/web/issues/9/labels/status%3Aopen -X DELETE',
         'api repos/acme/web/issues/9/assignees -X POST -f assignees[]=acme',
       ],
     );
@@ -128,7 +134,7 @@ describe('teamrig issue sync --push', () => {
     const kit = new CliHarness(GITHUB_TEAM);
     await expectRun(kit, ['issue', 'sync', '--yes'], issues(), EXIT.ok);
     await step(kit, ['set', 'T2', '--status', 'dropped', '--note', 'not planned'], AS_LEAD);
-    const gh = issues().hasLabels('acme/web', ['status:open']).failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
+    const gh = issues().hasLabels('acme/web', ['status:open', 'status:claimed']).failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
     const lines = await expectRun(kit, ['issue', 'sync', '--push', '--yes', '--repo', 'acme/web'], gh, EXIT.failed);
     assert.ok(lines.some((line) => line.startsWith('FAILED acme/web#7 T1: ') && line.endsWith('; the rest of acme/web waits for the next run')), lines.join('\n'));
     const stranger = await kit.run(['issue', 'sync', '--push', '--yes'], { gh, env: { TEAMRIG_SESSION: 'stranger' } });

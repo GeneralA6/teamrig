@@ -320,10 +320,10 @@ describe('the duplicate close and the issue read', () => {
 });
 
 describe('the status label create (T2999)', () => {
-  const [TRIAGED] = STATUS_LABEL_SPECS;
+  const [OPEN_LABEL] = STATUS_LABEL_SPECS;
 
   it('takes the create of each of the push\'s own status labels', () => {
-    assert.equal(STATUS_LABEL_SPECS.length, 4);
+    assert.equal(STATUS_LABEL_SPECS.length, 5);
     for (const label of STATUS_LABEL_SPECS) {
       const args = labelCreateArgs('acme/web', label);
       assert.deepEqual(args, ['api', 'repos/acme/web/labels', '-X', 'POST', '-f', `name=${label.name}`, '-f', `color=${label.color}`, '-f', `description=${label.description}`]);
@@ -332,14 +332,14 @@ describe('the status label create (T2999)', () => {
   });
 
   it('refuses any other label, colour, description, method, field order, flag or path', () => {
-    assert.ok(TRIAGED !== undefined);
-    const good = labelCreateArgs('acme/web', TRIAGED);
+    assert.ok(OPEN_LABEL !== undefined);
+    const good = labelCreateArgs('acme/web', OPEN_LABEL);
     for (const args of [
-      labelCreateArgs('acme/web', { ...TRIAGED, name: 'bug' }),
-      labelCreateArgs('acme/web', { ...TRIAGED, color: '000000' }),
-      labelCreateArgs('acme/web', { ...TRIAGED, description: 'x' }),
-      labelCreateArgs('acme/..', TRIAGED),
-      labelCreateArgs('acme', TRIAGED),
+      labelCreateArgs('acme/web', { ...OPEN_LABEL, name: 'bug' }),
+      labelCreateArgs('acme/web', { ...OPEN_LABEL, color: '000000' }),
+      labelCreateArgs('acme/web', { ...OPEN_LABEL, description: 'x' }),
+      labelCreateArgs('acme/..', OPEN_LABEL),
+      labelCreateArgs('acme', OPEN_LABEL),
       good.map((arg) => (arg === 'POST' ? 'PATCH' : arg)),
       good.map((arg) => (arg === 'POST' ? 'DELETE' : arg)),
       good.map((arg) => (arg === '-f' ? '-F' : arg)),

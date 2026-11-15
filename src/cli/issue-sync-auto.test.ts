@@ -92,7 +92,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
   /** The GitHub calls a run made besides its issue lists: label reads and writes. */
   const writes = (gh: FakeGh): string[] => gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' '));
 
-  it('after the import, labels each issue a task holds with its status, at most autoPushWrites(probeSeconds) a run', async () => {
+  it('after the import, labels each issue a task holds with its status, making a missing status label, at most autoPushWrites(probeSeconds) a run', async () => {
     const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 300 }));
     const gh = new FakeGh()
       .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] }), ghIssue('acme/web', 8, { title: 'Add search' })])
@@ -100,13 +100,14 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
       .hasLabels('acme/web', ['status:open']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    // #7 is assigned to a person, so it is claimed; #8's task is open and unscheduled, so it stays open to anyone,
+    // unassigned (T3021). The repository has no status:claimed yet, so the push makes it first.
     assert.deepEqual(writes(gh), [
+      'api repos/acme/web/labels/status%3Aclaimed',
       'api repos/acme/web/labels/status%3Aopen',
-      'api users/acme',
-      'api repos/acme/web/assignees/acme',
-      'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:open',
+      'api repos/acme/web/labels -X POST -f name=status:claimed -f color=1d76db -f description=Taken: its assignee plans to work on it',
+      'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:claimed',
       'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:open',
-      'api repos/acme/web/issues/8/assignees -X POST -f assignees[]=acme',
     ]);
     assert.ok(result.stdout.includes('PUSHED 2 change(s), 3 write(s); at most 20 a run, the rest planned again on the next'), result.stdout.join('\n'));
     const wrote = result.stdout.find((line) => line.startsWith('WROTE ')) ?? '';
@@ -117,7 +118,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 60 }));
     // Assigned already, so each change is one label write.
     const three = (repo: string): JsonRecord[] => [1, 2, 3].map((number) => ghIssue(repo, number, { title: `Work ${number}`, assignees: ['octocat'] }));
-    const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:open']).hasLabels('acme/api', ['status:open']);
+    const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:claimed']).hasLabels('acme/api', ['status:claimed']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(

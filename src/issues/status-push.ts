@@ -12,14 +12,18 @@ import type { HostIssue } from './issue.ts';
  * edited by hand is set back. A person's close is never undone here: the issue stays closed and the plan names it.
  * An open issue with no assignee gets one (T2999): the login of the task's owning session, else the repository's owner
  * account; an issue a person assigned keeps its assignees, and the push takes none off.
+ * An open task no session has scheduled leaves its issue open to anyone (T3021): `status:open` and no assignee, so a
+ * contributor sees what is free to take. A scheduled one, or one a person took, shows `status:claimed`. A goal, a
+ * task planned after its parts, shows no status label: its parts' issues carry theirs (T3056).
  */
 
 /** The label namespace the push owns: any label in it but the task's own is taken off. */
 export const STATUS_LABEL_PREFIX = 'status:';
 
-/** The active statuses, each with the one label its issue shows. */
-export const STATUS_LABELS: Readonly<Record<'open' | 'in-progress' | 'waiting' | 'verifying', string>> = {
+/** The labels an open issue shows: one per active status, and `claimed` for an open task that is taken. */
+export const STATUS_LABELS: Readonly<Record<'open' | 'claimed' | 'in-progress' | 'waiting' | 'verifying', string>> = {
   open: `${STATUS_LABEL_PREFIX}open`,
+  claimed: `${STATUS_LABEL_PREFIX}claimed`,
   'in-progress': `${STATUS_LABEL_PREFIX}in progress`,
   waiting: `${STATUS_LABEL_PREFIX}waiting`,
   verifying: `${STATUS_LABEL_PREFIX}in review`,
@@ -27,11 +31,12 @@ export const STATUS_LABELS: Readonly<Record<'open' | 'in-progress' | 'waiting' |
 
 /**
  * The status labels as the push makes them in a repository that lacks one: a new repository has none, and without
- * them every change would be held. Only these four can be made (github/gh.ts allows no other label create), so a
+ * them every change would be held. Only these five can be made (github/gh.ts allows no other label create), so a
  * push never makes a label a person did not see in the docs. The colours read on light and dark backgrounds alike.
  */
 export const STATUS_LABEL_SPECS: readonly LabelSpec[] = [
-  { name: STATUS_LABELS.open, color: 'ededed', description: 'Open: work on it has not started' },
+  { name: STATUS_LABELS.open, color: 'ededed', description: 'Open to anyone: no one has taken it yet' },
+  { name: STATUS_LABELS.claimed, color: '1d76db', description: 'Taken: its assignee plans to work on it' },
   { name: STATUS_LABELS['in-progress'], color: '8957e5', description: 'Work on it is under way' },
   { name: STATUS_LABELS.waiting, color: 'fbca04', description: 'Waiting on an answer, a review or another issue' },
   { name: STATUS_LABELS.verifying, color: '0e8a16', description: 'Done, and in review until its proof exists' },
@@ -64,18 +69,48 @@ export function autoPushWrites(probeSeconds: number): number {
   return Math.min(PUSH_WRITES_PER_RUN, Math.floor(PUSH_WRITES_PER_HOUR / Math.ceil(3600 / probeSeconds)));
 }
 
-/** What an issue should show for its task: open with one status label, or closed for a reason. */
-export type IssueGoal = { readonly open: true; readonly label: string } | { readonly open: false; readonly reason: CloseReason };
+/**
+ * What an issue should show for its task: open with one status label (none for a goal), or closed for a reason.
+ * `claim` is set for an open issue the push assigns when it has no assignee.
+ */
+export type IssueGoal = { readonly open: true; readonly label: string | undefined; readonly claim: boolean } | { readonly open: false; readonly reason: CloseReason };
 
-/** The issue a task's status calls for. */
-export function issueGoal(status: TaskStatus): IssueGoal {
-  switch (status) {
+/** The task facts that decide its issue's look. */
+export type GoalFacts = Pick<Task, 'status' | 'due' | 'after'>;
+
+/**
+ * Whether a session has taken the task on: started, or given a due date. An open one with neither is work no session
+ * has planned, so its issue stays open to anyone.
+ */
+export function scheduled(task: Pick<Task, 'status' | 'due'>): boolean {
+  return task.status !== 'open' || task.due !== null;
+}
+
+/**
+ * Whether the task is a goal: a whole planned after its parts, which the issue links make the parent of their issues
+ * (issues/links.ts). Its parts carry the status, so its own issue shows none.
+ */
+export function isGoal(task: Pick<Task, 'after'>): boolean {
+  return task.after.length > 0;
+}
+
+/** The issue a task calls for; `assigned` is whether the issue already has an assignee, someone who took it. */
+export function issueGoal(task: GoalFacts, assigned: boolean): IssueGoal {
+  switch (task.status) {
     case 'done':
       return { open: false, reason: 'completed' };
     case 'dropped':
       return { open: false, reason: 'not-planned' };
-    default:
-      return { open: true, label: STATUS_LABELS[status] };
+    default: {
+      const claim = scheduled(task);
+      if (isGoal(task)) {
+        return { open: true, label: undefined, claim };
+      }
+      if (task.status === 'open') {
+        return { open: true, label: claim || assigned ? STATUS_LABELS.claimed : STATUS_LABELS.open, claim };
+      }
+      return { open: true, label: STATUS_LABELS[task.status], claim };
+    }
   }
 }
 
@@ -175,8 +210,8 @@ export const SESSION_PUSH: PushLimits = { writesPerRun: PUSH_WRITES_PER_RUN, clo
  * show the task's status, planned against `issues` as the host listed them now (open ones and those closed lately).
  * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work.
  * The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
- * is held instead, taking none of the run's writes. With `logins` an open issue with no assignee is assigned
- * (assigneeOf); without, the plan assigns nobody.
+ * is held instead, taking none of the run's writes. With `logins` an open issue of a scheduled task with no assignee
+ * is assigned (assigneeOf); without, the plan assigns nobody.
  */
 export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iterable<Task>, limits: PushLimits = SESSION_PUSH, logins?: SessionLogins): PushPlan {
   const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
@@ -186,7 +221,7 @@ export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iter
   let unchanged = 0;
   for (const [target, task] of [...holders(repo, tasks)].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder] as const)) {
     const issue = listed.get(target.number);
-    const goal = issueGoal(task.status);
+    const goal = issueGoal(task, issue !== undefined && issue.assignees.length > 0);
     if (issue === undefined) {
       // The list holds every open issue, so one it left out is closed (or gone): as a closed task wants it.
       if (goal.open) {
@@ -200,7 +235,7 @@ export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iter
       closedActive.push({ target, task: task.id, status: task.status, stateReason: issue.stateReason });
       continue;
     }
-    const assign = goal.open && logins !== undefined && issue.assignees.length === 0 ? assigneeOf(repo, task.owner, logins) : undefined;
+    const assign = goal.open && goal.claim && logins !== undefined && issue.assignees.length === 0 ? assigneeOf(repo, task.owner, logins) : undefined;
     const change = changeFor(target, task, issue, goal, assign);
     if (change === undefined) {
       unchanged += 1;
@@ -248,8 +283,9 @@ function changeFor(target: IssueTarget, task: Task, issue: HostIssue, goal: Issu
     }
     return { target, task: task.id, status: task.status, add: [], remove: statusLabels, close: goal.reason };
   }
-  const add = statusLabels.includes(goal.label) ? [] : [goal.label];
-  const remove = statusLabels.filter((label) => label !== goal.label);
+  const wanted = goal.label === undefined ? [] : [goal.label];
+  const add = wanted.filter((label) => !statusLabels.includes(label));
+  const remove = statusLabels.filter((label) => !wanted.includes(label));
   if (add.length === 0 && remove.length === 0 && assign === undefined) {
     return undefined;
   }
