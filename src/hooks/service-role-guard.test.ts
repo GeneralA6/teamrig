@@ -109,6 +109,7 @@ describe('service-role guard: roles grant and revoke', () => {
     assert.equal(await decide(call('PowerShell', { command: "teamrig roles grant github --holder alpha --commands 'issue close' --yes" })), 'ask');
     const output = decisionOf(await serviceRoleGuardOutput(call('Bash', { command: lines[0] ?? '' }), env()));
     assert.match(output?.reason ?? '', /a permission only the owner gives/);
+    assert.match(output?.reason ?? '', /a grant first shows what its commands reach, pull requests and outside authors included/, 'T2984');
   });
 
   it('refuses it with the note to wait for the owner when asks are off', async () => {

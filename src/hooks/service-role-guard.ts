@@ -266,8 +266,9 @@ function namesTeamConfig(command: string, cwd: string, env: ServiceRoleGuardEnv,
 const ROLE_CHANGE_ASK =
   'teamrig service-role guard: `teamrig roles grant` and `revoke` change who may run a service role\'s commands past ' +
   'every permission check, a permission only the owner gives, so teamrig asks the owner at each session\'s call, ' +
-  'whatever --yes says. Owner: allow it only if you asked for this change. A session does not retry it or route ' +
-  'around it: the lead puts the change to the owner, who runs it from their own terminal or prompt.';
+  'whatever --yes says. Owner: allow it only if you asked for this change; a grant first shows what its commands ' +
+  'reach, pull requests and outside authors included. A session does not retry it or route around it: the lead puts ' +
+  'the change to the owner, who runs it from their own terminal or prompt.';
 
 function editRefusalOf(reach: string): string {
   return (

@@ -2420,7 +2420,9 @@ from their own terminal or prompt. Without `--yes` each shows the change and wri
 config goes into the backups folder and `serviceRoles` is rewritten; the next call reads it.
 
 `roles grant <role> --holder <id|name|team> [--commands <a,b>]` creates the role (it needs `--commands`), or adds
-the holder and any new commands to it. It refuses a grant that changes nothing.
+the holder and any new commands to it. It refuses a grant that changes nothing. Its preview and its result add a
+`REACH` line for each command of the role, saying what it acts on: GitHub numbers issues and pull requests as one,
+so `issue close` and `issue comment` reach every pull request of `github.repos` too, an outside author's included.
 
 Flags:
 
@@ -2438,6 +2440,8 @@ Output:
 
 ```text
 GRANTED github: held by backend; runs issue close, issue comment; the old config is at ~/.teamrig/teams/shop/backups/config.roles-grant.json
+REACH issue close: closes any issue or pull request of github.repos, an outside author's too (a pull request closes unmerged), posting its --comment first
+REACH issue comment: posts a comment on any issue or pull request of github.repos, an outside author's too
 ```
 
 ### teamrig roles revoke

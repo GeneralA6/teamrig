@@ -17,3 +17,13 @@ export function isServiceCommand(text: string): text is ServiceCommand {
  * (`holders: "team"`). None yet: `issue close` and `issue comment` act as whoever runs them, so each needs named holders.
  */
 export const TEAM_HELD_COMMANDS: ReadonlySet<ServiceCommand> = new Set<ServiceCommand>();
+
+/**
+ * What each command reaches on GitHub, which a grant shows the owner before and as it writes (T2984): GitHub numbers
+ * issues and pull requests as one, so both commands act on any pull request of the team's repositories too, an outside
+ * author's included, and a holder steered by outside text could close one with no prompt, up to the daily cap.
+ */
+export const SERVICE_COMMAND_REACH: Readonly<Record<ServiceCommand, string>> = {
+  'issue close': "closes any issue or pull request of github.repos, an outside author's too (a pull request closes unmerged), posting its --comment first",
+  'issue comment': "posts a comment on any issue or pull request of github.repos, an outside author's too",
+};

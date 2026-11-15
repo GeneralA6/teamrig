@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { SERVICE_COMMAND_REACH } from '../permissions/service-commands.ts';
 import { CliHarness, CONFIG_PATH, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { ok } from '../testing/hired-team.ts';
 import { EXIT } from './runtime.ts';
@@ -25,7 +26,12 @@ describe('roles grant, revoke and list', () => {
     const kit = new CliHarness(TEAM);
     const before = kit.files.get(CONFIG_PATH);
     const result = ok(await kit.run(['roles', 'grant', 'github', '--holder', 'alpha', '--commands', 'issue close,issue comment']));
-    assert.deepEqual(result.stdout, ['PREVIEW roles grant github: held by alpha; runs issue close, issue comment; nothing written (add --yes to write)']);
+    assert.deepEqual(result.stdout, [
+      'PREVIEW roles grant github: held by alpha; runs issue close, issue comment; nothing written (add --yes to write)',
+      `REACH issue close: ${SERVICE_COMMAND_REACH['issue close']}`,
+      `REACH issue comment: ${SERVICE_COMMAND_REACH['issue comment']}`,
+    ]);
+    assert.match(result.stdout.join('\n'), /any issue or pull request of github.repos, an outside author's too/, 'a grant says it reaches pull requests (T2984)');
     assert.equal(kit.files.get(CONFIG_PATH), before);
   });
 
@@ -34,6 +40,7 @@ describe('roles grant, revoke and list', () => {
     const before = kit.files.get(CONFIG_PATH);
     const result = ok(await kit.run(['roles', 'grant', 'github', '--holder', 'alpha', '--commands', 'issue close', '--yes']));
     assert.match(result.stdout[0] ?? '', /^GRANTED github: held by alpha; runs issue close; the old config is at .*config\.roles-grant\.json$/);
+    assert.deepEqual(result.stdout.slice(1), [`REACH issue close: ${SERVICE_COMMAND_REACH['issue close']}`]);
     assert.equal(kit.files.get(join(TEAM_HOME, 'backups', 'config.roles-grant.json')), before);
     assert.deepEqual(rolesOf(kit), { github: { holders: ['alpha'], commands: ['issue close'] } });
     ok(await kit.run(['config', 'validate']));
