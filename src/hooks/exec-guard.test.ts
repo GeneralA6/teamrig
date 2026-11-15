@@ -467,6 +467,26 @@ describe('execGuardOutput', () => {
     }
   });
 
+  it('reads an entry script named without its extension, or with a module one, as the CLI (T3069)', async () => {
+    const quiet = env();
+    for (const line of [
+      `node ${INSTALL}/dist/cli/main owner next T1`,
+      `node ${INSTALL}/dist/cli/guard-main owner next T1`,
+      `node ${INSTALL}/dist/cli/main.mjs owner next T1`,
+      `node ${INSTALL}/dist/cli/main.cjs owner next T1`,
+    ]) {
+      assert.equal((await verdict(bash(line), quiet))?.decision, 'deny', line);
+    }
+    // Even as the tab itself: the file named is no entry the install hashed (CLIENT_ENTRIES), so it is refused.
+    for (const session of ['bravo', 'alpha']) {
+      const review = await verdict(bash(`node ${INSTALL}/dist/cli/main exec approve R1 --session ${session}`), quiet);
+      assert.equal(review?.decision, 'deny', session);
+      assert.match(review?.reason ?? '', /dist\\cli\\main, no install of the teamrig plugin/, session);
+    }
+    assert.equal(await verdict(bash(`node ${INSTALL}/dist/cli/main.js exec approve R1 --session alpha`), quiet), undefined);
+    assert.equal(await verdict(bash('git log -- src/cli/main'), quiet), undefined);
+  });
+
   it('knows every teamrig owner command the CLI has, so a call through an unknown program reads as one', () => {
     const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('owner ')).map((name) => name.slice('owner '.length));
     assert.deepEqual([...OWNER_COMMANDS].sort(), commands.sort());

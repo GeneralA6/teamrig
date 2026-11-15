@@ -106,9 +106,9 @@ type GuardedCall = ReviewCall | PlainCall | UnreadableCall | OwnerCall | Setting
 /**
  * teamrig's entry scripts when a line runs one, through node or any other script host (`tsx`, `bun`, `npx tsx`): the
  * CLI (`<plugin>/dist/cli/main.js exec ...`) and the guard entry beside it (`cli/guard-main.js`), which hands its words
- * to the same CLI (T3069).
+ * to the same CLI (T3069). The extension is optional, as Node finds `cli/main` as `cli/main.js` (T3069).
  */
-const CLI_ENTRY = /[\\/]cli[\\/](?:guard-)?main\.[jt]s$/i;
+const CLI_ENTRY = /[\\/]cli[\\/](?:guard-)?main(?:\.[cm]?[jt]s)?$/i;
 
 /**
  * The package runners, which start a program by name from wherever they find or fetch it (`npx teamrig`, `pnpm exec
