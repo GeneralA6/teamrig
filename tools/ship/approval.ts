@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { KitReader } from '../../src/cli/kit.ts';
 import { RefusedError } from '../../src/cli/runtime.ts';
-import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
+import { mergeStandingOf, tabCallerOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
 import { ENV, type Env } from '../../src/core/home.ts';
 import { approvedTaskOf } from '../../src/register/approval.ts';
 import type { VersionFile } from './version-bump.ts';
@@ -64,20 +64,31 @@ export function mergeClearance(standing: MergeStanding, taskId: string, head: st
   return { kind: 'approved', by: answered.by };
 }
 
-/** The caller and team a merge runs for, from `$TEAMRIG_SESSION` and `$TEAMRIG_TEAM`. */
+/** The caller and team a merge runs for, from `$TEAMRIG_SESSION` and `$TEAMRIG_TEAM`, and its tab, from `$CLAUDE_CODE_SESSION_ID`. */
 export interface MergeCaller {
   readonly session: string | undefined;
   readonly team: string | undefined;
+  readonly claudeSession: string | undefined;
 }
 
 /** Reads a merge's standing from the register (`mergeStandingOf`); rejects with `RefusedError` when it cannot. */
 export type StandingOf = (team: string, caller: string, taskId: string) => Promise<MergeStanding>;
 
+/** The session the merging tab is bound to, which must be the one the caller names (`tabCallerOf`); rejects with `RefusedError` otherwise. */
+export type TabCallerOf = (team: string, claudeSession: string, caller: string) => Promise<string>;
+
+/** What a merge's clearance reads: the tab's session, then that session's standing. */
+export interface MergeReads {
+  readonly tabCallerOf: TabCallerOf;
+  readonly standingOf: StandingOf;
+}
+
 /**
- * The clearance of a merge of `branch` at `head`: refused when the branch names no task, the caller or team is not
- * set, or the register cannot be read for them (a `RefusedError`, its message kept); else `mergeClearance`.
+ * The clearance of a merge of `branch` at `head`: refused when the branch names no task, the caller, team or tab is
+ * not set, the tab is not bound to the caller alone (T2984, security condition C4), or the register cannot be read for
+ * them (a `RefusedError`, its message kept); else `mergeClearance`.
  */
-export async function clearMerge(caller: MergeCaller, standingOf: StandingOf, branch: string, head: string, approved: string | null): Promise<MergeClearance> {
+export async function clearMerge(caller: MergeCaller, reads: MergeReads, branch: string, head: string, approved: string | null): Promise<MergeClearance> {
   const taskId = taskOfBranch(branch);
   if (taskId === null) {
     return refused(`branch ${branch} names no task: a merged branch is t<id>-<name>`);
@@ -85,9 +96,13 @@ export async function clearMerge(caller: MergeCaller, standingOf: StandingOf, br
   if (caller.session === undefined || caller.session === '' || caller.team === undefined || caller.team === '') {
     return refused('TEAMRIG_SESSION and TEAMRIG_TEAM must name the merging session and its team');
   }
+  if (caller.claudeSession === undefined || caller.claudeSession === '') {
+    return refused("CLAUDE_CODE_SESSION_ID must name the merging Claude Code tab: a merge runs from the merging session's own tab");
+  }
   let standing: MergeStanding;
   try {
-    standing = await standingOf(caller.team, caller.session, taskId);
+    const session = await reads.tabCallerOf(caller.team, caller.claudeSession, caller.session);
+    standing = await reads.standingOf(caller.team, session, taskId);
   } catch (error) {
     if (error instanceof RefusedError) {
       return refused(error.message);
@@ -101,14 +116,18 @@ export async function clearMerge(caller: MergeCaller, standingOf: StandingOf, br
 export type ClearMerge = (branch: string, head: string, approved: string | null) => Promise<MergeClearance>;
 
 /**
- * `clearMerge` for the session and team `env` names (`$TEAMRIG_SESSION`, `$TEAMRIG_TEAM`), reading the register
- * through `reader`. The env is the caller's own claim, so this stops a mistaken or stale merge, not a session that
- * lies about who it is: the guard stays the trust boundary.
+ * `clearMerge` for the session, team and tab `env` names (`$TEAMRIG_SESSION`, `$TEAMRIG_TEAM`,
+ * `$CLAUDE_CODE_SESSION_ID`), reading the inbox marks and the register through `reader`. The session must be the one
+ * the tab is bound to, so a typed name merges no other session's task; the marks are files of the shared account
+ * (stopgap T791), so the guards stay the trust boundary.
  */
 export function clearMergeFrom(env: Env, reader: KitReader): ClearMerge {
-  const caller = { session: env[ENV.session]?.trim(), team: env[ENV.team]?.trim() };
-  const standingOf: StandingOf = (team, session, taskId) => mergeStandingOf(reader, team, session, taskId);
-  return (branch, head, approved) => clearMerge(caller, standingOf, branch, head, approved);
+  const caller = { session: env[ENV.session]?.trim(), team: env[ENV.team]?.trim(), claudeSession: env[ENV.claudeSession]?.trim() };
+  const reads: MergeReads = {
+    tabCallerOf: (team, claudeSession, session) => tabCallerOf(reader, team, claudeSession, session),
+    standingOf: (team, session, taskId) => mergeStandingOf(reader, team, session, taskId),
+  };
+  return (branch, head, approved) => clearMerge(caller, reads, branch, head, approved);
 }
 
 /** Runs git in the repo and returns its stdout; throws when git fails. */

@@ -1,10 +1,11 @@
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { EXIT, RefusedError } from '../../src/cli/runtime.ts';
 import { mergeStandingOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
-import { CliHarness } from '../../src/testing/cli-harness.ts';
+import { CLAUDE_SESSION, CliHarness, TEAM_HOME } from '../../src/testing/cli-harness.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { changePatch, clearMerge, clearMergeFrom, mergeClearance, shipWritesOf, type StandingOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
+import { changePatch, clearMerge, clearMergeFrom, mergeClearance, type MergeReads, shipWritesOf, type StandingOf, type TabCallerOf, taskOfBranch, type WorkCommit, workChanges, workCommitsOf } from './approval.ts';
 import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 const HEAD = '0123456789abcdef0123456789abcdef01234567';
@@ -93,43 +94,68 @@ describe('mergeClearance: the merge needs its approver to have approved the head
 });
 
 describe('clearMerge', () => {
-  const caller = { session: 'alpha', team: 'app' } as const;
-  const fixed = (value: MergeStanding): StandingOf => async () => value;
+  const caller = { session: 'alpha', team: 'app', claudeSession: CLAUDE_SESSION } as const;
+  /** Reads with the tab bound to whichever session the caller names, unless `tabCallerOf` says otherwise. */
+  const readsOf = (standingOf: StandingOf, tabCallerOf: TabCallerOf = async (_team, _tab, session) => session): MergeReads => ({ tabCallerOf, standingOf });
+  const fixed = (value: MergeStanding): MergeReads => readsOf(async () => value);
 
-  it('reads the standing for the caller, team and branch task, then clears it', async () => {
+  it("reads the tab's session, then its standing for the team and branch task, then clears it", async () => {
     const value = await approvedBy(HEAD);
     const asked: string[][] = [];
-    const standingOf: StandingOf = async (team, session, taskId) => {
-      asked.push([team, session, taskId]);
-      return value;
-    };
-    assert.deepEqual(await clearMerge(caller, standingOf, 't1-cli', HEAD, HEAD), { kind: 'approved', by: 'lead' });
-    assert.deepEqual(asked, [['app', 'alpha', 'T1']]);
+    const reads = readsOf(
+      async (team, session, taskId) => {
+        asked.push(['standing', team, session, taskId]);
+        return value;
+      },
+      async (team, tab, session) => {
+        asked.push(['tab', team, tab, session]);
+        return 'alpha';
+      },
+    );
+    assert.deepEqual(await clearMerge({ ...caller, session: 'guards' }, reads, 't1-cli', HEAD, HEAD), { kind: 'approved', by: 'lead' });
+    assert.deepEqual(asked, [
+      ['tab', 'app', CLAUDE_SESSION, 'guards'],
+      ['standing', 'app', 'alpha', 'T1'],
+    ]);
   });
 
-  it('refuses a branch that names no task, and a caller or team left unset', async () => {
+  it('refuses a branch that names no task, and a caller, team or tab left unset', async () => {
     const value = fixed(await approvedBy(HEAD));
     assert.match(reasonOf(await clearMerge(caller, value, 'cli-fix', HEAD, HEAD)), /branch cli-fix names no task/);
-    assert.match(reasonOf(await clearMerge({ session: undefined, team: 'app' }, value, 't1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
-    assert.match(reasonOf(await clearMerge({ session: 'alpha', team: '' }, value, 't1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
+    assert.match(reasonOf(await clearMerge({ ...caller, session: undefined }, value, 't1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
+    assert.match(reasonOf(await clearMerge({ ...caller, team: '' }, value, 't1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
+    assert.match(reasonOf(await clearMerge({ ...caller, claudeSession: undefined }, value, 't1-cli', HEAD, HEAD)), /CLAUDE_CODE_SESSION_ID must name the merging Claude Code tab/);
+    assert.match(reasonOf(await clearMerge({ ...caller, claudeSession: '' }, value, 't1-cli', HEAD, HEAD)), /CLAUDE_CODE_SESSION_ID/);
   });
 
-  it('clearMergeFrom reads the caller and team from the env and the register through the reader', async () => {
+  it('clearMergeFrom reads the caller, team and tab from the env, and the marks and register through the reader', async () => {
     const kit = await waitingKit(['--note', HEAD]);
-    const env = { TEAMRIG_SESSION: ' alpha ', TEAMRIG_TEAM: 'app' };
+    const marks = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
+    await kit.files.append(marks, `${JSON.stringify({ v: 1, area: 'alpha', line: 0, at: '2030-01-08T09:00:00.000Z', claudeSession: CLAUDE_SESSION, lastLineHash: null })}\n`);
+    const env = { TEAMRIG_SESSION: ' alpha ', TEAMRIG_TEAM: 'app', CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION };
     assert.deepEqual(await clearMergeFrom(env, kit.runtime())('t1-cli', HEAD, HEAD), { kind: 'approved', by: 'lead' });
-    assert.match(reasonOf(await clearMergeFrom({ ...env, TEAMRIG_SESSION: 'stranger' }, kit.runtime())('t1-cli', HEAD, HEAD)), /stranger is not a session on this team/);
-    assert.match(reasonOf(await clearMergeFrom({ TEAMRIG_TEAM: 'app' }, kit.runtime())('t1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
+    assert.match(reasonOf(await clearMergeFrom({ ...env, TEAMRIG_SESSION: 'bravo' }, kit.runtime())('t1-cli', HEAD, HEAD)), /this Claude Code tab is not bound to bravo alone/);
+    assert.match(reasonOf(await clearMergeFrom({ ...env, TEAMRIG_SESSION: 'stranger' }, kit.runtime())('t1-cli', HEAD, HEAD)), /not bound to stranger alone/);
+    assert.match(reasonOf(await clearMergeFrom({ TEAMRIG_TEAM: 'app', CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION }, kit.runtime())('t1-cli', HEAD, HEAD)), /TEAMRIG_SESSION and TEAMRIG_TEAM/);
+    assert.match(reasonOf(await clearMergeFrom({ TEAMRIG_SESSION: 'alpha', TEAMRIG_TEAM: 'app' }, kit.runtime())('t1-cli', HEAD, HEAD)), /CLAUDE_CODE_SESSION_ID/);
   });
 
-  it("refuses with the register's refusal, and lets any other failure through", async () => {
-    const refusing: StandingOf = async () => {
+  it("refuses with the tab's or the register's refusal, and lets any other failure through", async () => {
+    const value = await approvedBy(HEAD);
+    const refusing = readsOf(async () => {
       throw new RefusedError('stranger is no session of app');
-    };
+    });
     assert.deepEqual(await clearMerge(caller, refusing, 't1-cli', HEAD, HEAD), { kind: 'refused', reason: 'stranger is no session of app' });
-    const broken: StandingOf = async () => {
+    const unbound = readsOf(
+      async () => value,
+      async () => {
+        throw new RefusedError('this Claude Code tab is not bound to alpha alone');
+      },
+    );
+    assert.deepEqual(await clearMerge(caller, unbound, 't1-cli', HEAD, HEAD), { kind: 'refused', reason: 'this Claude Code tab is not bound to alpha alone' });
+    const broken = readsOf(async () => {
       throw new Error('disk gone');
-    };
+    });
     await assert.rejects(clearMerge(caller, broken, 't1-cli', HEAD, HEAD), /disk gone/);
   });
 });

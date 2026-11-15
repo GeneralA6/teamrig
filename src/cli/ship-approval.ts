@@ -5,6 +5,7 @@ import type { Task } from '../register/fold.ts';
 import { JsonlEventLog } from '../register/store.ts';
 import { openKit, rosterOf, sessionIdOf, type KitReader } from './kit.ts';
 import { RefusedError } from './runtime.ts';
+import { tabSessionOf } from './tab-session.ts';
 import { leadAboveOf } from './tree.ts';
 
 /**
@@ -38,6 +39,27 @@ export async function mergeStandingOf(reader: KitReader, team: string, callerTex
   const caller = sessionIdOf(await rosterOf(reader, kit, config), callerText);
   const { state } = await new JsonlEventLog(reader.files, kit.paths.events).read();
   return { caller, task: state.tasks.get(taskId), approvers: await approversOf(reader, team, config, caller) };
+}
+
+/**
+ * The session a merge runs for (T2984, security condition C4): the one session of team `team` that the merging Claude
+ * Code tab `claudeSession` is bound to (`tabSessionOf`), which must be the one `callerText` (`$TEAMRIG_SESSION`) names,
+ * so a typed name moves no merge to another session's task. Refused when the config does not load or the tab is not
+ * bound to that session alone.
+ */
+export async function tabCallerOf(reader: KitReader, team: string, claudeSession: string, callerText: string): Promise<string> {
+  const kit = await openKit(reader, team);
+  if (kit.load.status !== 'loaded') {
+    throw new RefusedError(`team ${team}'s config at ${kit.load.path} is ${kit.load.status}: the merge cannot tell which session its tab is`);
+  }
+  const roster = await rosterOf(reader, kit, kit.load.config);
+  const bound = await tabSessionOf(reader.files, kit.paths.inboxMarks, roster, claudeSession, callerText);
+  if (bound === undefined) {
+    throw new RefusedError(
+      `this Claude Code tab is not bound to ${callerText} alone: a merge runs from the merging session's own tab, whose every inbox mark names that session (a tab that read another session's inbox merges nothing)`,
+    );
+  }
+  return bound;
 }
 
 async function approversOf(reader: KitReader, team: string, config: KitConfig, caller: string): Promise<string[]> {
