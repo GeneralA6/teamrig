@@ -365,6 +365,9 @@ commenter, swaps `status:open` for `status:claimed`, and replies once with the r
   that a claim waits for a person to assign it.
 - **Only new comments.** Each run reads only the comments posted since the previous run started, so a comment
   from before the push was turned on claims nothing.
+- **Ten issues a run.** The issue list carries no comment text, so a run reads the new comments (the first 30) of
+  at most ten issues whose new comments could claim, oldest first; the rest are printed `HELD` and read on the next
+  run, as is an issue whose read failed. A claim past an issue's first 30 new comments waits for a person to assign.
 - **Within the run's writes.** A claim's writes (assign, labels, reply) count in the same writes per run as the
   status push, and come first; a claim past them is printed `HELD` and made on the next run.
 
@@ -419,8 +422,10 @@ again.
 
 - **Read-only sync.** The sync runs only the issue queries teamrig ships, word for word, through `gh api graphql`, so
   a token with **Issues: Read-only** is all it needs. Of an issue's newest 20 comments it reads only when each was
-  posted, its author's tie to the repository and whether that author is a bot: never their text or login. Any other
-  `gh` command or query is refused in code, except
+  posted, its author's login, tie to the repository and whether that author is a bot: never their text. Only with
+  the push on, a claim reads the text of an issue's comments posted since the last run (`.../issues/<number>/comments
+  -X GET` with `since` and `per_page=30` only, one page), for at most ten issues a run, to find a claim line, and
+  keeps no text. Any other `gh` command or query is refused in code, except
   the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
   one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label
