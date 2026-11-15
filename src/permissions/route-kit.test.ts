@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { REGISTER_COMMANDS } from '../automode/lines.ts';
+import { REGISTER_COMMANDS, REGISTER_POSTING_FLAGS } from '../automode/lines.ts';
+import { ADD_ISSUE_FLAGS } from '../cli/commands/add-issue.ts';
 import { COMMAND_TABLE } from '../cli/run.ts';
 import { ClientInstalls, type ClientSearch, type WordAt } from '../exec/client-launch.ts';
 import { KIT_SHAPES, matchesKit, ownClientOf, type KitContext, type KitShape } from './route-kit.ts';
@@ -30,6 +31,24 @@ describe('matchesKit', () => {
     for (const command of REGISTER_COMMANDS) {
       assert.equal(await matches(KIT_SHAPES.register, `teamrig ${command}`), true, command);
     }
+  });
+
+  it('takes no add that posts its GitHub issue, so it asks as every GitHub write does, but takes an add kept local', async () => {
+    for (const line of [
+      'teamrig add --session tr-x --title x --issue Title --issue-body Body',
+      'teamrig add --session tr-x --title x --issue-body Body',
+      'teamrig add --session tr-x --title x --issue-repo acme/web',
+    ]) {
+      assert.equal(await matches(KIT_SHAPES.register, line), false, line);
+    }
+    assert.equal(await matches(KIT_SHAPES.register, 'teamrig add --session tr-x --title x --local private'), true);
+  });
+
+  it('refuses every add flag that posts, which is each one but --local', () => {
+    assert.deepEqual(
+      ADD_ISSUE_FLAGS.filter((flag) => flag !== 'local'),
+      [...REGISTER_POSTING_FLAGS],
+    );
   });
 
   it('takes no flag the route leaves out, though the CLI takes it', async () => {

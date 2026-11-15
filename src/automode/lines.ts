@@ -43,6 +43,12 @@ export const REGISTER_COMMANDS = [
   'rename',
 ] as const;
 
+/**
+ * The flags that make a register line post outside the team's files: `teamrig add` with any of them opens a public
+ * GitHub issue, so that line is no register route and asks as every other GitHub write does.
+ */
+export const REGISTER_POSTING_FLAGS = ['issue', 'issue-body', 'issue-repo'] as const;
+
 /** The tag every line of the team's starts with, a space included. */
 export function kitTag(team: string): string {
   return `[teamrig ${team}] `;
@@ -105,7 +111,11 @@ function normalPush(mode: PushToProtected, lead: string): string {
 
 function registerLine({ team, home }: AutoModeFacts): string {
   const names = REGISTER_COMMANDS.map((name) => `teamrig ${name}`).join(', ');
-  return `The task register: every session may run ${names} for team ${team}; they write only under ${home}/.`;
+  const posting = REGISTER_POSTING_FLAGS.map((flag) => `--${flag}`).join(', ');
+  return (
+    `The task register: every session may run ${names} for team ${team}, but not teamrig add with ${posting}, ` +
+    `which also posts a public GitHub issue; they write only under ${home}/.`
+  );
 }
 
 function wrappersLine(): string {

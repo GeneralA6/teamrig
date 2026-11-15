@@ -23,7 +23,8 @@ describe('kitLines', () => {
       '[teamrig alpha] Protected branches: main, release. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. ' +
         "Every session edits on its own branch in its own git worktree, never in a repo's main checkout.",
       '[teamrig alpha] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, ' +
-        'teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team alpha; ' +
+        'teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team alpha, ' +
+        'but not teamrig add with --issue, --issue-body, --issue-repo, which also posts a public GitHub issue; ' +
         'they write only under ~/.teamrig/teams/alpha/.',
       "[teamrig alpha] `teamrig queue ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (queue waits for the host lock, " +
         'test records the result); neither grants anything, so judge the command after `--` as if it ran alone.',

@@ -1,5 +1,5 @@
 import { REST_MARKER } from '../cli/args.ts';
-import { REGISTER_COMMANDS } from '../automode/lines.ts';
+import { REGISTER_COMMANDS, REGISTER_POSTING_FLAGS } from '../automode/lines.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { placeProgram, type ClientInstalls, type ClientSearch, type WordAt } from '../exec/client-launch.ts';
 import { readable, type CommandTable } from '../slash/plan.ts';
@@ -24,6 +24,8 @@ export interface KitShape {
   readonly commands: readonly string[];
   /** The flags and switches it may carry; undefined for every one the CLI gives the command. */
   readonly options: readonly string[] | undefined;
+  /** Flags or switches that make a line no route: they make one of its commands write outside the team's files. */
+  readonly refusedOptions?: readonly string[];
   /** `none`; `one` word not starting `-`; or `any`. */
   readonly positionals: 'none' | 'one' | 'any';
 }
@@ -36,8 +38,8 @@ export const KIT_SHAPES = {
   execRequest: { commands: ['exec request'], options: ['session', 'file'], positionals: 'none' },
   /** Narrower than the CLI: no `--base`. */
   worktreeRemove: { commands: ['worktree remove'], options: ['session', 'delete-branch', 'dry-run'], positionals: 'one' },
-  /** The commands every session runs on the team's own files. */
-  register: { commands: REGISTER_COMMANDS, options: undefined, positionals: 'any' },
+  /** The commands every session runs on the team's own files; an add that posts its GitHub issue is none. */
+  register: { commands: REGISTER_COMMANDS, options: undefined, refusedOptions: REGISTER_POSTING_FLAGS, positionals: 'any' },
 } as const satisfies Readonly<Record<string, KitShape>>;
 
 /** A path from the root of a drive or of the file system, as bash or Windows writes it. */
@@ -56,6 +58,9 @@ export async function matchesKit(shape: KitShape, words: readonly string[], cont
   const options = [...parsed.flags.keys(), ...parsed.switches];
   const allowed = shape.options;
   if (allowed !== undefined && !options.every((name) => allowed.includes(name))) {
+    return false;
+  }
+  if (shape.refusedOptions?.some((name) => options.includes(name)) === true) {
     return false;
   }
   return positionalsFit(shape.positionals, parsed.positionals) && context.ownClient(program);
