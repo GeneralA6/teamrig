@@ -55,13 +55,32 @@ export interface Claim {
 export const CLAIM_STATE_FORMAT = 1;
 
 /**
- * The claims a file holds; a damaged entry is left out, a damaged file reads as none. Reading none is the safe side:
- * a claim code no longer knows is never taken off, it only stays until a person does.
+ * The claims file: the claims code made, and when the last claim pass of each repository started, so the next one
+ * reads only the comments posted since. A repository with no time yet reads none from before its first pass.
  */
-export function parseClaims(text: string): Claim[] {
+export interface ClaimState {
+  readonly claims: readonly Claim[];
+  readonly checked: ReadonlyMap<string, number>;
+}
+
+/**
+ * The state a file holds; a damaged entry is left out, a damaged file reads as no claim and no time. Reading none is
+ * the safe side: a claim code no longer knows is never taken off, it only stays until a person does, and a missing
+ * time reads no old comment as a new claim.
+ */
+export function parseClaims(text: string): ClaimState {
   const record = parseObject(text.trim());
-  const list = record?.[VERSION_FIELD] === CLAIM_STATE_FORMAT ? record['claims'] : undefined;
-  return Array.isArray(list) ? list.flatMap(claimOf) : [];
+  const current = record?.[VERSION_FIELD] === CLAIM_STATE_FORMAT ? record : undefined;
+  const list = current?.['claims'];
+  const checked = current?.['checked'];
+  return {
+    claims: Array.isArray(list) ? list.flatMap(claimOf) : [],
+    checked: new Map(isRecord(checked) ? Object.entries(checked).flatMap(checkedOf) : []),
+  };
+}
+
+function checkedOf([repo, at]: [string, unknown]): [string, number][] {
+  return typeof at === 'number' && Number.isFinite(at) ? [[repo, at]] : [];
 }
 
 function claimOf(value: unknown): Claim[] {
@@ -73,8 +92,12 @@ function claimOf(value: unknown): Claim[] {
   return valid && typeof at === 'number' && Number.isFinite(at) ? [{ repo, number, login, at }] : [];
 }
 
-export function formatClaims(claims: readonly Claim[]): string {
-  return toJsonlLine({ [VERSION_FIELD]: CLAIM_STATE_FORMAT, claims: claims.map(({ repo, number, login, at }) => ({ repo, number, login, at })) });
+export function formatClaims(state: ClaimState): string {
+  return toJsonlLine({
+    [VERSION_FIELD]: CLAIM_STATE_FORMAT,
+    claims: state.claims.map(({ repo, number, login, at }) => ({ repo, number, login, at })),
+    checked: Object.fromEntries(state.checked),
+  });
 }
 
 /** The issue facts a claim plan reads. */

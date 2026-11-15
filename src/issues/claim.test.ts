@@ -107,16 +107,17 @@ describe('planClaims', () => {
 
 describe('the claims file', () => {
   it('reads back what it wrote', () => {
-    const claims = [claim(1, 'ada', 2), { repo: 'acme/api', number: 40, login: 'bob', at: NOW }];
-    assert.deepEqual(parseClaims(formatClaims(claims)), claims);
+    const state = { claims: [claim(1, 'ada', 2), { repo: 'acme/api', number: 40, login: 'bob', at: NOW }], checked: new Map([[REPO, SINCE], ['acme/api', NOW]]) };
+    assert.deepEqual(parseClaims(formatClaims(state)), state);
   });
 
-  it('leaves out a damaged entry and reads a damaged file, another format or none as no claims', () => {
+  it('leaves out a damaged entry and reads a damaged file, another format or none as no claims and no times', () => {
     const good = { repo: REPO, number: 1, login: 'ada', at: NOW };
-    const text = JSON.stringify({ v: 1, claims: [good, { ...good, number: 0 }, { ...good, login: '' }, { ...good, at: 'soon' }, 'x'] });
-    assert.deepEqual(parseClaims(text), [good]);
-    for (const bad of ['', 'not json', JSON.stringify({ v: 2, claims: [good] }), JSON.stringify({ v: 1, claims: 'all' })]) {
-      assert.deepEqual(parseClaims(bad), [], bad);
+    const text = JSON.stringify({ v: 1, claims: [good, { ...good, number: 0 }, { ...good, login: '' }, { ...good, at: 'soon' }, 'x'], checked: { [REPO]: NOW, 'acme/api': 'today' } });
+    assert.deepEqual(parseClaims(text), { claims: [good], checked: new Map([[REPO, NOW]]) });
+    const none = { claims: [], checked: new Map() };
+    for (const bad of ['', 'not json', JSON.stringify({ v: 2, claims: [good], checked: { [REPO]: NOW } }), JSON.stringify({ v: 1, claims: 'all', checked: [] })]) {
+      assert.deepEqual(parseClaims(bad), none, bad);
     }
   });
 });
