@@ -165,8 +165,8 @@ describe('foldEvents: when a task last asked for something new (T2089)', () => {
     assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), verdict(11), status(14, 'waiting', [lead], 'approve 301c2359d?')]).waitsAt, at(14));
   });
 
-  it('holds when the waits are named again after an approval of an unchanged head, which the task keeps (T3044)', () => {
-    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), verdict(11), status(14, 'waiting', [lead])]).waitsAt, at(10));
+  it('moves when the waits are named again with no head in the note, which asks anew (T3094)', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), verdict(11), status(14, 'waiting', [lead])]).waitsAt, at(14));
   });
 
   it('holds through an update after an answer, which clears no answer', () => {
@@ -428,11 +428,19 @@ describe("foldEvents: the lead's answer to an approval (T684)", () => {
     const lead: WaitReason = { kind: 'approval', who: 'lead' };
     const approved = [...asked, answered(11, 'approved', 'Approved 2bd9a4a70: PASS')];
 
-    it('keeps the approval of an unchanged head when its note names no other commit, and asks the lead nothing new', () => {
-      for (const note of ['merge denied by the classifier, not retried', '2bd9a4a70 merges once allowed']) {
+    it('keeps the approval of an unchanged head when its note names that head, and asks the lead nothing new', () => {
+      for (const note of ['merge denied by the classifier, head 2bd9a4a70, not retried', '2bd9a4a70 merges once allowed', 'head 2BD9A4A70E1F']) {
         const again = taskAfter([...approved, status(12, 'waiting', [lead], note)]);
         assert.deepEqual([again.answer?.verdict, again.answer?.at], ['approved', at(11)], note);
         assert.equal(again.waitsAt, at(10), 'no new wait on the lead');
+      }
+    });
+
+    it('drops it unless the note names the approved head, and asks the lead anew (T3094)', () => {
+      for (const note of ['new head ready, please re-approve', 'merge denied by the classifier, not retried', 'head 2bd9a4a', 'rebased: approve 301C2359D?']) {
+        const again = taskAfter([...approved, status(12, 'waiting', [lead], note)]);
+        assert.equal(again.answer, null, note);
+        assert.equal(again.waitsAt, at(12), `the lead is asked anew: ${note}`);
       }
     });
 
@@ -469,7 +477,9 @@ describe("foldEvents: the lead's answer to an approval (T684)", () => {
         assert.equal(taskAfter([...approved, status(12, 'waiting', waits)]).answer, null, JSON.stringify(waits));
       }
       const restated = taskAfter([...approved, status(12, 'waiting', [lead, blocker]), status(13, 'waiting', [lead, blocker])]);
-      assert.equal(restated.answer?.verdict, 'approved', 'a restated hold naming no other head keeps it (T3044)');
+      assert.equal(restated.answer, null, 'a restated hold naming no head asks anew (T3094)');
+      const withHead = taskAfter([...asked, answered(11, 'approved', 'Approved 2bd9a4a70: PASS'), status(12, 'waiting', [lead, blocker]), status(13, 'waiting', [lead, blocker], 'still behind T7, head 2bd9a4a70')]);
+      assert.equal(withHead.answer?.verdict, 'approved', 'a restated hold naming the approved head keeps it');
     });
 
     it('clears a declined answer, and any answer on a status other than waiting', () => {
