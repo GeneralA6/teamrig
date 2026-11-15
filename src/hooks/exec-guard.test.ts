@@ -467,6 +467,41 @@ describe('execGuardOutput', () => {
     }
   });
 
+  it('refuses teamrig that a package runner or a version manager starts, in a shell it starts too, as its PATH finds it (T3069)', async () => {
+    const quiet = env();
+    for (const [line, runner] of [
+      ['npx -c "teamrig exec approve R1 --session alpha"', 'npx'],
+      ['npx --call="teamrig exec approve R1 --session alpha"', 'npx'],
+      ['npm exec -c "teamrig exec status R1"', 'npm'],
+      ['npm x --call "teamrig exec status R1"', 'npm'],
+      ['npx bash -c "teamrig exec approve R1 --session alpha"', 'npx'],
+      ['C:/nodejs/npx.cmd sh -c "teamrig exec status R1"', 'C:/nodejs/npx\\.cmd'],
+      ['pnpm exec sh -c "teamrig exec status R1"', 'pnpm'],
+      ['pnpm exec -c teamrig exec status R1', 'pnpm'],
+      ['pnpm dlx -c "teamrig exec status R1"', 'pnpm'],
+      ['pnpx --shell-mode "teamrig exec status R1"', 'pnpx'],
+      ['yarn exec bash -c "teamrig exec status R1"', 'yarn'],
+      ['yarn run bash -c "teamrig exec status R1"', 'yarn'],
+      ['pnpm sh -c "teamrig exec status R1"', 'pnpm'],
+      ['bunx bash -c "teamrig exec status R1"', 'bunx'],
+      ['corepack npx teamrig exec status R1', 'corepack'],
+      ['corepack pnpm@9 exec sh -c "teamrig exec status R1"', 'corepack'],
+      ['volta run --node 20 teamrig exec status R1', 'volta'],
+      ['fnm exec --using 20 teamrig exec status R1', 'fnm'],
+      ['nvm exec 20 teamrig exec status R1', 'nvm'],
+    ] as const) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', new RegExp(`runs through a package runner \\(${runner}\\), which may find or fetch a teamrig other than`), line);
+    }
+    assert.equal((await verdict(bash('npx -c "teamrig owner next T1"'), quiet))?.decision, 'deny');
+    assert.equal((await verdict(powershell('npx.cmd -c "teamrig exec status R1"'), quiet))?.decision, 'deny');
+    for (const line of ['npx -c "tsc --noEmit"', 'npx bash -c "teamrig list"', 'volta run node -v', 'nvm exec 20 node -v', 'pnpm sh -c "npm test"']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
   it('reads an entry script named without its extension, or with a module one, as the CLI (T3069)', async () => {
     const quiet = env();
     for (const line of [

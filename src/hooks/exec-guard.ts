@@ -4,6 +4,7 @@ import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { SETTINGS_WRITERS, settingsWriteRefusal, WRITE_SWITCH } from '../core/settings-writers.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { placeProgram, placeScript, type ClientFile, type ClientInstalls, type ClientSearch, type WordAt } from '../exec/client-launch.ts';
+import { PACKAGE_STARTERS } from '../package-guard/packaged.ts';
 import { runsOf, type LineRuns, type OpaqueRun, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
 import { programName } from '../push-guard/launchers.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
@@ -110,12 +111,6 @@ type GuardedCall = ReviewCall | PlainCall | UnreadableCall | OwnerCall | Setting
  */
 const CLI_ENTRY = /[\\/]cli[\\/](?:guard-)?main(?:\.[cm]?[jt]s)?$/i;
 
-/**
- * The package runners, which start a program by name from wherever they find or fetch it (`npx teamrig`, `pnpm exec
- * teamrig`, `yarn teamrig`, `bunx teamrig@1`), so their teamrig may be no install of this plugin (T3069).
- */
-const PACKAGE_RUNNERS: ReadonlySet<string> = new Set(['npx', 'pnpx', 'npm', 'pnpm', 'yarn', 'bun', 'bunx']);
-
 /** A word a package runner reads as the teamrig package or bin, a version spec included: `teamrig`, `teamrig@latest`. */
 const TEAMRIG_SPEC = /^teamrig(?:@[^\\/]*)?$/;
 
@@ -182,14 +177,18 @@ function ownerActionOf(words: readonly ShellWord[]): string | undefined {
  */
 export function teamrigLaunchOf(run: ProgramRun, guarded: (words: readonly ShellWord[]) => boolean): TeamrigLaunch | undefined {
   if (run.name === 'teamrig' || run.name === 'teamrig.ps1') {
-    return { client: { kind: 'program', word: run.program }, words: run.args };
+    // Under a package runner the name is looked up on its PATH, not the line's (`npx -c "teamrig ..."`, T3069).
+    const client: ClientWord = run.packageRunner === undefined ? { kind: 'program', word: run.program } : { kind: 'runner', word: run.packageRunner };
+    return { client, words: run.args };
   }
   const entry = run.args.findIndex((word) => CLI_ENTRY.test(word.text));
   const script = entry === -1 ? undefined : run.args[entry];
   if (script !== undefined) {
     return { client: { kind: script.dynamic ? 'opaque' : 'script', word: script }, words: run.args.slice(entry + 1) };
   }
-  if (PACKAGE_RUNNERS.has(run.name)) {
+  // A package runner or a version manager starts a program by name from wherever it finds or fetches it (`npx
+  // teamrig`, `yarn teamrig`, `volta run teamrig`), so its teamrig may be no install of this plugin (T3069).
+  if (PACKAGE_STARTERS.has(run.name)) {
     // A package word only known when it runs may name teamrig too, so it reads as an opaque client (T3069).
     const named = run.args.findIndex((word, index) => (word.dynamic || TEAMRIG_SPEC.test(programName(word.text))) && guarded(run.args.slice(index + 1)));
     const word = run.args[named];

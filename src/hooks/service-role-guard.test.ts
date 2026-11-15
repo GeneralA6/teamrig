@@ -64,6 +64,12 @@ describe('service-role guard: roles grant and revoke', () => {
       'bunx teamrig roles grant github --holder alpha',
       'npx "$P" roles grant github --holder alpha',
       'pnpm dlx $P roles revoke github --yes',
+      // What a package runner or a version manager starts, a shell it starts included (T3069).
+      'npx -c "teamrig roles grant github --holder alpha"',
+      'npx bash -c "teamrig roles revoke github --yes"',
+      'pnpm exec sh -c "teamrig roles grant github --holder alpha"',
+      'corepack pnpm exec teamrig roles revoke github',
+      'volta run teamrig roles grant github --holder alpha',
     ];
     for (const command of lines) {
       assert.equal(await decide(call('Bash', { command })), 'ask', command);
