@@ -369,7 +369,9 @@ commenter, swaps `status:open` for `status:claimed`, and replies once with the r
   at most ten issues whose new comments could claim, oldest first; the rest are printed `HELD` and read on the next
   run, as is an issue whose read failed. A claim past an issue's first 30 new comments waits for a person to assign.
 - **Within the run's writes.** A claim's writes (assign, labels, reply) count in the same writes per run as the
-  status push, and come first; a claim past them is printed `HELD` and made on the next run.
+  status push, and come first; a claim past them is printed `HELD` and made on the next run. A run whose share of
+  the hour is less than one claim's 5 writes (4 at the default `probeSeconds` of 60) may still send one whole claim:
+  at most five claims a day per repository keep that small.
 
 ## Linking issues as the task tree
 
