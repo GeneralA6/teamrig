@@ -696,6 +696,12 @@ describe('checkTasks: READY once the lead approved (T684)', () => {
     ];
     assert.deepEqual(readyOf(tasks), []);
   });
+
+  it('flags an approved task held behind another once that task is done, its owner\'s wake to merge (T2117)', () => {
+    const held = testTask({ ...asking, waits: [...asking.waits, { kind: 'task', id: 'T9' }], answer: answer('approved') });
+    const landed = testTask({ id: 'T9', status: 'done', ...seen });
+    assert.deepEqual(readyOf([held, landed]), ['T1: lead approved it; push or merge it, then set its next status']);
+  });
 });
 
 describe("checkTasks: READY once a leader recorded the owner's decision (T1366)", () => {

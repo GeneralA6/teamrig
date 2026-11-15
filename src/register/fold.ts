@@ -4,7 +4,7 @@ import type { ProblemReview } from './review.ts';
 import type { SecurityVerdict } from './security-verdict.ts';
 import type { ApprovalVerdict, RegisterEvent, SizeBase, TaskFields, UpdateEvent } from './events.ts';
 import { WAIT_STATUSES, type TaskStatus } from './model.ts';
-import { namesNewWait, type WaitReason } from './waits.ts';
+import { namesNewWait, sameWait, type WaitReason } from './waits.ts';
 
 /** The lead's answer to a task's approval wait (T684), as `approve` wrote it. */
 export interface ApprovalAnswer {
@@ -41,7 +41,8 @@ export interface Task extends TaskFields {
   readonly card: DecisionCard | null;
   /**
    * The lead's latest answer to the approval the task waits on, since its latest status change; null otherwise. A new
-   * status clears it with the waits, so an approval covers the push or merge asked for and nothing after it.
+   * status clears it with the waits, so an approval covers the push or merge asked for and nothing after it; only a
+   * hold behind another task or a time keeps an approval (`keptAnswer`, T2117).
    */
   readonly answer: ApprovalAnswer | null;
   /**
@@ -227,19 +228,37 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
   };
 }
 
+/**
+ * The answer a status keeps (T2117): an approval, when the task stays waiting, names the approved wait again and adds
+ * only waits on another task or a time. That holds the approved change behind them, so it is no new ask, and `check`
+ * flags the task READY once they clear, which is the owner's wake to merge. Any other status, the same waits restated
+ * (a new ask, T2089), a new decision or approval wait, or a declined answer clears it.
+ */
+function keptAnswer(task: Task, status: TaskStatus, waits: readonly WaitReason[]): ApprovalAnswer | null {
+  const { answer } = task;
+  if (answer === null || answer.verdict !== 'approved' || status !== 'waiting' || task.status !== 'waiting') {
+    return null;
+  }
+  const approved: WaitReason = { kind: 'approval', who: answer.by };
+  const holds = [task.waits, waits].every((each) => each.some((reason) => sameWait(reason, approved)));
+  const added = waits.filter((reason) => !task.waits.some((held) => sameWait(held, reason)));
+  return holds && added.length > 0 && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
+}
+
 function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }>): Task {
   const waits = WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [];
+  const answer = keptAnswer(task, event.status, waits);
   return {
     ...task,
     status: event.status,
     statusAt: event.status === task.status ? task.statusAt : event.at,
-    waitsAt: namesNewWait(task.answer === null ? task.waits : [], waits) ? event.at : task.waitsAt,
+    waitsAt: namesNewWait(task.answer === null || answer !== null ? task.waits : [], waits) ? event.at : task.waitsAt,
     note: event.note,
     evidence: event.evidence ?? task.evidence,
     skill: event.skill,
     waits,
     card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
-    answer: null,
+    answer,
     decided: null,
     proof: event.status === 'verifying' ? (event.proof ?? null) : null,
     watch: event.status === 'done' ? (event.watch ?? null) : null,

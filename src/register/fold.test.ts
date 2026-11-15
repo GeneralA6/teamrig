@@ -420,6 +420,41 @@ describe("foldEvents: the lead's answer to an approval (T684)", () => {
     assert.equal(taskAfter([...asked, answered(11, 'approved'), status(12, 'verifying')]).answer, null);
     assert.equal(taskAfter([...asked, answered(11, 'approved'), status(12, 'waiting', [{ kind: 'approval', who: 'lead' }])]).answer, null);
   });
+
+  describe('an approved task held behind another task or a time (T2117)', () => {
+    const lead: WaitReason = { kind: 'approval', who: 'lead' };
+    const blocker: WaitReason = { kind: 'task', id: 'T7' };
+    const approved = [...asked, answered(11, 'approved')];
+
+    it('keeps the approval when the set names it again beside a task or a time, and through a second hold', () => {
+      const held = taskAfter([...approved, status(12, 'waiting', [lead, blocker])]);
+      assert.deepEqual([held.answer?.verdict, held.answer?.at], ['approved', at(11)]);
+      assert.equal(held.waitsAt, at(12), 'the hold is a new wait');
+      const timed = taskAfter([...approved, status(12, 'waiting', [lead, { kind: 'time', at: at(20) }])]);
+      assert.equal(timed.answer?.verdict, 'approved');
+      const twice = taskAfter([...approved, status(12, 'waiting', [lead, blocker]), status(13, 'waiting', [lead, blocker, { kind: 'task', id: 'T8' }])]);
+      assert.equal(twice.answer?.verdict, 'approved');
+    });
+
+    it('clears it on a set that drops the approval, adds a decision or another approval, or restates the waits', () => {
+      const sets: readonly (readonly WaitReason[])[] = [
+        [blocker],
+        [lead, blocker, { kind: 'decision', who: 'lead' }],
+        [lead, { kind: 'approval', who: 'owner' }],
+        [lead],
+      ];
+      for (const waits of sets) {
+        assert.equal(taskAfter([...approved, status(12, 'waiting', waits)]).answer, null, JSON.stringify(waits));
+      }
+      assert.equal(taskAfter([...approved, status(12, 'waiting', [lead, blocker]), status(13, 'waiting', [lead, blocker])]).answer, null, 'a restated hold asks anew');
+    });
+
+    it('clears a declined answer, and any answer on a status other than waiting', () => {
+      assert.equal(taskAfter([...asked, answered(11, 'declined', 'no tests'), status(12, 'waiting', [lead, blocker])]).answer, null);
+      assert.equal(taskAfter([...approved, status(12, 'in-progress'), status(13, 'waiting', [lead, blocker])]).answer, null);
+      assert.equal(taskAfter([...approved, status(12, 'verifying', [lead, blocker])]).answer, null);
+    });
+  });
 });
 
 function later(hour: number, waits: readonly WaitReason[], by = 'lead'): RegisterEvent {
