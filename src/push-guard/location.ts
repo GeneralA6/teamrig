@@ -35,14 +35,37 @@ const PS_VALUED_PARAMETERS: ReadonlySet<string> = new Set(['-stackname']);
  * Where a `cd` target leads from `current`; `~` is the home folder. A path with a drive letter resolves by
  * Windows rules on every host (see {@link pathRules}), any other by `host`'s, the host's own unless a test
  * names another. Undefined when `current` is unknown and the target is relative.
+ *
+ * A target is resolved from `current` even when absolute: a Windows path rooted without a drive (`\x`, `/c/x` in
+ * PowerShell) is on the current folder's drive, which resolving it alone would take from the guard process's own
+ * folder instead (another drive, or none on a POSIX host).
  */
 export function resolveDir(current: string | undefined, target: string, home: string, host: nodePath.PlatformPath = nodePath): string | undefined {
   const expanded = target === '~' || /^~[\\/]/.test(target) ? pathRules(host, home).join(home, target.slice(1)) : target;
   const rules = pathRules(host, current, expanded);
-  if (rules.isAbsolute(expanded)) {
-    return rules.resolve(expanded);
+  if (current !== undefined) {
+    return rules.resolve(current, expanded);
   }
-  return current === undefined ? undefined : rules.resolve(current, expanded);
+  return rules.isAbsolute(expanded) ? rules.resolve(expanded) : undefined;
+}
+
+/** A Bash path as Windows names it on a Windows host (whose home names a drive): Git Bash's `/c/x` is `C:/x`; any other path as it is. */
+export function bashDrivePath(path: string, home: string): string {
+  const drive = /^[A-Za-z]:/.test(home) ? /^\/([A-Za-z])(\/|$)/.exec(path) : null;
+  return drive === null ? path : `${(drive[1] ?? '').toUpperCase()}:/${path.slice(drive[0].length)}`;
+}
+
+/**
+ * An argument as Git Bash hands it to a Windows program such as git: MSYS turns a word naming `/c/x`, or an option's
+ * `=/c/x` value, into `C:/x`, so `git -C /c/x push` runs in `C:\x` (T2764). A word only known when it runs stays as it is.
+ */
+export function bashNativeWord(word: ShellWord, home: string): ShellWord {
+  if (word.dynamic) {
+    return word;
+  }
+  const option = /^(--?[\w-]+=)(.*)$/s.exec(word.text);
+  const text = option === null ? bashDrivePath(word.text, home) : `${option[1] ?? ''}${bashDrivePath(option[2] ?? '', home)}`;
+  return text === word.text ? word : { text, dynamic: false };
 }
 
 /**
@@ -60,10 +83,11 @@ function absoluteDir(dir: string, host: nodePath.PlatformPath): string {
 
 /**
  * A folder command's target as its shell reads it: PowerShell and cmd take `\` as a separator on every host
- * (PowerShell on Linux too), while in bash it is part of a name.
+ * (PowerShell on Linux too), while in bash it is part of a name, and Git Bash's `/c/x` is `C:/x` on Windows
+ * (read as `C:\c\x`, git finds no repository there and the push guard asks, T2764).
  */
-function shellPath(text: string, dialect: ShellDialect): string {
-  return dialect === 'bash' ? text : text.replaceAll('\\', '/');
+function shellPath(text: string, dialect: ShellDialect, home: string): string {
+  return dialect === 'bash' ? bashDrivePath(text, home) : text.replaceAll('\\', '/');
 }
 
 /** The drive letter a Windows path names, lower case, if any. */
@@ -129,9 +153,9 @@ export class Location {
     }
   }
 
-  /** Moves to a folder a launcher names, such as `env -C dir` or `-WorkingDirectory dir`. */
-  moveTo(target: ShellWord): void {
-    this.change(target.dynamic ? undefined : resolveDir(this.dir, target.text, this.home, this.host));
+  /** Moves to a folder a launcher in a `dialect` line names, such as `env -C dir` or `-WorkingDirectory dir`. */
+  moveTo(target: ShellWord, dialect: ShellDialect): void {
+    this.change(target.dynamic ? undefined : resolveDir(this.dir, shellPath(target.text, dialect, this.home), this.home, this.host));
   }
 
   /** Applies a command if it changes the folder; false for any other command. */
@@ -197,7 +221,7 @@ export class Location {
     if (target.text === '-') {
       return this.top.previous;
     }
-    return resolveDir(this.dir, shellPath(target.text, dialect), this.home, this.host);
+    return resolveDir(this.dir, shellPath(target.text, dialect, this.home), this.home, this.host);
   }
 
   private changeDir(args: readonly ShellWord[], dialect: ShellDialect): void {
