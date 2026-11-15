@@ -432,7 +432,7 @@ class GitInvocationFinder {
         if (language !== undefined) {
           const inner = location.child();
           launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-          const text = interpreterText(launched, stdin, inner.dir, this.context.readScript ?? readScriptFile);
+          const text = interpreterText(launched, stdin, inner.dir, this.context.readScript ?? readScriptFile, language);
           if (scriptMayPush(text, language)) {
             this.doubt(interpreterDoubt(language), false);
           }

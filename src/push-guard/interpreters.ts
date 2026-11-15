@@ -104,24 +104,120 @@ export function readScriptFile(path: string): string | undefined {
 }
 
 /**
+ * How each language's interpreter takes its program from its options: the short and long
+ * options whose value is inline code (no script file follows), a module (likewise), the script file itself, or any
+ * other value (skipped), and the subcommand words that come before the script under deno and bun (`deno run x.ts`).
+ */
+interface OptionTable {
+  readonly code: readonly string[];
+  readonly module: readonly string[];
+  readonly file: readonly string[];
+  readonly value: readonly string[];
+  readonly subcommands: readonly string[];
+}
+
+const OPTIONS: Readonly<Record<string, OptionTable>> = {
+  python: { code: ['-c'], module: ['-m'], file: [], value: ['-W', '-X', '--check-hash-based-pycs'], subcommands: [] },
+  JavaScript: {
+    code: ['-e', '-p', '--eval', '--print'],
+    module: [],
+    file: [],
+    value: ['-r', '--require', '--import', '--loader', '--experimental-loader', '-C', '--conditions', '--input-type', '--env-file'],
+    subcommands: ['run'],
+  },
+  perl: { code: ['-e', '-E'], module: [], file: [], value: ['-I', '-M', '-m', '-x'], subcommands: [] },
+  ruby: { code: ['-e'], module: [], file: [], value: ['-I', '-r', '-C', '-E'], subcommands: [] },
+  php: { code: ['-r', '-B', '-R', '-E', '-F'], module: [], file: ['-f'], value: ['-d', '-c', '-z'], subcommands: [] },
+};
+
+/**
+ * The index of the argument an interpreter run reads as its script file, or undefined when it runs inline code, a
+ * module or stdin. Its options are skipped (with the value of one that takes a value), and so is a subcommand word
+ * before the script. The arguments after the script are the script's own data, never its program.
+ */
+export function scriptArgIndex(args: readonly ShellWord[], language: string, program = ''): number | undefined {
+  const table = OPTIONS[language];
+  // Only deno and bun take a subcommand before the script; to node, `run` is a script file.
+  const subcommands = /^(?:deno|bun)$/.test(program) ? (table?.subcommands ?? []) : [];
+  if (table === undefined) {
+    return undefined;
+  }
+  let subcommandSeen = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === undefined) {
+      return undefined;
+    }
+    const text = arg.text;
+    if (arg.dynamic && text.startsWith('-')) {
+      continue;
+    }
+    if (text === '--') {
+      return index + 1 < args.length ? index + 1 : undefined;
+    }
+    if (text === '-') {
+      return undefined; // the program comes from stdin
+    }
+    if (text.startsWith('--')) {
+      const name = text.split('=', 1)[0] ?? text;
+      if (table.code.includes(name) || table.module.includes(name)) {
+        return undefined;
+      }
+      if (table.value.includes(name) && !text.includes('=')) {
+        index += 1;
+      }
+      continue;
+    }
+    if (text.startsWith('-') && text.length > 1) {
+      // A cluster of short options (`-EP`, `-Wignore`): the first one that takes a value ends it.
+      for (let at = 1; at < text.length; at += 1) {
+        const option = `-${text[at]}`;
+        const attached = at + 1 < text.length;
+        if (table.code.includes(option) || table.module.includes(option)) {
+          return undefined;
+        }
+        if (table.file.includes(option)) {
+          return attached ? undefined : index + 1 < args.length ? index + 1 : undefined;
+        }
+        if (table.value.includes(option)) {
+          if (!attached) {
+            index += 1;
+          }
+          break;
+        }
+      }
+      continue;
+    }
+    if (!subcommandSeen && subcommands.includes(text)) {
+      subcommandSeen = true;
+      continue;
+    }
+    return index;
+  }
+  return undefined;
+}
+
+/**
  * The text an interpreter run takes as its program: every argument (inline `-c`/`-e`/`--eval` code, and the rest,
- * which only makes the rule stricter), the stdin a heredoc or here-string gives it, and any argument that names a
- * readable file in `dir`. An argument only known when it runs is read as written.
+ * which only makes the rule stricter), the stdin a heredoc or here-string gives it, and the script file it runs
+ * ({@link scriptArgIndex}) when that names a readable file in `dir`. The arguments after the script are its data:
+ * they are judged as written, never read as files (a transcript that quotes `git push` is no program). An
+ * argument only known when it runs is read as written.
  */
 export function interpreterText(
   launched: ProgramLaunch,
   stdin: ShellWord | undefined,
   dir: string | undefined,
   readScript: (path: string) => string | undefined,
+  language: string,
 ): string {
   const parts = launched.args.map((arg) => arg.text);
   if (stdin !== undefined) {
     parts.push(stdin.text);
   }
-  for (const arg of launched.args) {
-    if (arg.dynamic || arg.text === '' || arg.text.startsWith('-') || arg.text.includes('\n')) {
-      continue;
-    }
+  const index = scriptArgIndex(launched.args, language, programName(launched.program.text));
+  const arg = index === undefined ? undefined : launched.args[index];
+  if (arg !== undefined && !arg.dynamic && arg.text !== '' && !arg.text.includes('\n')) {
     const path = isAbsolute(arg.text) ? arg.text : dir === undefined ? undefined : join(dir, arg.text);
     const body = path === undefined ? undefined : readScript(path);
     if (body !== undefined) {

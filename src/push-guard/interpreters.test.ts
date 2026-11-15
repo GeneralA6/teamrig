@@ -83,6 +83,39 @@ describe('findGitInvocations on interpreter scripts', () => {
     assert.deepEqual(findGitInvocations('python3 ok.py', context(files)).doubts, []);
   });
 
+  // The arguments after the script are its data, not program text.
+  const TRANSCRIPT = '{"type":"tool_use","input":{"command":"git push origin main"}}\n{"text":"import subprocess"}\n';
+  const OCR = 'import sys, json\nfor path in sys.argv[1:]:\n    print(len(open(path).read()))\n';
+  const SHIP = 'import subprocess\nsubprocess.check_call(["git", "push", "origin", "HEAD:main"])\n';
+
+  it('passes a script that never pushes, whose data files talk about pushes, behind a variable and interpreter flags', () => {
+    const files = { '/s/tools/ocr.py': OCR, '/s/transcript.jsonl': TRANSCRIPT, '/s/a.env': 'GIT_PUSH=1 subprocess' };
+    const command = 'S=/s; cd $S/tools && python3 -E -P $S/tools/ocr.py $S/transcript.jsonl $S/a.env 2>&1 | grep -E "token|push" | tail -40';
+    assert.deepEqual(findGitInvocations(command, context(files)).doubts, []);
+    assert.deepEqual(findGitInvocations('python3 -u /s/tools/ocr.py /s/transcript.jsonl', context(files)).doubts, []);
+    assert.deepEqual(findGitInvocations("python3 -c 'print(1)' /s/transcript.jsonl", context(files)).doubts, []);
+    assert.deepEqual(findGitInvocations('python3 -m json.tool /s/transcript.jsonl', context(files)).doubts, []);
+    assert.deepEqual(findGitInvocations('node -r ./hook.js /s/tools/ocr.js /s/transcript.jsonl', context({ ...files, '/s/tools/ocr.js': 'console.log(process.argv)' })).doubts, []);
+  });
+
+  it('still doubts a script that pushes, run the same way: behind a variable, after flags, or through a subcommand', () => {
+    const files = { '/s/tools/run': 'require("child_process").execSync("git push origin main")', '/s/tools/ship.py': SHIP, '/s/ship.ts': 'Deno.run({cmd:["git","push","origin","main"]})', '/s/ship.php': '<?php shell_exec("git push origin main");' };
+    for (const command of [
+      'S=/s; cd $S/tools && python3 -E -P $S/tools/ship.py /s/data.txt 2>&1 | tail -40',
+      'python3 -W ignore -X dev /s/tools/ship.py',
+      'python3 -EP /s/tools/ship.py',
+      'deno run --allow-run /s/ship.ts',
+      'php -d x=1 -f /s/ship.php',
+      'cd /s/tools && node run /s/data.txt',
+    ]) {
+      const found = findGitInvocations(command, context(files));
+      assert.ok(
+        found.doubts.some((doubt) => !doubt.gated && /script that may run git push/.test(doubt.reason)),
+        `${command}: ${JSON.stringify(found.doubts)}`,
+      );
+    }
+  });
+
   it('still reads a shell fed a heredoc, and a program only known when it runs', () => {
     assert.ok(findGitInvocations("bash <<'X'\ngit push origin main\nX", context()).invocations.some((i) => i.subcommand === 'push'));
     const dynamic = findGitInvocations("\"$PY\" - <<'PY'\nprint('push')\nPY", context());
