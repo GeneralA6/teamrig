@@ -1,4 +1,5 @@
 import type { SecretScanner } from '../core/secrets.ts';
+import type { HostPost } from '../issues/post.ts';
 import { areaOwnerOf, issueRef, type ImportRules } from './map.ts';
 import { mentionsOf } from './mentions.ts';
 import type { OurLogins } from './trust.ts';
@@ -11,19 +12,6 @@ import type { OurLogins } from './trust.ts';
 
 /** A session is woken for mentions on one issue or pull request at most once in this many minutes; the rest wait. */
 export const MENTION_WAKE_GAP_MINUTES = 30;
-
-/** A comment, review or body read from GitHub. An edit keeps its key, so a mention it keeps is not routed again. */
-export interface MentionPost {
-  /** Unique in its repository and stable across edits, such as `comment:<id>` or `body:<number>`. */
-  readonly key: string;
-  /** The issue or pull request it is on. */
-  readonly number: number;
-  readonly url: string;
-  readonly author: string;
-  readonly text: string;
-  /** When it was last written or edited (an ISO time), which keeps its seen mark until it is older than the cutoff. */
-  readonly updatedAt: string;
-}
 
 /** What routing needs of the issue or pull request a post is on. */
 export interface MentionItem {
@@ -68,13 +56,13 @@ export function mentionRecipient(item: MentionItem, login: string, routing: Pick
 
 /**
  * The routes of a repository's posts read this run, and the seen marks after them. A post by one of ours or by the
- * key itself routes nothing; a login a post already routed routes nothing again, so an edit that keeps a mention,
+ * key itself routes nothing; a login a post already routed routes nothing again (an edit keeps a post's key), so an edit that keeps a mention,
  * or a second read of the same page, is quiet, and an edit that adds a login routes only that login. The logins a
  * post newly mentions go one line per session: two of ours on the same session make one line.
  */
 export function mentionRoutes(
   repo: string,
-  posts: readonly MentionPost[],
+  posts: readonly HostPost[],
   itemOf: (number: number) => MentionItem,
   seen: ReadonlyMap<string, SeenMention>,
   routing: MentionRouting,

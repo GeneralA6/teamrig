@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
+import type { HostPost } from '../issues/post.ts';
 import {
   MENTION_WAKE_GAP_MINUTES,
   mentionLine,
@@ -9,7 +10,6 @@ import {
   prunedSeen,
   wakeRoutes,
   type MentionItem,
-  type MentionPost,
   type MentionRoute,
   type MentionRouting,
   type SeenMention,
@@ -25,11 +25,11 @@ const ROUTING: MentionRouting = {
 
 const PLAIN: MentionItem = { labels: [], taskOwner: undefined };
 
-function post(key: string, text: string, overrides: Partial<MentionPost> = {}): MentionPost {
+function post(key: string, text: string, overrides: Partial<HostPost> = {}): HostPost {
   return { key, number: 7, url: `https://github.com/acme/web/issues/7#${key}`, author: 'visitor', text, updatedAt: '2030-01-10T00:00:00Z', ...overrides };
 }
 
-function routesOf(posts: readonly MentionPost[], seen: ReadonlyMap<string, SeenMention> = new Map(), item: MentionItem = PLAIN): MentionRoute[] {
+function routesOf(posts: readonly HostPost[], seen: ReadonlyMap<string, SeenMention> = new Map(), item: MentionItem = PLAIN): MentionRoute[] {
   return mentionRoutes('acme/web', posts, () => item, seen, ROUTING).routes;
 }
 
