@@ -491,7 +491,7 @@ The weekly token budget: the pace line the team is measured against and each ses
 | `reservePct` | number (0 to 50) | `0.5` | Kept back for incidents until shortly before the reset; targetPct plus reservePct is at most 100. |
 | `shareFloorPct` | integer (0 to 50) | `10` | The least share of each weekly split a team with planned work gets, in % of the part being split; when the floors do not fit, each team gets an equal part. 0: no floor. The team's own, never taken from the team above. The lead's rules print it while the budget is enabled. |
 | `paceEndHoursBeforeReset` | number (0 to 48) | `1` | The pace line reaches targetPct this many hours before the reset. |
-| `sessions` | map from [session name](#shared-types) to [object](#budgetsessions) | `{}` | Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its top queued task's weight (by priority, however many tasks it has queued) / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1. |
+| `sessions` | map from [session name](#shared-types) to [object](#budgetsessions) | `{}` | Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × (its top queued task's weight (by priority, however many tasks it has queued), plus 1 for each answer another session waits on it for, up to 5) / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1. |
 | `pauseByPriority` | boolean | `false` | On a short day, when what is left of the week gives less than the pace line plans for the day, fund the team's sessions in the priority order of their top queued task (p0 first, idle sessions last) and pause the sessions none of it reaches, so the top work keeps its pace. The lead, the delivery owner held in the team and lifted sessions are never paused. Off: no session of the team is paused. |
 | `warnAtPct` | array (at most 8 items) of number (1 to 1000) | `[80,100]` | The live warning shows a line as a session passes each of these % of its daily budget. |
 | `fiveHourWarnPct` | number (1 to 100) | `80` | The five-hour check warns the lead once the account's five-hour window reaches this %; a rise forecast to fill the window warns sooner. Only a plan whose status line reports the window is warned: on any other nothing is read or shown. |
@@ -535,7 +535,7 @@ The resets the account holds beside its weekly one, each grant with its expiry a
 
 ## `budget.sessions.*`
 
-Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its top queued task's weight (by priority, however many tasks it has queued) / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1.
+Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × (its top queued task's weight (by priority, however many tasks it has queued), plus 1 for each answer another session waits on it for, up to 5) / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |

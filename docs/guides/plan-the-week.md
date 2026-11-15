@@ -93,7 +93,8 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
 - The pace line climbs to `budget.targetPct` by `budget.paceEndHoursBeforeReset` (1) hours before the reset. Each
   day, what is left to it is spread over the active time to the pace end, and each session's daily budget is its
   part of the team's, by its share and its top queued task's priority (a session works one task at a time, so how
-  many it has queued does not raise its part).
+  many it has queued does not raise its part), plus a step for each answer another session waits on it for, up to
+  5: a reviewer with review asks queued gets a bigger part, so the asks are not held behind its budget.
 - No session waits while the team has room: everyone's use today, the use outside the team included, below the
   team's in-day pace. With `budget.enabled` on, the Stop hook shows a Budget line as a session passes each of
   `budget.warnAtPct` (80 and 100) of its daily budget, then every 25 points more; once the team has no room left

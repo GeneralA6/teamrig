@@ -1168,7 +1168,7 @@
           "default": 1
         },
         "sessions": {
-          "description": "Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its top queued task's weight (by priority, however many tasks it has queued) / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1.",
+          "description": "Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × (its top queued task's weight (by priority, however many tasks it has queued), plus 1 for each answer another session waits on it for, up to 5) / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1.",
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/sessionName" },
           "additionalProperties": {

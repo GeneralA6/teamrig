@@ -6121,7 +6121,7 @@ time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet h
 `budget.quietHours.paceWeight`), times today's active time. The teams of the kit home on one Claude account
 (`budget.account`, else the one the teams on its Claude config dir name, else that dir; each team's dir is the one
 its sessions last started in, kept in `state/usage/claude-config-dir.json`) split that day by weight: a session's
-weight is its share times its top queued task's weight (by priority, not how many tasks it has queued), a team's
+weight is its share times its top queued task's weight (by priority, not how many tasks it has queued), plus 1 for each answer another session waits on it for, up to 5, a team's
 its sessions' summed. Past 100% of the week, what is left in the extra-usage
 pool takes the place of that remainder (see [teamrig budget extra](#teamrig-budget-extra)). With sub-leads
 (`leads`), the team's budget splits first among their groups and the sessions the lead leads directly, a group's
