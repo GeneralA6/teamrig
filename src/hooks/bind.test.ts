@@ -190,6 +190,13 @@ describe('bindByProcess', () => {
       assert.equal(await files.read(MARKS), undefined);
     }
   });
+
+  it('keeps a tab a mark already binds, writing nothing (T3081)', async () => {
+    const { files, deps } = setup([readMark('bravo', 2, 'second', TAB)]);
+    const before = await files.read(MARKS);
+    assert.equal(await bindByProcess({ marks: deps.marks, refreshedHere: () => Promise.resolve(['alpha']) }, TAB, NOW), undefined);
+    assert.equal(await files.read(MARKS), before);
+  });
 });
 
 describe('bindByTitle', () => {
