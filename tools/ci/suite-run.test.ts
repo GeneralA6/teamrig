@@ -259,8 +259,12 @@ describe('runSuite', () => {
   it('kills a real program that prints once and then never ends', async () => {
     const echo = echoes();
     const script = "process.stdout.write('started'); setInterval(() => {}, 1000);";
-    const end = await runSuite({ program: process.execPath, args: ['-e', script], cwd: process.cwd(), env: process.env, idleMs: 500 }, process.platform, kill, echo, calm());
-    assert.deepEqual(end, { kind: 'idle', silentMs: 500 });
+    // The idle clock starts at spawn, and calm() turns off the busy-host stretch, so a short window can end before a
+    // loaded host has even started node ('' is not 'started'). The first output gets a load-tolerant window; the
+    // program's silence after it still ends the run.
+    const idleMs = 10_000;
+    const end = await runSuite({ program: process.execPath, args: ['-e', script], cwd: process.cwd(), env: process.env, idleMs }, process.platform, kill, echo, calm());
+    assert.deepEqual(end, { kind: 'idle', silentMs: idleMs });
     assert.equal(echo.out.text(), 'started');
   });
 });
