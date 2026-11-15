@@ -679,13 +679,15 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
-      sends the status push's labels too (a close it plans is held for --push --yes, printed HELD),
+      sends the status push's labels and assignees too (a close it plans is held for --push --yes,
+      printed HELD),
       its writes lowered so an hour of runs sends at most 250
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
       status: label taken off; done closes it as completed, dropped as not planned; never reopens an
-      issue a person closed, and names it; at most 40 writes a run; without --yes it writes nothing;
+      issue a person closed, and names it; an open issue no one is assigned to is assigned to the login
+      github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
       --yes sends them, a repository stopping at its first failed write, a change adding a status label
       the repository lacks held until it is made
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
