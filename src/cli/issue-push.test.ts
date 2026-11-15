@@ -128,9 +128,9 @@ describe('teamrig issue sync --push', () => {
     const kit = new CliHarness(GITHUB_TEAM);
     await expectRun(kit, ['issue', 'sync', '--yes'], issues(), EXIT.ok);
     await step(kit, ['set', 'T2', '--status', 'dropped', '--note', 'not planned'], AS_LEAD);
-    const gh = issues().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
+    const gh = issues().hasLabels('acme/web', ['status:triaged']).failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
     const lines = await expectRun(kit, ['issue', 'sync', '--push', '--yes', '--repo', 'acme/web'], gh, EXIT.failed);
-    assert.ok(lines.some((line) => line.startsWith('FAILED acme/web#8 T2: ') && line.endsWith('; the rest of acme/web waits for the next run')), lines.join('\n'));
+    assert.ok(lines.some((line) => line.startsWith('FAILED acme/web#7 T1: ') && line.endsWith('; the rest of acme/web waits for the next run')), lines.join('\n'));
     const stranger = await kit.run(['issue', 'sync', '--push', '--yes'], { gh, env: { TEAMRIG_SESSION: 'stranger' } });
     assert.equal(stranger.code, EXIT.refused, stranger.stdout.join('\n'));
   });

@@ -17,6 +17,7 @@ import {
   isIssueQuery,
   isIssueRead,
   isLabelAdd,
+  isLabelCreate,
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
@@ -30,6 +31,7 @@ import {
   issueLabelRemoveArgs,
   issueReadArgs,
   isUserRead,
+  labelCreateArgs,
   labelReadArgs,
   nodeGhRunner,
   subIssueAddArgs,
@@ -39,6 +41,7 @@ import {
   type IssueNumber,
 } from './gh.ts';
 import type { IssueDraft } from '../issues/host.ts';
+import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs } from './queries.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));
@@ -312,6 +315,41 @@ describe('the duplicate close and the issue read', () => {
     assert.ok(!isIssueClose(read) && !isIssueComment(read) && !isIssueCreate(read) && !isIssueQuery(read) && !isLabelRead(read));
     for (const args of [READ, DUPLICATE, issueCommentArgs(ISSUE, 'b'), labelReadArgs('acme/web', 'p1'), issueCreateArgs(DRAFT)]) {
       assert.equal(isIssueRead(args), false, args[1]);
+    }
+  });
+});
+
+describe('the status label create (T2999)', () => {
+  const [TRIAGED] = STATUS_LABEL_SPECS;
+
+  it('takes the create of each of the push\'s own status labels', () => {
+    assert.equal(STATUS_LABEL_SPECS.length, 4);
+    for (const label of STATUS_LABEL_SPECS) {
+      const args = labelCreateArgs('acme/web', label);
+      assert.deepEqual(args, ['api', 'repos/acme/web/labels', '-X', 'POST', '-f', `name=${label.name}`, '-f', `color=${label.color}`, '-f', `description=${label.description}`]);
+      assert.ok(isLabelCreate(args) && isAllowedGh(args), label.name);
+    }
+  });
+
+  it('refuses any other label, colour, description, method, field order, flag or path', () => {
+    assert.ok(TRIAGED !== undefined);
+    const good = labelCreateArgs('acme/web', TRIAGED);
+    for (const args of [
+      labelCreateArgs('acme/web', { ...TRIAGED, name: 'bug' }),
+      labelCreateArgs('acme/web', { ...TRIAGED, color: '000000' }),
+      labelCreateArgs('acme/web', { ...TRIAGED, description: 'x' }),
+      labelCreateArgs('acme/..', TRIAGED),
+      labelCreateArgs('acme', TRIAGED),
+      good.map((arg) => (arg === 'POST' ? 'PATCH' : arg)),
+      good.map((arg) => (arg === 'POST' ? 'DELETE' : arg)),
+      good.map((arg) => (arg === '-f' ? '-F' : arg)),
+      [...good, '-f', 'new_name=x'],
+      [...good.slice(0, 4), ...good.slice(6), ...good.slice(4, 6)],
+      good.map((arg, at) => (at === 1 ? 'repos/acme/web/labels/status%3Atriaged' : arg)),
+      ['api', 'repos/acme/web/labels', '-X', 'POST', '--input', 'labels.json'],
+    ]) {
+      assert.equal(isLabelCreate(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
     }
   });
 });

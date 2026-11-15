@@ -1,6 +1,6 @@
 import type { Task } from '../register/fold.ts';
 import { GITHUB_SOURCE, ISSUE_REF_PREFIX, type TaskStatus } from '../register/model.ts';
-import { parseIssueTarget, targetText, type CloseReason, type IssueTarget } from './host.ts';
+import { parseIssueTarget, targetText, type CloseReason, type IssueTarget, type LabelSpec } from './host.ts';
 import type { HostIssue } from './issue.ts';
 
 /**
@@ -24,6 +24,18 @@ export const STATUS_LABELS: Readonly<Record<'open' | 'in-progress' | 'waiting' |
   waiting: `${STATUS_LABEL_PREFIX}waiting`,
   verifying: `${STATUS_LABEL_PREFIX}in-review`,
 };
+
+/**
+ * The status labels as the push makes them in a repository that lacks one: a new repository has none, and without
+ * them every change would be held. Only these four can be made (github/gh.ts allows no other label create), so a
+ * push never makes a label a person did not see in the docs. The colours read on light and dark backgrounds alike.
+ */
+export const STATUS_LABEL_SPECS: readonly LabelSpec[] = [
+  { name: STATUS_LABELS.open, color: 'ededed', description: 'Open and triaged: work on it has not started' },
+  { name: STATUS_LABELS['in-progress'], color: '8957e5', description: 'Work on it is under way' },
+  { name: STATUS_LABELS.waiting, color: 'fbca04', description: 'Waiting on an answer, a review or another issue' },
+  { name: STATUS_LABELS.verifying, color: '0e8a16', description: 'Done, and in review until its proof exists' },
+];
 
 /**
  * The writes one run sends at most. GitHub's secondary limit on content-creating calls is 80 a minute; half of it

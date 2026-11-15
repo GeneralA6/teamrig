@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
-import type { CloseReason, IssueDraft } from '../issues/host.ts';
+import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
+import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
@@ -11,10 +12,11 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
  * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
  * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
  * --duplicate-of), logins added to one issue's assignees, the read of one user, for the case GitHub spells its login
- * in, and the read of whether one login may be assigned (the status push), one sub-issue or blocked-by link added
- * (issue links), and `issue watch`'s two probes, conditional reads that tell whether a repository changed
- * (isWatchProbe). The runner refuses any other command line before it starts: no title or state edit besides the
- * close, no reopen, assignee removal, label create or delete, link removal, merge or branch delete.
+ * in, the read of whether one login may be assigned, and the creation of one of its own status labels (the status
+ * push), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes, conditional reads
+ * that tell whether a repository changed (isWatchProbe). The runner refuses any other command line before it starts:
+ * no title or state edit besides the close, no reopen, assignee removal, label create but the push's own, label edit
+ * or delete, link removal, merge or branch delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -152,6 +154,11 @@ export function assigneeReadArgs(repo: string, login: string): string[] {
 /** The command line that reads one GitHub user, whose `login` is spelled in the case GitHub keeps; it fails when there is no such user. */
 export function userReadArgs(login: string): string[] {
   return ['api', `users/${login}`];
+}
+
+/** The command line that makes `label` in `repo`: its name, colour and description, each a raw field. */
+export function labelCreateArgs(repo: string, label: LabelSpec): string[] {
+  return ['api', `repos/${repo}/labels`, '-X', 'POST', '-f', `name=${label.name}`, '-f', `color=${label.color}`, '-f', `description=${label.description}`];
 }
 
 /** The command line that reads one label of a repository, which fails when the repository has no such label. */
@@ -319,6 +326,24 @@ export function isUserRead(args: readonly string[]): boolean {
   return args[0] === 'api' && args.length === 2 && match !== null && isLogin(match[1] ?? '');
 }
 
+/** `repos/<owner>/<name>/labels`: the labels of a repository, where a POST makes one. */
+const LABELS_PATH = /^repos\/([^/]+\/[^/]+)\/labels$/u;
+
+/**
+ * True for the command line labelCreateArgs builds for one of the status push's own labels (STATUS_LABEL_SPECS) and
+ * nothing more: its name, colour and description word for word, in that order. So the runner makes no other label,
+ * and edits or deletes none, whatever a caller passes.
+ */
+export function isLabelCreate(args: readonly string[]): boolean {
+  const repo = LABELS_PATH.exec(args[1] ?? '')?.[1] ?? '';
+  return args[0] === 'api' && REPO_NAME.test(repo) && STATUS_LABEL_SPECS.some((label) => sameArgs(args, labelCreateArgs(repo, label)));
+}
+
+/** True when the two command lines are the same, word for word. */
+function sameArgs(args: readonly string[], want: readonly string[]): boolean {
+  return args.length === want.length && want.every((arg, at) => args[at] === arg);
+}
+
 /** `repos/<owner>/<name>/labels/<label>`: one label of a repository. */
 const LABEL_PATH = /^repos\/([^/]+\/[^/]+)\/labels\/([^/]+)$/;
 
@@ -477,6 +502,7 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isIssueAssign(args) ||
     isAssigneeRead(args) ||
     isUserRead(args) ||
+    isLabelCreate(args) ||
     isLinkAdd(args) ||
     isWatchProbe(args)
   );

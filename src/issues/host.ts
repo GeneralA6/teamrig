@@ -49,6 +49,13 @@ export type HostEnd = { readonly kind: 'done' } | { readonly kind: 'failed'; rea
 /** The host's own id of one issue, which a link to it names; missing when the host has no such issue. */
 export type HostIssueId = { readonly kind: 'found'; readonly id: number } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
+/** A label to make on a host: its name, its colour as six hex digits with no `#`, and the line describing it. */
+export interface LabelSpec {
+  readonly name: string;
+  readonly color: string;
+  readonly description: string;
+}
+
 /** Whether a repository has a label: it has, it has not, or the read failed, with one plain line saying why. */
 export type HostLabel = { readonly kind: 'found' } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
@@ -108,6 +115,8 @@ export interface IssueHost {
   issueId(target: IssueTarget): Promise<HostIssueId>;
   /** Whether `repo` has the label `label`, so a label is only added once the repository has it. */
   labelExists(repo: string, label: string): Promise<HostLabel>;
+  /** Makes `label` in the repository; only the status push calls it, for its own labels (STATUS_LABEL_SPECS). */
+  createLabel(repo: string, label: LabelSpec): Promise<HostEnd>;
   /** Adds `labels` to the issue or pull request. */
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd>;
   /** Takes `label` off the issue or pull request; the repository keeps the label. */

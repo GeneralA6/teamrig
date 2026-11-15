@@ -1269,8 +1269,8 @@ Flags:
   sends at most 40 writes (half GitHub's limit of 80 a minute), shared by the repositories in order, and leaves the
   rest for the next. On its own it only
   plans: it reads the issues and writes nothing. With `--yes` a session on the team sends the plan, a `SET` line for
-  each change and a `PUSHED` line with the counts. A change that adds a `status:` label the repository lacks is held,
-  with a `MISSING` line, until someone makes the label, since adding it would make a new one. The first failed write
+  each change and a `PUSHED` line with the counts. A `status:` label the repository lacks is made first, with a `MADE`
+  line, so a new repository needs no hand step; the push makes no other label. The first failed write
   stops that repository, and the next run plans it again from GitHub as it is. It refuses `--auto`: the hooks' sync
   sends the push itself when `github.statusPush` is on. When a team task
   and an imported one hold the same issue, the team task speaks for it.

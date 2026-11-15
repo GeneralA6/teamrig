@@ -1,4 +1,4 @@
-import type { CloseReason, HostAssignee, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, WatchMarks } from '../issues/host.ts';
+import type { CloseReason, HostAssignee, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 
 /** What each use does, as the fake's access line words it. */
@@ -12,6 +12,7 @@ export type HostCall =
   | { readonly kind: 'close'; readonly target: IssueTarget; readonly reason?: CloseReason; readonly duplicateId?: number }
   | { readonly kind: 'label-add'; readonly target: IssueTarget; readonly labels: readonly string[] }
   | { readonly kind: 'label-remove'; readonly target: IssueTarget; readonly label: string }
+  | { readonly kind: 'label-create'; readonly repo: string; readonly label: LabelSpec }
   | { readonly kind: 'sub-issue'; readonly parent: IssueTarget; readonly childId: number }
   | { readonly kind: 'blocked-by'; readonly target: IssueTarget; readonly blockerId: number }
   | { readonly kind: 'assign'; readonly target: IssueTarget; readonly logins: readonly string[] };
@@ -32,6 +33,7 @@ export class FakeIssueHost implements IssueHost {
   private closeEnd: HostEnd = { kind: 'done' };
   private bodyEnd: HostEnd = { kind: 'done' };
   private labelEnd: HostEnd = { kind: 'done' };
+  private labelCreateEnd: HostEnd = { kind: 'done' };
   private readonly removeEnds = new Map<string, HostEnd>();
   private labelReadFailure: string | undefined;
   private readonly labels = new Set<string>();
@@ -70,6 +72,12 @@ export class FakeIssueHost implements IssueHost {
   /** From now on, every repository has these labels. */
   hasLabels(...labels: string[]): this {
     labels.forEach((label) => this.labels.add(label));
+    return this;
+  }
+
+  /** From now on, making a label fails for `reason`. */
+  failsLabelCreate(reason: string): this {
+    this.labelCreateEnd = { kind: 'failed', reason };
     return this;
   }
 
@@ -180,6 +188,15 @@ export class FakeIssueHost implements IssueHost {
       return Promise.resolve({ kind: 'failed', reason: this.labelReadFailure });
     }
     return Promise.resolve({ kind: this.labels.has(label) ? 'found' : 'missing' });
+  }
+
+  /** Records the make; once it is done, every repository has the label. */
+  createLabel(repo: string, label: LabelSpec): Promise<HostEnd> {
+    this.calls.push({ kind: 'label-create', repo, label });
+    if (this.labelCreateEnd.kind === 'done') {
+      this.labels.add(label.name);
+    }
+    return Promise.resolve(this.labelCreateEnd);
   }
 
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd> {

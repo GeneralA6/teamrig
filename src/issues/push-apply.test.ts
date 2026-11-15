@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeIssueHost } from '../testing/fake-issue-host.ts';
 import { applyPush } from './push-apply.ts';
-import type { IssueChange, PushPlan } from './status-push.ts';
+import { STATUS_LABEL_SPECS, type IssueChange, type PushPlan } from './status-push.ts';
 
 const REPO = 'acme/web';
 
@@ -75,12 +75,34 @@ describe('applyPush', () => {
     ]);
   });
 
-  it('holds the changes adding a label the repository lacks, and sends the rest', async () => {
+  it('holds the changes adding a label the repository lacks and the push does not own, and sends the rest', async () => {
+    const host = new FakeIssueHost().hasLabels('status:waiting');
+    const { outcome, lines } = await push(host, plan(change(1, { add: ['status:blocked'] }), change(2, { add: ['status:waiting'] }), change(3, { add: ['status:blocked'] })));
+    assert.deepEqual(outcome, { sent: 1, writes: 1, held: 2, failed: undefined });
+    assert.deepEqual(lines, ['MISSING acme/web: no label "status:blocked"; make it there, and the 2 change(s) adding it go on the next run', 'SET acme/web#2 T2 in-progress: add status:waiting']);
+    assert.deepEqual(host.calls, [{ kind: 'label-add', target: { repo: REPO, number: 2 }, labels: ['status:waiting'] }]);
+  });
+
+  it('makes each status label the repository lacks, once and before any change, then sends the changes adding it (T2999)', async () => {
     const host = new FakeIssueHost().hasLabels('status:waiting');
     const { outcome, lines } = await push(host, plan(change(1, { add: ['status:in-review'] }), change(2, { add: ['status:waiting'] }), change(3, { add: ['status:in-review'] })));
-    assert.deepEqual(outcome, { sent: 1, writes: 1, held: 2, failed: undefined });
-    assert.deepEqual(lines, ['MISSING acme/web: no label "status:in-review"; make it there, and the 2 change(s) adding it go on the next run', 'SET acme/web#2 T2 in-progress: add status:waiting']);
-    assert.deepEqual(host.calls, [{ kind: 'label-add', target: { repo: REPO, number: 2 }, labels: ['status:waiting'] }]);
+    assert.deepEqual(outcome, { sent: 3, writes: 4, held: 0, failed: undefined });
+    assert.deepEqual(lines, [
+      'MADE acme/web: the label "status:in-review", which the push sets',
+      'SET acme/web#1 T1 in-progress: add status:in-review',
+      'SET acme/web#2 T2 in-progress: add status:waiting',
+      'SET acme/web#3 T3 in-progress: add status:in-review',
+    ]);
+    assert.deepEqual(host.calls[0], { kind: 'label-create', repo: REPO, label: STATUS_LABEL_SPECS.find((spec) => spec.name === 'status:in-review') });
+    assert.equal(host.calls.filter((call) => call.kind === 'label-create').length, 1);
+  });
+
+  it('sends no change when making a status label fails', async () => {
+    const host = new FakeIssueHost().failsLabelCreate('HTTP 403');
+    const { outcome, lines } = await push(host, plan(change(1, { add: ['status:waiting'] })));
+    assert.deepEqual(outcome, { sent: 0, writes: 0, held: 0, failed: 'HTTP 403' });
+    assert.deepEqual(lines, ['FAILED acme/web: HTTP 403; no change was sent']);
+    assert.ok(host.calls.every((call) => call.kind === 'label-create'));
   });
 
   it('writes nothing when a label read fails', async () => {

@@ -9,6 +9,7 @@ import {
   isIssueCreate,
   isIssueRead,
   isLabelAdd,
+  isLabelCreate,
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
@@ -217,7 +218,7 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
-  /** From now on, a comment on, a body edit or the close of, a label added to or taken off, an assignee or a link added to an issue ends as given. */
+  /** From now on, a comment on, a body edit or the close of, a label added to or taken off, an assignee or a link added to an issue, and a label made, end as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
     return this;
@@ -256,6 +257,9 @@ export class FakeGh implements GhRunner {
     }
     if (isLabelRead(request.args)) {
       return this.labelRead(request.args[1] ?? '');
+    }
+    if (isLabelCreate(request.args)) {
+      return this.writeFailure ?? this.labelCreate(request.args);
     }
     if (isAssigneeRead(request.args)) {
       return this.assigneeRead(request.args[1] ?? '');
@@ -333,6 +337,14 @@ export class FakeGh implements GhRunner {
       return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ name: decodeURIComponent(label) }), stderr: '' };
     }
     return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
+  }
+
+  /** A label made as GitHub makes it: the repository has it from now on, and the answer is the new label. */
+  private labelCreate(args: readonly string[]): GhResult {
+    const repo = (args[1] ?? '').slice('repos/'.length, -'/labels'.length);
+    const name = (args[5] ?? '').slice('name='.length);
+    this.labels.set(repo, [...(this.labels.get(repo) ?? []), name]);
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ name }), stderr: '' };
   }
 
   /** A user read as GitHub answers it: the user with its login as GitHub spells it, whatever case the path names. */

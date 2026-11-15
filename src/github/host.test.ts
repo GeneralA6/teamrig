@@ -4,6 +4,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
+import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import {
   assigneeReadArgs,
@@ -16,6 +17,7 @@ import {
   isIssueQuery,
   isIssueRead,
   isLabelAdd,
+  isLabelCreate,
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
@@ -214,6 +216,26 @@ describe('GitHubIssueHost', () => {
     for (const stdout of ['', 'not json', 'null', '[]', '7', '{"number":7}', '{"id":"4242"}', '{"id":0}', '{"id":-3}', '{"id":1.5}', '{"id":1e300}']) {
       assert.equal(issueIdIn(stdout), undefined, stdout);
     }
+  });
+
+  it('makes a status label through the allowlisted create, after which the label reads found (T2999)', async () => {
+    const [label] = STATUS_LABEL_SPECS;
+    assert.ok(label !== undefined);
+    const gh = new FakeGh();
+    const host = hostWith(gh);
+    assert.deepEqual(await host.labelExists('acme/web', label.name), { kind: 'missing' });
+    assert.deepEqual(await host.createLabel('acme/web', label), { kind: 'done' });
+    assert.deepEqual(await host.labelExists('acme/web', label.name), { kind: 'found' });
+    assert.ok(isLabelCreate(gh.ran[1]?.args ?? []));
+  });
+
+  it('gives gh\'s own line when the create fails', async () => {
+    const [label] = STATUS_LABEL_SPECS;
+    assert.ok(label !== undefined);
+    const gh = new FakeGh().failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Validation Failed (HTTP 422)\n' });
+    const made = await hostWith(gh).createLabel('acme/web', label);
+    assert.equal(made.kind, 'failed');
+    assert.match(made.kind === 'failed' ? made.reason : '', /^gh api to make the label "status:triaged" in acme\/web .*HTTP 422/u);
   });
 
   it('reads whether a login may be assigned, found or missing on Not Found, and assigns through the allowlisted call (T2999)', async () => {

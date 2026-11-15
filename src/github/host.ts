@@ -14,6 +14,7 @@ import {
   type HostWatch,
   type IssueDraft,
   type IssueHost,
+  type LabelSpec,
   type IssueTarget,
   type WatchMarks,
 } from '../issues/host.ts';
@@ -33,6 +34,7 @@ import {
   issueReadArgs,
   labelReadArgs,
   isLogin,
+  labelCreateArgs,
   subIssueAddArgs,
   WATCH_PATHS,
   watchProbeArgs,
@@ -221,6 +223,31 @@ export class GitHubIssueHost implements IssueHost {
       return { kind: 'missing' };
     }
     return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read ${what} ${exitText(result.end.code, result.stderr)}`)) };
+  }
+
+  /**
+   * Makes the label in the repository. A run stopped by a signal may still have made it, which the next run's read
+   * finds; a refused access says how to give it the write.
+   */
+  async createLabel(repo: string, label: LabelSpec): Promise<HostEnd> {
+    const shown = `the label ${JSON.stringify(label.name)} in ${repo}`;
+    const access = await this.tokens.accessFor(repo);
+    if (access instanceof TokenReadError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    let result: GhResult;
+    try {
+      result = await this.gh.run({ args: labelCreateArgs(repo, label), env: access.env });
+    } catch (error) {
+      return { kind: 'failed', reason: startFailureText(error) };
+    }
+    if (result.end.kind === 'signal') {
+      return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while making ${shown}` };
+    }
+    if (result.end.code !== 0) {
+      return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to make ${shown} ${exitText(result.end.code, result.stderr)}`)) };
+    }
+    return { kind: 'done' };
   }
 
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd> {

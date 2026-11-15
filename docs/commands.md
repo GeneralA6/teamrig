@@ -374,8 +374,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       status: label taken off; done closes it as completed, dropped as not planned; never reopens an
       issue a person closed, and names it; an open issue no one is assigned to is assigned to the login
       github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
-      --yes sends them, a repository stopping at its first failed write, a change adding a status label
-      the repository lacks held until it is made
+      --yes sends them, a repository stopping at its first failed write; a status label the repository
+      lacks is made first (MADE)
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
       from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
       title, body} with its public wording, or {id, decision "local", reason}; without --yes writes

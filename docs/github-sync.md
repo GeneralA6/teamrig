@@ -318,7 +318,8 @@ PREVIEW nothing was written; a push would send 5 write(s) now, at most 40 a run,
 
 - **One status label.** `open` shows `status:triaged`, `in-progress` `status:in-progress`, `waiting`
   `status:waiting`, `verifying` `status:in-review`; any other `status:` label comes off. Done closes the issue as
-  completed, dropped as not planned.
+  completed, dropped as not planned. A repository that lacks one of these labels gets it made first, with a
+  `MADE` line: these four are the only labels teamrig ever makes, and only with `--yes` or the automatic push.
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
