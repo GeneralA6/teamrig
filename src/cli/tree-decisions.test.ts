@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Env } from '../core/home.ts';
-import { TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
+import { TEST_CARD_FLAGS, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
 import { treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
@@ -21,7 +21,7 @@ async function ownerWait(kit: CliHarness, env: Env, session: string, title: stri
   assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
   const id = /^ADDED (T\d+)/.exec(added.stdout[0] ?? '')?.[1] ?? '';
   const set = await kit.run(['set', id, '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_OWNER_CARD_FLAGS, '--session', session], { env });
-  assert.equal(set.code, EXIT.ok, set.stderr.join('\n'));
+  assert.equal(set.code, EXIT.ok, [...set.stdout, ...set.stderr].join('\n'));
   return set.stderr;
 }
 
@@ -41,7 +41,7 @@ describe("runCli: a child team's owner decisions go up to the lead at its tree's
     await ownerWait(kit, WEB, 'front', 'Pick the landing page');
     await ownerWait(kit, UI, 'pixel', 'Pick the icon set');
     const member = await kit.run(['meeting', 'start', '--session', 'front'], { env: WEB });
-    assert.deepEqual(member.stdout, ["REFUSED only the lead (web-lead) runs the owner's daily meeting"]);
+    assert.deepEqual(member.stdout, [`REFUSED only the lead (web-lead) runs the owner's daily meeting; a meeting of your own with the owner: teamrig meeting start --about "<what>"`]);
 
     const started = await kit.run(['meeting', 'start', '--session', 'lead'], { env: WEB });
     assert.equal(started.code, EXIT.ok, started.stderr.join('\n'));
@@ -59,6 +59,31 @@ describe("runCli: a child team's owner decisions go up to the lead at its tree's
     const root = await kit.run(['meeting', 'agenda', '--session', 'lead']);
     assert.equal(root.code, EXIT.ok, root.stderr.join('\n'));
     assert.deepEqual(rowIds(root.stdout), ['T1'], "the cards decided at web's meeting left the root's agenda");
+  });
+
+  it("lets a security card reach a child team's meeting only with its verdict, as the root's (security T2992)", async () => {
+    const kit = await treeHarness();
+    const added = await kit.run(['add', '--title', 'Grant the icon CDN', '--description', 'what and why', '--priority', 'p2', '--session', 'pixel'], { env: UI });
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    const toOwner = ['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--gate', TEST_GATE, '--note', 'the owner decides', '--session', 'pixel'];
+    const early = await kit.run([...toOwner, ...TEST_CARD_FLAGS, '--security'], { env: UI });
+    assert.equal(early.code, EXIT.refused);
+    assert.match(early.stdout[0] ?? '', /^REFUSED T1's card is marked --security and has no security verdict/);
+    const toLead = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:lead', '--note', 'a grant', ...TEST_CARD_FLAGS, '--security', '--session', 'pixel'], { env: UI });
+    assert.equal(toLead.code, EXIT.ok, toLead.stdout.join('\n'));
+    const audited = await kit.run(['audit', 'T1', '--verdict', 'Pass: no secret leaves the tab', '--session', 'lead'], { env: UI });
+    assert.equal(audited.code, EXIT.ok, audited.stdout.join('\n'));
+    const asked = await kit.run(toOwner, { env: UI });
+    assert.equal(asked.code, EXIT.ok, asked.stdout.join('\n'));
+
+    const verdict = '    security: Pass: no secret leaves the tab (verdict by lead)';
+    const web = await kit.run(['meeting', 'start', '--session', 'lead'], { env: WEB });
+    assert.equal(web.code, EXIT.ok, web.stderr.join('\n'));
+    assert.deepEqual(rowIds(web.stdout), ['ui/T1']);
+    assert.ok(web.stdout.includes(verdict), web.stdout.join('\n'));
+    const root = await kit.run(['meeting', 'agenda', '--session', 'lead']);
+    assert.equal(root.code, EXIT.ok, root.stderr.join('\n'));
+    assert.ok(root.stdout.includes(verdict), root.stdout.join('\n'));
   });
 
   it("holds every child team's waits in the root lead's batch, each labelled with its team, on the root's batch times (T1018)", async () => {
