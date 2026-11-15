@@ -187,12 +187,30 @@ again while it lasts; the first run on a repository only notes what is there.
   repository pushed that branch to the repository itself. A fork's or an outsider's pull request, or a branch that
   names no task, goes to `github.watcher` in the team config, else the lead.
 - Each session gets one inbox line, for example
-  `github: GitHub pull requests: gh:acme/web#20 "Fix the login redirect": conflicts with its base`. A conflict,
-  failing checks, changes requested or an outsider's new pull request also wakes the session (when `wake.enabled`);
-  a merge, a close or an approval waits for its next turn.
+  `github: GitHub pull requests: gh:acme/web#20 "Fix the login redirect": conflicts with its base`. A conflict or
+  failing checks on the session's own pull request (an inside author's `t<id>-` branch, not a fork), and an
+  outsider's new pull request, also wake the session (when `wake.enabled`); a merge, a close, an approval, changes
+  requested, or an outsider's conflict or red checks wait for its next turn.
+- When the checks of a session's own pull request start failing, the run reads the end of each failed job's log
+  (`gh run view --job <id> --log-failed`, at most 5 jobs a run) and writes it to
+  `~/.teamrig/teams/<team>/state/github-ci/<owner>-<name>-<number>.md`, one file per pull request, the newest
+  failure replacing the last: per job its name, its failed step and the last 20 lines, secrets redacted, fenced as
+  data. The inbox line names each job, its step and that file, for example
+  `checks failing ("test" at "Run tests"; log end in .../acme-web-20.md)`. An outsider's or a fork's red checks get no
+  log read. Reading the logs needs **Actions: Read-only** on the token; without it the file says why.
 - A run by hand prints the news as `PULL NEWS <session>` lines and keeps nothing, so the automatic run still tells it.
 - A repository whose pull requests cannot be read gets a `FAILED <repo> pull requests:` line; its issues still sync,
   and what was last read of its pull requests is kept, so nothing is missed once it reads again.
+
+### Security issues
+
+An open issue labelled `security` (any case, set by the issue form or by a maintainer) goes to its task's owner,
+else where the import would route it, an outsider's left-out report too. The automatic run wakes that session with a
+line naming only the issue's ref and URL, never its title, which may describe the hole, and pages the owner through
+the page webhook the team's `alerts` name (`teamrig page test` checks it). Each issue pages once: the sync state
+keeps the numbers paged, so a label set after the issue was imported pages too, and one that stays open never pages
+again. When no page goes, the lead is woken with why.
+
 ## Answer times
 
 Each sync that writes (`--yes` or the automatic one) also times how long each open issue has waited for an answer of
@@ -443,12 +461,13 @@ again.
 ## Safety
 
 - **Read-only sync.** The sync runs only the issue queries and the pull request queries teamrig ships, word for word,
-  through `gh api graphql`, so a token with **Issues: Read-only** and **Pull requests: Read-only** is all it needs.
-  Of an issue's newest 20 comments it reads only when each was posted, its author's login, tie to the repository and
-  whether that author is a bot: never their text. Only with the push on, a claim reads the text of an issue's comments
-  posted since the last run (`.../issues/<number>/comments -X GET` with `since` and `per_page=30` only, one page),
-  for at most ten issues a run, to find a claim line, and keeps no text. Any other `gh` command or query is refused
-  in code, except
+  through `gh api graphql`, and the read of one failed CI job's log
+  (`gh run view --job <id> --log-failed --repo <owner>/<name>`, exactly those arguments), so a token with
+  **Issues: Read-only**, **Pull requests: Read-only** and **Actions: Read-only** is all it needs. Of an issue's newest
+  20 comments it reads only when each was posted, its author's login, tie to the repository and whether that author is
+  a bot: never their text. Only with the push on, a claim reads the text of an issue's comments posted since the last
+  run (`.../issues/<number>/comments -X GET` with `since` and `per_page=30` only, one page), for at most ten issues a
+  run, to find a claim line, and keeps no text. Any other `gh` command or query is refused in code, except
   the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
   one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label

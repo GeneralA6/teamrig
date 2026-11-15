@@ -1268,8 +1268,12 @@ Flags:
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
   ref only, at most ten named), and one to each session with pull request news (at most eight pull requests named;
-  it also wakes the session for a conflict, failing checks, changes requested or an outsider's new pull request,
-  when `wake.enabled`). It reads every repository, so it refuses `--repo`. With `github.statusPush` on it
+  it also wakes the session for a conflict or failing checks on its own pull request, a `t<id>-` branch, or an
+  outsider's new pull request, when `wake.enabled`). When its own pull request's checks start failing, it reads the
+  end of each failed job's log (at most 5 a run) into `state/github-ci/<owner>-<name>-<number>.md` and the line names
+  the job, its failed step and that file. An open issue labelled `security` wakes the session it routes to and pages
+  the owner through the `alerts` page webhook, once per issue; the lead is woken when no page goes. It reads every
+  repository, so it refuses `--repo`. With `github.statusPush` on it
   then sends the status push (`--push --yes`) too, labels only: a close it plans is printed as a `HELD` line and
   sent only by a session's `--push --yes`. Its writes per run are lowered so an hour of runs sends at most 250
   (4 a run at the default `github.probeSeconds` of 60, 20 at 300); a failed write is told to the lead like a
