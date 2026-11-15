@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { LEAD_KEYS } from './lead-keys.ts';
 import { rowsUnder, settingRows, type SettingRow } from './settings.ts';
 
 const SCHEMA: JsonRecord = {
@@ -54,8 +55,11 @@ function rowAt(rows: readonly SettingRow[], path: string): SettingRow {
   return row;
 }
 
+/** The synthetic schema's lead list: register.unset is left off it, as a key added later would be. */
+const LEAD_LIST: ReadonlySet<string> = new Set(['messages.maxLines', 'messages.mode', 'messages.tags', 'focus.wip', 'budget.targetPct']);
+
 describe('settingRows', () => {
-  const rows = settingRows(SCHEMA, RAW, [{ path: 'register.priorities[1].name', message: 'expected a name' }]);
+  const rows = settingRows(SCHEMA, RAW, [{ path: 'register.priorities[1].name', message: 'expected a name' }], LEAD_LIST);
 
   it('lists every leaf key in the schema order, objects walked into and $schema left out', () => {
     assert.deepEqual(
@@ -131,6 +135,14 @@ describe('settingRows', () => {
     assert.deepEqual([rowAt(rows, 'focus.wip').gatedBy, rowAt(rows, 'focus.wip').editable], [undefined, true]);
   });
 
+  it('keeps a key off the lead list read-only, the owner deciding it; a gate wins over the list', () => {
+    const unset = rowAt(rows, 'register.unset');
+    assert.deepEqual([unset.editable, unset.gatedBy, unset.readOnly], [false, undefined, 'not on the list of keys the lead may set: the owner decides it, in config.json']);
+    assert.equal(rowAt(rows, 'budget.targetPct').editable, false);
+    const unlisted = settingRows(SCHEMA, RAW, [], new Set());
+    assert.deepEqual(unlisted.filter((row) => row.editable).map((row) => row.path), []);
+  });
+
   it('picks the rows at a path or under it, none for an unknown one', () => {
     assert.deepEqual(rowsUnder(rows, 'messages').map((row) => row.path), ['messages.maxLines', 'messages.mode', 'messages.tags']);
     assert.deepEqual(rowsUnder(rows, 'messages.mode').map((row) => row.path), ['messages.mode']);
@@ -163,5 +175,36 @@ describe('settingRows over the shipped schema', async () => {
   it('leaves a plain key editable at its default', () => {
     const maxLines = rowAt(rows, 'messages.maxLines');
     assert.deepEqual([maxLines.editable, maxLines.value, maxLines.isDefault, maxLines.min, maxLines.max], [true, 10, true, 3, 50]);
+  });
+
+  it('names a real, editable key in every lead list entry, so no entry outlives its key or hides under a gate', () => {
+    const editable = new Set(rows.filter((row) => row.editable).map((row) => row.path));
+    assert.deepEqual([...LEAD_KEYS].filter((path) => !editable.has(path)), []);
+    assert.deepEqual([...editable].filter((path) => !LEAD_KEYS.has(path)), []);
+  });
+
+  it('gates the keys that run a program, page the owner, grant rights or share the host (security verdict T2899)', () => {
+    const gates = new Map([
+      ['refresh.endCommand', 'permissions'],
+      ['register.ownerSource', 'permissions'],
+      ['register.secretPatterns', 'permissions'],
+      ['skills.forbidFrontmatter', 'permissions'],
+      ['commits.gate', 'permissions'],
+      ['hiring.policy', 'budget'],
+    ]);
+    for (const [path, gate] of gates) {
+      assert.deepEqual([path, rowAt(rows, path).gatedBy, rowAt(rows, path).editable], [path, gate, false]);
+    }
+    const byGroup = (prefix: string): readonly SettingRow[] => rows.filter((row) => row.path.startsWith(prefix));
+    for (const [prefix, gate] of [['securityGates', 'permissions'], ['alerts.', 'permissions'], ['delivery.queue.', 'resource changes'], ['open.headroom.', 'resource changes'], ['open.idle.', 'resource changes']] as const) {
+      assert.ok(byGroup(prefix).length > 0, `no rows under ${prefix}`);
+      assert.deepEqual(byGroup(prefix).filter((row) => row.gatedBy !== gate || row.editable).map((row) => row.path), []);
+    }
+  });
+
+  it('keeps the folders teamrig keeps records in read-only', () => {
+    for (const path of ['paths.state', 'paths.inbox', 'paths.skills', 'delivery.dir', 'refresh.handoverDir']) {
+      assert.deepEqual([path, rowAt(rows, path).editable, rowAt(rows, path).readOnly], [path, false, 'a folder teamrig keeps records in: set it when the team is made, or in config.json']);
+    }
   });
 });
