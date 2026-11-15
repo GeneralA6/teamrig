@@ -36,8 +36,8 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
 /**
  * `issue sync [--repo <owner/name>] [--yes]`: brings the task list in step with the GitHub issues of the team's
  * `github.repos`, inbound; `--push` plans the outbound half instead (issue-push.ts). Each repository is listed through the issue host port (issues/host.ts; on GitHub
- * with the token saved for its owner, else, when none is saved, the gh login), and an ACCESS line says which, once
- * per owner; a saved token the store could not read fails that owner's repositories, never read through the login
+ * with the token saved for its owner, never the gh login), and an ACCESS line names it, once
+ * per owner; no saved token, or one the store could not read, fails that owner's repositories, never read through the login
  * instead. A sync only lists issues, and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open

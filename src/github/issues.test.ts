@@ -240,7 +240,7 @@ describe('listIssues', () => {
   it('says gh is not installed, or why it could not start', async () => {
     assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh ENOENT', 'ENOENT')), TOKEN, OPEN), {
       kind: 'failed',
-      reason: 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com, then run gh auth login',
+      reason: 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com',
     });
     assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh EACCES', 'EACCES')), TOKEN, OPEN), {
       kind: 'failed',

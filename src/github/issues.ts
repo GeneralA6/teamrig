@@ -165,7 +165,7 @@ export function startFailureText(error: unknown): string {
     return error.message;
   }
   return errorCode(error) === 'ENOENT'
-    ? 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com, then run gh auth login'
+    ? 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com'
     : plainLine(`gh could not start: ${errorMessage(error)}`);
 }
 

@@ -727,9 +727,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       rerun skips each task already holding its issue
   issue comment <owner/name#n> --body <text>   posts one comment on an issue or pull request of the
       team's repositories (github.repos; GitHub is the only host so far), with the token saved for the
-      owner, else the gh login; refuses an empty body, a secret shape, private data (a home folder
-      path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
-      gh login in its place
+      owner, never the gh login; refuses an empty body, a secret shape, private data (a home folder
+      path, an e-mail address) or a task id in it; no saved token, or one that cannot be read, stops it
   issue edit <owner/name#n> --body-file <path>   replaces the body (the description) of one issue or
       pull request of the team's repositories with the file's text, with the same access and checks as
       issue comment; the title, state, labels and assignees stay; the host keeps the old body in its
