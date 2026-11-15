@@ -196,7 +196,8 @@ what the last sync kept.
 
 To move a team's task list to GitHub, say before a repository goes public, `teamrig issue migrate` opens one issue per
 task you choose. Issues are public on a public repository, so you write each one's wording yourself, in a row file
-of JSON lines:
+of JSON lines. The [write-issue skill](../plugins/teamrig/skills/write-issue/SKILL.md) has the steps for a body a
+contributor can take alone: what binds the work, the sections, sub-issues for a goal, labels, and the read-back.
 
 ```text
 {"id": "T12", "decision": "issue", "repo": "acme/web", "type": "bug", "priority": "p1", "title": "Login redirect loops", "body": "After a sign-in the page redirects back to the login form."}

@@ -1305,7 +1305,8 @@ is `{"id", "decision": "issue", "repo", "type": "bug"|"task", "priority": "p1"-"
 task's public wording, since an issue is open to anyone who can read the repository; a local row is `{"id",
 "decision": "local", "reason"}` and keeps the task off GitHub. A bad line, one that looks like it holds a secret,
 or an issue row whose title or body names a task id (`T12`, `bravo/T12`: ids are the team's own, so an issue links
-others by `#number`), refuses the whole file, naming the line.
+others by `#number`), refuses the whole file, naming the line. Write each body by the
+[write-issue skill](../write-issue/SKILL.md), so a contributor can take the issue alone.
 
 Without `--yes` it writes nothing. It prints a `REPLACES` line for each task whose ref is not an issue (the issue
 takes the ref's place; the update's note keeps `ref was: <old>`), a `SKIPPED` line for each row it will not act on
