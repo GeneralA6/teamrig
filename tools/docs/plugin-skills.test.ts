@@ -78,3 +78,36 @@ describe('the security skill', () => {
     assert.match(skill, /`"flat-cache@6": "6\.1\.13"`/);
   });
 });
+
+describe('the write-issue skill', () => {
+  const skill = read(`${SKILLS}/write-issue/SKILL.md`);
+
+  it('has the steps an issue a contributor takes alone needs, the read-back last', () => {
+    const steps = [...skill.matchAll(/^## (.+)$/gmu)].map((match) => match[1]);
+    assert.deepEqual(steps, [
+      '1. Read what binds the work',
+      '2. The whole spec in the body',
+      '3. Its sections',
+      '4. A goal is a parent with sub-issues',
+      '5. Labels and the taker',
+      '6. Read it back',
+      'Posting',
+    ]);
+  });
+
+  it("names the repository's own rule on where a change lives, and every section of the body", () => {
+    assert.ok(skill.includes('`CONTRIBUTING.md`'));
+    for (const section of ['Why', 'Scope', 'Out of scope', 'Deliverables', 'Constraints', 'Acceptance checks', 'What the maintainer decides', 'Review and dates', 'Starting points']) {
+      assert.ok(skill.includes(`**${section}**`), section);
+    }
+  });
+
+  it('replaces the body with a file, never a spec in comments, and reads the labels the repository has', () => {
+    assert.ok(skill.includes('`teamrig issue edit <owner/name#n> --body-file <file>`'));
+    assert.ok(skill.includes('`gh label list`'));
+  });
+
+  it("stays generic: no repository, palette or task id of teamrig's own", () => {
+    assert.doesNotMatch(skill, /GeneralA6|#[0-9a-f]{6}\b|\bT\d+\b|teamrig-github/u);
+  });
+});
