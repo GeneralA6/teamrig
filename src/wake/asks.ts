@@ -4,6 +4,8 @@ import { numberField, stringField } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { inboxLineOf } from '../inbox/inbox.ts';
+import { lineHash } from '../inbox/line-hash.ts';
 import type { Task } from '../register/fold.ts';
 import { costText, idsText, wakePrompt, wakeToast, type WakeCost } from './decide.ts';
 
@@ -150,23 +152,38 @@ export interface AsksNow {
 }
 
 /**
- * Sorts the stored asks at `now`. A timed ask is absent until its time, then present only while its line is among the
- * session's unseen lines: `unseen` hands their hashes (lines neither read nor shown at a prompt), and is called only
- * once a timed ask is due, since it reads the inbox.
+ * Sorts the stored asks at `now`. A plain ask whose line the session already saw (`seen`) is spent. A timed ask is
+ * absent until its time, then present only while its line is among the session's unseen lines: `unseen` hands their
+ * hashes (lines neither read nor shown at a prompt), and is called only once a timed ask is due, since it reads the
+ * inbox. `seen` is read once, at the first plain ask.
  */
-export async function asksNowOf(stored: readonly StoredWakeAsk[], now: number, unseen: () => Promise<ReadonlySet<string>>): Promise<AsksNow> {
+export async function asksNowOf(
+  stored: readonly StoredWakeAsk[],
+  now: number,
+  unseen: () => Promise<ReadonlySet<string>>,
+  seen?: () => Promise<ReadonlySet<string>>,
+): Promise<AsksNow> {
   const asks: WakeAsk[] = [];
   const taken: StoredWakeAsk[] = [];
   const spent: StoredWakeAsk[] = [];
   const waiting: number[] = [];
   let unseenLines: ReadonlySet<string> | undefined;
+  let seenLines: ReadonlySet<string> | undefined;
   for (const each of stored) {
     const { ask } = each;
     if (ask === undefined) {
       spent.push(each);
     } else if (ask.by === undefined) {
-      asks.push(ask);
-      taken.push(each);
+      // A plain ask is also an inbox line (the same line `inbox add` posts); once the session has read or been shown
+      // it, listing it again would replay lines it already acted on, so the ask is spent. An ask with no such
+      // line (posted without one) stays, as nothing says it was seen.
+      seenLines ??= seen === undefined ? new Set() : await seen();
+      if (seenLines.has(lineHash(inboxLineOf(new Date(ask.at), ask.from, ask.text)))) {
+        spent.push(each);
+      } else {
+        asks.push(ask);
+        taken.push(each);
+      }
     } else if (now < ask.by.at) {
       waiting.push(ask.by.at);
     } else {

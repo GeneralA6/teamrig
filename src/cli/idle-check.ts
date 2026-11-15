@@ -17,7 +17,7 @@ import { measureSessions, type SessionPlace } from '../sessions/measure.ts';
 import { resumeFolderOf } from '../sessions/resume-folder.ts';
 import { SessionRecordStore, type SessionRecord } from '../sessions/record.ts';
 import { REPLY_TAIL_BYTES } from '../turn-log/reply.ts';
-import { unseenLinesOf } from '../inbox/inbox.ts';
+import { seenLinesOf, unseenLinesOf } from '../inbox/inbox.ts';
 import { asksNowOf, urgentLinesText, WakeAsks, type WakeAsk } from '../wake/asks.ts';
 import { startableTasks } from '../wake/day-start.ts';
 import { inboxDepsOf } from './commands/inbox.ts';
@@ -94,7 +94,7 @@ export async function idleFactsOf(runtime: CliRuntime, kit: Kit, config: KitConf
   const asks = new Map<string, readonly WakeAsk[]>();
   for (const id of roster.ids) {
     // A timed ask counts from its time, and only while its line is unseen.
-    asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
+    asks.set(id, (await asksNowOf(await store.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id), () => seenLinesOf(inboxDepsOf(runtime, kit.paths), id))).asks);
   }
   const { meetings } = await new MeetingSchedule(runtime.files, kit.paths.meetings).read();
   return { records, places: measureSessions(records, rows), tasks: snapshot.state.tasks, elsewhere, asks, meetings, now, zone: teamZone(config, runtime) };

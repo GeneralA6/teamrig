@@ -180,6 +180,16 @@ export async function unseenLinesOf(deps: InboxDeps, area: string): Promise<Read
   return new Set(unshownOf(area, lines, read, shown, lineHash).map(lineHash));
 }
 
+/**
+ * The hashes of the area's lines its session has already seen (read, or shown at a prompt), the lines `unseenLinesOf`
+ * leaves out. A plain urgent ask whose line is among them has nothing left to say, so it never wakes the session.
+ */
+export async function seenLinesOf(deps: InboxDeps, area: string): Promise<ReadonlySet<string>> {
+  const lines = (await deps.inboxes.lines(area)) ?? [];
+  const unseen = await unseenLinesOf(deps, area);
+  return new Set(lines.map(lineHash).filter((hash) => !unseen.has(hash)));
+}
+
 export interface PostInput {
   readonly to: string;
   readonly from: string;

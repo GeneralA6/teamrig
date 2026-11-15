@@ -3,7 +3,7 @@ import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SessionLog } from '../../sessions/log.ts';
-import { unseenLinesOf } from '../../inbox/inbox.ts';
+import { seenLinesOf, unseenLinesOf } from '../../inbox/inbox.ts';
 import { asksNowOf, WakeAsks, type StoredWakeAsk } from '../../wake/asks.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
 import { closeSession } from '../close-session.ts';
@@ -138,7 +138,7 @@ export async function idleOpen(args: ParsedArgs, runtime: CliRuntime): Promise<E
   const why = reopeningText(step.reopening, teamZone(config, runtime));
   const asks = new WakeAsks(runtime.files, kit.paths.wakeAsks);
   try {
-    const found = await asksNowOf(await asks.read(id), runtime.clock.now(), () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id));
+    const found = await asksNowOf(await asks.read(id), runtime.clock.now(), () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id), () => seenLinesOf(inboxDepsOf(runtime, kit.paths), id));
     // The idle pass runs unattended: a reopened tab never pulls the owner away (T2510).
     const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal: config.open.terminal, asked: false, focus: 'keep', urgent: found.asks });
     const done = { ...act, ...measured, at: runtime.clock.now() };
