@@ -177,6 +177,27 @@ describe('/teamrig with a command that changes the team files', () => {
     assert.deepEqual((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout, (await new CliHarness().run(['inbox', 'status', '--session', 'bravo'])).stdout);
   });
 
+  it('refuses any line where Claude Code set CLAUDECODE, whatever origin its stdin names, and runs nothing (T3081)', async () => {
+    const kit = new CliHarness();
+    const before = (await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout;
+    const underClaude: RunOptions = { env: { TEAMRIG_SESSION: 'alpha', CLAUDECODE: '1' } };
+    for (const [line, origin] of [
+      ['inbox add --session alpha --to bravo --text "x y"', 'composer'],
+      ['inbox add --session alpha --to bravo --text "x y"', 'bridge'],
+      ['list', 'composer'],
+    ] as const) {
+      const result = await slash(kit, line, underClaude, { origin, agreed: `teamrig ${line}` });
+      assert.equal(result.code, EXIT.refused, `${line} from ${origin}`);
+      assert.equal(
+        result.stdout.join('\n'),
+        'REFUSED teamrig hook slash-command answers /teamrig typed in a tab and runs only from the teamrig mod; CLAUDECODE is set, so Claude Code started this run (a tool call, a script it runs or a hook). Type /teamrig <command> in the tab instead.',
+      );
+    }
+    assert.deepEqual((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout, before);
+    const mod = await slash(kit, 'list', { env: { TEAMRIG_SESSION: 'alpha', CLAUDECODE: '' } });
+    assert.notEqual(mod.code, EXIT.refused);
+  });
+
   it('refuses a sweep no person typed, as its --out writes the path the line names', async () => {
     const kit = new CliHarness();
     const target = resolve(APP, 'kept.txt');
