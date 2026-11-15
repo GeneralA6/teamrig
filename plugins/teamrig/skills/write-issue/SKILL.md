@@ -35,9 +35,11 @@ A rule the issue does not state is one the taker will not know.
 - A changed spec replaces the body (`teamrig issue edit <owner/name#n> --body-file <file>` on a repository in
   `github.repos`, else `gh issue edit <n> --body-file <file>`), and one short comment says what changed. GitHub keeps
   the old body in the edit history.
-- No private data: no home folder paths, e-mail addresses, host names, internal task ids, private logs or secrets,
-  and no security hole: that goes through the repository's private vulnerability report (its `SECURITY.md`), never
-  an issue. An issue may be public, and a copy outlives a later edit.
+- No private data: no home folder paths, e-mail addresses, host names, internal task ids, private logs or secrets.
+  An issue may be public, and a copy outlives a later edit.
+- No security hole: one goes only to the repository's private vulnerability reporting or its `SECURITY.md` route,
+  never an issue, and its fix's issue, if any, names the hardening, never the attack
+  ([security skill](../security/SKILL.md#a-security-hole)).
 
 ## 3. Its sections
 
