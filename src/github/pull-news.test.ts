@@ -150,12 +150,16 @@ describe('pullNewsText', () => {
     assert.equal(pullNewsText([{ kind: 'opened', pull: pull(4, { author: '' }) }]).text, 'GitHub pull requests: gh:acme/web#4 "Change 4": opened by a deleted account');
   });
 
-  it('wakes only for what needs a hand soon', () => {
-    for (const kind of ['merged', 'closed', 'approved', 'opened'] as const) {
+  it("wakes for an outsider's new pull request, and a conflict or red checks on a session's own", () => {
+    for (const kind of ['merged', 'closed', 'approved', 'opened', 'changes-requested'] as const) {
       assert.equal(pullNewsText([{ kind, pull: pull(1) }]).wake, false, kind);
     }
     assert.equal(pullNewsText([{ kind: 'opened', pull: pull(1, { authorAssociation: 'CONTRIBUTOR' }) }]).wake, true);
-    assert.equal(pullNewsText([{ kind: 'changes-requested', pull: pull(1) }]).wake, true);
+    for (const kind of ['conflict', 'checks-failing'] as const) {
+      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix' }) }]).wake, true, kind);
+      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 'main-hotfix' }) }]).wake, false, `${kind} on a branch naming no task`);
+      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix', fork: true, authorAssociation: 'NONE' }) }]).wake, false, `${kind} on an outsider's fork`);
+    }
   });
 
   it('counts the pull requests past the ones it names', () => {

@@ -117,8 +117,13 @@ function newest(times: readonly string[], cursor: string | undefined): string | 
  * is theirs to choose, so it never routes news to a session.
  */
 export function pullRecipient(pull: HostPull, ownerOf: (task: string) => string | undefined, watcher: string): string {
-  const task = pull.fork || !isInsideAuthor(pull.authorAssociation) ? undefined : branchTaskOf(pull.head);
+  const task = ownBranchTask(pull);
   return (task === undefined ? undefined : ownerOf(task)) ?? watcher;
+}
+
+/** The task an inside author's own branch of the repository names (`t<id>-...`); undefined for a fork, an outsider or another branch name. */
+function ownBranchTask(pull: HostPull): string | undefined {
+  return pull.fork || !isInsideAuthor(pull.authorAssociation) ? undefined : branchTaskOf(pull.head);
 }
 
 /** The events of each recipient, in the order first seen (`pullRecipient`). */
@@ -155,9 +160,10 @@ export interface PullNews {
 
 /**
  * The inbox line for `events`, one entry per pull request in the order first seen, at most NAMED_PULLS named and
- * the rest counted. A title is outside input: quoted, as data, and cut short. It wakes the session for what needs a
- * hand soon: an outsider's new pull request, a conflict, failing checks or changes requested; a merge, a close or an
- * approval waits for its next turn.
+ * the rest counted. A title is outside input: quoted, as data, and cut short. It wakes the session only for what
+ * needs its hand now (T3021 section 3): an outsider's new pull request, and a conflict or failing checks on a
+ * session's own pull request (an inside author's branch that names a task). The rest (a merge, a close, a review, an
+ * outsider's conflict or red checks, which are the outsider's to fix) waits for the session's next turn.
  */
 export function pullNewsText(events: readonly PullEvent[]): PullNews {
   const byPull = new Map<string, { pull: HostPull; kinds: PullEventKind[] }>();
@@ -171,8 +177,24 @@ export function pullNewsText(events: readonly PullEvent[]): PullNews {
   const more = entries.length - NAMED_PULLS;
   return {
     text: `GitHub pull requests: ${entries.slice(0, NAMED_PULLS).join('; ')}${more > 0 ? `; and ${more} more` : ''}`,
-    wake: events.some(({ kind, pull }) => kind === 'conflict' || kind === 'checks-failing' || kind === 'changes-requested' || (kind === 'opened' && !isInsideAuthor(pull.authorAssociation))),
+    wake: events.some(({ kind, pull }) => wakes(kind, pull)),
   };
+}
+
+/** Whether `kind` on `pull` wakes its recipient (pullNewsText). */
+function wakes(kind: PullEventKind, pull: HostPull): boolean {
+  switch (kind) {
+    case 'opened':
+      return !isInsideAuthor(pull.authorAssociation);
+    case 'conflict':
+    case 'checks-failing':
+      return ownBranchTask(pull) !== undefined;
+    case 'merged':
+    case 'closed':
+    case 'approved':
+    case 'changes-requested':
+      return false;
+  }
 }
 
 function eventWords(kind: PullEventKind, pull: HostPull): string {
