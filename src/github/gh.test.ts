@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   assigneeReadArgs,
   blockedByAddArgs,
+  GhOutputCapError,
   GhRefusedError,
   isAllowedGh,
   isAssigneeRead,
@@ -651,5 +652,19 @@ describe('nodeGhRunner', () => {
     const gh = script('hang.mjs', 'setTimeout(() => {}, 30_000);');
     const result = await nodeGhRunner(process.execPath, [gh], 300).run({ args: READ, env: ENV });
     assert.equal(result.end.kind, 'signal');
+  });
+
+  it('stops a run that prints more than its cap, stderr counted too, and rejects with nothing it printed', async () => {
+    const flood = script('flood.mjs', "process.stderr.write('e'.repeat(600)); const line = 'x'.repeat(1024); const write = () => { while (process.stdout.write(line)); process.stdout.once('drain', write); }; write();");
+    await assert.rejects(nodeGhRunner(process.execPath, [flood], 30_000, 4096).run({ args: READ, env: ENV }), GhOutputCapError);
+    const fits = script('fits.mjs', "process.stdout.write('o'.repeat(3000)); process.stderr.write('e'.repeat(1000));");
+    const result = await nodeGhRunner(process.execPath, [fits], 30_000, 4096).run({ args: READ, env: ENV });
+    assert.deepEqual([result.stdout.length, result.stderr.length], [3000, 1000]);
+  });
+
+  it('reads a character split across two writes whole', async () => {
+    const gh = script('split.mjs', "const bytes = Buffer.from('é'); process.stdout.write(bytes.subarray(0, 1)); setTimeout(() => process.stdout.write(bytes.subarray(1)), 50);");
+    const result = await nodeGhRunner(process.execPath, [gh]).run({ args: READ, env: ENV });
+    assert.equal(result.stdout, 'é');
   });
 });

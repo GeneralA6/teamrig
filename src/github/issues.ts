@@ -1,6 +1,6 @@
 import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { exitText } from '../open/processes.ts';
-import { GH_TIMEOUT_MS, type GhResult, type GhRunner } from './gh.ts';
+import { GH_TIMEOUT_MS, GhOutputCapError, type GhResult, type GhRunner } from './gh.ts';
 import { isClaim } from '../issues/claim.ts';
 import type { HostIssue, IssueComment, LabelEvent } from '../issues/issue.ts';
 import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
@@ -131,8 +131,11 @@ async function readPage(gh: GhRunner, access: RepoAccess, request: IssueListRequ
   return parseIssuePage(result.stdout, request);
 }
 
-/** Why gh did not start: most often it is not installed. */
+/** Why gh did not start (most often it is not installed), or why it was stopped for printing too much. */
 export function startFailureText(error: unknown): string {
+  if (error instanceof GhOutputCapError) {
+    return error.message;
+  }
   return errorCode(error) === 'ENOENT'
     ? 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com, then run gh auth login'
     : plainLine(`gh could not start: ${errorMessage(error)}`);

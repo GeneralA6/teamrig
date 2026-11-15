@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
-import { isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
+import { GhOutputCapError, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import type { HostIssue } from '../issues/issue.ts';
-import { issuePageArgs, listIssues, parseIssuePage, plainLine, type IssueListRequest } from './issues.ts';
+import { issuePageArgs, listIssues, parseIssuePage, plainLine, startFailureText, type IssueListRequest } from './issues.ts';
 import { closedPageArgs, openPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -365,5 +365,12 @@ describe('parseIssuePage', () => {
 describe('plainLine', () => {
   it('turns control and format characters into spaces, so outside text stays one plain line', () => {
     assert.equal(plainLine('  Fix\u001b[2J the‮ login\r\nnow\t '), 'Fix [2J the login now');
+  });
+});
+
+describe('startFailureText', () => {
+  it('says gh was stopped for its output, not that it could not start', () => {
+    assert.equal(startFailureText(new GhOutputCapError(4096)), 'gh printed more than 4096 bytes, so teamrig stopped it and used none of it');
+    assert.equal(startFailureText(new Error('spawn EPERM')), 'gh could not start: spawn EPERM');
   });
 });

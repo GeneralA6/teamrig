@@ -450,6 +450,22 @@ export interface GhRunner {
 /** How long one `gh` run may take before it is stopped: a page of a hundred issues takes seconds. */
 export const GH_TIMEOUT_MS = 60_000;
 
+/**
+ * The bytes one `gh` run may print, stdout and stderr together, before it is stopped. The largest answer teamrig
+ * asks for is a page of a hundred issues, each body at most 65,536 characters (about 20 MB in the worst UTF-8); the
+ * cap sits above it, so text people post can never grow one run's memory without bound.
+ */
+export const GH_OUTPUT_MAX_BYTES = 32 * 1024 * 1024;
+
+/** A `gh` run stopped for printing more than its cap; nothing it printed is used. */
+export class GhOutputCapError extends Error {
+  override readonly name = 'GhOutputCapError';
+
+  constructor(maxBytes: number) {
+    super(`gh printed more than ${maxBytes} bytes, so teamrig stopped it and used none of it`);
+  }
+}
+
 /** A host id as a link write sends it: 1 to 15 digits, so it stays an exact JavaScript number. */
 export const HOST_ID = /^[1-9][0-9]{0,14}$/;
 
@@ -531,9 +547,10 @@ export function isAllowedGh(args: readonly string[]): boolean {
 /**
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a
  * command. gh is told never to prompt, as nobody is there to answer. `program` and `leading` let a test
- * stand a Node script in for gh.
+ * stand a Node script in for gh. A run that prints more than `maxBytes` is stopped and rejects with
+ * GhOutputCapError.
  */
-export function nodeGhRunner(program = 'gh', leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS): GhRunner {
+export function nodeGhRunner(program = 'gh', leading: readonly string[] = [], timeoutMs = GH_TIMEOUT_MS, maxBytes = GH_OUTPUT_MAX_BYTES): GhRunner {
   return {
     run: (request) => {
       if (!isAllowedGh(request.args)) {
@@ -546,12 +563,37 @@ export function nodeGhRunner(program = 'gh', leading: readonly string[] = [], ti
           timeout: timeoutMs,
           windowsHide: true,
         });
-        const stdout: string[] = [];
-        const stderr: string[] = [];
-        child.stdout.setEncoding('utf8').on('data', (chunk: string) => stdout.push(chunk));
-        child.stderr.setEncoding('utf8').on('data', (chunk: string) => stderr.push(chunk));
+        const stdout: Buffer[] = [];
+        const stderr: Buffer[] = [];
+        let printed = 0;
+        let over = false;
+        const keep =
+          (into: Buffer[]) =>
+          (chunk: Buffer): void => {
+            if (over) {
+              return;
+            }
+            printed += chunk.length;
+            if (printed > maxBytes) {
+              over = true;
+              stdout.length = 0;
+              stderr.length = 0;
+              child.kill();
+              return;
+            }
+            into.push(chunk);
+          };
+        child.stdout.on('data', keep(stdout));
+        child.stderr.on('data', keep(stderr));
         child.once('error', reject);
-        child.once('close', (code, signal) => resolve({ end: endOf(code, signal), stdout: stdout.join(''), stderr: stderr.join('') }));
+        child.once('close', (code, signal) => {
+          if (over) {
+            reject(new GhOutputCapError(maxBytes));
+            return;
+          }
+          // Joined before decoding, so a character split across two chunks reads whole.
+          resolve({ end: endOf(code, signal), stdout: Buffer.concat(stdout).toString('utf8'), stderr: Buffer.concat(stderr).toString('utf8') });
+        });
       });
     },
   };
