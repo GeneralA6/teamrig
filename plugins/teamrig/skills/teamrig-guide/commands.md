@@ -2206,7 +2206,8 @@ with work it can start or a time wait of its own ending within 30 minutes, one q
 an away summary or a file change with no entry is no activity), in a turn, at a tool call (running, or waiting on a permission or an answer), waiting on a decision it put to the
 person (a `Decision needed:` line) or still running background work, one whose Claude Code runs shells the end
 would cut off, and one too big or idle to resume (`hiring.resumeMaxTokens`,
-`hiring.resumeMaxIdleDays`): retire that one with its handover instead. Claude Code resumes a session only from the
+`hiring.resumeMaxIdleDays`): retire that one with its handover instead, unless its refresh is ready, as its reopen then
+starts fresh on its handover. Claude Code resumes a session only from the
 folder it started in, whose project folder holds its transcript: the project, or a worktree or subfolder its
 transcript's entries ran in. The close logs that folder for the reopen, and refuses a session whose transcript is
 filed under no such folder. Without `--yes` it shows the close and ends nothing. A tab [teamrig open](#teamrig-open) started closes with it: its launch finds the close in the log, says
