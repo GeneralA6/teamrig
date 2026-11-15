@@ -86,7 +86,9 @@ const repoNameOf = (side: JsonRecord): string | undefined => stringField(recordF
  * request after the merge raises the plugin version and rebuilds the dist (tools/ship/merge-pr.ts).
  */
 export function forkOfPull({ name, payload }: GithubEvent): string | null {
-  if (name !== 'pull_request' && name !== 'pull_request_target') {
+  // Only `pull_request`: a `pull_request_target` run checks out the base, not the merge, so the gates must never skip
+  // on it (ci.yml uses none; security verdict T3052 N2).
+  if (name !== 'pull_request') {
     return null;
   }
   const pullRequest = recordField(isRecord(payload) ? payload : {}, 'pull_request') ?? {};

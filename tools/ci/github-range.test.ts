@@ -97,7 +97,7 @@ describe('forkOfPull', () => {
   it("names the fork a pull request comes from, and none for a branch of the repository itself", () => {
     assert.equal(forkOfPull(pull({ full_name: 'owner/repo' }, { full_name: 'someone/repo' })), 'someone/repo');
     assert.equal(forkOfPull(pull({ full_name: 'owner/repo' }, { full_name: 'owner/repo' })), null);
-    assert.equal(forkOfPull({ ...pull({ full_name: 'owner/repo' }, { full_name: 'someone/repo' }), name: 'pull_request_target' }), 'someone/repo');
+    assert.equal(forkOfPull({ ...pull({ full_name: 'owner/repo' }, { full_name: 'someone/repo' }), name: 'pull_request_target' }), null, 'a pull_request_target run checks out the base, so no gate skips on it');
   });
 
   it('calls a head repository GitHub no longer has a deleted fork', () => {
