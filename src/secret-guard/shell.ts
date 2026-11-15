@@ -9,6 +9,7 @@ import { inlineFindings } from './inline.ts';
 import { quiet } from './output.ts';
 import { remoteFindings } from './remote.ts';
 import type { SecretRules } from './rules.ts';
+import { consoleWriteFindings, fileReadFindings } from './static-calls.ts';
 
 /** Lines run in a container or on a remote host deeper than this are not read. */
 const MAX_REMOTE_DEPTH = 4;
@@ -35,7 +36,11 @@ export function shellFindings(command: string, context: ProgramsContext, rules: 
       ...inlineFindings(run, rules),
       ...remoteFindings(run, inner),
     ]),
-    ...printingBare.flatMap((bare) => bareFindings(bare, rules.names)),
+    ...printingBare.flatMap((bare) => [
+      ...bareFindings(bare, rules.names),
+      ...fileReadFindings(bare, { dialect: bare.dialect, dir: context.cwd, home: rules.home }, rules.paths),
+    ]),
     ...(printingBare.some(readsEnvironment) ? environmentReads(command, rules.names) : []),
+    ...(context.dialect === 'powershell' ? consoleWriteFindings(command, rules.names) : []),
   ]);
 }

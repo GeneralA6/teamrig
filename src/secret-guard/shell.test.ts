@@ -61,6 +61,23 @@ describe('shellFindings', () => {
     assert.deepEqual(lines.map(([line]) => printed(line, 'powershell')), lines.map(([, found]) => found));
   });
 
+  it('reads a [Type]::Member call that prints, passes on or reads a secret as printing it (T2017)', () => {
+    const lines: readonly (readonly [string, readonly string[]])[] = [
+      ['[Console]::WriteLine($env:GITHUB_TOKEN)', ['the value of $GITHUB_TOKEN']],
+      ['[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:GITHUB_TOKEN))', ['the value of $GITHUB_TOKEN']],
+      ['[System.Text.Encoding]::ASCII.GetBytes($env:NPM_TOKEN)', ['the value of $NPM_TOKEN']],
+      ['[string]::Join(",", $env:GITHUB_TOKEN, "x")', ['the value of $GITHUB_TOKEN']],
+      ['[uri]::EscapeDataString($env:NPM_TOKEN) | Write-Output', ['the value of $NPM_TOKEN']],
+      ['[IO.File]::ReadAllText(".env")', ['the content of .env']],
+      ['[string]::IsNullOrEmpty($env:GITHUB_TOKEN)', []],
+      ['[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:GITHUB_TOKEN)) | Set-Clipboard', []],
+      ['$b = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:GITHUB_TOKEN))', []],
+      ['[Console]::WriteLine($env:HOME)', []],
+    ];
+    assert.deepEqual(lines.map(([line]) => printed(line, 'powershell')), lines.map(([, found]) => found));
+    assert.deepEqual(printed('echo "[Console]::WriteLine($GITHUB_TOKEN)" > f'), [], 'a bash line holds no [Console] call');
+  });
+
   it('reads the lines a container or a remote host runs, to a depth', () => {
     assert.deepEqual(printed("kubectl exec p -- sh -c 'cat .env'"), ['the content of .env']);
     assert.deepEqual(printed('kubectl get secret app -o yaml'), ["a Kubernetes secret's data"]);
