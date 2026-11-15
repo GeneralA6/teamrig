@@ -2,6 +2,7 @@ import { isRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { DESIGN_LABEL } from './design-label.ts';
 import type { HostIssue, IssueComment } from './issue.ts';
+import { isLogin } from '../github/gh.ts';
 import { isInsider } from '../github/trust.ts';
 
 /**
@@ -14,10 +15,12 @@ import { isInsider } from '../github/trust.ts';
 export const CLAIM_DAYS = 7;
 const DAY_MS = 86_400_000;
 /**
- * The most claims one sync makes in one repository. A burst of claims from many new accounts is not a contributor
- * at work; the rest wait for the next sync, so a real claim is only late, never lost.
+ * The most claims code makes in one repository in a day. Many throwaway accounts could otherwise tie up every open
+ * issue for a week; past the cap a claim comment waits for a person, who assigns by hand.
  */
-export const CLAIMS_PER_RUN = 5;
+export const CLAIMS_PER_DAY = 5;
+/** A security issue is handled in private by the maintainers, never taken by a comment. */
+const SECURITY_LABEL = 'security';
 
 /**
  * A claim line: only `/take`, or a line starting "I'll take", "I'm working on" or "I can take", either apostrophe.
@@ -115,8 +118,9 @@ export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim
     }
   }
   const made: Claim[] = [];
+  const today = (repo: string): number => [...kept, ...made].filter((claim) => claim.repo === repo && times.now - claim.at < DAY_MS).length;
   for (const issue of issues) {
-    if (made.filter((claim) => claim.repo === issue.repo).length >= CLAIMS_PER_RUN || !claimable(issue)) {
+    if (today(issue.repo) >= CLAIMS_PER_DAY || !claimable(issue)) {
       continue;
     }
     const holding = new Set([...kept, ...made].filter((claim) => claim.repo === issue.repo).map((claim) => claim.login));
@@ -128,9 +132,10 @@ export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim
   return { made, expired, kept };
 }
 
-/** An open issue with no assignee that is not a design issue (talk, never work to take). */
+/** An open issue with no assignee that is neither a design issue (talk, never work to take) nor a security one. */
 function claimable(issue: ClaimIssue): boolean {
-  return issue.state === 'open' && issue.assignees.length === 0 && !issue.labels.includes(DESIGN_LABEL);
+  const labels = issue.labels.map((label) => label.toLowerCase());
+  return issue.state === 'open' && issue.assignees.length === 0 && !labels.includes(DESIGN_LABEL) && !labels.includes(SECURITY_LABEL);
 }
 
 /** The oldest claim comment since `since` by an outside person holding no other claim in the repository. */
@@ -141,7 +146,7 @@ function firstClaim(issue: ClaimIssue, since: number, holding: ReadonlySet<strin
       (comment) =>
         comment.claims &&
         Date.parse(comment.at) >= since &&
-        comment.login !== '' &&
+        isLogin(comment.login) &&
         comment.authorKind === PERSON &&
         !isInsider(comment.authorAssociation) &&
         !holding.has(comment.login),

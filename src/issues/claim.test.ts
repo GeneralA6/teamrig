@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { testHostIssue } from '../testing/host-issue.ts';
-import { CLAIM_DAYS, CLAIMS_PER_RUN, formatClaims, isClaim, parseClaims, planClaims } from './claim.ts';
+import { CLAIM_DAYS, CLAIMS_PER_DAY, formatClaims, isClaim, parseClaims, planClaims } from './claim.ts';
 import type { Claim } from './claim.ts';
 import type { HostIssue, IssueComment } from './issue.ts';
 
@@ -62,6 +62,8 @@ describe('planClaims', () => {
       issue(6, { comments: [claimComment()], assignees: ['bob'] }),
       issue(7, { comments: [claimComment()], state: 'closed' }),
       issue(8, { comments: [claimComment()], labels: ['design'] }),
+      issue(9, { comments: [claimComment()], labels: ['Security'] }),
+      issue(10, { comments: [claimComment({ login: 'not a login' })] }),
     ];
     assert.deepEqual(planClaims(issues, [], TIMES).made, []);
   });
@@ -77,9 +79,12 @@ describe('planClaims', () => {
     assert.deepEqual(planClaims(issues, [claim(3, 'ada', 1)], TIMES).made, []);
   });
 
-  it(`makes at most ${String(CLAIMS_PER_RUN)} claims in a repository in one run`, () => {
-    const issues = Array.from({ length: CLAIMS_PER_RUN + 2 }, (_, index) => issue(index + 1, { comments: [claimComment({ login: `user${String(index)}` })] }));
-    assert.equal(planClaims(issues, [], TIMES).made.length, CLAIMS_PER_RUN);
+  it(`makes at most ${String(CLAIMS_PER_DAY)} claims in a repository in a day, those of earlier runs counted`, () => {
+    const issues = Array.from({ length: CLAIMS_PER_DAY + 2 }, (_, index) => issue(index + 1, { comments: [claimComment({ login: `user${String(index)}` })] }));
+    assert.equal(planClaims(issues, [], TIMES).made.length, CLAIMS_PER_DAY);
+    const earlier = [issue(90, { assignees: ['eve'] }), issue(91, { assignees: ['fay'] })];
+    const held = [{ repo: REPO, number: 90, login: 'eve', at: NOW - DAY / 2 }, claim(91, 'fay', 1)];
+    assert.equal(planClaims([...earlier, ...issues], held, TIMES).made.length, CLAIMS_PER_DAY - 1);
   });
 
   it(`expires a claim after ${String(CLAIM_DAYS)} days with no linked pull request, and keeps a younger or worked one`, () => {
