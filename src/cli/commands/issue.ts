@@ -1,9 +1,11 @@
 import { resolve } from 'node:path';
 import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type IssueHost, type IssueTarget } from '../../issues/host.ts';
+import type { KitConfig } from '../../config/types.ts';
+import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type HostKind, type IssueHost, type IssueTarget } from '../../issues/host.ts';
 import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
+import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { hostOf } from '../issue-hosts.ts';
@@ -31,17 +33,31 @@ export async function issueComment(args: ParsedArgs, runtime: CliRuntime): Promi
  */
 export async function issueEdit(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const target = targetOf(args);
-  const path = resolve(runtime.cwd, requiredFlag(args.flags, 'body-file'));
-  const text = await runtime.files.read(path);
-  if (text === undefined) {
-    throw new RefusedError(`no file ${path}: --body-file takes the file holding the new body`);
-  }
-  const body = text.startsWith(BYTE_ORDER_MARK) ? text.slice(BYTE_ORDER_MARK.length) : text;
-  const host = await hostFor(args, runtime, target.repo, { flag: '--body-file', text: body });
+  const checked = await checkedRepo(args, runtime, target.repo);
+  const body = await bodyFileOf(requiredFlag(args.flags, 'body-file'), runtime, checked.config);
+  const host = hostAfter(checked, runtime, { flag: '--body-file', text: body });
   if (host === undefined) {
     return EXIT.ok;
   }
   return (await editIssueBody(host, { target, body }, (line) => runtime.out.stdout(line))) ? EXIT.ok : EXIT.failed;
+}
+
+/**
+ * The text of the `--body-file` at `given`, resolved from the working folder, its byte-order mark dropped. A file the
+ * secret guard keeps sessions from reading (secretGuard.paths with the defaults) is refused before it is read: the
+ * guard sees a teamrig argument, not a file read, so without this the CLI would post a key file the text checks find
+ * no shape in. The refusal names the flag, never the file's text.
+ */
+async function bodyFileOf(given: string, runtime: CliRuntime, config: KitConfig): Promise<string> {
+  const path = resolve(runtime.cwd, given);
+  if (secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform).paths.listed(path)) {
+    throw new RefusedError(`--body-file names a file the secret guard keeps (secretGuard.paths): ${given} is never read or posted`);
+  }
+  const text = await runtime.files.read(path);
+  if (text === undefined) {
+    throw new RefusedError(`no file ${path}: --body-file takes the file holding the new body`);
+  }
+  return text.startsWith(BYTE_ORDER_MARK) ? text.slice(BYTE_ORDER_MARK.length) : text;
 }
 
 /** The mark some Windows editors write first in a UTF-8 file; it is no part of the text. */
@@ -168,7 +184,24 @@ async function writeOn(args: ParsedArgs, runtime: CliRuntime, write: IssueWrite,
  * The host of `repo` once the caller is on the team, the repository is one of the team's and the text to post (if
  * any) may be posted; undefined, after an OFF line, while GitHub is off on the machine.
  */
-async function hostFor(args: ParsedArgs, runtime: CliRuntime, repo: string, posted: { readonly flag: string; readonly text: string } | undefined): Promise<IssueHost | undefined> {
+async function hostFor(args: ParsedArgs, runtime: CliRuntime, repo: string, posted: Posted | undefined): Promise<IssueHost | undefined> {
+  return hostAfter(await checkedRepo(args, runtime, repo), runtime, posted);
+}
+
+/** A text to post and the flag that gave it, which a refusal names. */
+interface Posted {
+  readonly flag: string;
+  readonly text: string;
+}
+
+/** The team's config and the host kind of a repository the caller may write to. */
+interface CheckedRepo {
+  readonly config: KitConfig;
+  readonly kind: HostKind;
+}
+
+/** The team's config and `repo`'s host kind once the caller is on the team and the repository is one of the team's. */
+async function checkedRepo(args: ParsedArgs, runtime: CliRuntime, repo: string): Promise<CheckedRepo> {
   const team = await openTeam(runtime, 'read');
   const notOnTeam = new RegisterPolicy(team.config, team.above).checkCaller(sessionIdOf(team.roster, callerOf(args.flags, runtime.env)));
   if (notOnTeam !== undefined) {
@@ -179,7 +212,13 @@ async function hostFor(args: ParsedArgs, runtime: CliRuntime, repo: string, post
     const listed = team.config.github.repos.join(', ');
     throw new RefusedError(`${repo} is not one of the team's repositories: list it under github.repos in the team config${listed === '' ? '' : ` (now ${listed})`}`);
   }
-  const scanner = new SecretScanner(team.config.register.secretPatterns);
+  return { config: team.config, kind };
+}
+
+/** The host of a checked repository once the text to post (if any) may be posted; undefined, after an OFF line, while GitHub is off. */
+function hostAfter(checked: CheckedRepo, runtime: CliRuntime, posted: Posted | undefined): IssueHost | undefined {
+  const { config, kind } = checked;
+  const scanner = new SecretScanner(config.register.secretPatterns);
   const refused = posted === undefined ? undefined : postRefusal(posted.flag, posted.text, scanner);
   if (refused !== undefined) {
     throw new RefusedError(refused);

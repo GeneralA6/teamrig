@@ -253,6 +253,20 @@ describe('teamrig issue edit', () => {
     assert.deepEqual(gh.ran, []);
   });
 
+  it('refuses, before reading it, a file the secret guard keeps, naming the flag and never the text', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const gh = new FakeGh();
+    for (const given of ['.env', join('deploy', 'id_rsa')]) {
+      const result = await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', given], { ...AS_LEAD, gh });
+      const printed = [...result.stdout, ...result.stderr].join('\n');
+      assert.equal(result.code, EXIT.refused, printed);
+      assert.match(printed, /^REFUSED --body-file names a file the secret guard keeps \(secretGuard\.paths\): .* is never read or posted/u);
+    }
+    await kit.files.write(SPEC, BODY);
+    assert.equal((await kit.run(['issue', 'edit', 'acme/web#7', '--body-file', SPEC], { ...AS_LEAD, gh })).code, EXIT.ok);
+    assert.equal(gh.ran.length, 1);
+  });
+
   it('fails, saying the body stayed, when GitHub refuses the edit, and writes nothing while GitHub is off', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     await kit.files.write(SPEC, BODY);
