@@ -120,6 +120,8 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
+          # A pull request's checkout is its merge into the base: depth 2 holds that base, the dist check's first parent.
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -127,9 +129,10 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm test
-      # The plugin ships its compiled dist; it must match the source on every OS.
+      # The plugin ships its compiled dist; it must match the source on every OS. A fork's pull request that leaves
+      # the dist alone passes: the release pull request after its merge rebuilds it.
       - run: npm run build
-      - run: node tools/ci/dist-fresh-cli.ts
+      - run: node tools/ci/dist-fresh-cli.ts --github
       # Runs the launcher and every hook from the dist, as an installed plugin runs them.
       - run: node tools/ci/dist-smoke-cli.ts
       # The docs' pictures are drawn in code, the commands screen from the CLI's real output; they must match on every OS.

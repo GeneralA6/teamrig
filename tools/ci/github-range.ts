@@ -46,19 +46,61 @@ export function rangeFromGithubEvent(eventName: string, payload: unknown, headSh
 
 export type ReadText = (path: string) => Promise<string>;
 
+/** A GitHub Actions event as the runner hands it over: its name, its payload and the sha the run checked out. */
+export interface GithubEvent {
+  readonly name: string;
+  readonly payload: unknown;
+  readonly headSha: string;
+}
+
+/** Reads the event from the GitHub Actions environment (GITHUB_EVENT_NAME, GITHUB_EVENT_PATH, GITHUB_SHA). */
+export async function githubEventFromEnv(env: Readonly<Record<string, string | undefined>>, readText: ReadText): Promise<GithubEvent> {
+  const name = env['GITHUB_EVENT_NAME'];
+  const eventPath = env['GITHUB_EVENT_PATH'];
+  const headSha = env['GITHUB_SHA'];
+  if (!name || !eventPath || !headSha) {
+    throw new Error('--github needs GITHUB_EVENT_NAME, GITHUB_EVENT_PATH and GITHUB_SHA');
+  }
+  const payload: unknown = JSON.parse(await readText(eventPath));
+  return { name, payload, headSha };
+}
+
 /** Reads the event's ends from the GitHub Actions environment (GITHUB_EVENT_NAME, GITHUB_EVENT_PATH, GITHUB_SHA). */
 export async function revisionsFromGithubEnv(
   env: Readonly<Record<string, string | undefined>>,
   readText: ReadText,
 ): Promise<Revisions> {
-  const eventName = env['GITHUB_EVENT_NAME'];
-  const eventPath = env['GITHUB_EVENT_PATH'];
-  const headSha = env['GITHUB_SHA'];
-  if (!eventName || !eventPath || !headSha) {
-    throw new Error('--github needs GITHUB_EVENT_NAME, GITHUB_EVENT_PATH and GITHUB_SHA');
+  const event = await githubEventFromEnv(env, readText);
+  return revisionsFromGithubEvent(event.name, event.payload, event.headSha);
+}
+
+/** What a fork pull request's head repository is called when GitHub no longer has it. */
+export const DELETED_FORK = 'a deleted fork';
+
+const repoNameOf = (side: JsonRecord): string | undefined => stringField(recordField(side, 'repo') ?? {}, 'full_name');
+
+/**
+ * The fork a pull request comes from: its head repository's full name when that is not the base repository
+ * (DELETED_FORK when GitHub no longer has it); null for a pull request from a branch of the repository itself and
+ * for any other event. A contributor's fork pull request is merged as it is, and the maintainer's release pull
+ * request after the merge raises the plugin version and rebuilds the dist (tools/ship/merge-pr.ts).
+ */
+export function forkOfPull({ name, payload }: GithubEvent): string | null {
+  if (name !== 'pull_request' && name !== 'pull_request_target') {
+    return null;
   }
-  const payload: unknown = JSON.parse(await readText(eventPath));
-  return revisionsFromGithubEvent(eventName, payload, headSha);
+  const pullRequest = recordField(isRecord(payload) ? payload : {}, 'pull_request') ?? {};
+  const base = repoNameOf(recordField(pullRequest, 'base') ?? {});
+  if (base === undefined) {
+    throw new Error(`${name} event without the base repository's name`);
+  }
+  const head = recordField(pullRequest, 'head') ?? {};
+  // GitHub sends a null head repository once the fork is deleted.
+  const fork = recordField(head, 'repo') === undefined ? DELETED_FORK : repoNameOf(head);
+  if (fork === undefined) {
+    throw new Error(`${name} event without the head repository's name`);
+  }
+  return fork === base ? null : fork;
 }
 
 /** Reads the event's range from the GitHub Actions environment (GITHUB_EVENT_NAME, GITHUB_EVENT_PATH, GITHUB_SHA). */

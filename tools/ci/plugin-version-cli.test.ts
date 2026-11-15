@@ -55,9 +55,22 @@ describe('plugin-version cli', () => {
     repo.write('plugins/demo/hooks/a.ts', 'export const a = 3;\n');
     const head = commit('change a');
     const event = join(repo.outside, 'event.json');
-    writeFileSync(event, JSON.stringify({ pull_request: { base: { sha: mainSha }, head: { sha: head } } }));
+    writeFileSync(event, JSON.stringify({ pull_request: { base: { sha: mainSha, repo: { full_name: 'owner/demo' } }, head: { sha: head, repo: { full_name: 'owner/demo' } } } }));
     const env = { GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: event, GITHUB_SHA: head };
     assert.deepEqual(repo.run(CLI, ['--github'], env), { status: 1, stdout: UNRAISED, stderr: '' });
+  });
+
+  it("passes a fork's pull request that keeps the version: the release pull request after its merge raises it (T3029)", () => {
+    repo.write('plugins/demo/hooks/a.ts', 'export const a = 4;\n');
+    const head = commit('change a');
+    const event = join(repo.outside, 'event.json');
+    writeFileSync(event, JSON.stringify({ pull_request: { base: { sha: mainSha, repo: { full_name: 'owner/demo' } }, head: { sha: head, repo: { full_name: 'someone/demo' } } } }));
+    const env = { GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: event, GITHUB_SHA: head };
+    assert.deepEqual(repo.run(CLI, ['--github'], env), {
+      status: 0,
+      stdout: 'plugin-version: a pull request from someone/demo: the release pull request after its merge raises the version, nothing to check\n',
+      stderr: '',
+    });
   });
 
   it('has nothing to compare for a push that creates a branch', () => {
