@@ -2,12 +2,13 @@ import { spawn } from 'node:child_process';
 import { endOf } from "../test-run/shell.js";
 import { QUERY_VARIABLES, RAW_FIELD } from "./queries.js";
 /**
- * The kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import, which never writes to
- * GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), one comment on or the
- * close of one issue or pull request (issue comment and issue close, a close with or without its reason), and its
- * labels: the read of one label of a repository, labels added to one issue, one label taken off it (issue label).
- * The runner refuses any other command line before it starts: no issue edit, reopen, assignee change, label
- * create or delete, merge or branch delete.
+ * The kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import and the links read, which
+ * never write to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), one
+ * comment on or the close of one issue or pull request (issue comment and issue close, a close with or without its
+ * reason), its labels: the read of one label of a repository, labels added to one issue, one label taken off it
+ * (issue label), and one sub-issue or blocked-by link added (issue links). The runner refuses any other command line
+ * before it starts: no issue edit, reopen, assignee change, label create or delete, link removal, merge or branch
+ * delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -192,16 +193,67 @@ function rawPairs(args) {
 }
 /** How long one `gh` run may take before it is stopped: a page of a hundred issues takes seconds. */
 export const GH_TIMEOUT_MS = 60_000;
-/** A command line the runner will not start: none of a shipped issue query's page, one issue's creation, comment, labels or close. */
+/**
+ * The flag for a typed field, taken only by a link write and only for its one id. gh reads a `-F` value starting
+ * with `@` from a file, so isLinkAdd takes digits alone there: the value can only be the integer GitHub asks for.
+ */
+const TYPED_FIELD = '-F';
+/** A host id as a link write sends it: 1 to 15 digits, so it stays an exact JavaScript number. */
+export const HOST_ID = /^[1-9][0-9]{0,14}$/;
+/** The id field of each link endpoint: a sub-issue's, and the blocking issue's. */
+const LINK_FIELDS = new Map([
+    ['sub_issues', 'sub_issue_id'],
+    ['dependencies/blocked_by', 'issue_id'],
+]);
+/** `repos/<owner>/<name>/issues/<number>/` then a link endpoint. */
+const LINK_PATH = /^repos\/([^/]+\/[^/]+)\/issues\/([1-9][0-9]{0,9})\/(sub_issues|dependencies\/blocked_by)$/;
+/** The command line that puts the issue whose id is `childId` under `parent` as its sub-issue. */
+export function subIssueAddArgs(parent, childId) {
+    return ['api', `repos/${parent.repo}/issues/${parent.number}/sub_issues`, '-X', 'POST', TYPED_FIELD, `sub_issue_id=${childId}`];
+}
+/** The command line that marks `target` blocked by the issue whose id is `blockerId`. */
+export function blockedByAddArgs(target, blockerId) {
+    return ['api', `repos/${target.repo}/issues/${target.number}/dependencies/blocked_by`, '-X', 'POST', TYPED_FIELD, `issue_id=${blockerId}`];
+}
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/sub_issues -X POST -F sub_issue_id=<id>` and for
+ * `.../dependencies/blocked_by -X POST -F issue_id=<id>`, and nothing more: one link added, its id digits only.
+ * Another path, method (a DELETE that removes a link, a PATCH that reorders), field or flag is refused.
+ */
+export function isLinkAdd(args) {
+    const match = LINK_PATH.exec(args[1] ?? '');
+    const repo = match?.[1];
+    const key = match?.[3] === undefined ? undefined : LINK_FIELDS.get(match[3]);
+    const field = args[5] ?? '';
+    const equals = field.indexOf('=');
+    return (args.length === 6 &&
+        args[0] === 'api' &&
+        repo !== undefined &&
+        REPO_NAME.test(repo) &&
+        args[2] === '-X' &&
+        args[3] === 'POST' &&
+        args[4] === TYPED_FIELD &&
+        key !== undefined &&
+        field.slice(0, equals) === key &&
+        HOST_ID.test(field.slice(equals + 1)));
+}
+/** A command line the runner will not start: none of a shipped issue query's page, one issue's creation, comment, labels, close or link. */
 export class GhRefusedError extends Error {
     name = 'GhRefusedError';
     constructor(args) {
-        super(`teamrig only runs gh for its shipped issue queries and to open, comment on, label or close an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+        super(`teamrig only runs gh for its shipped issue queries and to open, comment on, label, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
     }
 }
 /** True for each command line the runner starts. */
 export function isAllowedGh(args) {
-    return isIssueQuery(args) || isIssueCreate(args) || isIssueComment(args) || isIssueClose(args) || isLabelAdd(args) || isLabelRemove(args) || isLabelRead(args);
+    return (isIssueQuery(args) ||
+        isIssueCreate(args) ||
+        isIssueComment(args) ||
+        isIssueClose(args) ||
+        isLabelAdd(args) ||
+        isLabelRemove(args) ||
+        isLabelRead(args) ||
+        isLinkAdd(args));
 }
 /**
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a

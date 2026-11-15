@@ -214,7 +214,7 @@ function timeField(item, key) {
     return text !== undefined && Number.isFinite(Date.parse(text)) ? text : undefined;
 }
 /** The objects of a connection's `nodes`, such as an issue's labels; anything else is left out. */
-function nodesOf(connection) {
+export function nodesOf(connection) {
     const nodes = isRecord(connection) ? connection['nodes'] : undefined;
     if (!Array.isArray(nodes)) {
         return [];

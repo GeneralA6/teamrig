@@ -1,16 +1,17 @@
 import { targetText, } from "../issues/host.js";
 import { exitText } from "../open/processes.js";
-import { issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, labelReadArgs } from "./gh.js";
+import { blockedByAddArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, labelReadArgs, subIssueAddArgs, } from "./gh.js";
 import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, startFailureText } from "./issues.js";
+import { listLinks } from "./links.js";
 import { createdNumber } from "./migrate.js";
 import { latestIssues } from "./plan.js";
 import { TokenReadError } from "./tokens.js";
 /** What each use does with an access, as its ACCESS line words it. */
 const USE_VERB = { read: 'read with', open: 'opens issues with', write: 'writes with' };
 /**
- * GitHub as an issue host (issues/host.ts): a list is pages of the two shipped issue queries, and each write one gh
- * REST call the runner's allowlist takes (gh.ts), made with the token saved for the repository's owner, else, when
- * none is saved, the gh login. A saved token the store cannot read reaches nothing: never the login in its place
+ * GitHub as an issue host (issues/host.ts): a list is pages of the two shipped issue queries, a links read pages of
+ * the third, and each write one gh REST call the runner's allowlist takes (gh.ts), made with the token saved for the
+ * repository's owner, else, when none is saved, the gh login. A saved token the store cannot read reaches nothing: never the login in its place
  * (tokens.ts). gh's own error, any secret shape in it redacted, is the reason a write failed.
  */
 export class GitHubIssueHost {
@@ -122,6 +123,17 @@ export class GitHubIssueHost {
     removeLabel(target, label) {
         const shown = JSON.stringify(label);
         return this.write(target, issueLabelRemoveArgs(target, label), `take ${shown} off`, `${targetText(target)} does not carry the label ${shown}, or is not there`);
+    }
+    /** Every issue of the repository with its links, read with the same access as a list. */
+    async links(repo) {
+        const access = await this.tokens.accessFor(repo);
+        return access instanceof TokenReadError ? { kind: 'failed', reason: access.message } : listLinks(this.gh, access, repo);
+    }
+    addSubIssue(parent, childId) {
+        return this.write(parent, subIssueAddArgs(parent, childId), 'add a sub-issue to');
+    }
+    addBlockedBy(target, blockerId) {
+        return this.write(target, blockedByAddArgs(target, blockerId), 'add a blocker to');
     }
     /** One write; `missing`, when given, says what a Not Found means for it in place of the issue not being there. */
     async write(target, args, what, missing) {

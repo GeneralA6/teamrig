@@ -81,6 +81,7 @@ const issueSyncCommands = () => import("./commands/issue-sync.js");
 const issueMigrateCommands = () => import("./commands/issue-migrate.js");
 const issueCommands = () => import("./commands/issue.js");
 const prCommands = () => import("./commands/pr.js");
+const issueLinksCommands = () => import("./commands/issue-links.js");
 const startCommands = () => import("./commands/start.js");
 const meetingCommands = () => import("./commands/meeting.js");
 const meetingsCommands = () => import("./commands/meetings.js");
@@ -202,6 +203,7 @@ const COMMANDS = {
     'issue close': { effect: 'write', flags: ['session', 'comment', 'reason'], load: async () => (await issueCommands()).issueClose },
     'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
     'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
+    'issue links': { effect: 'write', flags: ['repo'], switches: ['yes'], load: async () => (await issueLinksCommands()).issueLinks },
     budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
     'budget lift': {
         effect: 'write',
@@ -686,6 +688,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
       writes nothing to GitHub; refuses a folder whose origin is another repository
+  issue links [--repo <owner/name>] [--yes]   puts the task tree on the issues of github.repos: each
+      task planned after another, both mirrored in one repository, is marked blocked by it on GitHub,
+      and a part of one whole becomes its sub-issue; without --yes it reads the links GitHub has and
+      shows what it would add, writing nothing; adds only, never removes or moves a link a person set;
+      stops a repository at its first failure, and a rerun adds only what is still missing
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;

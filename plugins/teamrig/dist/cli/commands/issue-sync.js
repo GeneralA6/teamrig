@@ -175,7 +175,7 @@ function leftOutLines(repo, leftOut, acceptLabel) {
     ];
 }
 /** The first SHOWN_STEPS lines, then how many more there are. */
-function shown(lines) {
+export function shown(lines) {
     const more = lines.length - SHOWN_STEPS;
     return more > 0 ? [...lines.slice(0, SHOWN_STEPS), `... and ${more} more`] : [...lines];
 }
