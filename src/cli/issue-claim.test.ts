@@ -16,7 +16,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
 function team(statusPush: boolean): JsonRecord {
-  return { ...TEAM, github: { repos: [REPO], owners: { octocat: 'bravo' }, statusPush, everyMinutes: 5 } };
+  return { ...TEAM, github: { repos: [REPO], owners: { octocat: 'bravo' }, statusPush, probeSeconds: 300 } };
 }
 
 /** The GitHub writes a run made: assigns, unassigns, comments and label writes, as command lines. */
@@ -115,7 +115,7 @@ describe('claims in the automatic sync (T3021)', () => {
     const kit = new CliHarness(team(true));
     await autoSync(kit, new FakeGh().holds(REPO, []));
     kit.clock.advance(HOUR);
-    const budget = autoPushWrites(5);
+    const budget = autoPushWrites(300);
     const fits = Math.floor(budget / claimWrites(true));
     assert.ok(fits < CLAIMS_PER_DAY, 'the run must hold fewer claims than a day allows');
     const posted = at(kit);
