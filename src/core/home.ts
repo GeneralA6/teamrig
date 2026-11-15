@@ -217,6 +217,8 @@ export interface TeamPaths {
   readonly githubWatch: string;
   /** Held while a hook claims the watch or the watch claims, renews or drops its lease. */
   readonly githubWatchLock: string;
+  /** The issue claims the sync made, the only assignees it may ever take off (issues/claim.ts). */
+  readonly githubClaims: string;
   /** The hookless-tab check's last run and the tabs it named (restore/hookless.ts). */
   readonly hookless: string;
   /** Held while a hook runs the hookless-tab check. */
@@ -357,6 +359,7 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     githubClocks: join(state, 'github-clocks.json'),
     githubWatch: join(state, 'github-watch.json'),
     githubWatchLock: join(state, 'github-watch.lock'),
+    githubClaims: join(state, 'github-claims.json'),
     hookless: join(state, 'hookless.json'),
     hooklessLock: join(state, 'hookless.lock'),
     idlePass: join(state, 'idle-pass.json'),

@@ -1,3 +1,5 @@
+import { isRecord } from '../core/guards.ts';
+import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { DESIGN_LABEL } from './design-label.ts';
 import type { HostIssue, IssueComment } from './issue.ts';
 import { isInsider } from '../github/trust.ts';
@@ -44,6 +46,32 @@ export interface Claim {
   readonly number: number;
   readonly login: string;
   readonly at: number;
+}
+
+/** The format of the claims file this code writes; a file in another format, or damaged, reads as no claim made. */
+export const CLAIM_STATE_FORMAT = 1;
+
+/**
+ * The claims a file holds; a damaged entry is left out, a damaged file reads as none. Reading none is the safe side:
+ * a claim code no longer knows is never taken off, it only stays until a person does.
+ */
+export function parseClaims(text: string): Claim[] {
+  const record = parseObject(text.trim());
+  const list = record?.[VERSION_FIELD] === CLAIM_STATE_FORMAT ? record['claims'] : undefined;
+  return Array.isArray(list) ? list.flatMap(claimOf) : [];
+}
+
+function claimOf(value: unknown): Claim[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+  const { repo, number, login, at } = value;
+  const valid = typeof repo === 'string' && typeof login === 'string' && login !== '' && Number.isSafeInteger(number) && typeof number === 'number' && number > 0;
+  return valid && typeof at === 'number' && Number.isFinite(at) ? [{ repo, number, login, at }] : [];
+}
+
+export function formatClaims(claims: readonly Claim[]): string {
+  return toJsonlLine({ [VERSION_FIELD]: CLAIM_STATE_FORMAT, claims: claims.map(({ repo, number, login, at }) => ({ repo, number, login, at })) });
 }
 
 /** The issue facts a claim plan reads. */

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { testHostIssue } from '../testing/host-issue.ts';
-import { CLAIM_DAYS, CLAIMS_PER_RUN, isClaim, planClaims } from './claim.ts';
+import { CLAIM_DAYS, CLAIMS_PER_RUN, formatClaims, isClaim, parseClaims, planClaims } from './claim.ts';
 import type { Claim } from './claim.ts';
 import type { HostIssue, IssueComment } from './issue.ts';
 
@@ -97,5 +97,21 @@ describe('planClaims', () => {
 
   it('never expires an assignee it did not make', () => {
     assert.deepEqual(planClaims([issue(1, { assignees: ['ada'] })], [], TIMES).expired, []);
+  });
+});
+
+describe('the claims file', () => {
+  it('reads back what it wrote', () => {
+    const claims = [claim(1, 'ada', 2), { repo: 'acme/api', number: 40, login: 'bob', at: NOW }];
+    assert.deepEqual(parseClaims(formatClaims(claims)), claims);
+  });
+
+  it('leaves out a damaged entry and reads a damaged file, another format or none as no claims', () => {
+    const good = { repo: REPO, number: 1, login: 'ada', at: NOW };
+    const text = JSON.stringify({ v: 1, claims: [good, { ...good, number: 0 }, { ...good, login: '' }, { ...good, at: 'soon' }, 'x'] });
+    assert.deepEqual(parseClaims(text), [good]);
+    for (const bad of ['', 'not json', JSON.stringify({ v: 2, claims: [good] }), JSON.stringify({ v: 1, claims: 'all' })]) {
+      assert.deepEqual(parseClaims(bad), [], bad);
+    }
   });
 });
