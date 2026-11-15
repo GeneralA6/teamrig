@@ -4474,9 +4474,11 @@ turn, and a line that wakes the session, `queue <id> ended: <what>: <last line>;
 `<delivery dir>/detached/<id>.run.json`, until its end line; a run whose process ended with no end of its own (killed
 while it waited or ran) is told by the next `teamrig start` of any session of the team or the next idle pass: a `DIED`
 line in its log and a waking line, `queue <id> died while it waited for its turn|while its step ran: <what>: ...; re-run
-it; log <path>`, told once. From the cutoff on, `--detach` is REFUSED at
-once, as a plain step is. It is refused (exit 64) with `--pre-push`, whose push waits on the checks' result, and under
-a live host lock, where the parent step waits for it. `--detached-run` is set by `--detach` and the hand-over only.
+it; log <path>`, told once. One that died while its step ran also gets its step's ledger record closed: an end
+record under its id at the time the death was seen, exit 1 (unless the ledger already has its end). From the
+cutoff on, `--detach` is REFUSED at once, as a plain step is. It is refused (exit 64) with `--pre-push`, whose push
+waits on the checks' result, and under a live host lock, where the parent step waits for it. `--detached-run` is set
+by `--detach` and the hand-over only.
 
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig queue ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
