@@ -830,8 +830,8 @@ It also refuses a session's own write of an owner-gated key of the team config, 
 `serviceRoles`, `roles`, `ownerGates`, `securityGates`, `register.ownerSource`, `prompts`, `readonlyShell`, `exec`,
 `alerts`, `github.owners`, `delivery.repos` (each repository's merge, deploy and check commands), `delivery.passEnv`, `permissions` and the
 guards (`pushGuard`, `secretGuard`, `packageGuard`, `dbWriteGuard`, `commitGuard`). It refuses a Write, Edit or
-MultiEdit of any team's config under the kit home (`<kit home>/teams/<team>/config.json`, the session's own and every
-other team's) whose result changes one (the guard applies the edit to that file as it is now and compares
+MultiEdit of any team's config (a path ending in `teams/<team>/config.json`, the session's own and every other
+team's, in any spelling: a Git Bash `/c/` drive is read as `C:`) whose result changes one (the guard applies the edit to that file as it is now and compares
 each key, a key the file lacks reading as unset), or that it cannot work out (text not found, a notebook edit), and a shell line naming the team config file (`teams/<team>/config.json`, or
 `config.json` with `.teamrig` or `$TEAMRIG_HOME` on the line or the line running in the kit home), its reads too,
 since a shell line's writes cannot be told from its reads. An edit of the config's other keys stays open, and so

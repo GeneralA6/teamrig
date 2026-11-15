@@ -95,6 +95,7 @@ describe('service-role guard: the team config', () => {
     assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/other/notes/config.json', old_string: 'a', new_string: 'b' })), undefined);
     assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/config.json', old_string: 'a', new_string: 'b' })), undefined);
     assert.equal(await decide(call('Edit', { file_path: CONFIG, old_string: '"lead"', new_string: '"boss"' }), env({ configPath: undefined })), undefined);
+    assert.equal(await decide(call('Edit', { file_path: '/c/u/.teamrig/teams/other/notes.json', old_string: 'a', new_string: 'b' })), undefined);
   });
 
   it("guards every team's config under the kit home, each against its own text (T3083)", async () => {
@@ -103,6 +104,15 @@ describe('service-role guard: the team config', () => {
     const loosened = OTHER_TEXT.replace('"ask"', '"allow"');
     assert.equal(await decide(call('Write', { file_path: OTHER, content: loosened })), 'deny');
     assert.equal(await decide(call('Edit', { file_path: OTHER, old_string: '"boss"', new_string: '"boss", "bravo"' })), undefined);
+  });
+
+  it('knows a team config in any spelling of its path: a Git Bash drive, a long path, no team config of its own', async () => {
+    const dropGate = { old_string: '"budget"', new_string: '' };
+    assert.equal(await decide(call('Edit', { file_path: '/c/u/.teamrig/teams/other/config.json', ...dropGate })), 'deny');
+    assert.equal(await decide(call('Edit', { file_path: '\\\\?\\C:\\u\\.teamrig\\teams\\other\\config.json', ...dropGate })), 'deny');
+    assert.equal(await decide(call('Edit', { file_path: OTHER, ...dropGate }), env({ configPath: undefined })), 'deny');
+    const ownRoles = { old_string: '"issue close"', new_string: '"issue close", "pr merge"' };
+    assert.equal(await decide(call('Edit', { file_path: '/c/u/.teamrig/teams/shop/config.json', ...ownRoles })), 'deny');
   });
 
   it('refuses a config edit it cannot read as a change: text not found, an Edit of no file, a notebook edit', async () => {

@@ -99,22 +99,25 @@ function kitHomeOf(configPath: string, platform: NodeJS.Platform): string {
   return path.dirname(path.dirname(path.dirname(configPath)));
 }
 
+/** A Git Bash drive path's head, `/c/`, which Windows tools read as the drive `c:/`. */
+const MSYS_DRIVE = /^\/([a-z])(?=\/)/i;
+
+/** A team config by its tail, `teams/<team>/config.json`, on a path in its compare form (one slash kind). */
+const TEAM_CONFIG_FILE = /(?:^|\/)teams\/+[^/]+\/+config\.json$/i;
+
 /**
- * The absolute path of the team config a file tool's path names, or undefined for another file. Every team under the
- * kit home counts, not only the session's own (T3083): each team's guards read their own config, so loosening a
- * neighbour's is the same reach, and the shell check already names any team's config.
+ * The absolute path of the team config a file tool's path names, or undefined for another file (T3083). Any team's
+ * config counts, not only the session's own, as each team's guards read their own; it is told by the same tail the
+ * shell check uses, so the kit home's spelling (a Git Bash `/c/` drive, a `\\?\` long path) cannot hide it, and a
+ * session with no team config of its own is still held to it.
  */
-function teamConfigTarget(target: string, cwd: string, platform: NodeJS.Platform, configPath: string): string | undefined {
-  const key = samePathKey(target, cwd, platform);
-  if (key === samePathKey(configPath, cwd, platform)) {
+function teamConfigTarget(target: string, cwd: string, platform: NodeJS.Platform, configPath: string | undefined): string | undefined {
+  const native = platform === 'win32' ? target.replace(MSYS_DRIVE, '$1:') : target;
+  const key = samePathKey(native, cwd, platform);
+  if (configPath !== undefined && key === samePathKey(configPath, cwd, platform)) {
     return configPath;
   }
-  const teams = `${samePathKey(kitHomeOf(configPath, platform), cwd, platform)}/teams/`;
-  if (!key.startsWith(teams)) {
-    return undefined;
-  }
-  const rest = key.slice(teams.length).split('/');
-  return rest.length === 2 && rest[0] !== '' && rest[1] === 'config.json' ? (platform === 'win32' ? win32 : posix).resolve(cwd, target) : undefined;
+  return TEAM_CONFIG_FILE.test(key) ? (platform === 'win32' ? win32 : posix).resolve(cwd, native) : undefined;
 }
 
 /** The config text as JSON, or undefined when there is none or it is no JSON object. */
@@ -244,7 +247,7 @@ export async function serviceRoleGuardOutput(payload: unknown, env: ServiceRoleG
   const field = FILE_WRITERS.get(tool);
   if (field !== undefined) {
     const path = stringField(input, field);
-    if (path === undefined || env.configPath === undefined) {
+    if (path === undefined) {
       return '';
     }
     const configFile = teamConfigTarget(path, cwd, env.platform, env.configPath);
