@@ -291,7 +291,9 @@ preload, or one in `NODE_OPTIONS`); the reason names the option, and unsetting i
 The same hook refuses the owner's own actions on a task (`teamrig owner note`, `owner next`) from any session's tool
 call, as they write as the owner: the owner runs them in their own terminal, or types them after `/teamrig` in a tab.
 It also refuses a shell fed its commands from a pipe (`echo ... | bash`), as the pipe can carry a review the line
-never shows.
+never shows, and any of teamrig's hook commands, which take the tab they run for from what the caller hands them.
+A tab keeps the session it was first bound to: a tool call cannot make it another session by reading that session's
+inbox, so the review checks above see the tab's own session; you move a tab by typing `/teamrig inbox read` in it.
 The commands also refuse to write wherever Claude Code set `$CLAUDECODE` (a script a session's tool call runs, a hook
 command), which the pane's buttons and a typed `/teamrig` line lack. Every session runs as your OS user, so these stop
 the routine route and an instruction slipped into what a session reads, not a session set on forging the owner: a

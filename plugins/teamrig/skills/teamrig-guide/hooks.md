@@ -15,7 +15,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook db-write-guard` | Asks before a line that writes to a database by hand (a built-in SQL client, a database program or Node client module the team names, a data script the team names run with its apply flag), so the owner sees counts or a preview first; refuses it instead under `dbWriteGuard.writes: deny` or with asks off ([the db-write guard](#before-a-shell-command-the-db-write-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, every `hook` command, which takes its tab from its stdin, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Asks the owner before a session's `teamrig roles grant` or `revoke`, and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
@@ -789,6 +789,10 @@ them (`echo "exec approve R1"`). A command word only known when it runs counts o
   what runs at login, permissions only the owner changes. The CLI refuses the same `--yes` wherever `$CLAUDECODE`
   is set. Its preview, without `--yes`, runs; the owner types `/teamrig permissions trim --yes` in a tab, or runs it
   in their own terminal.
+- **a hook**: any `hook` command (`hook slash-command`, `hook session-start`, ...), whatever client starts it,
+  `$T hook ...` too. A hook takes the tab it runs for, and who typed a `/teamrig` line, from its stdin, which
+  its caller writes, so only Claude Code's hooks and the mod run them; prove a hook in a test, or by a script on a
+  scratch kit home. `hook slash-command` also refuses itself wherever Claude Code set `$CLAUDECODE`.
 - **a shell fed from a pipe**: a shell on the line that takes its commands from a pipe (`echo ... | bash`,
   `... | iex`, `x | bash -c bash`), whatever feeds it, as the pipe can carry a review the line never shows. Run the
   commands directly, or hand the shell a heredoc, which the guard reads as written. A shell with no pipe into it
@@ -1480,7 +1484,8 @@ In every session, a headless `claude -p` included, the mod adds `/teamrig <comma
 and where the line came from, and shows what the command printed as its output (at most 250 lines, then how many
 were left out), with no model turn, so it costs no tokens. A read runs at once. A command that changes the team's
 files runs only when you type it at the prompt or through Remote Control, never when another session, a channel
-or `claude -p` sends it (REFUSED). Typed without `--session`, it shows the line with the tab's session and asks
+or `claude -p` sends it (REFUSED), and nothing runs where Claude Code set `$CLAUDECODE`, as only the mod's run of
+the hook names where the line came from. Typed without `--session`, it shows the line with the tab's session and asks
 first (`Run it` or `Cancel`), since the tab's session can come from an inbox read you meant only as a look. A
 command is stopped after 180 s; `claude -p "/teamrig <command>"` ends with the command's exit code. `/teamrig`
 alone prints the short help and these rules.
@@ -1832,7 +1837,7 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
 - **The db-write guard** asks before a line that writes to a database by hand on its own, whatever the mode, unless
   `dbWriteGuard.writes` is `allow`; under `deny` or `prompts.hookAsks: refuse` it refuses the line.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, any
-  `exec` call through a client that is no install of the plugin or was changed, every `owner` command, and a shell fed its commands from a pipe, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
+  `exec` call through a client that is no install of the plugin or was changed, every `owner` and `hook` command, and a shell fed its commands from a pipe, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,
   `dry-run`, `status`, `run`) instead of the one rule.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default

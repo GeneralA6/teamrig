@@ -71,7 +71,9 @@ session-start context says "pass --session <id> to every teamrig task and inbox 
 command.
 
 `teamrig inbox read --session <id>` also ties this Claude Code session to that id (it records a mark with Claude
-Code's session id), so the hooks know you from then on. Run it first in a tab teamrig did not open. A tab whose
+Code's session id), so the hooks know you from then on. Run it first in a tab teamrig did not open. A tab keeps that
+session: a tool call's read as another session is refused, and only the person moves a tab (`/teamrig inbox read
+--session <id>` typed in it). A tab whose
 Claude Code title (`claude --name`, `/rename`) is a session's id or current name binds itself at its first prompt,
 and the hook says so; nothing is marked read. A bound tab with no title gets its session's name as title at its next
 prompt, and Claude Code keeps it across `/clear` (which starts a new Claude Code session), so the new session binds

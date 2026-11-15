@@ -1585,6 +1585,10 @@ WROTE 2 link(s) on GitHub; the task list was only read
 Prints your unread inbox lines and marks them read. Lines the prompt hook already showed this Claude Code session
 are marked read too, without being printed again (a line the hook cut is printed whole). It also ties this Claude
 Code session to the area, so the hooks know you: run it at the start of every work block and after every `/clear`.
+A tab keeps the session it was first bound to: from a tool call, a script or a hook (wherever Claude Code set
+`$CLAUDECODE`), a read as another session of the team is REFUSED (exit 2) and writes nothing, as the guards take who
+runs a command from the tab's session. The person moves a tab by typing `/teamrig inbox read --session <id>` in it,
+or by reading in a terminal; a restarted tab binds afresh, and so does one bound to a session that left the team.
 
 Flags:
 
@@ -6312,7 +6316,8 @@ WROTE the changes below; the old settings file is at /home/me/.teamrig/backups/c
 ## Hooks
 
 Claude Code runs these from the plugin's `hooks/hooks.json`, with the hook's JSON on stdin. You never run them
-by hand. What each does: [hooks.md](hooks.md).
+by hand. What each does: [hooks.md](hooks.md). A session's tool call that runs one is refused by
+[the exec guard](hooks.md#before-a-shell-command-the-exec-guard), as a hook takes the tab it runs for from its stdin.
 
 ### teamrig hook session-start
 
@@ -7217,6 +7222,9 @@ the line the person agreed to run. It runs the line through the CLI, in the tab'
 - A command Claude Code or teamrig runs itself (`hook ...`, `launch`, `restart`, `statusline`) is refused with
   exit 64.
 - Nothing typed prints the short help and these rules.
+- Wherever Claude Code set `$CLAUDECODE` (a tool call, a script it runs, a hook), any line is REFUSED (exit 2) and
+  nothing runs: its stdin says who typed the line, and the caller writes that stdin. The mod runs it with Claude
+  Code's own environment, which lacks the variable.
 
 Flags: none.
 
