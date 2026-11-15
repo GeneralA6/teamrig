@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { nodeFiles } from '../../src/core/files.ts';
-import { realSleep } from '../../src/core/lock.ts';
+import { realSleep, systemClock } from '../../src/core/lock.ts';
 import { type ClearMerge, clearMergeFrom } from './approval.ts';
 import { type CatchUp, type CatchUpRequest, catchUp } from './catch-up.ts';
 import { type CheckOutcome, type Gh, type RequiredChecks, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
@@ -508,7 +508,7 @@ export function realMergeDeps(dir: string): MergeDeps {
     gate: realGateDeps(dir, out),
     renamedCallers: (base, tip, repo) => renamedCallersRefusal({ base, tip, repo }, { env: process.env, userHome: homedir() }, realRenamedCallersDeps(dir, out)),
     sweep: (merged, profile, gh) => sweepAfterMerge(merged, profile, { git, pullsOf: pullsOfHead(gh, merged.repo), out, err }),
-    clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep) }),
+    clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep), clock: systemClock }),
     catchUp: request => catchUp({ git, log: out }, request),
     out,
     err,

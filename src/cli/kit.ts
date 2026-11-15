@@ -29,10 +29,10 @@ export interface Kit {
 }
 
 /**
- * What reading a team's config, roster and register takes: a tool outside the CLI (tools/ship) builds one from its
- * own process without a whole `CliRuntime`.
+ * What reading a team's config, roster and register takes, with the clock that tells whether a rush runs: a tool
+ * outside the CLI (tools/ship) builds one from its own process without a whole `CliRuntime`.
  */
-export type KitReader = Pick<CliRuntime, 'env' | 'userHome' | 'files' | 'configFormat'>;
+export type KitReader = Pick<CliRuntime, 'env' | 'userHome' | 'files' | 'configFormat' | 'clock'>;
 
 /** The lock every change to the team's config is read and written under (config-lock.ts). */
 export function configLockOf(runtime: CliRuntime, kit: Kit, config: KitConfig): ConfigLock {
