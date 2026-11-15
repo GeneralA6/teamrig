@@ -568,6 +568,17 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
+  it('reads a heredoc written to a file a variable names as stored, like one written to a path spelled out', () => {
+    const run = 'node $S/x.cjs && T=/p/bin/teamrig && $T test -- node --test x; $T test -- tsc';
+    expectRows([
+      [`S=/s; cat > $S/x.cjs <<'EOF'\nedit('the push labels');\nEOF\n${run}`, 'allow'],
+      [`S=/s; cat > /s/x.cjs <<'EOF'\nedit('the push labels');\nEOF\n${run}`, 'allow'],
+      // A device target may lead back to a pipe, so its body still counts; past a failed `node`, $T is what the shell inherited.
+      [`D=/dev/stdout; cat > $D <<'EOF'\nedit('the push labels');\nEOF\n${run}`, 'ask', 'doubt'],
+      [`S=/s; cat > $S/x.cjs <<'EOF'\nconst a = 1;\nEOF\n${run}; $T push`, 'ask', 'doubt'],
+    ]);
+  });
+
   it('runs a probe loop through a program variable quietly, unless the binding may not have run', () => {
     const loop = `for l in 'a > out' $'cat <<EOF\\ngit push origin main\\nEOF' $'((x<<2))\\ngit push'; do echo "== $l"; $P "$l"; done; $P $'x' powershell`;
     expectRows([
