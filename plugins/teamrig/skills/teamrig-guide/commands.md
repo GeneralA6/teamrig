@@ -1238,10 +1238,9 @@ machine, and with no `github.repos` it prints an `OFF` line; neither reads nor w
 repository could not be read (its tasks stay as they are, and the `FAILED` line says why), 2 when the
 register refused a step (a `SKIPPED` line each), else 0.
 
-On its own: with `github.repos` listed and `github.everyMinutes` above 0 (15 by default), the Stop hook of any team
-session starts `teamrig issue sync --auto` hidden in the background once per that many minutes for the whole team (one
-state file under a lock; nothing keeps running between syncs). A new issue so reaches its owner while sessions work;
-a run by hand still works at any time.
+On its own: with `github.repos` listed and `github.probeSeconds` above 0 (60 by default), the team's
+`teamrig issue watch` runs `teamrig issue sync --auto` within a probe of a change on GitHub. A new issue so reaches its
+owner while sessions work; a run by hand still works at any time.
 
 A run that writes also times each open issue's wait for an answer of ours (the targets are in
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md#answer-times)): at 75% of its target
@@ -1252,13 +1251,14 @@ Flags:
 
 - `--repo <owner/name>`: only that repository, one of `github.repos`.
 - `--yes`: writes. Without it the command shows what it would write and writes nothing.
-- `--auto`: what the hooks start. It writes as `--yes` does, then posts one inbox line, from `github`, to each owner
+- `--auto`: what `teamrig issue watch` runs. It writes as `--yes` does, then posts one inbox line, from `github`, to each owner
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
   ref only, at most ten named). It reads every repository, so it refuses `--repo`. With `github.statusPush` on it
   then sends the status push (`--push --yes`) too, labels only: a close it plans is printed as a `HELD` line and
   sent only by a session's `--push --yes`. Its writes per run are lowered so an hour of runs sends at most 250
-  (every 15 minutes 40 a run, every 5 minutes 20); a failed write is told to the lead like a repository that fails.
+  (4 a run at the default `github.probeSeconds` of 60, 20 at 300); a failed write is told to the lead like a
+  repository that fails.
 - `--push`: plans the other way, from the task list to the issues: for each issue a task holds by its
   `gh:<owner>/<name>#<number>` ref, the writes that make the issue show the task's status. An active task gives its
   issue one label (`open` `status:triaged`, `in-progress` `status:in-progress`, `waiting` `status:waiting`,
@@ -1296,6 +1296,37 @@ WROTE 3 change(s) to the task list as github; GitHub was only read
 Without `--yes` the counts read `to add` and `to change`, a new task's id is `new`, and the last line is
 `PREVIEW nothing was written; teamrig issue sync --yes writes the above as github`. Each repository shows its first
 10 rows, then `... and <n> more`.
+
+### teamrig issue watch
+
+The team's one watch on its GitHub repositories. The SessionStart and Stop hooks start it hidden in the background
+when none runs, so you do not run it yourself. Every `github.probeSeconds` (60 by default) it asks GitHub whether each
+repository's issues, pull requests or Actions runs changed, sending the answer it got last time: when nothing
+changed GitHub answers "not modified", which costs no rate limit. Only when something changed does it run
+`teamrig issue sync --auto`. After a sync that failed it waits 15 minutes for the next, and a repository it cannot
+ask is synced every 15 minutes, so its failure still reaches the lead.
+
+It holds `state/github-watch.json` with its process id and renews it each round, so one runs per team: a second
+prints `HELD` and stops. It stops on its own (a `STOP` line says why) once no session of the team ran for 10
+minutes, when `github.repos` is empty or `github.probeSeconds` is 0 (read again each round), and under
+`TEAMRIG_GITHUB=off`. Exit 0.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig issue watch
+```
+
+Output (when it stops, the last session closed 10 minutes before):
+
+```text
+ACCESS acme: read with the gh login; no token saved
+REPO acme/web: 1 added, 0 changed, 4 unchanged
+WROTE 1 change(s) to the task list as github; GitHub was only read
+STOP no session of the team ran for 10 minutes; the next one starts the watch again
+```
 
 ### teamrig issue migrate
 

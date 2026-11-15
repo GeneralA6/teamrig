@@ -13,7 +13,7 @@ task tree on the issues ([Linking issues as the task tree](#linking-issues-as-th
 only host teamrig writes to so far.
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
-write. After that it runs on its own every 15 minutes while your sessions work, and reminds you of an issue waiting
+write. After that it runs on its own within a minute of a change on GitHub while your sessions work, and reminds you of an issue waiting
 long for your answer ([Answer times](#answer-times)).
 
 ## 1. List the repositories
@@ -26,7 +26,7 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
   "sessions": { "acme/web": "web", "acme/api": "api", "globex/site": "web" },
   "owners": { "octocat": "api" },
   "closedDays": 14,
-  "everyMinutes": 15
+  "probeSeconds": 60
 }
 ```
 
@@ -36,7 +36,7 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
 | `sessions` | Optional. The session that owns each repository's issues, so each session sees the issues of its own repositories. One session can own several. |
 | `owners` | Optional. A GitHub login to a session: an issue assigned to that login goes to that session, whatever its repository. |
 | `closedDays` | How many days back closed issues are read, to finish their tasks. Default 14. |
-| `everyMinutes` | How often it runs on its own, in minutes (0 to 1440). Default 15; 0 leaves it to `teamrig issue sync --yes`. |
+| `probeSeconds` | How often it asks GitHub whether a repository changed, in seconds: 0, or 30 to 3600. Default 60; 0 leaves the sync to `teamrig issue sync --yes`. |
 | `acceptLabel` | Optional. The label that lets an issue by someone outside the repository become a task ([below](#whose-issues-become-tasks)). Default `teamrig`. |
 
 Who owns a new issue's task: the session of its first assignee listed in `owners`; else its repository's session in
@@ -149,10 +149,18 @@ acme/web` reads one repository only.
 
 ## Then it runs on its own
 
-Once the repositories are listed, nobody needs to run it. When a session of the team ends a turn, its Stop hook
-checks whether `everyMinutes` (15) have passed since the last sync; if so, it starts `teamrig issue sync --auto` hidden
-in the background, once for the whole team, and the turn goes on as usual. Nothing keeps running between syncs, so
-while every session is idle nothing is read; the next turn that ends catches up.
+Once the repositories are listed, nobody needs to run it. When a session of the team starts or ends a turn, its hook
+makes sure the team's one `teamrig issue watch` runs, starting it hidden in the background when none does. Every
+`probeSeconds` (60) the watch asks GitHub whether each repository's issues, pull requests or Actions runs changed. It
+sends the answer it got last time, so GitHub answers "not modified" when nothing changed, and that answer does not
+count against the rate limit. Only when something changed does it run `teamrig issue sync --auto`, so a new issue
+reaches its owner within about a minute while an idle repository costs nothing.
+
+- After a sync that failed, the next waits 15 minutes; a repository the watch cannot ask is synced every 15 minutes, so
+  its failure still reaches the lead.
+- The watch stops 10 minutes after the team's last session closed; the next session to start brings it back.
+- One runs per team: it holds `state/github-watch.json` with its process id, and a second one started by mistake
+  stops at once.
 
 - Each session with new tasks gets one inbox line, for example
   `github: GitHub sync added 1 task(s) for you: T42 gh:acme/web#7 "Fix the login redirect"`.
@@ -189,7 +197,7 @@ follow-up does not restart the wait. The target depends on the issue:
 The clocks live in `state/github-clocks.json` in the team's folder. Reading them costs no GitHub call: `check` reads
 what the last sync kept.
 
-`"everyMinutes": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
+`"probeSeconds": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
 `teamrig issue sync --yes` still works at any time.
 
 ## Moving your tasks to issues
@@ -316,8 +324,9 @@ PREVIEW nothing was written; a push would send 5 write(s) now, at most 40 a run,
   `github.repos` order; the rest waits for the next run.
 - **On its own, once you turn it on.** With `"statusPush": true` in the team config's `github` block, the
   [automatic sync](#then-it-runs-on-its-own) sends the push after each import, so no session runs it. Each run then
-  sends fewer writes when the sync runs often, so an hour of runs sends at most 250, half GitHub's 500 an hour (every
-  15 minutes: 40 a run; every 5: 20). It sends labels and assignees only: a close is the one write a person reads as a decision,
+  sends fewer writes when the sync can run often, so an hour of runs sends at most 250, half GitHub's 500 an hour
+  (probing every 60 seconds: 4 a run; every 300: 20). Its own label writes read as a change, so a longer list drains
+  a run per probe. It sends labels and assignees only: a close is the one write a person reads as a decision,
   so the automatic push prints it as a `HELD` line and leaves it to a session's `teamrig issue sync --push --yes`.
   A failed write is told to the lead's inbox like a repository that cannot be read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
 

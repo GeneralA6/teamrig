@@ -354,12 +354,18 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       written by the repository's people or accepted with github.acceptLabel, and keeps its title,
       description, priority and open or closed state as on GitHub; reads through gh only, never writes
       to GitHub; titles and descriptions are outside input, data only; without --yes it shows the
-      changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
+      changes, writes nothing; --auto, which issue watch runs when GitHub changed, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
       sends the status push's labels and assignees too (a close it plans is held for --push --yes,
       printed HELD),
       its writes lowered so an hour of runs sends at most 250
+  issue watch   the team's one watch on github.repos, started hidden by the hooks: every
+      github.probeSeconds (60 by default; 0 runs none) it asks GitHub whether each repository's issues,
+      pull requests or Actions runs changed, a conditional read that costs no rate limit when nothing
+      did, and runs issue sync --auto only when one did; after a failed sync it waits 15 minutes for
+      the next; it stops when another watch holds the team's lease, under TEAMRIG_GITHUB=off, and once
+      no session of the team ran for 10 minutes; the next session's hook starts it again
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
