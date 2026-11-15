@@ -1260,10 +1260,11 @@ Flags:
   (4 a run at the default `github.probeSeconds` of 60, 20 at 300); a failed write is told to the lead like a
   repository that fails.
   With the push on it also handles claims: an outside person's comment starting `/take`, "I'll take", "I'm working
-  on" or "I can take", on an open issue with no assignee that is not `design` or `security`, gets them assigned,
-  `status:claimed` and one reply (`CLAIMED` line); a claim it made with no linked pull request after 7 days loses
-  that assignee and gets `status:open` back (`RELEASED`). It never takes off an assignee a person set, makes at
-  most 5 claims a day per repository, and reads only comments posted since its previous run.
+  on" or "I can take", on an open issue with no assignee that is not `design` or `security` and is the repository's
+  own or accepted, gets them assigned, `status:claimed` and one reply (`CLAIMED` line); a claim it made with no
+  linked pull request after 7 days loses that assignee and gets `status:open` back (`RELEASED`). It never takes off
+  an assignee a person set, makes at most 5 claims a day per repository, reads only comments posted since its
+  previous run, and counts the claims' writes in the run's writes first (`HELD`: made on the next run).
 - `--push`: plans the other way, from the task list to the issues: for each issue a task holds by its
   `gh:<owner>/<name>#<number>` ref, the writes that make the issue show the task's status. An active task gives its
   issue one label (`open` `status:open` while no one scheduled or took it, `status:claimed` once it has a due date

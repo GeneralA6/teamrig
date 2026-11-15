@@ -349,8 +349,9 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
 
 With the push on, the automatic sync also lets a contributor take an open issue themselves. A comment whose line
 starts with `/take`, "I'll take", "I'm working on" or "I can take" (not quoted, not in a code block) claims an issue
-that has no assignee and is neither a `design` nor a `security` issue. The sync then assigns the commenter, swaps
-`status:open` for `status:claimed`, and replies once with the rule:
+that has no assignee, is neither a `design` nor a `security` issue, and is the repository's own or accepted (an
+outsider's issue waits for the accept label first, as it does to become a task). The sync then assigns the
+commenter, swaps `status:open` for `status:claimed`, and replies once with the rule:
 
 - **Seven days to link a pull request.** A claim with no pull request linked to the issue after seven days ends: the
   sync takes that assignee off, puts `status:open` back and says so on the issue. A linked pull request keeps the
@@ -364,6 +365,8 @@ that has no assignee and is neither a `design` nor a `security` issue. The sync 
   that a claim waits for a person to assign it.
 - **Only new comments.** Each run reads only the comments posted since the previous run started, so a comment
   from before the push was turned on claims nothing.
+- **Within the run's writes.** A claim's writes (assign, labels, reply) count in the same writes per run as the
+  status push, and come first; a claim past them is printed `HELD` and made on the next run.
 
 ## Linking issues as the task tree
 
