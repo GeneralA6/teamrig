@@ -12,13 +12,18 @@ import { rosterOf, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { teamSessionOf } from './hook-input.ts';
 
+/** The folder a tool call runs in: the payload's, else the hook's own (Claude Code may start the hook elsewhere). */
+function callCwdOf(runtime: CliRuntime, payload: JsonRecord): string {
+  return stringField(payload, 'cwd') ?? runtime.cwd;
+}
+
 /**
  * What a hook reads a teamrig line with: the CLI's table, and whether the program word is this install's own launcher,
  * placed as the Bash tool's shell would place it from the call's folder, the payload's first (Claude Code may start the
  * hook elsewhere).
  */
 export function kitContextOf(runtime: CliRuntime, payload: JsonRecord, cli: CommandTable): KitContext {
-  const cwd = stringField(payload, 'cwd') ?? runtime.cwd;
+  const cwd = callCwdOf(runtime, payload);
   const search = new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe });
   const installs = new ClientInstalls(clientRootOf(runtime.self.script), runtime.platform);
   return { cli, ownClient: ownClientOf(search, installs, { dialect: 'bash', dir: cwd, home: runtime.userHome }) };
@@ -29,7 +34,7 @@ export function kitContextOf(runtime: CliRuntime, payload: JsonRecord, cli: Comm
  * tab's session and the register are read only when a push line asks.
  */
 export function routeContextOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord, cli: CommandTable): RouteContext {
-  const cwd = stringField(payload, 'cwd') ?? runtime.cwd;
+  const cwd = callCwdOf(runtime, payload);
   return {
     ...kitContextOf(runtime, payload, cli),
     ...gitContextOf({
