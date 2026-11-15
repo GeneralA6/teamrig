@@ -128,9 +128,20 @@ export class TeamTree {
   }
 
   /**
-   * The lead who asks the owner the team's decisions when the team's own lead does not (T509): for a child team, the
-   * lead at its tree's root, the one lead the owner meets; its parent's lead while its parents go round a loop.
-   * Undefined for a root team, whose own lead asks them.
+   * The leads of the teams above a team, its root's first and its parent's last (ancestorsOf): any of them may meet the
+   * owner over the team's cards and record the owner's answers on them (T2985). Empty for a root and a loop.
+   */
+  leadsAbove(team: string): SessionAddress[] {
+    return this.ancestorsOf(team).flatMap((above) => {
+      const lead = this.leadOf(above);
+      return lead === undefined ? [] : [{ team: above, id: lead }];
+    });
+  }
+
+  /**
+   * The lead who asks the owner the team's decisions in the batches when the team's own lead does not (T509): for a
+   * child team, the lead at its tree's root; its parent's lead while its parents go round a loop. Undefined for a root
+   * team, whose own lead asks them. A lead between them may meet the owner over the team's cards too (leadsAbove).
    */
   ownerLeadAbove(team: string): SessionAddress | undefined {
     const parentLead = this.parentLeadOf(team);

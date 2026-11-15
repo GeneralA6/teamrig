@@ -274,7 +274,7 @@ describe('teamrig list|check|plan --tree', () => {
   });
 });
 
-describe('teamrig update <team>/<id>: the root lead notes a task below (T1018)', () => {
+describe('teamrig update <team>/<id>: a lead above notes a task below (T1018, T2985)', () => {
   it("writes the note in that team's register only, by the root lead's address, on a child's and a grandchild's task", async () => {
     const kit = await seeded();
     const appEvents = kit.files.get(EVENTS_PATH);
@@ -288,12 +288,21 @@ describe('teamrig update <team>/<id>: the root lead notes a task below (T1018)',
     assert.equal(kit.files.get(EVENTS_PATH), appEvents);
   });
 
-  it('refuses all but the root lead, a root team, an unknown team, its own team, a field and no note, writing nothing', async () => {
+  it("lets a sub-team's lead note a task of a team under it, by its own address, as at its own meeting with the owner (T2985)", async () => {
+    const kit = await seeded();
+    const result = await kit.run(['update', 'ui/T3', '--note', 'human decided: round icons', '--session', 'lead'], { env: WEB });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    const event = readEvents(kit.files.get(teamEventsOf('ui')) ?? '').events.at(-1);
+    assert.deepEqual([event?.by, event?.type === 'update' ? event.note : undefined], ['web/lead', 'human decided: round icons']);
+  });
+
+  it('refuses all but a lead above, a root team, an unknown team, its own team, a field and no note, writing nothing', async () => {
     const kit = await seeded();
     const before = filesOf(kit);
     const refusals: [readonly string[], Record<string, string>, string][] = [
-      [['web/T2', '--session', 'alpha'], {}, "REFUSED only app/lead, who asks the owner team web's decisions, notes its tasks from another team; app/alpha may not"],
-      [['ui/T3', '--session', 'lead'], WEB, "REFUSED only app/lead, who asks the owner team ui's decisions, notes its tasks from another team; web/lead may not"],
+      [['web/T2', '--session', 'alpha'], {}, 'REFUSED only a lead above team web (app/lead) notes its tasks from another team; app/alpha may not'],
+      [['ui/T3', '--session', 'front'], WEB, 'REFUSED only a lead above team ui (app/lead, web/lead) notes its tasks from another team; web/front may not'],
+      [['ui/T3', '--session', 'lead'], { TEAMRIG_TEAM: 'ops' }, 'REFUSED only a lead above team ui (app/lead, web/lead) notes its tasks from another team; ops/lead may not'],
       [['app/T1', '--session', 'lead'], WEB, 'REFUSED team app has no parent team, so only its own sessions note its tasks'],
       [['blog/T2', '--session', 'lead'], {}, 'REFUSED no team blog with a config in this kit home'],
     ];
