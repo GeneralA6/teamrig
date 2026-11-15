@@ -77,7 +77,13 @@ export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
     pattern: /\bauthorization["']?\s*[:=]\s*["']?(?:bearer|basic|token|digest)\s+((?![$<{%])[^\s"']{8,})/i,
     secretGroup: 1,
   },
-  { id: 'secret-assignment', description: 'password or key assignment', pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*[=:]\s*\S/i },
+  // After a colon, a letters-only word followed by more words is a sentence going on ("api_key: to the vault"), not
+  // a value, so a register text in plain words is not refused (GeneralA6/teamrig#852); `=` is never prose.
+  {
+    id: 'secret-assignment',
+    description: 'password or key assignment',
+    pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*(?:=\s*\S|:\s*(?![a-z]+[\s,.;]+[a-z])\S)/i,
+  },
 ];
 
 /** True for GitHub's fixed password `x-oauth-basic`, which follows a token given as a URL's login: a word, not a secret. */

@@ -101,6 +101,8 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
       join('{ client', 'Secret', ': abc }'),
       join('{"', 'pass', 'word', '": "', 'abc', '"}'),
       join("'api", "_key': ", "'xyz'"),
+      join('pass', 'word', ': ', 'hunter2 for the db'),
+      join('api', '_key', ': ', 'sk_live then retry'),
     ],
     misses: [
       'rotate the password via the vault runbook',
@@ -111,6 +113,11 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
       join('merged feat/t533-jwt-previous-', 'secret', ': pushed'),
       join('.worktrees/t550-api-', 'key', ': removed'),
       join('moved config/DB_', 'PASSWORD', ': to the vault'),
+
+      // A colon then plain words is prose, not a value (GeneralA6/teamrig#852).
+      join('Move the api', '_key', ': to the vault, then rotate it'),
+      join('the pass', 'word', ': none yet'),
+      join('MYSQL_', 'PASSWD', ': see the runbook'),
     ],
   },
 ];

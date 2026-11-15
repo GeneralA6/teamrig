@@ -126,6 +126,12 @@ describe('RegisterPolicy.add', () => {
     assert.match(error(policy.update(TASK, 'alpha', { title: 'Add two health checks' }, `see ${token}`, EMPTY)), /^note looks like it holds a secret/);
   });
 
+  it("takes a description that names a key word and a colon in plain prose (GeneralA6/teamrig#852)", () => {
+    const description = `Move the ${['api', '_key'].join('')}: to the vault, then rotate it`;
+    assert.equal(error(policy.add({ ...INPUT, description }, EMPTY)), 'allowed');
+    assert.match(error(policy.add({ ...INPUT, description: `${['pass', 'word'].join('')}: hunter2` }, EMPTY)), /^description looks like it holds a secret/);
+  });
+
   it('checks goals and extra secret patterns from the config', () => {
     const strict = new RegisterPolicy(testConfig({ register: { goalPattern: '^G\\d+$', secretPatterns: ['tok_[a-z0-9]{8}'] } }));
     assert.match(error(strict.add({ ...INPUT, goals: ['G1', 'roadmap'] }, EMPTY)), /goal roadmap does not match/);
