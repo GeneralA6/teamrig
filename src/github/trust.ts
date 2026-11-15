@@ -23,8 +23,13 @@ const PERSON = 'User';
  * author as actor, a workflow or app with a `Bot` one. An edit of the title or body at or after the accept undoes it
  * (the person who accepted read the older text), until someone adds the label again.
  */
+/** Whether an author of this tie to the repository is one of us: its owner, an organization member or a collaborator. */
+export function isInsider(association: string): boolean {
+  return TRUSTED_ASSOCIATIONS.has(association.toUpperCase());
+}
+
 export function issueTrust(issue: HostIssue, acceptLabel: string): IssueTrust {
-  if (TRUSTED_ASSOCIATIONS.has(issue.authorAssociation.toUpperCase())) {
+  if (isInsider(issue.authorAssociation)) {
     return 'trusted';
   }
   if (!issue.labels.some((label) => sameLabel(label, acceptLabel))) {

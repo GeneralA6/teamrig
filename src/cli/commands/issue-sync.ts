@@ -12,6 +12,8 @@ import { hostOf, reposOf } from '../issue-hosts.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
+import type { Thread } from '../../github/clock.ts';
+import { recordClocks, repoThreads } from './issue-clock.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, reportAutoSync } from './issue-sync-auto.ts';
 
@@ -70,6 +72,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const leftOut = new Map<string, readonly number[]>();
   const unread = new Set<string>();
   let written = 0;
+  /** The open threads of the repositories read, for the response clock, and those repositories. */
+  const threads: Thread[] = [];
+  const clocked = new Set<string>();
   for (const repo of reposOf(config.github.repos, args.flags.get('repo'))) {
     const reach = await host.reach(repo, 'read');
     if (reach.kind === 'unreachable') {
@@ -102,6 +107,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
       continue;
     }
     const outcomes = await applySteps(register, plan.steps);
+    // Against the tasks as written, so an issue the import just took is held by its new task.
+    threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
+    clocked.add(repo);
     [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
     written += outcomes.filter((outcome) => outcome.result.ok).length;
     added.push(...addedTasks(outcomes));
@@ -110,6 +118,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
       failures.push({ repo, reason: refused });
     }
     ends.push(refused === undefined ? 'ok' : 'refused');
+  }
+  if (write) {
+    (await recordClocks(runtime, kit, config, clocked, threads)).forEach(say);
   }
   const pushing = auto && config.github.statusPush;
   if (pushing) {
