@@ -134,7 +134,7 @@ export function isNews(task, session, tasks, elsewhere, zone) {
         }
     });
 }
-export const NO_SETTLED_MOMENTS = { dayStart: undefined, burst: undefined };
+export const NO_SETTLED_MOMENTS = { dayStart: undefined, burst: undefined, poke: undefined };
 /** Most urgent first, then oldest. */
 export function byUrgency(a, b) {
     return a.priority - b.priority || taskNumber(a.id) - taskNumber(b.id);

@@ -360,6 +360,8 @@ export const DEFAULT_BRANCHES = { pattern: '{type}/{id}-{slug}', typePatterns: {
  * and one burst hires at most 2 sessions.
  */
 export const DEFAULT_BURST = { policy: 'owner', surplusHours: 48, minSparePct: 5, maxHelpers: 3, maxHires: 2 };
+/** The owner's bar for a rush: a tab with work left that sits idle 5 minutes is poked. */
+export const DEFAULT_RUSH = { pokeAfterMinutes: 5 };
 /**
  * An area's pace is the tasks it finished over the last week, counted once it finished at least 3; the dated
  * tasks of the top two priorities are the work it must finish in time.

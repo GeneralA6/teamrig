@@ -38,7 +38,8 @@ function settledOf(record) {
     }
     const dayStart = optionalTimeOf(raw, 'dayStart');
     const burst = optionalTimeOf(raw, 'burst');
-    return { ok: dayStart.ok && burst.ok, value: { dayStart: dayStart.value, burst: burst.value } };
+    const poke = optionalTimeOf(raw, 'poke');
+    return { ok: dayStart.ok && burst.ok && poke.ok, value: { dayStart: dayStart.value, burst: burst.value, poke: poke.value } };
 }
 /** A wake file's content; undefined when it is damaged or from another format, which starts the tab over. */
 export function parseWakeState(text) {
@@ -56,8 +57,8 @@ export function parseWakeState(text) {
     }
     return { tab, known, pending: pending.value, lastWakeAt: last.value, settled: settled.value };
 }
-function formatSettled({ dayStart, burst }) {
-    return { ...(dayStart === undefined ? {} : { dayStart }), ...(burst === undefined ? {} : { burst }) };
+function formatSettled({ dayStart, burst, poke }) {
+    return { ...(dayStart === undefined ? {} : { dayStart }), ...(burst === undefined ? {} : { burst }), ...(poke === undefined ? {} : { poke }) };
 }
 export function formatWakeState(state) {
     const settled = formatSettled(state.settled);
@@ -114,6 +115,7 @@ export function formatWakeRecord(record) {
         ...(record.asks === undefined ? {} : { asks: record.asks }),
         ...(record.moments === undefined ? {} : { moments: [...record.moments] }),
         ...(record.retry === undefined ? {} : { retry: record.retry }),
+        ...(record.poke === undefined ? {} : { poke: true }),
     });
 }
 /** Appends a record to the team's wake log, an append-only file the person reads to see each wake and its cost. */

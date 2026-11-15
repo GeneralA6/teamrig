@@ -1,4 +1,7 @@
-import { activeBurst } from "../../budget/burst.js";
+import { activeBurst, activeRush } from "../../budget/burst.js";
+import { parseLedger } from "../../delivery/ledger.js";
+import { deliveryPlaces } from "../../delivery/places.js";
+import { decideRushPoke, rushPokePrompt, rushPokeToast, stepRunningFor } from "../../wake/rush-poke.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
 import { autoRestartOf } from "../../config/refresh.js";
@@ -152,6 +155,37 @@ async function restartHoldsWake(runtime, store, rearm) {
     const request = await store.restart(rearm.id);
     return restartMayAct(request, runtime.clock.now()) || (await rearmDeadRestart(runtime, store, rearm, request));
 }
+/**
+ * The rush poke (src/wake/rush-poke.ts), checked when nothing else wakes the tab: only in a rush that lists the
+ * session, never for the lead (it talks with the owner, and a poke would cut into that). The ledger, a large file, is
+ * read only once a poke is due: a queued step of the session running now puts the poke off by one idle span, since
+ * the step's end posts a line that wakes the tab anyway.
+ */
+async function pokeOf(runtime, scope, tasks, elsewhere, state, now) {
+    const { config, kit, id, tab } = scope;
+    if (id === config.roles.lead) {
+        return { kind: 'none' };
+    }
+    const rush = activeRush((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
+    if (rush === undefined || !rush.sessions.includes(id)) {
+        return { kind: 'none' };
+    }
+    const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime), parkRulesOf(config));
+    const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
+    const idleMs = config.rush.pokeAfterMinutes * MINUTE_MS;
+    const verdict = decideRushPoke({ rush, startable, lastTurnAt, now, idleMs, lastPokeAt: state.settled.poke });
+    if (verdict.kind !== 'poke') {
+        return verdict;
+    }
+    if (lastTurnAt === undefined) {
+        return { kind: 'none' };
+    }
+    const ledger = parseLedger((await runtime.files.read(deliveryPlaces(config.delivery, kit.paths).ledger)) ?? '');
+    if (stepRunningFor(ledger, id, now, config.delivery.queue.maxRunMinutes * MINUTE_MS)) {
+        return { kind: 'later', at: now + idleMs };
+    }
+    return { kind: 'poke', rush, task: verdict.task, idleMs: verdict.idleMs, lastTurnAt };
+}
 /** The earliest of the times given; null with none. */
 function earliest(...times) {
     const set = times.filter((time) => time !== undefined);
@@ -277,15 +311,25 @@ async function decide(runtime, scope, store, fresh, login) {
         if (day.verdict.kind === 'wake' && fresh !== undefined && (await fresh())) {
             return { kind: 'fresh' };
         }
-        await store.write(id, day.state);
         if (day.verdict.kind === 'wake') {
+            await store.write(id, day.state);
             return { kind: 'moments', moments: day.verdict.moments, tasks: day.verdict.tasks, lastTurnAt: day.lastTurnAt };
+        }
+        const poke = await pokeOf(runtime, scope, tasks, elsewhere, day.state, now);
+        if (poke.kind === 'poke' && fresh !== undefined && (await fresh())) {
+            await store.write(id, day.state);
+            return { kind: 'fresh' };
+        }
+        await store.write(id, poke.kind === 'poke' ? { ...day.state, settled: { ...day.state.settled, poke: now } } : day.state);
+        if (poke.kind === 'poke') {
+            return poke;
         }
         const handedAt = decision.verdict.kind === 'later' ? decision.verdict.at : undefined;
         const askedAt = asked.kind === 'later' ? asked.at : undefined;
         const retryAt = retry.kind === 'later' ? retry.at : undefined;
         const apiAt = api.kind === 'later' ? api.at : undefined;
-        const recheckAt = earliest(handedAt, askedAt, day.verdict.kind === 'later' ? day.verdict.at : undefined, day.next, retryAt, apiAt);
+        const pokeAt = poke.kind === 'later' ? poke.at : undefined;
+        const recheckAt = earliest(handedAt, askedAt, day.verdict.kind === 'later' ? day.verdict.at : undefined, day.next, retryAt, apiAt, pokeAt);
         const watch = new Set([...(retry.kind === 'none' ? [] : [login.marker, login.credentials]), ...day.watch]);
         return { kind: 'wait', recheckAt, watch: [...watch] };
     });
@@ -342,7 +386,7 @@ export async function wakeCheck(args, runtime) {
         return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
     }
     const now = runtime.clock.now();
-    const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
+    const last = verdict.kind === 'moments' || verdict.kind === 'poke' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
     const wPerPct = await readTodayWPerPct(runtime, kit.paths, config, now);
     const measured = await readMeasuredTurns(runtime, kit.paths, id, config.sessions, now);
     const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct, measured);
@@ -358,6 +402,11 @@ export async function wakeCheck(args, runtime) {
         await runtime.files.append(login.log, `${new Date(now).toISOString()} ${apiRetryLine(`${kit.paths.team}/${id} (${tab})`, retry.code, retry.n)}\n`);
         const text = apiRetryPrompt(id, retry, cost, teamZone(config, runtime));
         return wake(runtime, scope, { kind: 'wake', ids: [], text, toast: apiRetryToast(retry, cost) });
+    }
+    if (verdict.kind === 'poke') {
+        const { rush, task, idleMs } = verdict;
+        await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids: [task.id], cost, poke: true });
+        return wake(runtime, scope, { kind: 'wake', ids: [task.id], text: rushPokePrompt(id, rush, task, idleMs, cost), toast: rushPokeToast(rush, task, idleMs, cost) });
     }
     const ids = verdict.tasks.map((task) => task.id);
     if (verdict.kind === 'handed') {

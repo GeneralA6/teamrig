@@ -62,6 +62,7 @@ const CHILD_TAKES = {
     refresh: 'copy',
     hiring: 'copy',
     burst: 'copy',
+    rush: 'copy',
     statusLine: 'copy',
     focus: 'copy',
 };
