@@ -16,8 +16,8 @@ function create(hour: number): RegisterEvent {
   return { v: EVENT_VERSION, type: 'create', id: 'T1', at: at(hour), by: 'lead', task: FIELDS };
 }
 
-function status(hour: number, value: TaskStatus, waits?: readonly WaitReason[]): RegisterEvent {
-  const event: RegisterEvent = { v: EVENT_VERSION, type: 'status', id: 'T1', at: at(hour), by: 'alpha', status: value, note: 'n', evidence: null, skill: null };
+function status(hour: number, value: TaskStatus, waits?: readonly WaitReason[], note = 'n'): RegisterEvent {
+  const event: RegisterEvent = { v: EVENT_VERSION, type: 'status', id: 'T1', at: at(hour), by: 'alpha', status: value, note, evidence: null, skill: null };
   return waits === undefined ? event : { ...event, waits };
 }
 
@@ -161,8 +161,12 @@ describe('foldEvents: when a task last asked for something new (T2089)', () => {
     assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), update(12, { priority: 1 })]).waitsAt, at(10));
   });
 
-  it('moves when a status names the waits again after an answer: the answer is gone, so it asks anew', () => {
-    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), verdict(11), status(14, 'waiting', [lead])]).waitsAt, at(14));
+  it('moves when a status names the waits again after an answer and a new head: the answer is gone, so it asks anew', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), verdict(11), status(14, 'waiting', [lead], 'approve 301c2359d?')]).waitsAt, at(14));
+  });
+
+  it('holds when the waits are named again after an approval of an unchanged head, which the task keeps (T3044)', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', [lead]), verdict(11), status(14, 'waiting', [lead])]).waitsAt, at(10));
   });
 
   it('holds through an update after an answer, which clears no answer', () => {
@@ -418,7 +422,26 @@ describe("foldEvents: the lead's answer to an approval (T684)", () => {
   it('clears it on the next status change, so an approval covers only what was asked', () => {
     assert.equal(taskAfter([create(9)]).answer, null);
     assert.equal(taskAfter([...asked, answered(11, 'approved'), status(12, 'verifying')]).answer, null);
-    assert.equal(taskAfter([...asked, answered(11, 'approved'), status(12, 'waiting', [{ kind: 'approval', who: 'lead' }])]).answer, null);
+  });
+
+  describe('the same approval wait set again (T3044)', () => {
+    const lead: WaitReason = { kind: 'approval', who: 'lead' };
+    const approved = [...asked, answered(11, 'approved', 'Approved 2bd9a4a70: PASS')];
+
+    it('keeps the approval of an unchanged head when its note names no other commit, and asks the lead nothing new', () => {
+      for (const note of ['merge denied by the classifier, not retried', '2bd9a4a70 merges once allowed']) {
+        const again = taskAfter([...approved, status(12, 'waiting', [lead], note)]);
+        assert.deepEqual([again.answer?.verdict, again.answer?.at], ['approved', at(11)], note);
+        assert.equal(again.waitsAt, at(10), 'no new wait on the lead');
+      }
+    });
+
+    it('drops it when the note names another commit: a new head needs a new approval', () => {
+      assert.equal(taskAfter([...approved, status(12, 'waiting', [lead], 'rebased: approve 301c2359d?')]).answer, null);
+      assert.equal(taskAfter([...asked, answered(11, 'approved', 'looks good'), status(12, 'waiting', [lead], 'approve 301c2359d?')]).answer, null);
+      const held = taskAfter([...approved, status(12, 'waiting', [lead, { kind: 'task', id: 'T7' }], 'behind T7, head 301c2359d')]);
+      assert.equal(held.answer, null, 'a hold naming a new head asks anew too');
+    });
   });
 
   describe('an approved task held behind another task or a time (T2117)', () => {
@@ -436,17 +459,17 @@ describe("foldEvents: the lead's answer to an approval (T684)", () => {
       assert.equal(twice.answer?.verdict, 'approved');
     });
 
-    it('clears it on a set that drops the approval, adds a decision or another approval, or restates the waits', () => {
+    it('clears it on a set that drops the approval, or adds a decision or another approval', () => {
       const sets: readonly (readonly WaitReason[])[] = [
         [blocker],
         [lead, blocker, { kind: 'decision', who: 'lead' }],
         [lead, { kind: 'approval', who: 'owner' }],
-        [lead],
       ];
       for (const waits of sets) {
         assert.equal(taskAfter([...approved, status(12, 'waiting', waits)]).answer, null, JSON.stringify(waits));
       }
-      assert.equal(taskAfter([...approved, status(12, 'waiting', [lead, blocker]), status(13, 'waiting', [lead, blocker])]).answer, null, 'a restated hold asks anew');
+      const restated = taskAfter([...approved, status(12, 'waiting', [lead, blocker]), status(13, 'waiting', [lead, blocker])]);
+      assert.equal(restated.answer?.verdict, 'approved', 'a restated hold naming no other head keeps it (T3044)');
     });
 
     it('clears a declined answer, and any answer on a status other than waiting', () => {
