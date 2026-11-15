@@ -252,3 +252,38 @@ describe('runCli: the prompt hook archives its dedup records older than a week (
     assert.deepEqual([live.includes(ENDED_TAB), live.includes(CLAUDE_SESSION)], [false, true]);
   });
 });
+
+describe('runCli: a tool call cannot move its tab to another session by reading its inbox (T3081)', () => {
+  const UNDER_CLAUDE = { ...AS_CLAUDE, CLAUDECODE: '1' };
+
+  async function marks(kit: CliHarness): Promise<string> {
+    return (await kit.files.read(MARKS_PATH)) ?? '';
+  }
+
+  it('binds a tab once, refuses a read as another session, and leaves the guards reading the tab as its own', async () => {
+    const kit = new CliHarness();
+    await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'T9 is yours', '--session', 'lead']);
+    assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'], { env: UNDER_CLAUDE })).code, EXIT.ok, 'the first binding');
+    const bound = await marks(kit);
+    const taken = await kit.run(['inbox', 'read', '--session', 'bravo'], { env: UNDER_CLAUDE });
+    assert.equal(taken.code, EXIT.refused);
+    assert.equal(
+      taken.stdout.join('\n'),
+      "REFUSED teamrig inbox read --session bravo would make this tab, the alpha session, the bravo session: a tab keeps the session it was bound to, which the guards read as who runs a command, so a tool call, a script or a hook (CLAUDECODE is set) cannot move it. Read alpha's inbox here; to move the tab, the person types /teamrig inbox read --session bravo in it, or bravo runs in its own tab.",
+    );
+    assert.equal(await marks(kit), bound, 'no mark written');
+    assert.match((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout[0] ?? '', /^bravo 1 unread /, "bravo's line stays unread");
+    assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'], { env: UNDER_CLAUDE })).code, EXIT.ok, 'its own inbox');
+    const approve = JSON.stringify({ cwd: APP, session_id: CLAUDE_SESSION, tool_name: 'Bash', tool_input: { command: 'teamrig exec approve R1 --session bravo' } });
+    assert.match((await kit.run(['hook', 'exec-guard'], { stdin: approve })).stdout.join('\n'), /"permissionDecision":"deny"/);
+  });
+
+  it('lets the person move the tab, and a restarted tab bind afresh', async () => {
+    const kit = new CliHarness();
+    await kit.run(['inbox', 'read', '--session', 'alpha'], { env: UNDER_CLAUDE });
+    assert.equal((await kit.run(['inbox', 'read', '--session', 'bravo'], { env: AS_CLAUDE })).code, EXIT.ok, 'typed by the person');
+    assert.equal(indexMarks(readMarks(await marks(kit)).marks).areaBySession.get(CLAUDE_SESSION), 'bravo');
+    const restarted = { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666', CLAUDECODE: '1' };
+    assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'], { env: restarted })).code, EXIT.ok, 'a new Claude Code session');
+  });
+});
