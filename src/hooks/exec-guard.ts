@@ -177,8 +177,8 @@ function ownerActionOf(words: readonly ShellWord[]): string | undefined {
 
 /**
  * How a run starts the teamrig CLI, or undefined when it does not: by name; by any program and teamrig's entry script;
- * by a package runner and the teamrig word whose words `guarded` reads as a command its guard checks; or by node and a
- * script only known when it runs whose words `guarded` reads so.
+ * by a package runner and the teamrig word, or a word only known when it runs, whose words `guarded` reads as a
+ * command its guard checks; or by node and a script only known when it runs whose words `guarded` reads so.
  */
 export function teamrigLaunchOf(run: ProgramRun, guarded: (words: readonly ShellWord[]) => boolean): TeamrigLaunch | undefined {
   if (run.name === 'teamrig' || run.name === 'teamrig.ps1') {
@@ -190,8 +190,13 @@ export function teamrigLaunchOf(run: ProgramRun, guarded: (words: readonly Shell
     return { client: { kind: script.dynamic ? 'opaque' : 'script', word: script }, words: run.args.slice(entry + 1) };
   }
   if (PACKAGE_RUNNERS.has(run.name)) {
-    const named = run.args.findIndex((word, index) => !word.dynamic && TEAMRIG_SPEC.test(programName(word.text)) && guarded(run.args.slice(index + 1)));
-    return named === -1 ? undefined : { client: { kind: 'runner', word: run.program }, words: run.args.slice(named + 1) };
+    // A package word only known when it runs may name teamrig too, so it reads as an opaque client (T3069).
+    const named = run.args.findIndex((word, index) => (word.dynamic || TEAMRIG_SPEC.test(programName(word.text))) && guarded(run.args.slice(index + 1)));
+    const word = run.args[named];
+    if (word === undefined) {
+      return undefined;
+    }
+    return { client: word.dynamic ? { kind: 'opaque', word } : { kind: 'runner', word: run.program }, words: run.args.slice(named + 1) };
   }
   const first = run.name === 'node' ? run.args.find((word) => !word.text.startsWith('-')) : undefined;
   const words = first === undefined ? [] : run.args.slice(run.args.indexOf(first) + 1);

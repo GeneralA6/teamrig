@@ -62,6 +62,8 @@ describe('service-role guard: roles grant and revoke', () => {
       'pnpm dlx teamrig@latest roles revoke github --yes',
       'yarn teamrig roles grant github --holder alpha',
       'bunx teamrig roles grant github --holder alpha',
+      'npx "$P" roles grant github --holder alpha',
+      'pnpm dlx $P roles revoke github --yes',
     ];
     for (const command of lines) {
       assert.equal(await decide(call('Bash', { command })), 'ask', command);

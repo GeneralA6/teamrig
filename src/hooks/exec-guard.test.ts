@@ -308,12 +308,14 @@ describe('execGuardOutput', () => {
       ['$T exec "$ACTION" R1', '\\$T'],
       ['node $SCRIPT exec run R1', '\\$SCRIPT'],
       ['node "$KIT/dist/cli/main.js" exec status R1', '\\$KIT/dist/cli/main\\.js'],
+      ['npx "$P" exec status R1', '\\$P'],
+      ['pnpm dlx --silent $P exec approve R1', '\\$P'],
     ] as const) {
       const found = await verdict(bash(line), quiet);
       assert.equal(found?.decision, 'deny', line);
       assert.match(found?.reason ?? '', new RegExp(`here starts a program only known when it runs \\(${word}\\), so the guard cannot tell which client runs it; write it out`), line);
     }
-    for (const line of ['$DOCKER exec ctr ls', '$T list', '$T exec', 'node $SCRIPT build', 'node $SCRIPT exec']) {
+    for (const line of ['$DOCKER exec ctr ls', '$T list', '$T exec', 'node $SCRIPT build', 'node $SCRIPT exec', 'npx "$P" build', 'npm run "$S"']) {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
     assert.equal(quiet.checks(), 0);
