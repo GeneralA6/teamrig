@@ -35,6 +35,9 @@ describe('resolveLiteralVariables: what resolves', () => {
       ['A=feat B=x; git push origin $A-$B', 'git push origin feat-x'],
       ['B=feat; bash -c "git push origin $B"', 'bash -c git push origin feat'],
       ['B=+main; git push origin $B', 'git push origin +main'],
+      ['B=feat; grep -o "B[0-9]*" f; git push origin $B', 'git push origin feat'],
+      ['B=feat; echo "x[1]" a=b; git push origin $B', 'git push origin feat'],
+      ['B=feat; grep "B=main" f; git push origin $B', 'git push origin feat'],
     ];
     for (const [line, expected] of rows) {
       assert.equal(pushCommand(line), expected, line);
@@ -324,6 +327,10 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       '(P=true); B=feat; $P; git push origin $B',
       'P=""; B=feat; $P; git push origin $B',
       'B=feat; a[0]=x; git push origin $B',
+      'B=feat; B=main true; git push origin $B',
+      'B=feat; a[0]=x true; git push origin $B',
+      'B=feat; export C=x a[1]=y; git push origin $B',
+      'B=feat; export B+=x; git push origin $B',
       'B=feat; IFS=-; git push origin $B',
       'B=feat; cat <<EOF\n${B:=main}\nEOF\ngit push origin $B',
       'B=feat; cat <<< "$((B = 1))"; git push origin $B',

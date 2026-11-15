@@ -345,7 +345,7 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
       }
     }
     for (const word of statement === undefined ? words : []) {
-      const assigned = ASSIGNMENT_LIKE.exec(word.text);
+      const assigned = assigns(words, word) ? ASSIGNMENT_LIKE.exec(word.text) : null;
       if (assigned?.[2] === '[' || assigned?.[1] === 'IFS') {
         return undefined;
       }
@@ -544,6 +544,22 @@ function programIsVariable(words: readonly ShellWord[]): boolean {
 function expandedSetsVariablesUnseen(words: readonly ShellWord[]): boolean {
   const program = programOf(words);
   return program === undefined || program.dynamic || program.text === 'export' || setsVariablesUnseen(words);
+}
+
+/**
+ * True when `word` of a command can assign a variable: an assignment before its program word, or an argument of
+ * `export` (or of `env`, read the same way). The other builtins that assign from their arguments (`declare`, `local`, ...) keep the whole line
+ * unresolved already (see {@link setsVariablesUnseen}). Any other program's argument is data to it, such as the
+ * grep pattern `"T[0-9]*"` or `"a=b"`, and sets nothing.
+ */
+function assigns(words: readonly ShellWord[], word: ShellWord): boolean {
+  const start = words.findIndex((each) => !ASSIGNMENT_LIKE.test(each.text));
+  const at = words.indexOf(word);
+  if (start === -1 || at < start) {
+    return true;
+  }
+  const program = words[start];
+  return program !== undefined && !program.dynamic && (program.text === 'export' || program.text === 'env');
 }
 
 /** True for a command that can set a variable in a way the guard does not follow, or run code that can. */

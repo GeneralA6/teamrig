@@ -209,6 +209,25 @@ describe('findGitInvocations: variables', () => {
     expectInvocations([["$env:GIT_DIR = 'x'; git push", ['?|push|']]], 'powershell');
     expectInvocations([['set GIT_DIR=x& git push', ['?|push|']]], 'cmd');
   });
+
+  it('runs the program a variable names although another command has a word that looks like an assignment', () => {
+    for (const command of [
+      'T=/usr/bin/tool; $T add --title x 2>&1 | grep -o "T[0-9]*" | head -1',
+      'T=/usr/bin/tool; out=$($T add --title x); echo "$out" | grep -o "T[0-9]*"',
+      'T=/usr/bin/tool; $T a; grep "T=x" notes.txt',
+      'T=/usr/bin/tool; $T a; echo "Y[1]"',
+    ]) {
+      assert.deepEqual(doubts(command), [], command);
+    }
+    expectInvocations([['G=git; $G a; grep -o "G[0-9]*" f; $G push', [`${CWD}|push|`]]]);
+  });
+
+  it('still keeps a variable unknown that a real assignment may change', () => {
+    expectInvocations([['export T=git; $T push', [`${CWD}|push|`]]]);
+    for (const command of ['T=git; declare a[1]=x; $T push', 'T=git; export T[0]=x; $T push', 'T=git; a[1]=x; $T push']) {
+      assert.deepEqual(doubts(command), ['g:the program it runs is only known when it runs'], command);
+    }
+  });
 });
 
 describe('findGitInvocations: scripts and shells', () => {

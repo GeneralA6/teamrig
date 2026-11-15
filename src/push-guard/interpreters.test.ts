@@ -116,6 +116,33 @@ describe('findGitInvocations on interpreter scripts', () => {
     }
   });
 
+  // `python3 -I - "$FILE" <<'EOF'` reads its program from the heredoc; the file is data, even when it quotes a push.
+  const HANDOVER = '# handover\n- PR #4 pushed; never `git push` to main, the subprocess hook refuses it\n';
+
+  it('passes an inline python heredoc that writes a handover or reads a transcript, whose file argument quotes git push', () => {
+    const files = { '/t/handover.md': HANDOVER, '/t/x.jsonl': TRANSCRIPT };
+    for (const command of [
+      "H=/t/handover.md\npython3 -I - \"$H\" <<'EOF'\nimport sys\np=sys.argv[1]; L=open(p).read().split('\\n')\nopen(p,'w').write('\\n'.join(['# new']+L))\nEOF",
+      "T=/t/x.jsonl; python3 -I - \"$T\" toolu_01 toolu_02 <<'EOF'\nimport json,sys\np,*ids=sys.argv[1:]\nfor l in open(p):\n  try: c=json.loads(l).get('message',{}).get('content')\n  except Exception: continue\n  print(c)\nEOF",
+    ]) {
+      assert.deepEqual(findGitInvocations(command, context(files)).doubts, [], command);
+    }
+  });
+
+  it('still doubts an inline heredoc run the same way that pushes through subprocess or os.system', () => {
+    const files = { '/t/handover.md': HANDOVER };
+    for (const command of [
+      "H=/t/handover.md; python3 -I - \"$H\" <<'EOF'\nimport subprocess\nsubprocess.run([\"git\", \"push\"])\nEOF",
+      "H=/t/handover.md; python3 -I - \"$H\" <<'EOF'\nimport os\nos.system(\"git push\")\nEOF",
+    ]) {
+      const found = findGitInvocations(command, context(files));
+      assert.ok(
+        found.doubts.some((doubt) => !doubt.gated && /script that may run git push/.test(doubt.reason)),
+        `${command}: ${JSON.stringify(found.doubts)}`,
+      );
+    }
+  });
+
   // A value option the guard did not know, or a preload, hid the script that pushes.
   const PUSH_PY = 'import subprocess\nsubprocess.run(["git", "push", "origin", "main"])\n';
   const PUSH_JS = 'require("child_process").execSync("git push origin main")\n';
