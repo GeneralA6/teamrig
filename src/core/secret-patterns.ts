@@ -78,11 +78,12 @@ export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
     secretGroup: 1,
   },
   // After a colon, a letters-only word followed by more words is a sentence going on ("api_key: to the vault"), not
-  // a value, so a register text in plain words is not refused (GeneralA6/teamrig#852); `=` is never prose.
+  // a value, so a register text in plain words is not refused (GeneralA6/teamrig#852); `=` is never prose. The words
+  // must go on in the same line: a word and then a line break is a YAML or env value with the next key below it.
   {
     id: 'secret-assignment',
     description: 'password or key assignment',
-    pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*(?:=\s*\S|:\s*(?![a-z]+[\s,.;]+[a-z])\S)/i,
+    pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*(?:=\s*\S|:\s*(?![a-z]+[ \t,.;]+[a-z])\S)/i,
   },
 ];
 

@@ -103,6 +103,8 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
       join("'api", "_key': ", "'xyz'"),
       join('pass', 'word', ': ', 'hunter2 for the db'),
       join('api', '_key', ': ', 'sk_live then retry'),
+      join('pass', 'word', ': ', 'hunter\nuser: bob'),
+      join('db_', 'secret', ':  letters\n\tport: 5432'),
     ],
     misses: [
       'rotate the password via the vault runbook',
