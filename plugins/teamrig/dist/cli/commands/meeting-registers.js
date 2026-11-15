@@ -15,13 +15,17 @@ export function agendaRegisterOf(rolled, runtime) {
         dedicatedOwners: rolled.config.decisions.dedicatedOwners,
     };
 }
-/** What the agenda asks the owner's cards from: the lead's register, each team under it, the day for the batch. */
-export function decisionAgendaOf({ own, teams }, runtime, now) {
+/**
+ * What the agenda asks the owner's cards from: the lead's register, each team under it, the day for the batch, and the
+ * cards carried over (Meeting.carried, T2775), asked first.
+ */
+export function decisionAgendaOf({ own, teams }, runtime, now, carried) {
     return {
         ...agendaRegisterOf(own, runtime),
         below: teams.filter((rolled) => rolled.team !== own.team).map((rolled) => ({ team: rolled.team, ...agendaRegisterOf(rolled, runtime) })),
         now,
         improvementsDay: own.config.focus.improvementsDay,
+        carried,
     };
 }
 /** Who records the owner's decisions on a register: the lead by its id in its own team, by `<team>/<id>` in a team under it. */
