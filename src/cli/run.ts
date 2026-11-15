@@ -696,7 +696,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
       sends the status push's labels and assignees too (a close it plans is held for --push --yes,
-      printed HELD),
+      printed HELD), and assigns an outside person who claims an open issue by a /take comment,
+      taking the assignee off after 7 days with no linked pull request,
       its writes lowered so an hour of runs sends at most 250
   issue watch   the team's one watch on github.repos, started hidden by the hooks: every
       github.probeSeconds (60 by default; 0 runs none) it asks GitHub whether each repository's issues,

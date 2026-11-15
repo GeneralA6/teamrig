@@ -1377,7 +1377,7 @@
           "default": 60
         },
         "statusPush": {
-          "description": "Whether the automatic sync also sends the status push (teamrig issue sync --push --yes), so each issue a task holds shows the task's status without a session running it. It sends labels and assignees only: a close waits for a session's teamrig issue sync --push --yes. Off by default: read the push's dry run (teamrig issue sync --push) first.",
+          "description": "Whether the automatic sync also sends the status push (teamrig issue sync --push --yes), so each issue a task holds shows the task's status without a session running it, and assigns an outside person who claims an open issue by a /take comment, for 7 days unless a pull request links it. It sends labels, assignees and the claim replies only: a close waits for a session's teamrig issue sync --push --yes. Off by default: read the push's dry run (teamrig issue sync --push) first.",
           "type": "boolean",
           "default": false
         },

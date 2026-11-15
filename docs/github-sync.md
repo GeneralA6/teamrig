@@ -345,6 +345,26 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
   so the automatic push prints it as a `HELD` line and leaves it to a session's `teamrig issue sync --push --yes`.
   A failed write is told to the lead's inbox like a repository that cannot be read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
 
+### Claims: a contributor takes an issue by a comment
+
+With the push on, the automatic sync also lets a contributor take an open issue themselves. A comment whose line
+starts with `/take`, "I'll take", "I'm working on" or "I can take" (not quoted, not in a code block) claims an issue
+that has no assignee and is neither a `design` nor a `security` issue. The sync then assigns the commenter, swaps
+`status:open` for `status:claimed`, and replies once with the rule:
+
+- **Seven days to link a pull request.** A claim with no pull request linked to the issue after seven days ends: the
+  sync takes that assignee off, puts `status:open` back and says so on the issue. A linked pull request keeps the
+  claim.
+- **Only its own claims.** The sync takes off only an assignee it made by a claim, kept in
+  `state/github-claims.json`; an assignee a person set is never taken off, and a claim handed to someone else or
+  closed is forgotten.
+- **People, outside the repository, one at a time.** Apps, organizations and the repository's own members and
+  collaborators do not claim by comment (a member assigns); one login holds one claim per repository.
+- **Five a day.** At most five claims a day per repository, so throwaway accounts cannot tie up every issue; past
+  that a claim waits for a person to assign it.
+- **Only new comments.** Each run reads only the comments posted since the previous run started, so a comment
+  from before the push was turned on claims nothing.
+
 ## Linking issues as the task tree
 
 `teamrig issue links` puts the task tree on the issues of `github.repos`. A task planned after another (`--after`),
