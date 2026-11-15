@@ -70,6 +70,11 @@ describe('service-role guard: roles grant and revoke', () => {
       'pnpm exec sh -c "teamrig roles grant github --holder alpha"',
       'corepack pnpm exec teamrig roles revoke github',
       'volta run teamrig roles grant github --holder alpha',
+      // Any program's words that start a grant, as they may start the CLI under another name; echo's too (T3069).
+      'node C:/tmp/x.js roles grant github --holder alpha',
+      './x roles revoke github',
+      'npx git+https://x/teamrig.git roles grant github --holder alpha',
+      'echo roles grant',
     ];
     for (const command of lines) {
       assert.equal(await decide(call('Bash', { command })), 'ask', command);
@@ -86,7 +91,7 @@ describe('service-role guard: roles grant and revoke', () => {
   });
 
   it('leaves roles list, other teamrig commands and other programs alone', async () => {
-    for (const command of ['teamrig roles list', 'teamrig list --session alpha', 'echo roles grant', 'git grep "roles grant"']) {
+    for (const command of ['teamrig roles list', 'teamrig list --session alpha', 'git grep "roles grant"', 'echo "roles grant"']) {
       assert.equal(await decide(call('Bash', { command })), undefined, command);
     }
   });

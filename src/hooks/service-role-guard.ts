@@ -4,7 +4,7 @@ import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { ProgramsContext } from '../package-guard/programs.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
-import { runsOfReadings, teamrigLaunchOf } from './exec-guard.ts';
+import { opaqueGuardedWords, runsOfReadings, teamrigLaunchOf } from './exec-guard.ts';
 import { holdBackOutput, refusalOutput } from './permission.ts';
 
 /**
@@ -272,6 +272,6 @@ export async function serviceRoleGuardOutput(payload: unknown, env: ServiceRoleG
     runs.programs.some((run) => {
       const launch = teamrigLaunchOf(run, startsRoleChange);
       return launch !== undefined && startsRoleChange(launch.words);
-    }) || runs.opaque.some((run) => startsRoleChange(run.args));
+    }) || runs.opaque.some((run) => opaqueGuardedWords(run, startsRoleChange) !== undefined);
   return changes ? holdBackOutput('ask', ROLE_CHANGE_ASK, env.hookAsks) : '';
 }

@@ -173,13 +173,17 @@ describe('execGuardOutput', () => {
     ]) {
       const found = await verdict(payload, quiet);
       assert.equal(found?.decision, 'deny', JSON.stringify(payload));
-      assert.equal(
+      // A function's own words may start the CLI too, so `f exec approve ... --session owner` adds its review's reason (T3069).
+      assert.ok(
+        found?.reason.startsWith(
+          'teamrig exec guard: a teamrig call here has a word only known when it runs (a variable or a substitution), so the guard cannot tell whether it reviews a request, or as whom; write the words out.',
+        ),
         found?.reason,
-        'teamrig exec guard: a teamrig call here has a word only known when it runs (a variable or a substitution), so the guard cannot tell whether it reviews a request, or as whom; write the words out.',
       );
     }
-    assert.equal(quiet.reads(), 0);
-    assert.equal(quiet.checks(), 0);
+    // Only the two calls of a function f, read as a possible CLI that reviews as the owner (T3069), read the tab and check f.
+    assert.equal(quiet.reads(), 2);
+    assert.equal(quiet.checks(), 2);
     for (const line of ['teamrig list --session "$S"', 'teamrig show "$T"', '$G list', 'git "$G" status', 'npm "$X" test', 'docker "$C" exec ctr ls', 'node "$S" list']) {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
@@ -462,7 +466,7 @@ describe('execGuardOutput', () => {
     const runner = await verdict(bash('npx teamrig exec status R1'), quiet);
     assert.equal(runner?.decision, 'deny');
     assert.match(runner?.reason ?? '', /runs through a package runner \(npx\)/);
-    for (const line of ['npx tsc --noEmit', 'npm run check', 'pnpm exec teamrig list', 'npx teamrig-lint owner next', 'yarn add teamrig', 'git log -- src/cli/main.ts']) {
+    for (const line of ['npx tsc --noEmit', 'npm run check', 'pnpm exec teamrig list', 'yarn add teamrig', 'git log -- src/cli/main.ts']) {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
   });
@@ -522,6 +526,30 @@ describe('execGuardOutput', () => {
     assert.equal(await verdict(bash('git log -- src/cli/main'), quiet), undefined);
   });
 
+  it('reads any program whose later words start a guarded command as the CLI, whatever it is named (T3069)', async () => {
+    const quiet = env();
+    for (const line of [
+      'node C:/tmp/x.js exec approve R1 --session alpha',
+      './x exec approve R1 --session alpha',
+      'python run.py exec status R1',
+      '$K x exec approve R1 --session alpha',
+    ]) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', /no install of the teamrig plugin|only known when it runs/, line);
+    }
+    const fetched = await verdict(bash('npx git+https://x/teamrig.git exec status R1'), quiet);
+    assert.match(fetched?.reason ?? '', /runs through a package runner \(npx\)/);
+    for (const line of ['node C:/tmp/x.js owner next T1', './x owner note T1 --text x']) {
+      assert.match((await verdict(bash(line), quiet))?.reason ?? '', /acts as the owner/, line);
+    }
+    assert.match((await verdict(powershell('& C:/tmp/x.ps1 exec approve R1 --session alpha'), quiet))?.reason ?? '', /no install of the teamrig plugin/);
+    // A subcommand known only when it runs counts only after teamrig's own name, so other programs' exec stays theirs.
+    for (const line of ['kubectl exec "$POD" -- ls', 'docker compose exec "$S" sh', 'kubectl exec pod -- ls', 'npm exec "$X"', 'echo hi', 'git grep "exec approve"']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+  });
+
   it('knows every teamrig owner command the CLI has, so a call through an unknown program reads as one', () => {
     const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('owner ')).map((name) => name.slice('owner '.length));
     assert.deepEqual([...OWNER_COMMANDS].sort(), commands.sort());
@@ -540,21 +568,29 @@ describe('execGuardOutput: a Bash line on Windows (T2319)', () => {
     const review = "teamrig exec guard: `teamrig exec approve` names --session bravo, but this tab is alpha's";
     const fed = 'teamrig exec guard: a shell here reads its commands from a pipe';
     for (const [line, reason] of [
-      [hiddenSeparator('teamrig owner note T1 --text x'), owner],
       [hiddenBacktick('teamrig owner note T1 --text x'), owner],
-      [hiddenSeparator('teamrig exec approve R1 --session bravo'), review],
       [hiddenBacktick('teamrig exec approve R1 --session bravo'), review],
-      [`echo teamrig owner next T1 ${bs(3)}| bash`, fed],
     ] as const) {
       const found = await verdict(bash(line), windows());
       assert.equal(found?.decision, 'deny', line);
       assert.ok(found?.reason.startsWith(reason), `${line}: ${found?.reason ?? ''}`);
       assert.equal(await verdict(bash(line)), undefined, `off Windows bash runs the line as written: ${line}`);
     }
+    // As written, echo takes the words of these as its own, which the guard reads as a possible CLI too (T3069).
+    for (const [line, reason] of [
+      [hiddenSeparator('teamrig owner note T1 --text x'), owner],
+      [hiddenSeparator('teamrig exec approve R1 --session bravo'), review],
+      [`echo teamrig owner next T1 ${bs(3)}| bash`, fed],
+    ] as const) {
+      const found = await verdict(bash(line), windows());
+      assert.equal(found?.decision, 'deny', line);
+      // The guard joins its reasons after one prefix, so each reason is found by what follows it.
+      assert.ok(found?.reason.includes(reason.replace('teamrig exec guard: ', '')), `${line}: ${found?.reason ?? ''}`);
+    }
   });
 
   it('leaves a line whose readings run no guarded call, or review only as the tab, and checks its client and reads the tab once', async () => {
-    for (const line of [`grep 'a${bs(4)}b' f`, hiddenSeparator('git status'), hiddenSeparator('teamrig exec approve R1 --session alpha')]) {
+    for (const line of [`grep 'a${bs(4)}b' f`, hiddenSeparator('git status'), hiddenBacktick('teamrig exec approve R1 --session alpha')]) {
       assert.equal(await verdict(bash(line), windows()), undefined, line);
     }
     const quiet = windows();

@@ -111,7 +111,7 @@ type GuardedCall = ReviewCall | PlainCall | UnreadableCall | OwnerCall | Setting
  */
 const CLI_ENTRY = /[\\/]cli[\\/](?:guard-)?main(?:\.[cm]?[jt]s)?$/i;
 
-/** A word a package runner reads as the teamrig package or bin, a version spec included: `teamrig`, `teamrig@latest`. */
+/** A word that names the teamrig CLI, a package runner's version spec included: `teamrig`, `teamrig@latest`. */
 const TEAMRIG_SPEC = /^teamrig(?:@[^\\/]*)?$/;
 
 /**
@@ -170,36 +170,70 @@ function ownerActionOf(words: readonly ShellWord[]): string | undefined {
   return action === undefined || action.dynamic || !OWNER_COMMANDS.has(action.text) ? undefined : action.text;
 }
 
+/** A guarded command's words in a command, and the word before them, which names the client that runs them. */
+interface GuardedStart {
+  readonly client: ShellWord;
+  readonly words: readonly ShellWord[];
+  /** True when the client is the command's own program word. */
+  readonly own: boolean;
+}
+
+/**
+ * Where a command `guarded` reads starts in a command's words, given as its program word and arguments, from the
+ * argument `from` on (T3069): any program may be the CLI, so a renamed copy (`./x exec approve`), a script of any
+ * name (`node C:/tmp/x.js exec approve`) or a package of any name (`npx git+https://... exec status`) is a call. A
+ * command written out only when the word naming the client is the teamrig CLI or only known when it runs, so
+ * `kubectl exec "$POD"` and `docker compose exec "$SERVICE"` are none; a renamed copy given a command only known when
+ * it runs goes unread.
+ */
+function guardedStartOf(program: ShellWord, args: readonly ShellWord[], from: number, guarded: (words: readonly ShellWord[]) => boolean): GuardedStart | undefined {
+  const all = [program, ...args];
+  for (let index = from + 1; index < all.length; index += 1) {
+    const client = all[index - 1];
+    const words = all.slice(index);
+    const writtenOut = words[1]?.dynamic === false;
+    if (client !== undefined && guarded(words) && (writtenOut || client.dynamic || TEAMRIG_SPEC.test(programName(client.text)))) {
+      return { client, words, own: index === 1 };
+    }
+  }
+  return undefined;
+}
+
+/** The guarded command's words in a command whose program is only known when it runs, anywhere they start (T3069). */
+export function opaqueGuardedWords(run: OpaqueRun, guarded: (words: readonly ShellWord[]) => boolean): readonly ShellWord[] | undefined {
+  return guardedStartOf(run.program, run.args, 0, guarded)?.words;
+}
+
 /**
  * How a run starts the teamrig CLI, or undefined when it does not: by name; by any program and teamrig's entry script;
- * by a package runner and the teamrig word, or a word only known when it runs, whose words `guarded` reads as a
- * command its guard checks; or by node and a script only known when it runs whose words `guarded` reads so.
+ * or by any program, its words read from wherever a command `guarded` reads starts (`guardedStartOf`). A package
+ * runner or a version manager, or a program one starts, finds its program on a PATH of its own or fetches it (`npx
+ * teamrig`, `npx -c "teamrig ..."`, `volta run teamrig`), so its teamrig may be no install of this plugin (T3069):
+ * its client is the runner.
  */
 export function teamrigLaunchOf(run: ProgramRun, guarded: (words: readonly ShellWord[]) => boolean): TeamrigLaunch | undefined {
+  const starter = PACKAGE_STARTERS.has(run.name) ? run.program : undefined;
+  const runner = run.packageRunner ?? starter;
   if (run.name === 'teamrig' || run.name === 'teamrig.ps1') {
-    // Under a package runner the name is looked up on its PATH, not the line's (`npx -c "teamrig ..."`, T3069).
-    const client: ClientWord = run.packageRunner === undefined ? { kind: 'program', word: run.program } : { kind: 'runner', word: run.packageRunner };
-    return { client, words: run.args };
+    return { client: runner === undefined ? { kind: 'program', word: run.program } : { kind: 'runner', word: runner }, words: run.args };
   }
   const entry = run.args.findIndex((word) => CLI_ENTRY.test(word.text));
   const script = entry === -1 ? undefined : run.args[entry];
   if (script !== undefined) {
     return { client: { kind: script.dynamic ? 'opaque' : 'script', word: script }, words: run.args.slice(entry + 1) };
   }
-  // A package runner or a version manager starts a program by name from wherever it finds or fetches it (`npx
-  // teamrig`, `yarn teamrig`, `volta run teamrig`), so its teamrig may be no install of this plugin (T3069).
-  if (PACKAGE_STARTERS.has(run.name)) {
-    // A package word only known when it runs may name teamrig too, so it reads as an opaque client (T3069).
-    const named = run.args.findIndex((word, index) => (word.dynamic || TEAMRIG_SPEC.test(programName(word.text))) && guarded(run.args.slice(index + 1)));
-    const word = run.args[named];
-    if (word === undefined) {
-      return undefined;
-    }
-    return { client: word.dynamic ? { kind: 'opaque', word } : { kind: 'runner', word: run.program }, words: run.args.slice(named + 1) };
+  // A runner's own first words are its subcommand (`npm exec "$X"`), never a CLI call.
+  const start = guardedStartOf(run.program, run.args, starter === undefined ? 0 : 1, guarded);
+  if (start === undefined) {
+    return undefined;
   }
-  const first = run.name === 'node' ? run.args.find((word) => !word.text.startsWith('-')) : undefined;
-  const words = first === undefined ? [] : run.args.slice(run.args.indexOf(first) + 1);
-  return first !== undefined && first.dynamic && guarded(words) ? { client: { kind: 'opaque', word: first }, words } : undefined;
+  if (start.client.dynamic) {
+    return { client: { kind: 'opaque', word: start.client }, words: start.words };
+  }
+  if (runner !== undefined) {
+    return { client: { kind: 'runner', word: runner }, words: start.words };
+  }
+  return { client: { kind: start.own ? 'program' : 'script', word: start.client }, words: start.words };
 }
 
 /** True for a teamrig call whose subcommand is only known when it runs (`teamrig "$G" approve R1`), which the walker leaves unread. */
@@ -411,8 +445,11 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     const at: WordAt = { dialect: run.dialect, dir: run.dir, home: env.home };
     return launch === undefined || call === undefined ? [] : [{ call, client: launch.client, at }];
   });
-  const opaque = runs.opaque.filter((run) => startsExec(run.args));
-  const opaqueOwner = runs.opaque.filter((run) => startsOwner(run.args));
+  const opaque = runs.opaque.filter((run) => opaqueGuardedWords(run, startsExec) !== undefined);
+  const opaqueOwner = runs.opaque.flatMap((run) => {
+    const words = opaqueGuardedWords(run, startsOwner);
+    return words === undefined ? [] : [words];
+  });
   const opaqueSettings = runs.opaque.flatMap((run) => settingsWriteOf(run.args) ?? []);
   const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
   const fed = runs.fedShells.length > 0;
@@ -422,7 +459,7 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
   const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : [])];
   reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : [])));
-  reasons.push(...opaqueOwner.map((run) => ownerRefusalOf(ownerActionOf(run.args))));
+  reasons.push(...opaqueOwner.map((words) => ownerRefusalOf(ownerActionOf(words))));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'settings' ? [settingsWriteRefusal(call.command)] : [])));
   reasons.push(...opaqueSettings.map(settingsWriteRefusal));
   const roots = new Set<string>();
