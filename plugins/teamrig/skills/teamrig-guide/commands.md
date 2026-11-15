@@ -482,6 +482,9 @@ the answer is a wake ask too, as `inbox add --wake now` posts, so an idle owner 
 one is reopened by the idle pass with it quoted; an ask that cannot be posted is a `WARN` naming that by-hand wake.
 An approved task shows `· lead approved`
 in its waiting text and `check` flags it `READY` until its owner sets the next status, which clears the answer.
+To hold an approved task until another task lands or a time comes, set it waiting again with the approval wait and the
+new one (`--waits approval:<lead>,task:T<id>`): that keeps the approval, and `check` flags the task `READY` once the
+new wait clears, so merge then. Restating the same waits, or adding a decision or another approval, asks anew.
 Only the lead answers (or a sub-lead above the task's owner, or the security reviewer, `roles.securityReviewer`, on
 a task not its own), only a task waiting on its approval, always with a note; an approval of the owner's stays the
 owner's. The same answer clears a review hold or a gate hold that `teamrig merge` made on the task's branch
