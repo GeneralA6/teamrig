@@ -1,5 +1,8 @@
 # Build on teamrig: the public interface (design)
 
+> **Proposal under discussion on [#1048](https://github.com/GeneralA6/teamrig/issues/1048), not agreed: do not build on
+> it.**
+
 **Status: design, nothing on this page is built yet.** It answers
 [#1048](https://github.com/GeneralA6/teamrig/issues/1048), which asks how a terminal app can work with teamrig without
 following teamrig's insides. It is open for comments on that issue; what ships will be marked in
