@@ -49,7 +49,7 @@ export const GENERIC_REVIEW_PATHS: readonly ReviewPath[] = [
  */
 export function reviewPathMatcher(glob: string): (path: string) => boolean {
   const rooted = glob.replace(/^\/+/, '');
-  const expression = globRegExp(rooted.includes('/') ? rooted : `**/${rooted}`, { ignoreCase: true, dotfiles: true });
+  const expression = globRegExp(rooted.includes('/') ? rooted : `**/${rooted}`, { ignoreCase: true, dotfiles: true, sets: 'bash' });
   return (path) => expression.test(path.replace(/\\/g, '/'));
 }
 
