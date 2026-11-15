@@ -84,6 +84,7 @@ class World {
     const delivery: DeliveryConfig = {
       schedule: options.schedule ?? {},
       queue: DEFAULT_QUEUE,
+      passEnv: [],
       wait: DEFAULT_DELIVERY_WAIT,
       checkTimeoutSeconds: DEFAULT_CHECK_TIMEOUT_SECONDS,
       freezes: DEFAULT_FREEZES,

@@ -36,6 +36,7 @@ describe('parseConfig', () => {
       queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, maxSmallParallel: 4, heavyIdleCpuPct: 25 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
+      passEnv: [],
       freezes: { maxMinutes: 120 },
       stablePeriods: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
       branches: DEFAULT_BRANCHES,
@@ -717,12 +718,28 @@ describe('parseConfig', () => {
       queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512, heavyReserveMb: 1024, admission: 'serial', agingMinutes: 0, memoryPassMinutes: 0, perSessionRunning: 0, maxHeavyParallel: 3, maxSmallParallel: 6, heavyIdleCpuPct: 0 },
       wait: { pollSeconds: 5, maxMinutes: 0 },
       checkTimeoutSeconds: 45,
+      passEnv: ['NPM_TOKEN', 'gh_token'],
       freezes: { maxMinutes: 90 },
       stablePeriods: { settleMinutes: 10, targetSettleMinutes: {}, assumedDeployMinutes: 5, minMinutes: 30 },
     };
     const { config, issues } = parseConfig({ ...ROSTER, delivery });
     assert.deepEqual(issues, []);
     assert.deepEqual(config.delivery, { ...delivery, schedule: {}, branches: DEFAULT_BRANCHES, repos: {} });
+  });
+
+  it('passes no credential variable on until delivery.passEnv names it, and refuses a name that is not a variable', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.delivery.passEnv, []);
+    const { config, issues } = parseConfig({ ...ROSTER, delivery: { passEnv: ['NPM_TOKEN', 'NPM TOKEN', '', 'A'.repeat(65), 7] } });
+    assert.deepEqual(config.delivery.passEnv, ['NPM_TOKEN']);
+    assert.deepEqual(
+      issues.map((issue) => issue.path),
+      ['delivery.passEnv[1]', 'delivery.passEnv[2]', 'delivery.passEnv[3]', 'delivery.passEnv[4]'],
+    );
+    assert.match(issues[0]?.message ?? '', /expected a variable name/);
+    assert.deepEqual(
+      parseConfig({ ...ROSTER, delivery: { passEnv: Array.from({ length: 33 }, (_, index) => `TOKEN_${index}`) } }).issues.map((issue) => issue.path),
+      ['delivery.passEnv'],
+    );
   });
 
   it('names new branches by Conventional Branch when delivery.branches is absent (T2690)', () => {
@@ -1034,6 +1051,7 @@ describe('parseConfig', () => {
       queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, maxSmallParallel: 4, heavyIdleCpuPct: 25 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
+      passEnv: [],
       freezes: { maxMinutes: 120 },
       stablePeriods: { settleMinutes: 30, targetSettleMinutes: {}, assumedDeployMinutes: 20, minMinutes: 15 },
       branches: DEFAULT_BRANCHES,

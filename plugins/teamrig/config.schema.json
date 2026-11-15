@@ -916,6 +916,13 @@
           "maximum": 600,
           "default": 20
         },
+        "passEnv": {
+          "description": "Credential variables the programs teamrig starts still get. teamrig leaves a fixed list (GH_TOKEN, GITHUB_TOKEN, NPM_TOKEN, NODE_AUTH_TOKEN, cloud and AI provider keys) out of the environment of queued and tested commands, merge, deploy and worktree hooks, refresh.endCommand and the team's sessions; a name here passes that one on, as a private registry's npm ci needs NPM_TOKEN. Only the owner sets it.",
+          "type": "array",
+          "maxItems": 32,
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$" },
+          "default": []
+        },
         "freezes": {
           "description": "Deploy freezes (teamrig freeze), which hold deploys of their targets while a session measures them.",
           "type": "object",

@@ -435,6 +435,9 @@ export const DEFAULT_DELIVERY_WAIT: DeliveryWaitConfig = { pollSeconds: 30, maxM
 /** A deploy's check answers within 20 seconds, else the deploy waits. */
 export const DEFAULT_CHECK_TIMEOUT_SECONDS = 20;
 
+/** No credential variable reaches a program teamrig starts until the owner names it. */
+export const DEFAULT_PASS_ENV: readonly string[] = [];
+
 /** A deploy freeze lasts at most two hours. */
 export const DEFAULT_FREEZES: FreezesConfig = { maxMinutes: 120 };
 

@@ -1203,6 +1203,12 @@ export interface DeliveryConfig {
   readonly wait: DeliveryWaitConfig;
   /** A deploy's check still running after this many seconds is stopped, and the deploy waits. */
   readonly checkTimeoutSeconds: number;
+  /**
+   * Credential variables (core/child-env.ts CREDENTIAL_VARIABLES) the programs teamrig starts still get: queued and
+   * tested commands, merge, deploy and worktree hooks, `refresh.endCommand` and the team's sessions. The rest of that
+   * list is left out of each one's environment.
+   */
+  readonly passEnv: readonly string[];
   readonly freezes: FreezesConfig;
   readonly stablePeriods: StablePeriodsConfig;
   readonly branches: BranchesConfig;

@@ -245,6 +245,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   stablePeriodMinMinutes: 'delivery.stablePeriods.minMinutes',
   resetBlackoutHours: 'delivery.schedule.resetBlackoutHours',
   execPath: 'exec.path',
+  passEnv: 'delivery.passEnv',
   spotlightDim: 'meeting.spotlight.dim',
   spotlightBreakthroughSeconds: 'meeting.spotlight.breakthroughSeconds',
 };
