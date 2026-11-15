@@ -56,6 +56,12 @@ describe('service-role guard: roles grant and revoke', () => {
       'node C:/u/.claude/plugins/cache/teamrig/teamrig/0.1.0/dist/cli/main.js roles grant github --holder alpha',
       '$T roles grant github --holder alpha',
       'teamrig roles "$WHAT" github',
+      'node C:/u/.claude/plugins/cache/teamrig/teamrig/0.1.0/dist/cli/guard-main.js roles grant github --holder alpha --yes',
+      'npx teamrig roles grant github --holder alpha --yes',
+      'npx tsx src/cli/main.ts roles grant github --holder alpha --yes',
+      'pnpm dlx teamrig@latest roles revoke github --yes',
+      'yarn teamrig roles grant github --holder alpha',
+      'bunx teamrig roles grant github --holder alpha',
     ];
     for (const command of lines) {
       assert.equal(await decide(call('Bash', { command })), 'ask', command);

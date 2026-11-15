@@ -440,6 +440,31 @@ describe('execGuardOutput', () => {
     }
   });
 
+  it('reads teamrig started through its guard entry, any script host or a package runner as the CLI (T3069)', async () => {
+    const quiet = env();
+    for (const line of [
+      `node ${INSTALL}/dist/cli/guard-main.js owner next T1`,
+      'npx tsx src/cli/main.ts owner next T1',
+      'tsx src/cli/main.ts owner next T1',
+      'bun src/cli/main.ts owner next T1',
+      'npx teamrig owner next T1',
+      'npx --yes teamrig@latest owner next T1',
+      'pnpm exec teamrig owner next T1',
+      'pnpm dlx teamrig owner next T1',
+      'yarn teamrig owner next T1',
+      'bunx teamrig owner next T1',
+      'npm exec -- teamrig owner next T1',
+    ]) {
+      assert.equal((await verdict(bash(line), quiet))?.decision, 'deny', line);
+    }
+    const runner = await verdict(bash('npx teamrig exec status R1'), quiet);
+    assert.equal(runner?.decision, 'deny');
+    assert.match(runner?.reason ?? '', /runs through a package runner \(npx\)/);
+    for (const line of ['npx tsc --noEmit', 'npm run check', 'pnpm exec teamrig list', 'npx teamrig-lint owner next', 'yarn add teamrig', 'git log -- src/cli/main.ts']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+  });
+
   it('knows every teamrig owner command the CLI has, so a call through an unknown program reads as one', () => {
     const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('owner ')).map((name) => name.slice('owner '.length));
     assert.deepEqual([...OWNER_COMMANDS].sort(), commands.sort());

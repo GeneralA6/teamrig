@@ -103,12 +103,28 @@ interface SettingsCall {
 
 type GuardedCall = ReviewCall | PlainCall | UnreadableCall | OwnerCall | SettingsCall;
 
-/** teamrig's own entry point when a line runs it through node: `node <plugin>/dist/cli/main.js exec ...`. */
-const CLI_ENTRY = /[\\/]cli[\\/]main\.[jt]s$/i;
+/**
+ * teamrig's entry scripts when a line runs one, through node or any other script host (`tsx`, `bun`, `npx tsx`): the
+ * CLI (`<plugin>/dist/cli/main.js exec ...`) and the guard entry beside it (`cli/guard-main.js`), which hands its words
+ * to the same CLI (T3069).
+ */
+const CLI_ENTRY = /[\\/]cli[\\/](?:guard-)?main\.[jt]s$/i;
 
-/** The word that names a call's client: a program word (`teamrig`, `C:/kit/bin/teamrig`), node's script, or a word only known when it runs. */
+/**
+ * The package runners, which start a program by name from wherever they find or fetch it (`npx teamrig`, `pnpm exec
+ * teamrig`, `yarn teamrig`, `bunx teamrig@1`), so their teamrig may be no install of this plugin (T3069).
+ */
+const PACKAGE_RUNNERS: ReadonlySet<string> = new Set(['npx', 'pnpx', 'npm', 'pnpm', 'yarn', 'bun', 'bunx']);
+
+/** A word a package runner reads as the teamrig package or bin, a version spec included: `teamrig`, `teamrig@latest`. */
+const TEAMRIG_SPEC = /^teamrig(?:@[^\\/]*)?$/;
+
+/**
+ * The word that names a call's client: a program word (`teamrig`, `C:/kit/bin/teamrig`), the entry script a program
+ * runs, a word only known when it runs, or a package runner that finds teamrig itself.
+ */
 export interface ClientWord {
-  readonly kind: 'program' | 'script' | 'opaque';
+  readonly kind: 'program' | 'script' | 'opaque' | 'runner';
   readonly word: ShellWord;
 }
 
@@ -160,26 +176,26 @@ function ownerActionOf(words: readonly ShellWord[]): string | undefined {
 }
 
 /**
- * How a run starts the teamrig CLI, or undefined when it does not: by name, by node and teamrig's entry, or by node and a
- * script only known when it runs whose words `guarded` reads as a command its guard checks.
+ * How a run starts the teamrig CLI, or undefined when it does not: by name; by any program and teamrig's entry script;
+ * by a package runner and the teamrig word whose words `guarded` reads as a command its guard checks; or by node and a
+ * script only known when it runs whose words `guarded` reads so.
  */
 export function teamrigLaunchOf(run: ProgramRun, guarded: (words: readonly ShellWord[]) => boolean): TeamrigLaunch | undefined {
   if (run.name === 'teamrig' || run.name === 'teamrig.ps1') {
     return { client: { kind: 'program', word: run.program }, words: run.args };
   }
-  if (run.name !== 'node') {
-    return undefined;
-  }
   const entry = run.args.findIndex((word) => CLI_ENTRY.test(word.text));
-  const script = entry === -1 ? run.args.find((word) => !word.text.startsWith('-')) : run.args[entry];
-  if (script === undefined) {
-    return undefined;
+  const script = entry === -1 ? undefined : run.args[entry];
+  if (script !== undefined) {
+    return { client: { kind: script.dynamic ? 'opaque' : 'script', word: script }, words: run.args.slice(entry + 1) };
   }
-  const words = run.args.slice(run.args.indexOf(script) + 1);
-  if (!script.dynamic) {
-    return entry === -1 ? undefined : { client: { kind: 'script', word: script }, words };
+  if (PACKAGE_RUNNERS.has(run.name)) {
+    const named = run.args.findIndex((word, index) => !word.dynamic && TEAMRIG_SPEC.test(programName(word.text)) && guarded(run.args.slice(index + 1)));
+    return named === -1 ? undefined : { client: { kind: 'runner', word: run.program }, words: run.args.slice(named + 1) };
   }
-  return entry !== -1 || guarded(words) ? { client: { kind: 'opaque', word: script }, words } : undefined;
+  const first = run.name === 'node' ? run.args.find((word) => !word.text.startsWith('-')) : undefined;
+  const words = first === undefined ? [] : run.args.slice(run.args.indexOf(first) + 1);
+  return first !== undefined && first.dynamic && guarded(words) ? { client: { kind: 'opaque', word: first }, words } : undefined;
 }
 
 /** True for a teamrig call whose subcommand is only known when it runs (`teamrig "$G" approve R1`), which the walker leaves unread. */
@@ -295,6 +311,12 @@ type ClientRoot = { readonly kind: 'root'; readonly root: string } | { readonly 
 async function clientRootOf(client: ClientWord, at: WordAt, env: ExecGuardEnv): Promise<ClientRoot> {
   if (client.kind === 'opaque') {
     return { kind: 'refused', why: opaqueRefusalOf(client.word) };
+  }
+  if (client.kind === 'runner') {
+    return {
+      kind: 'refused',
+      why: `\`teamrig exec\` here runs through a package runner (${client.word.text}), which may find or fetch a teamrig other than this plugin's install; write \`teamrig\`, or its full path.`,
+    };
   }
   const file = client.kind === 'program' ? await placeProgram(client.word.text, at, env.search) : placeScript(client.word.text, at);
   switch (file.kind) {
