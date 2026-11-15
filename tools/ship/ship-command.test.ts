@@ -33,6 +33,7 @@ function shipDeps(verdict: GateVerdict, mergeExit: number): ShipDeps {
     mainMove: () => null,
     clearMerge: () => Promise.resolve({ kind: 'approved', by: 'lead' }),
     patchOf: () => 'patch0',
+    workOf: () => [],
   };
 }
 

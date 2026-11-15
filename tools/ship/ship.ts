@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { nodeFiles } from '../../src/core/files.ts';
 import { realSleep, systemClock } from '../../src/core/lock.ts';
-import { changePatch, clearMergeFrom } from './approval.ts';
+import { changePatch, clearMergeFrom, workCommitsOf } from './approval.ts';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { leftoversCommand } from './leftovers.ts';
 import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
@@ -62,6 +62,7 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     mainMove: () => mainMovedPast(gitLine, profile.main),
     clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep), clock: systemClock }),
     patchOf: (rev) => changePatch(git, rev, `refs/remotes/origin/${profile.main}`, profile.regenerated),
+    workOf: (rev) => workCommitsOf(git, rev, `refs/remotes/origin/${profile.main}`, profile.regenerated),
   };
 }
 
