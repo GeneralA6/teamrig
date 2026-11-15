@@ -323,9 +323,9 @@ PREVIEW nothing was written; a push would send 5 write(s) now, at most 40 a run,
 ## Linking issues as the task tree
 
 `teamrig issue links` puts the task tree on the issues of `github.repos`. A task planned after another (`--after`),
-both mirrored in one repository, makes its issue blocked by the other's on GitHub. A whole is planned after its
-parts, so a part planned before exactly one whole becomes that whole's sub-issue as well. Without `--yes` it reads
-the links GitHub has and shows what it would add:
+or waiting on it (`--waits task:T10`), both mirrored in one repository, makes its issue blocked by the other's on
+GitHub. A whole is planned after its parts, so a part planned before exactly one whole becomes that whole's sub-issue
+as well. Without `--yes` it reads the links GitHub has and shows what it would add:
 
 ```sh
 teamrig issue links

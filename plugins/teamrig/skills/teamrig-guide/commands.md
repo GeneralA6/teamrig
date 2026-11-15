@@ -1471,13 +1471,13 @@ To land it: rebase its branch onto origin/main and resolve these files.
 
 ### teamrig issue links
 
-Puts the task tree on the issues of `github.repos`. A task planned after another, both mirrored in one repository
-(their `ref`s are `gh:owner/name#n`), becomes blocked by it on GitHub; a part of exactly one whole (a task planned
-after its parts) becomes its sub-issue too. Without `--yes` it reads the links GitHub has and shows what it would
-add, writing nothing. It only adds: a link a person set, or a part under another parent, stays as it is, and an edge
-to another repository is left for a person (the `LEFT` line counts them). It stops a repository at its first failed
-link; a rerun reads again and adds only what is still missing. The task list is only read. Exit 1 when a repository
-could not be read or a link not added, 2 when refused, else 0.
+Puts the task tree on the issues of `github.repos`. A task planned after another or waiting on it (a `task:` wait),
+both mirrored in one repository (their `ref`s are `gh:owner/name#n`), becomes blocked by it on GitHub; a part of
+exactly one whole (a task planned after its parts) becomes its sub-issue too. Without `--yes` it reads the links
+GitHub has and shows what it would add, writing nothing. It only adds: a link a person set, or a part under another
+parent, stays as it is, and an edge to another repository is left for a person (the `LEFT` line counts them). It
+stops a repository at its first failed link; a rerun reads again and adds only what is still missing. The task list
+is only read. Exit 1 when a repository could not be read or a link not added, 2 when refused, else 0.
 
 Flags:
 
