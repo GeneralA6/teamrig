@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { HostIssue, LabelEvent } from '../issues/issue.ts';
-import { issueTrust } from './trust.ts';
+import { isInsideAuthor, issueTrust } from './trust.ts';
 
 const ACCEPTED_AT = '2030-01-05T10:00:00Z';
 
@@ -95,5 +95,16 @@ describe('issueTrust', () => {
     assert.equal(issueTrust(acceptedBy(accept, { renamedAt: '2030-01-05T11:00:00Z' }), 'teamrig'), 'untrusted', 'title changed after');
     assert.equal(issueTrust(acceptedBy(accept, { lastEditedAt: ACCEPTED_AT }), 'teamrig'), 'untrusted', 'edited in the same second');
     assert.equal(issueTrust(acceptedBy(accept, { lastEditedAt: '2030-01-05T09:59:59Z', renamedAt: '2030-01-04T00:00:00Z' }), 'teamrig'), 'accepted');
+  });
+});
+
+describe('isInsideAuthor', () => {
+  it('takes the owner, a member and a collaborator, in any case, and no other tie', () => {
+    for (const association of ['OWNER', 'member', 'Collaborator']) {
+      assert.equal(isInsideAuthor(association), true, association);
+    }
+    for (const association of ['CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', 'NONE', '']) {
+      assert.equal(isInsideAuthor(association), false, association);
+    }
   });
 });

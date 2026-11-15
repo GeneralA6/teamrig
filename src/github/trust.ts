@@ -14,6 +14,11 @@ export type IssueTrust = 'trusted' | 'accepted' | 'untrusted';
  */
 const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
+/** Whether an author tie, as GitHub names it, is one inside the repository: its owner, a member or a collaborator. */
+export function isInsideAuthor(association: string): boolean {
+  return TRUSTED_ASSOCIATIONS.has(association.toUpperCase());
+}
+
 /** The account kind of a person on GitHub; a `Bot` (an app or a workflow) or an `Organization` never accepts. */
 const PERSON = 'User';
 
@@ -29,7 +34,7 @@ export function isInsider(association: string): boolean {
  * (the person who accepted read the older text), until someone adds the label again.
  */
 export function issueTrust(issue: HostIssue, acceptLabel: string): IssueTrust {
-  if (isInsider(issue.authorAssociation)) {
+  if (isInsideAuthor(issue.authorAssociation)) {
     return 'trusted';
   }
   if (!issue.labels.some((label) => sameLabel(label, acceptLabel))) {

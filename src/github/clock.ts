@@ -9,7 +9,7 @@ import { isRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { HostIssue } from '../issues/issue.ts';
-import { isInsider } from './trust.ts';
+import { isInsideAuthor } from './trust.ts';
 
 /** The kinds of thread, each with its own answer target. */
 export const THREAD_KINDS = ['security', 'bug', 'pull', 'comment', 'feature'] as const;
@@ -121,7 +121,7 @@ export function issueThread(issue: HostIssue, ref: string, owner: string, held: 
   }
   const opening = issue.createdAt === undefined || issue.authorKind === BOT ? [] : [{ at: issue.createdAt, association: issue.authorAssociation }];
   const comments = issue.comments.filter((comment) => comment.authorKind !== BOT).map((comment) => ({ at: comment.at, association: comment.authorAssociation }));
-  const posts = [...opening, ...comments].map((post) => ({ at: Date.parse(post.at), ours: isInsider(post.association) }));
+  const posts = [...opening, ...comments].map((post) => ({ at: Date.parse(post.at), ours: isInsideAuthor(post.association) }));
   return { repo: issue.repo, ref, kind: issueKind(issue.labels, held), owner, posts };
 }
 
