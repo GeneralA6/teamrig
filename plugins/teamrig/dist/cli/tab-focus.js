@@ -1,10 +1,12 @@
 import { ENV } from "../core/home.js";
+import { MeetingSchedule, meetingsOnOf } from "../meeting/schedule.js";
 import { MeetingStore, phaseOf } from "../meeting/state.js";
 import { loadTree } from "./tree.js";
 /**
  * Whether a tab a command opens takes the focus (T2510): only when the human typed the command, which Claude Code's
  * CLAUDECODE in the environment rules out (an agent's tool call, a hook, a script one runs), and no team of the kit home
- * has its meeting open, so a tab opened then never pulls the owner out of the meeting.
+ * has its daily meeting open or a booked or on-the-spot one on (T2985), so a tab opened then never pulls the owner
+ * out of the meeting.
  */
 export async function tabFocusOf(runtime) {
     const claudeCode = runtime.env[ENV.claudeCode];
@@ -14,7 +16,7 @@ export async function tabFocusOf(runtime) {
     const { teams } = await loadTree(runtime);
     const now = runtime.clock.now();
     for (const { kit } of teams.values()) {
-        if (phaseOf(await new MeetingStore(runtime.files, kit.paths.meeting).read(), now).kind === 'open') {
+        if (phaseOf(await new MeetingStore(runtime.files, kit.paths.meeting).read(), now).kind === 'open' || meetingsOnOf((await new MeetingSchedule(runtime.files, kit.paths.meetings).read()).meetings, now).length > 0) {
             return 'keep';
         }
     }

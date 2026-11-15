@@ -49,6 +49,11 @@ export function pickerReason(command, asker, meeting) {
             " its options numbered and your recommendation first, and let the owner answer in their own words; record the answer in the same turn:" +
             ` \`${command} update <id> --decided --note "owner decided: <decision>" --session ${asker.session}\`.`);
     }
+    if (asker.role !== 'helper' && meeting.inTab !== undefined) {
+        return (`${guard} your meeting ${meeting.inTab} with the owner is in this tab: ask in plain text,` +
+            ' your options numbered and your recommendation first, and let the owner answer in their own words; record a decision on its task in the same turn:' +
+            ` \`${command} update <id> --decided --note "owner decided: <decision>" --session ${asker.session}\`.`);
+    }
     if (asker.role === 'helper') {
         return (`${guard} a helper's question picker stops the session that started it until the owner answers, and the owner may be away for hours.` +
             ' Decide it yourself if it is within your brief. Else finish the rest of your brief and end your report with the decision:' +

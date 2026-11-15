@@ -153,7 +153,7 @@ const COMMANDS = {
         load: async () => (await skillsCommands()).scorecard,
     },
     start: { effect: 'write', flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
-    'meeting start': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingStart },
+    'meeting start': { effect: 'write', flags: ['session', 'about', 'meets', 'minutes', 'with', 'tasks', 'brief'], load: async () => (await meetingCommands()).meetingStart },
     'meeting agenda': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingAgenda },
     'meeting end': { effect: 'write', flags: ['session', 'note'], load: async () => (await meetingCommands()).meetingEnd },
     'meeting schedule': { effect: 'write', flags: ['session', 'meets', 'at', 'about', 'minutes', 'with', 'tasks', 'brief'], load: async () => (await meetingsCommands()).meetingSchedule },
@@ -418,9 +418,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       are told
   meeting start <id>   the owner starts a scheduled meeting, from any session: the session met gets its
       opening prompt (the topic, tasks, brief and those joining), its running tab brought to the front
-      and woken once idle or a closed one opened, and those joining are told by one inbox line
+      and woken once idle or a closed one opened, and those joining are told by one inbox line; started
+      in the session met's own tab, the prompt prints there instead
+  meeting start --about "<one line>" [--meets <id|name>] [--minutes <n>] [--with a,b] [--tasks T1,T2]
+      [--brief <path>]   the owner's meeting on the spot with any session, a worker too: the caller's own,
+      else --meets's; booked and started at once (M3), refused while that session is in one already.
+      While a meeting is on, its tab is in meeting mode: messages to its session are held but CRITICAL
+      ones, the question picker asks in plain text and its status line leads with Meeting: <its title>
   meeting end <id> [--note "<what came of it>"] | meeting drop <id> --note "<why>"   the meeting was
-      held, or will not be; those it meets are told what came of it, or why
+      held, or will not be; those it meets are told what came of it, or why; meeting end with no id
+      ends the meeting on in the caller's tab (the lead's daily one first)
   decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
       decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
       and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a

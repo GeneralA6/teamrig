@@ -28,7 +28,7 @@ import { loadTree } from "../tree.js";
 import { weekLineOf } from "./budget.js";
 import { inboxDepsOf, read } from "./inbox.js";
 import { decidedByOf, decisionAgendaOf } from "./meeting-registers.js";
-import { agendaMeetingLines, meetingEndScheduled, meetingStartScheduled } from "./meetings.js";
+import { agendaMeetingLines, meetingEndScheduled, meetingStartNow, meetingStartScheduled, ownMeetingIdOf } from "./meetings.js";
 import { taskTreeOf, weekFitOf } from "./register.js";
 import { foldStats, statsTopLines } from "./stats.js";
 /** The caller's team, refused unless the caller is its lead: the meeting is the lead's with the owner, over its subtree. */
@@ -42,7 +42,8 @@ async function meetingKit(args, runtime, access) {
     const holder = roster.holderOf('lead');
     const lead = holder !== undefined && roster.ids.includes(holder) ? holder : undefined;
     if (lead === undefined || caller !== lead) {
-        throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} runs the owner's daily meeting`);
+        throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} runs the owner's daily meeting; ` +
+            `a meeting of your own with the owner: ${KIT_NAME} meeting start --about "<what>"`);
     }
     const kitTree = await loadTree(runtime);
     const store = new MeetingStore(runtime.files, kit.paths.meeting);
@@ -189,11 +190,14 @@ async function printAgenda(args, runtime, mk, phase) {
 /**
  * `meeting start`: opens the meeting and prints the agenda; it posts no line, as the hook tells each sender it
  * holds. A meeting already open stays as it is: its agenda prints. With an id, `meeting start M3` starts a scheduled
- * meeting instead (meetings.ts).
+ * meeting instead (meetings.ts), and with `--about` any session's meeting with the owner on the spot (T2985).
  */
 export async function meetingStart(args, runtime) {
     if (args.positionals.length > 0) {
         return meetingStartScheduled(args, runtime);
+    }
+    if (args.flags.has('about')) {
+        return meetingStartNow(args, runtime);
     }
     const mk = await meetingKit(args, runtime, 'write');
     const phase = phaseOf(await mk.store.read(), mk.now);
@@ -242,14 +246,19 @@ export async function meetingAgenda(args, runtime) {
  * updated during the meeting those updates (the decisions recorded) by one inbox line, in a team under the lead's
  * too (T1018); a session with none gets no line. Every card the agenda asked that got no answer (a Decided or a Later)
  * carries over (carried.ts): recorded on the meeting, the next agenda asks it first (T2775). `meeting end <id>` ends a
- * scheduled meeting instead (meetings.ts).
+ * scheduled meeting instead (meetings.ts), and with no id, the meeting on in the caller's tab, the lead's daily one
+ * first (T2985).
  */
 export async function meetingEnd(args, runtime) {
     if (args.positionals.length > 0) {
         return meetingEndScheduled(args, runtime);
     }
+    const inTab = await ownMeetingIdOf(args, runtime);
+    if (inTab !== undefined) {
+        return meetingEndScheduled({ ...args, positionals: [inTab] }, runtime);
+    }
     if (args.flags.has('note')) {
-        throw new UsageError('--note goes with meeting end <id>, a scheduled meeting; the daily meeting records its decisions on the tasks');
+        throw new UsageError('--note goes with meeting end <id>, a booked or on-the-spot meeting; the daily meeting records its decisions on the tasks');
     }
     const mk = await meetingKit(args, runtime, 'write');
     const phase = phaseOf(await mk.store.read(), mk.now);

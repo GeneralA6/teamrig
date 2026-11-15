@@ -5,6 +5,7 @@ import { helperOf } from "../../hooks/helper-start.js";
 import { refusalOutput } from "../../hooks/permission.js";
 import { askerOf, guardsPicker, pickerReason } from "../../hooks/picker-guard.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
+import { MeetingSchedule, meetingInTabOf } from "../../meeting/schedule.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { noPositionals } from "../args.js";
 import { openKit, rosterOf } from "../kit.js";
@@ -43,7 +44,9 @@ export async function pickerRefusal(runtime, kit, config, payload) {
     if (asker === undefined) {
         return undefined;
     }
-    const meeting = { open: (asker.role === 'lead' || asker.role === 'subteam-lead') && (await meetingOpen(runtime, kit)) };
+    const now = runtime.clock.now();
+    const inTab = asker.role === 'helper' ? undefined : meetingInTabOf((await new MeetingSchedule(runtime.files, kit.paths.meetings).read()).meetings, asker.session, now)?.id;
+    const meeting = { open: (asker.role === 'lead' || asker.role === 'subteam-lead') && (await meetingOpen(runtime, kit)), inTab };
     return pickerReason(KIT_NAME, asker, meeting);
 }
 /**
