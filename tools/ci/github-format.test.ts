@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { DEFAULT_GITHUB } from '../../src/config/defaults.ts';
+import { DESIGN_LABEL_SPEC } from '../../src/issues/design-label.ts';
 import { formInputs, formLabels, ISSUE_FORMS, LABEL_DESCRIPTION_MAX, parseLabels, PULL_SECTIONS, sectionsOf } from './github-format.ts';
 
 const read = (path: string): string => readFileSync(new URL(`../../.github/${path}`, import.meta.url), 'utf8');
@@ -84,6 +85,10 @@ describe('.github issue forms, labels and pull request template', () => {
     for (const name of used) {
       assert.ok(names.has(name), `labels.json lacks ${name}`);
     }
+  });
+
+  it('lists the design label as teamrig makes it, so the form and the code agree (T3096)', () => {
+    assert.deepEqual(labels.find((label) => label.name === DESIGN_LABEL_SPEC.name), DESIGN_LABEL_SPEC);
   });
 
   it('gives the pull request template its sections, in order', () => {
