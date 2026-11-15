@@ -3,7 +3,9 @@ import { recordField, stringField, type JsonRecord } from '../../core/guards.ts'
 import { toJsonlLine } from '../../core/jsonl.ts';
 import { ROLE_CAP_WINDOW_MS, roleAllowOutput, roleAllowRecord, roleAllowsSince, roleCapOutput, roleHolding } from '../../hooks/service-role-allow.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
+import { isIssueCommand } from '../../permissions/service-commands.ts';
 import { toolRoleCallOf } from '../../permissions/service-role-call.ts';
+import { shipBranchOf, shipToolTest } from '../ship-role-check.ts';
 import type { CommandTable } from '../../slash/plan.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { rosterOf, type Kit } from '../kit.ts';
@@ -23,7 +25,8 @@ async function holderOf(runtime: CliRuntime, kit: Kit, config: KitConfig, claude
 
 /**
  * What the route-allow hook prints for a service role's call: an allow when the tab's holder holds a role giving the
- * call's command, every guard passed it (`guardsPass`) and the role is under its daily cap; an ask of the owner past
+ * call's command, every guard passed it (`guardsPass`), a close or comment is under the role's daily cap and a ship or
+ * merge runs the team's landed ship tool on the holder's own task branch (ship-role-check.ts); an ask of the owner past
  * the cap; else '', so the permission check decides. It answers only with the switch on and a config that loaded with
  * no issue from this release (a newer one's or a broken key's config gives no role), and only once the allow is
  * logged: the cap counts the log, so a log it cannot write lets nothing past.
@@ -39,19 +42,25 @@ export async function roleAllowOutputOf(runtime: CliRuntime, kit: Kit, payload: 
   if (claudeSession === null || command === undefined) {
     return '';
   }
-  const context = { ...kitContextOf(runtime, payload, cli), repos: config.github.repos };
+  const context = { ...kitContextOf(runtime, payload, cli), repos: config.github.repos, isShipTool: shipToolTest(kit, config) };
   const call = await toolRoleCallOf(stringField(payload, 'tool_name'), command, runtime.platform, context);
   const holder = call === undefined ? undefined : await holderOf(runtime, kit, config, claudeSession, call.session);
   const role = call === undefined || holder === undefined ? undefined : roleHolding(config.serviceRoles, call.command, holder);
-  if (call === undefined || holder === undefined || role === undefined || !(await guardsPass())) {
+  if (call === undefined || holder === undefined || role === undefined) {
+    return '';
+  }
+  // A ship is held to the holder's own task branch (C4) and logged by it; a close or comment counts toward the cap (C6).
+  const target = 'ship' in call ? await shipBranchOf(runtime, kit, config, holder, call.ship) : call.target;
+  if (target === undefined || !(await guardsPass())) {
     return '';
   }
   const log = hookLogOf(runtime, kit.paths, 'prompt-answers');
   const now = runtime.clock.now();
   const cap = config.prompts.serviceRoleDailyCap;
-  if (roleAllowsSince((await log.read()) ?? '', role, now - ROLE_CAP_WINDOW_MS) >= cap) {
+  if (isIssueCommand(call.command) && roleAllowsSince((await log.read()) ?? '', role, now - ROLE_CAP_WINDOW_MS) >= cap) {
     return roleCapOutput(role, cap, config.prompts.hookAsks);
   }
-  await log.append(toJsonlLine(roleAllowRecord({ at: new Date(now), session: holder, claudeSession, role, call })));
-  return roleAllowOutput(role, call);
+  const acted = { command: call.command, target };
+  await log.append(toJsonlLine(roleAllowRecord({ at: new Date(now), session: holder, claudeSession, role, call: acted })));
+  return roleAllowOutput(role, acted);
 }

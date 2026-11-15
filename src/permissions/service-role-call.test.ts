@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { COMMAND_TABLE } from '../cli/run.ts';
 import { roleCallOf, roleScanTextOf, toolRoleCallOf, type RoleCallContext } from './service-role-call.ts';
 
-const CONTEXT: RoleCallContext = { cli: COMMAND_TABLE, ownClient: async (word) => word === 'teamrig', repos: ['acme/web'] };
+const SHIP_TOOL = '/repo/.ship/tools/ship/ship.ts';
+const CONTEXT: RoleCallContext = { cli: COMMAND_TABLE, ownClient: async (word) => word === 'teamrig', repos: ['acme/web'], isShipTool: (word) => word === SHIP_TOOL };
 
 describe('service-role call: the mask', () => {
   it('masks a literal double-quoted text and an issue target, and nothing else', () => {
@@ -85,5 +86,27 @@ describe('service-role call: the shapes', () => {
     assert.equal(await toolRoleCallOf('PowerShell', line, 'win32', CONTEXT), undefined);
     assert.equal(await toolRoleCallOf(undefined, line, 'linux', CONTEXT), undefined);
     assert.equal(await toolRoleCallOf('Bash', 'teamrig issue close acme/web#7 --comment "a\\\\b"', 'win32', CONTEXT), undefined, 'a line with two readings');
+  });
+});
+
+describe('service-role call: a queued ship or merge (T2984)', () => {
+  const ship = `teamrig queue --kind ship --what "ship T1: the CLI" --task T1 --detach --max-minutes 45 --session alpha -- node ${SHIP_TOOL} /w/t1-cli /t/T1/plan.json`;
+
+  it('reads a ship and a merge of the team ship tool, with the worktree as its target and the session the line names', async () => {
+    assert.deepEqual(await roleCallOf(ship, CONTEXT), {
+      command: 'queue ship',
+      target: '/w/t1-cli',
+      session: 'alpha',
+      ship: { tool: SHIP_TOOL, worktree: '/w/t1-cli', files: ['/t/T1/plan.json'], task: 'T1', merges: false },
+    });
+    const merge = await toolRoleCallOf('Bash', `${ship} --merge --approved 0123abc --note-file /t/T1/pr.md`, 'win32', CONTEXT);
+    assert.deepEqual(merge?.command, 'queue merge');
+    assert.ok(merge !== undefined && 'ship' in merge && merge.ship.merges);
+  });
+
+  it('reads no ship of another tool, joined to another command, or naming no --session (N1)', async () => {
+    for (const line of [ship.replace(SHIP_TOOL, '/repo/other.ts'), `${ship}; rm -rf x`, ship.replace('--kind ship', '--kind test'), ship.replace(' --session alpha', '')]) {
+      assert.equal(await roleCallOf(line, CONTEXT), undefined, line);
+    }
   });
 });

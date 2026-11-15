@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { EXIT } from './runtime.ts';
 
 const ANSWERS_LOG = join(TEAM_HOME, 'state', 'prompt-answers.jsonl');
@@ -129,5 +130,94 @@ describe('hook route-allow: service roles', () => {
     const full = await boundKit();
     const files = new FaultyFiles(full.files).fail('append', ANSWERS_LOG, systemError('ENOSPC'));
     assert.deepEqual(await full.run(HOOK, { stdin: call(CLOSE), env: ALPHA, files }), NOTHING);
+  });
+});
+
+const SHIP_TOOL = '/repo/ship/tools/ship/ship.ts';
+const SHIP_WORKTREE = '/repo/app/.claude/worktrees/t1-cli';
+/** The team's tasks folder with forward slashes, as a role call's line spells a path on every OS. */
+const TASKS = join(TEAM_HOME, 'tasks').replaceAll('\\', '/');
+const TASK_FILES = `${TASKS}/T1`;
+const SHIP = `teamrig queue --kind ship --what "ship T1" --task T1 --session alpha -- node ${SHIP_TOOL} ${SHIP_WORKTREE} ${TASK_FILES}/plan.json`;
+const MERGE = `${SHIP} --merge --approved 0123456 --note-file ${TASK_FILES}/pr.md`;
+
+/** A team whose `ship` role gives every session the ship tool of repo app, which its tab bound to alpha runs on T1, alpha's. */
+async function shipKit(extra: JsonRecord = {}): Promise<{ kit: CliHarness; git: FakeMergeGit }> {
+  const kit = new CliHarness({
+    ...TEAM,
+    delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT, shipTool: SHIP_TOOL } } },
+    serviceRoles: { ship: { holders: 'team', commands: ['queue ship', 'queue merge'] } },
+    ...extra,
+  });
+  assert.equal((await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha'])).code, EXIT.ok);
+  await mark(kit, 'alpha');
+  const git = new FakeMergeGit();
+  git.checkouts.set(SHIP_WORKTREE, { top: SHIP_WORKTREE, branch: 't1-cli', mainCheckout: MAIN_CHECKOUT, linked: true });
+  const shipCheckout = { top: '/repo/ship', branch: undefined, mainCheckout: MAIN_CHECKOUT, linked: true };
+  git.checkouts.set('/repo/ship', shipCheckout);
+  git.checkouts.set('/repo/ship/tools/ship', shipCheckout);
+  git.heads.set('/repo/ship', 'base');
+  git.tracking.set('origin/main', 'base');
+  return { kit, git };
+}
+
+describe('hook route-allow: the ship role (T2984)', () => {
+  it("allows a queued ship and merge of the holder's own task branch, logging the branch, and counts neither toward the cap (C4, C6)", async () => {
+    const { kit, git } = await shipKit({ prompts: { serviceRoleDailyCap: 1 } });
+    for (const line of [SHIP, MERGE, MERGE]) {
+      const result = await kit.run(HOOK, { stdin: call(line), env: ALPHA, mergeGit: git });
+      assert.equal(decisionOf(result), 'allow', line);
+      assert.deepEqual(result.stderr, []);
+    }
+    const [first, second] = await answersOf(kit);
+    assert.deepEqual(first, { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: CLAUDE_SESSION, tool: 'Bash', event: 'PreToolUse', answer: 'role', role: 'ship', command: 'queue ship', target: 't1-cli' });
+    assert.ok(isRecord(second) && second['command'] === 'queue merge' && second['target'] === 't1-cli');
+  });
+
+  it("gives no ship of another session's task, another task's files, or a worktree off the repository's folder (C4)", async () => {
+    const { kit, git } = await shipKit();
+    const lines = [
+      SHIP.replace('--task T1', '--task T2'),
+      `${SHIP} --merge --note-file ${TASKS}/T2/pr.md`,
+      SHIP.replace(`${TASK_FILES}/plan.json`, '/tmp/plan.json'),
+      SHIP.replace(SHIP_WORKTREE, '/w/feat'),
+      SHIP.replace(SHIP_TOOL, '/repo/app/tools/ship/ship.ts'),
+    ];
+    for (const line of lines) {
+      assert.deepEqual(await kit.run(HOOK, { stdin: call(line), env: ALPHA, mergeGit: git }), NOTHING, line);
+    }
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP.replace('--session alpha', '--session bravo')), env: ALPHA, mergeGit: git }), NOTHING, "alpha's tab running as bravo");
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP.replace(' --session alpha', '')), env: ALPHA, mergeGit: git }), NOTHING, 'no --session, whatever the environment says (N1)');
+    const bravos = await shipKit();
+    assert.equal((await bravos.kit.run(['add', '--title', 'Ship the API', '--description', 'what and why', '--priority', 'p1', '--owner', 'bravo', '--session', 'lead'])).code, EXIT.ok);
+    bravos.git.checkouts.set(SHIP_WORKTREE, { top: SHIP_WORKTREE, branch: 't2-api', mainCheckout: MAIN_CHECKOUT, linked: true });
+    const bravoShip = SHIP.replace('--task T1', '--task T2').replace(`${TASK_FILES}/`, `${TASKS}/T2/`);
+    assert.deepEqual(await bravos.kit.run(HOOK, { stdin: call(bravoShip), env: ALPHA, mergeGit: bravos.git }), NOTHING, "bravo's task");
+    const main = await shipKit();
+    main.git.checkouts.set(SHIP_WORKTREE, { top: SHIP_WORKTREE, branch: 'main', mainCheckout: MAIN_CHECKOUT, linked: true });
+    assert.deepEqual(await main.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: main.git }), NOTHING, 'a protected branch');
+    const other = await shipKit();
+    other.git.checkouts.set(SHIP_WORKTREE, { top: SHIP_WORKTREE, branch: 't1-cli', mainCheckout: '/repo/other', linked: true });
+    assert.deepEqual(await other.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: other.git }), NOTHING, "another repository's worktree");
+    assert.deepEqual(await answersOf(kit), []);
+  });
+
+  it('gives no ship when the tool has a change, is untracked, sits off main, or in another repository (C5)', async () => {
+    const changed = await shipKit();
+    changed.git.status.set('/repo/ship', ['?? tools/ship/extra.ts']);
+    const untracked = await shipKit();
+    untracked.git.blobs.set('base:tools/ship/ship.ts', undefined);
+    const behind = await shipKit();
+    behind.git.heads.set('/repo/ship', 'mine');
+    const elsewhere = await shipKit();
+    elsewhere.git.checkouts.set('/repo/ship', { top: '/repo/ship', branch: undefined, mainCheckout: '/repo/other', linked: true });
+    for (const [name, { kit, git }] of Object.entries({ changed, untracked, behind, elsewhere })) {
+      assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: git }), NOTHING, name);
+    }
+  });
+
+  it('gives no ship to a team whose repository names no ship tool', async () => {
+    const { kit, git } = await shipKit({ delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT } } } });
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: git }), NOTHING);
   });
 });

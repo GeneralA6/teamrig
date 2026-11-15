@@ -9,6 +9,7 @@ const ROLES: Readonly<Record<string, ServiceRoleConfig>> = {
   github: { holders: ['alpha'], commands: ['issue close', 'issue comment'] },
   bot: { holders: ['alpha', 'bravo'], commands: ['issue comment'] },
   open: { holders: 'team', commands: ['issue close'] },
+  ship: { holders: 'team', commands: ['queue ship', 'queue merge'] },
 };
 
 function decisionOf(output: string): string | undefined {
@@ -29,6 +30,12 @@ describe('service-role allow: who holds what', () => {
     assert.equal(roleHolding(ROLES, 'issue close', 'charlie'), undefined);
     assert.equal(roleHolding({}, 'issue close', 'alpha'), undefined);
   });
+
+  it('gives a ship and merge to every session through "team", since the allow holds each to its own task branch (C4)', () => {
+    assert.equal(roleHolding(ROLES, 'queue ship', 'charlie'), 'ship');
+    assert.equal(roleHolding(ROLES, 'queue merge', 'alpha'), 'ship');
+    assert.equal(roleHolding({ github: { holders: ['alpha'], commands: ['issue close'] } }, 'queue ship', 'alpha'), undefined);
+  });
 });
 
 describe('service-role allow: the daily cap and the log', () => {
@@ -44,6 +51,7 @@ describe('service-role allow: the daily cap and the log', () => {
       line('2030-01-07T11:00:00.000Z', 'bot'),
       toJsonlLine({ v: 1, at: '2030-01-07T11:00:00.000Z', answer: 'route', route: 'merge', role: 'github' }),
       toJsonlLine({ v: 1, at: 'yesterday', answer: 'role', role: 'github' }),
+      toJsonlLine({ v: 1, at: '2030-01-07T11:00:00.000Z', answer: 'role', role: 'github', command: 'queue merge', target: 't1-cli' }),
       'not json',
     ].join('');
     assert.equal(roleAllowsSince(log, 'github', now - ROLE_CAP_WINDOW_MS), 2);

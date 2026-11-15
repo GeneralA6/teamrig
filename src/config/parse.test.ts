@@ -517,6 +517,14 @@ describe('parseConfig', () => {
     }
   });
 
+  it('reads "team" holders for the queued runs of the ship tool, which hold each caller to its own work (T2984 C4)', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, serviceRoles: { ship: { holders: 'team', commands: ['queue ship', 'queue merge'] } } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.serviceRoles, { ship: { holders: 'team', commands: ['queue ship', 'queue merge'] } });
+    const mixed = parseConfig({ ...ROSTER, serviceRoles: { ship: { holders: 'team', commands: ['queue ship', 'issue comment'] } } });
+    assert.match(mixed.issues[0]?.message ?? '', /every session issue comment,/);
+  });
+
   it('refuses "team" holders for a command that acts as whoever runs it (T2984 C4)', () => {
     const parsed = parseConfig({ ...ROSTER, serviceRoles: { github: { holders: 'team', commands: ['issue close'] } } });
     assert.deepEqual(paths(parsed.issues), ['serviceRoles.github.holders']);

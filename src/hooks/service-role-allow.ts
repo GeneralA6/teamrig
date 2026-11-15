@@ -1,17 +1,21 @@
 import type { HookAsks, ServiceRoleConfig } from '../config/types.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
-import { TEAM_HELD_COMMANDS, type ServiceCommand } from '../permissions/service-commands.ts';
+import { isIssueCommand, TEAM_HELD_COMMANDS, type ServiceCommand } from '../permissions/service-commands.ts';
 import type { RoleCall } from '../permissions/service-role-call.ts';
 import { holdBackOutput } from './permission.ts';
 
 /**
  * The service-role allow (T2984, the owner's option A): a session holding a role runs the role's teamrig commands with no
- * permission check, so a job the owner gave it (closing the GitHub issue a fix landed for) never stalls on a prompt.
- * It answers only for the tab bound to the holder (C1), only once every guard passed the call, and only up to
- * `prompts.serviceRoleDailyCap` calls a role in 24 hours, then it asks the owner (C6). Its log line names the role,
- * command and issue, never the text (C7); `prompts.routeAllow: off` takes it away.
+ * permission check, so a job the owner gave it (closing the GitHub issue a fix landed for, shipping its own branch)
+ * never stalls on a prompt. It answers only for the tab bound to the holder (C1), only once every guard passed the
+ * call, and only up to `prompts.serviceRoleDailyCap` closes and comments a role in 24 hours, then it asks the owner
+ * (C6); a ship is held to the holder's own task branch instead (C4). Its log line names the role, command and issue or
+ * branch, never the text (C7); `prompts.routeAllow: off` takes it away.
  */
+
+/** A role call's command and what it acts on, as the log and the allow name them. */
+export type RoleTarget = Pick<RoleCall, 'command' | 'target'>;
 
 /** The rolling window the daily cap counts over. */
 export const ROLE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -34,11 +38,11 @@ export function roleHolding(roles: Readonly<Record<string, ServiceRoleConfig>>, 
     });
 }
 
-/** How many calls the role's allow let run at or after `sinceMs`, by the prompt-answers log's text. */
+/** How many closes and comments the role's allow let run at or after `sinceMs`, by the prompt-answers log's text; a ship counts toward no cap. */
 export function roleAllowsSince(log: string, role: string, sinceMs: number): number {
   return parseJsonl(log).records.filter(({ record }) => {
     const at = record['at'];
-    return record['answer'] === 'role' && record['role'] === role && typeof at === 'string' && Date.parse(at) >= sinceMs;
+    return record['answer'] === 'role' && record['role'] === role && isIssueCommand(record['command']) && typeof at === 'string' && Date.parse(at) >= sinceMs;
   }).length;
 }
 
@@ -48,12 +52,13 @@ export interface RoleAllowFacts {
   readonly session: string;
   readonly claudeSession: string;
   readonly role: string;
-  readonly call: RoleCall;
+  /** The command, and what it acts on: the issue, or the branch a ship or merge runs on. */
+  readonly call: RoleTarget;
 }
 
 /**
  * One line of the team's prompt-answers log for a role's allow, beside the route allows: the role, the table command and
- * the issue it acts on, never the comment's text (C7).
+ * the issue or branch it acts on, never the comment's text (C7).
  */
 export function roleAllowRecord(facts: RoleAllowFacts): JsonRecord {
   return {
@@ -70,8 +75,8 @@ export function roleAllowRecord(facts: RoleAllowFacts): JsonRecord {
   };
 }
 
-/** The hook's stdout for a role's call: an allow naming the role, the command and the issue. */
-export function roleAllowOutput(role: string, call: RoleCall): string {
+/** The hook's stdout for a role's call: an allow naming the role, the command and the issue or branch. */
+export function roleAllowOutput(role: string, call: RoleTarget): string {
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',

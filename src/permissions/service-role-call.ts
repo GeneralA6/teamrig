@@ -1,9 +1,10 @@
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { parseIssueTarget, targetText } from '../issues/host.ts';
 import { readable } from '../slash/plan.ts';
-import { matchesKit, type KitContext, type KitShape } from './route-kit.ts';
+import { matchesKit, type KitShape } from './route-kit.ts';
 import { plainWordsOf } from './route-line.ts';
-import { isServiceCommand, type ServiceCommand } from './service-commands.ts';
+import { isIssueCommand, type IssueCommand, type ShipCommand } from './service-commands.ts';
+import { shipCallOf, type ShipCallContext, type ShipRun } from './ship-role-call.ts';
 
 /**
  * The call shapes a service role lets run (T2984, design 1): each table command as the CLI's own parser reads it, with
@@ -13,11 +14,12 @@ import { isServiceCommand, type ServiceCommand } from './service-commands.ts';
  * target and a comment need, so this reader masks exactly those parts first, after proving them literal to bash: the
  * target word as `owner/name#n` (a `#` inside a word starts no comment), and each double-quoted text holding no `"`,
  * `\`, `$`, backtick or control character (bash expands nothing in it). A line with a single quote or a backslash
- * outside such a text is no role call: the mask could not tell where bash's quotes end.
+ * outside such a text is no role call: the mask could not tell where bash's quotes end. A queued ship or merge is read
+ * in the ship tool's own shape (ship-role-call.ts), through the same mask.
  */
 
-/** The shape of each table command; a new table entry adds its shape here, with a security review. */
-const SHAPES: Readonly<Record<ServiceCommand, KitShape>> = {
+/** The shape of each issue command; a new table entry adds its shape here, with a security review. */
+const SHAPES: Readonly<Record<IssueCommand, KitShape>> = {
   'issue close': { commands: ['issue close'], options: ['session', 'comment'], positionals: 'one' },
   'issue comment': { commands: ['issue comment'], options: ['session', 'body'], positionals: 'one' },
 };
@@ -54,9 +56,9 @@ export function roleScanTextOf(line: string): string | undefined {
   return scanned.replace(TARGET_WORD, '$1_$2');
 }
 
-/** What a role call runs: the table command, its target, and the `--session` it names. */
-export interface RoleCall {
-  readonly command: ServiceCommand;
+/** An issue command's call: the issue, and the `--session` the line names. */
+export interface IssueRoleCall {
+  readonly command: IssueCommand;
   /** `owner/name#n`, as the command takes it, lowercased. */
   readonly target: string;
   /**
@@ -65,6 +67,18 @@ export interface RoleCall {
    */
   readonly session: string;
 }
+
+/** A queued ship or merge: what the tool runs on, for the allow to check, and the queue's `--session` (N1, as above). */
+export interface ShipRoleCall {
+  readonly command: ShipCommand;
+  /** The worktree, as the line names it; the allow logs its branch instead. */
+  readonly target: string;
+  readonly session: string;
+  readonly ship: ShipRun;
+}
+
+/** What a role call runs: the table command, its target, and the session the line names. */
+export type RoleCall = IssueRoleCall | ShipRoleCall;
 
 /** The flags whose text a role call posts on GitHub. */
 const POSTED_FLAGS: readonly string[] = ['comment', 'body'];
@@ -76,8 +90,11 @@ const POSTED_FLAGS: readonly string[] = ['comment', 'body'];
  */
 const UNPOSTABLE = /[\p{Cf}\p{Zl}\p{Zp}]|(?<![\p{L}\p{N}_])@[\p{L}\p{N}]/u;
 
-/** What a role call needs beyond the line: the CLI's table, its own launcher, and the team's GitHub repositories. */
-export interface RoleCallContext extends KitContext {
+/**
+ * What a role call needs beyond the line: the CLI's table, its own launcher, the team's GitHub repositories, and
+ * whether a word names the team's ship tool.
+ */
+export interface RoleCallContext extends ShipCallContext {
   readonly repos: readonly string[];
 }
 
@@ -86,7 +103,13 @@ export async function roleCallOf(line: string, context: RoleCallContext): Promis
   const scanned = roleScanTextOf(line);
   const words = scanned === undefined ? undefined : plainWordsOf(line, scanned);
   const parsed = words === undefined ? undefined : readable(words.slice(1), context.cli);
-  if (words === undefined || parsed === undefined || !isServiceCommand(parsed.command)) {
+  const [program] = words ?? [];
+  if (program !== undefined && parsed?.command === 'queue') {
+    const ship = await shipCallOf(program, parsed, context);
+    const session = parsed.flags.get('session');
+    return ship === undefined || session === undefined ? undefined : { command: ship.merges ? 'queue merge' : 'queue ship', target: ship.worktree, session, ship };
+  }
+  if (words === undefined || parsed === undefined || !isIssueCommand(parsed.command)) {
     return undefined;
   }
   const command = parsed.command;

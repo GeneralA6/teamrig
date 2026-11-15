@@ -1444,9 +1444,9 @@
             ]
           },
           "commands": {
-            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one).",
+            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one), queue ship and queue merge (teamrig queue --kind ship or merge running the shipTool of a delivery repository on a worktree whose task branch the holding session owns, so a role of holders team gives each session its own ships only). The daily cap counts closes and comments.",
             "type": "array",
-            "items": { "enum": ["issue close", "issue comment"] },
+            "items": { "enum": ["issue close", "issue comment", "queue ship", "queue merge"] },
             "minItems": 1,
             "uniqueItems": true
           }

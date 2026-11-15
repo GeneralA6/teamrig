@@ -621,7 +621,7 @@ Service roles, by name: each lets the sessions that hold it run a few teamrig co
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `holders` (required) | one of `"team"` or array (at least 1 item, unique) of [session name](#shared-types) |  | The sessions of this team that hold the role, by id, or team for every session of it, which only a role whose every command checks its own caller may name. |
-| `commands` (required) | array (at least 1 item, unique) of one of `"issue close"`, `"issue comment"` |  | The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one). |
+| `commands` (required) | array (at least 1 item, unique) of one of `"issue close"`, `"issue comment"`, `"queue ship"`, `"queue merge"` |  | The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one), queue ship and queue merge (teamrig queue --kind ship or merge running the shipTool of a delivery repository on a worktree whose task branch the holding session owns, so a role of holders team gives each session its own ships only). The daily cap counts closes and comments. |
 
 ## `alerts`
 
