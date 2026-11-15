@@ -1,6 +1,6 @@
 ---
 name: security
-description: Use before installing or upgrading a package, editing overrides or a lockfile, adding a third-party web origin, writing a container or pod spec, or handling a secret.
+description: Use before installing or upgrading a package, editing overrides or a lockfile, adding a third-party web origin, writing a container or pod spec, handling a secret or a security hole.
 ---
 
 # Security steps
@@ -39,6 +39,19 @@ secret file or variable, by themselves.
   record bodies. The secret guard cannot see a script or program that prints one, so mask inside what you write.
 - Never write a secret into a file the repository tracks or the team shares.
 - A container gets each secret by its own key (Kubernetes `secretKeyRef`), never a whole secret through `envFrom`.
+
+## A security hole
+
+A hole found in a repository others can read (a guard talked past, a check that lets through what it should refuse,
+a secret written where it should not be) is reported only in private until its fix is released:
+
+- Report it through the repository's private vulnerability reporting (GitHub's **Security** tab, **Report a
+  vulnerability**) or the route its `SECURITY.md` names; in a team, to the security reviewer on a task. Never in an
+  issue, a pull request, a comment, a discussion, a commit message or a test name, and never with `teamrig issue
+  migrate` or `teamrig issue comment`.
+- The fix's commit messages, pull request text, code comments and test names describe the hardening, what the code now
+  refuses or checks, never how to get past the old code, and never quote the private report or review by its id.
+- Once the fixed version is out, the advisory tells the details.
 
 ## Containers and pods
 
