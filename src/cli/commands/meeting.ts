@@ -44,8 +44,9 @@ import { foldStats, statsTopLines } from './stats.ts';
  * each session with a decision the lead recorded on its tasks, by one inbox line, and no other. The agenda is
  * gathered in one call: the goal scoreboard, the owner's decisions as card facts, the incidents, the late tasks, what
  * finished since the meeting before, the stats' Health and flow lines, the lead's inbox (marked read) and the week's
- * use and fit to the limit. Only a root team's lead holds it: its goals, stats, decisions and end's lines cover every
- * team under the lead's too (T1018).
+ * use and fit to the limit. The lead of any team holds it, at its own scope: its goals, stats, decisions and end's
+ * lines cover every team under the lead's too (T1018), so a sub-team's lead meets the owner over its subtree (T2985).
+ * A card decided there leaves its waits on the owner, so the root lead's meeting never asks it again.
  */
 
 interface MeetingKit {
@@ -58,14 +59,11 @@ interface MeetingKit {
   readonly now: number;
   /** The team's clock, which the meeting's lines and notices print on. */
   readonly zone: TimeZone;
-  /** Every team of the kit home: the lead's is a root team, whose subtree's waits on the owner the lead asks. */
+  /** Every team of the kit home: the lead's subtree is the meeting's scope, whose waits on the owner the lead asks. */
   readonly kitTree: KitTree;
 }
 
-/**
- * The caller's team, refused unless the caller is its lead and the team a root team: the meeting is the lead's with the
- * owner, and a child team's waits on the owner go up to the lead at its tree's root, whose agenda lists them (T509).
- */
+/** The caller's team, refused unless the caller is its lead: the meeting is the lead's with the owner, over its subtree. */
 async function meetingKit(args: ParsedArgs, runtime: CliRuntime, access: Access): Promise<MeetingKit> {
   noPositionals(args);
   const kit = await openTeamKit(runtime);
@@ -78,12 +76,7 @@ async function meetingKit(args: ParsedArgs, runtime: CliRuntime, access: Access)
   if (lead === undefined || caller !== lead) {
     throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} runs the owner's daily meeting`);
   }
-  const team = kit.paths.team;
   const kitTree = await loadTree(runtime);
-  const above = kitTree.tree.ownerLeadAbove(team);
-  if (above !== undefined) {
-    throw new RefusedError(`team ${team} meets no owner: the owner's daily meeting is ${formatAddress(above)}'s, whose agenda lists ${team}'s waits on the owner`);
-  }
   const store = new MeetingStore(runtime.files, kit.paths.meeting);
   return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now(), zone: teamZone(config, runtime), kitTree };
 }

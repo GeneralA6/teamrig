@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { TEST_CARD, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
-import { teamEventsOf, treeHarness } from '../testing/team-tree.ts';
+import { teamEventsOf, teamHomeOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const LEAD_TAB = '0123abcd-0000-4000-8000-0000000000c1';
@@ -123,9 +123,19 @@ describe('runCli: hook meeting-panel', () => {
     assert.deepEqual(answerOf(await panel(kit)), { kind: 'open', startedAt: STARTED, items: [settled], current: null, left: 0, watch });
   });
 
-  it("shows nothing in the tab of a sub-team's lead: its waits on the owner are on the root lead's panel", async () => {
+  it("shows a sub-team's lead the panel of its own meeting with the owner, over its subtree's cards (T2985)", async () => {
     const kit = await treeHarness();
-    const webLead = await kit.run(['hook', 'meeting-panel'], { stdin: JSON.stringify({ session_id: LEAD_TAB, cwd: APP }), env: { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' } });
-    assert.deepEqual(answerOf(webLead), { kind: 'off', why: 'a team under another meets no owner', watch: [] });
+    const asUi = { env: { TEAMRIG_TEAM: 'ui' } };
+    ok(await kit.run(['add', '--title', 'Pick the icon set', '--description', 'which icons ship', '--priority', 'p1', '--session', 'pixel'], asUi));
+    ok(await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two sets', ...TEST_OWNER_CARD_FLAGS, '--session', 'pixel'], asUi));
+    const webLeadPanel = (): Promise<CliResult> =>
+      kit.run(['hook', 'meeting-panel'], { stdin: JSON.stringify({ session_id: LEAD_TAB, cwd: APP }), env: { TEAMRIG_TEAM: 'web', TEAMRIG_SESSION: 'lead' } });
+    const webMeeting = join(teamHomeOf('web'), 'state', 'meeting.json');
+    assert.deepEqual(answerOf(await webLeadPanel()), { kind: 'off', why: 'no meeting is open', watch: [webMeeting] });
+
+    ok(await kit.run(['meeting', 'start', '--session', 'lead'], AS_WEB));
+    const card = { id: 'ui/T1', title: 'Pick the icon set', summary: SUMMARY, settled: false, decision: null };
+    const watch = [webMeeting, teamEventsOf('web'), teamEventsOf('ui')];
+    assert.deepEqual(answerOf(await webLeadPanel()), { kind: 'open', startedAt: STARTED, items: [card], current: 'ui/T1', left: 1, watch });
   });
 });

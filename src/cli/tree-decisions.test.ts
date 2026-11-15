@@ -35,24 +35,30 @@ async function checkDecisions(kit: CliHarness, env: Env): Promise<readonly strin
 }
 
 describe("runCli: a child team's owner decisions go up to the lead at its tree's root (T509)", () => {
-  it("refuses a child team's lead the owner's daily meeting, naming the root's lead, and lets the root's lead hold it", async () => {
+  it("lets a child team's lead meet the owner over its subtree, and the root's meeting never asks again what it decided (T2985)", async () => {
     const kit = await treeHarness();
-    for (const [env, team] of [
-      [WEB, 'web'],
-      [UI, 'ui'],
-    ] as const) {
-      for (const command of ['start', 'agenda', 'end']) {
-        const refused = await kit.run(['meeting', command, '--session', 'lead'], { env });
-        assert.deepEqual(
-          [refused.code, refused.stdout],
-          [EXIT.refused, [`REFUSED team ${team} meets no owner: the owner's daily meeting is app/lead's, whose agenda lists ${team}'s waits on the owner`]],
-        );
-      }
-    }
+    await ownerWait(kit, APP, 'alpha', 'Pick the pricing tier');
+    await ownerWait(kit, WEB, 'front', 'Pick the landing page');
+    await ownerWait(kit, UI, 'pixel', 'Pick the icon set');
     const member = await kit.run(['meeting', 'start', '--session', 'front'], { env: WEB });
     assert.deepEqual(member.stdout, ["REFUSED only the lead (web-lead) runs the owner's daily meeting"]);
-    const root = await kit.run(['meeting', 'start', '--session', 'lead']);
+
+    const started = await kit.run(['meeting', 'start', '--session', 'lead'], { env: WEB });
+    assert.equal(started.code, EXIT.ok, started.stderr.join('\n'));
+    assert.match(started.stdout[0] ?? '', /^MEETING started .*: messages to web-lead are held but CRITICAL ones/);
+    assert.deepEqual(rowIds(started.stdout), ['T2', 'ui/T3'], "its own team's waits, then its sub-team's; neither the root's nor a sibling's");
+    for (const [label, note] of [['T2', 'owner decided: ship it'], ['ui/T3', 'owner decided: the round icons']] as const) {
+      const noted = await kit.run(['update', label, '--decided', '--note', note, '--session', 'lead'], { env: WEB });
+      assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
+    }
+    const ended = await kit.run(['meeting', 'end', '--session', 'lead'], { env: WEB });
+    assert.equal(ended.code, EXIT.ok, ended.stderr.join('\n'));
+    assert.match(ended.stdout[0] ?? '', /told 2 session\(s\) the decisions on their tasks$/);
+    assert.ok(ended.stdout.some((line) => line.startsWith('  ui/pixel T3: owner decided: the round icons')), ended.stdout.join('\n'));
+
+    const root = await kit.run(['meeting', 'agenda', '--session', 'lead']);
     assert.equal(root.code, EXIT.ok, root.stderr.join('\n'));
+    assert.deepEqual(rowIds(root.stdout), ['T1'], "the cards decided at web's meeting left the root's agenda");
   });
 
   it("holds every child team's waits in the root lead's batch, each labelled with its team, on the root's batch times (T1018)", async () => {

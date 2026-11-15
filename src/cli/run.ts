@@ -426,8 +426,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       gated), the lead's inbox and the week's use and fit; agenda prints it again; end tells each
       session the owner's answers recorded on its tasks (update --decided or --later) by one inbox
       line, and no other session, and carries each card asked with no answer to the next meeting, whose
-      agenda asks it first; in a tree of teams only the root team's lead holds it, and its stats,
-      decisions and end cover every team under it
+      agenda asks it first; in a tree of teams each team's lead holds its own, and its stats,
+      decisions and end cover every team under it; a card decided there leaves the root's agenda
   meeting schedule --meets <id|name> --at <time> --about "<one line>" [--minutes <n>] [--with a,b]
       [--tasks T1,T2] [--brief <path>]   books the owner's meeting with one session at a set time, apart
       from the daily one: it prints its id (M3) and tells the session met and those joining by one inbox
