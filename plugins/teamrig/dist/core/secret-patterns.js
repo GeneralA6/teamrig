@@ -85,6 +85,12 @@ const COORDINATION_ID = /^(?:[\w.-]+[#:])?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 function isCoordinationId(value, match) {
     return match.groups?.['coordination'] !== undefined && COORDINATION_ID.test(value);
 }
+/** A relative path to a script or module, as a package.json `exports` map gives one (`"./cli/x-token": "./dist/cli/x-token.js"`). */
+const SCRIPT_PATH = /^\.{1,2}\/[\w@.-]+(?:\/[\w@.-]+)*\.(?:[cm]?js|ts|json)$/;
+/** True when `value` is a relative path to a script: it names a file, and the key above it only shares a word with a secret. */
+function isScriptPath(value) {
+    return SCRIPT_PATH.test(value);
+}
 /**
  * A quoted literal of 12 or more characters given to a secret-like name: the scrub's rule in the repository and part of
  * the write-time set. Stricter than `secret-assignment`, so documentation and prose pass. The key word may end a longer
@@ -98,7 +104,7 @@ export const ASSIGNED_SECRET = {
     description: 'literal value assigned to a secret-like name',
     pattern: /(?:(?<coordination>(?<![\w$])(?:claim|lock|lease|fencing)[_-]?token)|password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/i,
     secretGroup: 2,
-    isAllowedValue: (value, match) => isIdentifierName(value) || isCoordinationId(value, match),
+    isAllowedValue: (value, match) => isIdentifierName(value) || isCoordinationId(value, match) || isScriptPath(value),
 };
 /**
  * Literal secrets the write-time set (`secret-shapes.ts`) adds to the tokens and the text frames: an API key header's
