@@ -93,6 +93,11 @@ describe('runCli: meeting schedule', () => {
     const long = await kit.run(['meeting', 'schedule', '--meets', 'alpha', '--at', '2030-01-08 14:00', '--about', 'x'.repeat(201), '--session', 'lead']);
     assert.equal(long.code, EXIT.usage);
     assert.match(said(long), /--about holds 201 characters: at most 200/);
+    for (const about of ['plan \u001b[2J', 'plan ‮evil']) {
+      const marked = await kit.run(['meeting', 'schedule', '--meets', 'alpha', '--at', '2030-01-08 14:00', '--about', about, '--session', 'lead']);
+      assert.equal(marked.code, EXIT.usage, about);
+      assert.match(said(marked), /--about holds a control character or bidi mark: type it as plain text/);
+    }
     for (const minutes of ['0', '481', '1.5']) {
       const result = await kit.run([...BOOK, '--minutes', minutes, '--session', 'lead']);
       assert.equal(result.code, EXIT.usage, minutes);

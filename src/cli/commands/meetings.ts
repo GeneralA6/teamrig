@@ -3,6 +3,7 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { sessionDisplay } from '../../core/ids.ts';
+import { hasUnprintable } from '../../core/printable.ts';
 import type { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -137,11 +138,15 @@ function detailLines(meeting: ScheduledMeeting): string[] {
   return [...(meeting.brief === null ? [] : [`    brief: ${meeting.brief}`]), ...(meeting.note === null ? [] : [`    note: ${meeting.note}`])];
 }
 
-/** A text flag that is one line, at most ABOUT_MAX characters and no secret. */
+/** A text flag that is one line of plain text (no control or bidi mark), at most ABOUT_MAX characters and no secret. */
 function lineOf(flag: string, text: string, secrets: SecretScanner): string {
   const line = text.trim();
   if (line === '' || /[\r\n]/.test(line)) {
     throw new UsageError(`${flag} is one non-empty line`);
+  }
+  // It is printed in every tab of the meeting, the status line too, where a control or bidi mark would act (T3016).
+  if (hasUnprintable(line)) {
+    throw new UsageError(`${flag} holds a control character or bidi mark: type it as plain text`);
   }
   const length = [...line].length;
   if (length > ABOUT_MAX) {

@@ -142,4 +142,8 @@ describe('meeting views', () => {
     assert.equal(long.length, MEETING_TITLE_MAX);
     assert.equal(long, 'the technical design of…');
   });
+
+  it('writes a control or bidi mark of a record in its title as an escape, so none reaches the terminal (T3016)', () => {
+    assert.equal(meetingTitleOf(meeting({ about: 'plan\u001b[2J‮' })), 'plan\\x1b[2J\\u202e');
+  });
 });
