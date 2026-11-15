@@ -2578,8 +2578,11 @@ focus where it was. A session that is not the lead and runs `meeting start` with
 
 - `--session <area>`: who you are: the lead, or for a scheduled meeting any session.
 - `--about "<one line>"`: with no id, start a meeting on the spot about it.
-- `--meets <id|name>`, `--minutes <n>`, `--with a,b`, `--tasks T1,T2`, `--brief <path>`: with `--about`, as in
-  `meeting schedule`; `--meets` defaults to the caller.
+- `--meets <id|name>`: with `--about`, the session the owner meets; the caller by default.
+- `--minutes <n>`: with `--about`, how long it runs, as in `meeting schedule`.
+- `--with a,b`: with `--about`, the sessions joining, as in `meeting schedule`.
+- `--tasks T1,T2`: with `--about`, the tasks it is about, as in `meeting schedule`.
+- `--brief <path>`: with `--about`, the brief the session met reads first, as in `meeting schedule`.
 
 Example:
 
