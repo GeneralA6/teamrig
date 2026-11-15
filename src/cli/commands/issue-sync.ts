@@ -14,7 +14,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { teamRegister } from '../team-register.ts';
 import type { Thread } from '../../github/clock.ts';
 import type { HostIssue } from '../../issues/issue.ts';
-import { recordClaims } from './issue-claim.ts';
+import { claimBudget, recordClaims } from './issue-claim.ts';
 import { recordClocks, repoThreads } from './issue-clock.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, reportAutoSync } from './issue-sync-auto.ts';
@@ -132,7 +132,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   if (pushing) {
     const writesPerRun = autoPushWrites(config.github.probeSeconds);
     // Before the push, so it plans against the assignees the claims set; the claims' writes share the run's budget.
-    const claimed = await recordClaims(runtime, kit, config, { host, read: claimRead, started, writes: writesPerRun });
+    const claimed = await recordClaims(runtime, kit, config, { host, read: claimRead, started, writes: claimBudget(writesPerRun) });
     claimed.lines.forEach(say);
     // The import's tasks are in the register now, so the push plans against them. A repository the import could
     // not read is not pushed: it would fail the same way, and its failure is already told.
@@ -144,7 +144,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
         tasks: async () => (await register.snapshot()).state.tasks.values(),
         send: true,
         // No closes: the automatic push sends labels and assignees only (security verdict F1 on T2876); it prints each close held.
-        limits: { writesPerRun: writesPerRun - claimed.writes, closes: false },
+        limits: { writesPerRun: Math.max(0, writesPerRun - claimed.writes), closes: false },
         logins: sessionLogins(config.github.owners),
         told,
       },

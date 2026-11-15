@@ -7,7 +7,8 @@ import { CLAIM_DAYS, CLAIM_READS, CLAIMS_PER_DAY, formatClaims, parseClaims } fr
 import { autoPushWrites } from '../issues/status-push.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
-import { CLAIM_REPLY, claimWrites, RELEASE_REPLY } from './commands/issue-claim.ts';
+import { DEFAULT_GITHUB } from '../config/defaults.ts';
+import { CLAIM_REPLY, claimBudget, claimWrites, RELEASE_REPLY } from './commands/issue-claim.ts';
 import { EXIT } from './runtime.ts';
 
 const REPO = 'acme/web';
@@ -15,8 +16,8 @@ const CLAIMS = join(TEAM_HOME, 'state', 'github-claims.json');
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
-function team(statusPush: boolean): JsonRecord {
-  return { ...TEAM, github: { repos: [REPO], owners: { octocat: 'bravo' }, statusPush, probeSeconds: 300 } };
+function team(statusPush: boolean, probeSeconds = 300): JsonRecord {
+  return { ...TEAM, github: { repos: [REPO], owners: { octocat: 'bravo' }, statusPush, probeSeconds } };
 }
 
 /** The GitHub writes a run made: assigns, unassigns, comments and label writes, as command lines. */
@@ -63,6 +64,28 @@ describe('claims in the automatic sync (T3021)', () => {
       parseClaims(kit.files.get(CLAIMS) ?? '').claims.map(({ number, login }) => ({ number, login })),
       [{ number: 8, login: 'bob' }],
     );
+  });
+
+  it('makes a claim with its status swap at the default watch, whose run budget alone is less than one claim', async () => {
+    const probeSeconds = DEFAULT_GITHUB.probeSeconds;
+    assert.ok(autoPushWrites(probeSeconds) < claimWrites(true), 'the default run budget is below one claim');
+    const kit = new CliHarness(team(true, probeSeconds));
+    const free = (comments: readonly JsonRecord[]): FakeGh =>
+      new FakeGh().holds(REPO, [ghIssue(REPO, 8, { title: 'Add search', authorAssociation: 'MEMBER', labels: ['status:open'], comments })]).hasLabels(REPO, ['status:open', 'status:claimed']);
+    await autoSync(kit, free([]));
+
+    kit.clock.advance(HOUR);
+    const gh = free([commentNode(at(kit), 'NONE', 'User', { login: 'bob', body: '/take' })]);
+    const out = await autoSync(kit, gh);
+    assert.deepEqual(writes(gh, isIssueAssign), [`api repos/${REPO}/issues/8/assignees -X POST -f assignees[]=bob`], out.join('\n'));
+    assert.ok(out.includes(`LABELED ${REPO}#8: "status:claimed"`) && out.includes(`UNLABELED ${REPO}#8: "status:open"`), out.join('\n'));
+    assert.ok(gh.ran.filter((request) => isWrite(request.args)).length <= claimBudget(autoPushWrites(probeSeconds)), 'the run sends no more than one claim');
+  });
+
+  it('gives the claims one whole claim when the run budget is smaller, and nothing when there is none', () => {
+    assert.equal(claimBudget(0), 0);
+    assert.equal(claimBudget(1), claimWrites(true));
+    assert.equal(claimBudget(40), 40);
   });
 
   it('takes off an assignee its claim made once the claim ran its days with no linked pull request, and leaves one a person assigned', async () => {

@@ -48,6 +48,17 @@ export function claimWrites(swaps: boolean): number {
 }
 
 /**
+ * The writes a run's claims may spend: the run's budget, raised to one whole claim. At the default watch (a probe a
+ * minute) a run's share of the hour is 4 writes, fewer than a claim with its status swap sends, so with the budget
+ * alone every claim would be held on every run. The raise only goes to a run that makes or ends a claim, and a
+ * repository makes at most CLAIMS_PER_DAY claims a day, so the hour's writes stay far under GitHub's limit. A run
+ * with no budget, as when no automatic push runs, makes none.
+ */
+export function claimBudget(writesPerRun: number): number {
+  return writesPerRun <= 0 ? 0 : Math.max(writesPerRun, claimWrites(true));
+}
+
+/**
  * Makes and ends the claims of each repository in `run.read`, within `run.writes`. A claim the budget leaves out is
  * held for the next run: an expired one stays in the file, and a repository with a held new claim keeps its old pass
  * time, so the next run reads that comment again (an issue assigned meanwhile is no longer claimable). The list holds
