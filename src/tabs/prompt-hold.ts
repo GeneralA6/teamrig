@@ -1,4 +1,5 @@
 import type { Files } from '../core/files.ts';
+import type { SecretScanner } from '../core/secrets.ts';
 import { parseObject } from '../core/jsonl.ts';
 import type { TabNeed } from './need.ts';
 import { isAsking, type AskingTab } from './needs-you.ts';
@@ -20,8 +21,12 @@ export const PROMPT_HOLD_MS = 10 * 60 * 1000;
 /** The most words of the prompt's detail a page carries: enough to know the call, too few to hold an argument. */
 export const PROMPT_HOLD_WORDS = 3;
 
-/** A plain word of a command (a program, a subcommand): no path, address, assignment or quoted text in it. */
-const PLAIN_WORD = /^[A-Za-z][\w.-]*$/;
+/**
+ * A plain word of a command (a program, a subcommand): lowercase and at most 20 characters, so no path, address,
+ * assignment or quoted text, and no bare token either: GitHub, Anthropic, Slack and npm tokens and hex keys are
+ * mixed-case or longer.
+ */
+const PLAIN_WORD = /^[a-z][a-z0-9.-]{0,19}$/;
 
 /** A tab file of `kind: 'permission'` older than `PROMPT_HOLD_MS` whose Claude Code still runs. */
 export function heldPrompts(tabs: readonly TabNeed[], now: number, alive: (pid: number) => boolean): AskingTab[] {
@@ -33,9 +38,10 @@ export function heldPrompts(tabs: readonly TabNeed[], now: number, alive: (pid: 
 
 /**
  * The prompt as a page may name it: the tool, then the first plain words of its detail, stopping at the first word
- * that is not one. The full text may hold a path or a secret, and a page goes to a chat outside the machine.
+ * that is not one. The full text may hold a path or a secret, and a page goes to a chat outside the machine, so words
+ * any secret shape of `scanner` matches are dropped too, leaving the tool alone.
  */
-export function promptWords(text: string): string {
+export function promptWords(text: string, scanner: Pick<SecretScanner, 'find'>): string {
   const [tool = '', detail = ''] = text.split(/:\s(.*)/s, 2);
   const words: string[] = [];
   for (const word of detail.split(/\s+/)) {
@@ -44,13 +50,14 @@ export function promptWords(text: string): string {
     }
     words.push(word);
   }
-  return [tool.trim(), ...words].join(' ');
+  const named = [tool.trim(), ...words].join(' ');
+  return scanner.find(named) === undefined ? named : tool.trim();
 }
 
 /** `teamrig/tr-budget holds on a permission prompt since 07:25 IST (12 min): Bash git status`. */
-export function promptHoldText(where: string, need: AskingTab, clock: (at: Date) => string, now: number): string {
+export function promptHoldText(where: string, need: AskingTab, clock: (at: Date) => string, scanner: Pick<SecretScanner, 'find'>, now: number): string {
   const minutes = Math.floor((now - Date.parse(need.since)) / 60_000);
-  return `${where} holds on a permission prompt since ${clock(new Date(need.since))} (${minutes} min): ${promptWords(need.text)}; answer it in that tab`;
+  return `${where} holds on a permission prompt since ${clock(new Date(need.since))} (${minutes} min): ${promptWords(need.text, scanner)}; answer it in that tab`;
 }
 
 /**

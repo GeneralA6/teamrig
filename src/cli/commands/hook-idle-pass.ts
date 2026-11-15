@@ -3,6 +3,7 @@ import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { LockBusyError } from '../../core/lock.ts';
+import { SecretScanner } from '../../core/secrets.ts';
 import type { StartOutcome } from '../../open/processes.ts';
 import { hooklessReader } from '../../restore/hookless.ts';
 import { SessionLog } from '../../sessions/log.ts';
@@ -175,7 +176,7 @@ export async function runIdlePass(runtime: CliRuntime, kit: Kit, config: KitConf
       if (isPassDue(previous, now)) {
         await files.write(kit.paths.idlePass, formatIdlePassState(await passOnce(runtime, kit, config, roster, from, previous, now)));
         (await sweepDeadDetachedRuns(runtime, kit, config)).problems.forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
-        (await pagePromptHolds(runtime, kit, now)).forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
+        (await pagePromptHolds(runtime, kit, new SecretScanner(config.register.secretPatterns), now)).forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
       }
     });
   } catch (error) {
