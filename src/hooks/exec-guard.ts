@@ -31,6 +31,10 @@ import { holdBackOutput } from './permission.ts';
  * owner (register.ownerSource) whoever runs them, so only the owner's own routes run them: the pane, their own terminal, or
  * `/teamrig owner ...` typed in a tab, which the mod runs as a write only when the person types it. Like the review
  * check, it reads only a Bash or PowerShell tool call: a script the agent writes that starts the CLI is no such call.
+ *
+ * And it refuses every `teamrig hook <name>` call (T3081): a hook takes who it runs for, and which tab, from the
+ * stdin whoever runs it writes, so only Claude Code's hooks and the teamrig mod run them; a hook is proved in a test,
+ * or by a script on a scratch kit home.
  */
 
 /** The `teamrig exec` commands that decide a request. */
@@ -41,6 +45,53 @@ export const EXEC_COMMANDS: ReadonlySet<string> = new Set(['request', 'dry-run',
 
 /** Every `teamrig owner` command, by which a call through an unknown program reads as a teamrig call. */
 export const OWNER_COMMANDS: ReadonlySet<string> = new Set(['note', 'next', 'wake']);
+
+/** Every `teamrig hook` command, by which a call through an unknown program reads as a teamrig call, not as `git hook run`. */
+export const HOOK_COMMANDS: ReadonlySet<string> = new Set([
+  'clear-claim',
+  'clear-dir',
+  'cold-send',
+  'compact-check',
+  'db-write-guard',
+  'effort-writeback',
+  'exec-guard',
+  'failed-send',
+  'helper-gate',
+  'inbox-reminder',
+  'loop-nudge',
+  'meeting-due',
+  'meeting-panel',
+  'missing-cli',
+  'needs-you',
+  'needs-you-focus',
+  'package-guard',
+  'pass-record-guard',
+  'picker-guard',
+  'pre-compact',
+  'prompt-refuse',
+  'push-guard',
+  'readonly-allow',
+  'refresh-mid',
+  'refresh-wake',
+  'restore-track',
+  'route-allow',
+  'route-reminder',
+  'secret-guard',
+  'secret-redact',
+  'service-role-guard',
+  'session-start',
+  'slash-command',
+  'stop',
+  'subagent-start',
+  'subagent-stop',
+  'tab-status',
+  'tool-end',
+  'update-apply',
+  'update-check',
+  'update-dismiss',
+  'wake-check',
+  'wake-dropped',
+]);
 
 /** Who the tab runs as, read only once a line holds a review. */
 export type TabIdentity =
@@ -102,7 +153,14 @@ interface SettingsCall {
   readonly command: string;
 }
 
-type GuardedCall = ReviewCall | PlainCall | UnreadableCall | OwnerCall | SettingsCall;
+/** A `teamrig hook` call, which takes who it runs for from the stdin its caller writes: refused whatever its client. */
+interface HookCall {
+  readonly kind: 'hook';
+  /** Its hook when the line names one the CLI has, else undefined. */
+  readonly name: string | undefined;
+}
+
+type GuardedCall = ReviewCall | PlainCall | UnreadableCall | OwnerCall | SettingsCall | HookCall;
 
 /**
  * teamrig's entry scripts when a line runs one, through node or any other script host (`tsx`, `bun`, `npx tsx`): the
@@ -159,20 +217,35 @@ function settingsWriteOf(words: readonly ShellWord[]): string | undefined {
   return writes ? (action.dynamic ? group.text : `${group.text} ${action.text}`) : undefined;
 }
 
-/** True when the words read as a command this guard checks, so a call through node and a script only known when it runs is one. */
 /** True when the words read as a settings writer's write. */
 function writesSettings(words: readonly ShellWord[]): boolean {
   return settingsWriteOf(words) !== undefined;
 }
 
-function startsGuarded(words: readonly ShellWord[]): boolean {
-  return startsExec(words) || startsOwner(words) || writesSettings(words);
+/** True when the words read as a teamrig hook command. */
+function startsHook(words: readonly ShellWord[]): boolean {
+  return startsGroup(words, 'hook', HOOK_COMMANDS);
 }
 
-/** The owner command the words name after `owner`, or undefined when they name none the CLI has, or one only known when it runs. */
+/** True when the words read as a command this guard checks, so a call through node and a script only known when it runs is one. */
+function startsGuarded(words: readonly ShellWord[]): boolean {
+  return startsExec(words) || startsOwner(words) || writesSettings(words) || startsHook(words);
+}
+
+/** The command of `group` the words name after it, or undefined when they name none the CLI has, or one only known when it runs. */
+function commandOf(words: readonly ShellWord[], commands: ReadonlySet<string>): string | undefined {
+  const command = words[1];
+  return command === undefined || command.dynamic || !commands.has(command.text) ? undefined : command.text;
+}
+
+/** The owner command the words name after `owner`. */
 function ownerActionOf(words: readonly ShellWord[]): string | undefined {
-  const action = words[1];
-  return action === undefined || action.dynamic || !OWNER_COMMANDS.has(action.text) ? undefined : action.text;
+  return commandOf(words, OWNER_COMMANDS);
+}
+
+/** The hook the words name after `hook`. */
+function hookNameOf(words: readonly ShellWord[]): string | undefined {
+  return commandOf(words, HOOK_COMMANDS);
 }
 
 /** A guarded command's words in a command, and the word before them, which names the client that runs them. */
@@ -248,8 +321,8 @@ export function hidesSubcommand(run: OpaqueRun): boolean {
 
 /**
  * The guarded call the words run, read as the CLI reads them (src/cli/args.ts): the first two words are the command,
- * and each flag of a review takes the word after it as its value. Undefined when they run no `teamrig exec` or
- * `teamrig owner` command.
+ * and each flag of a review takes the word after it as its value. Undefined when they run no `teamrig exec`,
+ * `teamrig owner` or `teamrig hook` command.
  */
 function guardedCallOf(words: readonly ShellWord[]): GuardedCall | undefined {
   const [group, action] = words;
@@ -265,6 +338,9 @@ function guardedCallOf(words: readonly ShellWord[]): GuardedCall | undefined {
   const settings = settingsWriteOf(words);
   if (settings !== undefined) {
     return { kind: 'settings', command: settings };
+  }
+  if (group.text === 'hook') {
+    return { kind: 'hook', name: hookNameOf(words) };
   }
   if (group.text !== 'exec') {
     return undefined;
@@ -343,6 +419,15 @@ function foreignRefusalOf(file: Extract<ClientFile, { kind: 'file' }>, installs:
 function ownerRefusalOf(action: string | undefined): string {
   const command = action === undefined ? 'teamrig owner' : `teamrig owner ${action}`;
   return `\`${command}\` acts as the owner; the owner runs it from the pane or their own terminal, or types \`/${command} ...\` in a tab, never through a tool call.`;
+}
+
+/** Why the guard refuses a `teamrig hook` call: only Claude Code and the teamrig mod run hooks. */
+function hookRefusalOf(name: string | undefined): string {
+  const command = name === undefined ? 'teamrig hook' : `teamrig hook ${name}`;
+  return (
+    `\`${command}\` takes the tab and who typed the line from its stdin, which a tool call writes, so only Claude Code's hooks ` +
+    `and the teamrig mod run it, never a tool call; prove a hook in a test, or by a script on a scratch kit home.`
+  );
 }
 
 /** Why the guard refuses a call through a program only known when it runs. */
@@ -428,7 +513,8 @@ export function runsOfReadings(readings: readonly string[], context: ProgramsCon
  * set on the line changes nothing), when the guard cannot read who it reviews as, or when it runs any `teamrig exec`
  * command through a client that is no install of this plugin, one only known when it runs, or one whose files differ
  * from its build; whenever the line runs a `teamrig owner` command, through any client, as it acts as the owner, or a
- * settings writer's write (`permissions trim --yes` and the rest of SETTINGS_WRITERS), as it changes a permission; and
+ * settings writer's write (`permissions trim --yes` and the rest of SETTINGS_WRITERS), as it changes a permission, or
+ * a `teamrig hook` command, as it trusts the stdin the line gives it; and
  * when a shell on the line takes its commands from a pipe the guard cannot read, or a package runner hands its line to
  * a shell the line names that the guard cannot read. Else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec` calls start
  * once, and reads the tab's session only for a line that holds a review. A Bash line on Windows is read in each
@@ -461,18 +547,24 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     return words === undefined ? [] : [words];
   });
   const opaqueSettings = runs.opaque.flatMap((run) => settingsWriteOf(opaqueGuardedWords(run, writesSettings) ?? []) ?? []);
+  const opaqueHook = runs.opaque.flatMap((run) => {
+    const words = opaqueGuardedWords(run, startsHook);
+    return words === undefined ? [] : [words];
+  });
   const unread = runs.opaque.some(hidesSubcommand) || calls.some(({ call }) => call.kind === 'unreadable');
   const fed = runs.fedShells.length > 0;
   const foreign = runs.foreignShells.length > 0;
-  if (calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && opaqueSettings.length === 0 && !unread && !fed && !foreign) {
+  const quiet = calls.length === 0 && opaque.length === 0 && opaqueOwner.length === 0 && opaqueSettings.length === 0 && opaqueHook.length === 0;
+  if (quiet && !unread && !fed && !foreign) {
     return '';
   }
   const reasons: string[] = [...(unread ? [UNREADABLE] : []), ...(fed ? [FED_SHELL] : []), ...(foreign ? [FOREIGN_SHELL] : [])];
   reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
-  reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : [])));
+  reasons.push(...calls.flatMap(({ call }) => (call.kind === 'owner' ? [ownerRefusalOf(call.action)] : call.kind === 'hook' ? [hookRefusalOf(call.name)] : [])));
   reasons.push(...opaqueOwner.map((words) => ownerRefusalOf(ownerActionOf(words))));
   reasons.push(...calls.flatMap(({ call }) => (call.kind === 'settings' ? [settingsWriteRefusal(call.command)] : [])));
   reasons.push(...opaqueSettings.map(settingsWriteRefusal));
+  reasons.push(...opaqueHook.map((words) => hookRefusalOf(hookNameOf(words))));
   const roots = new Set<string>();
   for (const { call, client, at } of calls) {
     if (call.kind === 'review' || call.kind === 'plain') {
