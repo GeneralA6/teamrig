@@ -1289,7 +1289,13 @@ Flags:
   end of each failed job's log (at most 5 a run) into `state/github-ci/<owner>-<name>-<number>.md` and the line names
   the job, its failed step and that file. An open issue labelled `security` wakes the session it routes to and pages
   the owner through the `alerts` page webhook, once per issue ever and for at most 3 issues a run (the rest go to the
-  lead in one line and one page); the lead is woken when no page goes. It reads every
+  lead in one line and one page); the lead is woken when no page goes. It also reads each repository's posts changed
+  since its last `--auto` read (the first read only starts the scan) and sends each new `@` mention of a login in
+  `github.owners` to one session: the task owner of the item, else its area owner, else the login's session, else
+  `github.watcher`, with the link and up to 300 characters around it, quoted; it wakes that session at most once per
+  item every 30 minutes. A read cut short (over 10 pages of 100 posts per list, or the reviews of 20 pull requests)
+  is told to the watcher and goes on from the cut next run; a failed one fails the repository and keeps its scan. A
+  run without `--auto` reads no posts. It reads every
   repository, so it refuses `--repo`. With `github.statusPush` on it
   then sends the status push (`--push --yes`) too, labels only: a close it plans is printed as a `HELD` line and
   sent only by a session's `--push --yes`. Its writes per run are lowered so an hour of runs sends at most 250

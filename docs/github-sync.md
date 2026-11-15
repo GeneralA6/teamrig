@@ -11,7 +11,8 @@ writes are all run by hand: `teamrig issue migrate` moves tasks you choose to ne
 request ([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
 task tree on the issues ([Linking issues as the task tree](#linking-issues-as-the-task-tree)). GitHub is the
 only host teamrig writes to so far. Each run also reads the repositories' pull requests and tells each session what
-happened to its own ([Pull request news](#pull-request-news)).
+happened to its own ([Pull request news](#pull-request-news)), and tells it when someone on GitHub names one of your
+users with an `@` ([Mentions of your users](#mentions-of-your-users)).
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
 write. After that it runs on its own within a minute of a change on GitHub while your sessions work, and reminds you of an issue waiting
@@ -197,6 +198,30 @@ again while it lasts; the first run on a repository only notes what is there.
 - A run by hand prints the news as `PULL NEWS <session>` lines and keeps nothing, so the automatic run still tells it.
 - A repository whose pull requests cannot be read gets a `FAILED <repo> pull requests:` line; its issues still sync,
   and what was last read of its pull requests is kept, so nothing is missed once it reads again.
+
+### Mentions of your users
+
+Each automatic run also reads the comments, review comments, reviews and issue or pull request bodies of each
+repository written or edited since the last automatic run, and looks for an `@` naming one of your users: a login in
+`github.owners`. A mention counts only where GitHub itself would notify for it, so not inside code or a `>` quote.
+
+- The first automatic run that reads a repository starts its scan there: nothing written before it is told.
+- Each new mention goes to one session: the owner of the task holding the issue (or of the task a team author's
+  `t<id>-` branch names, for a pull request), else the session `github.areaOwners` gives one of its labels, else
+  the session `github.owners` maps the mentioned login to, else `github.watcher` (else the lead). The inbox line
+  names the item, the logins, the author and the link, with up to 300 characters of the text around the mention,
+  quoted as data: `github: GitHub gh:acme/web#9 mentions @octocat: visitor wrote at https://github.com/acme/web/issues/9#issuecomment-2, it says "could you look?"`.
+  Text that looks like it holds a secret is left out, with only the link.
+- A mention wakes its session (when `wake.enabled`), but at most once per issue or pull request every 30 minutes; the
+  rest arrive unwoken.
+- A post by one of your users never routes, and neither does an edit that keeps a mention it already routed: an edit
+  that adds a login routes only that login.
+- One run reads at most 10 pages of 100 posts per list and the reviews of 20 pull requests. A busier repository is
+  read up to that point; the watcher gets a `GitHub mentions of <repo> cut off` line, and the next run goes on from
+  there.
+- A repository whose posts cannot be read gets a `FAILED <repo> mentions:` line and is told to the lead like any
+  failing repository; its scan goes on from where it was once it reads again.
+- A run by hand reads no posts.
 
 ### Security issues
 
@@ -459,13 +484,17 @@ again.
 ## Safety
 
 - **Read-only sync.** The sync runs only the issue queries and the pull request queries teamrig ships, word for word,
-  through `gh api graphql`, and the read of one failed CI job's log
-  (`gh run view --job <id> --log-failed --repo <owner>/<name>`, exactly those arguments), so a token with
+  through `gh api graphql`, the read of one failed CI job's log
+  (`gh run view --job <id> --log-failed --repo <owner>/<name>`, exactly those arguments), and the mention scan's
+  GET pages (`repos/<owner>/<name>/issues/comments`, `.../pulls/comments` and `.../issues`, each with only its
+  `since`, sort, `per_page=100` and page, and `.../pulls/<number>/reviews?per_page=100`), so a token with
   **Issues: Read-only**, **Pull requests: Read-only** and **Actions: Read-only** is all it needs. Of an issue's newest
   20 comments it reads only when each was posted, its author's login, tie to the repository and whether that author is
   a bot: never their text. Only with the push on, a claim reads the text of an issue's comments posted since the last
   run (`.../issues/<number>/comments -X GET` with `since` and `per_page=30` only, one page), for at most ten issues a
-  run, to find a claim line, and keeps no text. Any other `gh` command or query is refused in code, except
+  run, to find a claim line, and keeps no text. The mention scan reads post text to find mentions of your users and
+  keeps only each post's key, the logins it routed and its time ([Mentions of your users](#mentions-of-your-users)).
+  Any other `gh` command or query is refused in code, except
   the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
   one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label
