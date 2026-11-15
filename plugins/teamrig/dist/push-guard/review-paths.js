@@ -34,7 +34,7 @@ export const GENERIC_REVIEW_PATHS = [
  */
 export function reviewPathMatcher(glob) {
     const rooted = glob.replace(/^\/+/, '');
-    const expression = globRegExp(rooted.includes('/') ? rooted : `**/${rooted}`, { ignoreCase: true, dotfiles: true });
+    const expression = globRegExp(rooted.includes('/') ? rooted : `**/${rooted}`, { ignoreCase: true, dotfiles: true, sets: 'bash' });
     return (path) => expression.test(path.replace(/\\/g, '/'));
 }
 /** Each touched path with each entry that covers it, in the order of the paths, then of the entries. */
