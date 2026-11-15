@@ -406,7 +406,7 @@
           "default": []
         },
         "webhookEnv": {
-          "description": "The name of the environment variable holding the webhook URL that every exec approval, refusal and run is posted to, never the URL itself. Absent: nothing is posted; named but unset: each would-be post warns.",
+          "description": "The name of the environment variable holding the webhook URL that every exec approval, refusal and run is posted to, never the URL itself. Only an https URL is posted to: any other warns instead. Absent: nothing is posted; named but unset: each would-be post warns.",
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
         }

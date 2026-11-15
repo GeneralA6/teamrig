@@ -1828,7 +1828,8 @@ A command that writes a database, calls a writing route, writes the cluster or a
 a request a reviewer approved: the session asks (`exec request`), the read-only dry run runs (`exec dry-run`), the
 security reviewer (`roles.securityReviewer`) or the owner reads it and approves, refuses or escalates it, and then
 the approved command runs once (`exec run`). Each step is one line of the team's exec audit log, and with
-`exec.webhookEnv` set, each review and run is posted to the security channel too. The examples have `api` asking and
+`exec.webhookEnv` set, each review and run is posted to the security channel too, only when the variable holds an
+https URL (any other warns `WARN <id> is logged, but not posted: the webhook address is not an https URL`). The examples have `api` asking and
 `lead` as the security reviewer. The guard that keeps a tab reviewing only as itself is
 [`hook exec-guard`](#teamrig-hook-exec-guard).
 

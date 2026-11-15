@@ -228,7 +228,8 @@ export interface ExecConfig {
   readonly path: readonly string[];
   /**
    * The name of the environment variable that holds the webhook URL every approval, refusal and run is posted to
-   * (spec §10), never the URL itself, which is a secret. Absent: nothing is posted.
+   * (spec §10), never the URL itself, which is a secret. Only an https URL is posted to; any other warns. Absent:
+   * nothing is posted.
    */
   readonly webhookEnv?: string;
 }

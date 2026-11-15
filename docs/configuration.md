@@ -228,7 +228,7 @@ Privileged commands a reviewer approved, run once by teamrig exec run.
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `path` | array (at most 16 items) of string (at most 260 characters, matching `^(?:[A-Za-z]:[\\/]\|/)[^;:]*$`) | `[]` | The folders a privileged command's bare program name (teamrig exec) is looked up on, in order, and the only PATH its commands get; the session's own PATH is never searched. Each is absolute (C:/tools, /usr/bin) with no ; or : past the drive. Empty: a request names its program by absolute path. |
-| `webhookEnv` | string (matching `^[A-Za-z_][A-Za-z0-9_]{0,63}$`) |  | The name of the environment variable holding the webhook URL that every exec approval, refusal and run is posted to, never the URL itself. Absent: nothing is posted; named but unset: each would-be post warns. |
+| `webhookEnv` | string (matching `^[A-Za-z_][A-Za-z0-9_]{0,63}$`) |  | The name of the environment variable holding the webhook URL that every exec approval, refusal and run is posted to, never the URL itself. Only an https URL is posted to: any other warns instead. Absent: nothing is posted; named but unset: each would-be post warns. |
 
 ## `packageGuard`
 

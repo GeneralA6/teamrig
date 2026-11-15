@@ -1,6 +1,7 @@
 import type { AlertsConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { secretValueOf } from '../core/secret-key.ts';
+import { isHttpsUrl } from '../core/webhook.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { loginPageText } from '../restore/login.ts';
 import { openKit, teamZone } from './kit.ts';
@@ -155,10 +156,6 @@ function keyedUrl(text: string, key: string): PageUrl {
     return { problem: `the file alerts.pageWebhookFile names has no ${key} line, or its quote is not closed` };
   }
   return url === '' ? { problem: `the file alerts.pageWebhookFile names gives ${key} no value` } : { url };
-}
-
-function isHttpsUrl(text: string): boolean {
-  return URL.canParse(text) && new URL(text).protocol === 'https:';
 }
 
 /** Posts the page; undefined once it is posted, else why not. It never throws, so a claim is never left held by one. */

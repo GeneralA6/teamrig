@@ -13,7 +13,7 @@ import { nodeStepRunner } from '../delivery/steps.ts';
 import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
 import { NODE_STORE_FOLDERS } from '../core/node-store-folders.ts';
-import { httpWebhook } from '../core/webhook.ts';
+import { chatWebhook } from '../core/webhook.ts';
 import { nodeProgramRunner, systemCredentials } from '../github/credentials.ts';
 import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
@@ -126,7 +126,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     hooks: nodeHookRunner(process.platform),
     packageRegistry: httpPackageRegistry(),
     exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT },
-    webhook: httpWebhook(),
+    webhook: chatWebhook(),
     cmdShimLine,
     readStdin: entry.readStdin,
     newId: () => randomUUID(),

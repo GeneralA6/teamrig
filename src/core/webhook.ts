@@ -31,9 +31,30 @@ function failureOf(error: unknown, timeoutMs: number): string {
   return `the webhook could not be reached${code === undefined ? '' : ` (${code})`}`;
 }
 
+/** True for an absolute https URL, the only kind a teamrig post goes to, so its text never crosses a network in the clear. */
+export function isHttpsUrl(text: string): boolean {
+  return URL.canParse(text) && new URL(text).protocol === 'https:';
+}
+
+/**
+ * `webhook`, posting only to an https URL: anything else (http, a file or data URL, a bare name) is refused before
+ * any request, in words that never hold the URL.
+ */
+export function httpsOnly(webhook: ChatWebhook): ChatWebhook {
+  return {
+    post: async (url, content) => (isHttpsUrl(url) ? await webhook.post(url, content) : 'the webhook address is not an https URL'),
+  };
+}
+
+/** The webhook every teamrig post goes through (`teamrig exec`'s announce, the owner's page): HTTP, to https URLs only. */
+export function chatWebhook(timeoutMs: number = WEBHOOK_TIMEOUT_MS): ChatWebhook {
+  return httpsOnly(httpWebhook(timeoutMs));
+}
+
 /**
  * A chat webhook over HTTP: a JSON POST of `content`, with every mention turned off so a note that names
- * `@everyone` or a role pings no one.
+ * `@everyone` or a role pings no one. It sends to any URL it is given; teamrig posts through `chatWebhook`, which
+ * keeps it to https.
  */
 export function httpWebhook(timeoutMs: number = WEBHOOK_TIMEOUT_MS): ChatWebhook {
   return {

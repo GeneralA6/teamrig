@@ -1,7 +1,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
-import { httpWebhook, WEBHOOK_MAX_CONTENT } from './webhook.ts';
+import { chatWebhook, httpsOnly, httpWebhook, isHttpsUrl, WEBHOOK_MAX_CONTENT, type ChatWebhook } from './webhook.ts';
 
 /** What the local webhook heard: each request's method, path, content type and parsed body. */
 interface Heard {
@@ -81,5 +81,44 @@ describe('httpWebhook', () => {
     const problem = await httpWebhook().post(`${gone}/hook-token`, 'RAN R1');
     assert.match(problem ?? '', /^the webhook could not be reached/);
     assert.doesNotMatch(problem ?? '', /hook-token|127\.0\.0\.1/);
+  });
+
+  it("refuses, as teamrig's own webhook, every URL but https, before any request", async () => {
+    heard.length = 0;
+    for (const url of [`${base}/hook-token`, 'ftp://chat.example/hook-token', 'not a url/hook-token']) {
+      assert.equal(await chatWebhook().post(url, 'RAN R1'), 'the webhook address is not an https URL', url);
+    }
+    assert.deepEqual(heard, []);
+  });
+});
+
+describe('httpsOnly', () => {
+  /** A webhook that records each post it is handed and answers `answer`. */
+  function recording(answer: string | undefined): { readonly webhook: ChatWebhook; readonly posts: string[] } {
+    const posts: string[] = [];
+    return { posts, webhook: { post: (url, content) => Promise.resolve((posts.push(`${url} ${content}`), answer)) } };
+  }
+
+  it('hands an https post on and gives back its answer', async () => {
+    const inner = recording('the webhook answered HTTP 404');
+    assert.equal(await httpsOnly(inner.webhook).post('https://chat.example/hook', 'RAN R1'), 'the webhook answered HTTP 404');
+    assert.deepEqual(inner.posts, ['https://chat.example/hook RAN R1']);
+  });
+
+  it('refuses an http, internal or other address without handing it on', async () => {
+    const inner = recording(undefined);
+    for (const url of ['http://chat.example/hook', 'http://192.0.2.10/latest', 'file:///etc/passwd', 'data:text/plain,x', 'chat.example/hook']) {
+      assert.equal(await httpsOnly(inner.webhook).post(url, 'RAN R1'), 'the webhook address is not an https URL', url);
+    }
+    assert.deepEqual(inner.posts, []);
+  });
+});
+
+describe('isHttpsUrl', () => {
+  it('is true only for an absolute https URL', () => {
+    assert.deepEqual(
+      ['https://chat.example/hook', 'HTTPS://chat.example/hook', 'http://chat.example/hook', 'https:/', '//chat.example/hook', ''].map(isHttpsUrl),
+      [true, true, false, false, false, false],
+    );
   });
 });
