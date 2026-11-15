@@ -27,6 +27,8 @@ import {
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
+  isMentionRead,
+  isReviewRead,
   isWatchProbe,
   issueAssignArgs,
   issueBodyArgs,
@@ -41,7 +43,11 @@ import {
   jobLogArgs,
   labelCreateArgs,
   labelReadArgs,
+  MENTION_LISTS,
+  MENTION_PAGES_MAX,
+  mentionListArgs,
   nodeGhRunner,
+  reviewListArgs,
   subIssueAddArgs,
   WATCH_PATHS,
   watchProbeArgs,
@@ -672,6 +678,80 @@ describe('isJobLogRead', () => {
   });
 });
 
+describe('isMentionRead', () => {
+  const SINCE = '2030-01-10T08:00:00Z';
+
+  it('takes a page of each mention list as mentionListArgs makes it, state=all on the issues list only', () => {
+    assert.deepEqual(mentionListArgs('acme/web', 'issues/comments', SINCE, 1), [
+      'api',
+      'repos/acme/web/issues/comments?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=1',
+    ]);
+    assert.equal(mentionListArgs('acme/web', 'issues', SINCE, 2)[1], 'repos/acme/web/issues?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&state=all&per_page=100&page=2');
+    for (const list of MENTION_LISTS) {
+      for (const page of [1, MENTION_PAGES_MAX]) {
+        const args = mentionListArgs('acme/web.site', list, SINCE, page);
+        assert.equal(isMentionRead(args), true, args.join(' '));
+        assert.equal(isAllowedGh(args), true, args.join(' '));
+      }
+    }
+  });
+
+  it('refuses a method, field, header or flag, another list, query or order, a bad time or page, or a repository that is not one', () => {
+    const PAGE = mentionListArgs('acme/web', 'issues/comments', SINCE, 1);
+    const path = (rest: string): string[] => ['api', `repos/acme/web/${rest}`];
+    const refused: string[][] = [
+      [...PAGE, '-X', 'POST'],
+      [...PAGE, '-f', 'body=x'],
+      [...PAGE, '-H', 'Accept: x'],
+      [...PAGE, '--paginate'],
+      ['api', '-i', PAGE[1] ?? ''],
+      path('issues/comments?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&state=all&per_page=100&page=1'),
+      path('issues?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=1'),
+      path('issues/comments?since=2030-01-10&sort=updated&direction=asc&per_page=100&page=1'),
+      path('issues/comments?since=2030-01-10T08:00:00Z&sort=created&direction=asc&per_page=100&page=1'),
+      path('issues/comments?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=11'),
+      path('issues/comments?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=0'),
+      path('issues/comments?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=1&x=1'),
+      path('issues/comments/5?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=1'),
+      path('commits?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=1'),
+      ['api', 'repos/acme/../issues/comments?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=1'],
+      ['api', 'repos/acme/web/x/issues/comments?since=2030-01-10T08:00:00Z&sort=updated&direction=asc&per_page=100&page=1'],
+      ['api', 'graphql', PAGE[1] ?? ''],
+    ];
+    for (const args of refused) {
+      assert.equal(isMentionRead(args), false, args.join(' '));
+      assert.equal(isAllowedGh(args), false, args.join(' '));
+    }
+  });
+});
+
+describe('isReviewRead', () => {
+  it("takes one pull request's reviews as reviewListArgs makes them", () => {
+    const args = reviewListArgs('acme/web', 12);
+    assert.deepEqual(args, ['api', 'repos/acme/web/pulls/12/reviews?per_page=100']);
+    assert.equal(isReviewRead(args), true);
+    assert.equal(isAllowedGh(args), true);
+  });
+
+  it('refuses a method, field or flag, another path or query, or a number or repository that is not one', () => {
+    const READ = reviewListArgs('acme/web', 12);
+    const refused: string[][] = [
+      [...READ, '-X', 'POST'],
+      [...READ, '-f', 'event=APPROVE'],
+      ['api', 'repos/acme/web/pulls/12/reviews'],
+      ['api', 'repos/acme/web/pulls/12/reviews?per_page=100&page=2'],
+      ['api', 'repos/acme/web/pulls/012/reviews?per_page=100'],
+      ['api', 'repos/acme/web/pulls/12/reviews/3?per_page=100'],
+      ['api', 'repos/acme/web/pulls/12/comments?per_page=100'],
+      ['api', 'repos/acme/../pulls/12/reviews?per_page=100'],
+    ];
+    for (const args of refused) {
+      assert.equal(isReviewRead(args), false, args.join(' '));
+      assert.equal(isAllowedGh(args), false, args.join(' '));
+    }
+  });
+});
+
 describe('nodeGhRunner', () => {
   it('passes each argument as a list item, never through a shell, and tells gh not to prompt', async () => {
     const gh = script('echo-args.mjs', 'process.stdout.write(JSON.stringify([process.argv.slice(2), process.env.GH_PROMPT_DISABLED]));');
@@ -689,7 +769,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, and to read a failed job's log: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, to read a failed job's log, and to read the posts that may mention a user: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });
