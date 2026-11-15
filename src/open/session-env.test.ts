@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { plainSessionEnv, sessionEnv } from './session-env.ts';
+import { plainSessionEnv, sessionCredentialFree, sessionEnv } from './session-env.ts';
 
 const IDENTITY = { id: 'api', team: 'shop', home: undefined };
 
@@ -39,6 +39,14 @@ describe('sessionEnv', () => {
     );
     assert.equal(env['PATH'], '/usr/bin');
     assert.equal(env['Path'], '/home/me/.claude/plugins/cache/m/p/1.0.0/bin', 'not PATH on macOS and Linux');
+  });
+});
+
+describe('sessionCredentialFree', () => {
+  it("keeps Claude Code's own login and the names passed on, and leaves the other credential variables out", () => {
+    const value = 'not-a-real-credential';
+    const env = { PATH: '/bin', ANTHROPIC_API_KEY: value, CLAUDE_CODE_OAUTH_TOKEN: value, GH_TOKEN: value, NPM_TOKEN: value, OPENAI_API_KEY: value };
+    assert.deepEqual(sessionCredentialFree(env, ['GH_TOKEN']), { PATH: '/bin', ANTHROPIC_API_KEY: value, CLAUDE_CODE_OAUTH_TOKEN: value, GH_TOKEN: value });
   });
 });
 

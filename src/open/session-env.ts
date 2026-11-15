@@ -1,3 +1,4 @@
+import { CLAUDE_LOGIN_VARIABLES, withoutCredentials } from '../core/child-env.ts';
 import { ENV, type Env } from '../core/home.ts';
 import { isPluginCacheBin } from '../core/installed-plugins.ts';
 import { envKey, pathList } from '../core/path-search.ts';
@@ -64,6 +65,15 @@ export function sessionEnv(env: Env, identity: SessionIdentity, platform: NodeJS
     [ENV.team]: identity.team,
     ...(identity.home === undefined ? {} : { [ENV.home]: identity.home }),
   };
+}
+
+/**
+ * A team session's environment without the credential variables (core/child-env.ts), but Claude Code's own login, as
+ * the session is Claude Code, and those `pass` (`delivery.passEnv`) names: the session's tools run the team's code.
+ * A session outside any team (plainSessionEnv) keeps its environment, as no team config names what it needs.
+ */
+export function sessionCredentialFree(env: Env, pass: readonly string[]): Env {
+  return withoutCredentials(env, [...CLAUDE_LOGIN_VARIABLES, ...pass]);
 }
 
 /**

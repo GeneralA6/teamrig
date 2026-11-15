@@ -489,6 +489,14 @@ describe('teamrig launch', () => {
     assert.deepEqual(processes.started, []);
   });
 
+  it("starts Claude Code with its own login and the credential variables delivery.passEnv names, and without the rest", async () => {
+    const processes = new FakeProcesses();
+    const value = 'not-a-real-credential';
+    const env = { PATH: '/usr/local/bin', ANTHROPIC_API_KEY: value, GH_TOKEN: value, NPM_TOKEN: value, AWS_SECRET_ACCESS_KEY: value };
+    await new CliHarness({ ...TEAM, delivery: { passEnv: ['GH_TOKEN'] } }).run(LAUNCH, { probe: ON_PATH, processes, env });
+    assert.deepEqual(processes.ran.map((run) => run.env), [{ ...SESSION_ENV, ANTHROPIC_API_KEY: value, GH_TOKEN: value }]);
+  });
+
   it("starts Claude Code without the opener's plugin bin folders on PATH, so the session's own teamrig answers its Bash calls", async () => {
     const processes = new FakeProcesses();
     await launch(processes, [], { env: { PATH: '/home/me/.claude/plugins/cache/teamrig/teamrig/0.75.0/bin:/usr/local/bin' } });
