@@ -246,7 +246,7 @@ const COMMANDS = {
     'worktree add': { effect: 'write', flags: ['repo'], load: async () => (await worktreeCommands()).add },
     'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
     test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
-    queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
+    queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run', 'arrived-at'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
     withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
     pipeline: { effect: 'read', flags: [], load: async () => (await pipelineCommand()).pipeline },
     'pipeline freeze': { effect: 'write', flags: ['session', 'from', 'to', 'reason', 'kinds'], load: async () => (await pipelineFreezeCommands()).pipelineFreeze },
@@ -777,8 +777,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
       delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
       ledger, with its --kind (build, test, lint, push, merge, deploy or other; default read from the
-      command) and --task (default the first task id in --what); once the shell that started it ends, it stops waiting for the lock or kills the step (exit
-      129); REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
+      command) and --task (default the first task id in --what); once the shell that started it ends, it kills a running step (exit 129); a
+      waiting one goes on as a detached run that keeps its place in line while the tab's Claude Code runs (not a git hook's
+      step), its session told, else stops; REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
       moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a queued step started under a live lock (a git hook's checks
       under queue, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
@@ -801,7 +802,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass. --detach (a step longer than a
       Bash tool's wait): prints QUEUED <id> at once and runs the step hidden as queue --detached-run <id>
-      (set only by --detach), which outlives its shell, so no shell watch stops it, its output and lines in
+      (set only by --detach and that hand-over, which adds --arrived-at <ms>), which outlives its shell, so no shell watch stops it, its output and lines in
       <delivery dir>/detached/<id>.log; its session's inbox gets a line when it starts and a waking one
       when it ends or is refused, or, from the next start or idle pass, when it died with no end of its
       own (queue <id> died ...). Refused with --pre-push and under a live host lock
