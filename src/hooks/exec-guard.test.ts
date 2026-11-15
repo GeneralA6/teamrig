@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { parseArgs, UsageError } from '../cli/args.ts';
 import { COMMAND_EFFECTS, COMMAND_TABLE } from '../cli/run.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { settingsWriteRefusal } from '../core/settings-writers.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { ClientInstalls } from '../exec/client-launch.ts';
 import { EXEC_COMMANDS, execGuardOutput, OWNER_COMMANDS, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
@@ -392,6 +393,50 @@ describe('execGuardOutput', () => {
     for (const line of ['teamrig --session alpha owner next T1', 'teamrig --session owner exec approve R1', 'teamrig exec request -- teamrig owner next T1']) {
       assert.throws(() => parse(line.split(' ').slice(1)), UsageError, line);
       assert.equal(await verdict(bash(line)), undefined, line);
+    }
+  });
+
+  it('refuses every settings writer run with --yes from a tool call, whatever its client, without reading the tab or checking a client (T3083)', async () => {
+    const quiet = env();
+    for (const [payload, command] of [
+      [bash('teamrig permissions trim --yes'), 'permissions trim'],
+      [bash('teamrig permissions trim --all --yes'), 'permissions trim'],
+      [bash('teamrig automode install --yes'), 'automode install'],
+      [bash('teamrig automode uninstall --yes'), 'automode uninstall'],
+      [bash('git status && teamrig statusline install --yes'), 'statusline install'],
+      [bash('teamrig setup restore --yes --remove-new'), 'setup restore'],
+      [bash('teamrig config migrate --yes'), 'config migrate'],
+      [bash('teamrig restore install --yes'), 'restore install'],
+      [bash("bash -c 'teamrig automode install --yes'"), 'automode install'],
+      [bash(`node ${INSTALL}/dist/cli/main.js permissions trim --yes`), 'permissions trim'],
+      [powershell('teamrig.cmd statusline install --yes'), 'statusline install'],
+      [bash('teamrig permissions trim "$FLAG"'), 'permissions trim'],
+      [bash('teamrig automode "$WHAT" --yes'), 'automode'],
+      [bash('$T permissions trim --yes'), 'permissions trim'],
+      [bash('node $SCRIPT automode install --yes'), 'automode install'],
+    ] as const) {
+      const found = await verdict(payload, quiet);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.equal(found?.reason, `teamrig exec guard: ${settingsWriteRefusal(command)}`, JSON.stringify(payload));
+    }
+    assert.equal(quiet.reads(), 0);
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it("leaves a settings writer's preview, and the commands beside the writers, to the normal flow", async () => {
+    const quiet = env();
+    for (const line of [
+      'teamrig permissions trim',
+      'teamrig permissions trim --all',
+      'teamrig statusline install',
+      'teamrig automode status',
+      'teamrig config get roles',
+      'teamrig config validate',
+      'teamrig setup backup',
+      '$T permissions trim',
+      'echo teamrig permissions trim --yes',
+    ]) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
   });
 
