@@ -1,9 +1,10 @@
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
-import { importRules } from '../../github/map.ts';
+import { importRules, issueOwner, issueRef } from '../../github/map.ts';
 import { importedTasks, linkedRefs, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
 import { withCiExcerpts } from '../../github/ci-excerpt.ts';
+import { securityIssues, type SecurityIssue } from '../../github/security-alert.ts';
 import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
 import type { IssueHost } from '../../issues/host.ts';
@@ -86,6 +87,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const watched = (await readSyncState(runtime, kit))?.pulls ?? new Map<string, PullWatch>();
   const pulls = new Map<string, PullWatch>();
   const pullNews: PullEvent[] = [];
+  const security = new Map<string, readonly SecurityIssue[]>();
   let written = 0;
   /** The open threads of the repositories read, for the response clock, and those repositories. */
   const threads: Thread[] = [];
@@ -113,7 +115,10 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
     read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
     const tasks = [...(await register.snapshot()).state.tasks.values()];
-    const plan = planSync(read.issues, importedTasks(tasks), rules, linkedRefs(tasks));
+    const imported = importedTasks(tasks);
+    const plan = planSync(read.issues, imported, rules, linkedRefs(tasks));
+    // A security issue goes to its task's owner, else where the import would route it; an outsider's left-out report too.
+    security.set(repo, securityIssues(read.issues, (issue) => imported.get(issueRef(issue.repo, issue.number))?.owner ?? issueOwner(issue, rules)));
     leftOut.set(repo, plan.leftOut);
     const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
     let end: RepoEnd = 'ok';
@@ -191,7 +196,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
   }
   if (auto) {
-    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news })).forEach(say);
+    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security })).forEach(say);
   } else if (news.size > 0) {
     say(`NOTE only ${KIT_NAME} issue sync --auto tells the pull request news and keeps what it read, so the next run names it again`);
   }

@@ -14,12 +14,14 @@ import {
   type SyncState,
 } from './auto.ts';
 import type { PullWatch } from './pull-news.ts';
+import type { SecurityIssue } from './security-alert.ts';
 import type { StepOutcome } from './sync.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const MINUTE = 60_000;
 const NONE: ReadonlyMap<string, readonly number[]> = new Map();
 const NO_PULLS: ReadonlyMap<string, PullWatch> = new Map();
+const NO_SECURITY: ReadonlyMap<string, readonly SecurityIssue[]> = new Map();
 const WATCH: PullWatch = {
   cursor: '2030-01-08T09:00:00Z',
   open: [
@@ -39,14 +41,16 @@ describe('the sync state file', () => {
     failing: ['acme/api'],
     leftOut: new Map([['acme/web', [9, 12]], ['acme/api', [3]]]),
     pulls: new Map([['acme/web', WATCH], ['acme/api', { cursor: undefined, open: [] }]]),
+    paged: new Map([['acme/web', [5, 8]]]),
   };
 
   it('writes the pinned fields of its format: a field added to the file raises SYNC_STATE_FORMAT', () => {
     const written: Readonly<Record<number, readonly string[]>> = {
-      3: [
+      4: [
         'failing[]',
         'finishedAt',
         'leftOut.*[]',
+        'paged.*[]',
         'pulls.*.cursor',
         'pulls.*.open[].checks',
         'pulls.*.open[].mergeable',
@@ -56,26 +60,28 @@ describe('the sync state file', () => {
         'v',
       ],
     };
-    assert.deepEqual(fieldPaths(JSON.parse(formatSyncState(full)), new Set(['leftOut', 'pulls'])), written[SYNC_STATE_FORMAT]);
+    assert.deepEqual(fieldPaths(JSON.parse(formatSyncState(full)), new Set(['leftOut', 'pulls', 'paged'])), written[SYNC_STATE_FORMAT]);
   });
 
-  it('reads back what it wrote, with or without a finish, a left-out issue or a pull request watch', () => {
-    for (const state of [{ startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE, pulls: NO_PULLS }, full] satisfies SyncState[]) {
+  it('reads back what it wrote, with or without a finish, a left-out issue, a pull request watch or a paged issue', () => {
+    for (const state of [{ startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE, pulls: NO_PULLS, paged: NONE }, full] satisfies SyncState[]) {
       assert.deepEqual(parseSyncState(formatSyncState(state)), state);
     }
-    const bare = formatSyncState({ ...full, leftOut: NONE, pulls: NO_PULLS });
-    assert.ok(!bare.includes('leftOut') && !bare.includes('pulls'), bare);
+    const bare = formatSyncState({ ...full, leftOut: NONE, pulls: NO_PULLS, paged: NONE });
+    assert.ok(!bare.includes('leftOut') && !bare.includes('pulls') && !bare.includes('paged'), bare);
   });
 
-  it('reads a format-1 file as having left nothing out, and formats 1 and 2 as having watched no pull request', () => {
-    assert.deepEqual(parseSyncState('{"v":1,"startedAt":1,"failing":["acme/api"]}'), { startedAt: 1, finishedAt: undefined, failing: ['acme/api'], leftOut: NONE, pulls: NO_PULLS });
+  it('reads a format-1 file as having left nothing out, formats 1 and 2 as having watched no pull request, and none as having paged', () => {
+    assert.deepEqual(parseSyncState('{"v":1,"startedAt":1,"failing":["acme/api"]}'), { startedAt: 1, finishedAt: undefined, failing: ['acme/api'], leftOut: NONE, pulls: NO_PULLS, paged: NONE });
     assert.deepEqual(parseSyncState('{"v":2,"startedAt":1,"failing":[],"leftOut":{"acme/web":[9]},"pulls":{"acme/web":7}}'), {
       startedAt: 1,
       finishedAt: undefined,
       failing: [],
       leftOut: new Map([['acme/web', [9]]]),
       pulls: NO_PULLS,
+      paged: NONE,
     });
+    assert.deepEqual(parseSyncState('{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"open":[]}},"paged":{"acme/web":[5]}}')?.paged, NONE);
   });
 
   it('reads a damaged file or one of another format as no sync yet', () => {
@@ -83,7 +89,9 @@ describe('the sync state file', () => {
     for (const text of [
       '',
       'not json',
-      '{"v":4,"startedAt":1,"failing":[]}',
+      '{"v":5,"startedAt":1,"failing":[]}',
+      '{"v":4,"startedAt":1,"failing":[],"paged":[5]}',
+      '{"v":4,"startedAt":1,"failing":[],"paged":{"acme/web":["5"]}}',
       '{"v":3,"startedAt":1,"failing":[],"pulls":[]}',
       '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":7}}',
       '{"v":3,"startedAt":1,"failing":[],"pulls":{"acme/web":{"cursor":"x","open":[]}}}',
@@ -110,36 +118,45 @@ describe('the sync state file', () => {
 
 describe('finishState', () => {
   it('records the finish, the failures and the watches, keeping the recorded start', () => {
-    const claimed: SyncState = { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9]]]), pulls: NO_PULLS };
-    assert.deepEqual(finishState(claimed, NOW + MINUTE, { failures: [], leftOut: NONE, pulls: NO_PULLS }), {
+    const claimed: SyncState = { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9]]]), pulls: NO_PULLS, paged: NONE };
+    assert.deepEqual(finishState(claimed, NOW + MINUTE, { failures: [], leftOut: NONE, pulls: NO_PULLS, security: NO_SECURITY }), {
       startedAt: NOW,
       finishedAt: NOW + MINUTE,
       failing: [],
       leftOut: NONE,
       pulls: NO_PULLS,
+      paged: NONE,
     });
-    assert.deepEqual(finishState(undefined, NOW, { failures: [{ repo: 'acme/web', reason: 'gone' }], leftOut: NONE, pulls: NO_PULLS }), {
+    assert.deepEqual(finishState(undefined, NOW, { failures: [{ repo: 'acme/web', reason: 'gone' }], leftOut: NONE, pulls: NO_PULLS, security: NO_SECURITY }), {
       startedAt: NOW,
       finishedAt: NOW,
       failing: ['acme/web'],
       leftOut: NONE,
       pulls: NO_PULLS,
+      paged: NONE,
     });
   });
 
   it('keeps what was left out of a repository it could not read, and drops a read one that left nothing out', () => {
-    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: new Map([['acme/web', [9]], ['acme/api', [3]], ['acme/old', [1]]]), pulls: NO_PULLS };
+    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: new Map([['acme/web', [9]], ['acme/api', [3]], ['acme/old', [1]]]), pulls: NO_PULLS, paged: NONE };
     const failed = [{ repo: 'acme/web', reason: 'gone' }];
-    const finished = finishState(before, NOW + MINUTE, { failures: failed, leftOut: new Map([['acme/api', []], ['acme/new', [4, 5]]]), pulls: NO_PULLS });
+    const finished = finishState(before, NOW + MINUTE, { failures: failed, leftOut: new Map([['acme/api', []], ['acme/new', [4, 5]]]), pulls: NO_PULLS, security: NO_SECURITY });
     assert.deepEqual(finished.leftOut, new Map([['acme/new', [4, 5]], ['acme/web', [9]]]));
   });
 
   it('keeps the pull request watch of a repository it could not read, and drops one no longer synced', () => {
     const empty: PullWatch = { cursor: undefined, open: [] };
-    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE, pulls: new Map([['acme/web', WATCH], ['acme/api', WATCH], ['acme/old', WATCH]]) };
+    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE, pulls: new Map([['acme/web', WATCH], ['acme/api', WATCH], ['acme/old', WATCH]]), paged: NONE };
     const failed = [{ repo: 'acme/web', reason: 'gone' }];
-    const finished = finishState(before, NOW + MINUTE, { failures: failed, leftOut: NONE, pulls: new Map([['acme/api', empty], ['acme/new', empty]]) });
+    const finished = finishState(before, NOW + MINUTE, { failures: failed, leftOut: NONE, pulls: new Map([['acme/api', empty], ['acme/new', empty]]), security: NO_SECURITY });
     assert.deepEqual(finished.pulls, new Map([['acme/api', empty], ['acme/new', empty], ['acme/web', WATCH]]));
+  });
+
+  it("holds as paged a read repository's open security issues now, and keeps those of one it could not read", () => {
+    const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE, pulls: NO_PULLS, paged: new Map([['acme/web', [3]], ['acme/api', [2]], ['acme/old', [1]]]) };
+    const security = new Map([['acme/web', [{ repo: 'acme/web', number: 8, url: 'https://github.com/acme/web/issues/8', to: 'bravo' }, { repo: 'acme/web', number: 5, url: 'https://github.com/acme/web/issues/5', to: 'bravo' }]], ['acme/old', []]]);
+    const finished = finishState(before, NOW + MINUTE, { failures: [{ repo: 'acme/api', reason: 'gone' }], leftOut: NONE, pulls: NO_PULLS, security });
+    assert.deepEqual(finished.paged, new Map([['acme/web', [5, 8]], ['acme/api', [2]]]));
   });
 });
 

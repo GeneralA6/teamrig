@@ -14,7 +14,11 @@ import {
   type SyncRun,
   type SyncState,
 } from '../../github/auto.ts';
+import { issueRef } from '../../github/map.ts';
 import { pullNewsText } from '../../github/pull-news.ts';
+import { securityLine, securityPageText, unpagedIssues, unpagedLine, type SecurityIssue } from '../../github/security-alert.ts';
+import { errorMessage } from '../../core/guards.ts';
+import { sendOwnerPage } from '../login-page.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import type { Kit } from '../kit.ts';
@@ -82,9 +86,20 @@ export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitC
   for (const [to, events] of run.pullNews) {
     posts.push({ to, ...pullNewsText(events) });
   }
+  const lines: string[] = [];
+  // Each open security issue not paged before wakes its session and pages the owner; the state now holds it as paged,
+  // so a page that failed is told to the lead once rather than retried at every run.
+  for (const issue of unpagedIssues(run.security, before?.paged ?? new Map())) {
+    posts.push({ to: issue.to, text: securityLine(issue), wake: true });
+    const page = await securityPage(runtime, kit.paths.team, issue);
+    lines.push(page.line);
+    if (page.why !== undefined) {
+      posts.push({ to: config.roles.lead, text: unpagedLine(issue, page.why), wake: true });
+    }
+  }
   const inboxes = inboxDepsOf(runtime, kit.paths).inboxes;
   const secrets = new SecretScanner(config.register.secretPatterns);
-  const refused: string[] = [];
+  const refused: string[] = lines;
   for (const { to, text, wake } of posts) {
     const problem =
       wake && config.wake.enabled
@@ -95,4 +110,23 @@ export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitC
     }
   }
   return refused;
+}
+
+/** Pages the owner for a security issue: the run's line, and why no page went (undefined once one did). */
+async function securityPage(runtime: CliRuntime, team: string, issue: SecurityIssue): Promise<{ readonly line: string; readonly why: string | undefined }> {
+  const ref = issueRef(issue.repo, issue.number);
+  try {
+    const sent = await sendOwnerPage(runtime, team, (zone) => securityPageText(issue, team, zone.clock(new Date(runtime.clock.now()))));
+    if (sent.status === 'ok') {
+      return { line: `PAGED the owner for security issue ${ref} through ${sent.source.team}'s alerts.${sent.source.key}`, why: undefined };
+    }
+    const why =
+      sent.status === 'none'
+        ? `no team from ${team} up names alerts.pageWebhookFile or alerts.pageWebhookEnv`
+        : `${sent.source.team}'s alerts.${sent.source.key}: ${sent.problem}`;
+    return { line: `NO PAGE for security issue ${ref}: ${why}`, why };
+  } catch (error) {
+    const why = `the page failed: ${errorMessage(error)}`;
+    return { line: `NO PAGE for security issue ${ref}: ${why}`, why };
+  }
 }

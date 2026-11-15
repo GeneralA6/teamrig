@@ -7,6 +7,7 @@ import { isIssueQuery } from '../github/gh.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
+import { FakeWebhook } from '../testing/fake-webhook.ts';
 import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
@@ -46,7 +47,7 @@ describe('teamrig issue sync --auto', () => {
     kit.clock.advance(15 * MINUTE);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
     assert.equal(githubLines(kit, 'lead')[2], 'GitHub sync reads every repository again (acme/api failed before)');
-    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]) });
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map() });
   });
 
   it("tells the lead an outsider's issue it left out once, again only for a new one, also across a failed read", async () => {
@@ -115,6 +116,37 @@ describe('teamrig issue sync --auto', () => {
     assert.deepEqual(githubLines(kit, 'bravo').at(-1), `GitHub pull requests: gh:acme/web#20 "Change 20": checks failing ("test" at "Run tests"; log end in ${file})`);
     assert.match(kit.files.get(file) ?? '', /## Job "test", step "Run tests"\n\n```text\nnot ok 3 - reads\nError: exit code 1\n```/);
     assert.equal((await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read('bravo')).length, 1);
+  });
+
+  it('wakes the session a security issue routes to and pages the owner once per issue, a label set later too', async () => {
+    const hookFile = '/chat/page-url';
+    const kit = new CliHarness({ ...TEAM, timeZone: 'UTC', wake: { enabled: true }, alerts: { pageWebhookFile: hookFile }, github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } });
+    await kit.files.write(hookFile, 'https://chat.example/x\n');
+    const webhook = new FakeWebhook();
+    const plain = ghIssue('acme/web', 7, { title: 'Token leaks via /debug', assignees: ['octocat'] });
+    const labelled = ghIssue('acme/web', 7, { title: 'Token leaks via /debug', assignees: ['octocat'], labels: ['security'] });
+    for (const issues of [[plain], [labelled], [labelled]]) {
+      kit.clock.advance(15 * MINUTE);
+      const result = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues), webhook });
+      assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    }
+    assert.deepEqual(
+      webhook.posts.map(({ url, content }) => [url, content.replace(/ at \d\d:\d\d UTC/, '')]),
+      [['https://chat.example/x', 'teamrig: security issue gh:acme/web#7 on GitHub, routed to app/bravo: https://github.com/acme/web/issues/7']],
+    );
+    const line = githubLines(kit, 'bravo').find((text) => text.startsWith('GitHub security issue gh:acme/web#7 is yours'));
+    assert.ok(line !== undefined && !line.includes('Token leaks'), githubLines(kit, 'bravo').join('\n'));
+    assert.equal((await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read('bravo')).length, 1);
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? '')?.paged, new Map([['acme/web', [7]]]));
+  });
+
+  it('tells the lead, waking it, when no page webhook pages the owner for a security issue', async () => {
+    const kit = new CliHarness({ ...TEAM, wake: { enabled: true }, github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } });
+    const issues = [ghIssue('acme/web', 7, { assignees: ['octocat'], labels: ['security'] })];
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues), webhook: new FakeWebhook() });
+    assert.ok(result.stdout.includes('NO PAGE for security issue gh:acme/web#7: no team from app up names alerts.pageWebhookFile or alerts.pageWebhookEnv'), result.stdout.join('\n'));
+    assert.deepEqual(githubLines(kit, 'lead').at(-1), 'GitHub security issue gh:acme/web#7 went to bravo, but the owner was not paged: no team from app up names alerts.pageWebhookFile or alerts.pageWebhookEnv');
+    assert.equal((await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read('lead')).length, 1);
   });
 
   it('never overwrites a state file a newer teamrig wrote: --auto fails', async () => {

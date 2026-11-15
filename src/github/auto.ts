@@ -4,6 +4,7 @@ import { PULL_CHECKS, PULL_MERGEABLE, PULL_REVIEWS } from '../issues/pull.ts';
 import { cut } from '../register/views.ts';
 import { issueRef } from './map.ts';
 import type { PullEvent, PullMark, PullWatch } from './pull-news.ts';
+import { pagedNumbers, type SecurityIssue } from './security-alert.ts';
 import type { StepOutcome } from './sync.ts';
 
 /**
@@ -15,14 +16,16 @@ import type { StepOutcome } from './sync.ts';
  */
 
 /**
- * The format of the sync state file this code writes: 2 added `leftOut`, 3 `pulls`. It reads format 1 as having left
- * nothing out, and formats 1 and 2 as having watched no pull request, so the next read of each is a first read; a
- * file in another format reads as no sync yet.
+ * The format of the sync state file this code writes: 2 added `leftOut`, 3 `pulls`, 4 `paged`. It reads format 1 as
+ * having left nothing out, formats 1 and 2 as having watched no pull request, so the next read of each is a first read,
+ * and formats 1 to 3 as having paged no security issue, so each one open pages once; a file in another format reads as
+ * no sync yet.
  */
-export const SYNC_STATE_FORMAT = 3;
+export const SYNC_STATE_FORMAT = 4;
 /** The older formats this code still reads. */
 const NO_LEFT_OUT_FORMAT = 1;
 const NO_PULLS_FORMAT = 2;
+const NO_PAGED_FORMAT = 3;
 
 /** The new tasks one inbox line names; the rest are counted. */
 const NAMED_TASKS = 5;
@@ -33,8 +36,9 @@ const TITLE_CHARS = 60;
 
 /**
  * The team's automatic sync: when the last one started and finished, the repositories it could not read, by
- * repository the numbers, lowest first, of the open issues the trust rule left out (github/trust.ts), and by
- * repository what the pull request monitor last read (pull-news.ts).
+ * repository the numbers, lowest first, of the open issues the trust rule left out (github/trust.ts), by repository
+ * what the pull request monitor last read (pull-news.ts), and by repository the numbers, lowest first, of the open
+ * security issues the owner was paged for (security-alert.ts).
  */
 export interface SyncState {
   readonly startedAt: number;
@@ -42,12 +46,14 @@ export interface SyncState {
   readonly failing: readonly string[];
   readonly leftOut: ReadonlyMap<string, readonly number[]>;
   readonly pulls: ReadonlyMap<string, PullWatch>;
+  readonly paged: ReadonlyMap<string, readonly number[]>;
 }
 
 /**
  * What one `issue sync --auto` run did: the tasks it added, the repositories that failed, the issues it left out of
  * each repository it read, what it read of the pull requests of each repository whose pull requests it read, and
- * the pull request events each session hears about (pull-news.ts).
+ * the pull request events each session hears about (pull-news.ts), and the open security issues of each repository
+ * whose issues it read (security-alert.ts).
  */
 export interface SyncRun {
   readonly added: readonly AddedTask[];
@@ -55,6 +61,7 @@ export interface SyncRun {
   readonly leftOut: ReadonlyMap<string, readonly number[]>;
   readonly pulls: ReadonlyMap<string, PullWatch>;
   readonly pullNews: ReadonlyMap<string, readonly PullEvent[]>;
+  readonly security: ReadonlyMap<string, readonly SecurityIssue[]>;
 }
 
 /** A repository a sync could not read, or whose tasks the task list refused, and why. */
@@ -73,12 +80,12 @@ export interface AddedTask {
 
 /**
  * The state file's content; undefined when it is damaged or from another format, which reads as no sync yet. A
- * format-1 file left nothing out, and neither older format watched a pull request.
+ * format-1 file left nothing out, neither format 1 nor 2 watched a pull request, and no older format paged.
  */
 export function parseSyncState(text: string): SyncState | undefined {
   const record = parseObject(text.trim());
   const format = record?.[VERSION_FIELD];
-  if (record === undefined || (format !== SYNC_STATE_FORMAT && format !== NO_PULLS_FORMAT && format !== NO_LEFT_OUT_FORMAT)) {
+  if (record === undefined || (format !== SYNC_STATE_FORMAT && format !== NO_PAGED_FORMAT && format !== NO_PULLS_FORMAT && format !== NO_LEFT_OUT_FORMAT)) {
     return undefined;
   }
   const { startedAt, finishedAt, failing } = record;
@@ -86,9 +93,12 @@ export function parseSyncState(text: string): SyncState | undefined {
     return undefined;
   }
   const repos = failing.filter((repo): repo is string => typeof repo === 'string');
-  const leftOut = format === NO_LEFT_OUT_FORMAT ? new Map<string, readonly number[]>() : parseLeftOut(record['leftOut']);
-  const pulls = format === SYNC_STATE_FORMAT ? parsePulls(record['pulls']) : new Map<string, PullWatch>();
-  return repos.length === failing.length && leftOut !== undefined && pulls !== undefined ? { startedAt, finishedAt, failing: repos, leftOut, pulls } : undefined;
+  const leftOut = format === NO_LEFT_OUT_FORMAT ? new Map<string, readonly number[]>() : parseNumbers(record['leftOut']);
+  const pulls = format === SYNC_STATE_FORMAT || format === NO_PAGED_FORMAT ? parsePulls(record['pulls']) : new Map<string, PullWatch>();
+  const paged = format === SYNC_STATE_FORMAT ? parseNumbers(record['paged']) : new Map<string, readonly number[]>();
+  return repos.length === failing.length && leftOut !== undefined && pulls !== undefined && paged !== undefined
+    ? { startedAt, finishedAt, failing: repos, leftOut, pulls, paged }
+    : undefined;
 }
 
 /** The stored `pulls` object, which a file holds only once some repository's pull requests were read; undefined when damaged. */
@@ -140,8 +150,8 @@ function isOneOf<T extends string>(list: readonly T[], value: unknown): value is
   return list.some((item) => item === value);
 }
 
-/** The stored `leftOut` object, which a file holds only when some issue was left out; undefined when damaged. */
-function parseLeftOut(value: unknown): Map<string, readonly number[]> | undefined {
+/** A stored issue numbers object by repository (`leftOut`, `paged`), which a file holds only when one is not empty; undefined when damaged. */
+function parseNumbers(value: unknown): Map<string, readonly number[]> | undefined {
   if (value === undefined) {
     return new Map();
   }
@@ -165,6 +175,7 @@ export function formatSyncState(state: SyncState): string {
     failing: [...state.failing],
     ...(state.leftOut.size === 0 ? {} : { leftOut: Object.fromEntries([...state.leftOut].map(([repo, numbers]) => [repo, [...numbers]])) }),
     ...(state.pulls.size === 0 ? {} : { pulls: Object.fromEntries([...state.pulls].map(([repo, watch]) => [repo, watchRecord(watch)])) }),
+    ...(state.paged.size === 0 ? {} : { paged: Object.fromEntries([...state.paged].map(([repo, numbers]) => [repo, [...numbers]])) }),
   });
 }
 
@@ -181,18 +192,21 @@ function isTime(value: unknown): value is number {
  * the issues left out of each repository it read, and what it read of each one's pull requests. A repository it
  * could not read keeps what was left out of it before, so its issues are not told again once it reads, and its pull
  * request watch, so what happened meanwhile is news once it reads; one that left nothing out is not kept, nor the
- * watch of a repository no longer synced.
+ * watch of a repository no longer synced. The paged numbers of a repository it read are its open security issues now,
+ * every one of them paged by this run or before; one it could not read keeps its own, so none pages twice.
  */
-export function finishState(state: SyncState | undefined, now: number, run: Pick<SyncRun, 'failures' | 'leftOut' | 'pulls'>): SyncState {
+export function finishState(state: SyncState | undefined, now: number, run: Pick<SyncRun, 'failures' | 'leftOut' | 'pulls' | 'security'>): SyncState {
   const failing = run.failures.map((failure) => failure.repo);
   const kept = [...(state?.leftOut ?? [])].filter(([repo]) => failing.includes(repo) && !run.leftOut.has(repo));
   const watched = [...(state?.pulls ?? [])].filter(([repo]) => failing.includes(repo) && !run.pulls.has(repo));
+  const pagedBefore = [...(state?.paged ?? [])].filter(([repo]) => failing.includes(repo) && !run.security.has(repo));
   return {
     startedAt: state?.startedAt ?? now,
     finishedAt: now,
     failing,
     leftOut: new Map([...run.leftOut, ...kept].filter(([, numbers]) => numbers.length > 0)),
     pulls: new Map([...run.pulls, ...watched]),
+    paged: new Map([...pagedNumbers(run.security), ...pagedBefore]),
   };
 }
 
