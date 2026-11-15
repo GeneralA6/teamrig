@@ -282,7 +282,8 @@ request's stage.
 
 A hook keeps the review honest: it refuses an approval given in another session's name or the owner's (the owner
 reviews in their own terminal, or with `/teamrig exec approve` typed in a tab), and any `exec` call through a copy of
-teamrig that is not the installed plugin or was changed after its build
+teamrig that is not the installed plugin or was changed after its build, however the line starts it (a package runner,
+a version manager, a renamed copy)
 ([the exec guard](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-exec-guard); every
 field of a request: [exec request](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-exec-request)).
 The `exec` commands also refuse to run on a node told to load code beside teamrig (a `--require` or `--import`

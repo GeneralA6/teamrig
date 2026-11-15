@@ -284,7 +284,9 @@ current name in any case only binds the tab and renames nothing. If the `.teamri
 ## Before a shell command: the push guard
 
 Before Claude runs a Bash or PowerShell command, the guard reads it (on Windows a Bash line also as bash receives
-it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and decides:
+it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)), with what each shell, wrapper, package
+runner or version manager on it starts (`bash -c "..."`, `npx -c "..."`, `pnpm exec sh -c "..."`, `volta run git
+push`), and decides:
 
 - **Runs as usual**: no `git push` in it, a `--dry-run`, or a push that updates no protected branch
   (`main` and `master` by default [pushGuard.protectedBranches]; an empty list guards nothing, mirrors included).
@@ -737,9 +739,14 @@ A [privileged command](commands.md#privileged-commands) runs only after a review
 the reviewer from `--session` as given, while one allow rule lets every `teamrig` command run unasked. Before Claude
 runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the push guard does) and finds each
 `exec` command, however the line starts teamrig: as `teamrig`, as one of its entry scripts (`dist/cli/main.js`, or
-`dist/cli/guard-main.js` beside it) through `node` or any other script host (`tsx`, `bun`, `npx tsx`), or through a
-package runner naming `teamrig` or `teamrig@<version>` (`npx`, `pnpm dlx`, `pnpm exec`, `npm exec`, `yarn`,
-`bunx`). It refuses:
+`dist/cli/guard-main.js` beside it, with or without the extension) through `node` or any other script host (`tsx`,
+`bun`, `npx tsx`), through a package runner or a version manager (`npx`, `npm exec`, `pnpm exec`, `pnpm dlx`, `yarn`,
+`bunx`, `corepack`, `volta run`, `fnm exec`, `nvm exec`), the line it hands a shell (`npx -c "..."`,
+`pnpm exec sh -c "..."`) included, or as any other program whose later words start an `exec` or `owner` command
+(`node x.js exec approve ...`, `./copy owner next ...`), since a copy or another name may be the CLI. A line that
+hands the literal words `exec approve` to another program (`echo exec approve R1`) is refused for that too; quote
+them (`echo "exec approve R1"`). A command word only known when it runs counts only after teamrig's own name, so
+`kubectl exec "$POD"` passes. It refuses:
 
 - **a review as another**: `exec approve`, `refuse` or `escalate` that names no `--session`, names it twice, names
   a session the team does not have, or one that is not the tab's own. `--session` wins over `$TEAMRIG_SESSION` in
@@ -757,7 +764,8 @@ package runner naming `teamrig` or `teamrig@<version>` (`npx`, `pnpm dlx`, `pnpm
   shell's PATH search finds (Bash: `~/bin` first; cmd: its folder first; PowerShell: `.ps1` and the `PATHEXT`
   names). A bare `teamrig` it finds nowhere is the plugin bin the Bash tool appends to PATH last. The reason names
   the file and the plugin's own client; a `teamrig` found on PATH is to be taken off it. An `exec` command through a
-  package runner is refused too, as the runner may find or fetch a teamrig other than this install.
+  package runner or a version manager is refused too, as it puts folders of its own first on PATH and may find or
+  fetch a teamrig other than this install.
 - **a program known only when it runs**: `$T exec approve ...`, `node "$SCRIPT" exec run ...`, a package runner's
   `npx "$P" exec ...` or a relative client path from a folder only known when the line runs, whenever the words
   after it are an `exec` command, as no file can be checked; write the program out. `$DOCKER exec ctr ls` is not
@@ -826,8 +834,9 @@ tool: while sessions and the runner share one account, it stops a slip, not a de
 A service role [serviceRoles] lets its holders run a few teamrig commands for an outside service past every
 permission check, so who holds one is a permission, the owner's to give. Before Claude runs a Bash or PowerShell
 call, `hook service-role-guard` asks the owner when the line runs `teamrig roles grant` or `teamrig roles revoke`,
-by any client (`teamrig`, node and teamrig's entry, a program only known when the line runs, or a `roles` command
-only known when it runs), whatever `--yes` says; with asks off it refuses instead, with the note to record the step
+by any client (`teamrig`, node and teamrig's entry, a package runner or a version manager and the shell line it
+starts, any program whose later words are `roles grant` or `roles revoke`, a program only known when the line runs,
+or a `roles` command only known when it runs), whatever `--yes` says; with asks off it refuses instead, with the note to record the step
 as waiting for the owner. The owner runs a grant from their own terminal, or types `/teamrig roles grant ...` in a
 tab. The route allow never lets one through, as it answers only once every guard passed.
 
