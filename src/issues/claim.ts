@@ -149,7 +149,9 @@ export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim
     const holding = new Set([...kept, ...made].filter((claim) => claim.repo === issue.repo).map((claim) => claim.login));
     const comment = firstClaim(issue, times.since, holding);
     if (comment !== undefined) {
-      made.push({ repo: issue.repo, number: issue.number, login: comment.login, at: Date.parse(comment.at) });
+      // The claim's time is when code made it, not the comment's: a backlog of old comments read in one pass still
+      // counts toward today's cap, and the claim runs its full days from its assignment.
+      made.push({ repo: issue.repo, number: issue.number, login: comment.login, at: times.now });
     }
   }
   return { made, expired, kept };

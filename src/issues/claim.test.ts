@@ -48,8 +48,16 @@ describe('isClaim', () => {
 describe('planClaims', () => {
   it('claims an open unassigned issue for an outside commenter', () => {
     const plan = planClaims([issue(1, { comments: [claimComment()] })], [], TIMES);
-    assert.deepEqual(plan.made, [{ repo: REPO, number: 1, login: 'ada', at: NOW - 1_000 }]);
+    assert.deepEqual(plan.made, [{ repo: REPO, number: 1, login: 'ada', at: NOW }]);
     assert.deepEqual(plan.expired, []);
+  });
+
+  it(`counts claims made from a backlog of old comments toward today's ${String(CLAIMS_PER_DAY)}`, () => {
+    const old = new Date(NOW - 3 * DAY).toISOString();
+    const issues = Array.from({ length: CLAIMS_PER_DAY + 2 }, (_, index) => issue(index + 1, { comments: [claimComment({ login: `user${String(index)}`, at: old })] }));
+    const plan = planClaims(issues, [], { now: NOW, since: NOW - 7 * DAY });
+    assert.equal(plan.made.length, CLAIMS_PER_DAY);
+    assert.ok(plan.made.every((made) => made.at === NOW));
   });
 
   it('makes no claim for an insider, a bot, a deleted account, an old or plain comment, an assigned, closed or design issue', () => {
