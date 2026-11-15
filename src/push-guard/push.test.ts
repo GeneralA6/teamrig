@@ -996,12 +996,41 @@ describe('evaluatePushes: an interpreter whose output feeds a shell', () => {
     ]);
   });
 
+  it('asks when the output goes on out of a compound command, to a process substitution or descriptor, or to a file the line runs', () => {
+    const P = '\'print("git push origin main")\'';
+    expectRows(
+      [
+        `{ python3 -c ${P}; } | sh`,
+        `{ python3 -c ${P}; echo; } | sh`,
+        `if true; then python3 -c ${P}; fi | sh`,
+        `for i in 1; do python3 -c ${P}; done | sh`,
+        `while true; do python3 -c ${P}; break; done | sh`,
+        `until false; do python3 -c ${P}; break; done | bash`,
+        `case x in x) python3 -c ${P} ;; esac | sh`,
+        `(python3 -c ${P}; echo) | sh`,
+        `if true; then { python3 -c ${P}; }; fi | sh`,
+        `python3 -c ${P} > >(sh)`,
+        `exec 3> >(sh); python3 -c ${P} >&3`,
+        `mkfifo p; sh < p & python3 -c ${P} > p`,
+        `python3 -c ${P} > x.sh; sh x.sh`,
+        `python3 -c ${P} > /tmp/x.sh && bash /tmp/x.sh`,
+        `python3 -c ${P} >> x.sh; . ./x.sh`,
+        "python3 - <<'PY' > x.sh\nprint('git push origin main')\nPY\nsh x.sh",
+      ].map((command): Row => [command, 'ask', 'doubt']),
+    );
+  });
+
   it('still lets its words pass where its output ends the line, goes to a file, or feeds no shell', () => {
     expectRows([
       ['python3 -c \'print("git push origin main")\'', 'allow'],
       ['python3 -c \'print("git push origin main")\' > out.txt', 'allow'],
       ['python3 -c \'print("pushed")\' | grep push', 'allow'],
       ["python3 -c 'print(1)' | sh", 'allow'],
+      ['python3 -c \'print("git push origin main")\' 2>&1 >/dev/null', 'allow'],
+      ['python3 -c \'print("git push origin main")\' >&2', 'allow'],
+      ['python3 -c \'print("pushed")\'; ls | grep x', 'allow'],
+      ['{ python3 -c \'print("pushed")\'; } > log.txt', 'allow'],
+      ['if true; then python3 -c \'print("pushed")\'; fi; true | sh', 'allow'],
     ]);
   });
 });

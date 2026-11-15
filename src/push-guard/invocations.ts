@@ -496,12 +496,72 @@ export function configWrite(args: readonly ShellWord[]): ConfigWrite | undefined
 /** A command's terminator that pipes its output to the next command, a newline or two after it. */
 const PIPE_TERMINATOR = /^\|&?\n*$/;
 
+/** The compound commands' opening and closing reserved words, read where a command starts. */
+const COMPOUND_OPENERS: ReadonlySet<string> = new Set(['{', 'if', 'for', 'while', 'until', 'case', 'select']);
+const COMPOUND_CLOSERS: ReadonlySet<string> = new Set(['}', 'fi', 'done', 'esac']);
+/** A redirection of stdout (`>`, `>>`, `>|`, `1>`, `&>`, `>&3`): its file descriptor, and a duplicated one. */
+const STDOUT_REDIRECTION = /^(\d*|&)>(?:>|\|)?(?:&(\d+|-)?)?$/;
+/** Where stdout going changes nothing: nowhere, or back to the terminal's own streams. */
+const QUIET_OUTPUT = /^(?:\/dev\/(?:null|stdout|stderr|tty)|[12-])$/;
+
 /**
- * True when what `command` prints goes on to another command: down a pipe (`|`, `|&`, also from a `( )` group the
- * command ends), or into the command holding the substitution it sits in.
+ * True when what the command at `index` prints goes on, where a
+ * shell may read it: into the command holding the substitution it sits in, down a pipe (`|`, `|&`), to a file or a
+ * file descriptor other than the terminal's (`> x.sh`, `> >(sh)`, `>&3`), or out of a compound command it sits in
+ * (`{ }`, `if`, `for`, `while`, `until`, `case`, a `( )` group) whose output goes on the same way.
  */
-function outputFeedsCommand(command: ShellCommand): boolean {
-  return command.nesting > 0 || PIPE_TERMINATOR.test(command.terminator.replace(/[()]/g, ''));
+function outputGoesOn(commands: readonly ShellCommand[], index: number): boolean {
+  const command = commands[index];
+  if (command === undefined || command.nesting > 0 || sendsOutput(command)) {
+    return command !== undefined;
+  }
+  let depth = 0;
+  for (const later of commands.slice(index + 1)) {
+    if (later.nesting !== command.nesting) {
+      continue;
+    }
+    const inGroup = later.subshells.length > 0 && later.subshells.every((id, at) => command.subshells[at] === id);
+    if (inGroup && later.terminator.includes(')') && sendsOutput(later)) {
+      return true;
+    }
+    if (!sameSubshells(later, command)) {
+      continue;
+    }
+    const words = later.words.map((word) => word.text);
+    const opened = words.findIndex((word) => !COMPOUND_OPENERS.has(word));
+    depth += opened === -1 ? words.length : opened;
+    if (COMPOUND_CLOSERS.has(words[0] ?? '')) {
+      depth -= 1;
+      if (depth < 0) {
+        // It closes a compound the command sits in.
+        if (sendsOutput(later)) {
+          return true;
+        }
+        depth = 0;
+      }
+    }
+  }
+  return false;
+}
+
+/** True when a command's own output goes on: down a pipe, or to a file or file descriptor (see {@link outputGoesOn}). */
+function sendsOutput(command: ShellCommand): boolean {
+  if (PIPE_TERMINATOR.test(command.terminator.replace(/[()]/g, ''))) {
+    return true;
+  }
+  return command.redirections.some((redirection) => {
+    const match = STDOUT_REDIRECTION.exec(redirection.operator);
+    if (match === null || !['', '1', '&'].includes(match[1] ?? '')) {
+      return false;
+    }
+    const target = match[2] ?? redirection.target?.text ?? '';
+    return !QUIET_OUTPUT.test(target);
+  });
+}
+
+/** True when two commands run in the same chain of subshells. */
+function sameSubshells(a: ShellCommand, b: ShellCommand): boolean {
+  return a.subshells.length === b.subshells.length && a.subshells.every((id, at) => b.subshells[at] === id);
 }
 
 /** Quotes a word for a bash command line, so a git shell alias gets its arguments as typed. */
@@ -639,10 +699,10 @@ class GitInvocationFinder {
       this.visitStartupFiles(command.words, dialect, location, depth);
       const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
       // An interpreter's words and stdin are its script, judged by visitCommand, not shell words that name a push:
-      // a python heredoc that posts a message saying "push" arms no doubt about the line. Its output feeding another
-      // command (a pipe, a substitution) may be shell code it prints, so there its words and stdin still name a push
-      // for the gated doubts that command raises (`python3 -c 'print("git push ...")' | sh`).
-      const script = launched?.kind === 'program' && interpreterOf(launched) !== undefined && !outputFeedsCommand(command);
+      // a python heredoc that posts a message saying "push" arms no doubt about the line. Its output going on (a pipe,
+      // a substitution, a file) may be shell code it prints, so there its words and stdin still name a push for the
+      // gated doubts what reads it raises (`python3 -c 'print("git push ...")' | sh`).
+      const script = launched?.kind === 'program' && interpreterOf(launched) !== undefined && !outputGoesOn(commands, commands.indexOf(command));
       if (!script) {
         command.words.forEach((word) => this.mention(word.text));
       }
