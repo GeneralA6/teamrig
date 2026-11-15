@@ -30,6 +30,25 @@ export const STATUS_LABELS: Readonly<Record<'open' | 'in-progress' | 'waiting' |
  */
 export const PUSH_WRITES_PER_RUN = 40;
 
+/**
+ * The writes the automatic push sends in an hour at most. GitHub's secondary limit on content-creating calls is also
+ * 500 an hour; half of it leaves the same room as PUSH_WRITES_PER_RUN does within the minute.
+ */
+export const PUSH_WRITES_PER_HOUR = 250;
+
+/**
+ * The writes one automatic push sends at most when it runs once per `everyMinutes`: PUSH_WRITES_PER_RUN, lowered so
+ * that the runs of an hour stay within PUSH_WRITES_PER_HOUR, with no count kept between runs. An hour holds up to
+ * ceil(60 / everyMinutes) runs (every 7 minutes: 9, at 0, 7, ..., 56), so the hourly writes are split by that. Every 0
+ * minutes is the automatic sync turned off: no writes.
+ */
+export function autoPushWrites(everyMinutes: number): number {
+  if (everyMinutes <= 0) {
+    return 0;
+  }
+  return Math.min(PUSH_WRITES_PER_RUN, Math.floor(PUSH_WRITES_PER_HOUR / Math.ceil(60 / everyMinutes)));
+}
+
 /** What an issue should show for its task: open with one status label, or closed for a reason. */
 export type IssueGoal = { readonly open: true; readonly label: string } | { readonly open: false; readonly reason: CloseReason };
 
@@ -75,7 +94,7 @@ export interface UnlistedIssue {
 /** What a push of one repository would send, and what it leaves. */
 export interface PushPlan {
   readonly repo: string;
-  /** The changes this run sends, whole, in issue order, within PUSH_WRITES_PER_RUN writes. */
+  /** The changes this run sends, whole, in issue order, within the run's writes. */
   readonly changes: readonly IssueChange[];
   /** The changes left for the next run, past the run's writes. */
   readonly deferred: readonly IssueChange[];
@@ -95,8 +114,9 @@ export function changeWrites(change: IssueChange): number {
  * The push of `repo`: for each issue of it a task holds, by `ref: gh:<repo>#<n>`, the writes that make the issue
  * show the task's status, planned against `issues` as the host listed them now (open ones and those closed lately).
  * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work.
+ * The run sends at most `writesPerRun` writes; the rest is deferred.
  */
-export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iterable<Task>): PushPlan {
+export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iterable<Task>, writesPerRun: number = PUSH_WRITES_PER_RUN): PushPlan {
   const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
   const planned: IssueChange[] = [];
   const closedActive: ClosedActive[] = [];
@@ -125,7 +145,7 @@ export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iter
       planned.push(change);
     }
   }
-  const { changes, deferred } = withinRun(planned);
+  const { changes, deferred } = withinRun(planned, writesPerRun);
   return { repo, changes, deferred, unchanged, closedActive, unlisted };
 }
 
@@ -168,13 +188,13 @@ function changeFor(target: IssueTarget, task: Task, issue: HostIssue, goal: Issu
 }
 
 /** The whole changes that fit in one run's writes, in order, and the rest. A change is never split across runs. */
-function withinRun(planned: readonly IssueChange[]): { changes: IssueChange[]; deferred: IssueChange[] } {
+function withinRun(planned: readonly IssueChange[], writesPerRun: number): { changes: IssueChange[]; deferred: IssueChange[] } {
   const changes: IssueChange[] = [];
   const deferred: IssueChange[] = [];
   let writes = 0;
   for (const change of planned) {
     const cost = changeWrites(change);
-    if (deferred.length === 0 && writes + cost <= PUSH_WRITES_PER_RUN) {
+    if (deferred.length === 0 && writes + cost <= writesPerRun) {
       changes.push(change);
       writes += cost;
     } else {

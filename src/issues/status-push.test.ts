@@ -3,7 +3,18 @@ import assert from 'node:assert/strict';
 import { testHostIssue } from '../testing/host-issue.ts';
 import { testTask } from '../testing/task.ts';
 import type { Task } from '../register/fold.ts';
-import { changeLine, changeWrites, heldIssue, issueGoal, planPush, PUSH_WRITES_PER_RUN, STATUS_LABELS, type IssueChange } from './status-push.ts';
+import {
+  autoPushWrites,
+  changeLine,
+  changeWrites,
+  heldIssue,
+  issueGoal,
+  planPush,
+  PUSH_WRITES_PER_HOUR,
+  PUSH_WRITES_PER_RUN,
+  STATUS_LABELS,
+  type IssueChange,
+} from './status-push.ts';
 
 const REPO = 'acme/web';
 
@@ -143,6 +154,35 @@ describe('planPush (T2682)', () => {
       plan.deferred.map((change) => change.task),
       ['T1', 'T2'],
     );
+  });
+
+  it('sends at most the writes a run is given, deferring the rest', () => {
+    const issues = [1, 2, 3].map((number) => testHostIssue(number, { labels: ['status:triaged'] }));
+    const tasks = [1, 2, 3].map((number) => holding(`T${number}`, number, { status: 'in-progress' }));
+    const plan = planPush(REPO, issues, tasks, 5);
+    assert.deepEqual(
+      plan.changes.map((change) => change.task),
+      ['T1', 'T2'],
+    );
+    assert.deepEqual(
+      plan.deferred.map((change) => change.task),
+      ['T3'],
+    );
+    assert.deepEqual(planPush(REPO, issues, tasks, 0).changes, []);
+  });
+});
+
+describe('autoPushWrites (T2876)', () => {
+  it('keeps the run writes when the hour holds them, and lowers them so an hour of runs stays within the hourly writes', () => {
+    assert.equal(autoPushWrites(15), PUSH_WRITES_PER_RUN);
+    assert.equal(autoPushWrites(5), 20);
+    assert.equal(autoPushWrites(1), 4);
+    // Every 7 minutes, 9 runs start within an hour: 27 writes each, not floor(250 * 7 / 60) = 29.
+    assert.equal(autoPushWrites(7), 27);
+    assert.equal(autoPushWrites(0), 0);
+    for (const everyMinutes of [1, 2, 5, 7, 9, 10, 11, 13, 15, 59, 60, 1440]) {
+      assert.ok(autoPushWrites(everyMinutes) * Math.ceil(60 / everyMinutes) <= PUSH_WRITES_PER_HOUR, `every ${everyMinutes} minutes`);
+    }
   });
 });
 
