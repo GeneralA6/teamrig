@@ -486,9 +486,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--issue "<public title>" --issue-body "<public text>" [--issue-repo <owner/repo>] | --local "<why>"]
       --issue: opens the task's GitHub issue with this public wording, labelled by --type and --priority, in
       --issue-repo, else github.issueAtAdd, else the one repo of github.repos, and points the task's ref at it
-      (no task id, secret or second line in the title); a failure keeps the task, without its issue
-      --local: why the task gets no issue, written as its ref "local: <why>"; while github.issueAtAdd is
-      set, an add gives --issue or --local (or a --ref to an issue), else it is refused
+      (no task id, secret, private data or second line in the title); a failure keeps the task, without its
+      issue
+      --local: why the task gets no issue, written as its ref "local: <why>"; a security hole is always added
+      with --local; while github.issueAtAdd is set, an add gives --issue or --local (or a --ref to an issue),
+      else it is refused
   add --team <team> [--owner <s>] [--source owner] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
       --source owner: the lead of a team above <team> relays the owner's order, sourced owner there
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
