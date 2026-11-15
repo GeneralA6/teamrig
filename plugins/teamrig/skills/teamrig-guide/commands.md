@@ -3042,7 +3042,8 @@ Flags:
 - `--meets <id|name>`: the session met; at its time the meeting starts in that session's tab.
 - `--at <time>`: when it starts, ahead of now: a time on the team's clock (`14:00`, `"2030-01-10 09:00"`) or an
   ISO time with its zone.
-- `--about "<one line>"`: what it settles, one line of at most 200 characters; the brief holds the rest.
+- `--about "<one line>"`: what it settles, one line of plain text of at most 200 characters, with no control
+  character or bidi mark (its title leads the status line of every tab of the meeting); the brief holds the rest.
 - `--minutes <n>`: how long, 1 to 480; 30 by default. A scheduled meeting past its slot lists as missed.
 - `--with <a,b>`: other sessions joining, told too.
 - `--tasks <T1,T2>`: the tasks it settles, each a task of the team.
