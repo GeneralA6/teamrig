@@ -78,7 +78,8 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  *      without --merge for an approval), so the plan's chunks and raise are uncommitted again (T1017);
  *   1. sync.ts: when origin/main moved past the branch, rebase onto it and set the plan's version raise again
  *      on main's version; a conflict stops before any check. On every run the plan's subjects and bodies
- *      follow the version the files set, which a rerun after a failed run finds set already (T1472);
+ *      follow the version the files set, which a rerun after a failed run finds set already (T1472). A chunk
+ *      whose files hold no uncommitted change (a version chunk with no raise) is refused here (T2823);
  *   2. typecheck and the coverage gate (stops before any commit when either fails);
  *   3. one signed-off commit per chunk of the plan, in order;
  *   4. the steps of the repo's `npm run build` (build-steps.ts) and a `build: rebuild the plugin dist` commit (with a Large-commit line when the
@@ -133,9 +134,26 @@ function freeBranch(deps: ShipDeps, stem: string): string {
 }
 
 /** One run of steps 0 to 6. */
+/**
+ * Refuses a chunk none of whose files holds an uncommitted change, before any check: its commit would fail only after
+ * the typecheck and the coverage run, at `nothing to commit`. The usual one is a version chunk with no raise in the
+ * tree, as the sync then keeps main's version (T2823).
+ */
+function refuseEmptyChunks(deps: ShipDeps, chunks: readonly Chunk[], versionPaths: readonly string[]): void {
+  for (const chunk of chunks) {
+    if (deps.git(['status', '--porcelain', '--', ...chunk.files]).trim() !== '') continue;
+    const fix = chunk.files.some((path) => versionPaths.includes(path))
+      ? `raise the version in ${versionPaths.join(' and ')}, left uncommitted, then ship again`
+      : 'leave its change uncommitted, or take the chunk out of the plan, then ship again';
+    throw new Error(`REFUSED the plan's chunk "${chunk.subject}" commits nothing: ${chunk.files.join(', ')} hold no uncommitted change; ${fix}`);
+  }
+}
+
 async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps): Promise<MergeExit> {
   deps.takeBack(written, args.base);
-  const chunks = withRaisedVersion(written, TEAMRIG_VERSION_FILES.map((file) => file.path), deps.sync().sets);
+  const versionPaths = TEAMRIG_VERSION_FILES.map((file) => file.path);
+  const chunks = withRaisedVersion(written, versionPaths, deps.sync().sets);
+  refuseEmptyChunks(deps, chunks, versionPaths);
 
   deps.node(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json']);
   deps.node(['tools/ci/coverage-cli.ts']);
