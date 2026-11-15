@@ -230,11 +230,17 @@ export function addInputOf(flags, caller, times) {
 function afterOf(text) {
     return listOf('--after', text).map(taskIdOf);
 }
+/** What `--waits` takes to clear a task's waits. */
+const NO_WAITS = 'none';
 /**
  * `--waits decision:owner,task:T5,time:2030-01-09 12:00`: what a waiting task waits for, each `kind:value`, the
  * value after the first colon, so a time keeps its own. Who gives a decision or an approval is resolved by the command.
+ * `none` clears them, so a verifying task can drop a wait without naming another (GeneralA6/teamrig#682).
  */
 export function waitsOf(text, times) {
+    if (text.trim() === NO_WAITS) {
+        return [];
+    }
     return listOf('--waits', text).map((item) => {
         const colon = item.indexOf(':');
         const kind = item.slice(0, Math.max(colon, 0)).trim();
