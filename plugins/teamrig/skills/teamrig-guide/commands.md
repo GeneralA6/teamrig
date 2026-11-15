@@ -1193,8 +1193,8 @@ Imports GitHub issues into the task list, inbound only. For each repository in `
 issues and those closed in the last `github.closedDays` days (14 by default) through the GitHub CLI, `gh`. It only
 ever lists issues: it never creates, edits, comments on, labels, assigns or closes anything on GitHub, and a task
 added with `teamrig add` stays in the task list and never goes to GitHub. Only commands run by hand write:
-`teamrig issue migrate` opens issues, `teamrig issue comment` and `teamrig issue close` comment on and close them,
-and `teamrig issue links` links them as the task tree does.
+`teamrig issue migrate` opens issues, `teamrig issue comment`, `teamrig issue edit` and `teamrig issue close`
+comment on, rewrite and close them, and `teamrig issue links` links them as the task tree does.
 Its old name, gh sync, is refused with this one (exit 64). Setup, tokens and every failure's fix:
 [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md).
 
@@ -1414,6 +1414,34 @@ Output:
 ```text
 ACCESS acme: writes with the token saved as teamrig-gh-acme
 COMMENTED acme/web#7
+```
+
+### teamrig issue edit
+
+Replaces the body (the description) of one issue or pull request of the team's repositories with the text of a file,
+with the same access and checks as `teamrig issue comment`: the text is refused, changing nothing, when it is empty,
+past 65,536 characters, looks like it holds a secret, holds private data or names a task id. The title, state,
+labels and assignees stay, and GitHub keeps the old body in the issue's edit history. The text comes from a file, as
+a full description runs to many lines a shell argument would mangle; a byte-order mark at its start is dropped, and a
+relative path is read from the working folder. It prints `EDITED <target>: its body is now <n> characters`, or
+`FAILED <target>: <reason>; the body is as it was`. Exit 1 when it failed, 2 when refused, else 0.
+
+Flags:
+
+- `--session <id|name>`: the caller, a session of the team.
+- `--body-file <path>`: the file holding the new body, required.
+
+Example:
+
+```sh
+teamrig issue edit acme/web#7 --body-file spec.md
+```
+
+Output:
+
+```text
+ACCESS acme: writes with the token saved as teamrig-gh-acme
+EDITED acme/web#7: its body is now 1832 characters
 ```
 
 ### teamrig issue close

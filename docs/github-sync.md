@@ -6,9 +6,9 @@ becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its titl
 priority and open or closed state follow GitHub on every run. The sync never goes the other way: it never creates,
 edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The
 writes are all run by hand: `teamrig issue migrate` moves tasks you choose to new issues, once
-([Moving your tasks to issues](#moving-your-tasks-to-issues)), `teamrig issue comment`, `teamrig issue label`
-and `teamrig issue close` answer, label or close one issue or pull request
-([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
+([Moving your tasks to issues](#moving-your-tasks-to-issues)), `teamrig issue comment`, `teamrig issue label`,
+`teamrig issue edit` and `teamrig issue close` answer, label, rewrite the description of or close one issue or pull
+request ([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
 task tree on the issues ([Linking issues as the task tree](#linking-issues-as-the-task-tree)). GitHub is the
 only host teamrig writes to so far.
 
@@ -83,7 +83,7 @@ Give the token only what the commands you run need:
 | --- | --- |
 | `teamrig issue sync` | **Issues: Read-only** |
 | `teamrig issue migrate` | **Issues: Read and write** |
-| `teamrig issue comment`, `teamrig issue label`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels and state are written through its issue) |
+| `teamrig issue comment`, `teamrig issue label`, `teamrig issue edit`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels, description and state are written through its issue) |
 | `teamrig issue links` | **Issues: Read-only** for the preview, **Issues: Read and write** with `--yes` |
 
 ### Why one token per owner
@@ -244,11 +244,14 @@ teamrig issue migrate rows.jsonl --yes               # opens the issues
 labels, and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
 unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only);
 `--duplicate-of` closes it as a duplicate of another issue of the same repository, which GitHub links as the
-original. Each names its target as `owner/name#number`:
+original. `teamrig issue edit` replaces the body (the description) with the text of a file, so a spec of many lines
+keeps its shape; the title, state and labels stay, and GitHub keeps the old body in the edit history. Each names its
+target as `owner/name#number`:
 
 ```sh
 teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."
 teamrig issue label acme/web#7 --add "type: bug,p1" --remove "needs triage"
+teamrig issue edit acme/web#7 --body-file spec.md
 teamrig issue close acme/web#12 --comment "Merged as #14 with your commits credited. Thank you!"
 teamrig issue close acme/web#15 --duplicate-of acme/web#7
 ```
@@ -263,7 +266,7 @@ CLOSED acme/web#12
 - **Checked text.** An empty text, one past 65,536 characters, one that looks like it holds a secret, one that holds
   private data (a path inside a home folder, an e-mail address, an IPv4 address or an internal host name, the shapes
   teamrig's own commits are scrubbed for), or one that names a task id (`T12`: link issues by `#number`) is refused,
-  and nothing is posted.
+  and nothing is posted; the same holds for the file `teamrig issue edit` reads.
 - **Nothing half done.** When the comment fails, nothing is closed. When the close fails after the comment was
   posted, the `FAILED` line says so: rerun `teamrig issue close` without `--comment`, so the comment is not posted
   twice.

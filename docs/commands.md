@@ -387,6 +387,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       owner, else the gh login; refuses an empty body, a secret shape, private data (a home folder
       path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
       gh login in its place
+  issue edit <owner/name#n> --body-file <path>   replaces the body (the description) of one issue or
+      pull request of the team's repositories with the file's text, with the same access and checks as
+      issue comment; the title, state, labels and assignees stay; the host keeps the old body in its
+      edit history
   issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
       [--duplicate-of <owner/name#n>]   closes one issue or pull request of the team's repositories,
       first posting --comment when given, with the same checks; a failed comment closes nothing;
