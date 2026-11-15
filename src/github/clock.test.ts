@@ -84,9 +84,9 @@ describe('issueThread', () => {
       authorAssociation: 'NONE',
       createdAt: at(0),
       comments: [
-        { at: at(1), login: 'maintainer', authorAssociation: 'MEMBER', authorKind: 'User', claims: false },
-        { at: at(2), login: 'ci-bot', authorAssociation: 'NONE', authorKind: 'Bot', claims: false },
-        { at: at(3), login: 'ada', authorAssociation: 'CONTRIBUTOR', authorKind: 'User', claims: false },
+        { at: at(1), login: 'maintainer', authorAssociation: 'MEMBER', authorKind: 'User' },
+        { at: at(2), login: 'ci-bot', authorAssociation: 'NONE', authorKind: 'Bot' },
+        { at: at(3), login: 'ada', authorAssociation: 'CONTRIBUTOR', authorKind: 'User' },
       ],
     });
     assert.deepEqual(issueThread(issue, 'gh:acme/web#4', 'alpha', false), {

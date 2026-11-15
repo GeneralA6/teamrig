@@ -5,10 +5,11 @@ import { FakeCredentials } from '../testing/fake-credentials.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
-import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
+import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import {
   assigneeReadArgs,
   isAssigneeRead,
+  isCommentsRead,
   isIssueAssign,
   isIssueBodyEdit,
   isIssueClose,
@@ -175,6 +176,28 @@ describe('GitHubIssueHost', () => {
     const [close, add, remove] = gh.ran.map((request) => request.args);
     assert.ok(isIssueClose(close ?? []) && isLabelAdd(add ?? []) && isLabelRemove(remove ?? []));
     assert.deepEqual(gh.ran.map((request) => request.env['GH_TOKEN']), ['acme-issues-token', 'acme-issues-token', 'acme-issues-token']);
+  });
+
+  it("reads an issue's comments since a time with their claim match, and fails on an issue GitHub does not show", async () => {
+    const comments = [
+      commentNode('2030-01-01T09:00:00Z', 'NONE', 'User', { login: 'old', body: '/take' }),
+      commentNode('2030-01-01T11:00:00Z', 'NONE', 'User', { login: 'ada', body: '/take' }),
+      commentNode('2030-01-01T10:00:00Z', 'MEMBER', 'User', { login: 'maintainer', body: 'Thanks.' }),
+    ];
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { comments })]);
+    const host = hostWith(gh);
+    assert.deepEqual(await host.newComments(TARGET, Date.parse('2030-01-01T10:00:00Z')), {
+      kind: 'read',
+      comments: [
+        { at: '2030-01-01T10:00:00Z', login: 'maintainer', authorAssociation: 'MEMBER', authorKind: 'User', claims: false },
+        { at: '2030-01-01T11:00:00Z', login: 'ada', authorAssociation: 'NONE', authorKind: 'User', claims: true },
+      ],
+    });
+    assert.ok(gh.ran.every((request) => isCommentsRead(request.args)));
+    const gone = await host.newComments({ repo: 'acme/web', number: 8 }, 0);
+    assert.ok(gone.kind === 'failed' && gone.reason.includes('acme/web#8'), JSON.stringify(gone));
+    const odd = await hostWith(new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' })).newComments(TARGET, 0);
+    assert.deepEqual(odd, { kind: 'failed', reason: 'gh printed no comment list for the new comments of acme/web#7' });
   });
 
   it("reads whether the repository has a label: found, missing on Not Found, else failed with gh's line", async () => {

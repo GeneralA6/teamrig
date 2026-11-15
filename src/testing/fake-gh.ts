@@ -1,6 +1,8 @@
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import {
   isAssigneeRead,
+  isCommentsRead,
+  COMMENTS_PAGE,
   isUserRead,
   isIssueAssign,
   isIssueUnassign,
@@ -163,6 +165,7 @@ export class FakeGh implements GhRunner {
   private readonly unassignable = new Map<string, readonly string[]>();
   private readonly spellings = new Map<string, string>();
   private userAnswer: GhResult | undefined;
+  private commentsAnswer: GhResult | undefined;
   private pageSize = ISSUE_PAGE_SIZE;
   /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
   private readonly versions = new Map<string, number>();
@@ -216,6 +219,12 @@ export class FakeGh implements GhRunner {
    */
   spells(...logins: string[]): this {
     logins.forEach((login) => this.spellings.set(login.toLowerCase(), login));
+    return this;
+  }
+
+  /** From now on, every read of an issue's new comments ends as given. */
+  answersCommentsRead(result: GhResult): this {
+    this.commentsAnswer = result;
     return this;
   }
 
@@ -273,6 +282,9 @@ export class FakeGh implements GhRunner {
     }
     if (isUserRead(request.args)) {
       return this.userRead(request.args[1] ?? '');
+    }
+    if (isCommentsRead(request.args)) {
+      return this.commentsAnswer ?? this.commentsRead(request.args);
     }
     if (isIssueRead(request.args)) {
       return this.issueRead(request.args[1] ?? '');
@@ -383,6 +395,29 @@ export class FakeGh implements GhRunner {
    * An issue read as GitHub's REST API answers it: what a test set for the repository, else the issue's number and
    * its id, 1000 + the number, when the repository holds it, else Not Found.
    */
+  /**
+   * A read of one issue's new comments as GitHub's REST API answers it: the comments the issue holds posted at or
+   * after the read's time, oldest first and at most one page, in REST's shape; Not Found for an issue it does not hold.
+   */
+  private commentsRead(args: readonly string[]): GhResult {
+    const [, owner = '', name = '', , number = ''] = (args[1] ?? '').split('/');
+    const canned = this.canned.get(`${owner}/${name}`);
+    if (canned !== undefined) {
+      return canned;
+    }
+    const issue = (this.issues.get(`${owner}/${name}`) ?? []).find((held) => String(held['number']) === number);
+    if (issue === undefined) {
+      return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
+    }
+    const since = Date.parse(fieldOf(args, 'since') ?? '');
+    const comments = nodesOf(issue['comments'])
+      .filter((comment) => Date.parse(stringField(comment, 'createdAt') ?? '') >= since)
+      .sort((a, b) => Date.parse(stringField(a, 'createdAt') ?? '') - Date.parse(stringField(b, 'createdAt') ?? ''))
+      .slice(0, COMMENTS_PAGE)
+      .map(restComment);
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify(comments), stderr: '' };
+  }
+
   private issueRead(path: string): GhResult {
     const [, owner = '', name = '', , number = ''] = path.split('/');
     const canned = this.canned.get(`${owner}/${name}`);
@@ -466,3 +501,14 @@ const LINK_WRITE = /^repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/(sub_issues|dependenc
 
 /** How a label field of an issue create starts. */
 const LABEL_PREFIX = 'labels[]=';
+
+/** A comment node of the issue queries' shape, as GitHub's REST API spells it. */
+function restComment(comment: JsonRecord): JsonRecord {
+  const author = recordField(comment, 'author');
+  return {
+    created_at: comment['createdAt'] ?? null,
+    author_association: comment['authorAssociation'] ?? null,
+    user: author === undefined ? null : { login: author['login'] ?? null, type: author['__typename'] ?? null },
+    body: comment['body'] ?? '',
+  };
+}

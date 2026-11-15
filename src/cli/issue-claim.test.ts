@@ -2,8 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueAssign, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueCreate, isIssueUnassign, isLabelAdd, isLabelCreate, isLabelRemove, isLinkAdd } from '../github/gh.ts';
-import { CLAIM_DAYS, CLAIMS_PER_DAY, formatClaims, parseClaims } from '../issues/claim.ts';
+import { isCommentsRead, isIssueAssign, isIssueBodyEdit, isIssueClose, isIssueComment, isIssueCreate, isIssueUnassign, isLabelAdd, isLabelCreate, isLabelRemove, isLinkAdd } from '../github/gh.ts';
+import { CLAIM_DAYS, CLAIM_READS, CLAIMS_PER_DAY, formatClaims, parseClaims } from '../issues/claim.ts';
 import { autoPushWrites } from '../issues/status-push.ts';
 import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { commentNode, FakeGh, ghIssue } from '../testing/fake-gh.ts';
@@ -155,5 +155,51 @@ describe('claims in the automatic sync (T3021)', () => {
     await autoSync(kit, gh);
     assert.deepEqual(writes(gh, isIssueAssign), []);
     assert.deepEqual(parseClaims(kit.files.get(CLAIMS) ?? '').claims, []);
+  });
+
+  it(`reads the comments of at most ${String(CLAIM_READS)} issues a run, and those left on the next run`, async () => {
+    const kit = new CliHarness(team(true));
+    await autoSync(kit, new FakeGh().holds(REPO, []));
+    kit.clock.advance(HOUR);
+    const plain = new Date(kit.clock.now() - 2 * 60_000).toISOString();
+    const takes = new Date(kit.clock.now() - 60_000).toISOString();
+    const issues = Array.from({ length: CLAIM_READS + 2 }, (_, index) =>
+      ghIssue(REPO, index + 1, {
+        title: `Issue ${String(index + 1)}`,
+        authorAssociation: 'MEMBER',
+        comments: [index < CLAIM_READS ? commentNode(plain, 'NONE', 'User', { login: `user${String(index)}`, body: 'Nice idea.' }) : commentNode(takes, 'NONE', 'User', { login: `user${String(index)}`, body: '/take' })],
+      }),
+    );
+
+    const first = new FakeGh().holds(REPO, issues);
+    const out = await autoSync(kit, first);
+    assert.equal(writes(first, isCommentsRead).length, CLAIM_READS);
+    assert.deepEqual(writes(first, isIssueAssign), []);
+    assert.ok(out.includes(`HELD ${REPO}: 2 issue(s) with new comments wait for the next run, as a run reads at most ${String(CLAIM_READS)} for claims`), out.join('\n'));
+
+    kit.clock.advance(HOUR);
+    const second = new FakeGh().holds(REPO, issues);
+    await autoSync(kit, second);
+    assert.deepEqual(writes(second, isCommentsRead), [CLAIM_READS + 1, CLAIM_READS + 2].map((number) => `api repos/${REPO}/issues/${String(number)}/comments -X GET -f since=${takes} -f per_page=30`));
+    assert.equal(writes(second, isIssueAssign).length, 2);
+  });
+
+  it('reads again on the next run the comments of an issue whose read failed', async () => {
+    const kit = new CliHarness(team(true));
+    await autoSync(kit, new FakeGh().holds(REPO, []));
+    kit.clock.advance(HOUR);
+    const issues = [ghIssue(REPO, 7, { title: 'Add search', authorAssociation: 'MEMBER', comments: [commentNode(at(kit), 'NONE', 'User', { login: 'bob', body: '/take' })] })];
+    const first = new FakeGh().holds(REPO, issues).answersCommentsRead({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: HTTP 502\n' });
+    const out = await autoSync(kit, first);
+    assert.deepEqual(writes(first, isIssueAssign), []);
+    assert.ok(
+      out.some((line) => line.startsWith(`FAILED ${REPO}#7: reading its new comments for a claim: `) && line.endsWith('; read again on the next run')),
+      out.join('\n'),
+    );
+
+    kit.clock.advance(HOUR);
+    const second = new FakeGh().holds(REPO, issues);
+    await autoSync(kit, second);
+    assert.deepEqual(writes(second, isIssueAssign), [`api repos/${REPO}/issues/7/assignees -X POST -f assignees[]=bob`]);
   });
 });

@@ -1,4 +1,4 @@
-import type { CloseReason, HostAssignee, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
+import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 
 /** What each use does, as the fake's access line words it. */
@@ -248,5 +248,10 @@ export class FakeIssueHost implements IssueHost {
   unassign(target: IssueTarget, login: string): Promise<HostEnd> {
     this.calls.push({ kind: 'unassign', target, login });
     return Promise.resolve(this.unassignEnd);
+  }
+
+  /** Its issues have no comments, as its list holds none. */
+  newComments(_target: IssueTarget, _since: number): Promise<HostComments> {
+    return Promise.resolve({ kind: 'read', comments: [] });
   }
 }

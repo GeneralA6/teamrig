@@ -1,8 +1,8 @@
 import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { exitText } from '../open/processes.ts';
 import { GH_TIMEOUT_MS, GhOutputCapError, type GhResult, type GhRunner } from './gh.ts';
+import type { HostIssue, IssueComment, LabelEvent, ReadComment } from '../issues/issue.ts';
 import { isClaim } from '../issues/claim.ts';
-import type { HostIssue, IssueComment, LabelEvent } from '../issues/issue.ts';
 import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -268,16 +268,11 @@ function labelEventOf(event: JsonRecord): LabelEvent[] {
   return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
 }
 
-/**
- * A comment's time, author and whether it claims the issue, or nothing when it lacks its time; a deleted author reads
- * as an empty login and kind. Its text is matched here and not kept.
- */
+/** A comment's time and author, or nothing when it lacks its time; a deleted author reads as an empty login and kind. */
 function commentOf(comment: JsonRecord): IssueComment[] {
   const at = timeField(comment, 'createdAt');
   const author = recordField(comment, 'author');
-  return at === undefined
-    ? []
-    : [{ at, login: loginOf(author), authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(author), claims: isClaim(stringField(comment, 'body') ?? '') }];
+  return at === undefined ? [] : [{ at, login: loginOf(author), authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(author) }];
 }
 
 /** The time of the newest change of title among the timeline events. */
@@ -316,5 +311,41 @@ function namesOf(connection: unknown, key: string): string[] {
   return nodesOf(connection).flatMap((item) => {
     const name = stringField(item, key);
     return name === undefined ? [] : [name];
+  });
+}
+
+/**
+ * The comments one REST read of an issue's comments printed (gh.ts commentsReadArgs), each with its text matched for
+ * a claim line and dropped, so no outsider's words leave this function; undefined when gh printed no list. A comment
+ * lacking its time is left out, and a deleted author reads as an empty login and kind.
+ */
+export function readCommentsIn(stdout: string): ReadComment[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) {
+    return undefined;
+  }
+  const items: readonly unknown[] = parsed;
+  return items.flatMap((item): ReadComment[] => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const at = timeField(item, 'created_at');
+    const user = recordField(item, 'user');
+    return at === undefined
+      ? []
+      : [
+          {
+            at,
+            login: user === undefined ? '' : (stringField(user, 'login') ?? ''),
+            authorAssociation: stringField(item, 'author_association') ?? '',
+            authorKind: user === undefined ? '' : (stringField(user, 'type') ?? ''),
+            claims: isClaim(stringField(item, 'body') ?? ''),
+          },
+        ];
   });
 }

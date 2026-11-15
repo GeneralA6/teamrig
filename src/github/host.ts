@@ -4,6 +4,7 @@ import {
   type CloseReason,
   type HostEnd,
   type HostAssignee,
+  type HostComments,
   type HostIssueId,
   type HostLabel,
   type HostLinks,
@@ -24,6 +25,7 @@ import type { Env } from '../core/home.ts';
 import {
   assigneeReadArgs,
   blockedByAddArgs,
+  commentsReadArgs,
   issueAssignArgs,
   issueUnassignArgs,
   issueBodyArgs,
@@ -45,7 +47,7 @@ import {
   type WatchPath,
 } from './gh.ts';
 import { probeAnswerOf, type ProbeAnswer } from './probe.ts';
-import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, startFailureText, type IssueList } from './issues.ts';
+import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, readCommentsIn, startFailureText, type IssueList } from './issues.ts';
 import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
 import { latestIssues } from './plan.ts';
@@ -180,6 +182,23 @@ export class GitHubIssueHost implements IssueHost {
   async labelExists(repo: string, label: string): Promise<HostLabel> {
     const read = await this.read(repo, labelReadArgs(repo, label), `the label ${JSON.stringify(label)} of ${repo}`);
     return read.kind === 'found' ? { kind: 'found' } : read;
+  }
+
+  /**
+   * Reads one page of the issue's comments updated at or after `since`, oldest first (gh.ts commentsReadArgs), each
+   * with its text matched for a claim line and dropped. An issue GitHub no longer shows fails the read.
+   */
+  async newComments(target: IssueTarget, since: number): Promise<HostComments> {
+    const shown = `the new comments of ${targetText(target)}`;
+    const read = await this.read(target.repo, commentsReadArgs(target, new Date(since).toISOString()), shown);
+    if (read.kind === 'missing') {
+      return { kind: 'failed', reason: `GitHub shows no ${targetText(target)} to read ${shown} of` };
+    }
+    if (read.kind === 'failed') {
+      return read;
+    }
+    const comments = readCommentsIn(read.stdout);
+    return comments === undefined ? { kind: 'failed', reason: `gh printed no comment list for ${shown}` } : { kind: 'read', comments };
   }
 
   /**

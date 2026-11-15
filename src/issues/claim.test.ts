@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { testHostIssue } from '../testing/host-issue.ts';
-import { CLAIM_DAYS, CLAIMS_PER_DAY, formatClaims, isClaim, parseClaims, planClaims } from './claim.ts';
-import type { Claim } from './claim.ts';
-import type { HostIssue, IssueComment } from './issue.ts';
+import { CLAIM_DAYS, CLAIMS_PER_DAY, claimCandidates, claimKey, formatClaims, isClaim, parseClaims, planClaims } from './claim.ts';
+import type { Claim, ClaimPass, ClaimPlan } from './claim.ts';
+import type { HostIssue, ReadComment } from './issue.ts';
 
 const REPO = 'acme/web';
 const DAY = 86_400_000;
@@ -12,12 +12,33 @@ const SINCE = NOW - 60_000;
 const ACCEPT = 'accepted';
 const TIMES = { now: NOW, since: SINCE, acceptLabel: ACCEPT };
 
-function claimComment(overrides: Partial<IssueComment> = {}): IssueComment {
+function claimComment(overrides: Partial<ReadComment> = {}): ReadComment {
   return { at: new Date(NOW - 1_000).toISOString(), login: 'ada', authorAssociation: 'NONE', authorKind: 'User', claims: true, ...overrides };
 }
 
 function issue(number: number, overrides: Partial<HostIssue> = {}): HostIssue {
   return testHostIssue(number, overrides);
+}
+
+/** An issue whose list shows `comments`, and the comments its read gives, with their claim match. */
+interface Commented {
+  readonly issue: HostIssue;
+  readonly comments: readonly ReadComment[];
+}
+
+function commented(number: number, comments: readonly ReadComment[], overrides: Partial<HostIssue> = {}): Commented {
+  return { issue: issue(number, { ...overrides, comments }), comments };
+}
+
+/** planClaims over `cases`, the comments of each commented one read and none of a bare issue. */
+function plan(cases: readonly (Commented | HostIssue)[], claims: readonly Claim[], times: ClaimPass = TIMES): ClaimPlan {
+  const read = cases.map((item): Commented => ('issue' in item ? item : { issue: item, comments: [] }));
+  return planClaims(
+    read.map((item) => item.issue),
+    claims,
+    times,
+    new Map(read.map((item) => [claimKey(item.issue.repo, item.issue.number), item.comments])),
+  );
 }
 
 function claim(number: number, login: string, ageDays: number): Claim {
@@ -46,82 +67,130 @@ describe('isClaim', () => {
   });
 });
 
+describe('claimCandidates', () => {
+  it('picks the claimable issues with a new outside comment, oldest comment first, by what the list shows', () => {
+    const at = (ms: number): string => new Date(NOW - ms).toISOString();
+    const issues = [
+      commented(1, [claimComment({ at: at(100) })]).issue,
+      commented(2, [claimComment({ at: at(900), login: 'bob' }), claimComment({ at: at(50), login: 'cy' })]).issue,
+      commented(3, [claimComment({ authorAssociation: 'MEMBER' })]).issue,
+      commented(4, [claimComment({ login: 'helper[bot]', authorKind: 'Bot' })]).issue,
+      commented(5, [claimComment({ at: new Date(SINCE - 1).toISOString() })]).issue,
+      commented(6, [claimComment()], { assignees: ['bob'] }).issue,
+      commented(7, [claimComment()], { labels: ['design'] }).issue,
+      commented(8, [claimComment()], { authorAssociation: 'NONE', author: 'stranger' }).issue,
+    ];
+    assert.deepEqual(
+      claimCandidates(issues, [], TIMES).map((candidate) => [candidate.issue.number, candidate.from]),
+      [
+        [2, NOW - 900],
+        [1, NOW - 100],
+      ],
+    );
+  });
+
+  it(`picks none once the repository made its ${String(CLAIMS_PER_DAY)} claims for the day`, () => {
+    const held = Array.from({ length: CLAIMS_PER_DAY }, (_, index) => claim(90 + index, `user${String(index)}`, 0));
+    const issues = [...held.map((made) => issue(made.number, { assignees: [made.login] })), commented(1, [claimComment()]).issue];
+    assert.deepEqual(claimCandidates(issues, held, TIMES), []);
+    assert.equal(claimCandidates(issues, held.slice(1), TIMES).length, 1);
+  });
+
+  it('skips a commenter who already holds a claim in the repository', () => {
+    const issues = [issue(3, { assignees: ['ada'] }), commented(1, [claimComment()]).issue];
+    assert.deepEqual(claimCandidates(issues, [claim(3, 'ada', 1)], TIMES), []);
+  });
+});
+
 describe('planClaims', () => {
   it('claims an open unassigned issue for an outside commenter', () => {
-    const plan = planClaims([issue(1, { comments: [claimComment()] })], [], TIMES);
-    assert.deepEqual(plan.made, [{ repo: REPO, number: 1, login: 'ada', at: NOW }]);
-    assert.deepEqual(plan.expired, []);
+    const made = plan([commented(1, [claimComment()])], []);
+    assert.deepEqual(made.made, [{ repo: REPO, number: 1, login: 'ada', at: NOW }]);
+    assert.deepEqual(made.expired, []);
+  });
+
+  it('makes no claim on an issue whose comments the pass did not read', () => {
+    const listed = commented(1, [claimComment()]).issue;
+    assert.deepEqual(planClaims([listed], [], TIMES, new Map()).made, []);
   });
 
   it(`counts claims made from a backlog of old comments toward today's ${String(CLAIMS_PER_DAY)}`, () => {
     const old = new Date(NOW - 3 * DAY).toISOString();
-    const issues = Array.from({ length: CLAIMS_PER_DAY + 2 }, (_, index) => issue(index + 1, { comments: [claimComment({ login: `user${String(index)}`, at: old })] }));
-    const plan = planClaims(issues, [], { ...TIMES, since: NOW - 7 * DAY });
-    assert.equal(plan.made.length, CLAIMS_PER_DAY);
-    assert.ok(plan.made.every((made) => made.at === NOW));
+    const cases = Array.from({ length: CLAIMS_PER_DAY + 2 }, (_, index) => commented(index + 1, [claimComment({ login: `user${String(index)}`, at: old })]));
+    const made = plan(cases, [], { ...TIMES, since: NOW - 7 * DAY });
+    assert.equal(made.made.length, CLAIMS_PER_DAY);
+    assert.ok(made.made.every((each) => each.at === NOW));
   });
 
   it('makes no claim for an insider, a bot, a deleted account, an old or plain comment, an assigned, closed or design issue', () => {
-    const issues = [
-      issue(1, { comments: [claimComment({ authorAssociation: 'MEMBER' })] }),
-      issue(2, { comments: [claimComment({ login: 'helper[bot]', authorKind: 'Bot' })] }),
-      issue(3, { comments: [claimComment({ login: '', authorKind: '' })] }),
-      issue(4, { comments: [claimComment({ at: new Date(SINCE - 1).toISOString() })] }),
-      issue(5, { comments: [claimComment({ claims: false })] }),
-      issue(6, { comments: [claimComment()], assignees: ['bob'] }),
-      issue(7, { comments: [claimComment()], state: 'closed' }),
-      issue(8, { comments: [claimComment()], labels: ['design'] }),
-      issue(9, { comments: [claimComment()], labels: ['Security'] }),
-      issue(10, { comments: [claimComment({ login: 'not a login' })] }),
+    const cases = [
+      commented(1, [claimComment({ authorAssociation: 'MEMBER' })]),
+      commented(2, [claimComment({ login: 'helper[bot]', authorKind: 'Bot' })]),
+      commented(3, [claimComment({ login: '', authorKind: '' })]),
+      commented(4, [claimComment({ at: new Date(SINCE - 1).toISOString() })]),
+      commented(5, [claimComment({ claims: false })]),
+      commented(6, [claimComment()], { assignees: ['bob'] }),
+      commented(7, [claimComment()], { state: 'closed' }),
+      commented(8, [claimComment()], { labels: ['design'] }),
+      commented(9, [claimComment()], { labels: ['Security'] }),
+      commented(10, [claimComment({ login: 'not a login' })]),
     ];
-    assert.deepEqual(planClaims(issues, [], TIMES).made, []);
+    assert.deepEqual(plan(cases, []).made, []);
   });
 
   it('claims an outsider issue only once someone else accepted it', () => {
-    const outsider = { authorAssociation: 'NONE', author: 'stranger', comments: [claimComment()] };
+    const outsider = { authorAssociation: 'NONE', author: 'stranger' };
     const acceptedBy = (actor: string): Partial<HostIssue> => ({
       ...outsider,
       labels: [ACCEPT],
       labelEvents: [{ label: ACCEPT, at: new Date(NOW - DAY).toISOString(), actor, actorKind: 'User' }],
     });
-    const issues = [issue(1, outsider), issue(2, acceptedBy('stranger')), issue(3, acceptedBy('maintainer'))];
-    assert.deepEqual(planClaims(issues, [], TIMES).made.map((made) => made.number), [3]);
+    const cases = [commented(1, [claimComment()], outsider), commented(2, [claimComment()], acceptedBy('stranger')), commented(3, [claimComment()], acceptedBy('maintainer'))];
+    assert.deepEqual(
+      plan(cases, []).made.map((made) => made.number),
+      [3],
+    );
   });
 
   it('gives the issue to the oldest claim comment', () => {
     const comments = [claimComment({ login: 'bob', at: new Date(NOW - 100).toISOString() }), claimComment({ login: 'ada', at: new Date(NOW - 500).toISOString() })];
-    assert.deepEqual(planClaims([issue(1, { comments })], [], TIMES).made.map((made) => made.login), ['ada']);
+    assert.deepEqual(
+      plan([commented(1, comments)], []).made.map((made) => made.login),
+      ['ada'],
+    );
   });
 
   it('holds one open claim per login per repository, a held one included', () => {
-    const issues = [issue(1, { comments: [claimComment()] }), issue(2, { comments: [claimComment()] }), issue(3, { assignees: ['ada'] })];
-    assert.deepEqual(planClaims(issues.slice(0, 2), [], TIMES).made.map((made) => made.number), [1]);
-    assert.deepEqual(planClaims(issues, [claim(3, 'ada', 1)], TIMES).made, []);
+    const cases = [commented(1, [claimComment()]), commented(2, [claimComment()]), issue(3, { assignees: ['ada'] })];
+    assert.deepEqual(
+      plan(cases.slice(0, 2), []).made.map((made) => made.number),
+      [1],
+    );
+    assert.deepEqual(plan(cases, [claim(3, 'ada', 1)]).made, []);
   });
 
   it(`makes at most ${String(CLAIMS_PER_DAY)} claims in a repository in a day, those of earlier runs counted`, () => {
-    const issues = Array.from({ length: CLAIMS_PER_DAY + 2 }, (_, index) => issue(index + 1, { comments: [claimComment({ login: `user${String(index)}` })] }));
-    assert.equal(planClaims(issues, [], TIMES).made.length, CLAIMS_PER_DAY);
+    const cases = Array.from({ length: CLAIMS_PER_DAY + 2 }, (_, index) => commented(index + 1, [claimComment({ login: `user${String(index)}` })]));
+    assert.equal(plan(cases, []).made.length, CLAIMS_PER_DAY);
     const earlier = [issue(90, { assignees: ['eve'] }), issue(91, { assignees: ['fay'] })];
     const held = [{ repo: REPO, number: 90, login: 'eve', at: NOW - DAY / 2 }, claim(91, 'fay', 1)];
-    assert.equal(planClaims([...earlier, ...issues], held, TIMES).made.length, CLAIMS_PER_DAY - 1);
+    assert.equal(plan([...earlier, ...cases], held).made.length, CLAIMS_PER_DAY - 1);
   });
 
   it(`expires a claim after ${String(CLAIM_DAYS)} days with no linked pull request, and keeps a younger or worked one`, () => {
     const issues = [issue(1, { assignees: ['ada'] }), issue(2, { assignees: ['bob'] }), issue(3, { assignees: ['cy'], linkedPulls: 1 })];
-    const plan = planClaims(issues, [claim(1, 'ada', CLAIM_DAYS), claim(2, 'bob', CLAIM_DAYS - 1), claim(3, 'cy', 30)], TIMES);
-    assert.deepEqual(plan.expired, [claim(1, 'ada', CLAIM_DAYS)]);
-    assert.deepEqual(plan.kept, [claim(2, 'bob', CLAIM_DAYS - 1), claim(3, 'cy', 30)]);
+    const made = plan(issues, [claim(1, 'ada', CLAIM_DAYS), claim(2, 'bob', CLAIM_DAYS - 1), claim(3, 'cy', 30)]);
+    assert.deepEqual(made.expired, [claim(1, 'ada', CLAIM_DAYS)]);
+    assert.deepEqual(made.kept, [claim(2, 'bob', CLAIM_DAYS - 1), claim(3, 'cy', 30)]);
   });
 
   it('drops with no write a claim whose issue closed, is gone, or no longer has its login assigned', () => {
     const issues = [issue(1, { assignees: ['ada'], state: 'closed' }), issue(2, { assignees: ['eve'] })];
-    const plan = planClaims(issues, [claim(1, 'ada', 30), claim(2, 'bob', 30), claim(9, 'cy', 30)], TIMES);
-    assert.deepEqual(plan, { made: [], expired: [], kept: [] });
+    assert.deepEqual(plan(issues, [claim(1, 'ada', 30), claim(2, 'bob', 30), claim(9, 'cy', 30)]), { made: [], expired: [], kept: [] });
   });
 
   it('never expires an assignee it did not make', () => {
-    assert.deepEqual(planClaims([issue(1, { assignees: ['ada'] })], [], TIMES).expired, []);
+    assert.deepEqual(plan([issue(1, { assignees: ['ada'] })], []).expired, []);
   });
 });
 

@@ -4,7 +4,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
 import { GhOutputCapError, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import type { HostIssue } from '../issues/issue.ts';
-import { issuePageArgs, listIssues, parseIssuePage, plainLine, startFailureText, type IssueListRequest } from './issues.ts';
+import { issuePageArgs, listIssues, parseIssuePage, plainLine, readCommentsIn, startFailureText, type IssueListRequest } from './issues.ts';
 import { closedPageArgs, openPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -81,7 +81,7 @@ describe('issuePageArgs', () => {
 });
 
 describe('listIssues', () => {
-  it('reads when an issue was opened and when each comment was posted, by whom, and whether it claims, never its text', async () => {
+  it('reads when an issue was opened and when each comment was posted and by whom, never its text', async () => {
     const gh = new FakeGh().holds('acme/web', [
       ghIssue('acme/web', 7, {
         createdAt: '2030-01-01T08:00:00Z',
@@ -102,10 +102,10 @@ describe('listIssues', () => {
         createdAt: '2030-01-01T08:00:00Z',
         linkedPulls: 2,
         comments: [
-          { at: '2030-01-01T09:00:00Z', login: 'maintainer', authorAssociation: 'MEMBER', authorKind: 'User', claims: false },
-          { at: '2030-01-01T10:00:00Z', login: '', authorAssociation: 'NONE', authorKind: 'Bot', claims: false },
-          { at: '2030-01-01T11:00:00Z', login: '', authorAssociation: '', authorKind: '', claims: false },
-          { at: '2030-01-01T12:00:00Z', login: 'ada', authorAssociation: 'NONE', authorKind: 'User', claims: true },
+          { at: '2030-01-01T09:00:00Z', login: 'maintainer', authorAssociation: 'MEMBER', authorKind: 'User' },
+          { at: '2030-01-01T10:00:00Z', login: '', authorAssociation: 'NONE', authorKind: 'Bot' },
+          { at: '2030-01-01T11:00:00Z', login: '', authorAssociation: '', authorKind: '' },
+          { at: '2030-01-01T12:00:00Z', login: 'ada', authorAssociation: 'NONE', authorKind: 'User' },
         ],
       }),
     ]);
@@ -365,6 +365,29 @@ describe('parseIssuePage', () => {
 describe('plainLine', () => {
   it('turns control and format characters into spaces, so outside text stays one plain line', () => {
     assert.equal(plainLine('  Fix\u001b[2J the‮ login\r\nnow\t '), 'Fix [2J the login now');
+  });
+});
+
+describe('readCommentsIn', () => {
+  it("reads each comment's time, author and claim match from REST's list, and keeps no text", () => {
+    const stdout = JSON.stringify([
+      { created_at: '2030-01-01T09:00:00Z', author_association: 'MEMBER', user: { login: 'maintainer', type: 'User' }, body: 'Thanks, looking.' },
+      { created_at: '2030-01-01T10:00:00Z', author_association: 'NONE', user: null, body: '/take' },
+      { created_at: 'not a time', author_association: 'NONE', user: { login: 'eve', type: 'User' }, body: '/take' },
+      'x',
+      { created_at: '2030-01-01T12:00:00Z', author_association: 'NONE', user: { login: 'ada', type: 'User' }, body: "Nice idea.\nI'll take this one" },
+    ]);
+    assert.deepEqual(readCommentsIn(stdout), [
+      { at: '2030-01-01T09:00:00Z', login: 'maintainer', authorAssociation: 'MEMBER', authorKind: 'User', claims: false },
+      { at: '2030-01-01T10:00:00Z', login: '', authorAssociation: 'NONE', authorKind: '', claims: true },
+      { at: '2030-01-01T12:00:00Z', login: 'ada', authorAssociation: 'NONE', authorKind: 'User', claims: true },
+    ]);
+  });
+
+  it('reads no list from text that is not a JSON list', () => {
+    for (const stdout of ['', 'not json', '{"message":"Not Found"}']) {
+      assert.equal(readCommentsIn(stdout), undefined, stdout);
+    }
   });
 });
 

@@ -4,7 +4,7 @@
  * adapter that keeps its own access rules. A repository reaches a host only when the team config lists it there.
  */
 
-import type { HostIssue, LinkedIssue } from './issue.ts';
+import type { HostIssue, LinkedIssue, ReadComment } from './issue.ts';
 
 /** One issue or pull request: its repository (`owner/name`, in lowercase) and its number. */
 export interface IssueTarget {
@@ -64,6 +64,9 @@ export type HostLabel = { readonly kind: 'found' } | { readonly kind: 'missing' 
  * case, and its assignee check matches that case only), missing (no such user, or it may not be assigned), or the read failed.
  */
 export type HostAssignee = { readonly kind: 'found'; readonly login: string } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
+/** The comments one read of an issue's new comments gave, oldest first, each with its text matched and dropped; or the read failed. */
+export type HostComments = { readonly kind: 'read'; readonly comments: readonly ReadComment[] } | { readonly kind: 'failed'; readonly reason: string };
 
 /**
  * A repository's issues as one list read them, the open ones and those closed since the day it was given, with what
@@ -138,6 +141,11 @@ export interface IssueHost {
   watch(repo: string, marks: WatchMarks): Promise<HostWatch>;
   /** Takes `login` off the assignees of the issue or pull request; any others stay. Only for a claim the sync made. */
   unassign(target: IssueTarget, login: string): Promise<HostEnd>;
+  /**
+   * The comments of the issue posted or edited at or after `since` (ms since the epoch), oldest first and at most one
+   * bounded page: the claim pass's only read of comment text, which it matches for a claim line and drops.
+   */
+  newComments(target: IssueTarget, since: number): Promise<HostComments>;
 }
 
 /** What a host gave for its last answers about one repository: the caller keeps them between looks and never reads them. */

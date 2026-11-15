@@ -6,10 +6,13 @@ import { join } from 'node:path';
 import {
   assigneeReadArgs,
   blockedByAddArgs,
+  COMMENTS_PAGE,
+  commentsReadArgs,
   GhOutputCapError,
   GhRefusedError,
   isAllowedGh,
   isAssigneeRead,
+  isCommentsRead,
   isIssueAssign,
   isIssueBodyEdit,
   isIssueClose,
@@ -311,6 +314,31 @@ describe('the duplicate close and the issue read', () => {
       assert.equal(isIssueRead(args), false, args.slice(1).join(' '));
       assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
     }
+  });
+
+  it("reads one bounded page of an issue's comments since a time, and nothing more", () => {
+    const read = commentsReadArgs(ISSUE, '2030-01-01T09:00:00.000Z');
+    assert.deepEqual(read, ['api', 'repos/acme/web/issues/7/comments', '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', `per_page=${String(COMMENTS_PAGE)}`]);
+    assert.equal(isCommentsRead(read), true);
+    assert.equal(isAllowedGh(read), true);
+    const path = 'repos/acme/web/issues/7/comments';
+    for (const args of [
+      ['api', path, '-X', 'GET'],
+      ['api', path, '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z'],
+      ['api', path, '-X', 'GET', '-f', 'since=yesterday', '-f', 'per_page=30'],
+      ['api', path, '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=100'],
+      ['api', path, '-X', 'GET', '-f', 'per_page=30', '-f', 'since=2030-01-01T09:00:00.000Z'],
+      [...read, '-f', 'page=2'],
+      [...read, '--paginate'],
+      ['api', path, '-X', 'GET', '-F', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=30'],
+      ['api', path, '-X', 'POST', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=30'],
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=30'],
+      ['api', 'repos/acme/web/issues/comments', '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=30'],
+    ]) {
+      assert.equal(isCommentsRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+    assert.ok(!isIssueComment(read) && !isIssueRead(read) && !isLabelRead(read));
   });
 
   it('is never taken for a close, a comment or a label call, nor they for a read', () => {

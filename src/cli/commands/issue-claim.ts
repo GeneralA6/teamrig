@@ -1,7 +1,7 @@
 import type { KitConfig } from '../../config/types.ts';
-import { CLAIM_DAYS, formatClaims, parseClaims, planClaims, type Claim, type ClaimState } from '../../issues/claim.ts';
+import { CLAIM_DAYS, CLAIM_READS, claimCandidates, claimKey, formatClaims, parseClaims, planClaims, type Claim, type ClaimCandidate, type ClaimState } from '../../issues/claim.ts';
 import { targetText, type IssueHost, type IssueTarget } from '../../issues/host.ts';
-import type { HostIssue } from '../../issues/issue.ts';
+import type { HostIssue, ReadComment } from '../../issues/issue.ts';
 import { STATUS_LABELS } from '../../issues/status-push.ts';
 import { labelIssue } from '../../issues/write.ts';
 import { fileLockOf } from '../file-locks.ts';
@@ -50,7 +50,9 @@ export function claimWrites(swaps: boolean): number {
 /**
  * Makes and ends the claims of each repository in `run.read`, within `run.writes`. A claim the budget leaves out is
  * held for the next run: an expired one stays in the file, and a repository with a held new claim keeps its old pass
- * time, so the next run reads that comment again (an issue assigned meanwhile is no longer claimable).
+ * time, so the next run reads that comment again (an issue assigned meanwhile is no longer claimable). The list holds
+ * no comment text, so a run reads the new comments of at most CLAIM_READS issues, oldest new comment first; one left
+ * unread, or whose read failed, keeps the pass time at its oldest new comment, so the next run reads it.
  */
 export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitConfig, run: ClaimRun): Promise<ClaimOutcome> {
   const lock = fileLockOf(runtime, kit.paths.githubSyncLock, config.lock);
@@ -74,7 +76,10 @@ export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitCon
   const checked = new Map(before.checked);
   for (const [repo, issues] of run.read) {
     const since = before.checked.get(repo) ?? run.started;
-    const plan = planClaims(issues, before.claims.filter((claim) => claim.repo === repo), { now, since, acceptLabel: config.github.acceptLabel });
+    const pass = { now, since, acceptLabel: config.github.acceptLabel };
+    const own = before.claims.filter((claim) => claim.repo === repo);
+    const read = await readCandidates(run.host, claimCandidates(issues, own, pass), since, say);
+    const plan = planClaims(issues, own, pass, read.comments);
     const labelsOf = (claim: Claim): readonly string[] => issues.find((issue) => issue.number === claim.number)?.labels ?? [];
     claims.push(...plan.kept);
     let held = false;
@@ -90,10 +95,43 @@ export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitCon
         claims.push(claim);
       }
     }
-    checked.set(repo, held ? since : run.started);
+    // Up to the oldest comment left unread, so the next pass reads it again; past the read ones, which it skips.
+    checked.set(repo, held ? since : Math.min(run.started, ...read.later));
   }
   await lock.run(async () => runtime.files.write(kit.paths.githubClaims, formatClaims({ claims, checked })));
   return { lines, writes: run.writes - left };
+}
+
+/** The comments a pass read, by claimKey, and the oldest new comment time of each candidate it left for the next pass. */
+interface CandidateRead {
+  readonly comments: ReadonlyMap<string, readonly ReadComment[]>;
+  readonly later: readonly number[];
+}
+
+/**
+ * Reads the new comments of the first CLAIM_READS candidates, oldest new comment first. A failed read, and each
+ * candidate past the bound, is left for the next pass, which starts from its oldest new comment.
+ */
+async function readCandidates(host: IssueHost, candidates: readonly ClaimCandidate[], since: number, say: (line: string) => void): Promise<CandidateRead> {
+  const comments = new Map<string, readonly ReadComment[]>();
+  const later: number[] = [];
+  for (const candidate of candidates.slice(0, CLAIM_READS)) {
+    const target = { repo: candidate.issue.repo, number: candidate.issue.number };
+    const read = await host.newComments(target, since);
+    if (read.kind === 'failed') {
+      say(`FAILED ${targetText(target)}: reading its new comments for a claim: ${read.reason}; read again on the next run`);
+      later.push(candidate.from);
+    } else {
+      comments.set(claimKey(target.repo, target.number), read.comments);
+    }
+  }
+  const over = candidates.slice(CLAIM_READS);
+  const first = over[0];
+  if (first !== undefined) {
+    say(`HELD ${first.issue.repo}: ${over.length} issue(s) with new comments wait for the next run, as a run reads at most ${CLAIM_READS} for claims`);
+    later.push(...over.map((candidate) => candidate.from));
+  }
+  return { comments, later };
 }
 
 function targetOf(claim: Claim): IssueTarget {

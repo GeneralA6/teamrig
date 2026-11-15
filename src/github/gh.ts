@@ -127,6 +127,20 @@ export function issueReadArgs(target: IssueNumber): string[] {
   return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'GET'];
 }
 
+/** The comments one read of an issue's new comments gives at most, oldest first: the first claim among them wins. */
+export const COMMENTS_PAGE = 30;
+
+/**
+ * The command line that reads the comments of one issue updated at or after `since` (an ISO time), oldest first, at
+ * most COMMENTS_PAGE: the only read of comment text, which the claim pass matches and drops (src/github/host.ts).
+ */
+export function commentsReadArgs(target: IssueNumber, since: string): string[] {
+  return ['api', `repos/${target.repo}/issues/${target.number}/comments`, '-X', 'GET', RAW_FIELD, `since=${since}`, RAW_FIELD, `per_page=${COMMENTS_PAGE}`];
+}
+
+/** A UTC time as Date.toISOString writes it. */
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 /** The command line that replaces the body of one issue or pull request, the body a raw field so it stays text. */
 export function issueBodyArgs(target: IssueNumber, body: string): string[] {
   return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'PATCH', RAW_FIELD, `body=${body}`];
@@ -263,6 +277,25 @@ export function isIssueClose(args: readonly string[]): boolean {
 export function isIssueRead(args: readonly string[]): boolean {
   const call = issueCall(args);
   return call?.method === 'GET' && call.part === 'issue' && args.length === 4;
+}
+
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/comments -X GET -f since=<ISO time> -f per_page=30` and
+ * nothing more: one page of one issue's newest comments. Another field (which gh sends as a query), page size,
+ * `--paginate` or method is refused, so the read stays one bounded page.
+ */
+export function isCommentsRead(args: readonly string[]): boolean {
+  const call = issueCall(args);
+  const [since, page, ...rest] = rawPairs(args.slice(4)) ?? [];
+  return (
+    call?.method === 'GET' &&
+    call.part === 'comments' &&
+    since?.[0] === 'since' &&
+    ISO_TIME.test(since[1]) &&
+    page?.[0] === 'per_page' &&
+    page[1] === String(COMMENTS_PAGE) &&
+    rest.length === 0
+  );
 }
 
 /**
@@ -528,6 +561,7 @@ export function isAllowedGh(args: readonly string[]): boolean {
     isIssueQuery(args) ||
     isIssueCreate(args) ||
     isIssueComment(args) ||
+    isCommentsRead(args) ||
     isIssueClose(args) ||
     isIssueBodyEdit(args) ||
     isLabelAdd(args) ||

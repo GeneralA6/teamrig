@@ -19,9 +19,9 @@ export interface LabelEvent {
 }
 
 /**
- * A comment on an issue, as far as the response clock (src/github/clock.ts) and a claim (issues/claim.ts) read it:
- * when, its author's login, kind and tie to the repository, and whether it claims the issue. Never its text: the
- * reader keeps only the claim match, so an outsider's words reach no task, file or session.
+ * A comment on an issue, as the issue list reads it for the response clock (src/github/clock.ts) and to find whose
+ * comments the claim pass reads (issues/claim.ts): when, its author's login, kind and tie to the repository. Never its
+ * text: the list never asks for it.
  */
 export interface IssueComment {
   /** When it was posted, an ISO time. */
@@ -32,7 +32,14 @@ export interface IssueComment {
   readonly authorAssociation: string;
   /** What kind of account its author is (`User`, `Bot`, `Organization`); empty when the host gives none. */
   readonly authorKind: string;
-  /** True when its text holds a claim line (issues/claim.ts isClaim). */
+}
+
+/**
+ * A comment as the claim pass's own read gives it (IssueHost.newComments): the list's facts and whether its text
+ * holds a claim line (issues/claim.ts isClaim). The text itself is dropped as it is read, so an outsider's words
+ * reach no task, file or session.
+ */
+export interface ReadComment extends IssueComment {
   readonly claims: boolean;
 }
 

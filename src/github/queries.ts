@@ -21,9 +21,9 @@ export const COMMENTS_READ = 20;
 
 /**
  * One issue: what the task is made from, and who wrote it, labelled it and edited it, which decides trust; when it
- * was opened and when each newest comment was posted by whom, which runs the response clock; each comment's text,
- * which the reader only matches for a claim line and then drops (issues.ts); and how many open pull requests close
- * it, which keeps a claim from running out.
+ * was opened and when each newest comment was posted by whom, which runs the response clock and points the claim
+ * pass at the issues to read; and how many open pull requests close it, which keeps a claim from running out. Never
+ * a comment's text: only the claim pass reads it, one bounded page per issue (gh.ts commentsReadArgs).
  */
 const ISSUE_FIELDS = `number title body state stateReason url createdAt updatedAt closedAt lastEditedAt authorAssociation
         author { __typename login }
@@ -32,7 +32,7 @@ const ISSUE_FIELDS = `number title body state stateReason url createdAt updatedA
         timelineItems(itemTypes: [LABELED_EVENT, RENAMED_TITLE_EVENT], last: ${TIMELINE_EVENTS}) {
           nodes { __typename ... on LabeledEvent { createdAt actor { __typename login } label { name } } ... on RenamedTitleEvent { createdAt } }
         }
-        comments(last: ${COMMENTS_READ}) { nodes { createdAt authorAssociation author { __typename login } body } }
+        comments(last: ${COMMENTS_READ}) { nodes { createdAt authorAssociation author { __typename login } } }
         closedByPullRequestsReferences(first: 1) { totalCount }`;
 
 /** Every open issue, oldest first. */
