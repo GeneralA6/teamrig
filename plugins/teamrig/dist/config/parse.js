@@ -973,6 +973,7 @@ function parseRegister(read, raw) {
         requireNoteOn: read.list(raw, 'requireNoteOn', path, defaults.requireNoteOn, (value, itemPath) => parseStatus(read, value, itemPath), CONFIG_LIMITS.requireNoteOn.maxItems),
         requireFollowupsOn: read.list(raw, 'requireFollowupsOn', path, defaults.requireFollowupsOn, (value, itemPath) => parseStatusAmong(read, value, itemPath, FOLLOWUP_STATUSES), CONFIG_LIMITS.requireFollowupsOn.maxItems),
         autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
+        leaderDigest: read.boolean(raw, 'leaderDigest', path, defaults.leaderDigest),
         requireProofOnVerifying: read.boolean(raw, 'requireProofOnVerifying', path, defaults.requireProofOnVerifying),
         requireDecisionCard: read.boolean(raw, 'requireDecisionCard', path, defaults.requireDecisionCard),
         verifyGate: isVerifyGate(verifyGate) ? verifyGate : defaults.verifyGate,
