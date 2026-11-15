@@ -102,4 +102,14 @@ describe('claims in the automatic sync (T3021)', () => {
     assert.deepEqual(writes(gh, isIssueAssign), []);
     assert.equal(kit.files.get(CLAIMS), undefined);
   });
+
+  it('makes no claim on an outsider issue no one accepted', async () => {
+    const kit = new CliHarness(team(true));
+    await autoSync(kit, new FakeGh().holds(REPO, []));
+    kit.clock.advance(HOUR);
+    const gh = new FakeGh().holds(REPO, [ghIssue(REPO, 8, { title: 'Add search', authorAssociation: 'NONE', comments: [commentNode(at(kit), 'NONE', 'User', { login: 'bob', body: '/take' })] })]);
+    await autoSync(kit, gh);
+    assert.deepEqual(writes(gh, isIssueAssign), []);
+    assert.deepEqual(parseClaims(kit.files.get(CLAIMS) ?? '').claims, []);
+  });
 });

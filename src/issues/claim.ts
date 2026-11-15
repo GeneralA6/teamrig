@@ -3,7 +3,7 @@ import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { DESIGN_LABEL } from './design-label.ts';
 import type { HostIssue, IssueComment } from './issue.ts';
 import { isLogin } from '../github/gh.ts';
-import { isInsider } from '../github/trust.ts';
+import { isInsider, issueTrust } from '../github/trust.ts';
 
 /**
  * A contributor claims an open issue by a comment, and code assigns them (T3021 design, section 1). This file holds
@@ -100,9 +100,6 @@ export function formatClaims(state: ClaimState): string {
   });
 }
 
-/** The issue facts a claim plan reads. */
-export type ClaimIssue = Pick<HostIssue, 'repo' | 'number' | 'state' | 'labels' | 'assignees' | 'comments' | 'linkedPulls'>;
-
 /** The account kind of a person; an app (`Bot`) or an organization never claims. */
 const PERSON = 'User';
 
@@ -113,11 +110,13 @@ export interface ClaimPlan {
   readonly kept: readonly Claim[];
 }
 
-/** Ms since the epoch. */
-export interface ClaimTimes {
+/** One claim pass of a repository: its times (ms since the epoch) and the label that accepts an outsider's issue. */
+export interface ClaimPass {
   readonly now: number;
   /** The previous sync's start: a comment before it was read then, so it claims nothing now. */
   readonly since: number;
+  /** [github.acceptLabel]: an outsider's issue is work to take only once someone with triage rights accepted it. */
+  readonly acceptLabel: string;
 }
 
 /**
@@ -125,7 +124,7 @@ export interface ClaimTimes {
  * assignee), `issues` the repository's issues as just read. A claim whose issue closed, or whose login is no longer
  * an assignee (handed over, or taken off by hand), is dropped with no write; one with a linked pull request holds.
  */
-export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim[], times: ClaimTimes): ClaimPlan {
+export function planClaims(issues: readonly HostIssue[], claims: readonly Claim[], times: ClaimPass): ClaimPlan {
   const byNumber = new Map(issues.map((issue) => [`${issue.repo}#${issue.number}`, issue]));
   const kept: Claim[] = [];
   const expired: Claim[] = [];
@@ -143,7 +142,7 @@ export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim
   const made: Claim[] = [];
   const today = (repo: string): number => [...kept, ...made].filter((claim) => claim.repo === repo && times.now - claim.at < DAY_MS).length;
   for (const issue of issues) {
-    if (today(issue.repo) >= CLAIMS_PER_DAY || !claimable(issue)) {
+    if (today(issue.repo) >= CLAIMS_PER_DAY || !claimable(issue, times.acceptLabel)) {
       continue;
     }
     const holding = new Set([...kept, ...made].filter((claim) => claim.repo === issue.repo).map((claim) => claim.login));
@@ -157,14 +156,23 @@ export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim
   return { made, expired, kept };
 }
 
-/** An open issue with no assignee that is neither a design issue (talk, never work to take) nor a security one. */
-function claimable(issue: ClaimIssue): boolean {
+/**
+ * An open issue with no assignee that is neither a design issue (talk, never work to take) nor a security one, and is
+ * the repository's own or accepted: an outsider's issue no one accepted is no work yet, so it is no one's to claim.
+ */
+function claimable(issue: HostIssue, acceptLabel: string): boolean {
   const labels = issue.labels.map((label) => label.toLowerCase());
-  return issue.state === 'open' && issue.assignees.length === 0 && !labels.includes(DESIGN_LABEL) && !labels.includes(SECURITY_LABEL);
+  return (
+    issue.state === 'open' &&
+    issue.assignees.length === 0 &&
+    !labels.includes(DESIGN_LABEL) &&
+    !labels.includes(SECURITY_LABEL) &&
+    issueTrust(issue, acceptLabel) !== 'untrusted'
+  );
 }
 
 /** The oldest claim comment since `since` by an outside person holding no other claim in the repository. */
-function firstClaim(issue: ClaimIssue, since: number, holding: ReadonlySet<string>): IssueComment | undefined {
+function firstClaim(issue: HostIssue, since: number, holding: ReadonlySet<string>): IssueComment | undefined {
   return [...issue.comments]
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
     .find(

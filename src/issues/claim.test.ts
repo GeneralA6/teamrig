@@ -9,7 +9,8 @@ const REPO = 'acme/web';
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-11-15T12:00:00Z');
 const SINCE = NOW - 60_000;
-const TIMES = { now: NOW, since: SINCE };
+const ACCEPT = 'accepted';
+const TIMES = { now: NOW, since: SINCE, acceptLabel: ACCEPT };
 
 function claimComment(overrides: Partial<IssueComment> = {}): IssueComment {
   return { at: new Date(NOW - 1_000).toISOString(), login: 'ada', authorAssociation: 'NONE', authorKind: 'User', claims: true, ...overrides };
@@ -55,7 +56,7 @@ describe('planClaims', () => {
   it(`counts claims made from a backlog of old comments toward today's ${String(CLAIMS_PER_DAY)}`, () => {
     const old = new Date(NOW - 3 * DAY).toISOString();
     const issues = Array.from({ length: CLAIMS_PER_DAY + 2 }, (_, index) => issue(index + 1, { comments: [claimComment({ login: `user${String(index)}`, at: old })] }));
-    const plan = planClaims(issues, [], { now: NOW, since: NOW - 7 * DAY });
+    const plan = planClaims(issues, [], { ...TIMES, since: NOW - 7 * DAY });
     assert.equal(plan.made.length, CLAIMS_PER_DAY);
     assert.ok(plan.made.every((made) => made.at === NOW));
   });
@@ -74,6 +75,17 @@ describe('planClaims', () => {
       issue(10, { comments: [claimComment({ login: 'not a login' })] }),
     ];
     assert.deepEqual(planClaims(issues, [], TIMES).made, []);
+  });
+
+  it('claims an outsider issue only once someone else accepted it', () => {
+    const outsider = { authorAssociation: 'NONE', author: 'stranger', comments: [claimComment()] };
+    const acceptedBy = (actor: string): Partial<HostIssue> => ({
+      ...outsider,
+      labels: [ACCEPT],
+      labelEvents: [{ label: ACCEPT, at: new Date(NOW - DAY).toISOString(), actor, actorKind: 'User' }],
+    });
+    const issues = [issue(1, outsider), issue(2, acceptedBy('stranger')), issue(3, acceptedBy('maintainer'))];
+    assert.deepEqual(planClaims(issues, [], TIMES).made.map((made) => made.number), [3]);
   });
 
   it('gives the issue to the oldest claim comment', () => {

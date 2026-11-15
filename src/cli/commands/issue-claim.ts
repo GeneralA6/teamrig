@@ -45,7 +45,7 @@ export async function recordClaims(runtime: CliRuntime, kit: Kit, config: KitCon
     const plan = planClaims(
       issues,
       before.claims.filter((claim) => claim.repo === repo),
-      { now, since: before.checked.get(repo) ?? run.started },
+      { now, since: before.checked.get(repo) ?? run.started, acceptLabel: config.github.acceptLabel },
     );
     const labelsOf = (claim: Claim): readonly string[] => issues.find((issue) => issue.number === claim.number)?.labels ?? [];
     claims.push(...plan.kept);
