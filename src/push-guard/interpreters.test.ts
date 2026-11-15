@@ -172,6 +172,31 @@ describe('findGitInvocations on interpreter scripts', () => {
     assert.ok(found.doubts.some((doubt) => !doubt.gated), JSON.stringify(found.doubts));
   });
 
+  // `perl -0pi -e '<code>' <file>` edits the file in place; the file is data, the -e code is the program.
+  const NOTES = '# notes\n- never `git push` to main; run `make check` first\n';
+
+  it('passes a perl in-place edit whose -e code cannot push, although its file quotes git push in backticks', () => {
+    const files = { '/t/notes.md': NOTES };
+    const command = "T=/opt/bin/tool; perl -0pi -e 's/old step \\(\\+ x\\n\\s*y\\)/new step (z)/' /t/notes.md; grep -n z /t/notes.md; $T add --title x 2>&1 | tail -1";
+    assert.deepEqual(findGitInvocations(command, context(files)).doubts, []);
+    assert.deepEqual(findGitInvocations("perl -0pi -e 's/a/b/' /t/notes.md", context(files)).doubts, []);
+  });
+
+  it('still doubts perl -e code that pushes through system, a backtick /e substitution or qx', () => {
+    const files = { '/t/notes.md': NOTES };
+    for (const command of [
+      "perl -e 'system(\"git push\")'",
+      "perl -0pi -e 's/a/`git push`/e' /t/notes.md",
+      "perl -e 'my $o = qx(git push)'",
+    ]) {
+      const found = findGitInvocations(command, context(files));
+      assert.ok(
+        found.doubts.some((doubt) => !doubt.gated && /perl script that may run git push/.test(doubt.reason)),
+        `${command}: ${JSON.stringify(found.doubts)}`,
+      );
+    }
+  });
+
   it('still reads a shell fed a heredoc, and a program only known when it runs', () => {
     assert.ok(findGitInvocations("bash <<'X'\ngit push origin main\nX", context()).invocations.some((i) => i.subcommand === 'push'));
     const dynamic = findGitInvocations("\"$PY\" - <<'PY'\nprint('push')\nPY", context());
