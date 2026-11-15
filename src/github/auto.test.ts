@@ -117,15 +117,16 @@ describe('the sync state file', () => {
 });
 
 describe('finishState', () => {
-  it('records the finish, the failures and the watches, keeping the recorded start', () => {
-    const claimed: SyncState = { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9]]]), pulls: NO_PULLS, paged: NONE };
+  it('records the finish, the failures and the watches, keeping the recorded start and the paged numbers', () => {
+    const paged = new Map([['acme/web', [5]]]);
+    const claimed: SyncState = { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9]]]), pulls: NO_PULLS, paged };
     assert.deepEqual(finishState(claimed, NOW + MINUTE, { failures: [], leftOut: NONE, pulls: NO_PULLS, security: NO_SECURITY }), {
       startedAt: NOW,
       finishedAt: NOW + MINUTE,
       failing: [],
       leftOut: NONE,
       pulls: NO_PULLS,
-      paged: NONE,
+      paged,
     });
     assert.deepEqual(finishState(undefined, NOW, { failures: [{ repo: 'acme/web', reason: 'gone' }], leftOut: NONE, pulls: NO_PULLS, security: NO_SECURITY }), {
       startedAt: NOW,
@@ -152,11 +153,11 @@ describe('finishState', () => {
     assert.deepEqual(finished.pulls, new Map([['acme/api', empty], ['acme/new', empty], ['acme/web', WATCH]]));
   });
 
-  it("holds as paged a read repository's open security issues now, and keeps those of one it could not read", () => {
+  it('keeps every number paged before, of any repository, and adds the open security issues this run found', () => {
     const before: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE, pulls: NO_PULLS, paged: new Map([['acme/web', [3]], ['acme/api', [2]], ['acme/old', [1]]]) };
     const security = new Map([['acme/web', [{ repo: 'acme/web', number: 8, url: 'https://github.com/acme/web/issues/8', to: 'bravo' }, { repo: 'acme/web', number: 5, url: 'https://github.com/acme/web/issues/5', to: 'bravo' }]], ['acme/old', []]]);
     const finished = finishState(before, NOW + MINUTE, { failures: [{ repo: 'acme/api', reason: 'gone' }], leftOut: NONE, pulls: NO_PULLS, security });
-    assert.deepEqual(finished.paged, new Map([['acme/web', [5, 8]], ['acme/api', [2]]]));
+    assert.deepEqual(finished.paged, new Map([['acme/web', [3, 5, 8]], ['acme/api', [2]], ['acme/old', [1]]]));
   });
 });
 

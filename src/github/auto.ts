@@ -4,7 +4,7 @@ import { PULL_CHECKS, PULL_MERGEABLE, PULL_REVIEWS } from '../issues/pull.ts';
 import { cut } from '../register/views.ts';
 import { issueRef } from './map.ts';
 import type { PullEvent, PullMark, PullWatch } from './pull-news.ts';
-import { pagedNumbers, type SecurityIssue } from './security-alert.ts';
+import { pagedAfter, type SecurityIssue } from './security-alert.ts';
 import type { StepOutcome } from './sync.ts';
 
 /**
@@ -192,21 +192,20 @@ function isTime(value: unknown): value is number {
  * the issues left out of each repository it read, and what it read of each one's pull requests. A repository it
  * could not read keeps what was left out of it before, so its issues are not told again once it reads, and its pull
  * request watch, so what happened meanwhile is news once it reads; one that left nothing out is not kept, nor the
- * watch of a repository no longer synced. The paged numbers of a repository it read are its open security issues now,
- * every one of them paged by this run or before; one it could not read keeps its own, so none pages twice.
+ * watch of a repository no longer synced. The paged numbers are kept for good, with those of the open security issues
+ * this run found added (`pagedAfter`), so none pages twice.
  */
 export function finishState(state: SyncState | undefined, now: number, run: Pick<SyncRun, 'failures' | 'leftOut' | 'pulls' | 'security'>): SyncState {
   const failing = run.failures.map((failure) => failure.repo);
   const kept = [...(state?.leftOut ?? [])].filter(([repo]) => failing.includes(repo) && !run.leftOut.has(repo));
   const watched = [...(state?.pulls ?? [])].filter(([repo]) => failing.includes(repo) && !run.pulls.has(repo));
-  const pagedBefore = [...(state?.paged ?? [])].filter(([repo]) => failing.includes(repo) && !run.security.has(repo));
   return {
     startedAt: state?.startedAt ?? now,
     finishedAt: now,
     failing,
     leftOut: new Map([...run.leftOut, ...kept].filter(([, numbers]) => numbers.length > 0)),
     pulls: new Map([...run.pulls, ...watched]),
-    paged: new Map([...pagedNumbers(run.security), ...pagedBefore]),
+    paged: pagedAfter(state?.paged ?? new Map(), run.security),
   };
 }
 

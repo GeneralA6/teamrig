@@ -17,7 +17,7 @@ import {
 import { issueRef } from '../../github/map.ts';
 import { pullNewsText } from '../../github/pull-news.ts';
 import { ourLogins } from '../../github/trust.ts';
-import { securityLine, securityPageText, unpagedIssues, unpagedLine, type SecurityIssue } from '../../github/security-alert.ts';
+import { capAlerts, overCapLine, overCapPageText, securityLine, securityPageText, unpagedIssues, unpagedLine } from '../../github/security-alert.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { sendOwnerPage } from '../login-page.ts';
 import { postLine } from '../../inbox/inbox.ts';
@@ -89,15 +89,23 @@ export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitC
     posts.push({ to, ...pullNewsText(events, ours) });
   }
   const lines: string[] = [];
-  // Each open security issue not paged before wakes its session and pages the owner; the state now holds it as paged,
-  // so a page that failed is told to the lead once rather than retried at every run.
-  for (const issue of unpagedIssues(run.security, before?.paged ?? new Map())) {
+  // Each open security issue not paged before wakes its session and pages the owner, up to the run's cap; the rest
+  // go to the lead in one line and one page. The state now holds them all as paged, so a page that failed is told to
+  // the lead once rather than retried at every run.
+  const { each, overCap } = capAlerts(unpagedIssues(run.security, before?.paged ?? new Map()));
+  const team = kit.paths.team;
+  for (const issue of each) {
     posts.push({ to: issue.to, text: securityLine(issue), wake: true });
-    const page = await securityPage(runtime, kit.paths.team, issue);
+    const page = await securityPage(runtime, team, `security issue ${issueRef(issue.repo, issue.number)}`, (clock) => securityPageText(issue, team, clock));
     lines.push(page.line);
     if (page.why !== undefined) {
       posts.push({ to: config.roles.lead, text: unpagedLine(issue, page.why), wake: true });
     }
+  }
+  if (overCap.length > 0) {
+    const page = await securityPage(runtime, team, `${overCap.length} security issues past the cap`, (clock) => overCapPageText(overCap, team, config.roles.lead, clock));
+    lines.push(page.line);
+    posts.push({ to: config.roles.lead, text: overCapLine(overCap, page.why), wake: true });
   }
   const inboxes = inboxDepsOf(runtime, kit.paths).inboxes;
   const secrets = new SecretScanner(config.register.secretPatterns);
@@ -114,21 +122,20 @@ export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitC
   return refused;
 }
 
-/** Pages the owner for a security issue: the run's line, and why no page went (undefined once one did). */
-async function securityPage(runtime: CliRuntime, team: string, issue: SecurityIssue): Promise<{ readonly line: string; readonly why: string | undefined }> {
-  const ref = issueRef(issue.repo, issue.number);
+/** Pages the owner with `text` about `what`: the run's line, and why no page went (undefined once one did). */
+async function securityPage(runtime: CliRuntime, team: string, what: string, text: (clock: string) => string): Promise<{ readonly line: string; readonly why: string | undefined }> {
   try {
-    const sent = await sendOwnerPage(runtime, team, (zone) => securityPageText(issue, team, zone.clock(new Date(runtime.clock.now()))));
+    const sent = await sendOwnerPage(runtime, team, (zone) => text(zone.clock(new Date(runtime.clock.now()))));
     if (sent.status === 'ok') {
-      return { line: `PAGED the owner for security issue ${ref} through ${sent.source.team}'s alerts.${sent.source.key}`, why: undefined };
+      return { line: `PAGED the owner for ${what} through ${sent.source.team}'s alerts.${sent.source.key}`, why: undefined };
     }
     const why =
       sent.status === 'none'
         ? `no team from ${team} up names alerts.pageWebhookFile or alerts.pageWebhookEnv`
         : `${sent.source.team}'s alerts.${sent.source.key}: ${sent.problem}`;
-    return { line: `NO PAGE for security issue ${ref}: ${why}`, why };
+    return { line: `NO PAGE for ${what}: ${why}`, why };
   } catch (error) {
     const why = `the page failed: ${errorMessage(error)}`;
-    return { line: `NO PAGE for security issue ${ref}: ${why}`, why };
+    return { line: `NO PAGE for ${what}: ${why}`, why };
   }
 }

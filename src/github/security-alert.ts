@@ -4,13 +4,22 @@ import { issueRef } from './map.ts';
 
 /**
  * The security part of the GitHub routing (T3021 sections 3 and 7): an open issue labelled `security`, by the issue
- * form or by a maintainer, wakes the session it routes to and pages the owner, at most once per issue. The sync state
- * keeps the numbers already paged (auto.ts), so a label set after the issue was imported pages too, and a lasting one
- * pages once. Neither the line nor the page repeats the title: a report posted in public may name the hole in it.
+ * form or by a maintainer, wakes the session it routes to and pages the owner, at most once per issue ever. The sync
+ * state keeps every number already paged for good (auto.ts), so a label set after the issue was imported pages too,
+ * and a lasting one, a close and reopen or a label taken off and set again never pages twice. The issue form sets the
+ * label, so anyone can open many at once: a run pages and wakes for at most SECURITY_ALERTS_PER_RUN of them, and
+ * gives the rest to the lead in one line and one page (security pass T3060 F1). Neither the lines nor the pages
+ * repeat a title: a report posted in public may name the hole in it.
  */
 
 /** The label that marks a security report. */
 export const SECURITY_LABEL = 'security';
+
+/** Security issues one run pages the owner and wakes a session for, each on its own: one wake costs about 0.34% of the week. */
+export const SECURITY_ALERTS_PER_RUN = 3;
+
+/** Refs the over-the-cap line and page name; the rest are counted, so neither grows with a flood of issues. */
+const NAMED_OVER_CAP = 10;
 
 /** An open issue labelled security, and the session it routes to. */
 export interface SecurityIssue {
@@ -32,11 +41,45 @@ export function unpagedIssues(found: ReadonlyMap<string, readonly SecurityIssue[
   return [...found].flatMap(([repo, issues]) => issues.filter((issue) => !(paged.get(repo) ?? []).includes(issue.number)));
 }
 
-/** The numbers each repository's security issues hold now, lowest first; a repository with none is left out. */
-export function pagedNumbers(found: ReadonlyMap<string, readonly SecurityIssue[]>): Map<string, readonly number[]> {
-  return new Map(
-    [...found].flatMap(([repo, issues]) => (issues.length === 0 ? [] : [[repo, issues.map((issue) => issue.number).sort((a, b) => a - b)] as const])),
+/**
+ * The numbers paged once this run ends: every one `before` held, of any repository, and those of each security issue
+ * `found` now, lowest first. A number is never dropped, so an issue closed or unlabelled and then reopened or
+ * labelled again does not page twice; one security issue is a few bytes, so the list stays small.
+ */
+export function pagedAfter(before: ReadonlyMap<string, readonly number[]>, found: ReadonlyMap<string, readonly SecurityIssue[]>): Map<string, readonly number[]> {
+  const paged = new Map(before);
+  for (const [repo, issues] of found) {
+    if (issues.length > 0) {
+      const numbers = new Set([...(paged.get(repo) ?? []), ...issues.map((issue) => issue.number)]);
+      paged.set(repo, [...numbers].sort((a, b) => a - b));
+    }
+  }
+  return paged;
+}
+
+/** `issues` split at the run's cap: the first SECURITY_ALERTS_PER_RUN paged and woken for each, and the rest. */
+export function capAlerts(issues: readonly SecurityIssue[]): { readonly each: readonly SecurityIssue[]; readonly overCap: readonly SecurityIssue[] } {
+  return { each: issues.slice(0, SECURITY_ALERTS_PER_RUN), overCap: issues.slice(SECURITY_ALERTS_PER_RUN) };
+}
+
+/** The refs of the security issues past the cap, each with the session it routes to, at most NAMED_OVER_CAP named. */
+function overCapRefs(overCap: readonly SecurityIssue[]): string {
+  const named = overCap.slice(0, NAMED_OVER_CAP).map((issue) => `${issueRef(issue.repo, issue.number)} (${issue.to})`);
+  const more = overCap.length - named.length;
+  return `${named.join(', ')}${more > 0 ? `, and ${more} more` : ''}`;
+}
+
+/** The lead's line for the security issues past the run's cap, and why the owner was not paged for them, if not. */
+export function overCapLine(overCap: readonly SecurityIssue[], why: string | undefined): string {
+  return (
+    `${overCap.length} more GitHub security issues this run, past its cap of ${SECURITY_ALERTS_PER_RUN} pages and wakes; ` +
+    `none of their sessions was told: read each and hand it on: ${overCapRefs(overCap)}${why === undefined ? '' : `; the owner was not paged: ${why}`}`
   );
+}
+
+/** The owner's page for the security issues past the run's cap: how many, their refs, who has them and when. */
+export function overCapPageText(overCap: readonly SecurityIssue[], team: string, lead: string, clock: string): string {
+  return `${KIT_NAME}: ${overCap.length} more security issues on GitHub past this run's cap, told to ${team}/${lead} at ${clock}: ${overCapRefs(overCap)}`;
 }
 
 /** The routed session's inbox line: the issue by ref and URL, never its title, and what to do first. */

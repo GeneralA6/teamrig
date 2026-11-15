@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
 import { isIssueQuery } from '../github/gh.ts';
-import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { SECURITY_ALERTS_PER_RUN } from '../github/security-alert.ts';
 import { FakeGh, ghIssue, ghPull } from '../testing/fake-gh.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
@@ -138,6 +139,43 @@ describe('teamrig issue sync --auto', () => {
     assert.ok(line !== undefined && !line.includes('Token leaks'), githubLines(kit, 'bravo').join('\n'));
     assert.equal((await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read('bravo')).length, 1);
     assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? '')?.paged, new Map([['acme/web', [7]]]));
+  });
+
+  it('never pages twice for a security issue closed and reopened, or unlabelled and labelled again', async () => {
+    const hookFile = '/chat/page-url';
+    const kit = new CliHarness({ ...TEAM, timeZone: 'UTC', wake: { enabled: true }, alerts: { pageWebhookFile: hookFile }, github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } });
+    await kit.files.write(hookFile, 'https://chat.example/x\n');
+    const webhook = new FakeWebhook();
+    const labelled = ghIssue('acme/web', 7, { assignees: ['octocat'], labels: ['security'] });
+    const closed = ghIssue('acme/web', 7, { assignees: ['octocat'], labels: ['security'], state: 'CLOSED', updatedAt: '2030-01-02T00:00:00Z' });
+    const unlabelled = ghIssue('acme/web', 7, { assignees: ['octocat'], updatedAt: '2030-01-04T00:00:00Z' });
+    const reopened = ghIssue('acme/web', 7, { assignees: ['octocat'], labels: ['security'], updatedAt: '2030-01-05T00:00:00Z' });
+    for (const issues of [[labelled], [closed], [reopened], [unlabelled], [reopened]]) {
+      kit.clock.advance(15 * MINUTE);
+      const result = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues), webhook });
+      assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    }
+    assert.equal(webhook.posts.length, 1);
+    assert.equal((await new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read('bravo')).length, 1);
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? '')?.paged, new Map([['acme/web', [7]]]));
+  });
+
+  it(`pages and wakes for at most ${SECURITY_ALERTS_PER_RUN} security issues a run, and gives the rest to the lead in one line and one page`, async () => {
+    const hookFile = '/chat/page-url';
+    const kit = new CliHarness({ ...TEAM, timeZone: 'UTC', wake: { enabled: true }, alerts: { pageWebhookFile: hookFile }, github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } });
+    await kit.files.write(hookFile, 'https://chat.example/x\n');
+    const webhook = new FakeWebhook();
+    const issues = [1, 2, 3, 4, 5].map((number) => ghIssue('acme/web', number, { assignees: ['octocat'], labels: ['security'] }));
+    const result = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues), webhook });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    const pages = webhook.posts.map(({ content }) => content.replace(/ at \d\d:\d\d UTC/, ''));
+    assert.equal(pages.length, 4, pages.join('\n'));
+    assert.equal(pages.at(-1), "teamrig: 2 more security issues on GitHub past this run's cap, told to app/lead: gh:acme/web#4 (bravo), gh:acme/web#5 (bravo)");
+    assert.equal(githubLines(kit, 'bravo').filter((text) => text.startsWith('GitHub security issue')).length, 3);
+    assert.ok(githubLines(kit, 'lead').some((text) => text.startsWith('2 more GitHub security issues this run, past its cap of 3 pages and wakes')), githubLines(kit, 'lead').join('\n'));
+    const asks = new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks'));
+    assert.deepEqual([(await asks.read('bravo')).length, (await asks.read('lead')).length], [SECURITY_ALERTS_PER_RUN, 1]);
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? '')?.paged, new Map([['acme/web', [1, 2, 3, 4, 5]]]));
   });
 
   it('tells the lead, waking it, when no page webhook pages the owner for a security issue', async () => {
