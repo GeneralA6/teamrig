@@ -15,7 +15,7 @@ describe('shellRunsOf', () => {
     );
     assert.deepEqual(
       shellRunsOf({ name: 'PowerShell', command: 'Set-Location C:\\repo; npx.cmd tsc' }).map((run) => run.name),
-      ['npx'],
+      ['npx', 'tsc'],
     );
     assert.deepEqual(shellRunsOf({ name: 'Read', command: 'git status' }), []);
     assert.deepEqual(shellRunsOf({ name: 'Bash', command: undefined }), []);
@@ -81,27 +81,37 @@ describe('runWorkOf', () => {
 
   it('reads jest, vitest and tsc wherever they start: on the path, through npx, or as the script node runs', () => {
     assert.deepEqual(worksOf('jest; vitest run; tsc -p .'), ['testFull', 'testFull', 'build']);
-    assert.deepEqual(worksOf('npx --package typescript tsc --noEmit; npx jest; npx eslint .; npx'), ['build', 'testFull', '-', '-']);
+    // The runner reads as no work of its own; what it starts is a run of its own (package-guard/packaged.ts).
+    assert.deepEqual(worksOf('npx --package typescript tsc --noEmit; npx jest; npx eslint .; npx'), ['-', 'build', '-', 'testFull', '-', '-', '-']);
     assert.deepEqual(worksOf('node node_modules/typescript/bin/tsc -p .; node C:/app/node_modules/vitest/vitest.mjs run'), ['build', 'testFull']);
   });
 
   it('reads jest or vitest given files, a folder or a path filter as the tests it names, and one given only options as the suite', () => {
     assert.deepEqual(worksOf('npx jest src/a.spec.ts; npx --no -- jest src/a src/b; npx jest -c cli/jest.config.ts cli/x.spec.ts; jest --runInBand src/x.spec.ts'), [
+      '-',
       'testTargeted',
+      '-',
       'testTargeted',
+      '-',
       'testTargeted',
       'testTargeted',
     ]);
     assert.deepEqual(worksOf('vitest run src/a.test.ts; npx vitest src/a; npx jest --testPathPattern=spec/a; npx jest $SPECS'), [
       'testTargeted',
+      '-',
       'testTargeted',
+      '-',
       'testTargeted',
+      '-',
       'testTargeted',
     ]);
     assert.deepEqual(worksOf('npx jest --config j.config.ts --maxWorkers 1; npx jest -c jest.config.ts; vitest run; npx vitest --config v.config.ts run; jest -t adds'), [
+      '-',
+      'testFull',
+      '-',
       'testFull',
       'testFull',
-      'testFull',
+      '-',
       'testFull',
       'testFull',
     ]);

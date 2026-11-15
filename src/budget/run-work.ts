@@ -1,5 +1,5 @@
 import { runsOf, type LineRuns, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
-import { EXEC_VALUED, NPM_VALUED } from '../package-guard/runners.ts';
+import { NPM_VALUED } from '../package-guard/runners.ts';
 import { programName } from '../push-guard/launchers.ts';
 import type { ShellDialect, ShellWord } from '../push-guard/tokenizer.ts';
 import type { ToolUse } from './line.ts';
@@ -272,10 +272,6 @@ export function runWorkOf(run: ProgramRun): RunWork | undefined {
       return 'edit';
     case 'npm':
       return npmWork(run.args);
-    case 'npx': {
-      const bin = firstOperand(run.args, EXEC_VALUED);
-      return bin === undefined || bin.word.dynamic ? undefined : checkWork(programName(bin.word.text), run.args.slice(bin.index + 1));
-    }
     case 'node':
       return nodeWork(run.args, run.stdin);
     case 'teamrig': {

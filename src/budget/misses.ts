@@ -1,7 +1,7 @@
 import { isNonNegativeInteger, isRecord } from '../core/guards.ts';
 import { parseUtcDay } from '../core/time.ts';
 import type { ProgramRun } from '../package-guard/programs.ts';
-import { EXEC_VALUED, NPM_VALUED, runnerCallOf } from '../package-guard/runners.ts';
+import { NPM_VALUED, runnerCallOf } from '../package-guard/runners.ts';
 import type { ToolUse, TurnTrigger } from './line.ts';
 import type { Count, MissField } from './patterns.ts';
 import { GIT_VALUED, shellRunsOf } from './run-work.ts';
@@ -96,9 +96,6 @@ function isHeavyStep(run: ProgramRun): boolean {
   }
   if (run.name === 'node') {
     return words.includes('--test');
-  }
-  if (run.name === 'npx') {
-    return HEAVY_PROGRAMS.has(afterOptions(words, EXEC_VALUED)[0] ?? '');
   }
   if (!PACKAGE_MANAGERS.has(run.name)) {
     return false;
