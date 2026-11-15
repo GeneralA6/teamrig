@@ -90,9 +90,20 @@ describe('the write-issue skill', () => {
       '3. Its sections',
       '4. A goal is a parent with sub-issues',
       '5. Labels and the taker',
-      '6. Read it back',
+      '6. A design issue is talk, not a spec',
+      '7. Read it back',
       'Posting',
     ]);
+  });
+
+  it('keeps a design issue as talk: the design label, no status or assignee, its own sections, agreed by the maintainer, nothing sensitive', () => {
+    assert.ok(skill.includes('takes `design` and no status label or assignee'));
+    for (const section of ['Question', 'Context', 'Options', 'Proposal', 'How it is agreed']) {
+      assert.ok(skill.includes(`**${section}**`), section);
+    }
+    assert.ok(skill.includes('no claim, branch, code or pull request until it is\n  agreed'));
+    assert.ok(skill.includes('a comment starting `Agreed:`'));
+    assert.ok(skill.includes('private vulnerability report'));
   });
 
   it("names the repository's own rule on where a change lives, and every section of the body", () => {

@@ -1,6 +1,6 @@
 ---
 name: write-issue
-description: Use before opening or rewriting a GitHub issue that someone else will take, a contributor or their agent, so its body holds the whole spec and they can work alone.
+description: Use before opening or rewriting a GitHub issue someone else will take, so its body holds the whole spec, or a design issue for talk before anything is agreed.
 ---
 
 # Write an issue someone can take alone
@@ -35,8 +35,9 @@ A rule the issue does not state is one the taker will not know.
 - A changed spec replaces the body (`teamrig issue edit <owner/name#n> --body-file <file>` on a repository in
   `github.repos`, else `gh issue edit <n> --body-file <file>`), and one short comment says what changed. GitHub keeps
   the old body in the edit history.
-- No private data: no home folder paths, e-mail addresses, host names, internal task ids or secrets. An issue may be
-  public, and a copy outlives a later edit.
+- No private data: no home folder paths, e-mail addresses, host names, internal task ids, private logs or secrets,
+  and no security hole: that goes through the repository's private vulnerability report (its `SECURITY.md`), never
+  an issue. An issue may be public, and a copy outlives a later edit.
 
 ## 3. Its sections
 
@@ -70,11 +71,32 @@ and mark a part that must wait for another as blocked by it.
   second label that says the same as another (a "help wanted" beside a status that already says the issue is open
   to take).
 - A parent issue (a goal) takes no status label: its parts carry the status, and the goal is done when they are.
+- A design issue (section 6) takes `design` and no status label or assignee: it is not work to take.
 - `good first issue` only on a small, well-defined issue a newcomer can finish with no knowledge beyond its body;
   on a few such issues, so the label keeps meaning something.
-- Assign the issue to its taker once they say they take it; until then it stays unassigned, open to anyone.
+- Assign the issue to its taker once they say they take it; until then it stays unassigned, open to anyone. On a
+  repository whose teamrig sync sends the status push, a taker's `/take` comment assigns them for seven days, until
+  a pull request links the issue.
 
-## 6. Read it back
+## 6. A design issue is talk, not a spec
+
+When the question is how something should work and nothing is agreed yet, open a design issue in place of a spec:
+everyone, and the agent working for them, gives their side in comments, and no one takes it as work until the
+maintainers mark it agreed. It replaces a discussion forum, so the talk stays beside the work it leads to.
+
+- **Label** it `design`, with no status label and no assignee. teamrig makes the label where a repository lacks it
+  (`teamrig issue label <owner/name#n> --add design`), and its status push shows no status on a design issue.
+- **Sections**, in place of section 3's: **Question** (what to decide, in one or two sentences), **Context** (what
+  exists today, by path, and why it needs a decision now), **Options** (each with what it costs and what it gives
+  up), **Proposal** (the opener's pick, if any) and **How it is agreed** (who decides, by when). A repository's own
+  design form, when it has one, sets these.
+- **Say at the top** that it is talk: comments with reasons, and no claim, branch, code or pull request until it is
+  agreed; and that nothing sensitive is posted in it (section 2's list).
+- **Agreed** is the maintainer's mark, never a count of comments: a comment starting `Agreed:` that sums up the
+  decision. Then the body is rewritten as a spec by sections 2 and 3, or the work opens as new issues linked to it,
+  and the `design` label comes off; from then on it is work like any other.
+
+## 7. Read it back
 
 After posting, read the issue on GitHub (`gh issue view <n>`, or its page) and check it against this list: the body
 renders (headings, lists, code, links), every path exists, every `#number` is the one meant, the labels and the
