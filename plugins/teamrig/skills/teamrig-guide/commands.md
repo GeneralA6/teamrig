@@ -1241,7 +1241,8 @@ Flags:
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
   ref only, at most ten named). It reads every repository, so it refuses `--repo`. With `github.statusPush` on it
-  then sends the status push (`--push --yes`) too, its writes per run lowered so an hour of runs sends at most 250
+  then sends the status push (`--push --yes`) too, labels only: a close it plans is printed as a `HELD` line and
+  sent only by a session's `--push --yes`. Its writes per run are lowered so an hour of runs sends at most 250
   (every 15 minutes 40 a run, every 5 minutes 20); a failed write is told to the lead like a repository that fails.
 - `--push`: plans the other way, from the task list to the issues: for each issue a task holds by its
   `gh:<owner>/<name>#<number>` ref, the writes that make the issue show the task's status. An active task gives its

@@ -280,8 +280,9 @@ PREVIEW nothing was written; a push would send 4 write(s) now, at most 40 a run,
 - **On its own, once you turn it on.** With `"statusPush": true` in the team config's `github` block, the
   [automatic sync](#then-it-runs-on-its-own) sends the push after each import, so no session runs it. Each run then
   sends fewer writes when the sync runs often, so an hour of runs sends at most 250, half GitHub's 500 an hour (every
-  15 minutes: 40 a run; every 5: 20). A failed write is told to the lead's inbox like a repository that cannot be
-  read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
+  15 minutes: 40 a run; every 5: 20). It sends labels only: a close is the one write a person reads as a decision,
+  so the automatic push prints it as a `HELD` line and leaves it to a session's `teamrig issue sync --push --yes`.
+  A failed write is told to the lead's inbox like a repository that cannot be read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
 
 ## Renewing a token
 
