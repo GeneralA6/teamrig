@@ -1589,6 +1589,9 @@ A tab keeps the session it was first bound to: from a tool call, a script or a h
 `$CLAUDECODE`), a read as another session of the team is REFUSED (exit 2) and writes nothing, as the guards take who
 runs a command from the tab's session. The person moves a tab by typing `/teamrig inbox read --session <id>` in it,
 or by reading in a terminal; a restarted tab binds afresh, and so does one bound to a session that left the team.
+[The exec guard](hooks.md#before-a-shell-command-the-exec-guard) refuses such a read from a tool call before it runs,
+through any client, and a line that changes `$CLAUDECODE`. A script, or a line the guard does not read, that clears
+the variable is not covered: these are checks against mistakes.
 
 Flags:
 
@@ -2685,6 +2688,8 @@ sessions that need one of your unfinished tasks or wait on your decision or appr
 then `+N more`),
 when some do. The lead gets every flag, as `teamrig check` prints them; any other session gets the
 flags of the tasks and skills it owns, and a sub-lead also those of its group's tasks. Run it at the start of every work block and after every `/clear`.
+It binds the tab as `inbox read` does, so a tab bound to a session starts only as that session: the exec guard
+refuses a tool call's start as another (see [inbox read](#teamrig-inbox-read)).
 
 When the checkout you run it in lacks commits of origin's default branch, a `BEHIND` line after the time says how
 many: rebase before you edit. It counts against that branch as last fetched and never fetches itself; every worktree

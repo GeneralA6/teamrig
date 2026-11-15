@@ -15,7 +15,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook db-write-guard` | Asks before a line that writes to a database by hand (a built-in SQL client, a database program or Node client module the team names, a data script the team names run with its apply flag), so the owner sees counts or a preview first; refuses it instead under `dbWriteGuard.writes: deny` or with asks off ([the db-write guard](#before-a-shell-command-the-db-write-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, every `hook` command, which takes its tab from its stdin, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, every `hook` command, which takes its tab from its stdin, a bound tab's `start` or `inbox read` as another session, a line that changes `$CLAUDECODE`, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Asks the owner before a session's `teamrig roles grant` or `revoke`, and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
@@ -793,6 +793,16 @@ them (`echo "exec approve R1"`). A command word only known when it runs counts o
   `$T hook ...` too. A hook takes the tab it runs for, and who typed a `/teamrig` line, from its stdin, which
   its caller writes, so only Claude Code's hooks and the mod run them; prove a hook in a test, or by a script on a
   scratch kit home. `hook slash-command` also refuses itself wherever Claude Code set `$CLAUDECODE`.
+- **another session's tab**: in a tab bound to a session, a [start](commands.md#teamrig-start) or
+  [inbox read](commands.md#teamrig-inbox-read), whatever client starts it, that names another session of the team
+  with `--session`, names one only known when it runs (`--session "$S"`), or runs on a line that sets
+  `$TEAMRIG_SESSION` or `$CLAUDE_CODE_SESSION_ID`: a tab reads its inbox and starts only as itself. Its own session,
+  by id or by a name it has had, passes, and a tab not bound yet binds to any.
+- **a changed `$CLAUDECODE`**: a line that sets, removes or empties it, in any shell (`CLAUDECODE= ...`,
+  `env -u CLAUDECODE`, `env -i`, `unset`, `export -n`, PowerShell's `$env:CLAUDECODE = ...` or
+  `Remove-Item Env:CLAUDECODE`, cmd's `set CLAUDECODE=`). Claude Code sets it so teamrig knows a command runs under
+  it, and the owner commands, `hook slash-command` and `inbox read` keep their checks there; leave it as Claude Code
+  set it. A line that only reads it (`echo $CLAUDECODE`) passes.
 - **a shell fed from a pipe**: a shell on the line that takes its commands from a pipe (`echo ... | bash`,
   `... | iex`, `x | bash -c bash`), whatever feeds it, as the pipe can carry a review the line never shows. Run the
   commands directly, or hand the shell a heredoc, which the guard reads as written. A shell with no pipe into it
@@ -802,7 +812,8 @@ It always refuses and never asks; no config key turns it off. The guard reads on
 
 - a program the line starts that runs the CLI itself, such as a script the agent wrote, or a command another tool
   runs (the Monitor tool): neither is a Bash or PowerShell call. `owner note` and `owner next` still refuse their
-  writes there wherever Claude Code set `$CLAUDECODE`, unless that program clears it;
+  writes there wherever Claude Code set `$CLAUDECODE`, unless that program clears it: a script or a line the guard
+  does not read that clears the variable is not covered, so the variable checks are a check against mistakes;
 
 - a script file a shell runs (`bash x.sh`, `bash <(...)`, `source /dev/stdin`), or a shell function wrapping a
   shell: only a pipe into a shell the line names is refused;
