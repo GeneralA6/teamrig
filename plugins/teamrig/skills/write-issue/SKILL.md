@@ -37,6 +37,9 @@ A rule the issue does not state is one the taker will not know.
   the old body in the edit history.
 - No private data: no home folder paths, e-mail addresses, host names, internal task ids or secrets. An issue may be
   public, and a copy outlives a later edit.
+- No security hole: one goes only to the repository's private vulnerability reporting or its `SECURITY.md` route,
+  never an issue, and its fix's issue, if any, names the hardening, never the attack
+  ([security skill](../security/SKILL.md#a-security-hole)).
 
 ## 3. Its sections
 
