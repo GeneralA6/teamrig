@@ -50,7 +50,7 @@ describe('the team-setup skill', () => {
   });
 
   it('leaves the permissions trim to the user, after the team exists', () => {
-    assert.ok(positionOf('`! teamrig permissions trim --yes`') > positionOf('teamrig team create <team>'));
+    assert.ok(positionOf('`/teamrig permissions trim --yes`') > positionOf('teamrig team create <team>'));
   });
 
   it('points each step mention at the step that does that job', () => {
