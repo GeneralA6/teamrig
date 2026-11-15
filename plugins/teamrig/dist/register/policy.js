@@ -144,7 +144,7 @@ export class RegisterPolicy {
             type: input.type ?? null,
             critical: input.critical ?? false,
             pin: null,
-            workClass: input.workClass ?? null,
+            workClass: this.classSpelling(input.workClass ?? null),
             // A lead marks what a task prepares with `update` once it exists, where the policy knows who marks it.
             prepares: null,
         };
@@ -877,7 +877,8 @@ export class RegisterPolicy {
         return this.fieldChange(task, changes, text, state, elsewhere, goalTags);
     }
     /** The field rules every update passes, once who may make it is settled. */
-    fieldChange(task, changes, text, state, elsewhere, goalTags) {
+    fieldChange(task, asked, text, state, elsewhere, goalTags) {
+        const changes = asked.workClass === undefined ? asked : { ...asked, workClass: this.classSpelling(asked.workClass) };
         if (changes.description === null && this.config.register.requireDescription) {
             return refuse(`${task.id} keeps a description while register.requireDescription is on: give a new one instead of none`);
         }
@@ -904,6 +905,17 @@ export class RegisterPolicy {
     triageFrom(task, asked, state, elsewhere = NO_TASKS_ELSEWHERE, goalTags = NO_GOAL_TAGS) {
         // A row adds to the task's tags and keeps the rest, which a person did not name and which may predate the records.
         return this.fieldChange(task, clearNoGoal(task, asked), null, state, elsewhere, new Set([...goalTags, ...task.goals]));
+    }
+    /**
+     * The spelling `focus.classes` gives `workClass` when it names one in another case, so `--class maintenance` is stored
+     * as `Maintenance` instead of costing a retry (GeneralA6/teamrig#845); else `workClass` as given, for checkFields to judge.
+     */
+    classSpelling(workClass) {
+        if (workClass === null || this.config.focus.classes.includes(workClass)) {
+            return workClass;
+        }
+        const lower = workClass.toLowerCase();
+        return this.config.focus.classes.find((name) => name.toLowerCase() === lower) ?? workClass;
     }
     /** Why `goals` cannot be named under `register.goals` checked or required: one is no tag of `goalTags`. */
     goalProblem(goals, goalTags) {
