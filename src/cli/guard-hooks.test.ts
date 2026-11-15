@@ -8,7 +8,7 @@ const RUNNER = '${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js';
 const CLI = '${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js';
 
 /** The PreToolUse hooks that can refuse a call, so they run under the fail-closed runner: a crash must block the call. */
-const WRAPPED: ReadonlySet<string> = new Set(['push-guard', 'package-guard', 'secret-guard', 'exec-guard', 'pass-record-guard', 'cold-send', 'helper-gate', 'picker-guard']);
+const WRAPPED: ReadonlySet<string> = new Set(['push-guard', 'package-guard', 'secret-guard', 'db-write-guard', 'exec-guard', 'pass-record-guard', 'cold-send', 'helper-gate', 'picker-guard']);
 
 /** The PreToolUse hooks left on the plain CLI, each with why failing open is its safe side. */
 const UNWRAPPED: ReadonlyMap<string, string> = new Map([
@@ -79,6 +79,14 @@ describe("the plugin's hooks.json and the guard runner", () => {
     assert.ok(wrapped.length >= WRAPPED.size);
     for (const { name, timeout } of wrapped) {
       assert.ok(timeout !== undefined && timeout * 1000 >= GUARD_LIMIT_MS + START_MARGIN_MS, `${name}: timeout ${String(timeout)} s`);
+    }
+  });
+
+  it('gives every tab-status entry the 15 second timeout the other plain hooks have, as a loaded host measured it past 5 s', async () => {
+    const entries = (await manifestHooks()).filter(({ name }) => name === 'tab-status');
+    assert.ok(entries.length > 0);
+    for (const { event, timeout } of entries) {
+      assert.equal(timeout, 15, `${event}: timeout ${String(timeout)} s`);
     }
   });
 

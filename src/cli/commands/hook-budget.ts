@@ -65,7 +65,7 @@ async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, tran
   const transcripts = { main: [transcript], subagents: await subagentsOf(runtime.transcripts, transcript) };
   await runMeter(
     { bytes: runtime.transcripts, store, clock: runtime.clock },
-    { session: id, transcripts, subagentWeight: budget.subagentWeight, maxBytes: budget.maxBytesPerHook },
+    { session: id, transcripts, subagentWeight: budget.subagentWeight, modelWeights: budget.modelWeights, maxBytes: budget.maxBytesPerHook },
   );
 }
 
@@ -169,6 +169,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     teamDay,
     isLead,
     urgent: work.urgent.get(id) ?? [],
+    awaited: work.awaited.get(id) ?? [],
     leader: budgetLeaderOf(config, roster, id),
     zone: teamZone(config, runtime),
   };

@@ -1,5 +1,6 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, open, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -101,6 +102,24 @@ describe('nodeFiles', () => {
     if (process.platform === 'win32') {
       assert.equal(waits, holdFor);
     }
+  });
+
+  it('reads at most the first bytes of a regular file, and nothing that is no regular file', { timeout: 10_000 }, async () => {
+    const dir = join(root, 'h');
+    const path = join(dir, 'fix.sql');
+    await files.write(path, 'DELETE FROM rows;\nSELECT 1;\n');
+    assert.equal(await files.readHead(path, 18), 'DELETE FROM rows;\n');
+    assert.equal(await files.readHead(path, 1000), 'DELETE FROM rows;\nSELECT 1;\n');
+    assert.equal(await files.readHead(join(dir, 'nope.sql'), 10), undefined);
+    assert.equal(await files.readHead(dir, 10), undefined);
+    // A device never ends, and a pipe with no writer opens only without waiting: neither is read.
+    assert.equal(await files.readHead(process.platform === 'win32' ? 'NUL' : '/dev/zero', 10), undefined);
+    if (process.platform !== 'win32') {
+      const pipe = join(dir, 'pipe');
+      execFileSync('mkfifo', [pipe]);
+      assert.equal(await files.readHead(pipe, 10), undefined);
+    }
+    await assert.rejects(files.readHead(join(root, 'nul\0byte'), 10), /ERR_INVALID_ARG_VALUE|null bytes/);
   });
 
   it('removes its temporary file and throws when the rename fails', async () => {

@@ -27,12 +27,12 @@ describe('parseConfig', () => {
     assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig' });
+    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig', similarThreshold: 0.35 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
       schedule: {},
-      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, heavyIdleCpuPct: 25 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },
@@ -417,6 +417,7 @@ describe('parseConfig', () => {
       closedDays: 365,
       everyMinutes: 0,
       acceptLabel: 'teamrig',
+      similarThreshold: 0.35,
     });
     for (const wrong of [0, 366]) {
       const parsed = parseConfig({ ...ROSTER, github: { closedDays: wrong } });
@@ -427,6 +428,19 @@ describe('parseConfig', () => {
       const parsed = parseConfig({ ...ROSTER, github: { everyMinutes: wrong } });
       assert.deepEqual(paths(parsed.issues), ['github.everyMinutes']);
       assert.equal(parsed.config.github.everyMinutes, 15);
+    }
+  });
+
+  it('reads the github similar threshold within 0 to 1, else keeps 0.35', () => {
+    for (const good of [0, 0.5, 1]) {
+      const { config, issues } = parseConfig({ ...ROSTER, github: { similarThreshold: good } });
+      assert.deepEqual(issues, []);
+      assert.equal(config.github.similarThreshold, good);
+    }
+    for (const wrong of [-0.1, 1.01, '0.5']) {
+      const parsed = parseConfig({ ...ROSTER, github: { similarThreshold: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.similarThreshold'], JSON.stringify(wrong));
+      assert.equal(parsed.config.github.similarThreshold, 0.35);
     }
   });
 
@@ -548,7 +562,7 @@ describe('parseConfig', () => {
   it('keeps the delivery folder, host lock and queued step limits', () => {
     const delivery = {
       dir: 'data/deploys',
-      queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512, heavyReserveMb: 1024, admission: 'serial', agingMinutes: 0, perSessionRunning: 0, maxHeavyParallel: 3 },
+      queue: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512, heavyReserveMb: 1024, admission: 'serial', agingMinutes: 0, memoryPassMinutes: 0, perSessionRunning: 0, maxHeavyParallel: 3, heavyIdleCpuPct: 0 },
       wait: { pollSeconds: 5, maxMinutes: 0 },
       checkTimeoutSeconds: 45,
       freezes: { maxMinutes: 90 },
@@ -791,17 +805,19 @@ describe('parseConfig', () => {
   it('reports an empty delivery folder or lock path, limits out of range and an unknown admission word', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      delivery: { dir: ' ', queue: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577, heavyReserveMb: -1, admission: 'fifo', agingMinutes: 1441, perSessionRunning: -1, maxHeavyParallel: 0 }, wait: { pollSeconds: 0 } },
+      delivery: { dir: ' ', queue: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577, heavyReserveMb: -1, admission: 'fifo', agingMinutes: 1441, memoryPassMinutes: 1441, perSessionRunning: -1, maxHeavyParallel: 0, heavyIdleCpuPct: 101 }, wait: { pollSeconds: 0 } },
     });
     assert.deepEqual(paths(issues).sort(), [
       'delivery.dir',
       'delivery.queue.admission',
       'delivery.queue.agingMinutes',
+      'delivery.queue.heavyIdleCpuPct',
       'delivery.queue.heavyReserveMb',
       'delivery.queue.lockPath',
       'delivery.queue.lockTtlMinutes',
       'delivery.queue.maxHeavyParallel',
       'delivery.queue.memoryFloorMb',
+      'delivery.queue.memoryPassMinutes',
       'delivery.queue.memorySampleSeconds',
       'delivery.queue.perSessionRunning',
       'delivery.queue.smallReserveMb',
@@ -811,7 +827,7 @@ describe('parseConfig', () => {
     assert.equal(issues.find((issue) => issue.path === 'delivery.queue.admission')?.message, 'expected one of pipeline, serial (got "fifo")');
     assert.deepEqual(config.delivery, {
       schedule: {},
-      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2 },
+      queue: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, heavyReserveMb: 2048, admission: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, heavyIdleCpuPct: 25 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       checkTimeoutSeconds: 20,
       freezes: { maxMinutes: 120 },
@@ -1142,6 +1158,62 @@ describe('parseConfig', () => {
     assert.deepEqual(bad.config.prompts, { hookAsks: 'refuse', routeAllow: 'on' });
   });
 
+  it('reads the db-write guard, asking by default with no program, client or script of the team', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.dbWriteGuard, { writes: 'ask', entrypoints: [], programs: [], nodeClients: [], clientReceivers: [] });
+    const own = {
+      entrypoints: [{ path: 'scripts/backfill.ts', applyFlags: ['--apply', '-y'] }],
+      programs: [
+        { name: 'docsh', reads: 'document-shell' },
+        { name: 'kvcli', reads: 'key-value-cli' },
+        { name: 'pgx', reads: 'sql-command' },
+        { name: 'my-sql.exe', reads: 'sql-execute' },
+        { name: 'lite3', reads: 'sql-database-file' },
+      ],
+      nodeClients: [
+        { module: 'docstore', vocabulary: 'document' },
+        { module: '@scope/kvstore', vocabulary: 'key-value' },
+      ],
+      clientReceivers: ['cache', '$kv'],
+    };
+    for (const writes of ['deny', 'ask', 'allow']) {
+      const set = parseConfig({ ...ROSTER, dbWriteGuard: { ...own, writes } });
+      assert.deepEqual(set.issues, []);
+      assert.deepEqual(set.config.dbWriteGuard, { ...own, writes });
+    }
+  });
+
+  it('drops each broken db-write guard entry with its issue and keeps the rest', () => {
+    const kept = { path: 'scripts/backfill.ts', applyFlags: ['--apply'] };
+    const program = { name: 'docsh', reads: 'document-shell' };
+    const client = { module: 'docstore', vocabulary: 'document' };
+    const bad = parseConfig({
+      ...ROSTER,
+      dbWriteGuard: {
+        writes: 'never',
+        entrypoints: [kept, { path: 'scripts/fix.ts' }, { path: 'scripts/trim.ts', applyFlags: [] }, { path: 'scripts/move.ts', applyFlags: ['apply'] }, 'scripts/raw.ts'],
+        programs: [program, { name: 'bin/docsh', reads: 'document-shell' }, { name: 'kvcli', reads: 'key-value' }, { reads: 'sql-command' }],
+        nodeClients: [client, { module: 'Docstore', vocabulary: 'document' }, { module: 'kvstore', vocabulary: 'kv' }],
+        clientReceivers: ['cache', 'a.b', 'x'.repeat(41)],
+      },
+    });
+    assert.deepEqual(paths(bad.issues), [
+      'dbWriteGuard.writes',
+      'dbWriteGuard.entrypoints[1].applyFlags',
+      'dbWriteGuard.entrypoints[2].applyFlags',
+      'dbWriteGuard.entrypoints[3].applyFlags[0]',
+      'dbWriteGuard.entrypoints[4]',
+      'dbWriteGuard.programs[1].name',
+      'dbWriteGuard.programs[2].reads',
+      'dbWriteGuard.programs[3].name',
+      'dbWriteGuard.nodeClients[1].module',
+      'dbWriteGuard.nodeClients[2].vocabulary',
+      'dbWriteGuard.clientReceivers[1]',
+      'dbWriteGuard.clientReceivers[2]',
+    ]);
+    assert.match(bad.issues[0]?.message ?? '', /deny, ask, allow/);
+    assert.deepEqual(bad.config.dbWriteGuard, { writes: 'ask', entrypoints: [kept], programs: [program], nodeClients: [client], clientReceivers: ['cache'] });
+  });
+
   it('reads the secret guard, refusing with the default secrets alone and redacting unless the team says otherwise', () => {
     const none = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
     assert.deepEqual(parseConfig(ROSTER).config.secretGuard, none);
@@ -1238,6 +1310,29 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.requireNoteOn, DEFAULT_REGISTER.requireNoteOn);
     assert.deepEqual(config.skills.forbidFrontmatter, ['allowed-tools']);
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
+  });
+
+  it('gates permissions cards on the security verdict by default, and none when ownerGates lacks permissions', () => {
+    const plain = parseConfig(ROSTER);
+    assert.deepEqual(plain.config.securityGates, ['permissions']);
+    const renamed = parseConfig({ ...ROSTER, ownerGates: ['money', 'hiring'] });
+    assert.deepEqual(renamed.issues, []);
+    assert.deepEqual(renamed.config.securityGates, []);
+  });
+
+  it('spells each security gate as ownerGates does, and drops one that is no owner gate', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, ownerGates: ['Money', 'Permissions'], securityGates: [' permissions ', 'MONEY', 'hiring'] });
+    assert.deepEqual(config.securityGates, ['Permissions', 'Money']);
+    assert.deepEqual(paths(issues), ['securityGates[2]']);
+    assert.equal(issues[0]?.message, '"hiring" is not one of ownerGates');
+  });
+
+  it('refuses more than 8 security gates, keeping the default', () => {
+    const gates = Array.from({ length: 9 }, (_, index) => `gate ${index}`);
+    const { config, issues } = parseConfig({ ...ROSTER, ownerGates: [...gates.slice(0, 7), 'permissions'], securityGates: gates });
+    assert.deepEqual(paths(issues), ['securityGates']);
+    assert.match(issues[0]?.message ?? '', /^expected a list of at most 8 items/);
+    assert.deepEqual(config.securityGates, ['permissions']);
   });
 
   it('reads the recorded rule conflicts, dropping each bad one with its issue', () => {
@@ -1586,8 +1681,10 @@ describe('parseConfig budget', () => {
         accountLead: 'app',
         weeklyLimitW: 680_000_000,
         subagentWeight: 2.15,
+        modelWeights: [{ model: 'claude-fable', weight: 4.4 }],
         extraWPerUsd: 120_000,
         reset: { weekday: 'wed', timeUtc: '01:00' },
+        resets: [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', note: 'one week cleared' }],
         targetPct: 99,
         reservePct: 1,
         shareFloorPct: 20,
@@ -1612,8 +1709,10 @@ describe('parseConfig budget', () => {
       accountLead: 'app',
       weeklyLimitW: 680_000_000,
       subagentWeight: 2.15,
+      modelWeights: [{ model: 'claude-fable', weight: 4.4 }],
       extraWPerUsd: 120_000,
       reset: { weekday: 'wed', timeUtc: '01:00' },
+      resets: [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: [], note: 'one week cleared' }],
       targetPct: 99,
       reservePct: 1,
       shareFloorPct: 20,
@@ -1640,8 +1739,10 @@ describe('parseConfig budget', () => {
       accountLead: 'app',
       weeklyLimitW: 680_000_000,
       subagentWeight: 2.15,
+      modelWeights: [{ model: 'claude-fable', weight: 4.4 }],
       extraWPerUsd: 120_000,
       reset: { weekday: 'wed', timeUtc: '01:00' },
+      resets: [{ kind: 'fable', count: 3, expiresUtc: '2027-03-09 07:59', usedUtc: ['2026-11-12 10:00'] }],
     };
 
     it("takes the team above's keys of the account's week for those it leaves unset", () => {
@@ -1673,6 +1774,93 @@ describe('parseConfig budget', () => {
       assert.equal(parseConfig({ ...ROSTER, budget: { shareFloorPct: 0 } }, above).config.budget.shareFloorPct, 0);
       assert.equal(parseConfig({ ...ROSTER, budget: { accountLead: 'web' } }, above).config.budget.accountLead, 'web');
     });
+  });
+
+  it('holds no resets beside the weekly one when the team lists none (T2450)', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.budget.resets, []);
+  });
+
+  it('reads reset grants with their uses, and an empty list as none (T2450)', () => {
+    const grants = [
+      { kind: 'fable', count: 3, expiresUtc: '2027-03-09 07:59', usedUtc: ['2026-11-12 10:00'] },
+      { kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00' },
+    ];
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { resets: grants } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.budget.resets, [grants[0], { ...grants[1], usedUtc: [] }]);
+    assert.deepEqual(parseConfig({ ...ROSTER, budget: { resets: [] } }).config.budget.resets, []);
+  });
+
+  it('drops a reset grant it cannot read whole and keeps the others (T2450)', () => {
+    const good = { kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: [] };
+    for (const [grant, path, message] of [
+      [{ kind: 'opus', count: 1, expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].kind', 'expected one of fable, full (got "opus")'],
+      [{ kind: 'full', expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].count', 'is required'],
+      [{ kind: 'full', count: 0, expiresUtc: '2026-12-10 22:00' }, 'budget.resets[0].count', 'expected an integer from 1 to 20, got 0'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-02-30 10:00' }, 'budget.resets[0].expiresUtc', 'expected a UTC time as YYYY-MM-DD HH:MM'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-12-10' }, 'budget.resets[0].expiresUtc', 'expected a UTC time as YYYY-MM-DD HH:MM'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: ['11-12 10:00'] }, 'budget.resets[0].usedUtc[0]', 'expected a UTC time as YYYY-MM-DD HH:MM'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', usedUtc: ['2026-11-12 10:00', '2026-11-13 10:00'] }, 'budget.resets[0].usedUtc', 'lists 2 uses of a grant of 1'],
+      [{ kind: 'full', count: 1, expiresUtc: '2026-12-10 22:00', note: 'two\nlines' }, 'budget.resets[0].note', undefined],
+      ['full', 'budget.resets[0]', 'expected an object, got "full"'],
+    ] as const) {
+      const { config, issues } = parseConfig({ ...ROSTER, budget: { resets: [grant, good] } });
+      assert.deepEqual(paths(issues), [path], JSON.stringify(grant));
+      if (message !== undefined) {
+        assert.equal(issues[0]?.message.startsWith(message), true, `${JSON.stringify(grant)}: ${issues[0]?.message ?? ''}`);
+      }
+      assert.deepEqual(config.budget.resets, [good], JSON.stringify(grant));
+    }
+  });
+
+  it('refuses more than 20 reset grants and holds none (T2450)', () => {
+    const grant = { kind: 'fable', count: 1, expiresUtc: '2027-03-09 07:59' };
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { resets: Array.from({ length: 21 }, () => grant) } });
+    assert.deepEqual(paths(issues), ['budget.resets']);
+    assert.deepEqual(config.budget.resets, []);
+  });
+
+  it('weighs every model alike when the team lists no model weights (T2454)', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.budget.modelWeights, []);
+  });
+
+  it('reads model weights, and an empty list as none (T2454)', () => {
+    const weights = [
+      { model: 'claude-fable', weight: 4.4 },
+      { model: 'claude-haiku', weight: 0.5 },
+    ];
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { modelWeights: weights } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.budget.modelWeights, weights);
+    assert.deepEqual(parseConfig({ ...ROSTER, budget: { modelWeights: [] } }).config.budget.modelWeights, []);
+  });
+
+  it('drops a model weight it cannot read whole and keeps the others (T2454)', () => {
+    const good = { model: 'claude-fable', weight: 4.4 };
+    for (const [entry, path, message] of [
+      [{ weight: 2 }, 'budget.modelWeights[0].model', 'is required'],
+      [{ model: '', weight: 2 }, 'budget.modelWeights[0].model', undefined],
+      [{ model: 'claude-\nopus', weight: 2 }, 'budget.modelWeights[0].model', undefined],
+      [{ model: 'claude-opus' }, 'budget.modelWeights[0].weight', 'is required'],
+      [{ model: 'claude-opus', weight: 0 }, 'budget.modelWeights[0].weight', 'expected a number from 0.1 to 20, got 0'],
+      [{ model: 'claude-opus', weight: 21 }, 'budget.modelWeights[0].weight', 'expected a number from 0.1 to 20, got 21'],
+      ['claude-opus', 'budget.modelWeights[0]', 'expected an object, got "claude-opus"'],
+    ] as const) {
+      const { config, issues } = parseConfig({ ...ROSTER, budget: { modelWeights: [entry, good] } });
+      assert.deepEqual(paths(issues), [path], JSON.stringify(entry));
+      if (message !== undefined) {
+        assert.equal(issues[0]?.message.startsWith(message), true, `${JSON.stringify(entry)}: ${issues[0]?.message ?? ''}`);
+      }
+      assert.deepEqual(config.budget.modelWeights, [good], JSON.stringify(entry));
+    }
+  });
+
+  it('reports a model listed twice, and more than 10 model weights (T2454)', () => {
+    const twice = parseConfig({ ...ROSTER, budget: { modelWeights: [{ model: 'claude-fable', weight: 4 }, { model: 'claude-fable', weight: 5 }] } });
+    assert.deepEqual(paths(twice.issues), ['budget.modelWeights[1].model']);
+    const many = parseConfig({ ...ROSTER, budget: { modelWeights: Array.from({ length: 11 }, (_, index) => ({ model: `m${index}`, weight: 1 })) } });
+    assert.deepEqual(paths(many.issues), ['budget.modelWeights']);
+    assert.deepEqual(many.config.budget.modelWeights, []);
   });
 
   it('reads no main lead and the default floor when the team sets neither (T2215)', () => {

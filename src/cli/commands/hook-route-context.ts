@@ -5,7 +5,7 @@ import { ClientInstalls, ShellPathSearch } from '../../exec/client-launch.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { gitContextOf } from '../../permissions/route-context.ts';
 import { ownClientOf } from '../../permissions/route-kit.ts';
-import { routeOf, type RouteContext, type SanctionedRoute } from '../../permissions/sanctioned.ts';
+import { toolRouteOf, type RouteContext, type SanctionedRoute } from '../../permissions/sanctioned.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import type { CommandTable } from '../../slash/plan.ts';
 import { rosterOf, type Kit } from '../kit.ts';
@@ -35,11 +35,15 @@ export function routeContextOf(runtime: CliRuntime, kit: Kit, config: KitConfig,
   };
 }
 
-/** The route a Bash call's line runs; undefined for any other tool, a line that is none, or a lookup that fails. */
+/**
+ * The route a Bash call's line runs, in every text bash may run (`toolRouteOf`); undefined for any other tool, a line
+ * that is none, or a lookup that fails.
+ */
 export async function callRouteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord, cli: CommandTable): Promise<SanctionedRoute | undefined> {
+  const tool = stringField(payload, 'tool_name');
   const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-  if (stringField(payload, 'tool_name') !== 'Bash' || command === undefined) {
+  if (tool !== 'Bash' || command === undefined) {
     return undefined;
   }
-  return routeOf(command, routeContextOf(runtime, kit, config, payload, cli)).catch(() => undefined);
+  return toolRouteOf(tool, command, runtime.platform, routeContextOf(runtime, kit, config, payload, cli)).catch(() => undefined);
 }

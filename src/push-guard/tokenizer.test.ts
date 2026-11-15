@@ -373,6 +373,21 @@ describe('parseShell: PowerShell', () => {
     assert.equal(complete("x @'\nnever closes", 'powershell'), false);
   });
 
+  it("marks a statement's start that a quote or a here-string opens as a string, and no other word", () => {
+    /** Each command's words, a string-marked word ahead with `'`, a dynamic one with `~`, in the plain reading. */
+    const marked = (command: string, dialect: ShellDialect = 'powershell'): string[][] => {
+      const parse = parseShell(command, dialect);
+      return (parse.readings?.[0] ?? parse).commands.map((parsed) => parsed.words.map((word) => `${word.string === true ? "'" : ''}${show(word)}`));
+    };
+    assert.deepEqual(marked("'DEL k' | kvcli"), [["'DEL k"], ['kvcli']]);
+    assert.deepEqual(marked('"DEL k" | kvcli'), [["'DEL k"], ['kvcli']]);
+    assert.deepEqual(marked("@'\nDEL k\n'@ | kvcli"), [["'DEL k"], ['kvcli']]);
+    assert.deepEqual(marked('"a$b" | x'), [["'~a$b"], ['x']]);
+    assert.deepEqual(marked("$x = 'a'"), [['~$x', '=', "'a"]]);
+    assert.deepEqual(marked("x 'a' \"b\""), [['x', 'a', 'b']]);
+    assert.deepEqual(marked("'a' | x", 'bash'), [['a'], ['x']]);
+  });
+
   it('drops redirections, including *>', () => {
     assert.deepEqual(words('git push 2>&1 *> $null', 'powershell'), [['git', 'push']]);
   });

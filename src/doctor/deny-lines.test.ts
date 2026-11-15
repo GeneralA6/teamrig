@@ -2,23 +2,43 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { missingDenyLines, readSettingsDeny, SECRET_DENY_LINES } from './deny-lines.ts';
+import { missingDenyLines, readSettingsDeny, secretDenyLines } from './deny-lines.ts';
 
 const USER = join('/u/.claude', 'settings.json');
 const SHARED = join('/w/app', '.claude', 'settings.json');
 const LOCAL = join('/w/app', '.claude', 'settings.local.json');
+const PLATFORMS = ['linux', 'darwin', 'win32'] as const;
+const LINES = secretDenyLines('linux');
+const GH_POSIX = 'Read(~/.config/gh/hosts.yml)';
+const GH_WINDOWS = 'Read(~/AppData/Roaming/GitHub CLI/hosts.yml)';
 
-describe('SECRET_DENY_LINES', () => {
+describe('secretDenyLines', () => {
   it('lists each line once', () => {
-    assert.equal(new Set(SECRET_DENY_LINES).size, SECRET_DENY_LINES.length);
+    for (const platform of PLATFORMS) {
+      const lines = secretDenyLines(platform);
+      assert.equal(new Set(lines).size, lines.length, platform);
+    }
+  });
+
+  it("names gh's hosts file where gh keeps it on the platform, and only there (T2038)", () => {
+    const gh = (platform: NodeJS.Platform): string[] => secretDenyLines(platform).filter((line) => line.includes('hosts.yml'));
+    assert.deepEqual(gh('win32'), [GH_WINDOWS]);
+    assert.deepEqual(gh('linux'), [GH_POSIX]);
+    assert.deepEqual(gh('darwin'), [GH_POSIX]);
+  });
+
+  it("guards Claude Code's own login on every platform (T2038)", () => {
+    for (const platform of PLATFORMS) {
+      assert.ok(secretDenyLines(platform).includes('Read(~/.claude/.credentials.json)'), platform);
+    }
   });
 
   it('holds no legacy prefix rule, which misses a call whose argument goes on past the colon', () => {
     assert.deepEqual(
-      SECRET_DENY_LINES.filter((line) => line.endsWith(':*)')),
+      LINES.filter((line) => line.endsWith(':*)')),
       [],
     );
-    assert.ok(SECRET_DENY_LINES.includes('PowerShell(Get-ChildItem env*)'));
+    assert.ok(LINES.includes('PowerShell(Get-ChildItem env*)'));
   });
 });
 
@@ -56,22 +76,22 @@ describe('readSettingsDeny', () => {
 
 describe('missingDenyLines', () => {
   it('counts a line held in any readable file, spaces at either end aside, and keeps the list order', () => {
-    const [first, second, ...rest] = SECRET_DENY_LINES;
+    const [first, second, ...rest] = LINES;
     assert.ok(first !== undefined && second !== undefined);
     const read = [
       { kind: 'deny', path: USER, deny: [` ${first} `, ...rest.slice(1)] },
       { kind: 'unreadable', path: SHARED },
       { kind: 'deny', path: LOCAL, deny: ['Bash(git *)'] },
     ] as const;
-    assert.deepEqual(missingDenyLines(read), [second, rest[0]]);
+    assert.deepEqual(missingDenyLines(read, LINES), [second, rest[0]]);
   });
 
   it('misses a line held only in another form, such as the legacy prefix rule', () => {
-    const read = [{ kind: 'deny', path: USER, deny: SECRET_DENY_LINES.map((line) => (line === 'PowerShell(Get-ChildItem env*)' ? 'PowerShell(Get-ChildItem env:*)' : line)) }] as const;
-    assert.deepEqual(missingDenyLines(read), ['PowerShell(Get-ChildItem env*)']);
+    const read = [{ kind: 'deny', path: USER, deny: LINES.map((line) => (line === 'PowerShell(Get-ChildItem env*)' ? 'PowerShell(Get-ChildItem env:*)' : line)) }] as const;
+    assert.deepEqual(missingDenyLines(read, LINES), ['PowerShell(Get-ChildItem env*)']);
   });
 
   it('misses every line when no file is read', () => {
-    assert.deepEqual(missingDenyLines([]), [...SECRET_DENY_LINES]);
+    assert.deepEqual(missingDenyLines([], LINES), [...LINES]);
   });
 });

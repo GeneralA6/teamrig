@@ -59,7 +59,7 @@ export async function measureTranscript(runtime: CliRuntime, transcript: string)
   return { transcript, changedAt, tokens };
 }
 
-/** How a fresh open of a rehired session starts: on the handover its retire left, when it left one. */
-export function freshOpenOf(from: RetireRecord): string {
-  return from.handover === undefined ? 'open it fresh' : 'open it fresh on its handover';
+/** How a fresh open starts: a rehired session's on the handover its retire left, when it left one; any other's plainly. */
+export function freshOpenOf(from: RetireRecord | undefined): string {
+  return from?.handover === undefined ? 'open it fresh' : 'open it fresh on its handover';
 }

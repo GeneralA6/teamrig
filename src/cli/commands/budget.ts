@@ -1,6 +1,8 @@
 import { basename, join } from 'node:path';
 import { DEFAULT_STATUS_LINE } from '../../config/defaults.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
+import { sessionNameOn } from '../holder-team.ts';
+import { wakeReleased } from '../release-wake.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { BudgetConfig, KitConfig, StatusLineConfig } from '../../config/types.ts';
 import { formatAddress, splitAddress } from '../../core/address.ts';
@@ -23,6 +25,7 @@ import { formatPct, formatUsd } from '../../budget/format.ts';
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText, type Lift, type LiftNames } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, outsideUsageDir, type Measured } from '../../budget/measure.ts';
 import { paceLineOfWeek } from '../../budget/pace.ts';
+import { resetStockLines } from '../../budget/resets.ts';
 import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, teamPartOf, type BudgetSplit, type TeamsOnAccount } from '../../budget/parts.ts';
 import { fundForDay, isPaused, pausableOf } from '../../budget/pause.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
@@ -71,7 +74,8 @@ import { accountWeekOn, kitHomeAccountsOf, otherTeamsOnAccount, peerMarksOf } fr
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { leadOnly, openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
-import { statusLineMeetingFor, type LoadedTeam } from '../statusline-meeting.ts';
+import type { LoadedTeam } from '../root-team.ts';
+import { statusLineMeetingFor } from '../statusline-meeting.ts';
 import type { StatusLineMeeting } from '../../meeting/status-line.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { peerUsageOf, type PeerUsage } from '../stored-week.ts';
@@ -137,6 +141,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
       areaBySession: indexMarks(marks).areaBySession,
       peers,
       subagentWeight: config.budget.subagentWeight,
+      modelWeights: config.budget.modelWeights,
       chunkBytes: CATCH_UP_CHUNK_BYTES,
       maxRuns: MAX_RUNS_PER_SESSION,
     },
@@ -338,14 +343,17 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   } else {
     const today = formatUtcDay(new Date(now));
     const outsideToday = measured.outside.byDay[today];
-    const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
+    const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, top: measured.outsideTop };
     const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
     // The team's sessions alone, so the rows add up to the team's row of the table above them.
     const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
     if (recountDay === undefined) {
       const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
       const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
-      lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone });
+      lines = [
+        ...todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone }),
+        ...resetStockLines(config.budget.resets, now, zone),
+      ];
     } else {
       lines = recountLines(today, { week, sessions, outside, all });
     }
@@ -513,6 +521,8 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   }
   await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
   runtime.out.stdout(`LIFTED ${liftText(decision.lift, name, parent, liftWeekPctOf(week.allowancePct, place.parent, partPct, funded.split, funded.others), zone)}`);
+  const ids = group ? [...new Set([id, ...tree.groupOf(id)])] : [id];
+  await wakeReleased(runtime, { kit, config, from: by, how: group ? "lifted your group's daily budget" : 'lifted your daily budget', ids }, nameOf);
   return EXIT.ok;
 }
 
@@ -560,6 +570,8 @@ async function crossTeamLift(runtime: CliRuntime, lifting: LiftingTeam, target: 
   const funded = fundForDay({ split, others }, reading.week);
   const weekPct = liftWeekPctOf(reading.week.allowancePct, undefined, ask.partPct, funded.split, funded.others);
   runtime.out.stdout(`LIFTED ${liftText(decision.lift, `${target.team}/${below.roster.nameOf(found.id) ?? found.id}`, parent, weekPct, zone)}`);
+  const release = { kit: below.kit, config: below.config, from: sessionNameOn(target.team, own, by), how: 'lifted your daily budget', ids: [found.id] };
+  await wakeReleased(runtime, release, (id) => `${target.team}/${below.roster.nameOf(id) ?? id}`);
   return EXIT.ok;
 }
 

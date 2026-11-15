@@ -6,7 +6,7 @@ import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { Task } from './fold.ts';
-import { askableSince, asksOwner, deferredUntil, isDedicated, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, type OwnerCards } from './owner-waits.ts';
+import { askableSince, asksOwner, deferredUntil, isDedicated, isProofAsk, isUngated, ownerCardsBySession, ownerLater, waitsOnOwner, type OwnerCards } from './owner-waits.ts';
 import { TaskTree, type TreeRanking } from './tree.ts';
 import { waitContext, type WaitReason } from './waits.ts';
 
@@ -52,6 +52,26 @@ describe('the waits on the owner', () => {
     );
     assert.equal(asksOwner(ungated, 'owner', false, CONTEXT), true, 'while gates are not required');
     assert.equal(asksOwner(testTask(), 'owner', true, CONTEXT), false);
+  });
+
+  // T2623: a test, measure or proof of approved work is approved with it, so the owner never hears its card.
+  describe('a card asking the owner about a test, measure or proof (T2623)', () => {
+    const proofCard = { ...TEST_OWNER_CARD, question: 'Approve the back-test design for the entry sheet' };
+    const asked = testTask({ status: 'waiting', waits: [ON_OWNER], card: proofCard });
+    const approval = testTask({ status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, question: 'May I run a dry run', options: [] } });
+
+    it('knows one on the owner that names nothing it changes, a proof wait too', () => {
+      assert.equal(isProofAsk(asked, 'owner'), true);
+      assert.equal(isProofAsk(approval, 'owner'), true, "a verifying task's proof waiting on the owner's approval");
+      assert.equal(isProofAsk({ ...asked, card: { ...proofCard, affects: 'buys 400 dollars of price history' } }, 'owner'), false, 'one naming what it changes');
+      assert.equal(isProofAsk(decide(), 'owner'), false, 'no proof word');
+      assert.equal(isProofAsk({ ...asked, waits: [{ kind: 'decision', who: 'lead' }] }, 'owner'), false, "the lead's decision");
+    });
+
+    it('never asks the owner one while gates are required', () => {
+      assert.deepEqual([asked, approval].map((task) => asksOwner(task, 'owner', true, CONTEXT)), [false, false]);
+      assert.deepEqual([asked, approval].map((task) => asksOwner(task, 'owner', false, CONTEXT)), [true, true], 'while gates are not required');
+    });
   });
 });
 

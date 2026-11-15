@@ -20,6 +20,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `leads` | map from [session name](#shared-types) to array (at least 1 item, unique) of [session name](#shared-types) | `{}` | Each sub-lead's members, by id: a sub-lead leads the sessions it lists, and roles.lead every session no sub-lead lists; a sub-lead may list sub-leads, at any depth. A session has one leader, roles.lead is never a member, and no sub-lead leads itself. Written by teamrig promote and demote. |
 | `roles` (required) | [object](#roles) |  | Each role's session, by id. |
 | `ownerGates` | array (at most 8 items) of string (1 to 60 characters, matching `^[^\r\n]+$`) | `["destructive data operations","product and design decisions","permissions","budget","resource changes"]` | Decision areas only the human owner can approve; silence never counts as consent for them. |
+| `securityGates` | array (at most 8 items) of string (1 to 60 characters, matching `^[^\r\n]+$`) | `["permissions"]` | The owner gates (each one of ownerGates) whose cards reach the owner only with the security reviewer's verdict on the card, recorded by teamrig audit --verdict. A card edited after the verdict waits for a new one. With the key absent, permissions where ownerGates names it. |
 | `ruleConflicts` | array (at most 40 items) of [object](#ruleconflicts) | `[]` | Local rules (a line of a CLAUDE.md, rules file, skill, memory file, hook or settings file) kept although they conflict with a core rule, each with the side that wins. teamrig rules scan finds them; teamrig rules keep records one, teamrig rules forget drops one. The core pack lists them. |
 | `messages` | [object](#messages) |  | Messages between sessions: how long one may be, and when a send to an idle session is held as a cold wake. |
 | `register` | [object](#register) |  | The task list (the register): its priority levels, what each status change needs, its text limits and the thresholds of the flags teamrig check raises on tasks. |
@@ -32,6 +33,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `commitGuard` | [object](#commitguard) |  | The commit guard: what a Bash or PowerShell call that runs git without the repository's hooks does. |
 | `prompts` | [object](#prompts) |  | The permission prompts teamrig's own hooks raise. |
 | `secretGuard` | [object](#secretguard) |  | Refuses a Bash, PowerShell, Read or Grep call that would print a secret into the session, where it stays in the transcript and every later prompt: a secret file's content, the whole environment, a secret variable's value, a Kubernetes secret's data or a dump command's output (kubectl config view --raw); and a Bash or PowerShell line that holds a secret as text (a token, credentials in a URL or an Authorization header), as the line itself stays in the transcript; and a Write, Edit, MultiEdit or NotebookEdit whose written text holds one, unless it writes a secret file (paths). A value handed to the tool that needs it (a pipe into docker login --password-stdin, a redirect into a file) stays allowed, and the read-only shell hook never lets such a line run without a prompt. |
+| `dbWriteGuard` | [object](#dbwriteguard) |  | Asks before a Bash or PowerShell call writes to a database by hand: a SQL client (psql, mysql, mariadb, sqlite3, built in) or a program of the team's (programs) whose code writes, a Node script, node -e or stdin whose client of the team's (nodeClients) writes, a container or remote host running one (kubectl exec, docker exec, ssh), or a data script (entrypoints) run with its apply flag. A read stays silent. A team's lists only add: a missing or broken entry never switches a built-in off. |
 | `commits` | [object](#commits) |  | The small-commits rule: one logical change per commit; a commit over either bound needs a reason line. |
 | `delivery` | [object](#delivery) |  | The delivery flow: teamrig queue runs one queued step on the host at a time, under the host lock, teamrig merge merges a branch into its repository's default branch, teamrig deploy deploys it and teamrig freeze holds deploys while a session measures; each step is recorded in the ledger. |
 | `budget` | [object](#budget) |  | The weekly token budget: the pace line the team is measured against and each session's daily part of it. Usage is in weighted tokens (W) read from the session transcripts, and in % of the week from the status line when there is one. The defaults only measure and show; nothing blocks or acts. |
@@ -39,12 +41,12 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `loops` | [object](#loops) |  | Loop discipline inside a turn. |
 | `wake` | [object](#wake) |  | Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared or answered), tasks handed together wake once, and each wake says what it costs. |
 | `tests` | [object](#tests) |  | What teamrig test prints of a failed run. |
-| `github` | [object](#github) |  | teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local. Each owner's repositories are read with the read-only token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login (docs/github-sync.md). |
+| `github` | [object](#github) |  | The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md). |
 | `alerts` | [object](#alerts) |  | The alerting rule the core rules state, and where a page to the owner goes. |
 | `decisions` | [object](#decisions) |  | When the lead asks the owner the decisions waiting on them (tasks waiting on the owner's decision or approval), together in one batch instead of one at a time. A batch holds the waits not yet asked and the asked ones now past their due date; `teamrig decisions` prints it and `teamrig decisions asked` records it asked, as a meeting's start does. The lead's check says when one is due. |
 | `tabStatus` | [object](#tabstatus) |  | A colored circle before each terminal tab's title for what its session is doing: green ready, yellow working (or a helper still running), orange waiting on the user, blue waiting on the user's decision (a turn whose last message has a `Decision needed:` line), red an API error, purple compacting. |
 | `needsYou` | [object](#needsyou) |  | The needs-you band: every tab of the team shows which other tab asks the user something (a permission prompt, a question, a `Decision needed:` line), read from the tab files under state/tabs/, with a Focus button that brings that tab to the front. During an open meeting only a p0 task's ask gets the Focus button. |
-| `pickerGuard` | [object](#pickerguard) |  | Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed. |
+| `pickerGuard` | [object](#pickerguard) |  | Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed. It also refuses a session's Bash line that leads with `cd D &&` and runs git or leaves the session's folder, which Claude Code would hold on a permission prompt, quoting the line's git -C / env -C form to rerun (since 0.375.0). |
 | `meeting` | [object](#meeting) |  | The owner's daily meeting with the lead, in the lead's tab. |
 | `turnLog` | [object](#turnlog) |  | Each session's prompts and replies, kept in state/turn-log/\<session>/\<UTC hour>.jsonl for the task pane, so a /clear or a compaction never takes away what the person was reading in the tab. Secret shapes are redacted. |
 | `meetingNotices` | [object](#meetingnotices) |  | What a booked meeting (teamrig meeting schedule) tells the person, and when: a notice some minutes before its slot, one at the slot, and an alert once it is some minutes past its slot with no meeting start. Each notice goes out once, by whichever tab of the team looks first, on each channel left on. |
@@ -258,12 +260,51 @@ Refuses a Bash, PowerShell, Read or Grep call that would print a secret into the
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `secretReads` | one of `"deny"`, `"ask"`, `"allow"` | `"deny"` | A call that would print a secret: cat .env, Get-Content \~/.npmrc, the Read tool on a secret file, env, printenv, Get-ChildItem Env:, echo $GITHUB\_TOKEN, kubectl get secret -o yaml, kubectl config view --raw: deny refuses it, ask asks the human, allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF). |
+| `secretReads` | one of `"deny"`, `"ask"`, `"allow"` | `"deny"` | A call that would print a secret: cat .env, Get-Content \~/.npmrc, the Read tool on a secret file, env, printenv, Get-ChildItem Env:, echo $GITHUB\_TOKEN, kubectl get secret -o yaml, kubectl config view --raw, and a shell line that reads a saved credential out of the host's store, printed or not (gh auth token, git credential fill, CredRead): deny refuses it, ask asks the human, allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF). |
 | `writes` | one of `"deny"`, `"ask"`, `"allow"` | `"deny"` | A call that holds a secret as text: a command line with one in it (curl -H "Authorization: Bearer \<a token>"), or a Write, Edit, MultiEdit or NotebookEdit whose written text holds one outside a secret file (a token written into src/): deny refuses it, ask asks the human, allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF). |
-| `paths` | array (at most 32 items) of string (at most 200 characters) | `[]` | The team's own secret files, read after the defaults (\*\*/.env, \*\*/.env.\*, \~/.npmrc, \~/.ssh/\*\*, \~/.aws/credentials, \*\*/.kube/config, \~/.docker/config.json, \*\*/.git-credentials, \~/.config/gh/hosts.yml, \~/.claude/.credentials.json, \~/.claude/history.jsonl, \*\*/.claude/settings.local.json, \~/.bash\_history, \~/.zsh\_history, \*\*/PSReadLine/\*\_history.txt, \*\*/\*.pem, \*\*/\*.key, \*\*/\*.p12, \*\*/\*.pfx, \*\*/\*.jks, \*\*/\*.keystore, \*\*/id\_rsa, \*\*/id\_ecdsa, \*\*/id\_ed25519, \*\*/\*.tfstate, \*\*/\*.tfstate.backup; .env.example, .env.sample and \~/.ssh/\*.pub stay readable). \~/ starts at home, a glob with no leading / or drive matches at any depth, and the last glob that matches a path decides: !glob keeps a path readable. |
+| `paths` | array (at most 32 items) of string (at most 200 characters) | `[]` | The team's own secret files, read after the defaults (\*\*/.env, \*\*/.env.\*, \~/.npmrc, \~/.ssh/\*\*, \~/.aws/credentials, \*\*/.kube/config, \~/.docker/config.json, \*\*/.git-credentials, \~/.config/gh/hosts.yml, \~/AppData/Roaming/GitHub CLI/hosts.yml, \~/.claude/.credentials.json, \~/.claude/history.jsonl, \*\*/.claude/settings.local.json, \~/.bash\_history, \~/.zsh\_history, \*\*/PSReadLine/\*\_history.txt, \*\*/\*.pem, \*\*/\*.key, \*\*/\*.p12, \*\*/\*.pfx, \*\*/\*.jks, \*\*/\*.keystore, \*\*/id\_rsa, \*\*/id\_ecdsa, \*\*/id\_ed25519, \*\*/\*.tfstate, \*\*/\*.tfstate.backup; .env.example, .env.sample and \~/.ssh/\*.pub stay readable). \~/ starts at home, a glob with no leading / or drive matches at any depth, and the last glob that matches a path decides: !glob keeps a path readable. |
 | `envNames` | array (at most 16 items) of string (at most 120 characters) | `[]` | The team's own patterns for environment variables whose values are secrets, regular expressions over the name with case ignored, read after the defaults (TOKEN, SECRET, PASSW, PASS, CRED, AUTH except AUTHOR and an auth mechanism or source, PRIVATE, KEY, DSN, WEBHOOK, COOKIE, PAT, SALT, and a store's connection URL or string by its kind: DB\_URL, DATABASE\_URL, PG\_URI, CACHE\_URL, BROKER\_URL, CONNECTION\_STRING). A store named by its product is the team's to add. The last pattern that matches a name decides: !pattern keeps a variable printable. |
 | `commands` | array (at most 16 items) of string (at most 200 characters) | `[]` | The team's own commands whose output is a secret whatever file or variable they name, regular expressions over a command's program and arguments with case ignored, read after the default (kubectl config view --raw). The last pattern that matches a command decides: !pattern lets it print. |
 | `redact` | boolean | `true` | After a Bash, PowerShell, Read or Grep call runs, replace each secret its result holds (a token by its shape, a match of register.secretPatterns, the value of a secret variable) before the model and the transcript see it, and tell the session which kinds it held and the task filed to rotate each. false shows results whole; turning it off is the owner's call: check flags it (SECRET-GUARD-OFF). |
+
+## `dbWriteGuard`
+
+Asks before a Bash or PowerShell call writes to a database by hand: a SQL client (psql, mysql, mariadb, sqlite3, built in) or a program of the team's (programs) whose code writes, a Node script, node -e or stdin whose client of the team's (nodeClients) writes, a container or remote host running one (kubectl exec, docker exec, ssh), or a data script (entrypoints) run with its apply flag. A read stays silent. A team's lists only add: a missing or broken entry never switches a built-in off.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `writes` | one of `"deny"`, `"ask"`, `"allow"` | `"ask"` | A hand-run database write: deny refuses it, ask asks the human (or refuses with the move-on note under prompts.hookAsks: refuse), allow lets it run. |
+| `entrypoints` | array (at most 32 items) of [object](#dbwriteguardentrypoints) | `[]` | The team's data scripts that write only with an apply flag, so a dry run passes: the script's path, matched against the end of the path a line runs (scripts/backfill.ts), and the flags that make it write (--apply, or --apply=yes on the line). |
+| `programs` | array (at most 16 items) of [object](#dbwriteguardprograms) | `[]` | The team's database programs, by name and the arguments each reads, read before the built-in SQL clients: document-shell (--eval code, -f files, a script file named as a word; document methods such as insertOne, deleteMany, drop, an aggregation's $out or $merge), key-value-cli (a command word such as SET or DEL, EVAL scripts, --eval files, stdin lines), sql-command (-c, -f, stdin), sql-execute (-e, stdin) or sql-database-file (a database file, then SQL; -cmd, stdin). |
+| `nodeClients` | array (at most 16 items) of [object](#dbwriteguardnodeclients) | `[]` | The Node client modules whose calls write, each with its vocabulary: document (insertOne, updateMany, deleteMany, drop, bulkWrite...) or key-value (set, del, hset, expire, flushall, eval...). Node code (node -e, a script file, stdin) is read only when it imports or requires one of them, or a module/sub path under it. |
+| `clientReceivers` | array (at most 8 items) of string (at most 40 characters, matching `^[A-Za-z_$][\w$]*$`) | `[]` | Words that mark a key-value client in Node code, matched in any case inside a receiver's name, added to the built-in client: a call named like a shared method (set, rename, copy, append, eval, move, restore, unlink) writes only on such a receiver (cache.set, not map.set). |
+
+## `dbWriteGuard.entrypoints[]`
+
+The team's data scripts that write only with an apply flag, so a dry run passes: the script's path, matched against the end of the path a line runs (scripts/backfill.ts), and the flags that make it write (--apply, or --apply=yes on the line).
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `path` (required) | string (1 to 260 characters) |  | The script's path, matched against the end of the path a line runs: scripts/backfill.ts. |
+| `applyFlags` (required) | array (1 to 4 items) of string (at most 40 characters, matching `^--?[A-Za-z][\w-]*$`) |  | The flags that make the script write, --apply or --apply=yes; a run without one is a dry run. |
+
+## `dbWriteGuard.programs[]`
+
+The team's database programs, by name and the arguments each reads, read before the built-in SQL clients: document-shell (--eval code, -f files, a script file named as a word; document methods such as insertOne, deleteMany, drop, an aggregation's $out or $merge), key-value-cli (a command word such as SET or DEL, EVAL scripts, --eval files, stdin lines), sql-command (-c, -f, stdin), sql-execute (-e, stdin) or sql-database-file (a database file, then SQL; -cmd, stdin).
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `name` (required) | string (at most 60 characters, matching `^[A-Za-z0-9][\w.+-]*$`) |  | The program's name as a line runs it, no path: my-cli, tool.exe. |
+| `reads` (required) | one of `"document-shell"`, `"key-value-cli"`, `"sql-command"`, `"sql-execute"`, `"sql-database-file"` |  | The arguments it takes its code from, one of the shapes programs lists. |
+
+## `dbWriteGuard.nodeClients[]`
+
+The Node client modules whose calls write, each with its vocabulary: document (insertOne, updateMany, deleteMany, drop, bulkWrite...) or key-value (set, del, hset, expire, flushall, eval...). Node code (node -e, a script file, stdin) is read only when it imports or requires one of them, or a module/sub path under it.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `module` (required) | string (at most 120 characters, matching `^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$`) |  | The package name code loads, store or @scope/store; a store/sub path under it counts too. |
+| `vocabulary` (required) | one of `"document"`, `"key-value"` |  | The write vocabulary of its calls: document or key-value. |
 
 ## `commits`
 
@@ -360,8 +401,10 @@ The host lock and the limits of one queued step.
 | `heavyReserveMb` | integer (0 to 1048576) | `2048` | The least MB held for a heavy queued step, a merge or a deploy besides memoryFloorMb: it takes the host lock only while free memory covers both (at most half the host's RAM). A heavy step whose need, learned from its past runs in the ledger or declared with --memory-mb, is more holds that instead. |
 | `admission` | one of `"pipeline"`, `"serial"` | `"pipeline"` | How the host lock's line is ordered: pipeline lets the most urgent step in first (a p0 step at once, then by class turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning steps of one session running and maxHeavyParallel heavy steps sharing the host at once, and is the default; serial keeps the line in arrival order with no cap and one heavy step at a time, for a team whose own deploy tool takes the lock file without first waiting for the shares to end. |
 | `agingMinutes` | integer (0 to 1440) | `15` | In pipeline admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. |
+| `memoryPassMinutes` | integer (0 to 1440) | `15` | In pipeline admission, a later step may pass one waiting on the host's memory or commit charge, as a step that fits need not wait behind one that does not: always while no queued step runs (only memory outside the queue holds it then), and for this many minutes of its memory wait while queued steps run; past them it holds the line so that the room they free goes to it; 0 passes no one. |
 | `perSessionRunning` | integer (0 to 64) | `2` | In pipeline admission, a session with this many steps running (the host lock or a share of the host) waits for one to end, and later steps pass it; 0 caps nothing. |
 | `maxHeavyParallel` | integer (1 to 64) | `2` | In pipeline admission, at most this many heavy queued steps share the host at once, each let in only while the memory gate has room for it beside the steps already sharing it; a merge and a deploy still take the whole host, waiting for every share to end. |
+| `heavyIdleCpuPct` | integer (0 to 100) | `25` | In pipeline admission, a heavy queued step joins another heavy one already sharing the host only while at least this % of the host's CPU time is idle (read over 2 seconds), as two test runs fanned out over every core slow each other until their time limits fire; a heavy step alone on the host never waits on CPU; 0 reads no CPU. |
 
 ## `delivery.freezes`
 
@@ -407,12 +450,14 @@ The weekly token budget: the pace line the team is measured against and each ses
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `false` | Turns on the live warning and the core rules' pacing sentence; teamrig budget shows usage either way. Unset in a team under another on its account: the team above's. |
-| `account` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the one account the teams on its Claude config dir name (the dir its sessions last started in), else that dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, accountLead, weeklyLimitW, subagentWeight, extraWPerUsd, reset). |
+| `account` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the one account the teams on its Claude config dir name (the dir its sessions last started in), else that dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, accountLead, weeklyLimitW, subagentWeight, extraWPerUsd, reset, resets). |
 | `accountLead` | [session name](#shared-types) |  | The root team whose lead is the account's main lead: after each reset it splits the week among the account's root teams, each lead then splits its part among its own team and its child teams, and the main lead reports the split at the owner's first meeting after the reset. Unset: the team above's, in a team under another on its account; else the root team's own lead, which holds while the account has one root team. Set it in every root team's config once a second root team joins the account. |
 | `weeklyLimitW` | integer (1000000 to 1000000000000) |  | The weekly limit in weighted tokens. Unset: the team above's, in a team under another on its account; else derived from the status line's weekly %. |
 | `subagentWeight` | number (0.1 to 10) | `1` | What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike. Unset in a team under another on its account: the team above's. |
+| `modelWeights` | array (at most 10 items) of [object](#budgetmodelweights) | `[]` | What one W of each model's calls moves the weekly meter, against 1 for a model unlisted: the account's limit counts models at their own rates, so the meter multiplies each call's W by its model's weight, on top of subagentWeight. The rollup keeps raw W. Unset in a team under another on its account: the team above's; else none, every model alike. |
 | `extraWPerUsd` | integer (1000 to 1000000000) |  | W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the team above's, in a team under another on its account; else the extra-usage pool shows in dollars only until then, with no allowance. |
 | `reset` | [object](#budgetreset) |  | When the weekly limit resets, for a team without a status line. Unset: the team above's, in a team under another on its account; else the reset time the status line reports. |
+| `resets` | array (at most 20 items) of [object](#budgetresets) | `[]` | The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none. |
 | `targetPct` | number (1 to 100) | `99.5` | Use the week up to this share of the weekly limit. |
 | `reservePct` | number (0 to 50) | `0.5` | Kept back for incidents until shortly before the reset; targetPct plus reservePct is at most 100. |
 | `shareFloorPct` | integer (0 to 50) | `10` | The least share of each weekly split a team with planned work gets, in % of the part being split; when the floors do not fit, each team gets an equal part. 0: no floor. The team's own, never taken from the team above. The lead's rules print it while the budget is enabled. |
@@ -429,6 +474,15 @@ The weekly token budget: the pace line the team is measured against and each ses
 | `statusSnapshotDir` | string (at least 1 character) |  | The folder of status line snapshots, \<Claude session id>.json each. Unset: \<kit home>/usage/live. |
 | `maxBytesPerHook` | integer (100000 to 100000000) | `4000000` | The most transcript bytes one hook run reads; the rest waits for the next run. |
 
+## `budget.modelWeights[]`
+
+What one W of each model's calls moves the weekly meter, against 1 for a model unlisted: the account's limit counts models at their own rates, so the meter multiplies each call's W by its model's weight, on top of subagentWeight. The rollup keeps raw W. Unset in a team under another on its account: the team above's; else none, every model alike.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `model` (required) | string (1 to 60 characters, matching `^[^\r\n]+$`) |  | A prefix of the model id a transcript names, such as claude-fable; the longest listed match wins. |
+| `weight` (required) | number (0.1 to 20) |  | Its W on the meter per W of its calls. |
+
 ## `budget.reset`
 
 When the weekly limit resets, for a team without a status line. Unset: the team above's, in a team under another on its account; else the reset time the status line reports.
@@ -437,6 +491,18 @@ When the weekly limit resets, for a team without a status line. Unset: the team 
 | --- | --- | --- | --- |
 | `weekday` (required) | one of `"sun"`, `"mon"`, `"tue"`, `"wed"`, `"thu"`, `"fri"`, `"sat"` |  | The day the weekly limit resets. |
 | `timeUtc` (required) | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | The time it resets, HH:MM UTC. |
+
+## `budget.resets[]`
+
+The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `kind` (required) | one of `"fable"`, `"full"` |  | fable refills the Fable bar and gives back what Fable used of the weekly limit; full clears all of the week's usage. |
+| `count` (required) | integer (1 to 20) |  | How many resets the grant holds. |
+| `expiresUtc` (required) | string (matching `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`) |  | When the grant's unused resets expire, YYYY-MM-DD HH:MM UTC. |
+| `usedUtc` | array (at most 20 items) of string (matching `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`) |  | When each use was taken, YYYY-MM-DD HH:MM UTC; at most count. Unset: none used. |
+| `note` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | One short line about the grant, such as where it came from. |
 
 ## `budget.sessions.*`
 
@@ -494,7 +560,7 @@ Waking a session idle at its prompt when work is handed to it, instead of at its
 | `priority` | integer (1 to 99) | `1` | The least urgent priority that wakes a session: 1 wakes for p0 and p1 only. A session its budget holds (past its daily budget while the team has no room today, the wake's own turn counted for both) or a short day pauses (`budget.pauseByPriority`) wakes for p0 only, and one in the budget's quiet hours for p0 and p1 only (p0 alone when their action is block), whatever this says. |
 | `batchSeconds` | integer (0 to 3600) | `120` | How long a wake waits after the first new task it is for, so tasks handed together wake the session once. |
 | `minGapMinutes` | integer (0 to 1440) | `15` | The least time between two wakes of one session; work handed meanwhile waits and wakes it once. |
-| `dayStartUtc` | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | The day's start (HH:MM UTC, outside the budget's quiet hours): from then each session with work it can start, of any priority, that has had no turn since gets one wake that day, and a burst wakes its sessions the same way once it starts. Unset: no day-start wake, and a burst wakes no one. |
+| `dayStartUtc` | string (matching `^([01]\d\|2[0-3]):[0-5]\d$`) |  | The day's start (HH:MM UTC, outside the budget's quiet hours): from then each session with work it can start, of any priority, that has had no turn since gets one wake that day, and a burst wakes its sessions the same way once it starts. Unset: no day-start wake, and a burst wakes no one. The root lead's `teamrig schedule set` overrides it for a day, per team or session. |
 
 ## `tests`
 
@@ -506,7 +572,7 @@ What teamrig test prints of a failed run.
 
 ## `github`
 
-teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local. Each owner's repositories are read with the read-only token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login (docs/github-sync.md).
+The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md).
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -514,7 +580,8 @@ teamrig gh sync: GitHub issues read into the register as tasks of source github.
 | `owners` | map from string (matching `^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`) to [session name](#shared-types) | `{}` | The session that owns an issue assigned to each GitHub login; matched without case. An issue with no listed assignee goes to its repository's session in sessions, else the lead. |
 | `sessions` | map from string (matching `^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$`) to [session name](#shared-types) | `{}` | The session that owns the issues of each repository (owner/name, one of repos; matched without case) when none of their assignees is in owners. Without one, they go to the lead. |
 | `closedDays` | integer (1 to 365) | `14` | How many days back closed issues are read, to finish the tasks they were imported as. |
-| `everyMinutes` | integer (0 to 1440) | `15` | How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig gh sync --yes. |
+| `everyMinutes` | integer (0 to 1440) | `15` | How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig issue sync --yes. |
+| `similarThreshold` | number (0 to 1) | `0.35` | The score, from 0 to 1, at which a mirrored issue counts as a duplicate candidate of a new one: the cosine of their TF-IDF word vectors. Higher lists fewer, closer candidates. |
 | `acceptLabel` | string (1 to 50 characters, matching `^[^\r\n]+$`) | `"teamrig"` | The label that lets an issue by an author outside the repository (not its owner, an organization member or a collaborator) become a task: it counts when someone other than the author added it last and the title and body were not edited after that. Matched without case. |
 
 ## `alerts`
@@ -558,7 +625,7 @@ The needs-you band: every tab of the team shows which other tab asks the user so
 
 ## `pickerGuard`
 
-Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed.
+Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed. It also refuses a session's Bash line that leads with `cd D &&` and runs git or leaves the session's folder, which Claude Code would hold on a permission prompt, quoting the line's git -C / env -C form to rerun (since 0.375.0).
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -765,7 +832,7 @@ Context refresh: when a session finishes a task (teamrig set \<id> --status done
 | `everyTasks` | integer (0 to 100) | `3` | Also refresh once this many tasks were finished since the context was last fresh (a /clear, a new process or a compaction); 0 turns it off. |
 | `everyTasksMinTokens` | integer (10000 to 10000000) | `80000` | The smallest context, in tokens, the task count refreshes at. |
 | `tabTitle` | boolean | `true` | Title the tab once the handover is written: '[\<team>] \<name>: restarting', or '[\<team>] \<name>: type /clear'. |
-| `autoRestart` | boolean | `false` | Once the handover is written and the turn has ended, start the session fresh on its own, which reads the handover: the plugin's mod runs /clear in its tab; where no mod claims the ask, teamrig ends its Claude Code and starts it again, in the same tab when teamrig open started it, else in a new tab. A session with no work it can start then waits for a wake that brings it some, which starts it fresh instead of waking it. A prompt typed before then keeps the context. false (the default): the user types /clear once done with the screen, which a /clear wipes. |
+| `autoRestart` | boolean or one of `"lead"` | `"lead"` | Once the handover is written and the turn has ended, start the session fresh on its own, which reads the handover: the plugin's mod runs /clear in its tab; where no mod claims the ask, teamrig ends its Claude Code and starts it again, in the same tab when teamrig open started it, else in a new tab. A session with no work it can start then waits for a wake that brings it some, which starts it fresh instead of waking it. A prompt typed before then keeps the context. false: the user types /clear once done with the screen, which a /clear wipes. the string lead (the default): on for the team's lead (roles.lead) only, whose context otherwise grows unasked overnight; every other session waits for /clear. |
 | `restartDelaySeconds` | integer (5 to 600) | `15` | How long after the turn's end the automatic restart waits, so the user can still type to keep the context. |
 | `holdAfterActivityMinutes` | integer (0 to 60) | `30` | The plugin's mod holds the automatic /clear while the person typed in the tab's prompt (a key, a paste) or sent a prompt there this recently, and while the prompt holds a draft: a /clear never lands under the person. The default 30 min keeps the context through the person's talk in the tab (reading a reply, thinking it over), the restart coming once they have been away that long. 0: only a draft holds it. |
 | `countdownSeconds` | integer (0 to 120) | `20` | Before the plugin's mod runs the automatic /clear, a band above the prompt counts down this many seconds, with Refresh now and Hold 10 min; a key in the prompt holds it too. 0: no count, the /clear runs once nothing else holds it. |
@@ -782,8 +849,8 @@ Hiring sessions with teamrig hire, each a worker the leader is sure the team nee
 | --- | --- | --- | --- |
 | `policy` | one of `"off"`, `"owner"`, `"lead"`, `"automatic"` | `"owner"` | off: no hires. owner: a lead (the lead, or a sub-lead into its own group) hires once the owner approved (--approved-by, kept with the hire). lead: a lead hires. automatic: as lead, and a hired session whose last open task closes is asked to write its handover. Under every policy only a lead over a session retires it (teamrig retire). |
 | `reviewDays` | integer (1 to 90) | `7` | Days from a hire to its review date, unless teamrig hire --review names one. |
-| `resumeMaxTokens` | integer (10000 to 1000000) | `250000` | The most context tokens a rehired session's last Claude Code session may hold for teamrig open --resume to resume it; past it the session starts fresh on its handover. |
-| `resumeMaxIdleDays` | integer (1 to 90) | `7` | The most days a rehired session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it; past it the session starts fresh on its handover. |
+| `resumeMaxTokens` | integer (10000 to 1000000) | `250000` | The most context tokens a session's last Claude Code session may hold for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh. |
+| `resumeMaxIdleDays` | integer (1 to 90) | `7` | The most days a session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh. |
 | `scaleOut` | [object](#hiringscaleout) |  | How teamrig check measures an area against its dated work for a SCALE-OUT flag: its pace is the tasks it finished lately, and the dated tasks of the top priorities are what it must finish in time. |
 
 ## `hiring.scaleOut`

@@ -4,6 +4,7 @@ import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { testTask } from '../testing/task.ts';
+import type { SlicedGoal } from './focus.ts';
 import type { Task } from './fold.ts';
 import { likeMedians, likeSizing, likeTasksOf, ownSizing, storedSizing, treeRanking, type Sizing, type SpendKey } from './ranking.ts';
 import { TaskTree } from './tree.ts';
@@ -45,7 +46,7 @@ describe('treeRanking (T2076)', () => {
   });
 
   it('values a Roadmap task by the goal it serves, and names the goal that holds the rank', () => {
-    const goals = new Map([['A1', { parent: null, rank: 1 }], ['A1.1', { parent: 'A1', rank: null }]]);
+    const goals = new Map<string, SlicedGoal>([['A1', { parent: null, rank: 1, slice: null }], ['A1.1', { parent: 'A1', rank: null, slice: null }]]);
     const ranked = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals, sizing: ownSizing });
     const task = testTask({ id: 'T1', workClass: 'Roadmap', goals: ['A1.1'] });
     const plain = testTask({ id: 'T2', workClass: 'Roadmap' });
@@ -56,9 +57,30 @@ describe('treeRanking (T2076)', () => {
   });
 
   it('reads a row with no goals as serving none', () => {
-    const goals = new Map([['A1', { parent: null, rank: 1 }]]);
+    const goals = new Map<string, SlicedGoal>([['A1', { parent: null, rank: 1, slice: null }]]);
     const ranked = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals, sizing: ownSizing });
     assert.equal(ranked.goalOf({ id: 'T2', status: 'open', owner: 'alpha', priority: 2, due: null, after: [], waits: [] }), null);
+  });
+
+  it("reads a prep marker against the goal's open slice, and a row with none as unmarked (T2453)", () => {
+    const goals = new Map<string, SlicedGoal>([['A1', { parent: null, rank: 1, slice: 3 }]]);
+    const ranked = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals, sizing: ownSizing });
+    assert.deepEqual(ranked.prepOf(testTask({ prepares: { goal: 'A1', slice: 4 } })), { standing: 'near' });
+    assert.deepEqual(ranked.prepOf(testTask({ prepares: { goal: 'A1', slice: 6 } })), { standing: 'lapsed', why: 'prepares A1:6, goal A1 is on slice 3' });
+    assert.equal(ranked.prepOf({ id: 'T2', status: 'open', owner: 'alpha', priority: 2, due: null, after: [], waits: [] }), null);
+  });
+
+  it('ranks a near prep task right after band 0, ahead of a Roadmap task of a higher score, and a lapsed one in its own band (T2453)', () => {
+    const goals = new Map<string, SlicedGoal>([['A1', { parent: null, rank: 1, slice: 3 }]]);
+    const ranked = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals, sizing: ownSizing });
+    const lapsed = testTask({ id: 'T2', prepares: { goal: 'A1', slice: 9 } });
+    const near = testTask({ id: 'T3', prepares: { goal: 'A1', slice: 3 } });
+    const tasks = [testTask({ id: 'T1', workClass: 'Roadmap', goals: ['A1'] }), lapsed, near, testTask({ id: 'T4', priority: 0 })];
+    const tree = new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC, undefined, undefined, ranked);
+    assert.equal(tree.rankedOf(near)?.prep, true);
+    assert.equal(tree.rankedOf(lapsed)?.prep, false);
+    assert.deepEqual(tree.prepOf(lapsed), { standing: 'lapsed', why: 'prepares A1:9, goal A1 is on slice 3' });
+    assert.deepEqual(tree.inPlanOrder(tasks).map((task) => task.id), ['T4', 'T3', 'T1', 'T2']);
   });
 });
 

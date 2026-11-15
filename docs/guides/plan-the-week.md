@@ -41,7 +41,9 @@ teamrig plan                                       # the week in force, grouped 
 - What drifts: `check` compares the active tasks with the plan. An owner's order not in it is `OWNER-UNPLANNED`,
   a task due inside the week but not in it `DUE-UNPLANNED`, work in progress with no goal outside it `OFF-GOAL`,
   and a task that cost more than twice its size since it was last sized, as the budget meter attributes it,
-  `OVER-SIZE`.
+  `OVER-SIZE`. A design, study or prep plan the lead marked for a ranked goal's open slice or the next
+  (`update --prepares G1:2`) ranks right after expedite work and raises none of the last three; once the goal moves
+  past that slice it is `PREP-LAPSED`.
 - What it serves: a task names the goals it serves (`--goals A1`), or `--goals none`. The lead records the team's
   goals with `teamrig goal add A1 --title "Ship the beta" --target 2026-11-30`, each with its window, and moves a
   target with `goal set` and a note, kept as a slip; `goal rank A1 1` puts a goal first, and `goal list` shows them,
@@ -80,6 +82,10 @@ Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 poin
 - On a plan with a five-hour window, a line under it shows that window and where its rise takes it, and `teamrig
   check` warns the lead at `budget.fiveHourWarnPct` (80), or sooner if it would fill before it resets: at 100% every
   session stalls until the reset.
+- Reset grants the account holds beside its weekly reset (a full reset or a model's, from support or a promotion)
+  are written down in `budget.resets` with their expiry and each use taken; the day's view ends with what is left of
+  each, the lead's `teamrig start`, start note and meeting agenda carry one line of the uses left and the next
+  expiry, and `teamrig check` warns the lead two weeks before one expires unspent.
 
 - The pace line climbs to `budget.targetPct` by `budget.paceEndHoursBeforeReset` (1) hours before the reset. Each
   day, what is left to it is spread over the active time to the pace end, and each session's daily budget is its

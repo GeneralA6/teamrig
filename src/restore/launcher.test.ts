@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writePluginList, type PluginListFixture } from '../testing/plugin-list.ts';
@@ -45,7 +45,9 @@ interface Scene {
 }
 
 function scene(kind: LauncherKind, fixture: PluginListFixture): Scene {
-  const root = mkdtempSync(join(tmpdir(), 'teamrig-restore-launcher-'));
+  // The folder's real path: macOS's temp folder sits under /var, a link to /private/var, and the launcher finds its
+  // kit home from where Node says it runs, which is the real path.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'teamrig-restore-launcher-')));
   const config = writePluginList(root, fixture, RECORDING_CLI);
   const kitHome = join(root, 'my kit');
   const launcher = kind.pathOf(kitHome);

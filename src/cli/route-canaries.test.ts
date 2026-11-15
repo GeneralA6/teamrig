@@ -18,7 +18,7 @@ import { EXIT } from './runtime.ts';
 const CANARY_TEAM: JsonRecord = { ...TEAM, sessions: ['lead', 'alpha', 'bravo', 'tr-canary'], prompts: { hookAsks: 'refuse' } };
 const ENV = { TEAMRIG_SESSION: 'tr-canary' };
 /** The Bash PreToolUse hooks of hooks.json, but the route allow, whose answer each canary's entry sets. */
-const GUARDS = ['push-guard', 'package-guard', 'secret-guard', 'exec-guard', 'pass-record-guard', 'readonly-allow'] as const;
+const GUARDS = ['push-guard', 'package-guard', 'secret-guard', 'db-write-guard', 'exec-guard', 'pass-record-guard', 'readonly-allow'] as const;
 /** A repository whose `origin` is a remote, on a branch no rule protects. */
 const GIT: RunOptions['git'] = {
   branch: () => 't1-canary',

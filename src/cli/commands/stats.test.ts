@@ -121,7 +121,7 @@ describe('teamrig stats', () => {
   });
 });
 
-const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
 
 /** The tree app > web > ui and app > ops, one goal record each (A1, B1, D1 and C1), targeted for 2030-02-01. */
 async function goalTree(): Promise<CliHarness> {
@@ -178,7 +178,7 @@ function doneOn(id: string, at: string): RegisterEvent {
 }
 
 function goalRecord(tag: string, target: string): Goal {
-  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target, parent: null, addedAt: '2030-01-01T00:00:00.000Z', addedBy: 'lead', slips: [], rank: null };
+  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target, parent: null, addedAt: '2030-01-01T00:00:00.000Z', addedBy: 'lead', slips: [], rank: null, slice: null };
 }
 
 function teamOf(name: string, events: readonly RegisterEvent[]): StatsTeam {

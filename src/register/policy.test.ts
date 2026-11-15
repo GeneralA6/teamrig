@@ -7,7 +7,8 @@ import { TEST_CARD, TEST_OWNER_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
-import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, PROOF_WAITS_USAGE, RegisterPolicy, type AddInput, type AskInput, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import { NO_SLICED_GOALS } from './focus.ts';
+import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, PROOF_WAITS_USAGE, RegisterPolicy, type AddInput, type AskInput, type AuditSubject, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import type { ProblemReview } from './review.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import type { WaitReason } from './waits.ts';
@@ -20,7 +21,7 @@ const INPUT: AddInput = { title: 'Add a health check', description: 'what and wh
 const TASK: Task = testTask({ status: 'in-progress', startedAt: '2030-01-07T10:00:00.000Z' });
 const NOW = new Date('2030-01-08T12:00:00.000Z');
 /** A status change judged on an empty register at NOW, with no skill on disk. */
-const CTX: StatusContext = { state: EMPTY, elsewhere: NO_TASKS_ELSEWHERE, now: NOW, zone: TimeZone.UTC, skillExists: false };
+const CTX: StatusContext = { state: EMPTY, elsewhere: NO_TASKS_ELSEWHERE, now: NOW, zone: TimeZone.UTC, skillExists: false, goals: NO_SLICED_GOALS };
 
 /** The tasks of the tree's other registers, all on team `web`'s. */
 function elsewhereOf(...tasks: readonly Task[]): TasksElsewhere {
@@ -58,7 +59,7 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
+      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null },
     });
   });
 
@@ -158,7 +159,7 @@ describe('RegisterPolicy.add', () => {
 
   it('refuses an active task with the same title, but not a closed one', () => {
     const open = foldEvents([
-      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null } },
+      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null } },
     ]);
     assert.match(error(policy.add({ ...INPUT, title: 'add a  HEALTH check' }, open)), /T4 already tracks this \(open, owner alpha\)/);
     const closed = foldEvents([
@@ -221,8 +222,21 @@ describe('RegisterPolicy: the description', () => {
   });
 
   it("leaves the description to the owner: the lead may not change it on another session's task", () => {
-    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: description)');
+    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, prepares on a task it does not own (asked: description)');
     assert.equal(error(policy.update(TASK, 'bravo', { description: 'Why it matters.' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
+  });
+
+  it('lets only a lead mark the goal slice a task prepares, a goal of the records, and clear it (T2453)', () => {
+    const prep = { goal: 'A1', slice: 2 };
+    assert.deepEqual(fieldsOf(policy.update(TASK, 'lead', { prepares: prep }, undefined, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)).changes, { prepares: prep });
+    assert.deepEqual(fieldsOf(policy.update(TASK, 'lead', { prepares: null }, undefined, EMPTY)).changes, { prepares: null }, 'clearing needs no goal record');
+    const refusedOwner = 'only the lead (lead) marks what T1 prepares: the marker lets a design run outside the slice cap';
+    assert.equal(error(policy.update(TASK, 'alpha', { prepares: prep }, undefined, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), refusedOwner, 'never its owner');
+    assert.equal(error(policy.update(TASK, 'alpha', { prepares: null }, undefined, EMPTY)), refusedOwner, 'nor clears it');
+    assert.match(error(policy.update(TASK, 'bravo', { prepares: prep }, undefined, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), /^only .* marks what T1 prepares/);
+    assert.equal(error(policy.update(TASK, 'lead', { prepares: { goal: 'Z9', slice: 1 } }, undefined, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), UNKNOWN_Z9);
+    const leadsOwn = testTask({ owner: 'lead', status: 'in-progress' });
+    assert.equal(error(policy.update(leadsOwn, 'lead', { prepares: prep }, undefined, EMPTY, NO_TASKS_ELSEWHERE, KNOWN_GOALS)), 'allowed', "the lead on its own task");
   });
 
   it('lets an older task with no description change another field', () => {
@@ -467,6 +481,13 @@ describe('RegisterPolicy.setStatus: the WIP rule holds a start (T2076)', () => {
       error(policy.setStatus(tooling, 'alpha', { status: 'in-progress' }, context)),
       'T2 is Improvements work and alpha holds Roadmap work that can move: T1; work that first [focus.wip], or, for a one-commit fix, start it with --one-commit',
     );
+  });
+
+  it('lets near-term prep start past the Roadmap work, judged on the goal records of the context (T2453)', () => {
+    const prep: Task = { ...tooling, prepares: { goal: 'G', slice: 2 } };
+    const goals = new Map([['G', { parent: null, rank: 1, slice: 1 }]]);
+    assert.equal(policy.setStatus(prep, 'alpha', { status: 'in-progress' }, { ...context, goals }).ok, true);
+    assert.match(error(policy.setStatus(prep, 'alpha', { status: 'in-progress' }, context)), /^T2 is Improvements work and alpha holds Roadmap work/);
   });
 
   it('lets a one-commit fix start, and takes --one-commit with no other status', () => {
@@ -890,6 +911,7 @@ describe('RegisterPolicy.ask', () => {
         critical: false,
         pin: null,
         workClass: null,
+        prepares: null,
       },
     });
     const undated = asking(PLANNED, 'alpha', { owner: 'alpha', title: 'Write the migration' });
@@ -972,14 +994,29 @@ describe('RegisterPolicy.update', () => {
     assert.equal(error(policy.update(left, 'lead', { owner: 'yankee' }, undefined, EMPTY)), 'owner yankee is not a session on this team', 'an owner a write sets is a session');
     assert.equal(
       error(policy.update(left, 'lead', { title: 'x' }, undefined, EMPTY)),
-      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, ref on a task it does not own (asked: title)',
+      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, prepares, ref on a task it does not own (asked: title)',
     );
     assert.equal(error(policy.update(left, 'alpha', { ref: 'notes/new.md' }, undefined, EMPTY)), 'only the owner (zulu) or the lead (lead) changes T1');
     assert.equal(
       error(policy.update(TASK, 'lead', { ref: 'notes/new.md' }, undefined, EMPTY)),
-      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass on a task it does not own (asked: ref)',
+      'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, prepares on a task it does not own (asked: ref)',
       'an owner on the team keeps its own ref',
     );
+  });
+
+  it("lets only the lead point a session's task holding no issue at the issue it opened for it, never replace an issue ref (T2550)", () => {
+    const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'], leads: { alpha: ['bravo'] } }));
+    const bravos = testTask({ id: 'T9', owner: 'bravo' });
+    assert.deepEqual(tree.update(bravos, 'lead', { ref: 'gh:acme/app#7' }, undefined, EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: null } });
+    assert.equal(tree.update(bravos, 'lead', { ref: 'gh:acme/app#7', priority: 1 }, undefined, EMPTY).ok, true, 'beside the work order');
+    const refused = 'a leader may change only owner, priority, due, week, after, size, type, critical, pin, workClass, prepares on a task it does not own (asked: ref)';
+    assert.equal(error(tree.update(bravos, 'lead', { ref: 'notes/plan.md' }, undefined, EMPTY)), refused, 'a ref that is no issue');
+    const noted = testTask({ id: 'T9', owner: 'bravo', ref: 'notes/plan.md' });
+    assert.deepEqual(tree.update(noted, 'lead', { ref: 'gh:acme/app#7' }, 'ref was: notes/plan.md', EMPTY), { ok: true, value: { changes: { ref: 'gh:acme/app#7' }, note: 'ref was: notes/plan.md' } }, 'a note ref gives way');
+    assert.equal(error(tree.update(noted, 'lead', { ref: 'notes/other.md' }, undefined, EMPTY)), refused, 'only to an issue');
+    assert.equal(error(tree.update(testTask({ id: 'T9', owner: 'bravo', ref: 'gh:acme/app#3' }), 'lead', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), refused, 'its issue stays');
+    assert.equal(error(tree.update(bravos, 'alpha', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), refused, 'a sub-lead does not');
+    assert.equal(error(tree.update(bravos, 'charlie', { ref: 'gh:acme/app#7' }, undefined, EMPTY)), 'only the owner (bravo) or a leader above bravo (alpha or lead) changes T9');
   });
 
   it('keeps a class the team renamed out of focus.classes on any other change, and refuses setting one outside them (T2076)', () => {
@@ -1252,18 +1289,23 @@ describe('RegisterPolicy, the GitHub import', () => {
   const URL = 'https://github.com/acme/web/issues/7';
 
   it('adds a task sourced github, keyed by its ref, even under a title the team already tracks', () => {
-    const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#7' });
+    const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#8' });
     assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
       ok: true,
-      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
+      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null },
     });
     assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
     assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');
   });
 
+  it('refuses a task for an issue a team task links to: that task tracks it', () => {
+    const linked = testTask({ id: 'T5', title: 'Login fails', ref: 'gh:acme/web#7' });
+    assert.equal(error(policy.importAdd(ISSUE, stateOf(linked))), 'T5 already has ref gh:acme/web#7');
+  });
+
   it('keeps the github source for the import: a session can neither add nor move a task to it', () => {
-    assert.equal(error(policy.add({ ...INPUT, source: 'github' }, EMPTY)), 'source github is kept for the tasks teamrig gh sync imports');
-    assert.equal(error(policy.update(TASK, 'alpha', { source: 'github' }, undefined, EMPTY)), 'source github is kept for the tasks teamrig gh sync imports');
+    assert.equal(error(policy.add({ ...INPUT, source: 'github' }, EMPTY)), 'source github is kept for the tasks teamrig issue sync imports');
+    assert.equal(error(policy.update(TASK, 'alpha', { source: 'github' }, undefined, EMPTY)), 'source github is kept for the tasks teamrig issue sync imports');
     assert.equal(policy.update(IMPORTED, 'bravo', { due: '2030-02-01' }, 'planned', EMPTY).ok, true);
   });
 
@@ -1369,8 +1411,8 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
       "--gate names the owner gate or business decision that makes a question owner's: it goes only with a wait on owner's decision",
     );
     assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, gate: 'staffing' } })), `--gate "staffing" is no owner gate [ownerGates] and no business decision: ${GATE_USAGE}`);
-    const changed = set(ASKED, { waits: OWNER_DECISION, card: { gate: 'permissions' } });
-    assert.deepEqual(changed.ok ? changed.value.card : undefined, { ...TEST_CARD, gate: 'permissions' }, 'a later set changes the gate alone');
+    const changed = set(ASKED, { waits: OWNER_DECISION, card: { gate: 'resource changes' } });
+    assert.deepEqual(changed.ok ? changed.value.card : undefined, { ...TEST_CARD, gate: 'resource changes' }, 'a later set changes the gate alone');
     const toLead = set(ASKED, { waits: [{ kind: 'decision', who: 'lead' }] });
     assert.deepEqual(toLead.ok ? toLead.value.card : undefined, TEST_CARD, "a wait moved to the lead's decision drops it");
     const gated = new RegisterPolicy(testConfig({ ownerGates: ['hiring'] }));
@@ -1439,6 +1481,52 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
     assert.equal(set(ordered, { waits: OWNER_DECISION }, relaxed).ok, true, 'requireDecisionCard off');
   });
 
+  // T2623: a session asked the owner to approve the design of a back-test of an approved sheet, which waited 14 h.
+  describe('a card asking the owner about a test, measure or proof (T2623)', () => {
+    const proofCard = { ...TEST_OWNER_CARD, question: 'Approve the back-test design for the approved entry sheet' };
+    const affects = 'buys 400 dollars of price history';
+    const refusal =
+      `--question asks owner about a test, measure or proof ("back-test"): one of approved work that changes no approved number, spends no money and writes no data is approved with that work, so go ahead and tell your leader (lead), and drop the wait on owner's decision; ` +
+      'if it does change, spend or write, say which with --affects "<the approved number it changes, the money it spends or the data it writes>"';
+
+    it('refuses it without --affects, naming the word, the leader to tell and the way out', () => {
+      assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: proofCard })), refusal, 'a new card');
+      assert.equal(error(set({ ...ASKED, card: proofCard }, { waits: OWNER_DECISION, note: 'asked again' })), refusal, 'a card kept from an older row');
+      assert.match(
+        error(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, question: 'May we run a dry run of the import', options: [] } })),
+        /^--question asks owner about a test, measure or proof \("dry run"\): .* drop the wait on owner's approval; /,
+        "an approval on the owner too",
+      );
+      const lead = testTask({ status: 'in-progress', startedAt: TASK.startedAt, owner: 'lead' });
+      assert.match(error(policy.setStatus(lead, 'lead', { status: 'waiting', note: 'x', waits: OWNER_DECISION, card: proofCard }, CTX)), /so go ahead, and drop the wait/, 'the lead has no leader to tell');
+    });
+
+    it('takes it with --affects, keeps it while the owner is asked, and drops it once not', () => {
+      const asked = set(TASK, { waits: OWNER_DECISION, card: { ...proofCard, affects } });
+      assert.deepEqual(asked.ok ? asked.value.card : undefined, { ...proofCard, affects });
+      const waiting = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION, card: { ...proofCard, affects } });
+      const again = set(waiting, { waits: OWNER_DECISION, note: 'asked again' });
+      assert.deepEqual(again.ok ? again.value.card : undefined, { ...proofCard, affects });
+      const toLead = set(waiting, { waits: [{ kind: 'decision', who: 'lead' }] });
+      assert.deepEqual(toLead.ok ? toLead.value.card : undefined, { ...TEST_CARD, question: proofCard.question }, "a wait moved to the lead's decision drops it and the gate");
+    });
+
+    it('takes --affects only with a wait on the owner, and holds it to the plain-word floor', () => {
+      assert.equal(
+        error(set(TASK, { waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, affects } })),
+        "--affects says what a test, measure or proof asks owner for: it goes only with a wait on owner's decision or approval",
+      );
+      assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...proofCard, affects: 'T5' } })), /^--affects says "T5": give at least 3 plain words/);
+    });
+
+    it("asks nothing of a question about no test, of a lead's wait, or while cards are not required", () => {
+      assert.equal(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, question: 'Approve the latest contest price' } }).ok, true, 'no proof word inside other words');
+      assert.equal(set(TASK, { waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, question: proofCard.question } }).ok, true, "the lead's decision");
+      const relaxed = new RegisterPolicy(testConfig({ register: { requireDecisionCard: false } }));
+      assert.equal(set(TASK, { waits: OWNER_DECISION, card: proofCard }, relaxed).ok, true, 'requireDecisionCard off');
+    });
+  });
+
   it('takes the same card again only with a new note', () => {
     const relaxed = new RegisterPolicy(testConfig({ register: { requireNoteOn: [] } }));
     const again = (card: Partial<DecisionCard>) => relaxed.setStatus(ASKED, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card }, CTX);
@@ -1447,7 +1535,10 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
   });
 
   it('checks each part like any text', () => {
-    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, question: credentialUrl() } })), /card looks like it holds a secret/);
+    // The credential URL's host ends in ".test", a proof word (T2623), so the card says what it affects to reach the text check.
+    const affects = 'buys 400 dollars of price history';
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, question: credentialUrl(), affects } })), /card looks like it holds a secret/);
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, affects: `it logs in at ${credentialUrl()}` } })), /card looks like it holds a secret/);
     assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_OWNER_CARD, byDefault: 'x '.repeat(200) } })), /^card has 400 characters/);
   });
 
@@ -1617,55 +1708,145 @@ describe('RegisterPolicy.approve (T684)', () => {
 
 describe('RegisterPolicy.audit: a hand step file pinned at its sha256 (T2312)', () => {
   const PIN = { path: 'C:/steps/grant-read.ps1', sha256: 'a'.repeat(64) };
+  const FILE: AuditSubject = { kind: 'file', pin: PIN };
   const reviewed = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'bravo' } }));
 
   it("lets the security reviewer pin a hand step file of another session's task, the note trimmed or none", () => {
-    assert.deepEqual(reviewed.audit(TASK, 'bravo', PIN, ' read every line '), { ok: true, value: { changes: {}, note: 'read every line', audit: PIN } });
-    assert.deepEqual(reviewed.audit(TASK, 'bravo', PIN, undefined), { ok: true, value: { changes: {}, note: null, audit: PIN } });
+    assert.deepEqual(reviewed.audit(TASK, 'bravo', FILE, ' read every line '), { ok: true, value: { changes: {}, note: 'read every line', audit: PIN } });
+    assert.deepEqual(reviewed.audit(TASK, 'bravo', FILE, undefined), { ok: true, value: { changes: {}, note: null, audit: PIN } });
   });
 
   it("refuses the task's own owner, naming core rule 11, and any session but the reviewer", () => {
-    assert.equal(error(reviewed.audit(TASK, 'alpha', PIN, undefined)), 'alpha owns T1, so it does not audit its own hand step (core rule 11); who audits it: the security reviewer (bravo)');
-    assert.equal(error(reviewed.audit(TASK, 'lead', PIN, undefined)), "lead does not audit a hand step of alpha's; who audits it: the security reviewer (bravo)");
+    assert.equal(error(reviewed.audit(TASK, 'alpha', FILE, undefined)), 'alpha owns T1, so it does not audit its own hand step (core rule 11); who audits it: the security reviewer (bravo)');
+    assert.equal(error(reviewed.audit(TASK, 'lead', FILE, undefined)), "lead does not audit a hand step of alpha's; who audits it: the security reviewer (bravo)");
   });
 
   it("hands the reviewer's own hand step to its leaders, and the root lead's to any other session", () => {
     const bravos = testTask({ owner: 'bravo', status: 'in-progress' });
-    assert.equal(error(reviewed.audit(bravos, 'lead', PIN, undefined)), 'allowed');
-    assert.equal(error(reviewed.audit(bravos, 'alpha', PIN, undefined)), "alpha does not audit a hand step of bravo's; who audits it: the lead (lead), as bravo is the security reviewer");
-    assert.match(error(reviewed.audit(bravos, 'bravo', PIN, undefined)), /^bravo owns T1, so it does not audit its own hand step \(core rule 11\)/);
+    assert.equal(error(reviewed.audit(bravos, 'lead', FILE, undefined)), 'allowed');
+    assert.equal(error(reviewed.audit(bravos, 'alpha', FILE, undefined)), "alpha does not audit a hand step of bravo's; who audits it: the lead (lead), as bravo is the security reviewer");
+    assert.match(error(reviewed.audit(bravos, 'bravo', FILE, undefined)), /^bravo owns T1, so it does not audit its own hand step \(core rule 11\)/);
     const root = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'lead' } }));
     const leads = testTask({ owner: 'lead', status: 'in-progress' });
-    assert.equal(error(root.audit(leads, 'alpha', PIN, undefined)), 'allowed');
-    assert.equal(error(root.audit(leads, 'lead', PIN, undefined)), 'lead owns T1, so it does not audit its own hand step (core rule 11); who audits it: any session of this team but lead');
+    assert.equal(error(root.audit(leads, 'alpha', FILE, undefined)), 'allowed');
+    assert.equal(error(root.audit(leads, 'lead', FILE, undefined)), 'lead owns T1, so it does not audit its own hand step (core rule 11); who audits it: any session of this team but lead');
   });
 
   it('lets any session but the owner audit on a team with no security reviewer, never one from above', () => {
     const plain = new RegisterPolicy(testConfig(), { team: 'app', id: 'boss' });
-    assert.equal(error(plain.audit(TASK, 'bravo', PIN, undefined)), 'allowed');
-    assert.equal(error(plain.audit(TASK, 'alpha', PIN, undefined)), 'alpha owns T1, so it does not audit its own hand step (core rule 11); who audits it: any session of this team but its owner (no roles.securityReviewer is set)');
-    assert.match(error(plain.auditFrom(TASK, 'app/boss', PIN, undefined)), /^app\/boss does not audit a hand step of alpha's; who audits it: any session of this team but its owner/);
+    assert.equal(error(plain.audit(TASK, 'bravo', FILE, undefined)), 'allowed');
+    assert.equal(error(plain.audit(TASK, 'alpha', FILE, undefined)), 'alpha owns T1, so it does not audit its own hand step (core rule 11); who audits it: any session of this team but its owner (no roles.securityReviewer is set)');
+    assert.match(error(plain.auditFrom(TASK, 'app/boss', FILE, undefined)), /^app\/boss does not audit a hand step of alpha's; who audits it: any session of this team but its owner/);
   });
 
   it('takes a reviewer on a team above only from there, through auditFrom (T1143)', () => {
     const child = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'app/sec' } }), { team: 'app', id: 'boss' });
-    assert.deepEqual(child.auditFrom(TASK, 'app/sec', PIN, 'ok'), { ok: true, value: { changes: {}, note: 'ok', audit: PIN } });
-    assert.equal(error(child.audit(TASK, 'bravo', PIN, undefined)), "bravo does not audit a hand step of alpha's; who audits it: the security reviewer (app/sec), from its own team with --team");
-    assert.match(error(child.auditFrom(TASK, 'app/boss', PIN, undefined)), /^app\/boss does not audit a hand step of alpha's/);
+    assert.deepEqual(child.auditFrom(TASK, 'app/sec', FILE, 'ok'), { ok: true, value: { changes: {}, note: 'ok', audit: PIN } });
+    assert.equal(error(child.audit(TASK, 'bravo', FILE, undefined)), "bravo does not audit a hand step of alpha's; who audits it: the security reviewer (app/sec), from its own team with --team");
+    assert.match(error(child.auditFrom(TASK, 'app/boss', FILE, undefined)), /^app\/boss does not audit a hand step of alpha's/);
   });
 
   it("takes a child team's lead's own hand step, the lead being its reviewer, from the parent team's lead (T1140)", () => {
     const child = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'lead' } }), { team: 'app', id: 'boss' });
     const leads = testTask({ owner: 'lead', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] });
-    assert.equal(error(child.auditFrom(leads, 'app/boss', PIN, undefined)), 'allowed');
-    assert.equal(error(child.audit(leads, 'alpha', PIN, undefined)), "alpha does not audit a hand step of lead's; who audits it: the parent team's lead (app/boss), as lead is the security reviewer");
+    assert.equal(error(child.auditFrom(leads, 'app/boss', FILE, undefined)), 'allowed');
+    assert.equal(error(child.audit(leads, 'alpha', FILE, undefined)), "alpha does not audit a hand step of lead's; who audits it: the parent team's lead (app/boss), as lead is the security reviewer");
   });
 
   it('refuses a finished task, a file of a kind with no run line, and a note with a secret', () => {
-    assert.equal(error(reviewed.audit(testTask({ status: 'done' }), 'bravo', PIN, undefined)), 'T1 is done: a hand step is audited for a task still to finish');
-    assert.equal(error(reviewed.audit(TASK, 'bravo', { ...PIN, path: 'C:/steps/grant-read.txt' }, undefined)), 'C:/steps/grant-read.txt is not a hand step file: only .ps1, .sh, .md files have a run line');
-    assert.equal(error(reviewed.audit(TASK, 'bravo', { ...PIN, path: 'C:/steps/GRANT.SH' }, undefined)), 'allowed');
-    assert.notEqual(error(reviewed.audit(TASK, 'bravo', PIN, credentialUrl())), 'allowed');
+    assert.equal(error(reviewed.audit(testTask({ status: 'done' }), 'bravo', FILE, undefined)), 'T1 is done: a hand step is audited for a task still to finish');
+    assert.equal(error(reviewed.audit(TASK, 'bravo', { kind: 'file', pin: { ...PIN, path: 'C:/steps/grant-read.txt' } }, undefined)), 'C:/steps/grant-read.txt is not a hand step file: only .ps1, .sh, .md files have a run line');
+    assert.equal(error(reviewed.audit(TASK, 'bravo', { kind: 'file', pin: { ...PIN, path: 'C:/steps/GRANT.SH' } }, undefined)), 'allowed');
+    assert.notEqual(error(reviewed.audit(TASK, 'bravo', FILE, credentialUrl())), 'allowed');
+  });
+});
+
+describe("RegisterPolicy.audit --verdict: the security reviewer's verdict on a task's card (T2761)", () => {
+  const reviewed = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'bravo' } }));
+  const carded = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'bravo' }], card: TEST_OWNER_CARD });
+  const verdict = (text: string): AuditSubject => ({ kind: 'verdict', text });
+  const read = { question: TEST_CARD.question, options: TEST_CARD.options, recommend: TEST_CARD.recommend };
+
+  it('pins the verdict, trimmed, with the question, options and recommendation it read', () => {
+    assert.deepEqual(reviewed.audit(carded, 'bravo', verdict(' Pass: read only '), 'read the grant'), {
+      ok: true,
+      value: { changes: {}, note: 'read the grant', securityVerdict: { text: 'Pass: read only', read } },
+    });
+  });
+
+  it("refuses the task's owner and a session that is not the reviewer, naming the card and core rule 9", () => {
+    assert.equal(error(reviewed.audit(carded, 'alpha', verdict('Pass'), undefined)), 'alpha owns T1, so it does not give the security verdict on its own card (core rule 9); who audits it: the security reviewer (bravo)');
+    assert.equal(error(reviewed.audit(carded, 'lead', verdict('Pass'), undefined)), "lead does not give the security verdict on a card of alpha's; who audits it: the security reviewer (bravo)");
+    assert.match(error(reviewed.auditFrom(carded, 'app/boss', verdict('Pass'), undefined)), /^app\/boss does not give the security verdict on a card of alpha's/);
+  });
+
+  it('refuses a task with no card, a blank verdict, a finished task and a verdict with a secret', () => {
+    assert.equal(error(reviewed.audit(TASK, 'bravo', verdict('Pass'), undefined)), 'T1 has no card: a security verdict is given on the card the owner reads, so its owner sets the card first (--question, --options, --recommend and --default)');
+    assert.equal(error(reviewed.audit(carded, 'bravo', verdict('  '), undefined)), '--verdict is blank: say what the review found and whether the owner may approve it');
+    assert.equal(error(reviewed.audit({ ...carded, status: 'done' }, 'bravo', verdict('Pass'), undefined)), 'T1 is done: a card is audited for a task still to finish');
+    assert.notEqual(error(reviewed.audit(carded, 'bravo', verdict(`Pass ${credentialUrl()}`), undefined)), 'allowed');
+  });
+});
+
+describe("RegisterPolicy.setStatus: a card on a security gate reaches the owner only with the security verdict (T2761)", () => {
+  const policy = new RegisterPolicy(testConfig({ roles: { lead: 'lead', securityReviewer: 'bravo' } }));
+  const GATED: DecisionCard = { ...TEST_CARD, gate: 'permissions' };
+  const read = { question: TEST_CARD.question, options: TEST_CARD.options, recommend: TEST_CARD.recommend };
+  const VERDICT = { text: 'Pass: read only', read, by: 'bravo', at: '2030-01-08T09:00:00.000Z' };
+  const reviewed: Task = { ...TASK, securityVerdict: VERDICT };
+  const set = (task: Task, input: Omit<StatusInput, 'status'>, on: RegisterPolicy = policy) => on.setStatus(task, 'alpha', { status: 'waiting', note: 'x', ...input }, CTX);
+  const route = 'set the card on a wait on your leader first (--waits decision:lead), have it read (the security reviewer (bravo), with teamrig audit T1 --verdict "<what the review found>"), then wait on owner with the card unchanged';
+
+  it('refuses a card on a gate in securityGates while the task holds no verdict, naming the route through the reviewer', () => {
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: GATED })), `T1's card asks owner about permissions, a security gate [securityGates], and has no security verdict: it reaches owner only with one (core rule 9); ${route}`);
+    const asked = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION, card: GATED });
+    assert.match(error(set(asked, { waits: OWNER_DECISION, note: 'asked again' })), /^T1's card asks owner about permissions/, 'a card kept from an older row');
+  });
+
+  it('passes the card the verdict read, and one moved from the leader\'s wait to the owner\'s with its parts kept', () => {
+    assert.deepEqual(set(reviewed, { waits: OWNER_DECISION, card: GATED }), {
+      ok: true,
+      value: { status: 'waiting', note: 'x', evidence: null, skill: null, waits: OWNER_DECISION, card: GATED },
+    });
+    const onLead: Task = { ...reviewed, status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: TEST_CARD };
+    const moved = set(onLead, { waits: OWNER_DECISION, card: { gate: 'Permissions' } });
+    assert.deepEqual(moved.ok ? moved.value.card : undefined, GATED);
+  });
+
+  it('refuses a card whose question, options or recommendation changed since the verdict, but not its default', () => {
+    const stale = `the security verdict bravo gave on T1's card read another question, options or recommendation: an edit needs a new verdict (core rule 9); ${route}`;
+    assert.equal(error(set(reviewed, { waits: OWNER_DECISION, card: { ...GATED, recommend: 'Pro, the bigger launch' } })), stale);
+    assert.equal(error(set(reviewed, { waits: OWNER_DECISION, card: { ...GATED, options: [...GATED.options].reverse() } })), stale);
+    assert.equal(error(set(reviewed, { waits: OWNER_DECISION, card: { ...GATED, byDefault: 'Pro ships on the due date' } })), 'allowed');
+  });
+
+  it('passes a gate outside securityGates, and a card handing an audited hand step, without a verdict', () => {
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: TEST_OWNER_CARD })), 'allowed', 'budget is no security gate by default');
+    const strict = new RegisterPolicy(testConfig({ securityGates: ['budget'] }));
+    assert.match(error(set(TASK, { waits: OWNER_DECISION, card: TEST_OWNER_CARD }, strict)), /^T1's card asks owner about budget, a security gate/, 'the team names its own');
+    const step = '/w/tasks/T1/grant-read.ps1';
+    const sha256 = 'a'.repeat(64);
+    const audited: Task = { ...TASK, audits: [{ path: step, sha256, by: 'bravo', at: VERDICT.at }] };
+    assert.equal(error(set(audited, { waits: OWNER_DECISION, card: GATED, run: { path: step, sha256 } })), 'allowed', 'the audit of its file is the reviewer\'s read');
+  });
+
+  it('holds a card marked --security to it on any gate and on an approval too, kept from the leader\'s wait', () => {
+    const marked: DecisionCard = { ...TEST_OWNER_CARD, security: true };
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: marked })), `T1's card is marked --security and has no security verdict: it reaches owner only with one (core rule 9); ${route}`);
+    assert.match(error(set(TASK, { waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, options: [], security: true } })), /^T1's card is marked --security/);
+    const onLead = set(TASK, { waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, security: true } });
+    assert.deepEqual(onLead.ok ? onLead.value.card : undefined, { ...TEST_CARD, security: true }, "taken on the leader's wait, where the reviewer reads it");
+    const asked: Task = { ...TASK, status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, security: true } };
+    assert.match(error(set(asked, { waits: OWNER_DECISION, card: { gate: 'budget' } })), /^T1's card is marked --security/, 'kept when the wait moves to the owner');
+    assert.deepEqual(set({ ...asked, securityVerdict: VERDICT }, { waits: OWNER_DECISION, card: { gate: 'budget' } }).ok, true);
+  });
+
+  it("routes the lead, who has no leader to wait on, through the security reviewer's wait", () => {
+    const lead = testTask({ status: 'in-progress', startedAt: TASK.startedAt, owner: 'lead' });
+    assert.match(
+      error(policy.setStatus(lead, 'lead', { status: 'waiting', note: 'x', waits: OWNER_DECISION, card: GATED }, CTX)),
+      /; set the card on a wait on the security reviewer first, have it read/,
+    );
   });
 });
 

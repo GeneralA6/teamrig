@@ -9,7 +9,7 @@ import { askFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, clearAskDir } from '../refresh/clear-asks.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
-import { FakeProcesses } from '../testing/fake-processes.ts';
+import { FakeProcesses, NO_POWERSHELL } from '../testing/fake-processes.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { EXIT } from './runtime.ts';
@@ -23,13 +23,13 @@ const SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', co
 const RESTART_ALPHA = ['restart', 'alpha', '--team', 'app', '--at', AT, '--project', APP];
 
 /** A team whose session alpha wrote its handover and asked for its restart, with its Claude Code running. */
-async function armed(supervised: boolean, config: JsonRecord = AUTO_RESTART_TEAM, effort: EffortLevel | null = null): Promise<{ kit: CliHarness; store: RefreshStore; processes: FakeSessionProcesses }> {
+async function armed(supervised: boolean, config: JsonRecord = AUTO_RESTART_TEAM, effort: EffortLevel | null = null, session = 'alpha'): Promise<{ kit: CliHarness; store: RefreshStore; processes: FakeSessionProcesses }> {
   const kit = new CliHarness(config);
   // A finished turn: the restart waits while one still runs.
   await kit.files.write(TRANSCRIPT, '{"type":"user"}\n{"type":"system","subtype":"turn_duration"}\n');
   const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
-  await store.setState('alpha', { phase: 'ready', task: 'T3', at: AT, tokens: null, noticed: true, transcript: null, claudePid: null });
-  await store.setRestart('alpha', { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised, effort });
+  await store.setState(session, { phase: 'ready', task: 'T3', at: AT, tokens: null, noticed: true, transcript: null, claudePid: null });
+  await store.setRestart(session, { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised, effort });
   return { kit, store, processes: new FakeSessionProcesses().add(SHELL).add(CLAUDE) };
 }
 
@@ -85,9 +85,10 @@ describe('teamrig restart', () => {
 
   it('opens a new tab that launches the session, then closes the old tab', async () => {
     const { kit, store, processes } = await armed(false);
-    const tabs = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const tabs = new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL).onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: tabs, platform: 'win32' });
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in a new tab'], stderr: [] });
+    assert.deepEqual(tabs.keptFocus, ['wt.exe'], 'a restart never takes the focus (T2510)');
     const [tab] = tabs.started;
     assert.ok(tab);
     assert.deepEqual(tab.args.slice(0, 7), ['-w', '0', 'new-tab', '--title', '[app] alpha', '-d', APP]);
@@ -100,7 +101,7 @@ describe('teamrig restart', () => {
 
   it("opens the new tab in the team's own Windows Terminal window when open.teamWindow is on (T1427)", async () => {
     const { kit, processes } = await armed(false, { ...AUTO_RESTART_TEAM, open: { teamWindow: true } });
-    const tabs = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+    const tabs = new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL).onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: tabs, platform: 'win32' });
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in a new tab'], stderr: [] });
     assert.deepEqual(tabs.started[0]?.args.slice(0, 3), ['-w', 'teamrig-app', 'new-tab']);
@@ -108,7 +109,7 @@ describe('teamrig restart', () => {
 
   it('tells the session in its inbox when no restart happened, and exits 1', async () => {
     const { kit, processes } = await armed(false);
-    const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses(), platform: 'win32' });
+    const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL), platform: 'win32' });
     assert.equal(result.code, EXIT.failed);
     assert.match(result.stdout[0] ?? '', /^FAILED the restart of app-alpha: no new tab opened/);
     assert.deepEqual(processes.ends, []);
@@ -121,6 +122,15 @@ describe('teamrig restart', () => {
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32' });
     assert.equal(result.code, EXIT.ok);
     assert.match(kit.files.get(INBOX) ?? '', /teamrig: you were restarted, but refresh\.endCommand failed \(exit code 1\)/);
+  });
+
+  it("restarts the lead by default and cancels a member's restart, the default automatic restart being on for the lead only", async () => {
+    const lead = await armed(true, TEAM, null, 'lead');
+    const restarted = await lead.kit.run(['restart', 'lead', '--team', 'app', '--at', AT, '--project', APP], { sessionProcesses: lead.processes, platform: 'win32' });
+    assert.deepEqual(restarted.stdout, ['RESTARTED app-lead in the same tab']);
+    const member = await armed(true, TEAM);
+    const cancelled = await member.kit.run(RESTART_ALPHA, { sessionProcesses: member.processes });
+    assert.match(cancelled.stdout[0] ?? '', /^CANCELLED the restart of app-alpha: the automatic restart is off/);
   });
 
   it('cancels, clearing the request, when the automatic restart is off', async () => {
@@ -139,7 +149,7 @@ describe('teamrig restart', () => {
   for (const outcome of outcomes) {
     it(`logs ${outcome.name} to the restart log`, async () => {
       const { kit, processes } = await armed(outcome.supervised, outcome.config);
-      await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses(), platform: 'win32' });
+      await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL), platform: 'win32' });
       const lines = (kit.files.get(RESTART_LOG) ?? '').split('\n').filter((line) => line !== '');
       assert.equal(lines.length, 1);
       const entry: unknown = JSON.parse(lines[0] ?? '');

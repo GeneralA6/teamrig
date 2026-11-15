@@ -39,6 +39,35 @@ describe('grantsMadeBy', () => {
     assert.deepEqual(made(sample, 'run.sh'), ['secret-read'], 'a shell reads ${NAME} from the environment');
   });
 
+  it('sees a read of an OS credential store on each OS, inline or as argv items (T1401)', () => {
+    const reads = [
+      '[DllImport("advapi32.dll", CharSet = CharSet.Unicode)] static extern bool CredReadW(string target, int type, int flags, out IntPtr cred);',
+      'CredEnumerate(null, 0, out count, out list)',
+      '$vault = New-Object Windows.Security.Credentials.PasswordVault',
+      '$c = Get-StoredCredential -Target github',
+      'security find-generic-password -s github -w',
+      "execFileSync('security', ['find-internet-password', '-s', host, '-w'])",
+      'secret-tool lookup service github',
+      "spawnSync('secret-tool', ['lookup', 'service', 'github'])",
+      "import keytar from 'keytar';\nconst token = await keytar.getPassword('github', user);",
+      "const keytar = require('keytar');\nawait keytar.findCredentials('github');",
+      "token = keyring.get_password('github', user)",
+      'printf "host=github.com\\n" | git credential fill',
+      "execFileSync('git', ['credential', 'fill'], { input })",
+      'TOKEN_TEXT=$(gh auth token)',
+      "execFileSync('gh', ['auth', 'token'])",
+    ];
+    for (const read of reads) {
+      assert.deepEqual(made(read), ['secret-read'], read);
+    }
+  });
+
+  it('passes a credential store call that reads no secret, and look-alike words', () => {
+    for (const text of ['cmdkey /list', 'cmdkey /delete:github', 'secret-tool store --label x service github', 'git credential approve', 'gh auth status', 'form.getPassword()', 'git credential-manager --version']) {
+      assert.deepEqual(made(text), [], text);
+    }
+  });
+
   it('passes env variables that hold no credential and lower-case template values', () => {
     assert.deepEqual(made('process.env.HOME; $PATH; ${PWD}; process.env.TEAMRIG_TEAM; `${key}`; $env:BYPASS_COUNT'), []);
   });

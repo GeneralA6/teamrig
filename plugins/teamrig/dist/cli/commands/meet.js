@@ -86,6 +86,7 @@ export async function meet(args, runtime) {
     const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
     const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
     const team = found.team;
-    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: false, fresh: true, prompt: meetPrompt(team, id, config.register.ownerSource) });
+    // The meeting tab is the one the owner asked for, so it takes the focus even while a meeting is open (T2510).
+    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: false, focus: 'take', fresh: true, prompt: meetPrompt(team, id, config.register.ownerSource) });
     return printOpenResult(runtime, opened);
 }

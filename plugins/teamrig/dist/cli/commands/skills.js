@@ -1,11 +1,11 @@
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { formatUtcDay, MS_PER_DAY, parseUtcDay } from "../../core/time.js";
 import { lintSkills } from "../../skills/lint.js";
+import { skillsToLint } from "../../skills/run-scripts.js";
 import { renderScorecard, scorecardRows } from "../../skills/scorecard-report.js";
 import { SCAN_MAX_BYTES, scanTranscripts } from "../../skills/scorecard-scan.js";
 import { ScorecardStore } from "../../skills/scorecard-store.js";
 import { signatureOf } from "../../skills/signature.js";
-import { SkillDir } from "../../skills/store.js";
 import { noPositionals, UsageError } from "../args.js";
 import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT } from "../runtime.js";
@@ -27,7 +27,7 @@ export async function scorecard(args, runtime) {
     const window = rangeOf(dayFlag(args.flags, 'from') ?? addDays(to, 1 - WINDOW_DAYS), to, 'from');
     const baselineTo = dayFlag(args.flags, 'baseline-to') ?? addDays(window.from, -1);
     const baseline = rangeOf(dayFlag(args.flags, 'baseline-from') ?? addDays(baselineTo, -daysIn(window) + 1), baselineTo, 'baseline-from');
-    const skills = await new SkillDir(runtime.files, kit.paths.skills).readAll();
+    const skills = await skillsToLint(runtime.files, kit.paths.skills, runtime.userHome);
     const signatures = skills.map(signatureOf);
     const result = await scanTranscripts({ source: runtime.transcripts, store: new ScorecardStore(runtime.files, kit.paths.skillsScorecard), clock: runtime.clock }, {
         projectsDir: claudeProjectsDir(runtime.env, runtime.userHome),

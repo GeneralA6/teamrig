@@ -32,6 +32,9 @@ decide from alone. At your first message of the day, or when you ask, the lead r
 - `INCIDENTS`: the active Maintenance bugs and critical tasks, the lead's team first, then each team under it;
 - `UNGATED`: the waits on you whose card names no owner gate or business decision; the lead decides those itself,
   sends each owner its answer and never reads them out;
+- `OWNER-PROOF`: the waits on you about a test, measure or proof of work you already approved that changes no
+  approved number, spends no money and writes no data; your approval of the work covers them, so the lead tells
+  each session to go ahead and never reads them out;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them;
 - `DONE`: what finished since the last meeting;
 - `HEALTH` and `FLOW`: the last week's numbers, as `teamrig stats` prints them, and `LIMIT`, the days the week sat
@@ -101,7 +104,7 @@ stays allowed
 
 A permission prompt holds a session until a human answers it; overnight that is hours of a session doing nothing.
 `prompts.hookAsks` (since 0.98.0, `ask` by default) set to `refuse` turns every question a teamrig hook would
-raise (the push guard, the commit, package and secret guards under `ask`, the helper gate) into a refusal whose reason tells
+raise (the push and db-write guards, the commit, package and secret guards under `ask`, the helper gate) into a refusal whose reason tells
 the session to record the step as waiting for the owner's approval and take its next task, so the work queues for the
 owner instead of a session waiting on them. Refusals stay as they were. A prompt Claude Code raises on its own gets
 an answer for its case from a `PermissionRequest` hook (since 0.151.0): a line that runs one of the session's own
@@ -171,7 +174,7 @@ sequenceDiagram
   M->>R: 2 minutes on: teamrig hook wake-check
   R-->>M: wake, with the prompt and its cost
   M->>W: the prompt, sent as the teamrig plugin
-  Note over M: toast: teamrig woke this tab for T12 (about 27k W, warm cache)
+  Note over M: toast: teamrig woke this tab for T12 (at least about 27k W for the first call, warm cache; whole turns usually cost more)
 ```
 
 - What wakes a session: a task it owns that another session handed to it, raised, reopened or freed by finishing a

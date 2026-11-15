@@ -111,6 +111,7 @@ async function reopen(runtime, teams, tab, terminal) {
 /**
  * Opens the tab of one restored session. A session `launch` ran comes back through `launch` again, as its team
  * session, on its effort; any other resumes through `restore resume`, outside any team, as it ran before.
+ * Every restored tab keeps the focus (T2510): the tabs come back one by one while the owner works in another.
  */
 async function openRestoredTab(runtime, tab, terminal) {
     const { team } = tab;
@@ -123,6 +124,7 @@ async function openRestoredTab(runtime, tab, terminal) {
             prompt: tab.prompt,
             terminal: terminal ?? team.terminal,
             teamWindow: team.teamWindow,
+            focus: 'keep',
             resume: tab.claudeSession,
             ...(tab.effort === undefined ? {} : { effort: tab.effort }),
         });
@@ -141,7 +143,7 @@ async function openRestoredTab(runtime, tab, terminal) {
         ...(tab.prompt === undefined ? [] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
     ];
     const window = team === undefined ? undefined : teamWindowOf(team.teamWindow, team.team);
-    const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv, window });
+    const outcome = await openTab(runtime, terminal ?? team?.terminal ?? 'auto', { title: tab.title, folder: tab.folder, argv, window, focus: 'keep' });
     return reopenOutcomeOf(runtime, outcome, tab.folder, argv);
 }
 /**
@@ -151,6 +153,17 @@ async function openRestoredTab(runtime, tab, terminal) {
 function roomWaitMsOf(teams) {
     const minutes = [...teams.values()].map(({ config }) => config.open.headroom.loadMinutes);
     return Math.max(DEFAULT_HEADROOM.loadMinutes, ...minutes) * 60_000;
+}
+/**
+ * Ends a hung session's Claude Code at once. Its pid is checked to still run Claude Code first, so a pid the system
+ * gave another program since is never ended (`gone`).
+ */
+async function endSession(runtime, entry) {
+    const { pid } = entry;
+    if (pid === undefined || !(await runsClaude(runtime.sessionProcesses, pid))) {
+        return { kind: 'gone' };
+    }
+    return runtime.sessionProcesses.end(pid, 'force');
 }
 /** The restore over this machine: the kit home's sessions folder, every team on it, its processes and terminals. */
 async function restoreDepsOf(runtime, terminal) {
@@ -174,6 +187,8 @@ async function restoreDepsOf(runtime, terminal) {
         roomWaitMs: roomWaitMsOf(teams),
         stillRunning: (entry) => runsClaude(runtime.sessionProcesses, entry.pid),
         transcriptOf: (entry) => finder.find(entry),
+        modifiedAt: (path) => runtime.files.modifiedAt(path),
+        end: (entry) => endSession(runtime, entry),
         readTail: (path, maxBytes) => runtime.files.readTail(path, maxBytes),
         reopen: (tab) => reopen(runtime, teams, tab, terminal),
         print: (line) => runtime.out.stdout(line),
@@ -211,7 +226,8 @@ export async function restoreCheck(args, runtime) {
         ...(terminal === undefined ? [] : ['--terminal', terminal]),
         ...homeArgs(homeRuntime),
     ];
-    const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined });
+    // Opened at login, unasked: the owner's first window keeps the focus (T2510).
+    const outcome = await openTab(runtime, terminal ?? 'auto', { title: RESTORE_TAB_TITLE, folder: runtime.userHome, argv, window: undefined, focus: 'keep' });
     if (outcome.kind === 'opened') {
         await restoreLogOf(homeRuntime)(`check: opened the restore tab; ${launchWords(outcome.terminal, outcome.end)}`);
         runtime.out.stdout(`OPENED the restore of ${count} Claude Code session${count === 1 ? '' : 's'} in a new ${TERMINAL_LABELS[outcome.terminal]}`);

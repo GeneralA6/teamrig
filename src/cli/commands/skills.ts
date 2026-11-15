@@ -1,11 +1,11 @@
 import { claudeProjectsDir } from '../../budget/discover.ts';
 import { formatUtcDay, MS_PER_DAY, parseUtcDay } from '../../core/time.ts';
 import { lintSkills } from '../../skills/lint.ts';
+import { skillsToLint } from '../../skills/run-scripts.ts';
 import { renderScorecard, scorecardRows, type DayRange } from '../../skills/scorecard-report.ts';
 import { SCAN_MAX_BYTES, scanTranscripts } from '../../skills/scorecard-scan.ts';
 import { ScorecardStore } from '../../skills/scorecard-store.ts';
 import { signatureOf } from '../../skills/signature.ts';
-import { SkillDir } from '../../skills/store.ts';
 import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -29,7 +29,7 @@ export async function scorecard(args: ParsedArgs, runtime: CliRuntime): Promise<
   const window = rangeOf(dayFlag(args.flags, 'from') ?? addDays(to, 1 - WINDOW_DAYS), to, 'from');
   const baselineTo = dayFlag(args.flags, 'baseline-to') ?? addDays(window.from, -1);
   const baseline = rangeOf(dayFlag(args.flags, 'baseline-from') ?? addDays(baselineTo, -daysIn(window) + 1), baselineTo, 'baseline-from');
-  const skills = await new SkillDir(runtime.files, kit.paths.skills).readAll();
+  const skills = await skillsToLint(runtime.files, kit.paths.skills, runtime.userHome);
   const signatures = skills.map(signatureOf);
   const result = await scanTranscripts(
     { source: runtime.transcripts, store: new ScorecardStore(runtime.files, kit.paths.skillsScorecard), clock: runtime.clock },

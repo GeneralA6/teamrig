@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { emptyWarnState } from '../budget/warn.ts';
+import { WarnStore } from '../budget/warn-store.ts';
 import { formatConfig } from '../config/load.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { CONFIG_LOCK_PATH, configChangedMeanwhile, hired } from '../testing/config-race.ts';
@@ -72,6 +75,42 @@ describe('budget setup', () => {
     assert.equal(again.code, EXIT.ok);
     assert.match(again.stdout[0] ?? '', /^UNCHANGED .*: the budget already reads this way$/);
     assert.equal(kit.files.get(CONFIG_PATH), written);
+  });
+
+  describe('a release (T2801)', () => {
+    const HOLDING: JsonRecord = { ...TEAM, budget: { enabled: true, overAction: 'ask-lead' } };
+    async function heldAlpha(): Promise<CliHarness> {
+      const kit = new CliHarness(HOLDING);
+      await new WarnStore(kit.files, join(TEAM_HOME, 'state', 'usage', 'warn')).write('alpha', { ...emptyWarnState('2030-01-08'), held: true });
+      return kit;
+    }
+    const asksOf = (kit: CliHarness, id: string): Promise<readonly unknown[]> => new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks')).read(id);
+
+    it('wakes the held sessions when the budget turns warn only, the others not', async () => {
+      const kit = await heldAlpha();
+      const result = await setup(kit, '--over', 'warn', '--yes');
+      assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+      assert.ok(result.stdout.includes('WOKE app-alpha: held past the daily budget, now free'), result.stdout.join('\n'));
+      assert.match(kit.files.get(join(TEAM_HOME, 'state', 'inbox', 'alpha.md')) ?? '', /Budget: lead set the team budget to warn only, so your budget hold is over/);
+      assert.equal((await asksOf(kit, 'alpha')).length, 1);
+      assert.deepEqual(await asksOf(kit, 'bravo'), []);
+    });
+
+    it('wakes the held sessions when the budget turns off', async () => {
+      const kit = await heldAlpha();
+      const result = await setup(kit, '--off', '--yes');
+      assert.match(kit.files.get(join(TEAM_HOME, 'state', 'inbox', 'alpha.md')) ?? '', /lead turned the team budget off/);
+      assert.ok(result.stdout.includes('WOKE app-alpha: held past the daily budget, now free'), result.stdout.join('\n'));
+    });
+
+    it('wakes nobody on a preview, or a change that still holds', async () => {
+      const kit = await heldAlpha();
+      const preview = await setup(kit, '--over', 'warn');
+      assert.ok(!preview.stdout.some((line) => line.startsWith('WOKE')), preview.stdout.join('\n'));
+      const holding = await setup(kit, '--over', 'ask', '--yes');
+      assert.ok(!holding.stdout.some((line) => line.startsWith('WOKE')), holding.stdout.join('\n'));
+      assert.deepEqual(await asksOf(kit, 'alpha'), []);
+    });
   });
 
   it('turns the budget off with --off and keeps its policy', async () => {

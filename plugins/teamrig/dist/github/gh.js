@@ -2,10 +2,12 @@ import { spawn } from 'node:child_process';
 import { endOf } from "../test-run/shell.js";
 import { QUERY_VARIABLES, RAW_FIELD } from "./queries.js";
 /**
- * The only `gh` command line teamrig runs: a page of a shipped issue query. The import never writes to GitHub (no
- * issue, label, comment or assignee change), so the runner refuses any other command line before it starts.
+ * The four kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import, which never writes
+ * to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), and one comment on or
+ * the close of one issue or pull request (issue comment and issue close). The runner refuses any other command line
+ * before it starts: no issue edit, reopen, label, assignee change, merge or delete.
  *
- * True for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
+ * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
  * `--paginate`, `-X`, `--input`, `--hostname`) is refused, so the run cannot read a file or send another request.
  */
@@ -13,17 +15,86 @@ export function isIssueQuery(args) {
     if (args[0] !== 'api' || args[1] !== 'graphql') {
         return false;
     }
-    const fields = rawFields(args.slice(2));
-    const query = fields?.get('query');
-    const variables = query === undefined ? undefined : QUERY_VARIABLES.get(query);
-    if (fields === null || variables === undefined) {
+    const pairs = rawPairs(args.slice(2));
+    const keys = pairs?.map(([key]) => key) ?? [];
+    if (pairs === null || new Set(keys).size !== keys.length) {
         return false;
     }
-    return [...fields.keys()].every((key) => key === 'query' || variables.has(key));
+    const query = new Map(pairs).get('query');
+    const variables = query === undefined ? undefined : QUERY_VARIABLES.get(query);
+    return variables !== undefined && keys.every((key) => key === 'query' || variables.has(key));
 }
-/** `-f key=value` pairs by key; null when anything else is there or a key comes twice. */
-function rawFields(args) {
-    const fields = new Map();
+/**
+ * A repository as GitHub names it, `owner/name`: an owner of letters, digits and `-`, a name of those and `.`
+ * and `_` but never `.` or `..` alone, so the path can step to no other API.
+ */
+const REPO_NAME = /^[A-Za-z0-9-]+\/(?!\.\.?$)[A-Za-z0-9_.-]+$/;
+/** The field gh sends as one item of the issue's label list. */
+const LABEL_FIELD = 'labels[]';
+/** The command line that opens one issue: the REST create, every field raw, so no value is read as a file or a number. */
+export function issueCreateArgs(draft) {
+    return ['api', `repos/${draft.repo}/issues`, '-X', 'POST', RAW_FIELD, `title=${draft.title}`, RAW_FIELD, `body=${draft.body}`, ...draft.labels.flatMap((label) => [RAW_FIELD, `${LABEL_FIELD}=${label}`])];
+}
+/**
+ * True for `gh api repos/<owner>/<name>/issues -X POST -f title=<t> -f body=<b> [-f labels[]=<l>]...`: one
+ * issue created, its title and body given once each and any labels after them. A path past `issues` (an issue
+ * number, comments, labels), another method, or any other flag or field is refused, so the run can create one
+ * issue and change nothing else.
+ */
+export function isIssueCreate(args) {
+    const path = args[1] ?? '';
+    if (args[0] !== 'api' || !path.startsWith('repos/') || !path.endsWith('/issues') || args[2] !== '-X' || args[3] !== 'POST') {
+        return false;
+    }
+    const pairs = rawPairs(args.slice(4));
+    if (!REPO_NAME.test(path.slice('repos/'.length, -'/issues'.length)) || pairs === null || pairs.length < 2) {
+        return false;
+    }
+    const [title, body, ...labels] = pairs;
+    return title?.[0] === 'title' && body?.[0] === 'body' && labels.every(([key]) => key === LABEL_FIELD);
+}
+/** The command line that posts one comment on an issue or pull request, its body a raw field so it stays text. */
+export function issueCommentArgs(target, body) {
+    return ['api', `repos/${target.repo}/issues/${target.number}/comments`, '-X', 'POST', RAW_FIELD, `body=${body}`];
+}
+/** The command line that closes one issue or pull request: the issues API closes a pull request too. */
+export function issueCloseArgs(target) {
+    return ['api', `repos/${target.repo}/issues/${target.number}`, '-X', 'PATCH', RAW_FIELD, 'state=closed'];
+}
+/** `repos/<owner>/<name>/issues/<number>`, then `/comments` or nothing: the paths of a comment and a close. */
+const ISSUE_PATH = /^repos\/([^/]+\/[^/]+)\/issues\/([1-9][0-9]{0,9})(\/comments)?$/;
+/** The method of `gh api <path> -X <method>`, and whether the path is the comments', when it is one issue's; else undefined. */
+function issueCall(args) {
+    const match = ISSUE_PATH.exec(args[1] ?? '');
+    const repo = match?.[1];
+    const method = args[3];
+    if (args[0] !== 'api' || match === null || repo === undefined || !REPO_NAME.test(repo) || args[2] !== '-X' || method === undefined) {
+        return undefined;
+    }
+    return { method, comments: match[3] !== undefined };
+}
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number>/comments -X POST -f body=<text>` and nothing more: one
+ * comment, its body the only field. Another path, method, flag or field is refused, so the run edits, labels or
+ * assigns nothing.
+ */
+export function isIssueComment(args) {
+    const call = issueCall(args);
+    const pairs = rawPairs(args.slice(4));
+    return call?.method === 'POST' && call.comments && pairs?.length === 1 && pairs[0]?.[0] === 'body';
+}
+/**
+ * True for `gh api repos/<owner>/<name>/issues/<number> -X PATCH -f state=closed` and nothing more: the close of
+ * one issue or pull request. Any other field (a title, a body, labels, a reopen) is refused.
+ */
+export function isIssueClose(args) {
+    const call = issueCall(args);
+    const pairs = rawPairs(args.slice(4));
+    return call?.method === 'PATCH' && !call.comments && pairs?.length === 1 && pairs[0]?.[0] === 'state' && pairs[0][1] === 'closed';
+}
+/** `-f key=value` pairs in order; null when anything else is there. */
+function rawPairs(args) {
+    const pairs = [];
     for (let at = 0; at < args.length; at += 2) {
         const flag = args[at];
         const field = args[at + 1];
@@ -31,22 +102,22 @@ function rawFields(args) {
         if (flag !== RAW_FIELD || field === undefined || equals < 1) {
             return null;
         }
-        const key = field.slice(0, equals);
-        if (fields.has(key)) {
-            return null;
-        }
-        fields.set(key, field.slice(equals + 1));
+        pairs.push([field.slice(0, equals), field.slice(equals + 1)]);
     }
-    return fields;
+    return pairs;
 }
 /** How long one `gh` run may take before it is stopped: a page of a hundred issues takes seconds. */
 export const GH_TIMEOUT_MS = 60_000;
-/** A command line the runner will not start, because it is not a page of a shipped issue query. */
-export class GhNotReadError extends Error {
-    name = 'GhNotReadError';
+/** A command line the runner will not start: none of a shipped issue query's page, one issue's creation, comment or close. */
+export class GhRefusedError extends Error {
+    name = 'GhRefusedError';
     constructor(args) {
-        super(`teamrig only reads GitHub through its shipped issue queries: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+        super(`teamrig only runs gh for its shipped issue queries and to open, comment on or close an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
     }
+}
+/** True for each command line the runner starts. */
+export function isAllowedGh(args) {
+    return isIssueQuery(args) || isIssueCreate(args) || isIssueComment(args) || isIssueClose(args);
 }
 /**
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a
@@ -56,8 +127,8 @@ export class GhNotReadError extends Error {
 export function nodeGhRunner(program = 'gh', leading = [], timeoutMs = GH_TIMEOUT_MS) {
     return {
         run: (request) => {
-            if (!isIssueQuery(request.args)) {
-                return Promise.reject(new GhNotReadError(request.args));
+            if (!isAllowedGh(request.args)) {
+                return Promise.reject(new GhRefusedError(request.args));
             }
             return new Promise((resolve, reject) => {
                 const child = spawn(program, [...leading, ...request.args], {

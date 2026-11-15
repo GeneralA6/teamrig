@@ -99,7 +99,7 @@ describe('planOrder', () => {
   ];
 
   /** A place's rank in the given band at the given score. */
-  const rank = (band: Band, score: number): RankedPlace => ({ band, score, costOfDelay: score, sizePct: 1, workClass: 'Roadmap', goal: null });
+  const rank = (band: Band, score: number, prep = false): RankedPlace => ({ band, score, costOfDelay: score, sizePct: 1, workClass: 'Roadmap', goal: null, prep });
 
   it('decides on the first key that differs, each in turn', () => {
     const cases: [string, [PlanPlace, PlanPlace]][] = [
@@ -109,6 +109,8 @@ describe('planOrder', () => {
       ['band', pair({ ranked: rank(1, 1) }, { ranked: rank(2, 99) })],
       ['band', pair({ ranked: rank(2, 1) })],
       ['band', pair({ ranked: rank(1, 1), blocked: true }, { ranked: rank(2, 99) })],
+      ['band', pair({ ranked: rank(2, 1, true) }, { ranked: rank(1, 99) })],
+      ['band', pair({ ranked: rank(0, 1) }, { ranked: rank(1, 99, true) })],
       ['ready', pair({ ranked: rank(1, 1), at: 900 }, { ranked: rank(1, 99), started: true, blocked: true })],
       ['ready', pair({ at: 900 }, { started: true, blocked: true })],
       ['score', pair({ ranked: rank(1, 20), at: 900 }, { ranked: rank(1, 10), started: true })],
@@ -678,6 +680,20 @@ describe('TaskTree waitingOn', () => {
     assert.deepEqual(waiting[0]?.asks, [{ kind: 'decision', who: 'alpha' }]);
     assert.deepEqual(ids(waiting[1]?.needs ?? []), ['T2', 'T1'], 'the started need first');
     assert.deepEqual(tree.waitingOn('charlie'), []);
+  });
+
+  it('leaves out an approval the session already answered, either way, and keeps one another giver answered (T1422)', () => {
+    const started = '2030-01-07T09:00:00.000Z';
+    const asking = (id: string, answer: Task['answer']): Task =>
+      testTask({ id, owner: 'bravo', status: 'waiting', startedAt: started, waits: [{ kind: 'approval', who: 'lead' }], answer });
+    const at = NOW.toISOString();
+    const tree = treeOf(
+      asking('T1', null),
+      asking('T2', { by: 'lead', verdict: 'approved', at, note: null }),
+      asking('T3', { by: 'lead', verdict: 'declined', at, note: 'no tests' }),
+      asking('T4', { by: 'security', verdict: 'approved', at, note: null }),
+    );
+    assert.deepEqual(ids(tree.waitingOn('lead').map((entry) => entry.task)), ['T1', 'T4']);
   });
 
   it('leaves out a parked task, which no list shows its owner', () => {

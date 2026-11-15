@@ -17,11 +17,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job stops after 20 minutes (timeout-minutes), well past the slowest run, so a hung test fails its job
+# instead of holding the required check pending for GitHub's 6-hour default.
 jobs:
   gates:
     name: scrub and DCO gates
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -34,12 +37,29 @@ jobs:
       - run: node tools/scrub/cli.ts --github
       - run: node tools/dco/cli.ts --github
 
+  dependency-review:
+    name: dependency review
+    # Fails a pull request that adds or changes a dependency (an npm package or a GitHub Action) with a known
+    # advisory of any severity, dev dependencies included: they run at install and build time too. It reads
+    # GitHub's dependency graph, so it needs no checkout. A push to main or a run by hand has no pull request
+    # to compare, so the step skips there and the job passes.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          fail-on-severity: low
+          fail-on-scopes: runtime, development, unknown
+
   size-rule:
     name: commit size rule
     # Fails a commit over 400 changed non-test lines or 15 non-test files whose message has no
     # Large-commit: <reason> line, the push guard's rule (see CONTRIBUTING.md).
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -56,6 +76,7 @@ jobs:
     # below the floors in tools/ci/coverage.json (see CONTRIBUTING.md).
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -73,6 +94,7 @@ jobs:
     # which Claude Code ignores (see CONTRIBUTING.md).
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -85,15 +107,16 @@ jobs:
 
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
-    # Each run tests all three OSes on node 22 and 24, since paths,
-    # renames and hook launch differ by OS (macOS minutes bill at 10x, Windows at 2x).
+    # Each run tests all three OSes, since paths, renames and hook launch differ by OS (macOS minutes
+    # bill at 10x, Windows at 2x). Node 22 only, to ease the shared free GitHub runners.
     if: ${{ !github.event.repository.private }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: [22, 24]
+        node: [22]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -123,9 +146,26 @@ jobs:
     # failed, was cancelled or skipped; always() runs it after a failed one, where a job would skip, which
     # a required check reads as a pass.
     if: ${{ always() && !github.event.repository.private }}
-    needs: [gates, size-rule, coverage, plugin-version, test]
+    needs: [gates, dependency-review, size-rule, coverage, plugin-version, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # actions: read lists this run's jobs; a job's permissions replace the workflow's, so contents: read is restated.
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: fail unless every job it needs passed
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
         run: exit 1
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      # needs.test.result folds the matrix into one result, which stayed a success when a macOS leg was
+      # cancelled because no runner took it; the jobs API lists each leg, so every one must have passed.
+      - name: fail unless every job of the run passed, each matrix leg alone
+        run: node tools/ci/every-check-cli.ts "every check passed"
+        env:
+          GH_TOKEN: ${{ github.token }}

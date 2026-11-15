@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { launchOf } from '../../config/launch.ts';
+import { autoRestartOf } from '../../config/refresh.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
@@ -19,7 +20,7 @@ import { postToolUseContext } from '../../hooks/post-tool-use.ts';
 import { passRecordGuardOutput } from '../../hooks/pass-record-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
-import { liveTasksPointer, showsLiveTasks } from '../../hooks/live-tasks.ts';
+import { showsLiveTasks } from '../../hooks/live-tasks.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
 import { sessionStartContext, sessionStartOutput, type CuttableNote, type SessionStartInput } from '../../hooks/session-start.ts';
@@ -41,6 +42,7 @@ import {
   type StopDecision,
   type StopFacts,
 } from '../../refresh/decide.ts';
+import { ownerTurnsLine, ownerTurnsText, type OwnerTurn } from '../../refresh/owner-turns.ts';
 import { carryLines, carryStartOf, readCarry, type CarriedCron, type Carry, type CarryPlaces, type CarryStart } from '../../refresh/carry.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
@@ -53,18 +55,19 @@ import { keptRulesAboveOf, readTeamRules } from '../team-rules.ts';
 import { loadTree } from '../tree.ts';
 import { bindAfterClear, bindHintOnce, bindNamedTab, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
-import { startAutoSync } from './gh-auto.ts';
+import { startAutoSync } from './issue-sync-auto.ts';
 import { closedSendHold } from './hook-closed-send.ts';
 import { coldSendHold } from './hook-cold-send.ts';
 import { blockStartOf, liveTasksNoteOf } from './live-tasks.ts';
 import { droppedEditReasonOf } from './hook-dropped-edit.ts';
+import { handStepReasonOf } from './hook-hand-step.ts';
 import { effortWritebackOf, type EffortWritebackOutcome } from './hook-effort-writeback.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { restartOrPark, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { promptSecretBlock } from './hook-prompt-secret.ts';
 import { guardLoadOf, hookTeam } from './hook-guard-load.ts';
-import { execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from './hook-guard-outputs.ts';
 import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
@@ -111,6 +114,24 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
     return EXIT.ok;
   }
   const output = await packageGuardOutputOf(runtime, guard, payload);
+  if (output !== '') {
+    runtime.out.stdout(output);
+  }
+  return EXIT.ok;
+}
+
+/**
+ * PreToolUse on Bash and PowerShell: asks about, or refuses as the team set, a line that writes to a database by hand
+ * (a SQL client, a database program or Node client module the team names, a team entrypoint run with its apply flag).
+ */
+export async function dbWriteGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const payload = parseJson(await runtime.readStdin());
+  const guard = await guardLoadOf(payload, runtime);
+  if (guard === undefined) {
+    return EXIT.ok;
+  }
+  const output = await dbWriteGuardOutputOf(runtime, guard, payload);
   if (output !== '') {
     runtime.out.stdout(output);
   }
@@ -508,7 +529,7 @@ interface CarryRead {
 async function carryFrom(runtime: CliRuntime, store: RefreshStore, id: string, transcript: string, now: number): Promise<CarryRead> {
   const record = await store.carried(id);
   const inherited = record?.transcript === transcript ? record.crons : [];
-  return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited), inherited };
+  return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited, store.handoverPath(id)), inherited };
 }
 
 /**
@@ -538,12 +559,32 @@ async function carriedLinesOf(runtime: CliRuntime, store: RefreshStore, id: stri
   } catch (error) {
     return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
   }
-  const lines = read.carry === undefined ? [] : carryLines(read.carry, now, start, zone);
+  const lines = read.carry === undefined ? [] : [...carryLines(read.carry, now, start, zone), ...(await ownerTurnsNoteOf(runtime, store, id, read.carry.ownerTurns ?? []))];
   try {
     await keepCarried(store, id, read.carry?.crons ?? read.inherited, start, startTranscriptOf(payload));
     return lines;
   } catch (error) {
     return [...lines, carryRecordFailed(error)];
+  }
+}
+
+/**
+ * What the owner typed in the old session, written beside the handover for the fresh start to read, and the note's
+ * line that points at it; a file from an earlier refresh is removed when there is nothing to carry. Says, never
+ * throws, when it cannot write it.
+ */
+async function ownerTurnsNoteOf(runtime: CliRuntime, store: RefreshStore, id: string, turns: readonly OwnerTurn[]): Promise<readonly string[]> {
+  const path = store.ownerTurnsPath(id);
+  try {
+    const line = ownerTurnsLine(turns, path);
+    if (line === undefined) {
+      await runtime.files.remove(path);
+      return [];
+    }
+    await runtime.files.write(path, ownerTurnsText(turns));
+    return [line];
+  } catch (error) {
+    return [`${KIT_NAME} could not keep what the owner typed in your old session (${errorMessage(error)}): read its transcript's last prompts before you go on.`];
   }
 }
 
@@ -619,8 +660,8 @@ async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, 
 
 /**
  * The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction, after `start`'s
- * first lines, which make it the work block's start (T1529), with its pointer for a start that has no room for it (which
- * names `start` instead); none at another start or for no session.
+ * first lines, which make it the work block's start (T1529), with its shorter forms for a start with less room (T1939);
+ * none at another start or for no session.
  */
 async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, id: string | undefined, payload: unknown, refresh: RefreshStart): Promise<CuttableNote | undefined> {
   const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
@@ -628,7 +669,7 @@ async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig,
     return undefined;
   }
   const start = await blockStartOf(runtime, kit, config, id);
-  return { text: await liveTasksNoteOf(runtime, kit.paths, config, id, teamZone(config, runtime), start), pointer: liveTasksPointer(id, KIT_NAME) };
+  return liveTasksNoteOf(runtime, kit.paths, config, id, teamZone(config, runtime), start);
 }
 
 /** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */
@@ -684,7 +725,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, paylo
     session: { id, team: kit.paths.team, name: roster.nameOf(id) ?? id },
     handoverPath: store.handoverPath(id),
     command: KIT_NAME,
-    canRestart: config.refresh.autoRestart && target !== undefined,
+    canRestart: autoRestartOf(config, id) && target !== undefined,
     transcript: stringField(payload, 'transcript_path') ?? null,
   };
   // The facts are read only as far as the decision needs them: most turn ends stop at the transcript's tail.
@@ -777,6 +818,11 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   if (dropped !== undefined) {
     return blockOutput(dropped);
   }
+  // Before the refresh too, for the same reason: a hand step typed into the reply is unsafe now (core rule 11).
+  const handStep = await handStepReasonOf(runtime, payload).catch((): string | undefined => undefined);
+  if (handStep !== undefined) {
+    return blockOutput(handStep);
+  }
   const decision = await refreshDecisionOf(runtime, scope, payload).catch((): StopDecision => ({ kind: 'none' }));
   // Before the model notices, which then read the level just written: no "runs at another effort" for a typed /effort.
   const effort = await effortWritebackOf(runtime, scope, payload).catch((): EffortWritebackOutcome => ({ config: scope.config, lines: [] }));
@@ -797,7 +843,9 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
 
 /**
  * Stop, at the end of every turn: first sends the session back, once, to a skill edit of the turn that
- * Claude Code refused and it never redid (hook-dropped-edit.ts), leaving the rest to its next stop. It asks the session for its handover once when its context reached the
+ * Claude Code refused and it never redid (hook-dropped-edit.ts), leaving the rest to its next stop; next, once, to a
+ * reply that handed the human a shell or JSON block or a call line with no pinned sha256 (hook-hand-step.ts, core
+ * rule 11). It asks the session for its handover once when its context reached the
  * team's threshold or the lead asked, and at a task end (`set done`) also after enough tasks, then tells the user
  * once that it waits for /clear, or with `refresh.autoRestart` that it restarts by itself when idle (hook-restart.ts). It
  * writes an `/effort` the user typed in the session to its `launch` entry, logs it and tells its leader
@@ -807,7 +855,7 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
  * hired session whose last open task closed, once, to write its handover and retire; after a `set` to waiting it sends the
  * session, once, to its work it can start that does not come after the waiting task (keep-working.ts),
  * never in quiet hours or past its daily budget. Once per `github.everyMinutes` for the whole
- * team it starts `gh sync --auto` hidden in the background (gh-auto.ts), and every 10 minutes it tells the lead of
+ * team it starts `issue sync --auto` hidden in the background (issue-sync-auto.ts), and every 10 minutes it tells the lead of
  * a team tab that runs without its hooks (hook-hookless.ts). With tab status on, it also sets the
  * tab's title to the ready circle, or the working one while a helper runs, in any tab of the team (hook-tab-status.ts).
  * Each team session's reply is logged for the task pane (hook-turn-log.ts).

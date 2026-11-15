@@ -1,3 +1,4 @@
+import { resetSummaryLine } from '../../budget/resets.ts';
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
@@ -18,6 +19,7 @@ import { inboxDepsOf, read } from './inbox.ts';
 import { startMeetingLine } from './meetings.ts';
 import { checkReport, list, waitingReport } from './register.ts';
 import { fileLockOf } from '../file-locks.ts';
+import { sweepDeadDetachedRuns } from '../detached-sweep.ts';
 
 /** The most inbox lines one start posts the lead on warnings no session owns; the rest wait for the next start. */
 export const MAX_UNOWNED_NOTICES = 5;
@@ -30,10 +32,11 @@ export const MAX_UNOWNED_NOTICES = 5;
  * --session`), the other sessions' tasks waiting on it (`WAITING ON YOU`, only when some do), the check flags it
  * acts on (the lead's: every flag, as `check`; any other session's: those of the tasks and skills it owns, a sub-lead's
  * also those of its group's tasks) and the
- * week's use (the first line of `budget`). `--all` prints the list and the flags in their long form, as `list
+ * week's use (the first line of `budget`), then for the lead the account's resets in stock (T2450). `--all` prints the list and the flags in their long form, as `list
  * --all` and `check --all` do, and every task waiting on it. Any session's start also posts the lead one inbox line on
  * each warning no session owns that the lead was not told of yet (T951), at most MAX_UNOWNED_NOTICES per start; a told
- * warning is told again only after no start saw it for a day.
+ * warning is told again only after no start saw it for a day. Before its inbox lines it tells each of the team's
+ * detached queue runs that died with no end of its own (src/cli/detached-sweep.ts).
  */
 export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -54,6 +57,8 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   if (meetings !== undefined) {
     runtime.out.stdout(meetings);
   }
+  // Before the inbox read, so a death it tells this session of is in this start's lines.
+  (await sweepDeadDetachedRuns(runtime, kit, config)).problems.forEach((problem) => runtime.out.stderr(`WARN ${problem}`));
   await read(own, runtime);
   await list(own, runtime);
   (await waitingReport(own, runtime)).forEach((line) => runtime.out.stdout(line));
@@ -61,6 +66,10 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   await tellLead(runtime, kit, config, report);
   checkLines(id === tree.lead ? report : ownCheck(report, id, tree.groupOf(id)), args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
   runtime.out.stdout(await weekLineOf(runtime, kit, config, roster));
+  const resets = id === tree.lead ? resetSummaryLine(config.budget.resets, now, zone, KIT_NAME) : undefined;
+  if (resets !== undefined) {
+    runtime.out.stdout(resets);
+  }
   return EXIT.ok;
 }
 

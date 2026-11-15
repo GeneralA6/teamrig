@@ -1,5 +1,5 @@
 import { canMove } from "./can-move.js";
-import { classOf } from "./focus.js";
+import { classOf, prepStanding } from "./focus.js";
 import { bandOf } from "./score.js";
 /**
  * The WIP rule (T2076): a session finishes what the team ranked first before it opens more. A start of anything but
@@ -35,14 +35,17 @@ function namedIds(tasks) {
  * Why a move into in-progress may not happen now, for the refusal or the warning; undefined when nothing holds it.
  * The cap limits new starts, never the finishing of started work, so NOT_A_START passes every hold; only a task's
  * owner sets its status, so a reopen here is always the session's own. `--one-commit` is the way past for a small fix.
+ * Near-term prep (a design, study or prep plan for a ranked goal's open or next slice) runs now, ahead of its turn
+ * (T2453), so it skips the class holds; it still counts against the cap, as it is started work like any other.
  */
-export function wipHold({ task, status, oneCommit, spentClasses }, tasks, context, focus, ownerSource) {
+export function wipHold({ task, status, oneCommit, spentClasses, goals }, tasks, context, focus, ownerSource) {
     const workClass = classOf(task, focus);
     if (focus.wip.mode === 'off' || status !== 'in-progress' || NOT_A_START.includes(task.status) || oneCommit === true || isExempt(task, workClass, focus, ownerSource)) {
         return undefined;
     }
     const others = [...tasks].filter((held) => held.owner === task.owner && held.id !== task.id);
-    if (workClass !== focus.roadmapClass && workClass !== focus.maintenanceClass) {
+    const nearPrep = goals !== undefined && prepStanding(task, goals) === 'near';
+    if (!nearPrep && workClass !== focus.roadmapClass && workClass !== focus.maintenanceClass) {
         if (spentClasses?.has(workClass) === true) {
             return `${task.id} is ${workClass} work and ${workClass} has spent its share of the week [focus.allocation]: it waits for the week's reset, ${ONE_COMMIT_WAY}`;
         }

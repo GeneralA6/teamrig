@@ -133,7 +133,8 @@ describe('coverage-cli', () => {
     const never = testFile("it('never ends', async () => {\n  setInterval(() => {}, 1000);\n  await new Promise(() => {});\n});");
     const { status, output } = gate({ 'tools/ci/coverage.json': JSON.stringify({ ...POLICY, suiteIdleSeconds: 2 }), 'src/sign.test.ts': never });
     assert.equal(status, 1, output);
-    assert.match(output, /coverage: the test run printed nothing for 2 s and was stopped with every process it started/);
+    // A busy host gives the run the 2 s limit up to three times.
+    assert.match(output, /coverage: the test run printed nothing for [246] s and was stopped with every process it started/);
   });
 
   it('exits 2 on an invalid or missing policy', () => {

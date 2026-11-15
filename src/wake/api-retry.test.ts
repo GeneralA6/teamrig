@@ -13,7 +13,7 @@ describe('API error retry prompt', () => {
       apiRetryPrompt('alpha', RETRY, COLD, TimeZone.UTC),
       'Your last turn ended on an API error (server_error) at 06:00 UTC; retry 2 of 3. ' +
         "Go on with that turn's work (if a wake started it: `teamrig start --session alpha`). " +
-        'This retry costs about 210k W, cold, 0.02% of the week.',
+        'This retry costs at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more.',
     );
   });
 
@@ -22,6 +22,6 @@ describe('API error retry prompt', () => {
   });
 
   it('tells the person which error retried the tab, which retry, and the cost', () => {
-    assert.equal(apiRetryToast(RETRY, COLD), "teamrig retried this tab's turn that ended on an API error (server_error), 2 of 3 (about 210k W, cold, 0.02% of the week)");
+    assert.equal(apiRetryToast(RETRY, COLD), "teamrig retried this tab's turn that ended on an API error (server_error), 2 of 3 (at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more)");
   });
 });

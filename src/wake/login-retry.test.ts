@@ -13,7 +13,7 @@ describe('login retry prompt', () => {
       loginRetryPrompt('alpha', FAIL_AT, 'recovered', COLD, TimeZone.UTC),
       'Your last turn ended on Login expired at 06:00 UTC; the login works again. ' +
         "Go on with that turn's work (if a wake started it: `teamrig start --session alpha`). " +
-        'This retry costs about 210k W, cold, 0.02% of the week.',
+        'This retry costs at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more.',
     );
   });
 
@@ -22,7 +22,7 @@ describe('login retry prompt', () => {
   });
 
   it('tells the person which sign retried the tab, and the cost', () => {
-    assert.equal(loginRetryToast('recovered', COLD), "teamrig retried this tab's turn that ended on Login expired: the login works again (about 210k W, cold, 0.02% of the week)");
-    assert.equal(loginRetryToast('probe', COLD), "teamrig retried this tab's turn that ended on Login expired: the login was renewed since (about 210k W, cold, 0.02% of the week)");
+    assert.equal(loginRetryToast('recovered', COLD), "teamrig retried this tab's turn that ended on Login expired: the login works again (at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more)");
+    assert.equal(loginRetryToast('probe', COLD), "teamrig retried this tab's turn that ended on Login expired: the login was renewed since (at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more)");
   });
 });

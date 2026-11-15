@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { RefreshStore } from '../refresh/store.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
@@ -92,6 +93,17 @@ function answerOf(result: CliResult): unknown {
 }
 
 describe('runCli: hook refresh-mid', () => {
+  it("records a fresh start's first size as its baseline and asks only past real growth", async () => {
+    const tab = new Tab();
+    await tab.transcript('{}\n');
+    const store = new RefreshStore(tab.kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+    await store.setState('alpha', { phase: 'refreshed', task: 'T1', at: '2030-01-08T09:59:00.000Z', baseline: null });
+    assert.deepEqual(await tab.mid(130_000), { kind: 'wait', nextAt: 154_000 }, 'a fresh start over the threshold is not asked');
+    assert.match((await tab.state()) ?? '', /"baseline":130000/);
+    assert.deepEqual(await tab.mid(153_000), { kind: 'wait', nextAt: 154_000 });
+    assert.equal(((await tab.mid(154_000)) as { kind: string }).kind, 'ask');
+  });
+
   it('asks within the turn once the context reaches the threshold, and the turn end asks once more until the handover is written', async () => {
     const tab = new Tab();
     await tab.transcript('{}\n');

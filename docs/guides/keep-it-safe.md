@@ -2,10 +2,10 @@
 
 Your sessions run for hours while you are away, and a rule in their instructions can be missed. teamrig's guards
 hold those rules on every line: before Claude runs a command, they read it and ask you, or refuse, when it would push
-to a protected branch, skip the repository's git hooks, run a package nobody vetted or print a secret, and a
-privileged command runs only once a reviewer approves it. On Windows they read a Bash line both as written and as
-Claude Code's Bash tool hands it to bash, with each run of backslashes halved, and answer for the stricter reading.
-Each guard's keys in the
+to a protected branch, skip the repository's git hooks, run a package nobody vetted, write to a database by hand or
+print a secret, and a privileged command runs only once a reviewer approves it. On Windows they read a Bash line both
+as written and as Claude Code's Bash tool hands it to bash, with each run of backslashes halved, and answer for the
+stricter reading. Each guard's keys in the
 [team config](../configuration.md) set what it does. The guards catch mistakes; they are not a sandbox, so protect
 your main branch on your git host too.
 
@@ -14,6 +14,7 @@ your main branch on your git host too.
 - [Unvetted packages](#unvetted-packages)
 - [Secrets kept out of the conversation](#secrets-kept-out-of-the-conversation)
 - [Secrets kept out of commits](#secrets-kept-out-of-commits)
+- [Database writes after a preview](#database-writes-after-a-preview)
 - [Privileged commands on review](#privileged-commands-on-review)
 - [Hand steps you run yourself](#hand-steps-you-run-yourself)
 - [Reads without a prompt](#reads-without-a-prompt)
@@ -173,7 +174,9 @@ would print a secret file's content (`.env`, `~/.npmrc`, `~/.ssh/**`, `*.pem`, C
 `settings.local.json`, the shells' histories...), the whole environment, a
 secret variable's value (by name: `TOKEN`, `SECRET`, `PASSW`, `KEY`, a store's URL by its kind...), a Kubernetes
 secret's data or a dump command's output (`kubectl config view --raw`), and reads the line a container or a host runs
-too. Output piped or redirected away from the screen passes (`cat .env | wc -c`, `echo "$T" | docker login
+too. A line that reads a saved credential out of the host's store is refused whether it prints the key or not
+(`gh auth token`, `git credential fill`, `cmdkey /list`, `CredRead`, a `teamrig-gh-<owner>` name), so a key saved for
+one tool stays with that tool. Output piped or redirected away from the screen passes (`cat .env | wc -c`, `echo "$T" | docker login
 --password-stdin`), and the reason names the ways to use or check a secret unprinted. It also refuses a shell line
 that holds a secret as text, since the line itself stays in the transcript: a token by its shape, credentials in a
 URL, the credentials of an `Authorization` or API key header. A reference (`${DB_URI}`, `<db_password>`) or a
@@ -211,7 +214,8 @@ lock, lease or fencing token (`claimToken`). The reason says to send the secret'
 
 A deny line in Claude Code's `permissions.deny` refuses a call whatever a hook or auto mode says, so it holds where
 an allow hook would approve reading a secret. `teamrig doctor` and `check` flag the secret deny lines (`.env`,
-`secrets.yaml`, `~/.npmrc`, `~/.ssh/id_*`, cloud and registry credentials, `*.pem`, `*.key`, `env`, `printenv`, a
+`secrets.yaml`, `~/.npmrc`, `~/.ssh/id_*`, cloud and registry credentials, gh's and Claude Code's logins,
+`*.pem`, `*.key`, `env`, `printenv`, a
 Kubernetes secret) that no settings file holds (`deny-missing`) and print them as a list to paste into your user
 settings; teamrig never writes permissions itself
 ([doctor](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-doctor)).
@@ -240,6 +244,23 @@ or later) and one in a pushed annotated tag's message. Outside a team the defaul
 one, the team's `register.secretPatterns` and `secretGuard.paths` are added. `teamrig check` warns the lead
 (SECRET-HOOK) of each repository in `delivery.repos` whose hooks skip one of the three, with the line to add
 ([the commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-secrets-staged)).
+
+## Database writes after a preview
+
+A write to a database run by hand cannot be taken back like a code change, so it should follow counts or a preview
+you have seen. Before each Bash or PowerShell call, the db-write guard reads the line (with the push guard's parser)
+and asks you about one that writes: SQL that changes data or its schema through `psql`, `mysql`, `mariadb` or
+`sqlite3`; the code a database program the team names in `dbWriteGuard.programs` runs, by the shape it reads (a
+document shell's `--eval` or script, a key-value client's command or Lua script); Node code that writes through a
+client module the team names in `dbWriteGuard.nodeClients`; and a team data script in `dbWriteGuard.entrypoints` run
+with its apply flag (`--apply`), whose run without it is a dry run and passes. It reads the files a line names (the
+first MiB of each, never a pipe, a device or a network share) and what it pipes or redirects in, and the line a
+container or a host runs (`kubectl exec`, `docker exec`, `ssh`). Reads
+pass, and the reason names each write and the count or dry run to show you first. `dbWriteGuard.writes` (`ask` by
+default, `deny` or `allow`) sets what such a call gets, and under `prompts.hookAsks: refuse` the question is a
+refusal, so the session records the write for you and goes on. A write you approve and want reviewed runs as a
+[privileged command](#privileged-commands-on-review) of kind `db-write`
+([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-db-write-guard)).
 
 ## Privileged commands on review
 
@@ -276,7 +297,10 @@ Some steps only you can take: a line pasted into a settings or guard file, a gra
 the chat for you to paste is code nobody reviewed, and it can change between the review and your paste. So the core
 rules (rule 11) give you such a step only as a file the security reviewer audited (another session, when the team has
 no reviewer), with its sha256 recorded on the task and run by one line; an edit to the file needs a new audit. The
-rule is in every session's start today; a check that refuses an unpinned hand step is still coming.
+rule is in every session's start. A card that types the step is refused, and a reply that hands you a shell or JSON
+block or a `& '<path>'` line with no sha256 beside it sends its session back once, to tell you not to run it and hand
+you the audited file instead ([a hand step typed into the
+reply](../../plugins/teamrig/skills/teamrig-guide/hooks.md#end-of-a-turn-a-hand-step-typed-into-the-reply)).
 
 ## Reads without a prompt
 
@@ -292,8 +316,8 @@ hands it to bash ([what it cannot see](../../plugins/teamrig/skills/teamrig-guid
 ## A guard that breaks
 
 Claude Code runs a tool call whose hook crashed or timed out, so a broken guard would let through the very line it
-exists to stop. teamrig's guards fail closed instead: when one cannot load, throws, hangs or answers wrongly, the
-call is blocked and Claude reads `teamrig blocked this call: its <name> guard ...` with the fix. A broken install
+exists to stop. teamrig's guards fail closed instead: when one cannot load, throws, hangs (even in a loop that never
+waits, since each guard runs on its own thread) or answers wrongly, the call is blocked and Claude reads `teamrig blocked this call: its <name> guard ...` with the fix. A broken install
 therefore blocks the guarded calls (shell lines, reads, edits, sends and helper launches) until you run
 `claude plugin update teamrig@teamrig` and restart the session; a block for a guard that gave no answer in time
 clears on a retry once the host is less loaded

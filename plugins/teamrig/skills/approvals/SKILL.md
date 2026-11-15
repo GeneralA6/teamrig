@@ -38,8 +38,8 @@ Approve only when every line holds:
 
 ## 3. Answer
 
-- Approve: `teamrig approve T<n> --session <lead> --note "<what you checked>"`. Its owner gets an inbox line to
-  push or merge now, then set the task's next status; `check` flags it `READY` until then.
+- Approve: `teamrig approve T<n> --session <lead> --note "<what you checked>"`. Its owner gets an inbox line, which
+  wakes it, to push or merge now, then set the task's next status; `check` flags it `READY` until then.
 - Decline what fails a line: `teamrig approve T<n> --session <lead> --decline --note "<the line it fails, and the
   fix>"`. Its owner gets an inbox line to fix that and ask again.
 - Owner-gated content: decline with a note that says so ("owner-gated: <what>; ask the owner with a card"), so its

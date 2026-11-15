@@ -8,7 +8,7 @@ import type { TasksElsewhere } from '../register/tree.ts';
 import { asksDecision, messageTextOf } from '../tabs/status.ts';
 import { replyOf } from '../turn-log/reply.ts';
 import type { WakeAsk } from '../wake/asks.ts';
-import { dayStartAt, startableTasks } from '../wake/day-start.ts';
+import { startableTasks } from '../wake/day-start.ts';
 import { isNews, type WakeRest } from '../wake/decide.ts';
 
 /**
@@ -145,8 +145,11 @@ export interface ReopenInput {
   readonly maxPriority: number;
   readonly parking: ParkRules;
   readonly rest: WakeRest;
-  /** `wake.dayStartUtc`; undefined: no day start. */
-  readonly dayStartUtc: string | undefined;
+  /**
+   * Its latest day start at or before `now`, epoch ms (src/cli/day-schedule.ts: the tree's schedule, else
+   * `wake.dayStartUtc`); undefined: none today.
+   */
+  readonly dayStart: number | undefined;
   readonly now: number;
   readonly zone: TimeZone;
 }
@@ -174,8 +177,8 @@ export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   if (handed.length > 0) {
     return { kind: 'handed', tasks: handed };
   }
-  const dayStart = input.dayStartUtc === undefined ? undefined : dayStartAt(input.dayStartUtc, now);
-  if (dayStart === undefined || dayStart <= input.closedAt || input.rest.quiet || input.rest.held) {
+  const { dayStart } = input;
+  if (dayStart === undefined || dayStart > now || dayStart <= input.closedAt || input.rest.quiet || input.rest.held) {
     return { kind: 'stay' };
   }
   const startable = startableTasks(tasks, elsewhere, session, now, zone, parking);

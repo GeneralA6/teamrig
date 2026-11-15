@@ -2,13 +2,15 @@ import { ENV, type Env } from '../core/home.ts';
 import { ID_PATTERN, NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { OPTION_SEPARATOR, type DecisionCard } from '../register/card.ts';
-import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem, type ItemType, type TaskFields } from '../register/events.ts';
+import { OPTION_SEPARATOR, optionsSplitText, splitOptions, type DecisionCard } from '../register/card.ts';
+import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem, type ItemType, type TaskFields, type TaskPrep } from '../register/events.ts';
+import { FIRST_SLICE, GOAL_TAG, isSlice } from '../register/goals.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
 import { REVIEW_FLAGS, REVIEW_ORDER, type ProblemReview } from '../register/review.ts';
 import { isWaitKind, waitOf, type WaitReason } from '../register/waits.ts';
 import type { ListFilter } from '../register/views.ts';
+import { unrunnableReason } from '../test-run/shell.ts';
 import { requiredFlag, UsageError, type Flags, type ParsedArgs } from './args.ts';
 
 /**
@@ -49,6 +51,16 @@ export function commandWordsOf(args: ParsedArgs): readonly string[] {
     throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
   }
   return args.rest;
+}
+
+/** The command to run in the platform's shell (`commandWordsOf`), refused when that shell would not run it as given. */
+export function shellWordsOf(args: ParsedArgs, platform: NodeJS.Platform): readonly string[] {
+  const words = commandWordsOf(args);
+  const reason = unrunnableReason(words, platform);
+  if (reason !== undefined) {
+    throw new UsageError(reason);
+  }
+  return words;
 }
 
 /** A task as typed: its id, and the team when the id is written as a roll-up over a team tree prints it. */
@@ -168,6 +180,15 @@ export function criticalOf(switches: ReadonlySet<string>): { readonly critical?:
     throw new UsageError('--critical and --not-critical: give one');
   }
   return switches.has('critical') ? { critical: true } : switches.has('not-critical') ? { critical: false } : {};
+}
+
+/**
+ * `--security`: the status change's card is security-related whatever its gate (T2761), so it reaches the owner only
+ * with the security reviewer's verdict; the status as typed without it. With no other card part, the policy builds
+ * on the card the task has, or refuses a card with no question.
+ */
+export function withSecurityCard(status: StatusInput, switches: ReadonlySet<string>): StatusInput {
+  return switches.has('security') ? { ...status, card: { ...status.card, security: true } } : status;
 }
 
 /** `--one-commit`: the start is a one-commit fix, which the WIP rule lets through; nothing without it. */
@@ -335,7 +356,23 @@ export function changesOf(flags: Flags, times: TypedTimes): Partial<TaskFields> 
   if (workClass !== undefined) {
     changes.workClass = workClass === NONE ? null : workClass;
   }
+  const prepares = flags.get('prepares');
+  if (prepares !== undefined) {
+    changes.prepares = prepares === NONE ? null : prepOf(prepares);
+  }
   return changes;
+}
+
+/** `--prepares G:2`: the goal and its slice the task prepares (T2453); the policy checks the goal is a record. */
+export function prepOf(text: string): TaskPrep {
+  const colon = text.lastIndexOf(':');
+  const goal = text.slice(0, Math.max(colon, 0));
+  const sliceText = text.slice(colon + 1);
+  const slice = /^\d+$/.test(sliceText) ? Number(sliceText) : Number.NaN;
+  if (colon < 0 || !GOAL_TAG.test(goal) || !isSlice(slice)) {
+    throw new UsageError(`--prepares "${text}" is not <goal>:<slice> like G1:2 (a slice from ${FIRST_SLICE}) or ${NONE}`);
+  }
+  return { goal, slice };
 }
 
 /** A status as typed; `next` says what to type for the old `blocked`, which is refused (no alias kept). */
@@ -412,7 +449,7 @@ function reviewInputOf(flags: Flags): ProblemReview | undefined {
   return Object.keys(review).length === 0 ? undefined : review;
 }
 
-/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`); undefined when it names none. */
+/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`, `--affects`); undefined when it names none. */
 function cardInputOf(flags: Flags): Partial<DecisionCard> | undefined {
   const card: Mutable<Partial<DecisionCard>> = {};
   const question = flagText(flags, 'question');
@@ -439,6 +476,10 @@ function cardInputOf(flags: Flags): Partial<DecisionCard> | undefined {
   if (gate !== undefined) {
     card.gate = gate;
   }
+  const affects = flagText(flags, 'affects');
+  if (affects !== undefined) {
+    card.affects = affects;
+  }
   return Object.keys(card).length === 0 ? undefined : card;
 }
 
@@ -451,11 +492,11 @@ function flagText(flags: Flags, name: string): string | undefined {
   return text;
 }
 
-/** `--options "<a> | <b>"`: the choices, each trimmed; an empty one is a usage error. */
+/** `--options "<a> | <b>"`: the choices, each trimmed, a `\\|` kept as a literal `|`; an empty one is a usage error. */
 function optionsOf(text: string): string[] {
-  const options = text.split(OPTION_SEPARATOR).map((option) => option.trim());
+  const options = splitOptions(text);
   if (options.some((option) => option === '')) {
-    throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}`);
+    throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}; ${optionsSplitText(options)}`);
   }
   return options;
 }

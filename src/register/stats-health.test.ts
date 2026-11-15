@@ -106,7 +106,7 @@ describe('registerHealth: thresholds and the fold', () => {
               id: 'T1',
               at: '2030-01-09T10:00:00.000Z',
               by: 'lead',
-              task: { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 1, due: '2030-01-09', goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null },
+              task: { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 1, due: '2030-01-09', goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null },
             },
           ],
         },

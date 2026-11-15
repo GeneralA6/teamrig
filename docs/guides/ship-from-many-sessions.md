@@ -38,7 +38,9 @@ DONE exit 0
 Waiting steps go in admission order, each told its place in line: an incident's (p0) step first, then the
 work class whose turn it is, so each class gets its `focus.allocation` share of the host's run time, then the task's
 priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, then arrival. A session runs at most
-`delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it.
+`delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it. A step waiting on
+host memory is passed by later steps that fit: always while no queued step runs, else for its first
+`delivery.queue.memoryPassMinutes` (15) of that wait, after which it holds its place so the memory freed goes to it.
 That is the default `delivery.queue.admission: pipeline`; `serial` keeps the line in arrival order with no cap and one
 heavy step at a time. A step is refused once its line has not
 moved for `delivery.queue.waitMinutes` (60), and one that runs is killed, with every process it started, after
@@ -62,8 +64,9 @@ has a run.
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
 of taking the lock. A small step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step
 waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) shares the host too, at
-most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in memory no longer wait for each other,
-while a merge, a deploy and a step queued with `--exclusive` take the lock and wait for every step sharing the host to
+most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in memory no longer wait for each other
+(the second one joins only while `delivery.queue.heavyIdleCpuPct` (25) of the CPU is idle, so two test runs do not
+slow each other into their time limits), while a merge, a deploy and a step queued with `--exclusive` take the lock and wait for every step sharing the host to
 end, so they run alone. With `admission: serial` a heavy step takes the lock that way too; a team whose own deploy
 tool takes the lock file without first waiting for the shares in `<lock>.shared` to end sets it, so no roll starts
 beside two builds.
@@ -268,6 +271,18 @@ too, so unfreeze it first.
   builds.
 - **The reset blackout:** no merge or deploy starts in the `delivery.schedule.resetBlackoutHours` before the
   weekly token reset, the one the status line last reported, else the one `budget.reset` sets; unset, there is none.
+- **A pipeline freeze:** the lead or the delivery owner holds every new step on the host for a window, say while the
+  PC is down; queue steps of the kinds it names, merges and deploys are refused with its end and id, and running steps
+  finish. `teamrig pipeline` lists it under `FROZEN`, and `teamrig pipeline unfreeze <id>` ends it early:
+
+  ```sh
+  teamrig pipeline freeze --session lead --from "2030-01-09 02:00" --to "2030-01-09 04:00" --reason "backup"
+  ```
+
+  ```text
+  FROZEN F3 2030-01-09 02:00 IST → 2030-01-09 04:00 IST, all steps, by lead (backup)
+  ```
+
 - **A wait that ran out:** a queued step is refused once its line has not moved for `waitMinutes`, a merge or a
   deploy after `delivery.wait.maxMinutes`, unless its line keeps moving.
 - **A step taken out of line:** `teamrig withdraw` takes a session's steps still waiting for the lock out of the line,

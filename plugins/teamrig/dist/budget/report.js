@@ -209,11 +209,14 @@ function liftLines(report) {
         : `a part of the team's daily budget, ${share}, until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.`;
     return [`Lifts, today only: ${terms}`, ...indented([...table, ...notes])];
 }
-/** "N Claude Code sessions (titled a, b, +2 more)": the first five titles, or every one with `--all`. */
+/**
+ * "N Claude Code sessions (top by W: a 40.10M, b 1.20M, +2 more titled)": the five that spent most that day with
+ * their W, or every titled one with `--all`. It names the biggest, not all of them, and untitled sessions stay out.
+ */
 function outsideSessionsText(outside, all) {
-    const shown = all ? outside.titles : outside.titles.slice(0, OUTSIDE_TITLES_SHOWN);
-    const more = outside.titles.length - shown.length;
-    const titles = shown.length === 0 ? '' : ` (titled ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''})`;
+    const shown = all ? outside.top : outside.top.slice(0, OUTSIDE_TITLES_SHOWN);
+    const more = outside.top.length - shown.length;
+    const titles = shown.length === 0 ? '' : ` (top by W: ${shown.map(({ title, w }) => `${title} ${formatW(w)}`).join(', ')}${more > 0 ? `, +${more} more titled` : ''})`;
     return `${outside.sessions} Claude Code session${outside.sessions === 1 ? '' : 's'}${titles}`;
 }
 /** The tabs of no team in the table: neither the team's nor, with other teams on the account, theirs. */

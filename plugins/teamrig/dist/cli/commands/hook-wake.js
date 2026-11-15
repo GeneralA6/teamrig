@@ -1,6 +1,7 @@
 import { activeBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
+import { autoRestartOf } from "../../config/refresh.js";
 import { isRecord, stringField } from "../../core/guards.js";
 import { LockBusyError } from "../../core/lock.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
@@ -15,7 +16,7 @@ import { apiRetryLine, claimApiRetry } from "../../restore/api-error.js";
 import { RestoreRegistry, restoreLogPath, restoreSessionsDir } from "../../restore/registry.js";
 import { parkRulesOf } from "../../register/park.js";
 import { askVerdictOf, asksFolderOf, asksNowOf, handedPrompt, handedToast, WakeAsks } from "../../wake/asks.js";
-import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, } from "../../wake/day-start.js";
+import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, startableTasks, } from "../../wake/day-start.js";
 import { decideWake, effectivePriority, HELD_PRIORITY, wakeCost, wakeRestOf } from "../../wake/decide.js";
 import { apiRetryPrompt, apiRetryToast } from "../../wake/api-retry.js";
 import { loginRetryPrompt, loginRetryToast } from "../../wake/login-retry.js";
@@ -25,7 +26,7 @@ import { noPositionals } from "../args.js";
 import { openKit, rosterOf, teamZone } from "../kit.js";
 import { startDailyRollup } from "../rollup-start.js";
 import { EXIT } from "../runtime.js";
-import { readTodayWPerPct } from "../stored-week.js";
+import { readMeasuredTurns, readTodayWPerPct } from "../stored-week.js";
 import { teamRegister } from "../team-register.js";
 import { budgetFactsOf } from "./hook-budget.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -33,6 +34,7 @@ import { runIdlePass } from "./hook-idle-pass.js";
 import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
 import { armParkedRestart, parkedHere, rearmDeadRestart } from "./hook-restart.js";
 import { fileLockOf } from "../file-locks.js";
+import { dayStartFor } from "../day-schedule.js";
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
 function answer(runtime, value) {
@@ -88,7 +90,7 @@ export async function wakeScopeOf(runtime, payload, needsWake) {
 }
 /** The W of the turn a wake would start in a tab whose last turn was at `lastTurnAt` (undefined: unknown, counted cold). */
 function wakeWOf(config, lastTurnAt, now) {
-    return wakeCost(lastTurnAt === undefined ? undefined : now - lastTurnAt, config.messages.coldAfterMinutes, undefined).w;
+    return wakeCost(lastTurnAt === undefined ? undefined : now - lastTurnAt, config.messages.coldAfterMinutes, undefined, undefined).w;
 }
 /** The ids of the tasks a verdict wakes the session for, now or later. */
 function dueIdsOf(verdict) {
@@ -156,8 +158,8 @@ function earliest(...times) {
     return set.length === 0 ? null : Math.min(...set);
 }
 /**
- * The day's moments (src/wake/day-start.ts), checked when no handed work wakes the session and only with
- * `wake.dayStartUtc` set. The budget, the tab's last turn and the login marker are read only once a moment is due and
+ * The day's moments (src/wake/day-start.ts), checked when no handed work wakes the session and only with a day start:
+ * the tree's day schedule (src/wake/schedule.ts) for the session or its team, else `wake.dayStartUtc`. The budget, the tab's last turn and the login marker are read only once a moment is due and
  * the session has work it can start; a moments wake takes in any batch still pending, since it names all that work.
  *
  * A wake first gates on the day-start probe (src/restore/day-probe.ts), for the newest moment it wakes for: a claim
@@ -168,23 +170,27 @@ function earliest(...times) {
 async function momentsOf(runtime, scope, login, tasks, elsewhere, state, now) {
     const { config, kit, roster, id, tab } = scope;
     const { dayStartUtc } = config.wake;
-    if (dayStartUtc === undefined) {
+    const dayStart = await dayStartFor(runtime, { kit, config }, id, now);
+    if (dayStartUtc === undefined && dayStart.source === 'config') {
         return { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next: undefined, watch: [] };
     }
-    // Ahead of the startable gate: a day with no work to wake for still closes a day of spend.
-    await startDailyRollup(runtime, kit, id, dayStartUtc, now);
-    const next = nextDayStartAt(dayStartUtc, now);
+    if (dayStartUtc !== undefined) {
+        // Ahead of the startable gate: a day with no work to wake for still closes a day of spend. The rollup keeps the
+        // team's configured day, whatever the schedule moves a session's start to.
+        await startDailyRollup(runtime, kit, id, dayStartUtc, now);
+    }
+    const { next } = dayStart;
     const none = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next, watch: [] };
     const startable = startableTasks(tasks, elsewhere, id, now, teamZone(config, runtime), parkRulesOf(config));
     const logged = activeBurst((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
     const inBurst = logged?.sessions.includes(id) === true ? logged : undefined;
-    if (startable.length === 0 || dueMoments(now, dayStartUtc, inBurst, state.settled).length === 0) {
+    if (startable.length === 0 || dueMoments(now, dayStart.at, inBurst, state.settled).length === 0) {
         return none;
     }
     const facts = await budgetFactsOf(runtime, { kit, config, roster, id }, undefined);
     const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
     const input = {
-        due: dueMoments(now, dayStartUtc, facts === undefined ? inBurst : facts.burst, state.settled),
+        due: dueMoments(now, dayStart.at, facts === undefined ? inBurst : facts.burst, state.settled),
         startable,
         lastTurnAt,
         rest: wakeRestOf(facts, config.budget.quietHours, now, wakeWOf(config, lastTurnAt, now)),
@@ -311,7 +317,7 @@ export async function wakeCheck(args, runtime) {
         return answer(runtime, waitAnswer(scope, null));
     }
     const restarts = new RefreshStore(runtime.files, kit.paths);
-    const rearm = { team: kit.paths.team, id, tab, refresh: config.refresh, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
+    const rearm = { team: kit.paths.team, id, tab, refresh: { enabled: config.refresh.enabled, autoRestart: autoRestartOf(config, id) }, cwd: isRecord(payload) ? stringField(payload, 'cwd') : undefined };
     if (await restartHoldsWake(runtime, restarts, rearm)) {
         return answer(runtime, waitAnswer(scope, runtime.clock.now() + RESTART_RECHECK_MS));
     }
@@ -338,7 +344,8 @@ export async function wakeCheck(args, runtime) {
     const now = runtime.clock.now();
     const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
     const wPerPct = await readTodayWPerPct(runtime, kit.paths, config, now);
-    const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct);
+    const measured = await readMeasuredTurns(runtime, kit.paths, id, config.sessions, now);
+    const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, wPerPct, measured);
     if (verdict.kind === 'login') {
         await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids: [], cost, retry: 'login' });
         await runtime.files.append(login.log, `${new Date(now).toISOString()} ${loginRetryLine(`${kit.paths.team}/${id} (${tab})`, verdict.why)}\n`);

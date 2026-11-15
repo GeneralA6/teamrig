@@ -4,7 +4,7 @@ import { ClientInstalls, ShellPathSearch } from "../../exec/client-launch.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { gitContextOf } from "../../permissions/route-context.js";
 import { ownClientOf } from "../../permissions/route-kit.js";
-import { routeOf } from "../../permissions/sanctioned.js";
+import { toolRouteOf } from "../../permissions/sanctioned.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { rosterOf } from "../kit.js";
 import { teamSessionOf } from "./hook-input.js";
@@ -30,11 +30,15 @@ export function routeContextOf(runtime, kit, config, payload, cli) {
         }),
     };
 }
-/** The route a Bash call's line runs; undefined for any other tool, a line that is none, or a lookup that fails. */
+/**
+ * The route a Bash call's line runs, in every text bash may run (`toolRouteOf`); undefined for any other tool, a line
+ * that is none, or a lookup that fails.
+ */
 export async function callRouteOf(runtime, kit, config, payload, cli) {
+    const tool = stringField(payload, 'tool_name');
     const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-    if (stringField(payload, 'tool_name') !== 'Bash' || command === undefined) {
+    if (tool !== 'Bash' || command === undefined) {
         return undefined;
     }
-    return routeOf(command, routeContextOf(runtime, kit, config, payload, cli)).catch(() => undefined);
+    return toolRouteOf(tool, command, runtime.platform, routeContextOf(runtime, kit, config, payload, cli)).catch(() => undefined);
 }

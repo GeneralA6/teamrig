@@ -31,6 +31,15 @@ export interface ShellWord {
    * line or a later one. See {@link parseHeldText}.
    */
   readonly held?: string;
+  /**
+   * PowerShell only: true for a word at a statement's start (a command's first word, or an assignment's right side)
+   * that a quote or a here-string opens, which so ends where it closes, after any members (`'a'.Length`). It is one
+   * string's value, an expression, never a program, as only `&` calls one: `'DEL k' | kvcli` pipes the text in, and
+   * `"git" push` is a parse error that runs nothing. A word anywhere else is never marked. The launch reader still
+   * takes such a head for a program, the stricter side for a guard that refuses one; a guard that reads what a pipe
+   * feeds a program (the db-write guard) reads it as that text.
+   */
+  readonly string?: true;
 }
 
 /**
@@ -572,6 +581,8 @@ class WordBuilder {
   private started = false;
   private brace = false;
   private braceList = false;
+  /** See {@link ShellWord.string}. */
+  private string = false;
   /** The parts so far; undefined once a piece is dynamic but not a plain variable. */
   private parts: WordPart[] | undefined = [];
   private cut = false;
@@ -631,6 +642,11 @@ class WordBuilder {
     }
   }
 
+  /** Marks a PowerShell word a quote or a here-string opens; see {@link ShellWord.string}. */
+  markString(): void {
+    this.string = true;
+  }
+
   /** Notes an unquoted bash character: `{a,b}` and `{1..3}` expand to several words, so such a word is dynamic. */
   noteBrace(char: string): void {
     if (char === '{') {
@@ -648,6 +664,7 @@ class WordBuilder {
     this.started = false;
     this.brace = false;
     this.braceList = false;
+    this.string = false;
     this.parts = [];
     this.cut = false;
     return word;
@@ -656,7 +673,8 @@ class WordBuilder {
   /** The word read so far, even an empty one, such as a heredoc's empty body. */
   word(): ShellWord {
     const held = this.tracksParts && SUBSTITUTION.test(this.literal) ? { held: this.literal } : {};
-    const word = { text: this.text, dynamic: this.dynamic || this.braceList, ...held };
+    const string = this.string ? { string: true as const } : {};
+    const word = { text: this.text, dynamic: this.dynamic || this.braceList, ...held, ...string };
     return this.tracksParts && this.parts !== undefined && !this.braceList ? { ...word, parts: this.parts } : word;
   }
 }
@@ -1037,6 +1055,10 @@ class Scanner {
         continue;
       }
       const whole = opening && this.opensWholeWord(char);
+      // Only a statement's start is marked: an argument's quotes 5.1 writes again for a native program, a reading of its own.
+      if (whole && !word.isStarted && (words.length === 0 || assignedWords(words)?.length === 0) && this.opensString(char)) {
+        word.markString();
+      }
       const variable = opening && char === '$';
       const inArguments = words.length > 0 || awaiting !== undefined;
       if (this.readQuoteOrExpansion(word, opening)) {
@@ -1297,7 +1319,12 @@ class Scanner {
       return false;
     }
     const substitution = (char === '$' || char === '@') && this.at(1) === '(';
-    return substitution || this.isSingleQuote(char) || this.isDoubleQuote(char) || (char === '@' && this.hereStringBody() !== undefined);
+    return substitution || this.opensString(char);
+  }
+
+  /** PowerShell: true at a quote or a here-string, which opens a string's value. */
+  private opensString(char: string): boolean {
+    return this.isSingleQuote(char) || this.isDoubleQuote(char) || (char === '@' && this.hereStringBody() !== undefined);
   }
 
   /** At `@`: where the body of a PowerShell here-string starts, when `@` and a quote mark end their line and so open one. */

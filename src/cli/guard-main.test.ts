@@ -10,8 +10,22 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 const GUARD_MAIN = join(HERE, 'guard-main.ts');
 const DENY = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'no' } });
 const FORCE_PUSH = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push --force origin main' } });
-/** The limit the copies run with, so a hang ends the spec in half a second, not 12. */
-const COPY_LIMIT = 'export const GUARD_LIMIT_MS = 500;';
+/** The limit a copy runs with when its spec waits for the limit, so a hang ends the spec in half a second, not 12. */
+const HANG_LIMIT_MS = 500;
+/**
+ * The limit a copy runs with when its spec waits for an answer, a crash or an exit. The limit counts the guard
+ * thread's load too, which took past 0.5 s on a loaded host (T2433: a ship run's spec saw a timeout, not the crash).
+ */
+const ANSWER_LIMIT_MS = 5_000;
+/**
+ * When a run that never ends is killed, so a guard the runner cannot stop fails its spec instead of hanging it. It
+ * counts the copy's start too: in a ship run's coverage pass beside another ship's suite, copies that crash at once
+ * took 15 to 19 s to end, and a spinning one was killed at 20 s with nothing on stderr, its 0.5 s limit not yet fired
+ * (T2433).
+ */
+const KILL_MS = 60_000;
+/** The modules the entry runs on, copied beside it as they are. */
+const COPIED = ['guard-main.ts', 'guard-thread.ts', 'guard-thread-messages.ts', 'guard-worker.ts'];
 
 interface Ended {
   readonly status: number | null;
@@ -24,25 +38,32 @@ function run(script: string, args: readonly string[], input: string, env: NodeJS
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, ...args], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const kill = setTimeout(() => child.kill(), KILL_MS);
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
     child.on('error', reject);
-    child.on('close', (status) => resolve({ status, stdout, stderr, ms: Date.now() - started }));
+    child.on('close', (status) => {
+      clearTimeout(kill);
+      resolve({ status, stdout, stderr, ms: Date.now() - started });
+    });
     child.stdin.end(input);
   });
 }
 
 /** Runs `hook push-guard` through copies of the entry and the runner beside a stand-in `node-main.ts`. */
-async function throughCopy(nodeMain: string): Promise<Ended> {
+async function throughCopy(nodeMain: string, limitMs = ANSWER_LIMIT_MS): Promise<Ended> {
   const folder = mkdtempSync(join(tmpdir(), 'teamrig-guard-main-'));
   try {
     const runner = readFileSync(join(HERE, 'guard-runner.ts'), 'utf8');
-    const shortened = runner.replace(/^export const GUARD_LIMIT_MS = 12_000;$/m, COPY_LIMIT);
-    assert.ok(shortened.includes(COPY_LIMIT), 'guard-runner.ts declares GUARD_LIMIT_MS = 12_000');
+    const limit = `export const GUARD_LIMIT_MS = ${limitMs};`;
+    const shortened = runner.replace(/^export const GUARD_LIMIT_MS = 12_000;$/m, limit);
+    assert.ok(shortened.includes(limit), 'guard-runner.ts declares GUARD_LIMIT_MS = 12_000');
     writeFileSync(join(folder, 'package.json'), '{ "type": "module" }\n');
-    copyFileSync(GUARD_MAIN, join(folder, 'guard-main.ts'));
+    for (const name of COPIED) {
+      copyFileSync(join(HERE, name), join(folder, name));
+    }
     writeFileSync(join(folder, 'guard-runner.ts'), shortened);
     writeFileSync(join(folder, 'node-main.ts'), nodeMain);
     return await run(join(folder, 'guard-main.ts'), ['hook', 'push-guard'], FORCE_PUSH);
@@ -66,11 +87,22 @@ describe('guard-main, on broken copies of the CLI', () => {
     assertBlocked(await throughCopy('export const other = 1;\n'), /crashed \(main is not a function\)/);
   });
 
-  it('blocks a run that hangs, with or without work pending, at the limit', async () => {
-    const idle = await throughCopy('export function runWithNode() { return new Promise(() => {}); }\n');
-    assertBlocked(idle, /gave no answer within 0\.5 s/);
-    assert.ok(idle.ms >= 450, `${idle.ms} ms`);
-    assertBlocked(await throughCopy('export function runWithNode() { setInterval(() => {}, 1000); return new Promise(() => {}); }\n'), /gave no answer within 0\.5 s/);
+  it('blocks a run that hangs with work pending at the limit, and one with nothing left to do at once', async () => {
+    const pending = await throughCopy('export function runWithNode() { setInterval(() => {}, 1000); return new Promise(() => {}); }\n', HANG_LIMIT_MS);
+    assertBlocked(pending, /gave no answer within 0\.5 s/);
+    assert.ok(pending.ms >= 450, `${pending.ms} ms`);
+    assertBlocked(await throughCopy('export function runWithNode() { return new Promise(() => {}); }\n'), /crashed \(its thread ended with exit 0 before it answered\)/);
+  });
+
+  it('blocks synchronous work that never yields, in the run or while the CLI loads, at the limit (T2433)', async () => {
+    const spinning = await throughCopy('export function runWithNode() { for (;;) {} }\n', HANG_LIMIT_MS);
+    assertBlocked(spinning, /gave no answer within 0\.5 s/);
+    assert.ok(spinning.ms < KILL_MS, `${spinning.ms} ms`);
+    assertBlocked(await throughCopy('for (;;) {}\nexport async function runWithNode() { return 0; }\n', HANG_LIMIT_MS), /gave no answer within 0\.5 s/);
+  });
+
+  it('blocks a guard thread that ends itself before it answers', async () => {
+    assertBlocked(await throughCopy('export function runWithNode() { process.exit(0); }\n'), /crashed \(its thread ended with exit 0 before it answered\)/);
   });
 
   it('blocks a throw or a rejection nobody handles', async () => {

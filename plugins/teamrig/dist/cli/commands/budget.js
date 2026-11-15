@@ -1,6 +1,8 @@
 import { basename, join } from 'node:path';
 import { DEFAULT_STATUS_LINE } from "../../config/defaults.js";
 import { LeadTree } from "../../config/lead-tree.js";
+import { sessionNameOn } from "../holder-team.js";
+import { wakeReleased } from "../release-wake.js";
 import { formatAddress, splitAddress } from "../../core/address.js";
 import { errorMessage } from "../../core/guards.js";
 import { resolveKitHome } from "../../core/home.js";
@@ -19,6 +21,7 @@ import { formatPct, formatUsd } from "../../budget/format.js";
 import { activeGroupLift, activeLift, decideLift, LiftLog, liftText, parentBudgetText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, outsideUsageDir } from "../../budget/measure.js";
 import { paceLineOfWeek } from "../../budget/pace.js";
+import { resetStockLines } from "../../budget/resets.js";
 import { budgetSplitOf, crossLiftPlaceOf, dailyBudgetOf, groupPartsOf, liftPlaceOf, liftWeekPctOf, teamPartOf } from "../../budget/parts.js";
 import { fundForDay, isPaused, pausableOf } from "../../budget/pause.js";
 import { nextPeriod, sightOf } from "../../budget/period.js";
@@ -79,6 +82,7 @@ async function readBudget(runtime, kit, config, roster, options) {
         areaBySession: indexMarks(marks).areaBySession,
         peers,
         subagentWeight: config.budget.subagentWeight,
+        modelWeights: config.budget.modelWeights,
         chunkBytes: CATCH_UP_CHUNK_BYTES,
         maxRuns: MAX_RUNS_PER_SESSION,
     });
@@ -261,14 +265,17 @@ export async function budget(args, runtime) {
     else {
         const today = formatUtcDay(new Date(now));
         const outsideToday = measured.outside.byDay[today];
-        const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
+        const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, top: measured.outsideTop };
         const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
         // The team's sessions alone, so the rows add up to the team's row of the table above them.
         const classes = tasks === undefined ? undefined : classRowsOf({ states: [...measured.bySession.values()], tasks, focus: config.focus, todayFrom: week.todayFrom, weekFrom: week.window?.start, now });
         if (recountDay === undefined) {
             const fiveHour = await readFolderFiveHour(runtime.files, snapshotDirOf(config.budget, kit.paths), now);
             const peers = reading.peerUsage.map((peer) => peerToday(peer, reading, split, others));
-            lines = todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone });
+            lines = [
+                ...todayLines({ week, fiveHour, teamPct, sessions, groups: groupsToday(reading, roster, split, others), classes, peers, outside, behind, all, zone }),
+                ...resetStockLines(config.budget.resets, now, zone),
+            ];
         }
         else {
             lines = recountLines(today, { week, sessions, outside, all });
@@ -407,6 +414,8 @@ export async function lift(args, runtime) {
     }
     await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
     runtime.out.stdout(`LIFTED ${liftText(decision.lift, name, parent, liftWeekPctOf(week.allowancePct, place.parent, partPct, funded.split, funded.others), zone)}`);
+    const ids = group ? [...new Set([id, ...tree.groupOf(id)])] : [id];
+    await wakeReleased(runtime, { kit, config, from: by, how: group ? "lifted your group's daily budget" : 'lifted your daily budget', ids }, nameOf);
     return EXIT.ok;
 }
 /**
@@ -450,6 +459,8 @@ async function crossTeamLift(runtime, lifting, target, ask) {
     const funded = fundForDay({ split, others }, reading.week);
     const weekPct = liftWeekPctOf(reading.week.allowancePct, undefined, ask.partPct, funded.split, funded.others);
     runtime.out.stdout(`LIFTED ${liftText(decision.lift, `${target.team}/${below.roster.nameOf(found.id) ?? found.id}`, parent, weekPct, zone)}`);
+    const release = { kit: below.kit, config: below.config, from: sessionNameOn(target.team, own, by), how: 'lifted your daily budget', ids: [found.id] };
+    await wakeReleased(runtime, release, (id) => `${target.team}/${below.roster.nameOf(id) ?? id}`);
     return EXIT.ok;
 }
 /**

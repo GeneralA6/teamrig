@@ -710,17 +710,17 @@ describe('decideStart', () => {
         note:
           `You were refreshed after T12; read your handover first: ${HANDOVER}. Then carry on with its next steps. ` +
           'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.',
-        state: { phase: 'refreshed', task: 'T12', at: NOW },
+        state: { phase: 'refreshed', task: 'T12', at: NOW, baseline: null },
       });
     }
-    assert.deepEqual(decideStart({ phase: 'refreshed', task: 'T12', at: NOW }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
+    assert.deepEqual(decideStart({ phase: 'refreshed', task: 'T12', at: NOW, baseline: null }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
     const midTask = decideStart({ ...READY, task: null, tokens: 262_144 }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW);
     assert.deepEqual(midTask, {
       kind: 'inject',
       note:
         `You were refreshed mid-task; read your handover first: ${HANDOVER}. Then carry on with its next steps. ` +
         'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.',
-      state: { phase: 'refreshed', task: null, at: NOW },
+      state: { phase: 'refreshed', task: null, at: NOW, baseline: null },
     });
   });
 
@@ -746,9 +746,11 @@ describe('decideStart', () => {
 
   it('starts the task count over when the context is small again, a compaction too', () => {
     const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 2 };
-    for (const source of ['clear', 'startup', 'compact']) {
-      assert.deepEqual(decideStart(idle, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...idle, finished: 0 } }, source);
+    for (const source of ['clear', 'startup']) {
+      // A fresh start also waits for its baseline .
+      assert.deepEqual(decideStart(idle, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...idle, finished: 0, baseline: null } }, source);
     }
+    assert.deepEqual(decideStart(idle, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...idle, finished: 0 } });
     const boundary: RefreshState = { ...BOUNDARY, finished: 3 };
     assert.deepEqual(decideStart(boundary, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...boundary, finished: 0 } });
     for (const source of ['resume', 'fork', undefined]) {
@@ -791,5 +793,72 @@ describe('wakePromptOf', () => {
     assert.equal(wakePromptOf(TAKEN, HANDOVER, later(-1)), undefined);
     assert.equal(wakePromptOf(READY, HANDOVER, NOW), undefined);
     assert.equal(wakePromptOf(undefined, HANDOVER, NOW), undefined);
+  });
+});
+
+describe('the loop guard after a fresh start ', () => {
+  /** The default threshold, 120k, with the task count of the defaults (every 3 tasks from 80k). */
+  const DEFAULTS: RefreshSettings = { ...DEFAULT_REFRESH };
+  const FRESH: RefreshState = { phase: 'refreshed', task: 'T12', at: NOW, baseline: null };
+
+  it('measures a fresh lead at 130k against a 120k threshold and does not ask it to refresh again', () => {
+    const context = stopContext({ settings: DEFAULTS });
+    assert.deepEqual(decideStop(FRESH, context), { kind: 'measure' });
+    const first = decideStop(FRESH, context, cheap({ tokens: 130_000 }));
+    assert.deepEqual(first, { kind: 'write', state: { ...FRESH, baseline: 130_000 } }, 'records its baseline, asks nothing');
+    const measured = first.kind === 'write' ? first.state : FRESH;
+    assert.deepEqual(decideStop(measured, context, cheap({ tokens: 130_000 })), { kind: 'none' }, 'the next turn end at the same size: no ask');
+    assert.deepEqual(decideStop(measured, context, cheap({ tokens: 153_999 })), { kind: 'none' }, 'under 130k + 24k of growth');
+    assert.equal(decideStop(measured, context, facts({ tokens: 154_000 })).kind, 'block', 'asked once it grew 24k past its fresh size');
+  });
+
+  it('keeps the baseline through task ends, so three tasks without growth ask nothing either', () => {
+    const context = stopContext({ settings: DEFAULTS });
+    let state: RefreshState = { ...FRESH, baseline: 130_000 };
+    for (const task of ['T13', 'T14', 'T15']) {
+      state = boundaryOf(state, task, NOW);
+      assert.equal(state.phase === 'boundary' ? state.baseline : undefined, 130_000, task);
+      const judged = decideStop(state, context, cheap({ tokens: 140_000 }));
+      assert.equal(judged.kind, 'write', task);
+      state = judged.kind === 'write' ? judged.state : state;
+    }
+    assert.deepEqual(state, { phase: 'idle', task: 'T15', at: NOW, tokens: 140_000, finished: 3, baseline: 130_000 });
+    const fourth = boundaryOf(state, 'T16', NOW);
+    assert.equal(decideStop(fourth, context, facts({ tokens: 154_000 })).kind, 'block', 'the count asks once the context grew too');
+  });
+
+  it('measures a task end in the first turn the same way, counting the task', () => {
+    const boundary = boundaryOf(FRESH, 'T13', NOW);
+    assert.deepEqual(decideStop(boundary, stopContext({ settings: DEFAULTS }), cheap({ tokens: 160_000 })), {
+      kind: 'write',
+      state: { phase: 'idle', task: 'T13', at: NOW, tokens: 160_000, finished: 1, baseline: 160_000 },
+    });
+  });
+
+  it('still asks for the lead request on a fresh start, which no size explains', () => {
+    assert.equal(decideStop(FRESH, stopContext({ settings: DEFAULTS }), facts({ tokens: 130_000, requestedBy: 'lead' })).kind, 'block');
+  });
+
+  it('records the baseline at a tool result in the first turn, with no ask', () => {
+    const decision = decideMidTurn(FRESH, askContext(DEFAULTS), sizeOnly(130_000));
+    assert.deepEqual(decision, { kind: 'none', nextAt: 154_000, state: { ...FRESH, baseline: 130_000 } });
+    const measured = decision.kind === 'none' && decision.state !== undefined ? decision.state : FRESH;
+    assert.deepEqual(decideMidTurn(measured, askContext(DEFAULTS), sizeOnly(150_000)), { kind: 'none', nextAt: 154_000 });
+    assert.equal(decideMidTurn(measured, askContext(DEFAULTS), midTurnFacts(154_000)).kind, 'ask');
+  });
+
+  it('leaves a small fresh start at the threshold: the floor only lifts it', () => {
+    const small: RefreshState = { ...FRESH, baseline: 40_000 };
+    assert.equal(decideStop(small, stopContext({ settings: DEFAULTS }), facts({ tokens: 120_000 })).kind, 'block');
+  });
+
+  it('waits for a new baseline after a /clear by hand, and drops it at a compaction', () => {
+    const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 0, baseline: 130_000 };
+    assert.deepEqual(decideStart(idle, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...idle, baseline: null } });
+    assert.deepEqual(decideStart(idle, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), {
+      kind: 'reset',
+      state: { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 0 },
+    });
+    assert.deepEqual(decideStart({ ...FRESH, baseline: 130_000 }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { phase: 'refreshed', task: 'T12', at: NOW } });
   });
 });

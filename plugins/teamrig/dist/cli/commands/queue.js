@@ -1,14 +1,16 @@
 import { QUEUE_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
 import { busyText, holderText, isHeavyShare, underLock, waitText } from "../../delivery/host-lock.js";
 import { parseLedger } from "../../delivery/ledger.js";
-import { deliveryPlaces, detachedLogOf } from "../../delivery/places.js";
+import { pipelineFrozenRefusal } from "../../delivery/pipeline-freezes.js";
+import { formatRunRecord, runRecordPathOf } from "../../delivery/detached-runs.js";
+import { deliveryPlaces, detachedDirOf, detachedLogOf } from "../../delivery/places.js";
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass } from "../../delivery/push-pass.js";
 import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel } from "../../delivery/process-request.js";
 import { recordRefusal, runRecorded } from "../../delivery/recorded-step.js";
 import { stepNeedOf } from "../../delivery/step-need.js";
 import { causeOfLockWait, WaitLog } from "../../delivery/wait-log.js";
 import { queueCutoffReason, minutesText } from "../../delivery/schedule.js";
-import { endedText } from "../../delivery/starter-watch.js";
+import { endedText, startedByGit } from "../../delivery/starter-watch.js";
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT } from "../../delivery/steps.js";
 import { errorMessage } from "../../core/guards.js";
 import { ENV } from "../../core/home.js";
@@ -19,7 +21,7 @@ import { JsonlEventLog } from "../../register/store.js";
 import { commandLine } from "../../test-run/shell.js";
 import { requiredFlag, UsageError } from "../args.js";
 import { hostLockOf, logLineOf } from "../delivery-ports.js";
-import { commandWordsOf, sessionRef } from "../inputs.js";
+import { sessionRef, shellWordsOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { parentLockOf } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -88,8 +90,13 @@ function declaredMbOf(args) {
 function requestOf(args, words, what) {
     return processRequest(kindOf(args, words), taskOf(args, what));
 }
-function refuseAfterCutoff(runtime, cutoffUtc, zone) {
-    const reason = queueCutoffReason(runtime.clock.now(), cutoffUtc, zone);
+/** Why the step may not start now (the queue cutoff, or a pipeline freeze on its kind), or undefined when it may. */
+async function startRefusal(runtime, gate) {
+    const now = runtime.clock.now();
+    return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone);
+}
+async function refuseUnstartable(runtime, gate) {
+    const reason = await startRefusal(runtime, gate);
     if (reason !== undefined) {
         throw new RefusedError(reason);
     }
@@ -160,14 +167,29 @@ async function report(runtime, say, end, step) {
     return ended.code;
 }
 const UNREPORTED = { started: async () => undefined, ended: async () => undefined };
+/** Writes the detached run's record; a record that cannot be written is said in the log, never failing the step. */
+async function keepRunRecord(runtime, say, path, record) {
+    try {
+        await runtime.files.write(path, formatRunRecord(record));
+    }
+    catch (error) {
+        say(`its run record was not written, so a death of this run goes untold: ${errorMessage(error)}`);
+    }
+}
 /**
  * A detached run's session hears in its inbox when its step starts, and, with a wake, when it ends or is refused, since
- * no shell waits for its last line; a line that cannot be posted is said in the log, never failing the step.
+ * no shell waits for its last line; a line that cannot be posted is said in the log, never failing the step. The run
+ * keeps its record (detached-runs.ts) from now until its end line, so a sweep tells its session if it dies before
+ * then; it logs its pid, so a death can be traced to what ended it.
  */
-function detachedReporting(runtime, kit, config, say, run) {
-    const { id, session, what, log } = run;
+async function detachedReporting(runtime, kit, config, say, run) {
+    const { id, session, what, log, record: recordPath } = run;
+    const record = { v: 1, id, team: kit.paths.team, session, what, log, pid: runtime.pid, startedAt: new Date(runtime.clock.now()).toISOString() };
+    say(`detached run ${id}: pid ${runtime.pid}`);
+    await keepRunRecord(runtime, say, recordPath, record);
     return {
         started: async () => {
+            await keepRunRecord(runtime, say, recordPath, { ...record, runningAt: new Date(runtime.clock.now()).toISOString() });
             const text = `queue ${id} started: ${what}; log ${log}`;
             let problem;
             try {
@@ -181,6 +203,13 @@ function detachedReporting(runtime, kit, config, say, run) {
             }
         },
         ended: async (last) => {
+            // Removed before the line: of this run and a sweep, only the one whose removal takes the record reports a death.
+            try {
+                await runtime.files.remove(recordPath);
+            }
+            catch (error) {
+                say(`its run record was not removed: ${errorMessage(error)}`);
+            }
             const problem = await postUrgentLine(runtime, kit, config, { to: session, from: session, text: `queue ${id} ended: ${what}: ${last}; log ${log}` });
             if (problem !== undefined) {
                 say(`its end line was not posted to ${session}'s inbox: ${problem}`);
@@ -190,7 +219,7 @@ function detachedReporting(runtime, kit, config, say, run) {
 }
 /** A detached run has no shell to watch: `--detach`'s returned at once, so nothing stops it but its time limit. */
 function unwatched() {
-    return { starters: [], stop: new AbortController().signal, ended: () => undefined, close: () => undefined };
+    return { starters: [], stop: new AbortController().signal, ended: () => undefined, tabAlive: () => false, close: () => undefined };
 }
 /** The id `--detach` gives its run: the UTC second it started and the caller's process id, so two starts differ. */
 export function detachedIdOf(now, pid) {
@@ -207,6 +236,24 @@ function detachedRunIdOf(args) {
     return id;
 }
 /**
+ * `--arrived-at`: the epoch ms a step handed over (`handOver`) first joined the host lock's line, so its detached run
+ * keeps that place; set only by the hand-over, with `--detached-run`, and never past now.
+ */
+function arrivedAtOf(args, now) {
+    const text = args.flags.get('arrived-at');
+    if (text === undefined) {
+        return undefined;
+    }
+    if (!args.flags.has('detached-run')) {
+        throw new UsageError('--arrived-at is set by queue when it hands a waiting step over to a detached run: never give it by hand');
+    }
+    const at = Number(text);
+    if (!/^\d+$/.test(text) || !Number.isSafeInteger(at) || at <= 0 || at > now) {
+        throw new UsageError(`--arrived-at takes the epoch milliseconds the step joined the line, at most now: ${text}`);
+    }
+    return at;
+}
+/**
  * `--detach`: checks a step needs its result at once refuse. A pre-push hook's checks decide its push; a step under a
  * live host lock is part of its parent step, which waits for it, and `--detached-run` is the run `--detach` starts.
  */
@@ -218,11 +265,15 @@ function refuseDetachUsage(args) {
         throw new UsageError('--detached-run is set by --detach: give only --detach');
     }
 }
-/** The detached run's arguments: this command's flags and switches less `--detach`, its session resolved, its id added. */
-function detachedArgsOf(args, words, session, id) {
+/**
+ * The detached run's arguments: this command's flags and switches less `--detach`, its session resolved, its id added,
+ * and for a hand-over the time its step first joined the line.
+ */
+function detachedArgsOf(args, words, session, id, arrivedAt) {
     const flags = [...args.flags].filter(([name]) => name !== 'session').flatMap(([name, value]) => [`--${name}`, value]);
     const switches = [...args.switches].filter((name) => name !== 'detach').map((name) => `--${name}`);
-    return ['queue', '--detached-run', id, '--session', session, ...flags, ...switches, '--', ...words];
+    const arrival = arrivedAt === undefined ? [] : ['--arrived-at', String(arrivedAt)];
+    return ['queue', '--detached-run', id, '--session', session, ...arrival, ...flags, ...switches, '--', ...words];
 }
 /**
  * Starts this step as a hidden `queue --detached-run` that outlives this command and its shell, its output and the
@@ -230,10 +281,10 @@ function detachedArgsOf(args, words, session, id) {
  * dies with the shell Claude Code's reaper ends.
  */
 async function startDetached(runtime, places, args, run) {
-    const { id, session, what, words } = run;
+    const { id, session, what, words, arrivedAt } = run;
     const started = await runtime.processes.startHidden({
         command: runtime.self.node,
-        args: [runtime.self.script, ...detachedArgsOf(args, words, session, id)],
+        args: [runtime.self.script, ...detachedArgsOf(args, words, session, id, arrivedAt)],
         cwd: runtime.cwd,
         env: runtime.env,
         log: places.log,
@@ -271,6 +322,38 @@ async function runUnderParent(runtime, say, parent, step) {
     await step.reporting.started();
     const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop });
     return report(runtime, say, end, step);
+}
+/**
+ * Whether a step whose launching shell ended while it waited for the lock goes on as a detached run (T2304): only while
+ * the tab's Claude Code runs, so its low-memory reaper or the Bash tool's time limit ended the shell alone and the
+ * session still wants the result; never a git hook's step (its git command took the shell's end as the hook's) or a
+ * pre-push hook's checks, whose push is gone.
+ */
+function handsOver(watching, prePush) {
+    return !prePush && watching.tabAlive() && !startedByGit(watching.starters);
+}
+/**
+ * Hands a step whose launching shell ended over to a detached run that joins the line at the step's first arrival,
+ * then posts the session an urgent line: its Bash tool saw the step die, and running it again would queue it twice.
+ */
+async function handOver(runtime, context, run) {
+    const { kit, config, say, args, ended } = context;
+    const { session, what } = run;
+    const id = detachedIdOf(runtime.clock.now(), runtime.pid);
+    const log = detachedLogOf(config.delivery, kit.paths, id);
+    try {
+        await startDetached(runtime, { log }, args, { ...run, id });
+    }
+    catch (error) {
+        return { kind: 'failed', why: errorMessage(error) };
+    }
+    say(`its launching shell ended (${ended}) while it waited: detached run ${id} keeps its place in line`);
+    const text = `queue ${id} kept ${what}'s place in line: its launching shell ended (${ended}) while it waited, so it runs on detached; do not run it again; log ${log}; teamrig withdraw --session ${session} --what "${what}" stops it`;
+    const problem = await postUrgentLine(runtime, kit, config, { to: session, from: session, text });
+    if (problem !== undefined) {
+        say(`its hand-over line was not posted to ${session}'s inbox: ${problem}`);
+    }
+    return { kind: 'handed' };
 }
 /**
  * True, having said so and printed DONE, when these checks already passed on this clean tree, so a push declined after
@@ -331,16 +414,17 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * steps sharing the host (`hostLockOf`'s memory gate): its need learned from its past runs or declared with
  * `--memory-mb` (`needOf`), at least `heavyReserveMb` for a heavy step. With `--small` (a spec run, a lint) the step
  * shares the host with other small steps, holding its need or `smallReserveMb`; a heavy step shares it too under
- * `pipeline` admission, at most `maxHeavyParallel` at once, and takes the lock, waiting for every share to end, under
+ * `pipeline` admission, at most `maxHeavyParallel` at once and joining another only while `heavyIdleCpuPct` of the
+ * host's CPU is idle (`hostLockOf`'s CPU gate), and takes the lock, waiting for every share to end, under
  * `serial` or with `--exclusive`. A small step is killed after `smallMaxRunMinutes` instead, and its `--max-minutes`
  * goes no higher. Once the shell that started it ends (Claude Code's
- * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
- * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
+ * reaper ends a Bash tool's shell alone), it kills a running step, records exit 129 and frees the lock; a waiting step
+ * goes on as a detached run that keeps its place in line while the tab's Claude Code runs (`handsOver`), else stops. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
  * one when they pass, and declines a push whose checks waited past PRE_PUSH_MAX_WAIT_MS for the lock (push-pass.ts).
  * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
 export async function queue(args, runtime) {
-    const words = commandWordsOf(args);
+    const words = shellWordsOf(args, runtime.platform);
     const what = requiredFlag(args.flags, 'what');
     const request = requestOf(args, words, what);
     const declaredMb = declaredMbOf(args);
@@ -349,6 +433,7 @@ export async function queue(args, runtime) {
         refuseDetachUsage(args);
     }
     const detachedId = detachedRunIdOf(args);
+    const firstArrival = arrivedAtOf(args, runtime.clock.now());
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
     const { delivery } = config;
@@ -361,15 +446,18 @@ export async function queue(args, runtime) {
     const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, config.focus, zone);
     const parent = await parentLockOf(runtime, lock, say);
     const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
+    const gate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone };
     if (detach) {
         if (parent !== undefined) {
             throw new UsageError('--detach under a live host lock: a step a queued step starts runs at once under its lock, and that step waits for its result; run it without --detach');
         }
-        refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
+        await refuseUnstartable(runtime, gate);
         const id = detachedIdOf(runtime.clock.now(), runtime.pid);
         return await startDetached(runtime, { log: detachedLogOf(delivery, kit.paths, id) }, args, { id, session, what, words });
     }
-    const reporting = detachedId === undefined ? UNREPORTED : detachedReporting(runtime, kit, config, say, { id: detachedId, session, what, log: detachedLogOf(delivery, kit.paths, detachedId) });
+    const reporting = detachedId === undefined
+        ? UNREPORTED
+        : await detachedReporting(runtime, kit, config, say, { id: detachedId, session, what, log: detachedLogOf(delivery, kit.paths, detachedId), record: runRecordPathOf(detachedDirOf(delivery, kit.paths), detachedId) });
     const watching = detachedId === undefined ? await watchStarters(runtime, say) : unwatched();
     try {
         const step = { what, words, maxRunMinutes, watching, reporting };
@@ -381,7 +469,7 @@ export async function queue(args, runtime) {
             const code = await runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), step);
             return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
         }
-        refuseAfterCutoff(runtime, delivery.schedule.queueCutoffUtc, zone);
+        await refuseUnstartable(runtime, gate);
         // The register is read only for a step that queues: a nested step or one refused at once records nothing.
         const register = new JsonlEventLog(runtime.files, kit.paths.events);
         const line = await lineRequestOf(request, async (id) => (await register.read()).state.tasks.get(id), config.focus);
@@ -390,13 +478,20 @@ export async function queue(args, runtime) {
         const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());
         const need = await needOf(runtime, places.ledger, { session, what, kind: request.kind, small, ...(declaredMb === undefined ? {} : { declaredMb }) }, delivery.queue);
         const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
+        const arrivedAt = firstArrival ?? runtime.clock.now();
         const taking = await unlessStopped(watching.stop, lock.acquire(session, `heavy: ${what}`, delivery.queue.waitMinutes * MINUTE_MS, delivery.wait.pollSeconds * 1_000, (holder, ahead) => {
             const text = `${waiting}: ${waitText(holder, ahead, zone)}`;
             waits.tell({ cause: causeOfLockWait(holder), text });
             say(text);
-        }, { need, request: line, exclusive }, watching.stop));
+        }, { need, request: line, exclusive, arrivedAt }, watching.stop));
         if (taking === undefined) {
-            await recordRefusal(runtime, places.ledger, waits, { ...owner, what, outcome: 'stopped', reason: `its launching shell ended (${endedText(watching)}) while it waited` });
+            const ended = endedText(watching);
+            const handed = handsOver(watching, prePush !== undefined) ? await handOver(runtime, { kit, config, say, args, ended }, { session, what, words, arrivedAt }) : undefined;
+            if (handed?.kind === 'handed') {
+                return EXIT.ok;
+            }
+            const notHanded = handed === undefined ? '' : `; its detached run did not start: ${handed.why}`;
+            await recordRefusal(runtime, places.ledger, waits, { ...owner, what, outcome: 'stopped', reason: `its launching shell ended (${ended}) while it waited${notHanded}` });
             return stoppedWhileWaiting(runtime, say, watching);
         }
         if (taking.kind === 'busy') {
@@ -408,9 +503,9 @@ export async function queue(args, runtime) {
         const waited = waits.end();
         const waitedMs = runtime.clock.now() - waited.queuedAt;
         try {
-            const cutoff = queueCutoffReason(runtime.clock.now(), delivery.schedule.queueCutoffUtc, zone);
-            if (cutoff !== undefined) {
-                return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'refused', reason: cutoff });
+            const refusal = await startRefusal(runtime, gate);
+            if (refusal !== undefined) {
+                return await refuseWaited(runtime, places.ledger, waits, { ...owner, what, outcome: 'refused', reason: refusal });
             }
             const sharing = sharingText(need.reserveMb, taking);
             if (sharing !== undefined) {

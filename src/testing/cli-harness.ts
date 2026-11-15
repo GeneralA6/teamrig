@@ -10,7 +10,7 @@ import type { FileBytes } from '../core/file-bytes.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
-import { SECRET_DENY_LINES } from '../doctor/deny-lines.ts';
+import { ghHostsDenyLine, secretDenyLines } from '../doctor/deny-lines.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
@@ -25,10 +25,12 @@ import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
+import type { HostCpu } from '../delivery/cpu.ts';
 import type { HostMemory } from '../delivery/memory.ts';
 import type { StarterWatch } from '../delivery/starter-watch.ts';
 import type { StepRunner } from '../delivery/steps.ts';
 import type { HookRunner } from '../deploy/hooks.ts';
+import type { PullGit } from '../github/pull-conflicts.ts';
 import type { MergeGit } from '../merge/git.ts';
 import type { TreeState } from '../delivery/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
@@ -54,8 +56,8 @@ export const RENAMES_PATH = join(TEAM_HOME, 'state', 'renames.jsonl');
 export const SKILLS_DIR = join(USER_HOME, '.claude', 'skills');
 /** The user's Claude Code settings, where doctor tells the user to paste the secret deny lines no settings file holds. */
 export const USER_SETTINGS = join(USER_HOME, '.claude', 'settings.json');
-/** Claude Code settings that hold every secret deny line, for a spec that writes the user's settings itself. */
-export const HELD_DENY: JsonRecord = { permissions: { deny: [...SECRET_DENY_LINES] } };
+/** Claude Code settings that hold every secret deny line of every platform, for a spec that writes the user's settings itself. */
+export const HELD_DENY: JsonRecord = { permissions: { deny: [...secretDenyLines('linux'), ghHostsDenyLine('win32')] } };
 /** The project folder the CLI runs in, tied to team `app` by its pointer. */
 export const APP = resolve('/', 'work', 'app');
 export const POINTER = join(APP, '.teamrig.json');
@@ -63,7 +65,7 @@ export const CLAUDE_SESSION = '0123abcd-0000-4000-8000-00000000000a';
 /** The pid of every run of the CLI. */
 export const CLI_PID = 4242;
 export const TEAM: JsonRecord = { sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' } };
-/** {@link TEAM} with the context refresh's automatic restart on (`refresh.autoRestart`, off by default). */
+/** {@link TEAM} with the context refresh's automatic restart on (`refresh.autoRestart`, on for the lead only by default). */
 export const AUTO_RESTART_TEAM: JsonRecord = { ...TEAM, refresh: { autoRestart: true } };
 const longestList = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
   Array.from({ length: limit.maxItems }, () => letter.repeat(limit.maxLength));
@@ -136,9 +138,9 @@ export interface RunOptions {
   readonly sleep?: Sleep;
   /** The shell `teamrig test` runs in; default one that prints nothing and exits 0. */
   readonly shell?: ShellRunner;
-  /** The GitHub CLI `gh sync` reads through; default one that sees no repository. */
+  /** The GitHub CLI `issue sync` reads through; default one that sees no repository. */
   readonly gh?: GhRunner;
-  /** The saved secrets `gh sync` reads tokens from; default a store with none. */
+  /** The saved secrets `issue sync` reads tokens from; default a store with none. */
   readonly credentials?: CredentialStore;
   /** The folders and programs the CLI sees; default none. */
   readonly probe?: PathProbe;
@@ -156,10 +158,14 @@ export interface RunOptions {
   readonly steps?: StepRunner;
   /** The host memory (queue's watch, `teamrig sessions`); default one that lists no process and measures nothing. */
   readonly memory?: HostMemory;
+  /** The host CPU a heavy queued step's admission reads; default an idle one. */
+  readonly cpu?: HostCpu;
   /** The processes that started a `teamrig queue` run; default a shell and its Claude Code, which never end. */
   readonly starters?: StarterWatch;
   /** The git `teamrig merge` drives; default the fake repository at /w/feat (testing/fake-merge-git.ts). */
   readonly mergeGit?: MergeGit;
+  /** The git `teamrig pr conflicts` drives; default the fake clone of acme/web at /repo/web (testing/fake-pull-git.ts). */
+  readonly pulls?: PullGit;
   /** The working tree `teamrig queue --pre-push` reads; default no repository. */
   readonly trees?: TreeState;
   /** The runner `teamrig deploy` runs its checks, afterPull hooks and deploy command in; default one whose programs print nothing and exit 0. */
@@ -243,8 +249,10 @@ export class CliHarness {
       ...(options.restore === undefined ? {} : { restore: options.restore }),
       ...(options.steps === undefined ? {} : { steps: options.steps }),
       ...(options.memory === undefined ? {} : { memory: options.memory }),
+      ...(options.cpu === undefined ? {} : { cpu: options.cpu }),
       ...(options.starters === undefined ? {} : { starters: options.starters }),
       ...(options.mergeGit === undefined ? {} : { mergeGit: options.mergeGit }),
+      ...(options.pulls === undefined ? {} : { pulls: options.pulls }),
       ...(options.trees === undefined ? {} : { trees: options.trees }),
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
       ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),

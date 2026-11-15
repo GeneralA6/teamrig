@@ -92,6 +92,13 @@
         "resource changes"
       ]
     },
+    "securityGates": {
+      "description": "The owner gates (each one of ownerGates) whose cards reach the owner only with the security reviewer's verdict on the card, recorded by teamrig audit --verdict. A card edited after the verdict waits for a new one. With the key absent, permissions where ownerGates names it.",
+      "type": "array",
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[^\\r\\n]+$" },
+      "default": ["permissions"]
+    },
     "ruleConflicts": {
       "description": "Local rules (a line of a CLAUDE.md, rules file, skill, memory file, hook or settings file) kept although they conflict with a core rule, each with the side that wins. teamrig rules scan finds them; teamrig rules keep records one, teamrig rules forget drops one. The core pack lists them.",
       "type": "array",
@@ -460,7 +467,7 @@
       "type": "object",
       "properties": {
         "secretReads": {
-          "description": "A call that would print a secret: cat .env, Get-Content ~/.npmrc, the Read tool on a secret file, env, printenv, Get-ChildItem Env:, echo $GITHUB_TOKEN, kubectl get secret -o yaml, kubectl config view --raw: deny refuses it, ask asks the human, allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF).",
+          "description": "A call that would print a secret: cat .env, Get-Content ~/.npmrc, the Read tool on a secret file, env, printenv, Get-ChildItem Env:, echo $GITHUB_TOKEN, kubectl get secret -o yaml, kubectl config view --raw, and a shell line that reads a saved credential out of the host's store, printed or not (gh auth token, git credential fill, CredRead): deny refuses it, ask asks the human, allow lets it run, which is the owner's call: check flags it (SECRET-GUARD-OFF).",
           "type": "string",
           "enum": ["deny", "ask", "allow"],
           "default": "deny"
@@ -472,7 +479,7 @@
           "default": "deny"
         },
         "paths": {
-          "description": "The team's own secret files, read after the defaults (**/.env, **/.env.*, ~/.npmrc, ~/.ssh/**, ~/.aws/credentials, **/.kube/config, ~/.docker/config.json, **/.git-credentials, ~/.config/gh/hosts.yml, ~/.claude/.credentials.json, ~/.claude/history.jsonl, **/.claude/settings.local.json, ~/.bash_history, ~/.zsh_history, **/PSReadLine/*_history.txt, **/*.pem, **/*.key, **/*.p12, **/*.pfx, **/*.jks, **/*.keystore, **/id_rsa, **/id_ecdsa, **/id_ed25519, **/*.tfstate, **/*.tfstate.backup; .env.example, .env.sample and ~/.ssh/*.pub stay readable). ~/ starts at home, a glob with no leading / or drive matches at any depth, and the last glob that matches a path decides: !glob keeps a path readable.",
+          "description": "The team's own secret files, read after the defaults (**/.env, **/.env.*, ~/.npmrc, ~/.ssh/**, ~/.aws/credentials, **/.kube/config, ~/.docker/config.json, **/.git-credentials, ~/.config/gh/hosts.yml, ~/AppData/Roaming/GitHub CLI/hosts.yml, ~/.claude/.credentials.json, ~/.claude/history.jsonl, **/.claude/settings.local.json, ~/.bash_history, ~/.zsh_history, **/PSReadLine/*_history.txt, **/*.pem, **/*.key, **/*.p12, **/*.pfx, **/*.jks, **/*.keystore, **/id_rsa, **/id_ecdsa, **/id_ed25519, **/*.tfstate, **/*.tfstate.backup; .env.example, .env.sample and ~/.ssh/*.pub stay readable). ~/ starts at home, a glob with no leading / or drive matches at any depth, and the last glob that matches a path decides: !glob keeps a path readable.",
           "type": "array",
           "maxItems": 32,
           "items": { "type": "string", "maxLength": 200 },
@@ -496,6 +503,76 @@
           "description": "After a Bash, PowerShell, Read or Grep call runs, replace each secret its result holds (a token by its shape, a match of register.secretPatterns, the value of a secret variable) before the model and the transcript see it, and tell the session which kinds it held and the task filed to rotate each. false shows results whole; turning it off is the owner's call: check flags it (SECRET-GUARD-OFF).",
           "type": "boolean",
           "default": true
+        }
+      }
+    },
+    "dbWriteGuard": {
+      "description": "Asks before a Bash or PowerShell call writes to a database by hand: a SQL client (psql, mysql, mariadb, sqlite3, built in) or a program of the team's (programs) whose code writes, a Node script, node -e or stdin whose client of the team's (nodeClients) writes, a container or remote host running one (kubectl exec, docker exec, ssh), or a data script (entrypoints) run with its apply flag. A read stays silent. A team's lists only add: a missing or broken entry never switches a built-in off.",
+      "type": "object",
+      "properties": {
+        "writes": {
+          "description": "A hand-run database write: deny refuses it, ask asks the human (or refuses with the move-on note under prompts.hookAsks: refuse), allow lets it run.",
+          "type": "string",
+          "enum": ["deny", "ask", "allow"],
+          "default": "ask"
+        },
+        "entrypoints": {
+          "description": "The team's data scripts that write only with an apply flag, so a dry run passes: the script's path, matched against the end of the path a line runs (scripts/backfill.ts), and the flags that make it write (--apply, or --apply=yes on the line).",
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "description": "The script's path, matched against the end of the path a line runs: scripts/backfill.ts.", "type": "string", "minLength": 1, "maxLength": 260 },
+              "applyFlags": {
+                "description": "The flags that make the script write, --apply or --apply=yes; a run without one is a dry run.",
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 4,
+                "items": { "type": "string", "maxLength": 40, "pattern": "^--?[A-Za-z][\\w-]*$" }
+              }
+            },
+            "required": ["path", "applyFlags"],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "programs": {
+          "description": "The team's database programs, by name and the arguments each reads, read before the built-in SQL clients: document-shell (--eval code, -f files, a script file named as a word; document methods such as insertOne, deleteMany, drop, an aggregation's $out or $merge), key-value-cli (a command word such as SET or DEL, EVAL scripts, --eval files, stdin lines), sql-command (-c, -f, stdin), sql-execute (-e, stdin) or sql-database-file (a database file, then SQL; -cmd, stdin).",
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "description": "The program's name as a line runs it, no path: my-cli, tool.exe.", "type": "string", "maxLength": 60, "pattern": "^[A-Za-z0-9][\\w.+-]*$" },
+              "reads": { "description": "The arguments it takes its code from, one of the shapes programs lists.", "type": "string", "enum": ["document-shell", "key-value-cli", "sql-command", "sql-execute", "sql-database-file"] }
+            },
+            "required": ["name", "reads"],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "nodeClients": {
+          "description": "The Node client modules whose calls write, each with its vocabulary: document (insertOne, updateMany, deleteMany, drop, bulkWrite...) or key-value (set, del, hset, expire, flushall, eval...). Node code (node -e, a script file, stdin) is read only when it imports or requires one of them, or a module/sub path under it.",
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "module": { "description": "The package name code loads, store or @scope/store; a store/sub path under it counts too.", "type": "string", "maxLength": 120, "pattern": "^(?:@[a-z0-9][\\w.-]*\\/)?[a-z0-9][\\w.-]*$" },
+              "vocabulary": { "description": "The write vocabulary of its calls: document or key-value.", "type": "string", "enum": ["document", "key-value"] }
+            },
+            "required": ["module", "vocabulary"],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "clientReceivers": {
+          "description": "Words that mark a key-value client in Node code, matched in any case inside a receiver's name, added to the built-in client: a call named like a shared method (set, rename, copy, append, eval, move, restore, unlink) writes only on such a receiver (cache.set, not map.set).",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 40, "pattern": "^[A-Za-z_$][\\w$]*$" },
+          "default": []
         }
       }
     },
@@ -778,6 +855,13 @@
               "maximum": 1440,
               "default": 15
             },
+            "memoryPassMinutes": {
+              "description": "In pipeline admission, a later step may pass one waiting on the host's memory or commit charge, as a step that fits need not wait behind one that does not: always while no queued step runs (only memory outside the queue holds it then), and for this many minutes of its memory wait while queued steps run; past them it holds the line so that the room they free goes to it; 0 passes no one.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1440,
+              "default": 15
+            },
             "perSessionRunning": {
               "description": "In pipeline admission, a session with this many steps running (the host lock or a share of the host) waits for one to end, and later steps pass it; 0 caps nothing.",
               "type": "integer",
@@ -791,6 +875,13 @@
               "minimum": 1,
               "maximum": 64,
               "default": 2
+            },
+            "heavyIdleCpuPct": {
+              "description": "In pipeline admission, a heavy queued step joins another heavy one already sharing the host only while at least this % of the host's CPU time is idle (read over 2 seconds), as two test runs fanned out over every core slow each other until their time limits fire; a heavy step alone on the host never waits on CPU; 0 reads no CPU.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "default": 25
             }
           }
         },
@@ -899,7 +990,7 @@
           "default": false
         },
         "account": {
-          "description": "The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the one account the teams on its Claude config dir name (the dir its sessions last started in), else that dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, accountLead, weeklyLimitW, subagentWeight, extraWPerUsd, reset).",
+          "description": "The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the team above's, else the one account the teams on its Claude config dir name (the dir its sessions last started in), else that dir, since one config dir signs in one account. A team that names an account other than the team above's takes none of the keys of the account's week from it (enabled, accountLead, weeklyLimitW, subagentWeight, extraWPerUsd, reset, resets).",
           "type": "string",
           "minLength": 1,
           "maxLength": 100,
@@ -922,6 +1013,20 @@
           "maximum": 10,
           "default": 1
         },
+        "modelWeights": {
+          "description": "What one W of each model's calls moves the weekly meter, against 1 for a model unlisted: the account's limit counts models at their own rates, so the meter multiplies each call's W by its model's weight, on top of subagentWeight. The rollup keeps raw W. Unset in a team under another on its account: the team above's; else none, every model alike.",
+          "type": "array",
+          "maxItems": 10,
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": ["model", "weight"],
+            "properties": {
+              "model": { "description": "A prefix of the model id a transcript names, such as claude-fable; the longest listed match wins.", "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[^\\r\\n]+$" },
+              "weight": { "description": "Its W on the meter per W of its calls.", "type": "number", "minimum": 0.1, "maximum": 20 }
+            }
+          }
+        },
         "extraWPerUsd": {
           "description": "W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the team above's, in a team under another on its account; else the extra-usage pool shows in dollars only until then, with no allowance.",
           "type": "integer",
@@ -935,6 +1040,23 @@
           "properties": {
             "weekday": { "description": "The day the weekly limit resets.", "enum": ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] },
             "timeUtc": { "description": "The time it resets, HH:MM UTC.", "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" }
+          }
+        },
+        "resets": {
+          "description": "The resets the account holds beside its weekly one, each grant with its expiry and the uses taken from it; Claude Code does not tell a session about them, so the team writes them down as they are granted and used. teamrig budget shows what is left of each. Unset: the team above's, in a team under another on its account; else none.",
+          "type": "array",
+          "maxItems": 20,
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": ["kind", "count", "expiresUtc"],
+            "properties": {
+              "kind": { "description": "fable refills the Fable bar and gives back what Fable used of the weekly limit; full clears all of the week's usage.", "enum": ["fable", "full"] },
+              "count": { "description": "How many resets the grant holds.", "type": "integer", "minimum": 1, "maximum": 20 },
+              "expiresUtc": { "description": "When the grant's unused resets expire, YYYY-MM-DD HH:MM UTC.", "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$" },
+              "usedUtc": { "description": "When each use was taken, YYYY-MM-DD HH:MM UTC; at most count. Unset: none used.", "type": "array", "maxItems": 20, "items": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$" } },
+              "note": { "description": "One short line about the grant, such as where it came from.", "type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[^\\r\\n]+$" }
+            }
           }
         },
         "targetPct": {
@@ -1132,7 +1254,7 @@
           "default": 15
         },
         "dayStartUtc": {
-          "description": "The day's start (HH:MM UTC, outside the budget's quiet hours): from then each session with work it can start, of any priority, that has had no turn since gets one wake that day, and a burst wakes its sessions the same way once it starts. Unset: no day-start wake, and a burst wakes no one.",
+          "description": "The day's start (HH:MM UTC, outside the budget's quiet hours): from then each session with work it can start, of any priority, that has had no turn since gets one wake that day, and a burst wakes its sessions the same way once it starts. Unset: no day-start wake, and a burst wakes no one. The root lead's `teamrig schedule set` overrides it for a day, per team or session.",
           "type": "string",
           "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
         }
@@ -1152,7 +1274,7 @@
       }
     },
     "github": {
-      "description": "teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local. Each owner's repositories are read with the read-only token saved as teamrig-gh-<owner> in the system's credential store, else the gh login (docs/github-sync.md).",
+      "description": "The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md).",
       "type": "object",
       "properties": {
         "repos": {
@@ -1194,11 +1316,18 @@
           "default": 14
         },
         "everyMinutes": {
-          "description": "How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig gh sync --yes.",
+          "description": "How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig issue sync --yes.",
           "type": "integer",
           "minimum": 0,
           "maximum": 1440,
           "default": 15
+        },
+        "similarThreshold": {
+          "description": "The score, from 0 to 1, at which a mirrored issue counts as a duplicate candidate of a new one: the cosine of their TF-IDF word vectors. Higher lists fewer, closer candidates.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.35
         },
         "acceptLabel": {
           "description": "The label that lets an issue by an author outside the repository (not its owner, an organization member or a collaborator) become a task: it counts when someone other than the author added it last and the title and body were not edited after that. Matched without case.",
@@ -1300,7 +1429,7 @@
       }
     },
     "pickerGuard": {
-      "description": "Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed.",
+      "description": "Refuses Claude Code's question picker (AskUserQuestion) in every session and helper of the team, the lead's own thread included, in the owner's daily meeting too, where the lead asks each card in plain text: the picker stops the session until the person answers, and the owner may be away for hours, so none of its other tasks moves meanwhile. The refusal tells the session to decide it when it is its own, else to record it on its task (a waiting status with its decision card, --default included), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. A helper ends its report with the decision instead. Plan mode's ExitPlanMode stays allowed. It also refuses a session's Bash line that leads with `cd D &&` and runs git or leaves the session's folder, which Claude Code would hold on a permission prompt, quoting the line's git -C / env -C form to rerun (since 0.375.0).",
       "type": "object",
       "properties": {
         "enabled": {
@@ -1686,9 +1815,9 @@
         },
         "tabTitle": { "description": "Title the tab once the handover is written: '[<team>] <name>: restarting', or '[<team>] <name>: type /clear'.", "type": "boolean", "default": true },
         "autoRestart": {
-          "description": "Once the handover is written and the turn has ended, start the session fresh on its own, which reads the handover: the plugin's mod runs /clear in its tab; where no mod claims the ask, teamrig ends its Claude Code and starts it again, in the same tab when teamrig open started it, else in a new tab. A session with no work it can start then waits for a wake that brings it some, which starts it fresh instead of waking it. A prompt typed before then keeps the context. false (the default): the user types /clear once done with the screen, which a /clear wipes.",
-          "type": "boolean",
-          "default": false
+          "description": "Once the handover is written and the turn has ended, start the session fresh on its own, which reads the handover: the plugin's mod runs /clear in its tab; where no mod claims the ask, teamrig ends its Claude Code and starts it again, in the same tab when teamrig open started it, else in a new tab. A session with no work it can start then waits for a wake that brings it some, which starts it fresh instead of waking it. A prompt typed before then keeps the context. false: the user types /clear once done with the screen, which a /clear wipes. the string lead (the default): on for the team's lead (roles.lead) only, whose context otherwise grows unasked overnight; every other session waits for /clear.",
+          "anyOf": [{ "type": "boolean" }, { "enum": ["lead"] }],
+          "default": "lead"
         },
         "restartDelaySeconds": {
           "description": "How long after the turn's end the automatic restart waits, so the user can still type to keep the context.",
@@ -1745,8 +1874,8 @@
           "default": "owner"
         },
         "reviewDays": { "description": "Days from a hire to its review date, unless teamrig hire --review names one.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
-        "resumeMaxTokens": { "description": "The most context tokens a rehired session's last Claude Code session may hold for teamrig open --resume to resume it; past it the session starts fresh on its handover.", "type": "integer", "minimum": 10000, "maximum": 1000000, "default": 250000 },
-        "resumeMaxIdleDays": { "description": "The most days a rehired session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it; past it the session starts fresh on its handover.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
+        "resumeMaxTokens": { "description": "The most context tokens a session's last Claude Code session may hold for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh.", "type": "integer", "minimum": 10000, "maximum": 1000000, "default": 250000 },
+        "resumeMaxIdleDays": { "description": "The most days a session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it (a rehired session's, or one whose tab ended outside teamrig); past it the session opens fresh.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
         "scaleOut": {
           "description": "How teamrig check measures an area against its dated work for a SCALE-OUT flag: its pace is the tasks it finished lately, and the dated tasks of the top priorities are what it must finish in time.",
           "type": "object",

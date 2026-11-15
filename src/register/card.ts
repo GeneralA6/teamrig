@@ -1,5 +1,6 @@
 import { isRecord } from '../core/guards.ts';
 import { auditOf, handStepShapeOf, runFileDrift, runLineOf, shortSha256, type HandStepAudit, type RunFiles } from './hand-step.ts';
+import { verdictIsCurrent, type SecurityVerdict } from './security-verdict.ts';
 
 /**
  * A decision card (T514): what a task waiting on a decision or an approval asks, written so whoever decides needs
@@ -31,6 +32,18 @@ export interface DecisionCard {
    * absolute path, which an audit on the task pins at its sha256; the card prints the line that runs it.
    */
   readonly run?: string;
+  /**
+   * Only on a wait on the owner's decision or approval (T2623): what a card whose question is about a test, measure or
+   * proof (proofWordOf) asks the owner for, the approved number it changes, the money it spends or the data it
+   * writes; one that does none of those is approved with the work it tests, and goes ahead.
+   */
+  readonly affects?: string;
+  /**
+   * On any card (T2761, core rule 9): the question is security-related whatever its gate, a guard line, a secret or
+   * a grant say, so it reaches the owner only with the security reviewer's verdict on it, as a card on a gate in
+   * `securityGates` does. Kept as long as the card is, as the reviewer reads the card before the owner does.
+   */
+  readonly security?: true;
 }
 
 /** The CLI flags that write a card's parts, for the refusals that name them. */
@@ -44,6 +57,44 @@ export const GATE_FLAG = '--gate';
 
 /** The CLI flag that writes a card's `run`. */
 export const RUN_FLAG = '--run';
+
+/** The CLI flag that writes a card's `affects`. */
+export const AFFECTS_FLAG = '--affects';
+
+/** The CLI switch that writes a card's `security`. */
+export const SECURITY_FLAG = '--security';
+
+/** How `--affects` is typed. */
+export const AFFECTS_USAGE = `${AFFECTS_FLAG} "<the approved number it changes, the money it spends or the data it writes>"`;
+
+/**
+ * The words that make a card's question about a test, a measure or a proof (T2623): a back-test, a trial, a dry run,
+ * a benchmark, an experiment, a simulation. Such work on what is already approved is approved with it (core rule 6),
+ * so its card asks the owner only for what it changes (`affects`).
+ */
+const PROOF_WORD =
+  /\b(?:back-?|re-?)?test(?:s|ed|ing)?\b|\bmeasur(?:e|es|ed|ing|ements?)\b|\bproofs?\b|\bprov(?:e|es|ed|en|ing)\b|\btrials?\b|\bdry[- ]runs?\b|\bbenchmarks?\b|\bexperiments?\b|\bsimulat(?:e|es|ed|ing|ions?)\b/iu;
+
+/** The first word that makes `question` about a test, a measure or a proof (PROOF_WORD), as written; undefined when none does. */
+export function proofWordOf(question: string): string | undefined {
+  return PROOF_WORD.exec(question)?.[0];
+}
+
+/**
+ * The words that make a card security-related (T2761): a guard, a permission, a deny, settings, a secret, a token,
+ * a grant, `teamrig exec`, auto mode, a privileged step. The bare words key and allow are left out, and so are
+ * tokens and setting: a key result, an allowance, a token budget and setting a date are not security matters.
+ */
+const SECURITY_WORD =
+  /\bguards?\b|\bpermissions?\b|\bden(?:y|ies|ied)\b|\bsettings\b|\bsecrets?\b|\btoken\b|\bgrant(?:s|ed|ing)?\b|\bexec\b|\bauto-?mode\b|\bprivileged\b/iu;
+
+/**
+ * The first word in what `card` asks the owner to approve (its question, options and recommendation, the parts a
+ * security verdict reads) that makes it security-related (SECURITY_WORD), as written; undefined when none does.
+ */
+export function securityWordOf(card: DecisionCard): string | undefined {
+  return SECURITY_WORD.exec([card.question, ...card.options, card.recommend].join(' | '))?.[0];
+}
 
 /** The gate that names a business decision, the owner's besides the owner gates (T1194). */
 export const BUSINESS_GATE = 'business';
@@ -73,6 +124,37 @@ export function whyAskUsage(ownerSource: string): string {
 /** How `--options` separates the choices: a comma or a semicolon is common inside one. */
 export const OPTION_SEPARATOR = '|';
 
+/** How a choice says a literal OPTION_SEPARATOR inside it: `--options "keep 'a \\| b' | drop it"`. */
+export const OPTION_SEPARATOR_ESCAPE = `\\${OPTION_SEPARATOR}`;
+
+/** `--options` text as its choices, each trimmed: split at each OPTION_SEPARATOR not escaped as OPTION_SEPARATOR_ESCAPE. */
+export function splitOptions(text: string): string[] {
+  const options: string[] = [];
+  let current = '';
+  for (let index = 0; index < text.length; index += 1) {
+    if (text.startsWith(OPTION_SEPARATOR_ESCAPE, index)) {
+      current += OPTION_SEPARATOR;
+      index += OPTION_SEPARATOR_ESCAPE.length - 1;
+    } else if (text.startsWith(OPTION_SEPARATOR, index)) {
+      options.push(current.trim());
+      current = '';
+    } else {
+      current += text[index];
+    }
+  }
+  options.push(current.trim());
+  return options;
+}
+
+/** What a refusal about the choices adds: how many choices --options split into, each shown, and the escape for a literal separator. */
+export function optionsSplitText(options: readonly string[]): string {
+  const shown = options.map((option) => `"${option}"`).join(' / ');
+  return `--options split into ${options.length} choice${options.length === 1 ? '' : 's'} at each ${OPTION_SEPARATOR}: ${shown}; write ${OPTION_SEPARATOR_ESCAPE} for a ${OPTION_SEPARATOR} inside a choice`;
+}
+
+/** How a refusal names one choice of `--options`, before its number. */
+const OPTION_CHOICE_PART = '--options choice ';
+
 /** The fewest plain words each part of a card says; task ids do not count. */
 export const CARD_MIN_WORDS = 3;
 
@@ -91,13 +173,14 @@ export function cardTexts(card: DecisionCard): string[] {
     card.question,
     ...(card.gate === undefined ? [] : [card.gate]),
     ...(card.whyAsk === undefined ? [] : [card.whyAsk]),
+    ...(card.affects === undefined ? [] : [card.affects]),
     ...card.options,
     card.recommend,
     card.byDefault,
   ];
 }
 
-/** Which of a card's owner parts still hold: `whyAsk`, `gate` and `run` each go once what they answer no longer applies. */
+/** Which of a card's owner parts still hold: `whyAsk`, `gate`, `run` and `affects` each go once what they answer no longer applies. */
 export interface KeptOwnerParts {
   /** The task is one the owner ordered and waits on the owner's decision or approval (T802). */
   readonly whyAsk: boolean;
@@ -105,6 +188,8 @@ export interface KeptOwnerParts {
   readonly gate: boolean;
   /** The task waits on the owner's decision or approval, so a hand step still goes to the owner (T2312). */
   readonly run: boolean;
+  /** The task waits on the owner's decision or approval, so what a test it asks about changes still goes to the owner (T2623). */
+  readonly affects: boolean;
 }
 
 /** The card with only the owner parts that still hold (`keep`). */
@@ -117,6 +202,8 @@ export function keptCard(card: DecisionCard, keep: KeptOwnerParts): DecisionCard
     ...(keep.whyAsk && card.whyAsk !== undefined ? { whyAsk: card.whyAsk } : {}),
     ...(keep.gate && card.gate !== undefined ? { gate: card.gate } : {}),
     ...(keep.run && card.run !== undefined ? { run: card.run } : {}),
+    ...(keep.affects && card.affects !== undefined ? { affects: card.affects } : {}),
+    ...(card.security === true ? { security: true } : {}),
   };
 }
 
@@ -141,24 +228,26 @@ export function namedTaskIds(texts: readonly string[]): string[] {
 export function cardProblem(card: DecisionCard, decision: boolean): string | undefined {
   const thin = typedParts(card).find(([, text]) => plainWords(text) < CARD_MIN_WORDS);
   if (thin !== undefined) {
-    return `${thin[0]} says "${thin[1]}": give at least ${CARD_MIN_WORDS} plain words besides task ids, so it reads without the task list`;
+    const split = thin[0].startsWith(OPTION_CHOICE_PART) ? `; ${optionsSplitText(card.options)}` : '';
+    return `${thin[0]} says "${thin[1]}": give at least ${CARD_MIN_WORDS} plain words besides task ids, so it reads without the task list${split}`;
   }
   if (card.options.length === 1 || (decision && card.options.length < MIN_DECISION_OPTIONS)) {
-    return `--options lists ${card.options.length}: a decision lists at least ${MIN_DECISION_OPTIONS}, separated by ${OPTION_SEPARATOR}${decision ? '' : '; an approval lists none or as many'}`;
+    return `--options lists ${card.options.length}: a decision lists at least ${MIN_DECISION_OPTIONS}, separated by ${OPTION_SEPARATOR}${decision ? '' : '; an approval lists none or as many'}${card.options.length === 0 ? '' : `; ${optionsSplitText(card.options)}`}`;
   }
   return undefined;
 }
 
 /**
  * The parts of a card its writer types, each with the flag that wrote it, for the refusals that name one: the
- * question, why asked, each option, the recommendation and the default. The gate is left out, as it is one of the
+ * question, why asked, what it affects, each option, the recommendation and the default. The gate is left out, as it is one of the
  * names the config gives, and the run file, as it is a path.
  */
 function typedParts(card: DecisionCard): readonly (readonly [string, string])[] {
   return [
     ['--question', card.question],
     ...(card.whyAsk === undefined ? [] : [[WHY_ASK_FLAG, card.whyAsk] satisfies [string, string]]),
-    ...card.options.map((option, index): [string, string] => [`--options choice ${index + 1}`, option]),
+    ...(card.affects === undefined ? [] : [[AFFECTS_FLAG, card.affects] satisfies [string, string]]),
+    ...card.options.map((option, index): [string, string] => [`${OPTION_CHOICE_PART}${index + 1}`, option]),
     ['--recommend', card.recommend],
     ['--default', card.byDefault],
   ];
@@ -200,6 +289,8 @@ export function sameCard(a: DecisionCard | null, b: DecisionCard | null): boolea
     a.whyAsk === b.whyAsk &&
     a.gate === b.gate &&
     a.run === b.run &&
+    a.affects === b.affects &&
+    a.security === b.security &&
     a.options.length === b.options.length &&
     a.options.every((option, index) => option === b.options[index])
   );
@@ -216,7 +307,7 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (!isRecord(value)) {
     return 'card is not an object';
   }
-  const { question, options, recommend, byDefault, whyAsk, gate, run } = value;
+  const { question, options, recommend, byDefault, whyAsk, gate, run, affects, security } = value;
   if (typeof question !== 'string' || typeof recommend !== 'string' || typeof byDefault !== 'string') {
     return 'card needs question, recommend and byDefault as text';
   }
@@ -232,6 +323,12 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (run !== undefined && typeof run !== 'string') {
     return 'card run is not text';
   }
+  if (affects !== undefined && typeof affects !== 'string') {
+    return 'card affects is not text';
+  }
+  if (security !== undefined && security !== true) {
+    return 'card security is not true';
+  }
   return {
     question,
     options,
@@ -240,25 +337,40 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
     ...(whyAsk === undefined ? {} : { whyAsk }),
     ...(gate === undefined ? {} : { gate }),
     ...(run === undefined ? {} : { run }),
+    ...(affects === undefined ? {} : { affects }),
+    ...(security === true ? { security } : {}),
   };
 }
 
 /**
- * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's and
- * why the owner is asked (when the card says), each option numbered, the recommendation and the default, then the
+ * A card as printed under its task: the question, the owner gate or business reason that makes it the owner's, why
+ * the owner is asked and what a test it asks about changes (when the card says), each option numbered, the recommendation and the default, then the
  * hand step to run (when the card hands one), each line led by `indent`. `audits` are the task's (fold.ts), and
- * `runFiles` what its hand step file hashes to now.
+ * `runFiles` what its hand step file hashes to now. `verdict` is the task's security verdict (T2761), printed after
+ * the gate, or marked STALE once the card asks something other than what it was given on.
  */
-export function cardLines(card: DecisionCard, indent: string, audits: readonly HandStepAudit[], runFiles: RunFiles): string[] {
+export function cardLines(card: DecisionCard, indent: string, audits: readonly HandStepAudit[], runFiles: RunFiles, verdict: SecurityVerdict | null): string[] {
   return [
     `${indent}decide: ${card.question}`,
     ...(card.gate === undefined ? [] : [`${indent}gate: ${card.gate}`]),
+    ...(verdict === null ? (card.security === true ? [`${indent}security: no verdict yet; it reaches the owner only with the security reviewer's`] : []) : [`${indent}security: ${verdictText(verdict, card)}`]),
     ...(card.whyAsk === undefined ? [] : [`${indent}why asked: ${card.whyAsk}`]),
+    ...(card.affects === undefined ? [] : [`${indent}affects: ${card.affects}`]),
     ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
     `${indent}recommended: ${card.recommend}`,
     `${indent}with no answer: ${card.byDefault}`,
     ...(card.run === undefined ? [] : [`${indent}run: ${runText(card.run, audits, runFiles)}`]),
   ];
+}
+
+/**
+ * The security verdict as the owner reads it: the reviewer's text and who gave it, or, once the card asks another
+ * question, options or recommendation than the verdict read, that it is stale and not to be decided on (core rule 9).
+ */
+function verdictText(verdict: SecurityVerdict, card: DecisionCard): string {
+  return verdictIsCurrent(verdict, card)
+    ? `${verdict.text} (verdict by ${verdict.by})`
+    : `STALE: ${verdict.by}'s verdict read another question, options or recommendation; do not decide until it is read again`;
 }
 
 /**

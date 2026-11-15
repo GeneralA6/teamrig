@@ -37,6 +37,15 @@ export const REVIEW_CLASSES = ['security', 'leader'];
 export function isReviewClass(value) {
     return REVIEW_CLASSES.some((reviewer) => reviewer === value);
 }
+/**
+ * How a database program takes the code it runs: `document-shell` (`--eval` code, `-f` files, a positional script
+ * file; document methods), `key-value-cli` (a command word, `EVAL` scripts, `--eval` files, stdin lines),
+ * `sql-command` (`-c`, `-f`, stdin), `sql-execute` (`-e`, stdin) or `sql-database-file` (a database file, then SQL;
+ * `-cmd`, stdin).
+ */
+export const DB_PROGRAM_SHAPES = ['document-shell', 'key-value-cli', 'sql-command', 'sql-execute', 'sql-database-file'];
+/** The write vocabulary of a Node client: a document store's methods, or a key-value store's commands. */
+export const DB_CLIENT_VOCABULARIES = ['document', 'key-value'];
 export const AD_HOC_RUNNERS = ['deny', 'ask', 'allow'];
 export function isAdHocRunners(value) {
     return AD_HOC_RUNNERS.some((choice) => choice === value);
@@ -65,6 +74,16 @@ export const SECRET_WRITES = ['deny', 'ask', 'allow'];
 export function isSecretWrites(value) {
     return SECRET_WRITES.some((choice) => choice === value);
 }
+export const DB_WRITES = ['deny', 'ask', 'allow'];
+export function isDbWrites(value) {
+    return DB_WRITES.some((choice) => choice === value);
+}
+export function isDbProgramShape(value) {
+    return DB_PROGRAM_SHAPES.some((shape) => shape === value);
+}
+export function isDbClientVocabulary(value) {
+    return DB_CLIENT_VOCABULARIES.some((vocabulary) => vocabulary === value);
+}
 export const COMMIT_GATES = ['off', 'warn', 'refuse'];
 export function isCommitGate(value) {
     return COMMIT_GATES.some((gate) => gate === value);
@@ -82,11 +101,21 @@ export function isEscalation(value) {
     return ESCALATIONS.some((escalation) => escalation === value);
 }
 /**
+ * The resets the account holds beside its weekly one: `fable` refills the Fable bar and gives back what Fable used of the
+ * weekly limit, `full` clears all of the week's usage.
+ */
+export const RESET_KINDS = ['fable', 'full'];
+export function isResetKind(value) {
+    return RESET_KINDS.some((kind) => kind === value);
+}
+/**
  * The budget keys of the account's week, and whether the budget is on: a team under another (`team.parent`) that
  * leaves one unset takes the team above's, unless it names another account (src/cli/kit.ts openKit), so the teams of
  * a tree read one week alike without a copy that drifts.
  */
-export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'extraWPerUsd', 'reset'];
+export const ACCOUNT_BUDGET_KEYS = ['enabled', 'account', 'accountLead', 'weeklyLimitW', 'subagentWeight', 'modelWeights', 'extraWPerUsd', 'reset', 'resets'];
+/** `refresh.autoRestart`: on or off for every session, or on for the team's lead only. */
+export const AUTO_RESTART_LEAD = 'lead';
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` a lead (the lead, or a sub-lead
  * into its own group), once the owner approved (`--approved-by`, kept with the hire); `lead` a lead; `automatic` as

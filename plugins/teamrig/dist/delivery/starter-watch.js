@@ -48,6 +48,11 @@ export function startersOf(lineage, shellLineages = []) {
     const claude = starters.findIndex(isClaudeProcess);
     return claude === -1 ? starters : starters.slice(0, claude + 1);
 }
+const GIT_NAME = /^git(?:\.exe)?$/iu;
+/** Whether a git command is among `starters`: the step is a git hook's, and that git command waits for its result. */
+export function startedByGit(starters) {
+    return starters.some((starter) => GIT_NAME.test(starter.name));
+}
 /** The starter a watch found ended, as `bash.exe 4100`; while every one runs, `a process that started it`. */
 export function endedText(watching) {
     const ended = watching.ended();
@@ -75,7 +80,9 @@ export function starterWatch(processes, watched, every, everyMs = STARTER_CHECK_
                     }
                 });
             }
-            return { starters, stop: controller.signal, ended: () => ended, close: () => cancel() };
+            const claude = starters.find(isClaudeProcess);
+            const tabAlive = () => claude !== undefined && processes.alive(claude.pid);
+            return { starters, stop: controller.signal, ended: () => ended, tabAlive, close: () => cancel() };
         },
     };
 }

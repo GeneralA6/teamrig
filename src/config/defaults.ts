@@ -8,6 +8,7 @@ import type {
   CommitGuardConfig,
   CommitsConfig,
   ContextFilesConfig,
+  DbWriteGuardConfig,
   DecisionsConfig,
   FocusConfig,
   GithubConfig,
@@ -48,6 +49,12 @@ export const DEFAULT_OWNER_GATES: readonly string[] = [
   'budget',
   'resource changes',
 ];
+
+/**
+ * The owner gates whose cards reach the owner only with the security reviewer's verdict on them (T2761): a
+ * permission is a grant, a guard or a settings line, so the owner decides it from the reviewer's view.
+ */
+export const DEFAULT_SECURITY_GATES: readonly string[] = ['permissions'];
 
 export const DEFAULT_MESSAGES = { maxLines: 10, coldAfterMinutes: 60 } as const;
 
@@ -147,6 +154,13 @@ export const DEFAULT_PROMPTS: PromptsConfig = { hookAsks: 'ask', routeAllow: 'on
 /** Refused by default: a secret printed into a session lands in its transcript and every later prompt (T660, 10-19). */
 export const DEFAULT_SECRET_GUARD: SecretGuardConfig = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
 
+/**
+ * Asked by default: a hand-run write is sometimes the right step, once the owner has seen its counts or preview, so
+ * the human answers it rather than the guard refusing it (T661). The SQL clients are built in; no other program, Node
+ * client or script is the guard's until a team names it.
+ */
+export const DEFAULT_DB_WRITE_GUARD: DbWriteGuardConfig = { writes: 'ask', entrypoints: [], programs: [], nodeClients: [], clientReceivers: [] };
+
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL: ReadonlyShellConfig = { enabled: false, allowPrefixes: [] };
 
@@ -201,11 +215,14 @@ export const DEFAULT_COMMITS: CommitsConfig = {
  * Neutral on purpose: off, no allowance cap, every session an equal share, and past the line only
  * the warning lines, so a team that turns it on is measured and shown before anything acts.
  * The optional keys (main lead, weekly limit, extra usage's W per dollar, reset, quiet hours, snapshot folder) stay
- * unset. Each team with planned work gets at least 10% of a weekly split, enough for one slice (owner order T2215).
+ * unset, and the account holds no resets beside its weekly one. Each team with planned work gets at least 10% of a weekly
+ * split, enough for one slice (owner order T2215).
  */
 export const DEFAULT_BUDGET: BudgetConfig = {
   enabled: false,
   subagentWeight: 1,
+  modelWeights: [],
+  resets: [],
   targetPct: 99.5,
   reservePct: 0.5,
   shareFloorPct: 10,
@@ -287,13 +304,15 @@ export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
  * per further hundred open, or recently changed closed, issues). An outsider's issue waits for the `teamrig` label,
  * named after the tool so it does not clash with a repository's own triage labels.
  */
-export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig' };
+export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, acceptLabel: 'teamrig', similarThreshold: 0.35 };
 
 /**
  * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a
  * session that grows slowly, from 80k up. Measured over 8 days of 12 sessions: about 9 refreshes a day in all.
- * The user types /clear for the fresh start (`autoRestart` off): an automatic /clear wiped the screen while the
- * user was still reading the last reply, still had its question to answer, or was away. While a handover is
+ * The user types /clear for the fresh start of a member (`autoRestart` 'lead'): an automatic /clear wiped the screen
+ * while the user was still reading the last reply, still had its question to answer, or was away. The lead restarts
+ * on its own: with it off, a lead grew unasked through the night, and the mod's activity hold and countdown keep the
+ * /clear from landing under the user. While a handover is
  * pending, the compaction at 167k waits up to 185k: 18k of room to finish the step and write it, and 15k under the
  * window for a large tool result. A handover over 20 KB is refused: on 10-24 most were 4 to 8 KB, and one appended
  * to section by section (29 of them) reached 88 KB, which its every fresh start read whole.
@@ -304,7 +323,7 @@ export const DEFAULT_REFRESH: RefreshConfig = {
   everyTasks: 3,
   everyTasksMinTokens: 80_000,
   tabTitle: true,
-  autoRestart: false,
+  autoRestart: 'lead',
   restartDelaySeconds: 15,
   holdAfterActivityMinutes: 30,
   countdownSeconds: 20,
@@ -383,7 +402,7 @@ export const QUEUE_TTL_MARGIN_MINUTES = 10;
  * A host lock lasts 150 minutes and a queued step at most 45 of them, a small step at most 10; a step waits up to an hour
  * for the lock, and its memory is sampled every 15 seconds while it runs. The line is in `pipeline` order: a waiting
  * step's priority rises a level each 15 minutes, at most 2 steps of one session run, and 2 heavy steps share the host
- * with the lock file free. A team whose own deploy tool takes the lock file without first waiting for the shares in
+ * with the lock file free, the second let in only while 25% of the CPU is idle. A team whose own deploy tool takes the lock file without first waiting for the shares in
  * `<lock>.shared` to end sets `serial`, else that tool could start a roll beside 2 heavy builds.
  */
 export const DEFAULT_QUEUE: QueueConfig = {
@@ -397,8 +416,10 @@ export const DEFAULT_QUEUE: QueueConfig = {
   heavyReserveMb: 2048,
   admission: 'pipeline',
   agingMinutes: 15,
+  memoryPassMinutes: 15,
   perSessionRunning: 2,
   maxHeavyParallel: 2,
+  heavyIdleCpuPct: 25,
 };
 
 /** A waiting delivery step looks again every 30 seconds; a deploy step waits up to an hour for freezes and the host lock. */

@@ -6,11 +6,12 @@ import { SecretScanner } from "../core/secrets.js";
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
 import { waitAnswerersOf } from "./approval.js";
 import { NO_GOAL_TAGS } from "./goals.js";
-import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, RUN_FLAG, sameCard, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
+import { AFFECTS_FLAG, AFFECTS_USAGE, CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, proofWordOf, RUN_FLAG, sameCard, SECURITY_FLAG, typedHandStep, WHY_ASK_FLAG, whyAskUsage } from "./card.js";
 import { auditOf, HAND_STEP_KINDS, handStepFileProblem, shortSha256 } from "./hand-step.js";
+import { verdictIsCurrent, verdictReadOf } from "./security-verdict.js";
 import { ITEM_TYPES, sizeProblem } from "./events.js";
 import { isRepark, taskNumber } from "./fold.js";
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, ISSUE_REF_PREFIX, isTopPriority, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
 import { ITEM_TYPE_TRAITS, traitsOf } from "./item-types.js";
 import { waitsOnOwner } from "./owner-waits.js";
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts } from "./review.js";
@@ -26,10 +27,10 @@ export const GITHUB_ACTOR = 'github';
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
 /**
  * Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size
- * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, and its
- * work class, as leaders triage the class of their sessions' tasks (T2076).
+ * (the lead plans the week), its type and critical mark, so the lead can mark another session's fix a bug, its
+ * work class, as leaders triage the class of their sessions' tasks (T2076), and the goal slice it prepares (T2453).
  */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass'];
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'type', 'critical', 'pin', 'workClass', 'prepares'];
 /**
  * Fields the lead may change on a task whose owner is no session of the team any more (a retired hire, a session that
  * left at a team split): the LEAD_FIELDS and its ref, which no session of the team could keep true otherwise, such as
@@ -46,6 +47,11 @@ export const WAITS_USAGE = 'decision:<who>, approval:<who>, task:T<id> or time:<
 export const PROOF_WAITS_USAGE = 'time:<YYYY-MM-DD HH:MM> when it runs, or task:T<id> for a task in progress or verifying whose end runs it';
 /** The statuses of a task a proof may wait on: one under way, whose end runs the proof. */
 const PROOF_TASK_STATUSES = ['in-progress', 'verifying'];
+/** How the refusals about an audit name what it reads, and the core rule behind it. */
+const AUDITED = {
+    file: { own: 'audit its own hand step', other: (owner) => `audit a hand step of ${owner}'s`, rule: 'core rule 11' },
+    verdict: { own: 'give the security verdict on its own card', other: (owner) => `give the security verdict on a card of ${owner}'s`, rule: 'core rule 9' },
+};
 function ok(value) {
     return { ok: true, value };
 }
@@ -139,6 +145,8 @@ export class RegisterPolicy {
             critical: input.critical ?? false,
             pin: null,
             workClass: input.workClass ?? null,
+            // A lead marks what a task prepares with `update` once it exists, where the policy knows who marks it.
+            prepares: null,
         };
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
@@ -214,7 +222,7 @@ export class RegisterPolicy {
         }
         // Ranked work goes first and work in progress stays few (T2076); `warn` lets the start through and the CLI warns.
         const { focus } = this.config;
-        const wip = wipHold({ ...input, task }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
+        const wip = wipHold({ ...input, task, goals: context.goals }, context.state.tasks.values(), waitContext(context.state.tasks, context.now, context.zone, context.elsewhere), focus, register.ownerSource);
         if (wip !== undefined && focus.wip.mode === 'refuse') {
             return refuse(wip);
         }
@@ -407,6 +415,8 @@ export class RegisterPolicy {
      * owner's decision, naming an owner gate or business, and a card keeps it only while that holds (T1194); while
      * cards are required, the owner is asked to decide only with it (gatedCard). `--run` hands the owner a hand step
      * file only while an audit pins it (runProblem), and a card keeps it only while it asks the owner (T2312).
+     * `--affects` goes only with a wait on the owner's decision or approval, and a card keeps it only while that holds;
+     * while cards are required, a card asking the owner about a test, measure or proof asks only with it (proofCard, T2623).
      */
     cardChange(task, input, waits) {
         const asks = waits.filter((reason) => reason.kind === 'decision' || reason.kind === 'approval');
@@ -425,6 +435,9 @@ export class RegisterPolicy {
         if (given?.whyAsk !== undefined && !ordered) {
             return refuse(`${WHY_ASK_FLAG} says why ${ownerSource} is asked about what ${ownerSource} ordered: it goes only with a wait on ${ownerSource}'s decision or approval of a task from ${ownerSource}`);
         }
+        if (given?.affects !== undefined && owners.length === 0) {
+            return refuse(`${AFFECTS_FLAG} says what a test, measure or proof asks ${ownerSource} for: it goes only with a wait on ${ownerSource}'s decision or approval`);
+        }
         if (given?.gate !== undefined && !decidesOwner) {
             return refuse(`${GATE_FLAG} names the owner gate or business decision that makes a question ${ownerSource}'s: it goes only with a wait on ${ownerSource}'s decision`);
         }
@@ -433,7 +446,7 @@ export class RegisterPolicy {
             return refuse(`${GATE_FLAG} "${given.gate}" is no owner gate [ownerGates] and no business decision: ${gateUsage(this.config.ownerGates)}`);
         }
         const kept = WAIT_STATUSES.includes(task.status) ? task.card : null;
-        const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner, run: owners.length > 0 });
+        const before = kept === null ? null : keptCard(kept, { whyAsk: ordered, gate: decidesOwner, run: owners.length > 0, affects: owners.length > 0 });
         if (given === undefined) {
             if (before !== null || owners.length === 0 || !requireDecisionCard || ordered) {
                 return this.ownerAsk(task, owners, before);
@@ -453,6 +466,8 @@ export class RegisterPolicy {
             ...(parts.whyAsk === undefined ? {} : { whyAsk: parts.whyAsk }),
             ...(parts.gate === undefined ? {} : { gate: parts.gate }),
             ...(parts.run === undefined ? {} : { run: parts.run }),
+            ...(parts.affects === undefined ? {} : { affects: parts.affects }),
+            ...(parts.security === true ? { security: true } : {}),
         };
         const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
         return problem === undefined ? this.ownerAsk(task, owners, card) : refuse(problem);
@@ -481,13 +496,14 @@ export class RegisterPolicy {
         return undefined;
     }
     /**
-     * What a card asking the owner (`owners`) must say besides its parts, and must not: why, on an owner's order; its
-     * gate, on a decision; and no hand step in its text (typedStepProblem).
+     * What a card asking the owner (`owners`) must say besides its parts, and must not: no hand step in its text
+     * (typedStepProblem); what it changes, on a test, measure or proof (proofProblem); the security verdict on it, on a
+     * security gate (securityProblem); why, on an owner's order; its gate, on a decision.
      */
     ownerAsk(task, owners, card) {
-        const typed = owners.length === 0 || card === null ? undefined : this.typedStepProblem(task, card);
-        if (typed !== undefined) {
-            return refuse(typed);
+        const problem = owners.length === 0 || card === null ? undefined : (this.typedStepProblem(task, card) ?? this.proofProblem(task, owners, card) ?? this.securityProblem(task, card));
+        if (problem !== undefined) {
+            return refuse(problem);
         }
         const ordered = this.ownerOrderCard(task, owners, card);
         return ordered.ok ? this.gatedCard(task, owners, card) : ordered;
@@ -508,6 +524,57 @@ export class RegisterPolicy {
             `a card that hands no step says so without code or an ask to paste ("the line is in")`);
     }
     /**
+     * A security-related ask reaches the owner only with the security reviewer's verdict on its card (T2761, core rule
+     * 9): a card asking the owner to decide on a gate in `securityGates`, or one marked `security` on any wait on the
+     * owner, is refused while the task holds no verdict, or one given on another question, options or recommendation
+     * (verdictIsCurrent). A card handing a hand step (`run`) is
+     * reviewed already, as its audit is the reviewer's read of it (runProblem). A card kept from an older row is held to
+     * it too, as it still reaches the owner. The reviewer reads the card before the owner does, so the card goes first
+     * on a wait on the session's leader, and keeps its parts when the wait moves to the owner.
+     */
+    securityProblem(task, card) {
+        const gate = card.gate?.toLowerCase();
+        const gated = gate !== undefined && this.config.securityGates.some((security) => security.toLowerCase() === gate);
+        if (card.run !== undefined || (!gated && card.security !== true)) {
+            return undefined;
+        }
+        const verdict = task.securityVerdict;
+        if (verdict !== null && verdictIsCurrent(verdict, card)) {
+            return undefined;
+        }
+        const { ownerSource } = this.config.register;
+        const leader = this.leaderOf(task);
+        const first = leader === undefined ? 'set the card on a wait on the security reviewer first' : `set the card on a wait on your leader first (--waits decision:${leader})`;
+        const route = `${first}, have it read (${this.auditorsText(task.owner)}, with teamrig audit ${task.id} --verdict "<what the review found>"), then wait on ${ownerSource} with the card unchanged`;
+        const why = verdict === null
+            ? `${task.id}'s card ${gated ? `asks ${ownerSource} about ${card.gate}, a security gate [securityGates],` : `is marked ${SECURITY_FLAG}`} and has no security verdict: it reaches ${ownerSource} only with one (core rule 9)`
+            : `the security verdict ${verdict.by} gave on ${task.id}'s card read another question, options or recommendation: an edit needs a new verdict (core rule 9)`;
+        return `${why}; ${route}`;
+    }
+    /** Who leads the task's owner: its sub-lead or the lead, and for the lead, the parent team's lead; undefined at the root. */
+    leaderOf(task) {
+        return this.tree.leaderOf(task.owner) ?? (task.owner === this.tree.lead ? this.tree.above : undefined);
+    }
+    /**
+     * A test, measure or proof of work already approved is approved with it (core rule 6, T2623): while
+     * `register.requireDecisionCard` is on, a card asking the owner whose question is about one (proofWordOf) asks only
+     * with `affects`, the approved number it changes, the money it spends or the data it writes; one that does none of
+     * those goes ahead, and its session tells its leader. A card kept from an older row is held to it too; check flags
+     * rows written before (OWNER-PROOF).
+     */
+    proofProblem(task, owners, card) {
+        const { ownerSource, requireDecisionCard } = this.config.register;
+        const word = card.affects === undefined && requireDecisionCard ? proofWordOf(card.question) : undefined;
+        if (word === undefined) {
+            return undefined;
+        }
+        const kinds = owners.map((reason) => reason.kind).join(' and ');
+        const leader = this.leaderOf(task);
+        const tell = leader === undefined ? '' : ` and tell your leader (${leader})`;
+        return (`--question asks ${ownerSource} about a test, measure or proof ("${word}"): one of approved work that changes no approved number, spends no money and writes no data is approved with that work, so go ahead${tell}, and drop the wait on ${ownerSource}'s ${kinds}; ` +
+            `if it does change, spend or write, say which with ${AFFECTS_USAGE}`);
+    }
+    /**
      * Only an owner gate [ownerGates] or a business decision is the owner's to decide (T1194), so while
      * `register.requireDecisionCard` is on, a wait on the owner's decision needs a card naming its gate; any other
      * question is the session's or its leader's, however many good answers it has. check flags rows written before
@@ -518,7 +585,7 @@ export class RegisterPolicy {
         if (!requireDecisionCard || card?.gate !== undefined || !owners.some((reason) => reason.kind === 'decision')) {
             return ok(card);
         }
-        const leader = this.tree.leaderOf(task.owner) ?? (task.owner === this.tree.lead ? this.tree.above : undefined);
+        const leader = this.leaderOf(task);
         const elsewhere = leader === undefined ? 'decide it' : `decide it, or wait on your leader (--waits decision:${leader})`;
         return refuse(`only an owner gate or a business decision is ${ownerSource}'s to decide: give ${gateUsage(this.config.ownerGates)}${card === null ? ` with ${CARD_USAGE}` : ''}; any other question is yours however many good answers it has: ${elsewhere}`);
     }
@@ -688,46 +755,62 @@ export class RegisterPolicy {
         return this.auditorsOf(owner) === undefined ? `any session of this team but ${owner}` : `${this.approversText(owner)}, as ${owner} is the security reviewer`;
     }
     /**
-     * An audit (T2312, core rule 11): `caller`, a session of this team, read the hand step file `pin` names and pins it
-     * for the task at its sha256, so the task's card may hand it to the owner. Only an auditor of the owner's may
-     * (auditorsOf), never the task's own owner, as {@link auditFrom} judges the rest.
+     * An audit: `caller`, a session of this team, read what `subject` names and pins it for the task: a hand step file
+     * at its sha256, so the task's card may hand it to the owner (T2312, core rule 11), or the task's card with its
+     * security verdict, so a security-related card may reach the owner (T2761, core rule 9). Only an auditor of the
+     * owner's may (auditorsOf), never the task's own owner, as {@link auditFrom} judges the rest.
      */
-    audit(task, caller, pin, note) {
+    audit(task, caller, subject, note) {
         if (caller === task.owner) {
-            return refuse(`${caller} owns ${task.id}, so it does not audit its own hand step (core rule 11); who audits it: ${this.auditorsText(task.owner)}`);
+            const audited = AUDITED[subject.kind];
+            return refuse(`${caller} owns ${task.id}, so it does not ${audited.own} (${audited.rule}); who audits it: ${this.auditorsText(task.owner)}`);
         }
         const auditors = this.auditorsOf(task.owner);
         if (auditors !== undefined && !auditors.includes(caller)) {
-            return this.notAuditor(task, caller);
+            return this.notAuditor(task, caller, subject);
         }
-        return this.auditContent(task, pin, note);
+        return this.auditContent(task, subject, note);
     }
-    notAuditor(task, caller) {
-        return refuse(`${caller} does not audit a hand step of ${task.owner}'s; who audits it: ${this.auditorsText(task.owner)}`);
+    notAuditor(task, caller, subject) {
+        return refuse(`${caller} does not ${AUDITED[subject.kind].other(task.owner)}; who audits it: ${this.auditorsText(task.owner)}`);
     }
     /**
      * An audit from a team above (T2312), `asker` being its `<team>/<id>`, as the tree decides: only an auditor of the
      * owner's that this team's roles name there may. A team with no security reviewer audits its hand steps itself.
      */
-    auditFrom(task, asker, pin, note) {
+    auditFrom(task, asker, subject, note) {
         const auditors = this.auditorsOf(task.owner);
         if (auditors === undefined || !auditors.includes(asker)) {
-            return this.notAuditor(task, asker);
+            return this.notAuditor(task, asker, subject);
         }
-        return this.auditContent(task, pin, note);
+        return this.auditContent(task, subject, note);
     }
-    /** An audit's content: a task still to finish, a hand step file of a kind with a run line, and an optional note. */
-    auditContent(task, pin, note) {
+    /**
+     * An audit's content: a task still to finish and an optional note; for a file, a hand step file of a kind with a
+     * run line; for a verdict, a card on the task to give it on and a verdict in words, pinned with the card parts read.
+     */
+    auditContent(task, subject, note) {
         if (!ACTIVE_STATUSES.includes(task.status)) {
-            return refuse(`${task.id} is ${task.status}: a hand step is audited for a task still to finish`);
-        }
-        const kindProblem = handStepFileProblem(pin.path);
-        if (kindProblem !== undefined) {
-            return refuse(kindProblem);
+            return refuse(`${task.id} is ${task.status}: ${subject.kind === 'file' ? 'a hand step' : 'a card'} is audited for a task still to finish`);
         }
         const text = blankToNull(note);
-        const problem = this.checkText('note', text);
-        return problem === undefined ? ok({ changes: {}, note: text, audit: pin }) : refuse(problem);
+        const noteProblem = this.checkText('note', text);
+        if (noteProblem !== undefined) {
+            return refuse(noteProblem);
+        }
+        if (subject.kind === 'file') {
+            const kindProblem = handStepFileProblem(subject.pin.path);
+            return kindProblem === undefined ? ok({ changes: {}, note: text, audit: subject.pin }) : refuse(kindProblem);
+        }
+        if (task.card === null) {
+            return refuse(`${task.id} has no card: a security verdict is given on the card the owner reads, so its owner sets the card first (${CARD_FLAGS})`);
+        }
+        const verdict = blankToNull(subject.text);
+        if (verdict === null) {
+            return refuse('--verdict is blank: say what the review found and whether the owner may approve it');
+        }
+        const verdictProblem = this.checkText('verdict', verdict);
+        return verdictProblem === undefined ? ok({ changes: {}, note: text, securityVerdict: { text: verdict, read: verdictReadOf(task.card) } }) : refuse(verdictProblem);
     }
     /**
      * The owner's Note from the pane (T1298): free text for the task's session, kept in its history as the owner's and
@@ -780,11 +863,13 @@ export class RegisterPolicy {
             return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
         }
         const pinned = changes.pin === undefined ? undefined : this.pinProblem(task.id, changes.owner ?? task.owner, caller, changes.pin);
-        if (pinned !== undefined) {
-            return refuse(pinned);
+        const prepared = changes.prepares === undefined ? undefined : this.prepProblem(task.id, changes.owner ?? task.owner, caller, changes.prepares, goalTags);
+        const marked = pinned ?? prepared;
+        if (marked !== undefined) {
+            return refuse(marked);
         }
         if (caller !== task.owner) {
-            const problem = this.leaderUpdateProblem(task, caller, names, changes.owner);
+            const problem = this.leaderUpdateProblem(task, caller, names, changes);
             if (problem !== undefined) {
                 return refuse(problem);
             }
@@ -849,22 +934,39 @@ export class RegisterPolicy {
         return pin === null || pin === caller ? undefined : `a pin names the session that sets it (${caller}), not ${pin}`;
     }
     /**
+     * Why `caller` may not set or clear the prep marker of task `id` (T2453), or undefined when it may: the marker lets a
+     * design for a ranked goal's near slice past the slice cap, so only a lead sets it (the lead, or a sub-lead over the
+     * task's `owner`), never the owner itself unless it is the lead, so a build cannot ride it. A marker names one of
+     * `goalTags`, the goal records of the team and the teams above it, whatever register.goals says: a marker on no goal
+     * would only ever lapse.
+     */
+    prepProblem(id, owner, caller, prepares, goalTags) {
+        if (caller !== this.tree.lead && !this.tree.leads(caller, owner)) {
+            return `only ${this.approversText(owner)} marks what ${id} prepares: the marker lets a design run outside the slice cap`;
+        }
+        return prepares === null || goalTags.has(prepares.goal) ? undefined : `goal ${prepares.goal} is not a goal record of the team or a team above: teamrig goal list lists them`;
+    }
+    /**
      * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
      * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS (the lead the LEFT_OWNER_LEAD_FIELDS on a
-     * task whose owner left the team), and a sub-lead hands a task only to itself or a session it leads, so work never
-     * leaves its group by a sub-lead's hand.
+     * task whose owner left the team, or when it points a task holding no issue ref at an issue: issue migrate opens an
+     * issue for each task of the team and links it, replacing a note ref, while a task's issue stays its issue), and a
+     * sub-lead hands a task only
+     * to itself or a session it leads, so work never leaves its group by a sub-lead's hand.
      */
-    leaderUpdateProblem(task, caller, names, owner) {
+    leaderUpdateProblem(task, caller, names, changes) {
         const isLead = caller === this.tree.lead;
         if (!isLead && !this.tree.leads(caller, task.owner)) {
             return `only the owner (${task.owner}) or ${this.approversText(task.owner)} changes ${task.id}`;
         }
-        const allowed = isLead && !this.config.sessions.includes(task.owner) ? LEFT_OWNER_LEAD_FIELDS : LEAD_FIELDS;
+        const linksIssue = task.ref?.startsWith(ISSUE_REF_PREFIX) !== true && changes.ref !== undefined && changes.ref !== null && changes.ref.startsWith(ISSUE_REF_PREFIX);
+        const allowed = isLead && (linksIssue || !this.config.sessions.includes(task.owner)) ? LEFT_OWNER_LEAD_FIELDS : LEAD_FIELDS;
         const notLead = names.filter((name) => !allowed.includes(name));
         if (notLead.length > 0) {
             return `a leader may change only ${allowed.join(', ')} on a task it does not own (asked: ${notLead.join(', ')})`;
         }
         const group = this.tree.groupOf(caller);
+        const { owner } = changes;
         if (!isLead && owner !== undefined && owner !== caller && !group.includes(owner)) {
             return `${caller} hands ${task.id} only to itself or a session it leads (${group.join(', ')}); the lead (${this.tree.lead}) moves work between groups`;
         }
@@ -872,12 +974,13 @@ export class RegisterPolicy {
     }
     /**
      * A task for a GitHub issue. The import keys its tasks on their ref, so a second one for the same issue is
-     * refused; a team task that cites the issue in its ref stays the team's. Two issues may share a title, so
-     * the duplicate-title rule does not apply.
+     * refused, and so is one for an issue a team task already links to in its ref (an issue the team opened for
+     * its own task, issue migrate): that task tracks it. Two issues may share a title, so the duplicate-title rule
+     * does not apply.
      */
     importAdd(input, state) {
-        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
-        const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
+        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
+        const holder = [...state.tasks.values()].find((task) => task.ref === input.ref);
         if (holder !== undefined) {
             return refuse(`${holder.id} already has ref ${input.ref}`);
         }
@@ -936,7 +1039,7 @@ export class RegisterPolicy {
     teamSourceProblem(source) {
         const { ownerSource } = this.config.register;
         if (source === GITHUB_SOURCE) {
-            return `source ${GITHUB_SOURCE} is kept for the tasks teamrig gh sync imports`;
+            return `source ${GITHUB_SOURCE} is kept for the tasks teamrig issue sync imports`;
         }
         return source === ownerSource || SESSION_NAME.test(source) ? undefined : `source ${source} is neither a session id nor ${ownerSource}`;
     }
@@ -1008,8 +1111,8 @@ export class RegisterPolicy {
 /** The texts whose length is judged against their own limit, not `maxText`. */
 const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass } = task;
-    return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass };
+    const { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, prepares } = task;
+    return { title, description, owner, source, ref, priority, due, goals, noGoal, week, after, size, type, critical, pin, workClass, prepares };
 }
 /** An update naming goals for a task said to serve none also clears that mark, which a task with goals cannot hold. */
 function clearNoGoal(task, changes) {

@@ -1,8 +1,10 @@
 /**
  * A secret a call would print into the conversation, one its command line holds as text (`literal`), or one the text a
- * file-writing call writes holds (`written`); the last two by their shape, never their value.
+ * file-writing call writes holds (`written`); the last two by their shape, never their value. A `credential` is a key
+ * the line reads out of the host's credential store, printed or not, by the command, API or credential name it uses.
  */
 export type SecretFinding =
+  | { readonly kind: 'credential'; readonly via: string }
   | { readonly kind: 'file'; readonly path: string }
   | { readonly kind: 'environment' }
   | { readonly kind: 'variable'; readonly name: string }
@@ -17,6 +19,8 @@ export function describeFinding(finding: SecretFinding): string {
     case 'literal':
     case 'written':
       return finding.description;
+    case 'credential':
+      return finding.via;
     case 'file':
       return `the content of ${finding.path}`;
     case 'environment':

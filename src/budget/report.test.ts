@@ -113,8 +113,8 @@ function inBurst(id: string, w: number): SessionToday {
 }
 
 const SESSIONS: readonly SessionToday[] = [session('lead', 7_500_000, 310), session('alpha', 30_000_000, 1_000), session('bravo', 0, 0, 2, LIFT)];
-const OUTSIDE: OutsideToday = { w: 1_200_000, calls: 40, sessions: 2, titles: ['release checks', 'Docs'] };
-const NOBODY_OUTSIDE: OutsideToday = { w: 0, calls: 0, sessions: 0, titles: [] };
+const OUTSIDE: OutsideToday = { w: 1_200_000, calls: 40, sessions: 2, top: [{ title: 'release checks', w: 1_100_000 }, { title: 'Docs', w: 100_000 }] };
+const NOBODY_OUTSIDE: OutsideToday = { w: 0, calls: 0, sessions: 0, top: [] };
 const REPORT: TodayReport = { week: WEEK, fiveHour: undefined, teamPct: WEEK.allowancePct, sessions: SESSIONS, groups: [], classes: undefined, peers: [], outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
 /** At WEEK's 7.5M W per percent: Roadmap 2% today and 10% of the week, Improvements past its 15%, a class the config dropped, and the rest. */
 const CLASSES: readonly ClassRow[] = [
@@ -196,7 +196,7 @@ describe('todayLines', () => {
       '  alpha      4.0%    3.4%  30.00M  1,000',
       '  commander  1.0%    3.4%   7.50M    310',
       ...LIFT_BLOCK,
-      'Not on the team: 2 Claude Code sessions (titled release checks, Docs), 1.20M W today. ' +
+      'Not on the team: 2 Claude Code sessions (top by W: release checks 1.10M, Docs 100k), 1.20M W today. ' +
         'A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.',
       'Still reading: bravo; run teamrig budget again for the rest.',
       `Past the daily budget: alpha (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). ${OVER_BUDGET_ADVICE}`,
@@ -300,17 +300,17 @@ describe('todayLines', () => {
 
   it('lists the busiest seven sessions and counts the rest, or all of them and every outside title with --all', () => {
     const many = Array.from({ length: 9 }, (_, index) => session(`s${index}`, (index + 1) * 1_000_000, 10));
-    const titles = ['a', 'b', 'c', 'd', 'e', 'f'];
-    const short = todayLines({ ...REPORT, sessions: many, outside: { ...OUTSIDE, sessions: 6, titles } });
+    const top = ['a', 'b', 'c', 'd', 'e', 'f'].map((title, index) => ({ title, w: (6 - index) * 100_000 }));
+    const short = todayLines({ ...REPORT, sessions: many, outside: { ...OUTSIDE, sessions: 6, top } });
     const rows = (lines: readonly string[]): string[] => lines.filter((line) => /^ {2}s\d /.test(line));
     assert.equal(rows(short).length, 7);
     assert.match(short[4] ?? '', /^ {2}s8 +1\.2% +3\.4% +9\.00M +10$/);
     assert.match(short[5] ?? '', /^ {2}s7 +1\.1% +3\.4% +8\.00M +10$/);
     assert.equal(short[11], '  +2 more sessions with use today (--all lists them).');
-    assert.match(short[12] ?? '', /\(titled a, b, c, d, e, \+1 more\)/);
-    const all = todayLines({ ...REPORT, sessions: many, outside: { ...OUTSIDE, sessions: 6, titles }, all: true });
+    assert.match(short[12] ?? '', /\(top by W: a 600k, b 500k, c 400k, d 300k, e 200k, \+1 more titled\)/);
+    const all = todayLines({ ...REPORT, sessions: many, outside: { ...OUTSIDE, sessions: 6, top }, all: true });
     assert.equal(rows(all).length, 9);
-    assert.match(all.find((line) => line.startsWith('Not on the team')) ?? '', /\(titled a, b, c, d, e, f\)/);
+    assert.match(all.find((line) => line.startsWith('Not on the team')) ?? '', /\(top by W: a 600k, b 500k, c 400k, d 300k, e 200k, f 100k\)/);
   });
 
   it("shows plain W when the week is unknown, and a lift's week share as '-'", () => {
@@ -390,7 +390,7 @@ describe('todayLines', () => {
 
     it('says the use outside is on none of the teams in the table, and on no team while the team is alone', () => {
       const outside = (report: TodayReport): string => todayLines(report).find((line) => line.startsWith('Not on')) ?? '';
-      assert.match(outside({ ...REPORT, peers: [ORG] }), /^Not on these teams: 2 Claude Code sessions \(titled release checks, Docs\), 1\.20M W today\. /);
+      assert.match(outside({ ...REPORT, peers: [ORG] }), /^Not on these teams: 2 Claude Code sessions \(top by W: release checks 1\.10M, Docs 100k\), 1\.20M W today\. /);
       assert.match(outside(REPORT), /^Not on the team: 2 Claude Code sessions/);
     });
   });
@@ -478,7 +478,7 @@ describe('recountLines', () => {
       'The team used 37.50M W in 1,310 calls that day.',
       'alpha used 30.00M W in 1,000 calls that day.',
       'commander used 7.50M W in 310 calls that day.',
-      'Not on the team: 2 Claude Code sessions (titled release checks, Docs), 1.20M W in 40 calls.',
+      'Not on the team: 2 Claude Code sessions (top by W: release checks 1.10M, Docs 100k), 1.20M W in 40 calls.',
       W_EXPLAINED,
     ]);
     const many = Array.from({ length: 8 }, (_, index) => session(`s${index}`, 1_000, 1));
@@ -489,11 +489,11 @@ describe('recountLines', () => {
   });
 
   it('names the idle sessions and every outside title with --all', () => {
-    const titles = ['a', 'b', 'c', 'd', 'e', 'f'];
-    const lines = recountLines('2026-10-14', { week: UNKNOWN, sessions: SESSIONS, outside: { ...OUTSIDE, sessions: 6, titles }, all: true });
-    assert.deepEqual(lines.slice(4, 6), ['No use that day: bravo.', 'Not on the team: 6 Claude Code sessions (titled a, b, c, d, e, f), 1.20M W in 40 calls.']);
-    const short = recountLines('2026-10-14', { week: UNKNOWN, sessions: SESSIONS, outside: { ...OUTSIDE, sessions: 6, titles }, all: false });
-    assert.equal(short[4], 'Not on the team: 6 Claude Code sessions (titled a, b, c, d, e, +1 more), 1.20M W in 40 calls.');
+    const top = ['a', 'b', 'c', 'd', 'e', 'f'].map((title, index) => ({ title, w: (6 - index) * 100_000 }));
+    const lines = recountLines('2026-10-14', { week: UNKNOWN, sessions: SESSIONS, outside: { ...OUTSIDE, sessions: 6, top }, all: true });
+    assert.deepEqual(lines.slice(4, 6), ['No use that day: bravo.', 'Not on the team: 6 Claude Code sessions (top by W: a 600k, b 500k, c 400k, d 300k, e 200k, f 100k), 1.20M W in 40 calls.']);
+    const short = recountLines('2026-10-14', { week: UNKNOWN, sessions: SESSIONS, outside: { ...OUTSIDE, sessions: 6, top }, all: false });
+    assert.equal(short[4], 'Not on the team: 6 Claude Code sessions (top by W: a 600k, b 500k, c 400k, d 300k, e 200k, +1 more titled), 1.20M W in 40 calls.');
   });
 });
 

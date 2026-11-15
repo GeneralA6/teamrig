@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { splitEnvString } from "./program-split.js";
 import { assignedWords, isExpressionHead, parseShell } from "./tokenizer.js";
 const WRAPPERS = new Map([
     ['command', { inspect: ['-v', '-V'] }],
@@ -308,8 +309,12 @@ class LaunchReader {
                 if (value.dynamic) {
                     return { kind: 'opaque', reason: 'env -S splits a command line only known when it runs', gated: true };
                 }
-                const split = parseShell(value.text, 'bash').commands.flatMap((command) => command.words);
-                return { kind: 'next', words: [...split, ...args.slice(index + 1)] };
+                const split = splitEnvString(value.text);
+                if (split.kind === 'refused') {
+                    return { kind: 'opaque', reason: split.reason, gated: true };
+                }
+                // GNU env puts the split words in place of -S and reads its options on from there, so they may hold more.
+                return this.wrapper(spec, [...split.words, ...args.slice(index + 1)]);
             }
         }
         return { kind: 'next', words: args.slice(index + leading) };

@@ -5,6 +5,7 @@ import { nodeTranscriptSource } from "../budget/discover.js";
 import { nodeFileBytes } from "../core/file-bytes.js";
 import { nodeFiles } from "../core/files.js";
 import { GIT_TREES } from "../delivery/git-tree.js";
+import { nodeHostCpu } from "../delivery/cpu.js";
 import { nodeHostMemory } from "../delivery/memory.js";
 import { launchingShellsOf, nodeEvery, starterWatch } from "../delivery/starter-watch.js";
 import { nodeStepRunner } from "../delivery/steps.js";
@@ -16,6 +17,7 @@ import { nodeProgramRunner, systemCredentials } from "../github/credentials.js";
 import { GIT_CHECKOUT } from "../exec/binding.js";
 import { nodeExecSpawner } from "../exec/runner.js";
 import { nodeGhRunner } from "../github/gh.js";
+import { GIT_PULLS } from "../github/pull-conflicts.js";
 import { GIT_MERGE } from "../merge/git.js";
 import { nodeProcesses } from "../open/processes.js";
 import { nodeSessionProcesses } from "../open/session-processes.js";
@@ -40,6 +42,18 @@ export const PROCESS_OUTPUT = {
     stdout: (line) => process.stdout.write(`${line}\n`),
     stderr: (line) => process.stderr.write(`${line}\n`),
 };
+/**
+ * Ends the stack dump a reader that closed early causes (`teamrig show T1 | head -2`): the write fails with EPIPE, and
+ * with no 'error' listener node throws it as an uncaught exception. The run goes on to its own exit code, since a
+ * command that also writes files must not stop halfway because nobody reads its output; any other stream error still
+ * throws as before.
+ */
+export function ignoreClosedPipe(stream) {
+    stream.on('error', (error) => {
+        if (error.code !== 'EPIPE')
+            throw error;
+    });
+}
 /**
  * The process adapter: real files, clock, git, child processes and stdio around the testable runner. Its own module,
  * apart from the entry scripts, so the guard runner can load it inside a try (T1818): one CLI module that fails to load
@@ -73,6 +87,7 @@ export async function runWithNode(argv, entry) {
         shell: nodeShellRunner(),
         steps: nodeStepRunner(process.platform),
         memory: nodeHostMemory(process.platform),
+        cpu: nodeHostCpu(),
         gh: nodeGhRunner(),
         credentials: systemCredentials(process.platform, nodeProgramRunner()),
         probe: NODE_PATH_PROBE,
@@ -89,13 +104,14 @@ export async function runWithNode(argv, entry) {
             shortcuts: systemShortcutPlace(process.platform, nodeProgramRunner(SHORTCUT_QUERY_TIMEOUT_MS)),
         },
         mergeGit: GIT_MERGE,
+        pulls: GIT_PULLS,
         trees: GIT_TREES,
         hooks: nodeHookRunner(process.platform),
         packageRegistry: httpPackageRegistry(),
         exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT },
         webhook: httpWebhook(),
         cmdShimLine,
-        readStdin: () => text(process.stdin),
+        readStdin: entry.readStdin,
         newId: () => randomUUID(),
     });
 }

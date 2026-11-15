@@ -91,12 +91,44 @@ export function boundaryOf(previous, task, at) {
     if (previous?.phase === 'ready' && !previous.noticed) {
         return previous;
     }
-    return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1, ask: standingAsk(previous) };
+    return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1, ask: standingAsk(previous), ...keepBaseline(previous) };
 }
-/** The context size a turn end, or a tool result within a turn, asks at: the threshold, or after a refresh the session went on from, well past that ask. */
+/** The baseline of a state that keeps one: a number once measured, null while a fresh start waits for it, undefined for none. */
+function baselineOf(state) {
+    return state?.phase === 'refreshed' || state?.phase === 'boundary' || state?.phase === 'idle' ? state.baseline : undefined;
+}
+/**
+ * A fresh start whose context was not measured yet: a fresh session can start over the threshold (its system
+ * prompt, rules and handover read alone), so its first measure only records that size and never asks for a refresh.
+ */
+function unmeasured(state) {
+    return baselineOf(state) === null;
+}
+/**
+ * The smallest context a size or task-count ask needs: real growth, `reaskGrowth`, past the size the session had once
+ * fresh (its baseline); 0 without one. So a refresh never comes twice without work between.
+ */
+export function growthFloor(state, settings) {
+    const baseline = baselineOf(state);
+    return typeof baseline === 'number' ? baseline + reaskGrowth(settings) : 0;
+}
+/**
+ * The context size a turn end, or a tool result within a turn, asks at: the threshold, past the growth floor of a
+ * fresh start, or after a refresh the session went on from, well past that ask.
+ */
 function askAt(state, settings) {
     const asked = state?.phase === 'asked' || state?.phase === 'ready' ? state.tokens : null;
-    return asked === null ? settings.contextTokens : Math.max(settings.contextTokens, asked + reaskGrowth(settings));
+    const floor = Math.max(settings.contextTokens, growthFloor(state, settings));
+    return asked === null ? floor : Math.max(floor, asked + reaskGrowth(settings));
+}
+/** `state` with the baseline its fresh start's first measure took. */
+function measuredState(state, tokens) {
+    return state.phase === 'refreshed' || state.phase === 'boundary' || state.phase === 'idle' ? { ...state, baseline: tokens } : state;
+}
+/** The baseline field a state carries on to the next one: absent when there is none. */
+function keepBaseline(state) {
+    const baseline = baselineOf(state);
+    return baseline === undefined ? {} : { baseline };
 }
 /**
  * Why this turn end refreshes, if it does: the lead asked, or the context reached `askAt`; at a task end
@@ -109,7 +141,8 @@ function causeOf(state, facts, settings) {
         return { kind: 'asked', by: facts.requestedBy, tokens: facts.tokens ?? null };
     }
     const { tokens } = facts;
-    if (tokens === undefined) {
+    // A fresh start's first measure records its size and asks nothing: see `decideStop`.
+    if (tokens === undefined || unmeasured(state)) {
         return undefined;
     }
     if (tokens >= askAt(state, settings)) {
@@ -118,7 +151,8 @@ function causeOf(state, facts, settings) {
     if (state?.phase !== 'boundary') {
         return undefined;
     }
-    const counted = settings.everyTasks > 0 && state.finished >= settings.everyTasks && tokens >= settings.everyTasksMinTokens;
+    const minTokens = Math.max(settings.everyTasksMinTokens, growthFloor(state, settings));
+    const counted = settings.everyTasks > 0 && state.finished >= settings.everyTasks && tokens >= minTokens;
     return counted ? { kind: 'tasks', tokens, finished: state.finished } : undefined;
 }
 function whyOf(cause, settings) {
@@ -300,7 +334,7 @@ export function decideStop(state, context, facts) {
     const tokens = facts.tokens ?? null;
     const cause = causeOf(state, facts, context.settings);
     if (cause === undefined) {
-        return state?.phase === 'boundary' ? { kind: 'write', state: { phase: 'idle', task: state.task, at: context.now, tokens, finished: state.finished } } : NONE;
+        return judged(state, context.now, tokens);
     }
     // The open meeting holds the ask: a boundary stays unjudged, so the turn end after the meeting asks.
     if (held) {
@@ -315,6 +349,17 @@ export function decideStop(state, context, facts) {
         state: { phase: 'asked', task, at: context.now, tokens, handoverHash: facts.due.handoverHash, midTurn: false },
         reason: handoverAsk({ kind: 'turnEnd', task }, cause, context, facts.due.running),
     };
+}
+/**
+ * A turn end that asks nothing: a task end is recorded as judged, and a fresh start's first measure records its
+ * baseline, so the size it started at never asks for another refresh. Else nothing is written.
+ */
+function judged(state, now, tokens) {
+    const measured = state !== undefined && tokens !== null && unmeasured(state) ? measuredState(state, tokens) : state;
+    if (measured?.phase === 'boundary') {
+        return { kind: 'write', state: { phase: 'idle', task: measured.task, at: now, tokens, finished: measured.finished, ...keepBaseline(measured) } };
+    }
+    return measured === state || measured === undefined ? NONE : { kind: 'write', state: measured };
 }
 /**
  * The turn end after a tool result asked within the turn, the handover not marked ready: asked once more, as the
@@ -345,6 +390,11 @@ export function decideMidTurn(state, context, facts) {
     const { settings } = context;
     if (!settings.enabled || (state?.phase === 'ready' && !state.noticed)) {
         return { kind: 'none', nextAt: null };
+    }
+    if (state !== undefined && unmeasured(state)) {
+        // A fresh start's first measure, within its first turn: recorded as its baseline, no ask.
+        const measured = measuredState(state, facts.tokens);
+        return { kind: 'none', nextAt: askAt(measured, settings), state: measured };
     }
     const nextAt = askAt(state, settings);
     if (facts.tokens < nextAt || meetingHolds(settings, facts.meeting, facts.tokens)) {
@@ -428,18 +478,35 @@ const FRESH_SOURCES = new Set(['clear', 'startup']);
 /** Starts after which the context is small again, so the task count starts over: a compaction too. */
 const SMALL_SOURCES = new Set([...FRESH_SOURCES, 'compact']);
 /**
+ * A start that leaves the context small: the task count starts over, a fresh start (a /clear, a new process) waits for
+ * its baseline to be measured again and a compaction drops it. The same state when nothing changes.
+ */
+function smallAgain(state, source) {
+    const fresh = FRESH_SOURCES.has(source);
+    const baselineSame = fresh ? state.baseline === null : state.baseline === undefined;
+    const countSame = state.phase === 'refreshed' || state.finished === 0;
+    if (baselineSame && countSame) {
+        return state;
+    }
+    const { baseline: _dropped, ...rest } = state;
+    const counted = rest.phase === 'refreshed' ? rest : { ...rest, finished: 0 };
+    return fresh ? { ...counted, baseline: null } : counted;
+}
+/**
  * SessionStart: the first fresh start after the handover was written points the session at it, once, and says
  * that Claude Code keeps no read from before it: an Edit or Write of a file the new session has not read with the
  * Read tool fails, and that was the most common failed call in one team's week (T1380).
  * Any start that leaves the context small (a compaction too) starts the task count over, and forgets the
- * size a refresh the session went on from was asked at, so its next ask comes at the threshold again.
+ * size a refresh the session went on from was asked at, so its next ask comes at the threshold again. A fresh start
+ * (the refresh's own, or a /clear by hand) has its first turn end measure its baseline (`smallAgain`).
  */
 export function decideStart(state, source, settings, handoverPath, now) {
     if (!settings.enabled || state === undefined || source === undefined) {
         return { kind: 'none' };
     }
-    if ((state.phase === 'boundary' || state.phase === 'idle') && state.finished > 0 && SMALL_SOURCES.has(source)) {
-        return { kind: 'reset', state: { ...state, finished: 0 } };
+    if ((state.phase === 'boundary' || state.phase === 'idle' || state.phase === 'refreshed') && SMALL_SOURCES.has(source)) {
+        const reset = smallAgain(state, source);
+        return reset === state ? { kind: 'none' } : { kind: 'reset', state: reset };
     }
     if (state.phase === 'ready' && FRESH_SOURCES.has(source)) {
         const after = state.task === null ? 'mid-task' : `after ${state.task}`;
@@ -447,7 +514,7 @@ export function decideStart(state, source, settings, handoverPath, now) {
             kind: 'inject',
             note: `You were refreshed ${after}; read your handover first: ${handoverPath}. Then carry on with its next steps. ` +
                 'Read a file with the Read tool before you Edit or Write it: a read by cat or sed, or one before the refresh, does not count.',
-            state: { phase: 'refreshed', task: state.task, at: now },
+            state: { phase: 'refreshed', task: state.task, at: now, baseline: null },
         };
     }
     if ((state.phase === 'asked' || state.phase === 'ready') && state.tokens !== null && SMALL_SOURCES.has(source)) {

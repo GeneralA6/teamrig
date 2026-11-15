@@ -12,7 +12,7 @@ import type { AdmissionRules } from './admission.ts';
 import { HostLock, type HostLockInfo } from './host-lock.ts';
 import { MemoryGate } from './memory-gate.ts';
 import type { LineRequest } from './process-request.ts';
-import type { WaitCause } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
 
 const LOCK_PATH = '/kit/host.lock';
 const ME = 4242;
@@ -92,7 +92,7 @@ const FROZEN: Readiness = { kind: 'wait', cause: 'freeze', reason: 'deploy freez
 
 describe('takeWhenClear', () => {
   it('takes the lock file, never a share, under pipeline admission: a merge or a deploy takes the whole host (T2210)', async () => {
-    const pipeline: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, defaultClass: 'Improvements' };
+    const pipeline: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, defaultClass: 'Improvements' };
     const { files, clock, lock, request } = world({}, 60 * 60_000, undefined, pipeline);
     const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
     assert.deepEqual([clearance.kind, files.get(LOCK_PATH) === undefined, await files.list(`${LOCK_PATH}.shared`)], ['taken', false, []]);

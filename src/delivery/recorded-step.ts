@@ -7,7 +7,8 @@ import { holdersText, type HostMemory, type MemoryPeaks } from './memory.ts';
 import type { DeliveryPlaces } from './places.ts';
 import { processRequest, type ProcessRequest } from './process-request.ts';
 import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
-import type { WaitCause, Waited, WaitLog, WaitTotals } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
+import type { Waited, WaitLog, WaitTotals } from './wait-log.ts';
 
 /** The exit code recorded for a step that could not start, as a missing folder makes it. */
 export const NOT_STARTED_EXIT = 1;

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
-import type { GithubIssue } from './issues.ts';
+import type { HostIssue } from '../issues/issue.ts';
 import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { importRules, issueOutcome, issueOwner, issuePriority, issueRef, issueTask, SECRET_BODY, taskDescription, taskTitle, type ImportRules } from './map.ts';
@@ -14,7 +14,7 @@ function credentialUrl(): string {
   return ['https://', 'user', ':', 'hunter2', '@', 'example.test'].join('');
 }
 
-function issue(overrides: Partial<GithubIssue> = {}): GithubIssue {
+function issue(overrides: Partial<HostIssue> = {}): HostIssue {
   return {
     repo: 'acme/web',
     number: 7,

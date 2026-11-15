@@ -1,4 +1,4 @@
-import { isEffortLevel, type EffortLevel, type KitConfig, type RefreshConfig } from '../../config/types.ts';
+import { isEffortLevel, type EffortLevel, type KitConfig } from '../../config/types.ts';
 import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, type TeamPaths } from '../../core/home.ts';
 import { payloadEffortOf } from '../../hooks/model-check.ts';
@@ -119,7 +119,8 @@ export interface RearmScope {
   readonly id: string;
   /** The Claude Code session of the tab checking: only the tab the request was made for re-arms it. */
   readonly tab: string;
-  readonly refresh: Pick<RefreshConfig, 'enabled' | 'autoRestart'>;
+  /** The team's refresh as it applies to this session: the automatic restart resolved (`autoRestartOf`). */
+  readonly refresh: { readonly enabled: boolean; readonly autoRestart: boolean };
   /** The tab's working folder, as Claude Code gave it; undefined when it gave none. */
   readonly cwd: string | undefined;
 }

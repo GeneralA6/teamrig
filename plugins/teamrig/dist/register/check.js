@@ -1,14 +1,14 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
 import { NOW_PRIORITY, topPriority } from "../config/priorities.js";
 import { approvalCleared, waitAnswerersOf } from "./approval.js";
-import { CARD_FLAGS, GATE_FLAG, RUN_FLAG, whyAskUsage } from "./card.js";
+import { AFFECTS_USAGE, CARD_FLAGS, GATE_FLAG, proofWordOf, RUN_FLAG, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { auditOf, runFileDrift } from "./hand-step.js";
 import { leaderHolds, waitedMinutes } from "./leader-wait.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
-import { isUngated } from "./owner-waits.js";
+import { isProofAsk, isUngated, unreviewedSecurityWord } from "./owner-waits.js";
 import { isUntriaged } from "./park.js";
-import { loopFix, NO_TASKS_ELSEWHERE, pathText, TaskTree } from "./tree.js";
+import { loopFix, NO_TASKS_ELSEWHERE, pathText, planBand, TaskTree } from "./tree.js";
 import { WATCH_USAGE } from "./verify.js";
 import { formatTask } from "./views.js";
 import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling } from "./waits.js";
@@ -26,6 +26,8 @@ export const FLAG_KINDS = [
     'NO-CARD',
     'OWNER-ORDERED',
     'UNGATED',
+    'OWNER-PROOF',
+    'SECURITY-UNREVIEWED',
     'RUN-CHANGED',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
@@ -35,6 +37,7 @@ export const FLAG_KINDS = [
     'OVER-PACE',
     'OVER-LIMIT',
     'OVER-SIZE',
+    'PREP-LAPSED',
     'OWNER-UNPLANNED',
     'DUE-UNPLANNED',
     'OFF-GOAL',
@@ -83,12 +86,22 @@ const IN_HAND = 1;
  * - UNGATED: waiting, or its proof waiting, on the owner's decision with a card naming no owner gate or business
  *   decision (`gate`, card.ts), as one set before gates reads; never with `requireDecisionCard` off: only an owner
  *   gate or a business decision is the owner's to decide, any other question its session's or its leader's (T1194);
+ * - OWNER-PROOF: waiting, or its proof waiting, on the owner's decision or approval with a card whose question is about
+ *   a test, measure or proof and that names no approved number it changes, money it spends or data it writes
+ *   (`affects`, card.ts), as one set before that was asked reads; never with `requireDecisionCard` off: such work of
+ *   approved work is approved with it (core rule 6, T2623);
+ * - SECURITY-UNREVIEWED: waiting, or its proof waiting, on the owner's decision or approval with a card that names a
+ *   guard, a permission, a secret or another security word (securityWordOf, card.ts) and no security verdict covers,
+ *   nor a hand step's audit: a security-related ask reaches the owner only with the reviewer's verdict (core rule 9,
+ *   T2761). A warning: the write refuses only a card on a security gate or marked `security`, as a word alone may
+ *   name no security matter;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
- * - PRIORITY-SKIP: in progress below an open task of the same owner that outranks it (a better band, or a higher score
- *   in the same band; a tie skips nothing) and is free to start (every task it comes after finished), for longer than
- *   `prioritySkipAfterHours`: the session is not working its list in order. Rank comes from `ranking`, so a read with
- *   none raises no such flag;
+ * - PRIORITY-SKIP: in progress below an open task of the same owner that outranks it (a better band as plan order reads
+ *   it, near-term prep right after expedite, or a higher score in the same band; a tie skips nothing) and is free to
+ *   start (every task it comes after finished), for longer than `prioritySkipAfterHours`: the session is not working
+ *   its list in order. Rank comes from `ranking`, so a read with none raises no such flag; near-term prep (a prep
+ *   marker standing near, T2453) raises none, as it runs outside the slice cap;
  * - SELF-MADE: the first task still active past `maxSelfMadePerDay` of the tasks its owner added for itself (created
  *   by it, asked by no one else) in the 24 h before now (0 turns it off): a session adding its own work faster than
  *   anything asked for it may be looping or drifting from its goal;
@@ -104,11 +117,14 @@ const IN_HAND = 1;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with an
  *   effective due date: it waits quietly for its proof, and the date raises the alarm, nor for a waiting task with a
  *   time still to come: it is parked until then);
+ * - PREP-LAPSED: a prep marker that no longer stands near (focus.ts prepRead): its goal moved past the slice, opened
+ *   none or lost its rank, so the task is treated as any other; its owner re-marks it or drops the marker;
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
  * - DUE-UNPLANNED: effectively due inside the current week but outside its plan;
  * - OFF-GOAL: in progress with no goal and outside the current week plan, so nothing the team planned asked
  *   for it. The register has no parent tasks: a goal tag or the week plan is what ties a task to the plan.
- * The three week flags need a week; null skips them, and each task gets at most one of them. A wait on or a plan
+ * The three week flags need a week; null skips them, and each task gets at most one of them; near-term prep raises
+ * only OWNER-UNPLANNED, as it runs outside the week plan's dates. A wait on or a plan
  * dependency after a task of another register of the team tree reads that task in `elsewhere`.
  */
 export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_ELSEWHERE, ranking) {
@@ -133,8 +149,11 @@ export function checkTasks(tasks, now, zone, week, config, elsewhere = NO_TASKS_
         ...noCardFlags(task, config),
         ...ownerOrderedFlags(task, config.ownerSource),
         ...ungatedFlags(task, config),
+        ...ownerProofFlags(task, config),
+        ...securityUnreviewedFlags(task, config.ownerSource),
         ...timeFlags(task, at, config.check, tree),
         ...prioritySkip(task, best, tree, at, config.check),
+        ...prepLapsedFlags(task, tree),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
     ]);
     return [...flags, ...loopFlags(tree)].sort(byFlagKind);
@@ -241,6 +260,34 @@ function ungatedFlags(task, config) {
             },
         ]
         : [];
+}
+/** OWNER-PROOF, as {@link checkTasks} describes it. */
+function ownerProofFlags(task, config) {
+    const { ownerSource } = config;
+    const { card } = task;
+    const word = config.requireDecisionCard && card !== null && isProofAsk(task, ownerSource) ? proofWordOf(card.question) : undefined;
+    return word === undefined
+        ? []
+        : [
+            {
+                kind: 'OWNER-PROOF',
+                task,
+                detail: `its card asks ${ownerSource} about a test, measure or proof ("${word}"): one of approved work that changes no approved number, spends no money and writes no data goes ahead; drop the wait on ${ownerSource} and tell your leader, or set it ${task.status} again with ${AFFECTS_USAGE}`,
+            },
+        ];
+}
+/** SECURITY-UNREVIEWED, as {@link checkTasks} describes it. */
+function securityUnreviewedFlags(task, ownerSource) {
+    const word = unreviewedSecurityWord(task, ownerSource);
+    return word === undefined
+        ? []
+        : [
+            {
+                kind: 'SECURITY-UNREVIEWED',
+                task,
+                detail: `its card asks ${ownerSource} about a security matter ("${word}") with no security verdict on it: move its wait to your leader, have the security reviewer read it (teamrig audit ${task.id} --verdict "<what the review found>"), then wait on ${ownerSource} again with the card unchanged`,
+            },
+        ];
 }
 /**
  * READY, as {@link checkTasks} describes it: a decided task whose waits left are ready (T1366); a waiting task's
@@ -430,9 +477,10 @@ function selfMadeFlags(task, runs, max) {
 function standingSince(task) {
     return Math.max(Date.parse(task.assignedAt), Date.parse(task.statusAt), Date.parse(task.priorityAt));
 }
-/** Ahead on band, or on score in the same band. Equals outrank neither way, so working beside one skips nothing. */
+/** Ahead on band as plan order reads it, or on score in the same band. Equals outrank neither way, so working beside one skips nothing. */
 function outranks(a, b) {
-    return a.band < b.band || (a.band === b.band && a.score > b.score);
+    const [x, y] = [planBand(a), planBand(b)];
+    return x < y || (x === y && a.score > b.score);
 }
 /**
  * Per owner, the best-ranked open task free to start; of equals, the one that has stood longest, so a skip over it
@@ -455,23 +503,31 @@ function bestOpenTasks(active, tree) {
 function prioritySkip(task, best, tree, at, check) {
     const skipped = best.get(task.owner);
     const place = tree.rankedOf(task);
-    if (task.status !== 'in-progress' || skipped === undefined || place === undefined || !outranks(skipped.place, place)) {
+    if (task.status !== 'in-progress' || skipped === undefined || place === undefined || place.prep || !outranks(skipped.place, place)) {
         return [];
     }
     const since = Math.max(standingSince(task), standingSince(skipped.task));
     if (at - since <= check.prioritySkipAfterHours * MS_PER_HOUR) {
         return [];
     }
-    const rank = skipped.place.band === 0 ? 'expedite' : skipped.place.workClass;
+    const rank = skipped.place.band === 0 ? 'expedite' : skipped.place.prep ? 'near-term prep' : skipped.place.workClass;
     return [{ kind: 'PRIORITY-SKIP', task, detail: `${skipped.task.id} (${rank}, score ${skipped.place.score}) waits open, skipped since ${minute(since, tree.zone)}` }];
 }
-/** OWNER-UNPLANNED, or else DUE-UNPLANNED (on the effective due), or else OFF-GOAL. */
+/** PREP-LAPSED, with what moved, on a task whose prep marker no longer stands near. */
+function prepLapsedFlags(task, tree) {
+    const prep = tree.prepOf(task);
+    return prep?.standing === 'lapsed' ? [{ kind: 'PREP-LAPSED', task, detail: prep.why }] : [];
+}
+/** OWNER-UNPLANNED, or else DUE-UNPLANNED (on the effective due), or else OFF-GOAL; near-term prep only the first. */
 function planFlags(task, plan, ownerSource, tree) {
     if (task.week === plan.week) {
         return [];
     }
     if (task.source === ownerSource) {
         return [{ kind: 'OWNER-UNPLANNED', task, detail: `owner order not in week ${plan.week}` }];
+    }
+    if (tree.prepOf(task)?.standing === 'near') {
+        return [];
     }
     const due = tree.dueTime(task);
     if (due !== undefined && due >= plan.start && due < plan.end) {

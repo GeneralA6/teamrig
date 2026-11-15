@@ -11,7 +11,7 @@ import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { findClaude } from "../../open/claude.js";
 import { launchFlags } from "../../open/launch-flags.js";
 import { openTab } from "../../open/open-tab.js";
-import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from "../../open/prompt.js";
+import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, recoverPrompt, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
 import { sessionEnv } from "../../open/session-env.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -25,6 +25,7 @@ import { findTeam, openKit, reloadTeamConfig, requireConfig, rosterOf, sessionId
 import { liveRunOf, liveRunText } from "../live-run.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { launchListing } from "../skill-listing.js";
+import { tabFocusOf } from "../tab-focus.js";
 import { loadTree } from "../tree.js";
 import { noteResumedTab } from "../wake-opened.js";
 import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from "./rehire.js";
@@ -94,7 +95,7 @@ export async function openSessionTab(runtime, tab) {
         ...(tab.prompt === undefined ? ['--no-prompt'] : ['--encoded-prompt', encodePrompt(tab.prompt)]),
     ];
     const window = teamWindowOf(tab.teamWindow, tab.team);
-    return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window }), argv };
+    return { outcome: await openTab(runtime, tab.terminal, { title: sessionDisplay(tab.team, tab.name), folder: tab.project, argv, window, focus: tab.focus }), argv };
 }
 /**
  * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>] [--resume]`: a new terminal tab in
@@ -118,7 +119,7 @@ export async function open(args, runtime) {
     const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
     const project = await sessionProjectOf(runtime, config, id, args.flags.get('project'), found.from);
     const prompt = args.flags.get('prompt');
-    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), ...(prompt === undefined ? {} : { prompt }) });
+    const opened = await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: args.switches.has('resume'), focus: await tabFocusOf(runtime), ...(prompt === undefined ? {} : { prompt }) });
     return printOpenResult(runtime, opened);
 }
 /** Prints what an open did: its OPENED line, or, when no terminal opened, why and the command to run in its folder (exit 3). */
@@ -136,24 +137,28 @@ export function printOpenResult(runtime, opened) {
  * Opens the session's tab as `open` describes: a rehired one on its handover, a closed one in its last Claude Code
  * session or fresh (always fresh with `fresh`), refused (`RefusedError`) while it runs in a Claude Code and, for any
  * session but the lead, when the host has no room, its tab held while it loads (admitTab, so the next opens of every
- * team count it before free memory shows it), and a closed one's reopen logged once its tab opened. A home close
+ * team count it before free memory shows it), and a closed one's reopen logged once its tab opened (fresh on its
+ * handover while its refresh is ready, T2354). A home close
  * (a hire that never ran, T1364) opens as a new hire does, its reopen logged too.
  */
 export async function openSession(runtime, kit, config, roster, request) {
-    const { team, id, project, terminal, asked } = request;
+    const { team, id, project, terminal, asked, focus } = request;
     const name = roster.nameOf(id) ?? id;
     await refuseLiveRun(runtime, kit, roster, id, name);
     const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
     const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
     const closed = closedOf((await sessionLog.read()).records, id);
     const fresh = request.fresh === true;
-    const closedIn = closed?.claudeSession === undefined || fresh ? undefined : await reopenOf(runtime, config, closed, project);
+    // A closed session whose refresh is ready starts from its handover: a resume keeps the old context, and a start
+    // takes a ready handover only when fresh, so a resume would lose it (T2354).
+    const handover = closed === undefined || fresh ? undefined : await readyHandoverOf(new RefreshStore(runtime.files, kit.paths), id);
+    const closedIn = closed?.claudeSession === undefined || fresh ? undefined : handover === undefined ? await reopenOf(runtime, config, closed, project) : { verdict: READY_FRESH, folder: project };
     const reopen = closedIn?.verdict;
     // A closed session opened fresh still logs its reopen below, so the idle pass knows it runs again.
     const resume = fresh ? undefined : await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked });
     // Claude Code finds a session to resume only in the folder it ran in (T1408); a new one starts in the project.
     const folder = resume === undefined ? project : (closedIn?.folder ?? project);
-    const own = request.prompt ?? firstPromptOf(team, id, from, resume, reopen);
+    const own = request.prompt ?? (handover === undefined ? firstPromptOf(team, id, from, resume, reopen) : refreshPrompt(team, id, handover));
     const prompt = checkedPrompt(urgentFirstPrompt(request.urgent ?? [], own, teamZone(config, runtime), PROMPT_MAX));
     const what = `open ${name} (session ${id})`;
     // The lead opens whatever the room: it is the session that decides which others run. Its tab is held all the same.
@@ -164,7 +169,7 @@ export async function openSession(runtime, kit, config, roster, request) {
     if (admission.kind === 'busy') {
         throw new RefusedError(admitBusyText(what));
     }
-    const opening = openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, ...(resume === undefined ? {} : { resume }) });
+    const opening = openSessionTab(runtime, { team, id, name, project: folder, prompt, terminal, teamWindow: config.open.teamWindow, focus, ...(resume === undefined ? {} : { resume }) });
     const { outcome, argv } = await opening.catch(async (error) => {
         await dropTabHold(runtime, kit.paths, config, admission.holdId);
         throw error;
@@ -180,6 +185,12 @@ export async function openSession(runtime, kit, config, roster, request) {
     const unnoted = resume !== undefined && request.prompt === undefined ? await noteResumedTab(runtime, kit, config, id, resume) : undefined;
     const wakeNote = unnoted === undefined ? '' : `; its wake state was not written, so its tab may wake once more for work it reads now: ${unnoted}`;
     return { kind: 'opened', line: `OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${folder}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}${wakeNote}` };
+}
+/** A closed session's reopen while its refresh is ready: fresh, so its start takes the handover (T2354). */
+const READY_FRESH = { kind: 'fresh', detail: 'its refresh is ready: it starts from its handover' };
+/** The handover of a session whose refresh is ready, else undefined. */
+async function readyHandoverOf(store, id) {
+    return (await store.state(id))?.phase === 'ready' ? store.handoverPath(id) : undefined;
 }
 /**
  * A closed session's reopen. It resumes in the folder its close recorded, which holds its transcript (T1408), or the
@@ -201,8 +212,9 @@ async function refuseLiveRun(runtime, kit, roster, id, name) {
 }
 /**
  * The Claude Code session the tab resumes, undefined for a new one. A closed session resumes its last one when that
- * is small and recent enough, else opens fresh (and `--resume` refuses); any other resumes only with `--resume`, and
- * only a rehired session's.
+ * is small and recent enough, else opens fresh (and `--resume` refuses); any other resumes only with `--resume`, by
+ * the same limits: a rehired one's, or one whose tab ended outside teamrig (T1743: a crash or reboot left sessions
+ * neither closed nor rehired, and only the internal `launch` could bring them back in their own Claude Code session).
  */
 async function resumeOf(runtime, paths, config, facts) {
     const { id, project, from, reopen, asked } = facts;
@@ -217,9 +229,6 @@ async function resumeOf(runtime, paths, config, facts) {
     }
     if (!asked) {
         return undefined;
-    }
-    if (from === undefined) {
-        throw new RefusedError(`${id} was neither hired back after a retire nor closed: --resume resumes only a rehired session's last Claude Code session`);
     }
     const verdict = await resumeVerdictOf(runtime, paths, config.hiring, id, project);
     if (verdict.kind === 'fresh') {
@@ -243,7 +252,7 @@ function firstPromptOf(team, id, from, resume, reopen) {
         return resume === undefined ? defaultPrompt(team, id) : reopenPrompt(team, id);
     }
     if (resume !== undefined) {
-        return resumePrompt(team, id);
+        return from === undefined ? recoverPrompt(team, id) : resumePrompt(team, id);
     }
     return from?.handover === undefined ? defaultPrompt(team, id) : rehirePrompt(team, id, from.handover);
 }

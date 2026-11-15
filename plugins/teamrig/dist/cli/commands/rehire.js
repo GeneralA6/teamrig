@@ -42,7 +42,7 @@ export async function measureTranscript(runtime, transcript) {
     const tokens = changedAt === undefined ? undefined : await readContextTokens(runtime.files, transcript);
     return { transcript, changedAt, tokens };
 }
-/** How a fresh open of a rehired session starts: on the handover its retire left, when it left one. */
+/** How a fresh open starts: a rehired session's on the handover its retire left, when it left one; any other's plainly. */
 export function freshOpenOf(from) {
-    return from.handover === undefined ? 'open it fresh' : 'open it fresh on its handover';
+    return from?.handover === undefined ? 'open it fresh' : 'open it fresh on its handover';
 }

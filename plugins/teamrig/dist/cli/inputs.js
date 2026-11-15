@@ -1,12 +1,14 @@
 import { ENV } from "../core/home.js";
 import { ID_PATTERN, NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from "../core/time.js";
-import { OPTION_SEPARATOR } from "../register/card.js";
+import { OPTION_SEPARATOR, optionsSplitText, splitOptions } from "../register/card.js";
 import { isItemType, ITEM_TYPES, MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
+import { FIRST_SLICE, GOAL_TAG, isSlice } from "../register/goals.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
 import { WAITS_USAGE } from "../register/policy.js";
 import { REVIEW_FLAGS, REVIEW_ORDER } from "../register/review.js";
 import { isWaitKind, waitOf } from "../register/waits.js";
+import { unrunnableReason } from "../test-run/shell.js";
 import { requiredFlag, UsageError } from "./args.js";
 /**
  * Flag text to register inputs. Only the shape is checked here (a priority like p2, a list, a date); the
@@ -40,6 +42,15 @@ export function commandWordsOf(args) {
         throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
     }
     return args.rest;
+}
+/** The command to run in the platform's shell (`commandWordsOf`), refused when that shell would not run it as given. */
+export function shellWordsOf(args, platform) {
+    const words = commandWordsOf(args);
+    const reason = unrunnableReason(words, platform);
+    if (reason !== undefined) {
+        throw new UsageError(reason);
+    }
+    return words;
 }
 /** `T12`, or `web/T12`: team web's task, as a roll-up over a team tree names a task of another team. */
 export function taskRefOf(text) {
@@ -135,6 +146,14 @@ export function criticalOf(switches) {
         throw new UsageError('--critical and --not-critical: give one');
     }
     return switches.has('critical') ? { critical: true } : switches.has('not-critical') ? { critical: false } : {};
+}
+/**
+ * `--security`: the status change's card is security-related whatever its gate (T2761), so it reaches the owner only
+ * with the security reviewer's verdict; the status as typed without it. With no other card part, the policy builds
+ * on the card the task has, or refuses a card with no question.
+ */
+export function withSecurityCard(status, switches) {
+    return switches.has('security') ? { ...status, card: { ...status.card, security: true } } : status;
 }
 /** `--one-commit`: the start is a one-commit fix, which the WIP rule lets through; nothing without it. */
 export function oneCommitOf(switches) {
@@ -288,7 +307,22 @@ export function changesOf(flags, times) {
     if (workClass !== undefined) {
         changes.workClass = workClass === NONE ? null : workClass;
     }
+    const prepares = flags.get('prepares');
+    if (prepares !== undefined) {
+        changes.prepares = prepares === NONE ? null : prepOf(prepares);
+    }
     return changes;
+}
+/** `--prepares G:2`: the goal and its slice the task prepares (T2453); the policy checks the goal is a record. */
+export function prepOf(text) {
+    const colon = text.lastIndexOf(':');
+    const goal = text.slice(0, Math.max(colon, 0));
+    const sliceText = text.slice(colon + 1);
+    const slice = /^\d+$/.test(sliceText) ? Number(sliceText) : Number.NaN;
+    if (colon < 0 || !GOAL_TAG.test(goal) || !isSlice(slice)) {
+        throw new UsageError(`--prepares "${text}" is not <goal>:<slice> like G1:2 (a slice from ${FIRST_SLICE}) or ${NONE}`);
+    }
+    return { goal, slice };
 }
 /** A status as typed; `next` says what to type for the old `blocked`, which is refused (no alias kept). */
 function statusOf(flag, text, next) {
@@ -361,7 +395,7 @@ function reviewInputOf(flags) {
     }
     return Object.keys(review).length === 0 ? undefined : review;
 }
-/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`); undefined when it names none. */
+/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`, `--affects`); undefined when it names none. */
 function cardInputOf(flags) {
     const card = {};
     const question = flagText(flags, 'question');
@@ -388,6 +422,10 @@ function cardInputOf(flags) {
     if (gate !== undefined) {
         card.gate = gate;
     }
+    const affects = flagText(flags, 'affects');
+    if (affects !== undefined) {
+        card.affects = affects;
+    }
     return Object.keys(card).length === 0 ? undefined : card;
 }
 /** A text flag as typed, trimmed, such as a card or review part; a blank one is a usage error. */
@@ -398,11 +436,11 @@ function flagText(flags, name) {
     }
     return text;
 }
-/** `--options "<a> | <b>"`: the choices, each trimmed; an empty one is a usage error. */
+/** `--options "<a> | <b>"`: the choices, each trimmed, a `\\|` kept as a literal `|`; an empty one is a usage error. */
 function optionsOf(text) {
-    const options = text.split(OPTION_SEPARATOR).map((option) => option.trim());
+    const options = splitOptions(text);
     if (options.some((option) => option === '')) {
-        throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}`);
+        throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}; ${optionsSplitText(options)}`);
     }
     return options;
 }

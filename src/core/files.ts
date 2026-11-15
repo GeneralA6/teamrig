@@ -1,4 +1,4 @@
-import type { Stats } from 'node:fs';
+import { constants, type Stats } from 'node:fs';
 import { appendFile, link, lstat, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from './guards.ts';
@@ -20,6 +20,12 @@ const TEMPORARY_NAME = /^.+\.\d+(?:\.\d+)?\.tmp$/;
 export function isTemporaryName(name: string): boolean {
   return TEMPORARY_NAME.test(name);
 }
+
+/**
+ * Read-only and without waiting: opening a named pipe for reading otherwise blocks until a writer opens it, and that
+ * wait holds the caller. Windows has no such flag; its pipes live under `\\.\pipe\`, which a caller can keep away from.
+ */
+const OPEN_READ_NONBLOCKING: number = constants.O_RDONLY | ('O_NONBLOCK' in constants ? constants.O_NONBLOCK : 0);
 
 /** The path's stats when a file is there; undefined for a missing path or a folder. */
 async function fileStatsOf(path: string): Promise<Stats | undefined> {
@@ -104,6 +110,12 @@ export interface Files {
    * a file too big to read whole. The text may start mid-line, even mid-character.
    */
   readTail(path: string, maxBytes: number): Promise<string | undefined>;
+  /**
+   * At most the first `maxBytes` bytes of a regular file as text, or undefined when no regular file is there: a
+   * missing path, a folder, a named pipe or a device, which it opens without waiting and never reads. For a file
+   * someone else names, so no size or kind of file can hold the call. The text may end mid-line, even mid-character.
+   */
+  readHead(path: string, maxBytes: number): Promise<string | undefined>;
   /** Appends text, creating the file and its folders as needed. One call is one write, so whole lines stay whole. */
   append(path: string, text: string): Promise<void>;
   /** Replaces the file atomically (write a sibling, then rename), creating folders as needed. */
@@ -169,6 +181,28 @@ export function nodeFiles(sleep: Sleep): Files {
         const length = Math.min(size, maxBytes);
         const buffer = Buffer.alloc(length);
         const { bytesRead } = await handle.read(buffer, 0, length, size - length);
+        return buffer.subarray(0, bytesRead).toString('utf8');
+      } finally {
+        await handle.close();
+      }
+    },
+    async readHead(path, maxBytes) {
+      let handle: FileHandle;
+      try {
+        handle = await open(path, OPEN_READ_NONBLOCKING);
+      } catch (error) {
+        if (errorCode(error) === 'ENOENT') {
+          return undefined;
+        }
+        throw error;
+      }
+      try {
+        const stats = await handle.stat();
+        if (!stats.isFile()) {
+          return undefined;
+        }
+        const buffer = Buffer.alloc(Math.min(stats.size, maxBytes));
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
         return buffer.subarray(0, bytesRead).toString('utf8');
       } finally {
         await handle.close();

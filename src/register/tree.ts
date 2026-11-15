@@ -1,6 +1,8 @@
 import { parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { answerTo } from './approval.ts';
 import { canMove } from './can-move.ts';
+import type { PrepRead } from './focus.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import { wouldPark, type ParkFocus } from './park.ts';
@@ -84,6 +86,25 @@ export interface ServedGoal {
 export interface RankedPlace extends TaskScore {
   readonly workClass: string;
   readonly goal: ServedGoal | null;
+  /** Near-term prep (T2453): its prep marker stands near, so it ranks right after band 0 ({@link planBand}). */
+  readonly prep: boolean;
+}
+
+/**
+ * The band plan order ranks a place by: band 0 (expedite) stays first, near-term prep comes right after it, ahead of
+ * the rest of its own band, as a design for the current or next slice must be ready before that slice's build; every
+ * other band moves one down.
+ */
+export function planBand(ranked: Pick<RankedPlace, 'band' | 'prep'>): number {
+  if (ranked.band === 0) {
+    return 0;
+  }
+  return ranked.prep ? 1 : ranked.band + 1;
+}
+
+/** {@link planBand} of a place, undefined with no ranking. */
+function placeBand(place: PlanPlace): number | undefined {
+  return place.ranked === undefined ? undefined : planBand(place.ranked);
 }
 
 /**
@@ -112,8 +133,8 @@ export interface PlanPlace {
 
 /**
  * The keys of plan order, in order: the first one on which two tasks differ puts one ahead: `pinned` (a task the
- * owner's leader pinned, above every other key); `band` (expedite, then Roadmap and Maintenance, then the rest;
- * score.ts); `ready` (a task that can move before one that cannot, whose value still reaches any need of it through
+ * owner's leader pinned, above every other key); `band` (expedite, then near-term prep, then Roadmap and Maintenance,
+ * then the rest; score.ts, {@link planBand}); `ready` (a task that can move before one that cannot, whose value still reaches any need of it through
  * that need's score); `score` (the highest WSJF score first; score.ts); `started` (an in-progress task stays on top of
  * its equals); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the active
  * tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size` (the smallest
@@ -126,7 +147,7 @@ export type PlanKey = (typeof PLAN_KEYS)[number];
 
 const BY_KEY: Readonly<Record<PlanKey, (a: PlanPlace, b: PlanPlace) => number>> = {
   pinned: (a, b) => trueFirst(a.pinned, b.pinned),
-  band: (a, b) => lowFirst(a.ranked?.band, b.ranked?.band),
+  band: (a, b) => lowFirst(placeBand(a), placeBand(b)),
   ready: (a, b) => trueFirst(b.blocked, a.blocked),
   score: (a, b) => highFirst(a.ranked?.score, b.ranked?.score),
   started: (a, b) => trueFirst(a.started, b.started),
@@ -174,7 +195,7 @@ function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
  */
 export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> &
   Partial<
-    Pick<Task, 'week' | 'size' | 'sizeBase' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals' | 'updatedAt' | 'decided' | 'answer'>
+    Pick<Task, 'week' | 'size' | 'sizeBase' | 'pin' | 'type' | 'critical' | 'source' | 'workClass' | 'goals' | 'prepares' | 'updatedAt' | 'decided' | 'answer'>
   >;
 
 /**
@@ -190,6 +211,8 @@ export interface TreeRanking {
   classOf(task: TreeTask): string;
   /** The ranked goal it serves; null: none. */
   goalOf(task: TreeTask): ServedGoal | null;
+  /** Where its prep marker stands, with why a lapsed one lapsed (focus.ts prepRead); null: no marker. */
+  prepOf(task: TreeTask): PrepRead | null;
   /** What is known of its size. */
   sizingOf(task: TreeTask): SizeFacts;
 }
@@ -447,9 +470,14 @@ export class TaskTree<T extends TreeTask = Task> {
       ranking.focus,
       this.now,
     );
-    const place = { ...score, workClass: facts.workClass, goal: ranking.goalOf(task) };
+    const place = { ...score, workClass: facts.workClass, goal: ranking.goalOf(task), prep: ranking.prepOf(task)?.standing === 'near' };
     this.ranked.set(task.id, place);
     return place;
+  }
+
+  /** Where a task's prep marker stands ({@link TreeRanking.prepOf}); null with no marker or no ranking. */
+  prepOf(task: TreeTask): PrepRead | null {
+    return this.ranking?.prepOf(task) ?? null;
   }
 
   /** The tasks in plan order ({@link byPlanOrder}). */
@@ -470,7 +498,8 @@ export class TaskTree<T extends TreeTask = Task> {
   /**
    * What waits on `session`: every active task of another owner that directly needs an unfinished task of the
    * session, or waits on its decision or approval, in plan order. A parked task is left out: `list` hides it, so a row
-   * here would name work its owner cannot see.
+   * here would name work its owner cannot see. An approval the session already answered, either way, is left out too
+   * (T1422): its owner goes on (`waitsLetGoOn`), so the row would ask the session for an answer it gave.
    */
   waitingOn(session: string): WaitingOnYou<T>[] {
     const waiting = [...this.tasks.values()].flatMap((task) => {
@@ -478,7 +507,9 @@ export class TaskTree<T extends TreeTask = Task> {
         return [];
       }
       const needs = this.inPlanOrder(this.unfinishedNeeds(task).filter((need) => need.owner === session));
-      const asks = task.waits.filter((reason): reason is PersonWait => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === session);
+      const asks = task.waits.filter(
+        (reason): reason is PersonWait => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === session && answerTo({ answer: task.answer ?? null }, reason) === undefined,
+      );
       return needs.length === 0 && asks.length === 0 ? [] : [{ task, needs, asks }];
     });
     return waiting.sort((a, b) => this.byPlanOrder(a.task, b.task));

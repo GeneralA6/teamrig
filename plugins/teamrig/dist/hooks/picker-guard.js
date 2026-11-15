@@ -13,6 +13,8 @@ import { DECISION_MARKER } from "../tabs/status.js";
  * lead never keeps it: the user talks only to the root team's lead, so its decisions go up to its parent lead (T1019). A helper never keeps it, the lead's neither: its picker stops the
  * session that started it, and its question belongs in its report. ExitPlanMode stays allowed: plan mode starts only
  * when the person chose it in that tab, and the tool is its only way out.
+ *
+ * The same switch refuses a Bash `cd` compound Claude Code would hold on a permission prompt (hooks/cd-compound.ts).
  */
 /** The tool the guard refuses: the question picker. */
 export const PICKER_TOOL = 'AskUserQuestion';

@@ -31,10 +31,13 @@ teamrig restore run      # reopen the sessions the last shutdown killed
   resume too often stays closed. The entry of one the restore drops (`DISCARD`) is not deleted: it moves to
   `restore/archive/` in the kit home and is kept 7 days, so a session judged wrongly can still be found there.
 - How they come back: `restore run` lists them and counts down 60 seconds (Enter starts at once, `i` reopens every
-  one with no prompt, `q` cancels). A team session started by `teamrig open` comes back through `launch` as itself;
+  one with no prompt, `q` cancels). A tab whose Claude Code still runs but froze mid-turn, its transcript unwritten
+  for 3 hours, is listed apart as hung: only `k` ends its process and reopens it, as a live one may still work. A team session started by `teamrig open` comes back through `launch` as itself;
   any other resumes as it ran. One that was mid-turn, hit an API error or had background jobs, cron jobs or a
   wake-up live at the shutdown gets a prompt to re-check the state and carry on, and so does each lead, told how its
-  team's sessions came back; the others reopen idle. They open one by one within the host's memory, as `teamrig
+  team's sessions came back; the others reopen idle. The prompt names why it ended: the computer restarted only when
+  it ended within the shutdown, else its Claude Code was killed (a power loss, a crash) or its tab closed, and a last
+  turn that ended on a login error asks it to say so rather than retry, as only you can log in again. They open one by one within the host's memory, as `teamrig
   open` does: the lead opens whatever the room, any other waits up to `open.headroom.loadMinutes` (5) for room
   while the tabs before it load, else it is held back for the next run. Each step is written to
   `restore/restore.log` in the kit home,
@@ -95,7 +98,10 @@ sequenceDiagram
   long task refreshes before Claude Code compacts it; at a task end (`set <id> --status done`) it names the task.
   A session that goes on without its fresh start (you typed, or never typed `/clear`) is asked again at its next
   task end, or once its context grew a fifth of `refresh.contextTokens` more; a compaction or a `/clear` brings
-  the ask back to the threshold.
+  the ask back to the threshold. A fresh start (a `/clear`, a new process) only measures its context at its first
+  turn end, asking nothing, and a size or task-count ask then waits until the context grew that fifth past the
+  measure: a session whose fresh start already sits over the threshold (its system prompt, rules and handover) is
+  not asked to refresh again before it did any work.
 - A session busy in one long turn is asked within it: after each tool result teamrig's mod checks the context, and
   past the threshold it adds the ask to the result (finish the step, write the handover, end the turn). Until the
   fresh start, Claude Code's own compaction waits, up to `refresh.compactCeilingTokens` (185,000 by default, 15k
@@ -119,7 +125,7 @@ sequenceDiagram
   and a `## Next steps` section; one that falls short (missing, blank, too long, or without a section) is asked to
   be fixed, once per version. `teamrig refresh --ready` still answers the ask, for a handover complete without a
   section.
-- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, off by default: the user types `/clear` once done with the screen). A hidden
+- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, on for the lead by default: the user types `/clear` for any other session once done with the screen). A hidden
   `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
   then leaves an ask for its tab. A session with no work it can start waits for work first (its tab title reads
   `waits for work`): the wake that brings it some starts the restart instead of waking the old context. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while

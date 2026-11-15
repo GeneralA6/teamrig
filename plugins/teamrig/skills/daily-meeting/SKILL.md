@@ -34,6 +34,9 @@ Then it prints the agenda:
   in `DECISIONS`;
 - `UNGATED`: the waits on the human's decision whose card names no owner gate or business decision: never read
   them out; decide those of sessions you lead and send each its answer as an inbox line;
+- `OWNER-PROOF`: the waits on the human about a test, measure or proof that names no approved number it changes,
+  money it spends or data it writes: approved with the work it tests, so never read them out; tell each session
+  you lead to go ahead;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`), yours first, then each team's under you (`web/T2`); a team with more than 5 is one count
   line naming the command that lists them;
@@ -99,6 +102,8 @@ task does not hold is its owner's to find (step 3). Keep decisions apart from FY
 gate (destructive data operations, product and design, permissions, budget, resource changes) stays the human's:
 a session's recommendation is not their approval. Each decision card names its gate (`gate:`): the owner gate or
 business decision that makes it the human's; one with no gate (`UNGATED`) is not the human's: never read it out.
+A test, measure or proof of approved work is approved with it: a card asking about one (`OWNER-PROOF`) is not read
+out unless it names what it affects (`affects:`).
 A hands-on step reaches the human only as the card's audited file (`run:`, its run line and short sha256); one
 that prints `do not run` (`RUN-CHANGED`) is not asked until it is audited again, and never type the step yourself.
 

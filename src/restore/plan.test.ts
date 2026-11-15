@@ -7,10 +7,13 @@ import type { RestoreEntry } from './entry.ts';
 import {
   chooseMode,
   CLOSED_KEEP_MS,
-  CONTINUE_PROMPT,
+  continueBase,
   continuePrompt,
   describeLostWork,
   diedAt,
+  endFactsOf,
+  LOGIN_ERROR,
+  HUNG_AFTER_MS,
   judgeEntry,
   lastRecordedEffort,
   lostWorkOf,
@@ -20,6 +23,7 @@ import {
   selectRestorePlan,
   SHUTDOWN_GRACE_MS,
   summarizeRestore,
+  type EndFacts,
   type JudgeFacts,
   type LostWork,
 } from './plan.ts';
@@ -57,6 +61,7 @@ function facts(overrides: Partial<JudgeFacts> = {}): JudgeFacts {
     since: LOGON,
     shutdown: { start: SHUTDOWN, end: SHUTDOWN + 60_000 },
     running: new Set(),
+    stalled: new Set(),
     transcripts: new Map([[SESSION, '/claude/projects/app/s.jsonl']]),
     kinds: new Map(),
     ...overrides,
@@ -156,6 +161,16 @@ describe('judgeEntry', () => {
     assert.equal(judgeEntry(entry(), facts({ running: new Set([SESSION]) })).reason, 'still running');
   });
 
+  it('offers a live session stalled mid-turn as hung, even one active since logon, and keeps a live one that is not (T1744)', () => {
+    const stalled = facts({ running: new Set([SESSION]), stalled: new Set([SESSION]) });
+    const hung = { verdict: 'hung', reason: `hung: mid-turn, its transcript unwritten for ${HUNG_AFTER_MS / 3_600_000} h` };
+    assert.deepEqual(judgeEntry(entry({ state: 'working' }), stalled), hung);
+    assert.deepEqual(judgeEntry(entry({ state: 'working', updatedAt: LOGON }), stalled), hung);
+    assert.equal(judgeEntry(entry({ state: 'working' }), facts({ running: new Set([SESSION]) })).reason, 'still running');
+    // A stalled mark on a session whose process is gone is no hang: it is judged as any dead session.
+    assert.equal(judgeEntry(entry(), facts({ stalled: new Set([SESSION]) })).verdict, 'restore');
+  });
+
   it('discards a session with no transcript left to resume', () => {
     assert.deepEqual(judgeEntry(entry(), facts({ transcripts: new Map() })), { verdict: 'discard', reason: 'no transcript' });
   });
@@ -178,6 +193,7 @@ describe('selectRestorePlan', () => {
     assert.deepEqual(plan.closed.map((judged) => judged.entry.claudeSession), [shut]);
     assert.deepEqual(plan.discard.map((judged) => judged.reason), ['no transcript']);
     assert.deepEqual(plan.keep, []);
+    assert.deepEqual(plan.hung, []);
   });
 });
 
@@ -250,17 +266,53 @@ describe('summarizeRestore', () => {
   });
 });
 
+describe('endFactsOf', () => {
+  const WINDOW = { start: SHUTDOWN, end: SHUTDOWN + 60_000 };
+
+  it('names the shutdown only for an end inside its span, a kill for no end, and a closed tab for any other end (T1745)', () => {
+    assert.deepEqual(endFactsOf(entry({ endedAt: SHUTDOWN + 30_000, endReason: 'other' }), WINDOW), { cause: 'shutdown', apiError: undefined });
+    assert.deepEqual(endFactsOf(entry({ endedAt: undefined }), WINDOW), { cause: 'killed', apiError: undefined });
+    assert.deepEqual(endFactsOf(entry({ endedAt: SHUTDOWN - 3_600_000, endReason: 'other' }), WINDOW), { cause: 'closed', apiError: undefined });
+    assert.deepEqual(endFactsOf(entry({ endedAt: SHUTDOWN + 30_000, endReason: 'other' }), undefined), { cause: 'closed', apiError: undefined });
+  });
+
+  it("carries the API error a last turn ended on, `unknown` when none was named, and none once a turn ended well", () => {
+    const failed = { code: LOGIN_ERROR, failedAt: SHUTDOWN, retries: 0, retriedAt: undefined };
+    assert.equal(endFactsOf(entry({ state: 'error', apiError: failed }), WINDOW).apiError, LOGIN_ERROR);
+    assert.equal(endFactsOf(entry({ state: 'error' }), WINDOW).apiError, 'unknown');
+    assert.equal(endFactsOf(entry({ state: 'ready', apiError: failed }), WINDOW).apiError, undefined);
+  });
+});
+
 describe('continuePrompt', () => {
+  const REBOOT: EndFacts = { cause: 'shutdown', apiError: undefined };
+  const base = continueBase(REBOOT);
+
+  it('says the computer restarted only after a shutdown, else that the Claude Code was killed or its tab closed (T1745)', () => {
+    assert.match(continuePrompt(REBOOT, NOTHING, undefined), /^The computer restarted/);
+    const killed = continuePrompt({ cause: 'killed', apiError: undefined }, NOTHING, undefined);
+    assert.match(killed, /^This session's Claude Code ended without exiting \(a power loss, a crash or a forced close of its window\)/);
+    assert.doesNotMatch(killed, /computer restarted/);
+    const closed = continuePrompt({ cause: 'closed', apiError: undefined }, NOTHING, undefined);
+    assert.match(closed, /^This session's tab was closed while it still had work/);
+    assert.doesNotMatch(closed, /computer restarted/);
+  });
+
+  it('names a login error apart, as only the person can fix it, and any other API error by its code', () => {
+    assert.match(continuePrompt({ cause: 'closed', apiError: LOGIN_ERROR }, NOTHING, undefined), /tab was closed[^.]*\. Your last turn ended on a login error: .*"Please run \/login", stop and say so/);
+    assert.match(continuePrompt({ cause: 'killed', apiError: 'overloaded' }, NOTHING, undefined), /Your last turn ended on an API error \(overloaded\): run it again once\./);
+  });
+
   it('adds the lost work, and for the lead the other sessions', () => {
-    assert.equal(continuePrompt(NOTHING, undefined), CONTINUE_PROMPT);
-    assert.equal(continuePrompt({ background: 1, crons: 0, wake: false }, ''), `${CONTINUE_PROMPT} At the shutdown you had 1 background job live.`);
-    assert.equal(continuePrompt(NOTHING, 'po idle'), `${CONTINUE_PROMPT} Other sessions restored: po idle.`);
+    assert.equal(continuePrompt(REBOOT, NOTHING, undefined), base);
+    assert.equal(continuePrompt(REBOOT, { background: 1, crons: 0, wake: false }, ''), `${base} When it ended you had 1 background job live.`);
+    assert.equal(continuePrompt(REBOOT, NOTHING, 'po idle'), `${base} Other sessions restored: po idle.`);
   });
 
   it('cuts a long summary so the prompt stays within the limit', () => {
-    const prompt = continuePrompt({ background: 2, crons: 1, wake: true }, 'po idle, '.repeat(400));
+    const prompt = continuePrompt(REBOOT, { background: 2, crons: 1, wake: true }, 'po idle, '.repeat(400));
     assert.equal(prompt.length, PROMPT_MAX);
-    assert.ok(prompt.startsWith(`${CONTINUE_PROMPT} At the shutdown you had 2 background jobs, 1 cron job and a wake-up live. Other sessions restored: po idle`));
+    assert.ok(prompt.startsWith(`${base} When it ended you had 2 background jobs, 1 cron job and a wake-up live. Other sessions restored: po idle`));
     assert.ok(prompt.endsWith('....'));
   });
 });

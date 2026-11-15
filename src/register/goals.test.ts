@@ -44,6 +44,7 @@ const set = (over: Partial<GoalSet> = {}): GoalSet => ({
   tag: 'A1',
   target: '2030-02-07',
   title: null,
+  slice: null,
   note: 'the review took a week',
   ...over,
 });
@@ -92,6 +93,10 @@ describe('parseGoalRecord', () => {
     assert.deepEqual(lineOf(goalRecordJson(set({ target: null, title: 'Ship it' }))), { kind: 'record', record: set({ target: null, title: 'Ship it' }) });
   });
 
+  it('reads a set naming only a slice (T2453)', () => {
+    assert.deepEqual(lineOf(goalRecordJson(set({ target: null, slice: 2 }))), { kind: 'record', record: set({ target: null, slice: 2 }) });
+  });
+
   it('reads a rank record, and one with no rank field as taking the goal off the ranking (T2083)', () => {
     assert.deepEqual(lineOf(goalRecordJson(rank({ rank: 3 }))), { kind: 'record', record: rank({ rank: 3 }) });
     assert.deepEqual(lineOf(goalRecordJson(rank({ rank: null }))), { kind: 'record', record: rank({ rank: null }) });
@@ -120,6 +125,9 @@ describe('parseGoalRecord', () => {
       [{ ...goalRecordJson(rank()), rank: 100 }, 'rank 100 is not a whole number from 1 to 99'],
       [{ ...goalRecordJson(rank()), rank: 1.5 }, 'rank 1.5 is not a whole number from 1 to 99'],
       [{ ...goalRecordJson(rank()), rank: '1' }, 'rank "1" is not a whole number from 1 to 99'],
+      [{ ...goalRecordJson(set()), slice: 0 }, 'slice 0 is not a whole number from 1'],
+      [{ ...goalRecordJson(set()), slice: 1.5 }, 'slice 1.5 is not a whole number from 1'],
+      [{ ...goalRecordJson(set()), slice: '2' }, 'slice "2" is not a whole number from 1'],
     ];
     for (const [record, reason] of cases) {
       assert.deepEqual(lineOf(record), { kind: 'unreadable', reason });
@@ -135,10 +143,15 @@ describe('goalRecordJson', () => {
   });
 
   it('writes an add and a set as format 1, so an older teamrig still reads them, and a rank as format 2 (T2083)', () => {
-    assert.equal(GOAL_RECORD_VERSION, 2);
     assert.equal(goalRecordJson(add())['v'], 1);
     assert.equal(goalRecordJson(set())['v'], 1);
     assert.deepEqual(goalRecordJson(rank({ rank: null })), { v: 2, type: 'goal-rank', at: rank().at, by: 'lead', tag: 'A1', rank: null });
+  });
+
+  it('writes a set naming a slice as format 3, so a teamrig that would drop the slice refuses to write beside it (T2453)', () => {
+    assert.equal(GOAL_RECORD_VERSION, 3);
+    assert.deepEqual(goalRecordJson(set({ target: null, slice: 2 })), { v: 3, type: 'goal-set', at: set().at, by: 'lead', tag: 'A1', note: set().note, slice: 2 });
+    assert.equal('slice' in goalRecordJson(set()), false);
   });
 });
 
@@ -172,6 +185,7 @@ describe('foldGoals', () => {
         { at: '2030-01-13T10:00:00.000Z', by: 'ops', from: '2030-02-07', to: '2030-02-14', note: 'a holiday' },
       ],
       rank: null,
+      slice: null,
     });
   });
 
@@ -181,6 +195,13 @@ describe('foldGoals', () => {
     assert.equal(goals.get('A1')?.rank, 4);
     assert.equal(goals.get('B1')?.rank, 1);
     assert.equal(foldGoals([add(), rank({ rank: 2 }), rank({ rank: null })]).goals.get('A1')?.rank, null);
+  });
+
+  it('keeps the latest slice, and a set without one leaves it (T2453)', () => {
+    assert.equal(foldGoals([add()]).goals.get('A1')?.slice, null);
+    const { goals } = foldGoals([add(), set({ target: null, slice: 1 }), set({ target: null, slice: 2 }), set({ target: '2030-02-14' })]);
+    assert.equal(goals.get('A1')?.slice, 2);
+    assert.equal(goals.get('A1')?.target, '2030-02-14');
   });
 
   it('leaves the title, target and slips to a rank record', () => {
@@ -311,7 +332,7 @@ describe('goalRankRefusal', () => {
 
 describe('goalSetRefusal', () => {
   const goals = foldGoals([add()]).goals;
-  const input = (over: Partial<GoalSetInput> = {}): GoalSetInput => ({ tag: 'A1', target: '2030-02-07', title: null, note: 'slipped', ...over });
+  const input = (over: Partial<GoalSetInput> = {}): GoalSetInput => ({ tag: 'A1', target: '2030-02-07', title: null, slice: null, note: 'slipped', ...over });
 
   it('lets a new target, a new title or both in', () => {
     assert.equal(goalSetRefusal(input(), goals), undefined);
@@ -322,13 +343,14 @@ describe('goalSetRefusal', () => {
   it('says why it refuses each bad set', () => {
     const cases: readonly (readonly [Partial<GoalSetInput>, RegExp])[] = [
       [{ tag: 'B1' }, /goal B1 does not exist; add it with goal add/],
-      [{ target: null }, /goal set changes --target, --title or both/],
+      [{ target: null }, /goal set changes --target, --title, --slice or more/],
       [{ note: ' ' }, /goal set says why in --note/],
       [{ target: '2030-02-30' }, /--target is a YYYY-MM-DD day/],
       [{ target: '2030-01-07' }, /--target 2030-01-07 is before the goal's start 2030-01-08/],
       [{ target: null, title: ' ' }, /a goal has a title/],
       [{ target: '2030-01-31' }, /goal A1 already reads so; nothing to change/],
       [{ target: null, title: 'Ship the first release' }, /goal A1 already reads so; nothing to change/],
+      [{ target: null, slice: 0 }, /--slice is a whole number from 1/],
     ];
     for (const [over, refusal] of cases) {
       assert.match(goalSetRefusal(input(over), goals) ?? '', refusal);

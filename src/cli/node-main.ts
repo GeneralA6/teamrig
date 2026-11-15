@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
+import type { Writable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { nodeTranscriptSource } from '../budget/discover.ts';
 import { nodeFileBytes } from '../core/file-bytes.ts';
 import { nodeFiles } from '../core/files.ts';
 import { GIT_TREES } from '../delivery/git-tree.ts';
+import { nodeHostCpu } from '../delivery/cpu.ts';
 import { nodeHostMemory } from '../delivery/memory.ts';
 import { launchingShellsOf, nodeEvery, starterWatch } from '../delivery/starter-watch.ts';
 import { nodeStepRunner } from '../delivery/steps.ts';
@@ -16,6 +18,7 @@ import { nodeProgramRunner, systemCredentials } from '../github/credentials.ts';
 import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
 import { nodeGhRunner } from '../github/gh.ts';
+import { GIT_PULLS } from '../github/pull-conflicts.ts';
 import { GIT_MERGE } from '../merge/git.ts';
 import { nodeProcesses } from '../open/processes.ts';
 import { nodeSessionProcesses } from '../open/session-processes.ts';
@@ -43,6 +46,11 @@ export interface NodeEntry {
   readonly out: Output;
   /** The CLI's entry script, `main.js`, which `teamrig open`, the idle pass and the restart start again. */
   readonly script: string;
+  /**
+   * The run's whole stdin, such as a hook's JSON: the process's (`main.ts`), or the text the guard entry read and sent
+   * its guard thread, which is given none: a thread with a stdin stream it never reads stays alive (T2433).
+   */
+  readonly readStdin: () => Promise<string>;
 }
 
 /** The process's own stdout and stderr, a line at a time. */
@@ -50,6 +58,18 @@ export const PROCESS_OUTPUT: Output = {
   stdout: (line) => process.stdout.write(`${line}\n`),
   stderr: (line) => process.stderr.write(`${line}\n`),
 };
+
+/**
+ * Ends the stack dump a reader that closed early causes (`teamrig show T1 | head -2`): the write fails with EPIPE, and
+ * with no 'error' listener node throws it as an uncaught exception. The run goes on to its own exit code, since a
+ * command that also writes files must not stop halfway because nobody reads its output; any other stream error still
+ * throws as before.
+ */
+export function ignoreClosedPipe(stream: Writable): void {
+  stream.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code !== 'EPIPE') throw error;
+  });
+}
 
 /**
  * The process adapter: real files, clock, git, child processes and stdio around the testable runner. Its own module,
@@ -84,6 +104,7 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
     shell: nodeShellRunner(),
     steps: nodeStepRunner(process.platform),
     memory: nodeHostMemory(process.platform),
+    cpu: nodeHostCpu(),
     gh: nodeGhRunner(),
     credentials: systemCredentials(process.platform, nodeProgramRunner()),
     probe: NODE_PATH_PROBE,
@@ -100,13 +121,14 @@ export async function runWithNode(argv: readonly string[], entry: NodeEntry): Pr
       shortcuts: systemShortcutPlace(process.platform, nodeProgramRunner(SHORTCUT_QUERY_TIMEOUT_MS)),
     },
     mergeGit: GIT_MERGE,
+    pulls: GIT_PULLS,
     trees: GIT_TREES,
     hooks: nodeHookRunner(process.platform),
     packageRegistry: httpPackageRegistry(),
     exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT },
     webhook: httpWebhook(),
     cmdShimLine,
-    readStdin: () => text(process.stdin),
+    readStdin: entry.readStdin,
     newId: () => randomUUID(),
   });
 }

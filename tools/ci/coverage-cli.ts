@@ -34,7 +34,7 @@ async function main(args: readonly string[]): Promise<number> {
     const idleMs = policy.suiteIdleSeconds * 1000;
     const end = await runSuite({ program: process.execPath, args: suiteArgs(policy, lcovPath, tapPath), cwd: root, env: suiteEnv(process.env), idleMs });
     if (end.kind === 'idle') {
-      console.log(`coverage: ${hangFinding(end.idleMs, process.versions.node)}`);
+      console.log(`coverage: ${hangFinding(end.silentMs, process.versions.node)}`);
       return EXIT_FINDINGS;
     }
     const run = coverageRun(

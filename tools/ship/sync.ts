@@ -1,10 +1,13 @@
+import type { MainMove } from './merge.ts';
 import { type Version, type VersionFile, bumpKindOf, bumped, formatVersion, versionIn, versionMention, withVersion } from './version-bump.ts';
 
 /**
- * Brings a change branch up to main at the start of a ship, while the ship holds the host lock (T629). A ship
- * used to rebase and set its version before it queued for the lock; when other ships merged during the wait
- * (up to an hour), main moved past it and the ship was refused after the whole wait. Inside the lock no other
- * ship merges, so a branch rebased here and merged in the same run cannot go stale.
+ * Brings a change branch up to main at the start of a ship, once the ship has its place on the host (T629). A
+ * ship used to rebase and set its version before it queued; when other ships merged during the wait (up to an
+ * hour), main moved past it and the ship was refused after the whole wait. A place on the host does not keep
+ * main still: heavy steps share the host (`maxHeavyParallel`), so another ship can merge while this one runs its
+ * checks, and merge.ts looks at main again before it merges; when main moved, the ship runs this sync again
+ * under a new branch name (ship-commits.ts).
  *
  * The change's version raise is uncommitted, in the plan's last chunk (SKILL.md): it is set aside, the branch
  * and the plan's other uncommitted files are moved onto main, and the same raise (patch, minor or major) is
@@ -37,6 +40,18 @@ const refuse = (reason: string): never => {
   throw new Error(`REFUSED ${reason}`);
 };
 
+/**
+ * main's tip on origin, fetched now, when the branch does not contain it; null when it does. A ship asks once its
+ * local checks failed: the plugin version gate compares with origin/main, which any worktree's fetch moves, so a
+ * raise another ship took meanwhile fails it, and only a run on the moved main can tell (T2725).
+ */
+export function mainMovedPast(git: SyncDeps['git'], main: string): MainMove | null {
+  git('fetch', '--quiet', 'origin', main);
+  const tip = git('rev-parse', `refs/remotes/origin/${main}`);
+  if (git('merge-base', 'HEAD', tip) === tip) return null;
+  return { tip, reason: `origin/${main} moved to ${tip.slice(0, 7)}, which the branch does not contain` };
+}
+
 export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
   const { git } = deps;
   const { main, files } = options;
@@ -65,21 +80,38 @@ export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
     for (const file of files) deps.writeText(file.path, withVersion(deps.readText(file.path), file, set));
   };
   git('checkout', '--', ...files.map((file) => file.path));
-  const stashed = git('status', '--porcelain', '--untracked-files=no') !== '';
-  if (stashed) git('stash', 'push', '--quiet', '-m', 'ship.ts: the plan, set aside for the rebase onto main');
+  // The build writes these again after the sync, and a rerun has them uncommitted (rerun.ts takes back the dist
+  // commit): carried over a main that rebuilt them too, they would conflict for nothing.
+  for (const folder of options.generated) {
+    git('reset', '--quiet', '--', folder);
+    if (git('ls-files', '--', folder) !== '') git('checkout', '--', folder);
+    git('clean', '-fdq', '--', folder);
+  }
+  const head = git('rev-parse', 'HEAD');
+  const saved = git('status', '--porcelain', '--untracked-files=no') === '' ? null : setAside(deps);
+  const restore = (reason: string): never => {
+    git('reset', '--hard', '--quiet', head);
+    if (saved !== null) {
+      try {
+        git('stash', 'apply', '--quiet', saved);
+      } catch {
+        refuse(`${reason}; putting the plan back failed too: git stash apply ${saved} restores it`);
+      }
+    }
+    putBack();
+    return refuse(`${reason}; the branch and the plan are as they were before the ship`);
+  };
   try {
     git('rebase', '--quiet', tip);
   } catch {
     git('rebase', '--abort');
-    if (stashed) git('stash', 'pop', '--quiet');
-    putBack();
-    refuse(`rebasing onto origin/${main} ${short} conflicts: rebase by hand, then ship again`);
+    restore(`rebasing onto origin/${main} ${short} conflicts: rebase by hand, then ship again`);
   }
-  if (stashed) {
+  if (saved !== null) {
     try {
-      git('stash', 'pop', '--quiet');
+      git('stash', 'apply', '--quiet', saved);
     } catch {
-      refuse(`the plan's uncommitted changes conflict with origin/${main} ${short}: they stay in git stash; resolve the conflict, then ship again`);
+      restore(`the plan's uncommitted changes conflict with origin/${main} ${short}: rebase by hand and resolve the conflict, then ship again`);
     }
   }
   if (kind === null) return { kind: 'rebased', onto: tip, sets: setNow() };
@@ -94,6 +126,19 @@ export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
     if (named.length > 0) refuse(`the change names its old version ${from} in ${named.join(', ')}: set it to ${sets} there, then ship again`);
   }
   return { kind: 'rebased', onto: tip, sets };
+}
+
+/**
+ * Saves the plan's uncommitted changes as a stash commit that no ref names, then clears them from the tree; returns
+ * its sha. Not `git stash push`: the stash list is shared by every worktree of the clone, so a pop could take another
+ * session's entry, and a refused sync used to leave its own entry behind. The sha is logged, so the plan can be
+ * applied again by hand if the run dies before it is put back.
+ */
+function setAside(deps: SyncDeps): string {
+  const saved = deps.git('stash', 'create', 'ship.ts: the plan, set aside for the rebase onto main');
+  deps.log(`set the plan's uncommitted changes aside as ${saved} (git stash apply ${saved} brings them back)`);
+  deps.git('reset', '--hard', '--quiet');
+  return saved;
 }
 
 /** The files whose lines added since `rev` (working tree included) contain `text`, outside `skipped`. */

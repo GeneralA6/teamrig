@@ -1,6 +1,6 @@
 /**
- * The choice a key makes: Enter starts now, `i` reopens idle, `a` reopens the closed tabs too, `q`, Escape or
- * Ctrl+C cancels; any other none.
+ * The choice a key makes: Enter starts now, `i` reopens idle, `a` reopens the closed tabs too, `k` ends the hung
+ * tabs and reopens them too, `q`, Escape or Ctrl+C cancels; any other none.
  */
 export function keyChoice(key) {
     if (key === '\r' || key === '\n') {
@@ -10,19 +10,23 @@ export function keyChoice(key) {
     if (lower === 'i') {
         return 'idle';
     }
+    if (lower === 'k') {
+        return 'kill';
+    }
     if (lower === 'a') {
         return 'all';
     }
     return lower === 'q' || key === '\u0003' || key === '\u001b' ? 'cancel' : undefined;
 }
-/** The countdown's line, redrawn in place each second; it offers `a` only when there are closed tabs to take. */
-export function countdownLine(remaining, closed) {
+/** The countdown's line, redrawn in place each second; it offers `a` and `k` only when there are tabs for them. */
+export function countdownLine(remaining, closed, hung) {
     const all = closed > 0 ? `   [a] also reopen the ${closed} closed` : '';
-    return `\rStarting in ${String(remaining).padStart(2)}s   [Enter] start now   [i] reopen all with no prompt${all}   [q] cancel `;
+    const kill = hung > 0 ? `   [k] also end and reopen the ${hung} hung` : '';
+    return `\rStarting in ${String(remaining).padStart(2)}s   [Enter] start now   [i] reopen all with no prompt${all}${kill}   [q] cancel `;
 }
 export function terminalCountdown(terminal) {
     return {
-        choose(seconds, closed) {
+        choose(seconds, closed, hung) {
             return new Promise((resolve) => {
                 let remaining = seconds;
                 let done = false;
@@ -36,10 +40,10 @@ export function terminalCountdown(terminal) {
                     terminal.write('\n');
                     resolve(choice);
                 };
-                terminal.write(countdownLine(remaining, closed));
+                terminal.write(countdownLine(remaining, closed, hung));
                 stops.push(terminal.listen((key) => {
                     const choice = keyChoice(key);
-                    if (choice !== undefined && (choice !== 'all' || closed > 0)) {
+                    if (choice !== undefined && (choice !== 'all' || closed > 0) && (choice !== 'kill' || hung > 0)) {
                         finish(choice);
                     }
                 }));
@@ -49,7 +53,7 @@ export function terminalCountdown(terminal) {
                         finish('go');
                     }
                     else {
-                        terminal.write(countdownLine(remaining, closed));
+                        terminal.write(countdownLine(remaining, closed, hung));
                     }
                 }));
             });

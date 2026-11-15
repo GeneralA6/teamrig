@@ -32,7 +32,7 @@ export const ENV = {
   claudeTempDir: 'CLAUDE_CODE_TMPDIR',
   /** The session `teamrig launch` runs Claude Code for: it starts Claude Code again after an automatic restart. */
   launched: 'TEAMRIG_LAUNCHED',
-  /** `off` turns `teamrig gh sync` off on this machine: it reads nothing and writes nothing. */
+  /** `off` turns `teamrig issue sync` off on this machine: it reads nothing and writes nothing. */
   github: 'TEAMRIG_GITHUB',
   /** Claude Code's effort for every session and helper that gets it, over `--effort`, `/effort` and per-call Agent `effort`; `doctor` warns when set. */
   effortLevel: 'CLAUDE_CODE_EFFORT_LEVEL',
@@ -125,9 +125,16 @@ export interface TeamPaths {
    * lifts for a while after it.
    */
   readonly meetingBreakthrough: string;
+  /** The scheduled meeting the spotlight frames, started or ended (src/meeting/spotlit.ts). */
+  readonly meetingSpotlit: string;
   /** The owner's scheduled meetings with one session each (src/meeting/schedule.ts), rewritten under meetingsLock. */
   readonly meetings: string;
   readonly meetingsLock: string;
+  /**
+   * The lead's day schedule (src/wake/schedule-store.ts): each day's start per team or session, read only in the root
+   * team of a tree; written under daySchedule + '.lock'.
+   */
+  readonly daySchedule: string;
   /** The last batch of the owner's decisions the lead asked (src/decisions/store.ts). */
   readonly decisionsAsked: string;
   /** The candidate lines `rules clear` recorded as not conflicting with a core rule (src/rules/verdicts.ts). */
@@ -298,8 +305,10 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     coldSends: join(state, 'cold-sends.jsonl'),
     meeting: join(state, 'meeting.json'),
     meetingBreakthrough: join(state, 'meeting-breakthrough.json'),
-    meetings: join(state, 'meetings.jsonl'),
+    meetingSpotlit: join(state, 'meeting-spotlit.json'),
+    meetings:join(state, 'meetings.jsonl'),
     meetingsLock: join(state, 'meetings.lock'),
+    daySchedule: join(state, 'day-schedule.json'),
     decisionsAsked: join(state, 'decisions-asked.json'),
     ruleVerdicts: join(state, 'rule-verdicts.json'),
     renames: join(state, 'renames.jsonl'),

@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { type CheckOutcome, type Gh, ghWithToken, readChecks, verdictOf } from './github.ts';
+import { type CheckOutcome, type Gh, type RequiredChecks, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
 import { type MergeOutcome, type PullRequest, findOpenPull, openPull, rebaseMerge } from './pulls.ts';
-import { sweepAfterMerge } from './leftovers.ts';
+import { type MergedHead, pullsOfHead, sweepAfterMerge } from './leftovers.ts';
 import { type GateDeps, proveTree, realGateDeps } from './local-gate.ts';
 import { realRenamedCallersDeps, renamedCallersRefusal } from './renamed-callers.ts';
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
@@ -16,10 +16,11 @@ import { describeCredential } from './token-check.ts';
  * PR's head sha by the repo's gate in repos.json, refuse again if main moved meanwhile, then rebase-merge
  * pinned to that sha and confirm main's new tree is the tree the checks ran on. The gate is `ci` (wait until
  * every listed check passed on GitHub; a failed one stops at once, a missing or running one at the deadline
- * is a fail) or `local` (the head checked out clean in the repo dir, with a pass record for its tree, else
- * the local checks run there; see local-gate.ts). Before any GitHub call it refuses a change that renames a teamrig
+ * is a fail, and a job GitHub cancelled before any step ran is re-run once) or `local` (the head checked out
+ * clean in the repo dir, with a pass record for its tree, else the local checks run there; see local-gate.ts). Before any GitHub call it refuses a change that renames a teamrig
  * command while a consumer on this machine still calls only the old name (see renamed-callers.ts). Once merged,
- * it deletes the remote branches an earlier push of the same task left with no work main lacks (leftovers.ts).
+ * it deletes on origin the merged head while it is still at the merged sha, the branches an earlier push of the
+ * same task left with no work main lacks, and every closed, unmerged pull request's head (leftovers.ts).
  *
  * A rebase merge replays the branch onto main as it is at merge time, and GitHub merges a stale branch
  * whenever it does not conflict: what lands is then a tree no check ran on, and a commit that repeats one
@@ -38,12 +39,46 @@ export interface Polling {
 
 export type ChecksResult = { verdict: 'passed' | 'failed' | 'timeout'; outcomes: CheckOutcome[] };
 
-export async function waitForChecks(gh: Gh, repo: string, sha: string, required: readonly string[], waiter: Waiter, polling: Polling): Promise<ChecksResult> {
+/** The checks that wait on a re-run, failed for the re-run call's error: nothing else can prove them. */
+const rerunRefused = (outcomes: readonly CheckOutcome[], message: string): ChecksResult => ({
+  verdict: 'failed',
+  outcomes: outcomes.map(outcome => (outcome.state === 'unstarted' ? { ...outcome, state: 'failed', detail: `${outcome.detail}; the re-run failed: ${message}`, reruns: [] } : outcome)),
+});
+
+/**
+ * Polls the required checks until they pass, one fails, or the deadline. A run whose required jobs GitHub cancelled
+ * before any step ran (no runner came) is re-run once, then waited on again; `evaluate` fails the same in a later
+ * attempt, and a run already re-run here is not re-run again while GitHub starts the new attempt.
+ */
+export async function waitForChecks(
+  gh: Gh,
+  repo: string,
+  sha: string,
+  branch: string,
+  required: RequiredChecks,
+  waiter: Waiter,
+  polling: Polling,
+  log: (line: string) => void = () => {},
+): Promise<ChecksResult> {
   const deadline = waiter.now() + polling.timeoutMs;
+  const rerun = new Set<number>();
   for (;;) {
-    const outcomes = readChecks(gh, repo, sha, required);
+    const outcomes = readChecks(gh, repo, sha, branch, required);
     const verdict = verdictOf(outcomes);
-    if (verdict !== 'waiting') return { verdict, outcomes };
+    if (verdict === 'passed' || verdict === 'failed') return { verdict, outcomes };
+    if (verdict === 'rerun') {
+      for (const runId of new Set(outcomes.flatMap(outcome => outcome.reruns))) {
+        if (rerun.has(runId)) continue;
+        rerun.add(runId);
+        const names = outcomes.filter(outcome => outcome.reruns.includes(runId)).map(outcome => outcome.name);
+        try {
+          rerunFailedJobs(gh, repo, runId);
+        } catch (error) {
+          return rerunRefused(outcomes, error instanceof Error ? error.message : String(error));
+        }
+        log(`re-ran run ${runId}: ${names.join(', ')} cancelled before any step ran (no runner came); waiting again, once`);
+      }
+    }
     if (waiter.now() >= deadline) return { verdict: 'timeout', outcomes };
     await waiter.sleep(Math.min(polling.intervalMs, Math.max(deadline - waiter.now(), 0)));
   }
@@ -73,16 +108,16 @@ const listed = (outcomes: readonly CheckOutcome[], state: CheckOutcome['state'])
     .map(outcome => `${outcome.name} (${outcome.detail})`)
     .join('; ');
 
-/** The `ci` gate: every check in `required` green on GitHub for the sha. */
-export function ciProof(gh: Gh, repo: string, required: readonly string[], waiter: Waiter, polling: Polling): Proof {
+/** The `ci` gate: every check in `required` green on GitHub for the sha, in the runs of `branch` (the head merged). */
+export function ciProof(gh: Gh, repo: string, branch: string, required: RequiredChecks, waiter: Waiter, polling: Polling): Proof {
   return {
     before: () => null,
     prove: async (sha, log) => {
-      const checks = await waitForChecks(gh, repo, sha, required, waiter, polling);
+      const checks = await waitForChecks(gh, repo, sha, branch, required, waiter, polling, log);
       for (const outcome of checks.outcomes) log(`check ${outcome.state}: ${outcome.name} (${outcome.detail})`);
       if (checks.verdict === 'failed') return `failed: ${listed(checks.outcomes, 'failed')}`;
       if (checks.verdict === 'timeout') {
-        const open = [listed(checks.outcomes, 'pending'), listed(checks.outcomes, 'missing')].filter(part => part !== '').join('; ');
+        const open = [listed(checks.outcomes, 'pending'), listed(checks.outcomes, 'missing'), listed(checks.outcomes, 'unstarted')].filter(part => part !== '').join('; ');
         return `not green after ${Math.round(polling.timeoutMs / 60_000)} min: ${open}`;
       }
       return null;
@@ -122,21 +157,30 @@ export interface MainBranch {
   treeOf(sha: string): string;
 }
 
+/** main's tip that a head does not contain, and why that stops the merge. */
+export interface MainMove {
+  tip: string;
+  reason: string;
+}
+
 /**
- * Merged, refused, or merged onto a main that moved between the last check and the merge (GitHub's merge
- * call cannot pin the base): main then holds a tree no check ran on.
+ * Merged, refused, moved past (main's tip is not in the head's history, before the merge or as GitHub merged: a
+ * ship can rebase and go again, T2696), or merged onto a main that moved between the last check and the merge
+ * (GitHub's merge call cannot pin the base): main then holds a tree no check ran on.
  */
 export type MergeResult =
   | { kind: 'merged'; pull: PullRequest; sha: string }
   | { kind: 'refused'; pull: PullRequest | null; reason: string }
+  | ({ kind: 'moved'; pull: PullRequest | null } & MainMove)
   | { kind: 'drifted'; pull: PullRequest; sha: string; reason: string };
 
-/** Why `head` cannot merge as checked, when main's tip is not in its history; null when it is. */
-function behindMain(main: MainBranch, { head, base, sha }: MergeRequest): string | null {
-  const tip = main.tip();
+/** main's tip and why `head` cannot merge as checked, when that tip is not in its history; null when it is. */
+function behindMain(main: MainBranch, { head, base, sha }: MergeRequest, tip: string = main.tip()): MainMove | null {
   if (main.contains(sha, tip)) return null;
-  return `${base} moved to ${tip.slice(0, 7)}, which ${head} ${sha.slice(0, 7)} does not contain: rebase ${head} onto origin/${base}, push it and run merge again`;
+  return { tip, reason: `${base} moved to ${tip.slice(0, 7)}, which ${head} ${sha.slice(0, 7)} does not contain: rebase ${head} onto origin/${base}, push it and run merge again` };
 }
+
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** Why main's merged tip differs from the checked head's tree, or null when it holds that very tree. */
 function driftAfter(main: MainBranch, request: MergeRequest, merged: string): string | null {
@@ -145,17 +189,73 @@ function driftAfter(main: MainBranch, request: MergeRequest, merged: string): st
     if (main.treeOf(merged) === main.treeOf(request.sha)) return null;
     return `${request.base} moved just before the merge: ${merged.slice(0, 7)} is not the tree the checks passed on ${request.sha.slice(0, 7)}; check it (a plugin version bump may be lost) and ship a fix`;
   } catch (error) {
-    return `could not compare ${merged.slice(0, 7)} with the checked ${request.sha.slice(0, 7)}: ${error instanceof Error ? error.message : String(error)}`;
+    return `could not compare ${merged.slice(0, 7)} with the checked ${request.sha.slice(0, 7)}: ${messageOf(error)}`;
   }
 }
 
 /** A merge GitHub refuses for a rule set on the repo (required checks, branch protection), not for the change. */
 const REPO_RULE = /required status check|protected branch|branch protection|repository rule/i;
 
+/** GitHub's 405 when main moved between the last read and the merge call. */
+const BASE_MODIFIED = /base branch was modified/i;
+
+/** A gh failure carrying GitHub's own refusal; any other (a 5xx, a timeout, a reset) leaves the merge unknown. */
+const REFUSAL = /\bHTTP 4\d\d\b/;
+
+/** The merge call's answer, or the failure that left GitHub's answer unknown. */
+type MergeCall = MergeOutcome | { merged: 'unknown'; message: string };
+
+function callMerge(gh: Gh, repo: string, pull: number, sha: string): MergeCall {
+  try {
+    return rebaseMerge(gh, repo, pull, sha);
+  } catch (error) {
+    // 405 not mergeable (protection, conflict) and 409 head moved come back as a gh failure.
+    const message = messageOf(error);
+    return REFUSAL.test(message) ? { merged: false, message } : { merged: 'unknown', message };
+  }
+}
+
+/** main's tip when it moved past `checkedTip` onto the checked tree, which only this merge lands; null otherwise. */
+function landedTip(main: MainBranch, sha: string, checkedTip: string, log: (line: string) => void): string | null {
+  try {
+    const tip = main.tip();
+    return tip !== checkedTip && main.treeOf(tip) === main.treeOf(sha) ? tip : null;
+  } catch (error) {
+    log(`could not read main after the merge call: ${messageOf(error)}`);
+    return null;
+  }
+}
+
+/**
+ * Rebase-merges the pull request pinned to the checked head. A call with no answer from GitHub may still have
+ * merged (T2709: a 502 while main took the rebase and the pull request stayed open), so main is read: its new tip
+ * holding the checked tree is the merge. Otherwise the call goes once more, still pinned, and main is read again
+ * whatever it answers, since a late landing of the first call makes the second fail.
+ */
+function mergeOrLanded(gh: Gh, main: MainBranch, request: MergeRequest, pull: number, checkedTip: string, log: (line: string) => void): MergeOutcome {
+  const landed = (failure: string): MergeOutcome | null => {
+    const tip = landedTip(main, request.sha, checkedTip, log);
+    if (tip === null) return null;
+    log(`the merge call failed (${failure}), but ${request.base} moved to ${tip.slice(0, 7)} holding the checked tree: #${pull} merged; GitHub may show it open until its head is deleted`);
+    return { merged: true, sha: tip };
+  };
+  const first = callMerge(gh, request.repo, pull, request.sha);
+  if (first.merged !== 'unknown') return first;
+  const late = landed(first.message);
+  if (late !== null) return late;
+  log(`the merge call failed (${first.message}) and ${request.base} does not hold the checked tree: trying once more`);
+  const second = callMerge(gh, request.repo, pull, request.sha);
+  if (second.merged === true) return second;
+  const later = landed(second.message);
+  if (later !== null) return later;
+  if (second.merged === false) return second;
+  return { merged: false, message: `${first.message}; again: ${second.message}; ${request.base} does not hold the checked tree, so check #${pull} on GitHub before shipping again` };
+}
+
 export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: MainBranch, proof: Proof, log: (line: string) => void): Promise<MergeResult> {
   const { repo, head, base, sha } = request;
   const stale = behindMain(main, request);
-  if (stale !== null) return { kind: 'refused', pull: null, reason: stale };
+  if (stale !== null) return { kind: 'moved', pull: null, ...stale };
   const unready = proof.before(sha);
   if (unready !== null) return { kind: 'refused', pull: null, reason: unready };
   const found = findOpenPull(gh, repo, head, base);
@@ -166,17 +266,15 @@ export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: Main
   const failed = await proof.prove(sha, log);
   if (failed !== null) return { kind: 'refused', pull, reason: failed };
   // main may have moved while the checks ran.
-  const moved = behindMain(main, request);
-  if (moved !== null) return { kind: 'refused', pull, reason: moved };
+  const checkedTip = main.tip();
+  const moved = behindMain(main, request, checkedTip);
+  if (moved !== null) return { kind: 'moved', pull, ...moved };
 
-  let merged: MergeOutcome;
-  try {
-    merged = rebaseMerge(gh, repo, pull.number, sha);
-  } catch (error) {
-    // 405 not mergeable (protection, conflict) and 409 head moved come back as a gh failure.
-    merged = { merged: false, message: error instanceof Error ? error.message : String(error) };
-  }
+  const merged = mergeOrLanded(gh, main, request, pull.number, checkedTip, log);
   if (!merged.merged) {
+    // Read main only for this answer: it names main's move, and the head is then simply behind it.
+    const raced = BASE_MODIFIED.test(merged.message) ? behindMain(main, request) : null;
+    if (raced !== null) return { kind: 'moved', pull, ...raced };
     const rule = REPO_RULE.test(merged.message) ? " (a rule set on the repo, not the change: changing it is the repo owner's call, so report it and stop)" : '';
     return { kind: 'refused', pull, reason: `GitHub refused the merge: ${merged.message}${rule}` };
   }
@@ -244,8 +342,8 @@ export interface MergeDeps {
   gate: GateDeps;
   /** Why the change from main (`base`) to `tip` may not merge for a renamed command a consumer still calls, or null. */
   renamedCallers: (base: string, tip: string, repo: string) => string | null;
-  /** After `head` merged: deletes the remote leftovers of its task and names the rest (leftovers.ts); never throws. */
-  sweep: (head: string, profile: RepoProfile) => void;
+  /** After a head merged: deletes it, its task's leftovers and the closed heads on origin, and names the rest (leftovers.ts); never throws. */
+  sweep: (merged: MergedHead, profile: RepoProfile, gh: Gh) => void;
   out: (line: string) => void;
   err: (line: string) => void;
 }
@@ -257,7 +355,21 @@ function checkedOutBranch(git: MergeDeps['git']): string {
   return branch;
 }
 
+/** How a merge run ended: its exit code once it said why, or main moved past the head and nothing was said yet. */
+export type MergeExit = { kind: 'done'; code: number } | ({ kind: 'moved' } & MainMove);
+
+const done = (code: number): MergeExit => ({ kind: 'done', code });
+
+/** `ship.ts merge` as a run: a move of main comes back unsaid, so a ship can rebase and go again (T2696). */
 export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number> {
+  const exit = await mergeRun(args, deps);
+  if (exit.kind === 'done') return exit.code;
+  deps.err(`REFUSED ${exit.reason}`);
+  return 1;
+}
+
+/** The merge itself; prints every outcome but a move of main past the head, which it returns to the caller. */
+export async function mergeRun(args: MergeArgs, deps: MergeDeps): Promise<MergeExit> {
   const { git } = deps;
   const repo = slugOf(git('remote', 'get-url', 'origin'));
   const profile = profileFor(deps.profiles, repo);
@@ -273,18 +385,18 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
   const callers = deps.renamedCallers(`refs/remotes/origin/${profile.main}`, sha, repo);
   if (callers !== null) {
     deps.err(`REFUSED ${callers}`);
-    return 1;
+    return done(1);
   }
 
   const credential = deps.credential();
   if (credential.kind !== 'found') {
     deps.err(describeCredential(credential));
-    return 1;
+    return done(1);
   }
   const gh = deps.ghFor(credential.secret);
   const proof =
     profile.gate === 'ci'
-      ? ciProof(gh, repo, profile.checks, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
+      ? ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
       : localProof(args.dir, profile.local, deps.gate);
   const result = await mergeThroughPull(
     { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },
@@ -293,18 +405,19 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
     proof,
     deps.out,
   );
+  if (result.kind === 'moved') return { kind: 'moved', tip: result.tip, reason: result.reason };
   if (result.kind === 'refused') {
     deps.err(`REFUSED ${result.reason}`);
-    return 1;
+    return done(1);
   }
   deps.out(`MERGED #${result.pull.number} into ${profile.main}, now at ${result.sha.slice(0, 7)}`);
   // A drifted merge landed too: head's work is on main either way.
-  deps.sweep(head, profile);
+  deps.sweep({ repo, head, sha }, profile, gh);
   if (result.kind === 'drifted') {
     deps.err(`DRIFTED ${result.reason}`);
-    return 1;
+    return done(1);
   }
-  return 0;
+  return done(0);
 }
 
 /** The real git, keychain, gh, clock and local checks for a repo dir. */
@@ -320,22 +433,32 @@ export function realMergeDeps(dir: string): MergeDeps {
     waiter: { now: () => Date.now(), sleep: ms => new Promise(done => setTimeout(done, ms)) },
     gate: realGateDeps(dir, out),
     renamedCallers: (base, tip, repo) => renamedCallersRefusal({ base, tip, repo }, { env: process.env, userHome: homedir() }, realRenamedCallersDeps(dir, out)),
-    sweep: (head, profile) => sweepAfterMerge(head, profile, { git, out, err }),
+    sweep: (merged, profile, gh) => sweepAfterMerge(merged, profile, { git, pullsOf: pullsOfHead(gh, merged.repo), out, err }),
     out,
     err,
   };
 }
 
-/** `ship.ts merge ...`: the exit code; a usage or git error is one line, never a stack. */
-export async function mergeCommand(argv: readonly string[], depsFor: (dir: string) => MergeDeps = realMergeDeps): Promise<number> {
+/** Parses `argv` and runs `run` on its deps; a usage or git error is one line, never a stack, and ends as `failed`. */
+async function fromArgv<T>(argv: readonly string[], depsFor: (dir: string) => MergeDeps, run: (args: MergeArgs, deps: MergeDeps) => Promise<T>, failed: T): Promise<T> {
   let err: (line: string) => void = line => console.error(line);
   try {
     const args = parseArgs(argv);
     const deps = depsFor(args.dir);
     err = deps.err;
-    return await runMerge(args, deps);
+    return await run(args, deps);
   } catch (error) {
     err(error instanceof Error ? error.message : String(error));
-    return 1;
+    return failed;
   }
+}
+
+/** `ship.ts merge ...`: the exit code. */
+export function mergeCommand(argv: readonly string[], depsFor: (dir: string) => MergeDeps = realMergeDeps): Promise<number> {
+  return fromArgv(argv, depsFor, runMerge, 1);
+}
+
+/** The merge a ship runs (ship.ts): like `mergeCommand`, but a move of main past the branch comes back to the ship. */
+export function mergeBranch(argv: readonly string[], depsFor: (dir: string) => MergeDeps = realMergeDeps): Promise<MergeExit> {
+  return fromArgv(argv, depsFor, mergeRun, done(1));
 }

@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeClock } from '../testing/fake-clock.ts';
 import type { HostLockInfo, LockWait } from './host-lock.ts';
-import { causeOfLockWait, WaitLog, type WaitCause } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
+import { causeOfLockWait, WaitLog } from './wait-log.ts';
 
 const QUEUED = Date.parse('2030-01-08T10:00:00Z');
 const INFO: HostLockInfo = { id: 'lock-1', pid: 77, session: 'po', purpose: 'build api', acquiredAt: '2030-01-08T09:58:00Z', expiresAt: '2030-01-08T10:58:00Z' };
@@ -55,6 +56,7 @@ describe('causeOfLockWait', () => {
       [{ kind: 'commit', usedMb: 60_000, limitMb: 64_000, maxPct: 90, reserveMb: 6000, shares: [] }, 'commit'],
       [{ kind: 'sessionCap', cap: 2, running: [INFO] }, 'session'],
       [{ kind: 'heavyCap', cap: 2, running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'heavyCap'],
+      [{ kind: 'cpu', idlePct: 10, needPct: 25, running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'cpu'],
       [{ kind: 'admitting' }, 'line'],
     ];
     assert.deepEqual(

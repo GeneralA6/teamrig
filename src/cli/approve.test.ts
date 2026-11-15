@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CliHarness } from '../testing/cli-harness.ts';
+import { join } from 'node:path';
+import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { WakeAsks } from '../wake/asks.ts';
 import { EXIT } from './runtime.ts';
 
 async function inboxOf(kit: CliHarness, session: string): Promise<string[]> {
@@ -9,8 +12,7 @@ async function inboxOf(kit: CliHarness, session: string): Promise<string[]> {
 }
 
 /** A team whose T1, alpha's, waits on the lead's approval of its push. */
-async function asking(): Promise<CliHarness> {
-  const kit = new CliHarness();
+async function asking(kit = new CliHarness()): Promise<CliHarness> {
   await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
   const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'branch t1, the CLI fix', '--session', 'alpha']);
   assert.equal(set.code, EXIT.ok, set.stderr.join('\n'));
@@ -88,5 +90,44 @@ describe('runCli: approve by the security reviewer (T828)', () => {
     const own = await kit.run(['set', 'T2', '--status', 'waiting', '--waits', 'approval:security', '--note', 'review hold r2', '--session', 'security']);
     assert.notEqual(own.code, EXIT.ok);
     assert.match([...own.stdout, ...own.stderr].join('\n'), /approval security: approval waits are for the lead \(lead\) and owner/);
+  });
+});
+
+describe('runCli: approve wakes the waiting owner (T1422)', () => {
+  const ASKS = join(TEAM_HOME, 'state', 'wake-asks');
+
+  async function asksOf(kit: CliHarness): Promise<(string | undefined)[]> {
+    return (await new WakeAsks(kit.files, ASKS).read('alpha')).map((stored) => stored.ask?.text);
+  }
+
+  it('posts the approval as a wake ask beside the inbox line, so an idle tab wakes on it', async () => {
+    const kit = await asking();
+    const approved = await kit.run(['approve', 'T1', '--note', 'tests green', '--session', 'lead']);
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    assert.deepEqual(await asksOf(kit), ['lead approved T1: tests green; push or merge it now, then set its next status']);
+  });
+
+  it('posts a decline as a wake ask too', async () => {
+    const kit = await asking();
+    const declined = await kit.run(['approve', 'T1', '--decline', '--note', 'no tests', '--session', 'lead']);
+    assert.equal(declined.code, EXIT.ok, declined.stderr.join('\n'));
+    assert.deepEqual(await asksOf(kit), ['lead declined T1: no tests; set it in-progress, fix that, then ask again (--status waiting --waits approval:lead)']);
+  });
+
+  it('posts no ask in a team with its wakes off, the line still told', async () => {
+    const kit = await asking(new CliHarness({ ...TEAM, wake: { enabled: false } }));
+    const approved = await kit.run(['approve', 'T1', '--note', 'tests green', '--session', 'lead']);
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    assert.deepEqual(await asksOf(kit), []);
+    assert.equal((await inboxOf(kit, 'alpha')).length, 1);
+  });
+
+  it('warns with the by-hand wake when the ask cannot be posted, the approval and line kept', async () => {
+    const kit = await asking();
+    const files = new FaultyFiles(kit.files).fail('createExclusive', join(ASKS, 'alpha', `${kit.clock.now()}-0.json`), systemError('EIO'));
+    const approved = await kit.run(['approve', 'T1', '--note', 'tests green', '--session', 'lead'], { files });
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    assert.match(approved.stderr.join('\n'), /WARN alpha has the line, but its idle tab is not woken for it \(.*EIO.*\): teamrig inbox add --to alpha --text "\.\.\." --wake now/);
+    assert.equal((await inboxOf(kit, 'alpha')).length, 1);
   });
 });

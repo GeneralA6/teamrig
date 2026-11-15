@@ -3,9 +3,11 @@ import { weekUseAt } from '../budget/snapshot.ts';
 import { readFolderWeek } from '../budget/week-summary.ts';
 import type { BudgetConfig, FocusConfig, HeadroomConfig, QueueConfig } from '../config/types.ts';
 import type { AdmissionRules } from '../delivery/admission.ts';
+import { CpuGate } from '../delivery/cpu.ts';
 import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
 import { HostLock, type HostLockPorts } from '../delivery/host-lock.ts';
 import { MemoryGate } from '../delivery/memory-gate.ts';
+import { PIPELINE_FREEZES_LOCK_TTL_MS } from '../delivery/pipeline-freezes.ts';
 import type { ResetTime } from '../delivery/schedule.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { TabHolds, tabHoldsDir } from '../sessions/tab-holds.ts';
@@ -32,13 +34,14 @@ type LockRuntime = Pick<CliRuntime, 'files' | 'clock' | 'sleep' | 'pid' | 'sessi
  * `delivery.queue.memoryFloorMb` plus the step's reserve (`heavyReserveMb` at least for a step that takes the lock),
  * and the commit charge under `open.headroom.commitMaxPct` with the reserve counted, the tabs still loading beside the
  * lock (`tabHoldsDir(path)`, written by `open`) holding their MB of both. Its line is ordered as
- * `delivery.queue.admission` says, a ticket naming no class counting as `focus.defaultClass`. A waiter's ticket says
- * what it waits on with the times on `zone`'s clock.
+ * `delivery.queue.admission` says, a ticket naming no class counting as `focus.defaultClass`; a heavy step joins another
+ * heavy one only while `delivery.queue.heavyIdleCpuPct` of the host's CPU is idle. A waiter's ticket says what it waits
+ * on with the times on `zone`'s clock.
  */
 export function hostLockOf(
-  runtime: LockRuntime & Pick<CliRuntime, 'memory'>,
+  runtime: LockRuntime & Pick<CliRuntime, 'memory' | 'cpu'>,
   path: string,
-  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb' | 'admission' | 'agingMinutes' | 'perSessionRunning' | 'maxHeavyParallel'>,
+  queue: Pick<QueueConfig, 'lockTtlMinutes' | 'memoryFloorMb' | 'heavyReserveMb' | 'admission' | 'agingMinutes' | 'memoryPassMinutes' | 'perSessionRunning' | 'maxHeavyParallel' | 'heavyIdleCpuPct'>,
   headroom: Pick<HeadroomConfig, 'commitMaxPct'>,
   focus: Pick<FocusConfig, 'defaultClass'>,
   zone: TimeZone,
@@ -48,11 +51,13 @@ export function hostLockOf(
   const admission: AdmissionRules = {
     mode: queue.admission,
     agingMinutes: queue.agingMinutes,
+    memoryPassMinutes: queue.memoryPassMinutes,
     perSessionRunning: queue.perSessionRunning,
     maxHeavyParallel: queue.maxHeavyParallel,
     defaultClass: focus.defaultClass,
   };
-  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, admission });
+  const cpu = new CpuGate(runtime.cpu, runtime.sleep, queue.heavyIdleCpuPct);
+  return lockAt(runtime, path, queue.lockTtlMinutes * MINUTE_MS, zone, { memory, cpu, admission });
 }
 
 /**
@@ -63,8 +68,13 @@ export function freezesLockOf(runtime: LockRuntime, path: string, zone: TimeZone
   return lockAt(runtime, path, FREEZES_LOCK_TTL_MS, zone, {});
 }
 
-/** What gates a lock that guards steps: the memory gate, and the rules its line is ordered by. */
-type StepGates = Pick<HostLockPorts, 'memory' | 'admission'>;
+/** The lock on the pipeline freezes at `path`, held for one read and write: like the deploy freezes' lock, no memory gate. */
+export function pipelineFreezesLockOf(runtime: LockRuntime, path: string, zone: TimeZone): HostLock {
+  return lockAt(runtime, path, PIPELINE_FREEZES_LOCK_TTL_MS, zone, {});
+}
+
+/** What gates a lock that guards steps: the memory gate, the CPU gate for a heavy step, and the rules its line is ordered by. */
+type StepGates = Pick<HostLockPorts, 'memory' | 'cpu' | 'admission'>;
 
 function lockAt(runtime: LockRuntime, path: string, ttlMs: number, zone: TimeZone, gates: StepGates): HostLock {
   return new HostLock(path, ttlMs, {

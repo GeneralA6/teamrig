@@ -25,7 +25,15 @@ export class KitTreeGoals implements GoalTagsReader {
     if (this.config.register.goals === 'free') {
       return NO_GOAL_TAGS;
     }
+    return this.recorded();
+  }
+
+  async recorded(): Promise<ReadonlySet<string>> {
     return new Set((await this.all()).keys());
+  }
+
+  async sliced(): Promise<ReadonlyMap<string, Goal>> {
+    return this.all();
   }
 
   /**

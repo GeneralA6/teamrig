@@ -1,10 +1,12 @@
 import { join } from 'node:path';
 import type { Roster } from '../config/roster.ts';
+import type { ModelWeight } from '../config/types.ts';
 import type { Clock } from '../core/lock.ts';
-import { attribute, type PeerTeam } from './attribute.ts';
+import { attribute, type OutsideSession, type PeerTeam } from './attribute.ts';
 import { discoverTranscripts, type TranscriptSet, type TranscriptSource } from './discover.ts';
 import { runMeter } from './meter.ts';
-import type { UsageState, UsageStorage } from './store.ts';
+import { MemoryUsageStore, type UsageState, type UsageStorage } from './store.ts';
+import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
 
 /** The id use outside the team and its peer teams on the account is kept under, in its own store. */
 export const OUTSIDE_ID = 'all';
@@ -51,6 +53,8 @@ export interface MeasureInput {
   readonly peers: readonly PeerTeam[];
   /** What one W of a subagent's transcript costs, in W of a main session (`budget.subagentWeight`). */
   readonly subagentWeight: number;
+  /** What one W of each model costs against the weekly meter (`budget.modelWeights`). */
+  readonly modelWeights: readonly ModelWeight[];
   readonly chunkBytes: number;
   readonly maxRuns: number;
 }
@@ -59,10 +63,18 @@ export interface Measured {
   /** Every team session's usage, metered up to now; an idle one's as stored. */
   readonly bySession: ReadonlyMap<string, UsageState>;
   readonly outside: UsageState;
+  /** How many outside Claude Code sessions had a call on the clock's UTC day. */
   readonly outsideSessions: number;
-  readonly outsideTitles: readonly string[];
+  /** The titled ones among them with that day's W, the most first. */
+  readonly outsideTop: readonly OutsideTitled[];
   /** Sessions whose transcripts still had unread lines after the most runs. */
   readonly behind: readonly string[];
+}
+
+/** An outside session's title and its W on the day. */
+export interface OutsideTitled {
+  readonly title: string;
+  readonly w: number;
 }
 
 interface Metered {
@@ -74,7 +86,7 @@ interface Metered {
 async function meterSession(deps: MeasureDeps, store: UsageStorage, session: string, transcripts: TranscriptSet, input: MeasureInput): Promise<Metered> {
   let state = (await store.load(session)).state;
   for (let run = 0; run < input.maxRuns; run += 1) {
-    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, maxBytes: input.chunkBytes });
+    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, modelWeights: input.modelWeights, maxBytes: input.chunkBytes });
     if (result.saved) {
       state = result.state;
       if (!result.catchingUp) {
@@ -83,6 +95,37 @@ async function meterSession(deps: MeasureDeps, store: UsageStorage, session: str
     }
   }
   return { state, behind: true };
+}
+
+/**
+ * What the outside sessions spent on the clock's UTC day, session by session: each session a transcript of which
+ * changed that day is metered into a throwaway store from the day's first line, as the meter starts a transcript
+ * it has not seen, and counts when it had a call that day. The stored outside totals are one sum over all of them,
+ * so neither a count nor a title could be told per day from them; a session that only ran on another day is out.
+ */
+async function outsideOnDay(deps: MeasureDeps, input: MeasureInput, each: readonly OutsideSession[]): Promise<{ sessions: number; top: OutsideTitled[] }> {
+  const now = deps.clock.now();
+  const day = formatUtcDay(new Date(now));
+  const dayStart = now - (now % MS_PER_DAY);
+  let sessions = 0;
+  const top: OutsideTitled[] = [];
+  for (const { files, title } of each) {
+    const paths = [...files.main, ...files.subagents];
+    const changed = await Promise.all(paths.map((path) => deps.transcripts.changedAt(path)));
+    // A cheap skip only: a file untouched since the day began holds no record of it; the records' times decide.
+    if (!changed.some((at) => at !== undefined && at >= dayStart)) {
+      continue;
+    }
+    const used = (await meterSession(deps, new MemoryUsageStore(), files.claudeSession, files, input)).state.byDay[day];
+    if (used === undefined || used.calls === 0) {
+      continue;
+    }
+    sessions += 1;
+    if (title !== undefined) {
+      top.push({ title, w: used.w });
+    }
+  }
+  return { sessions, top };
 }
 
 /**
@@ -112,5 +155,15 @@ export async function measure(deps: MeasureDeps, input: MeasureInput): Promise<M
   if (outside.behind) {
     behind.push(OUTSIDE_ID);
   }
-  return { bySession, outside: outside.state, outsideSessions: found.outsideSessions, outsideTitles: found.outsideTitles, behind };
+  const day = await outsideOnDay(deps, input, found.outsideEach);
+  return { bySession, outside: outside.state, outsideSessions: day.sessions, outsideTop: mergedTitles(day.top), behind };
+}
+
+/** One entry per title (two sessions may share one), W summed, the most first. */
+function mergedTitles(top: readonly OutsideTitled[]): OutsideTitled[] {
+  const byTitle = new Map<string, number>();
+  for (const { title, w } of top) {
+    byTitle.set(title, (byTitle.get(title) ?? 0) + w);
+  }
+  return [...byTitle].map(([title, w]) => ({ title, w })).sort((a, b) => b.w - a.w);
 }

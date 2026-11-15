@@ -43,6 +43,11 @@ describe('runsClaude', () => {
 
 const NODE = process.execPath;
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-session-processes-'));
+/**
+ * A node program that runs until a spec ends it. A child with a timer of its own exited first on a loaded host: the
+ * describe and list calls took 43 s against a 30 s timer, and the end then rightly found it gone (T2821).
+ */
+const RUNS_UNTIL_ENDED = 'setInterval(() => {}, 60_000)';
 const WINDOWS = process.platform === 'win32';
 
 after(() => rmSync(DIR, { recursive: true, force: true }));
@@ -84,15 +89,14 @@ function killError(code: string): Error {
   return Object.assign(new Error(`kill ${code}`), { code });
 }
 
-async function until(check: () => boolean, ms = 10_000): Promise<boolean> {
-  const deadline = Date.now() + ms;
+/**
+ * Polls `check` until it holds, with no deadline of its own: a host with every core taken can take past any fixed
+ * one to end a tree (T2700), and a tree that never ends still stops the run at the suite's idle kill.
+ */
+async function until(check: () => boolean): Promise<void> {
   while (!check()) {
-    if (Date.now() > deadline) {
-      return false;
-    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  return true;
 }
 
 describe('parseWindowsProcess and parsePosixProcess', () => {
@@ -346,19 +350,27 @@ describe('nodeSessionProcesses on this machine', () => {
   // the spec only checks the pid no longer describes its own child, and never ends that pid again (T626).
   it('ends a running program, and then finds it gone', async () => {
     const marker = `teamrig-spec-${process.pid}-${Date.now()}`;
-    const child = spawn(NODE, ['-e', 'setTimeout(() => {}, 30000)', marker], { stdio: 'ignore' });
+    const child = spawn(NODE, ['-e', RUNS_UNTIL_ENDED, marker], { stdio: 'ignore' });
     const exit = new Promise((resolve) => child.once('exit', resolve));
     const pid = child.pid ?? 0;
-    assert.equal(processes.alive(pid), true);
-    assert.match((await processes.describe(pid))?.commandLine ?? '', new RegExp(marker));
-    assert.deepEqual(await processes.end(pid, 'ask'), { kind: 'ended' });
-    await exit;
-    const later = await processes.describe(pid);
-    assert.equal(later?.commandLine.includes(marker) ?? false, false, `pid ${pid} still runs the child: ${later?.commandLine ?? ''}`);
+    try {
+      assert.equal(processes.alive(pid), true);
+      assert.match((await processes.describe(pid))?.commandLine ?? '', new RegExp(marker));
+      assert.deepEqual(await processes.end(pid, 'ask'), { kind: 'ended' });
+      await exit;
+      const later = await processes.describe(pid);
+      assert.equal(later?.commandLine.includes(marker) ?? false, false, `pid ${pid} still runs the child: ${later?.commandLine ?? ''}`);
+    } finally {
+      // Through the child's own handle, which never names a later process given its pid.
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill();
+        await exit;
+      }
+    }
   });
 
   it('lists a program it started', async () => {
-    const child = spawn(NODE, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    const child = spawn(NODE, ['-e', RUNS_UNTIL_ENDED], { stdio: 'ignore' });
     const exit = new Promise((resolve) => child.once('exit', resolve));
     try {
       const listed = await processes.children(process.pid);
@@ -385,12 +397,13 @@ describe('nodeSessionProcesses on this machine', () => {
     assert.equal(outcome.kind, 'failed');
   });
 
-  // The sweep is Windows only, and the repo gate fails a skipped test, so other hosts do not register it.
+  // The sweep is Windows only, and the coverage gate fails a skipped test, so other hosts do not register this one.
   if (WINDOWS) it(
     "ends a Windows tree but not a detached program whose starter has ended: the restart's waiter outlives the session it ends",
     async () => {
-      // top: the session (claude); child: its MCP server; middle: a hook that starts the waiter and exits.
-      writeFileSync(join(DIR, 'waiter.cjs'), 'setTimeout(() => {}, 30000);\n');
+      // top: the session (claude); child: its MCP server; middle: a hook that starts the waiter and exits. Each runs
+      // 10 minutes, far past any wait a busy host makes (T2700), so the waiter cannot end by itself before the look.
+      writeFileSync(join(DIR, 'waiter.cjs'), 'setTimeout(() => {}, 600000);\n');
       writeFileSync(
         join(DIR, 'middle.cjs'),
         "const w = require('child_process').spawn(process.execPath, [__dirname + '/waiter.cjs'], { detached: true, stdio: 'ignore' });\n" +
@@ -399,11 +412,11 @@ describe('nodeSessionProcesses on this machine', () => {
       writeFileSync(
         join(DIR, 'top.cjs'),
         "const { spawn } = require('child_process');\n" +
-          "const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });\n" +
+          "const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { stdio: 'ignore' });\n" +
           "const middle = spawn(process.execPath, [__dirname + '/middle.cjs'], { stdio: ['ignore', 'pipe', 'ignore'] });\n" +
           "let waiter = '';\nmiddle.stdout.on('data', (d) => (waiter += d));\n" +
           "middle.on('exit', () => console.log(JSON.stringify({ child: child.pid, waiter: Number(waiter) })));\n" +
-          'setTimeout(() => {}, 30000);\n',
+          'setTimeout(() => {}, 600000);\n',
       );
       const top = spawn(NODE, [join(DIR, 'top.cjs')], { stdio: ['ignore', 'pipe', 'ignore'] });
       const line = await new Promise<string>((resolve) => top.stdout.setEncoding('utf8').once('data', resolve));
@@ -413,7 +426,7 @@ describe('nodeSessionProcesses on this machine', () => {
       const waiter = Number(pids.waiter);
       try {
         assert.deepEqual(await processes.end(top.pid ?? 0, 'ask'), { kind: 'ended' });
-        assert.equal(await until(() => !processes.alive(child)), true, 'the session and its children end');
+        await until(() => !processes.alive(child));
         assert.equal(processes.alive(waiter), true, 'the detached waiter runs on');
       } finally {
         await processes.end(waiter, 'force');

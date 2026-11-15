@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
-import { repoOwner, RepoTokens, tokenName } from './tokens.ts';
+import { repoOwner, RepoTokens, TokenReadError, tokenName } from './tokens.ts';
 
 const ENV = { HOME: '/u' };
 
@@ -17,20 +17,24 @@ describe('RepoTokens', () => {
     const store = new FakeCredentials().saves('teamrig-gh-acme', 'acme-token');
     const tokens = new RepoTokens(store, ENV);
     assert.deepEqual(await tokens.accessFor('acme/web'), {
-      access: { via: 'token', env: { HOME: '/u', GH_TOKEN: 'acme-token' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' },
+      via: 'token', env: { HOME: '/u', GH_TOKEN: 'acme-token' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme',
     });
-    assert.equal((await tokens.accessFor('acme/api')).access.env['GH_TOKEN'], 'acme-token');
+    const api = await tokens.accessFor('acme/api');
+    assert.ok(!(api instanceof TokenReadError));
+    assert.equal(api.env['GH_TOKEN'], 'acme-token');
     assert.deepEqual(await tokens.accessFor('globex/api'), {
-      access: { via: 'login', env: ENV, owner: 'globex', credential: 'teamrig-gh-globex', save: 'save teamrig-gh-globex' },
+      via: 'login', env: ENV, owner: 'globex', credential: 'teamrig-gh-globex', save: 'save teamrig-gh-globex',
     });
     assert.deepEqual(store.reads, ['teamrig-gh-acme', 'teamrig-gh-globex']);
   });
 
-  it('reads through the gh login with a note when the store cannot be read', async () => {
+  it('gives no access, never the gh login, when the store holds the key but cannot read it', async () => {
     const tokens = new RepoTokens(new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked'), ENV);
-    assert.deepEqual(await tokens.accessFor('acme/web'), {
-      access: { via: 'login', env: ENV, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' },
-      note: 'could not read teamrig-gh-acme from the test store: the keyring is locked',
-    });
+    const access = await tokens.accessFor('acme/web');
+    assert.ok(access instanceof TokenReadError);
+    assert.equal(
+      access.message,
+      'could not read teamrig-gh-acme from the test store: the keyring is locked; unlock the store and rerun, or save the key again with: save teamrig-gh-acme',
+    );
   });
 });

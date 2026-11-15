@@ -28,6 +28,10 @@ const SHELL_ONLY = new Set([
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
 /** The exact line to rerun a Bash `command` as, or undefined when no rule gives one or any doubt remains. */
 export function rerunForm(tool, command) {
+    return rerunOf(tool, command)?.form;
+}
+/** The rerun form of a Bash `command` with what it moves and runs, or undefined when no rule gives one or any doubt remains. */
+export function rerunOf(tool, command) {
     if (tool !== 'Bash') {
         return undefined;
     }
@@ -46,7 +50,11 @@ export function rerunForm(tool, command) {
     if (!lines.every((line) => line !== undefined) || (folder === undefined && !moved.some(removesWorktree))) {
         return undefined;
     }
-    return moved.map((each, at) => `${lines[at] ?? ''}${separatorAfter(each, at === moved.length - 1)}`).join('');
+    return {
+        form: moved.map((each, at) => `${lines[at] ?? ''}${separatorAfter(each, at === moved.length - 1)}`).join(''),
+        folder,
+        programs: moved.map((each) => split(each).words[0] ?? ''),
+    };
 }
 /** A top-level command of static words, no stdin from the line, and no subshell or substitution around it. */
 function isPlain(command) {

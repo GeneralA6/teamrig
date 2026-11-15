@@ -60,8 +60,8 @@ the lead; with wakes off, message the lead), else in the batch due now or the ne
 
 A wait on the owner's decision or approval needs a card, so the owner decides from it alone, never from a bare
 task number [register.requireDecisionCard]: `--question` (what is decided), `--options` (the choices with their
-numbers, separated by `|`: at least two for a decision; none or as many for an approval), `--recommend` (which,
-and why) and `--default` (what happens with no answer by the due date). Each part says at least 3 plain words
+numbers, separated by `|`, with `\|` for a `|` inside a choice: at least two for a decision; none or as many for an
+approval), `--recommend` (which, and why) and `--default` (what happens with no answer by the due date). Each part says at least 3 plain words
 besides task ids. A wait on the lead may carry one too; any other status refuses the flags. Setting `waiting`
 again keeps the card, and a flag given then changes only its part. `show` prints the card, and the meeting
 agenda reads it out with the title of each other task it names. An owner's order approves its own work and proof,
@@ -70,7 +70,11 @@ why only the owner can see the result), printed as `why asked:`; `set` refuses o
 an older one `OWNER-ORDERED`. Only an owner gate [ownerGates] or a business decision is the owner's to decide, so
 a wait on the owner's decision names it with `--gate` (one of the owner gates, or `business`), printed as `gate:`;
 `set` refuses one without it, and `check` flags an older one `UNGATED`. Any other question is the session's or its
-leader's, however many good answers it has: decide it, or wait on your leader (`--waits decision:<leader>`).
+leader's, however many good answers it has: decide it, or wait on your leader (`--waits decision:<leader>`). A test,
+measure or proof of approved work (a back-test, trial, dry run, benchmark) is approved with that work, so a card
+asking the owner about one asks only with `--affects` (the approved number it changes, the money it spends or the
+data it writes), printed as `affects:`; `set` refuses one without it, and `check` flags an older one `OWNER-PROOF`.
+One that does none of those goes ahead, and you tell your leader.
 
 A step the human runs by hand that changes anything or touches a secret (core rule 11) reaches the owner only as a
 file its auditor read, never as code or a paste typed into a card: the security reviewer [roles.securityReviewer],
@@ -83,6 +87,17 @@ prints `CHANGED since its audit` or `MISSING since its audit` and `do not run` i
 PowerShell's call operator, a write cmdlet, a JSON object, or an ask to paste) is refused, naming rule 11 and who
 audits; a card that names a past paste ("pasted") passes, and a wait on a leader, which no human reads, is not held
 to it. The [hand-step skill](../hand-step/SKILL.md) has the steps to write the file.
+
+A security-related ask reaches the owner only with the security reviewer's verdict on its card (core rule 9). A card
+on the owner's decision whose gate is in [securityGates] (`permissions` by default), or one set with `--security`
+on any wait on the owner, is refused until the task holds a verdict given on that card's question, options and
+recommendation. As the reviewer reads the card before the owner does, set it on your leader's wait first
+(`--waits decision:<leader>`, the security reviewer's for the lead), have the reviewer record what the review
+found (`teamrig audit T3 --verdict "<what the review found>"`), then set the wait on the owner with the card
+unchanged. The card prints `security: <verdict> (verdict by <reviewer>)`; an edit to its question, options or
+recommendation prints `STALE` in its place and needs a new verdict. A card handing an audited `--run` file needs
+none, as the audit is the reviewer's read. A card on another gate whose words name a guard, permission, secret or
+the like with no verdict is not refused, but `check` flags it `SECURITY-UNREVIEWED`.
 
 Every session needs teamrig 0.10.0 or later before anyone sets `waiting`: an older one skips the
 line with a warning and shows the task at its earlier status. A `blocked` written by an older teamrig reads as
@@ -280,6 +295,10 @@ thanks or progress pings. Silence counts as consent only within the sender's own
 or for a change that breaks a caller you named. A report, a "done" one too, is a line without `--wake`. If a send
 fails, write the line instead.
 
+Anything written for a human (an owner card, a meeting line, a hand step, a turn's last message) names each file by
+its absolute path and each web page by its full URL, never a path relative to the repository or the scratchpad: the
+human opens it from outside your working directory (rule 9).
+
 With `wake.enabled: false` no line wakes anyone, so a message is how to wake a peer: one only for a result it acts on
 now, a decision, a blocker, a same-area conflict or an incident, and everything else an inbox line. Rule 3 of the
 core pack says whichever of the two holds for the team.
@@ -307,17 +326,20 @@ checkpoint; a session may run it for itself.
 | `NO-CARD` | a `waiting` task waits on the owner's decision or approval with no card, as one set before cards reads [register.requireDecisionCard] | The owner sets it waiting again with the card (`set --status waiting --waits ... --question ... --options ... --recommend ... --default ...`). |
 | `OWNER-ORDERED` | a task the owner ordered waits (or its proof waits) on the owner's decision or approval with no `--why-ask`, as one set before it was required, or while cards are not [register.requireDecisionCard], reads | The owner drops the wait on the owner, since the order approves its own work and proof, or sets it again with `--why-ask "<how the order must change, what new it needs, or why only the owner can see the result>"`. |
 | `UNGATED` | a task waits (or its proof waits) on the owner's decision with a card naming no owner gate or business decision, as one set before `--gate` was required reads [register.requireDecisionCard] | The owner decides it, or waits on its leader, since only an owner gate [ownerGates] or a business decision is the owner's; or sets it again with `--gate "<the owner gate, or business>"`. |
+| `OWNER-PROOF` | a task waits (or its proof waits) on the owner's decision or approval with a card asking about a test, measure or proof (a back-test, trial, dry run, benchmark) that names no `--affects`, as one set before it was required reads [register.requireDecisionCard] | The owner drops the wait on the owner and goes ahead, since the approved work approves its proof, and tells its leader; or, when it changes an approved number, spends money or writes data, sets it again with `--affects "<which>"`. |
+| `SECURITY-UNREVIEWED` | a task waits (or its proof waits) on the owner's decision or approval with a card whose question, options or recommendation name a guard, permission, deny, settings, secret, token, grant, exec, auto mode or a privileged step, with no security verdict on that card (none, or one given on another question, options or recommendation) and no audited `--run`; a warning, as `set` refuses only a card on a gate in [securityGates] or marked `--security` | The owner moves the wait to its leader, has the security reviewer read the card (`audit <id> --verdict "<what the review found>"`), then waits on the owner again with the card unchanged; or rewords a card that names no security matter. |
 | `RUN-CHANGED` | a task waits (or its proof waits) on a decision or an approval with a card whose hand step file (`--run`) changed or went since the audit on the task pinned it: every print of the card hashes the file again, and then prints that it is not to be run in place of its run line | The owner has the security reviewer audit it again (`audit <id> --file <path>`), or sets the card again without `--run`. |
 | `PEER-WAIT` | a `waiting` task (or a `verifying` task's proof) waits on the decision or the approval of a session that is neither the lead nor the owner, as an older teamrig wrote | The owner waits on that work by its task instead: `set --status waiting --ask <session> --text "<the work>"`. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |
 | `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP, nor for a `verifying` task with a due date, nor for a `waiting` task with a `time:` reason still to come) | Ask the owner what blocks it, then re-date, re-assign or drop it. |
-| `PRIORITY-SKIP` | in progress while an open task of the same owner outranks it (a better band, or a higher score in the same band) and is free to start (every task it comes after finished), for over 24 h [register.check.prioritySkipAfterHours]; a `--pin` outranks nothing | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --class`), or asks the owner to change the task's goals. |
+| `PRIORITY-SKIP` | in progress while an open task of the same owner outranks it (a better band, near-term prep right after expedite, or a higher score in the same band) and is free to start (every task it comes after finished), for over 24 h [register.check.prioritySkipAfterHours]; a `--pin` outranks nothing; never on near-term prep in progress | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --class`), or asks the owner to change the task's goals. |
 | `SELF-MADE` | a session added more than 10 tasks for itself (created by it, asked by no one else) in the last 24 h [register.check.maxSelfMadePerDay] (0 turns it off); raised on the first of them past that count still active | The lead reads them (`list --session <id> --source <id> --status all`): each must serve a goal, a parent task or the week plan, else its owner drops or parks it; a run of the same step with no progress is a loop: the owner stops and asks the lead. |
 | `PILE-UP` | a session holds more than 5 `verifying` tasks [register.maxVerifying] (0 turns it off); raised on its oldest | The owner works its queue, oldest first (`teamrig verify`), before new work. |
 | `REPARKED` | a `verifying` task whose proof was put off to other waits 2 times in a row [register.maxReparks] (0 turns it off); `set` refuses another | The owner runs the proof now and sets it `done`, closes it `done` with `--watch` if tests or a dry run proved it, or reopens it (`in-progress`). |
 | `OVER-PACE` | a session holds more unfinished top-priority (`p1`) tasks (open, in progress or waiting) than the p1 it finished (done or verifying) in the last 7 days, past the first p1, which is in hand, once it has held tasks for 7 days; raised on the first p1 in plan order past that pace | The lead re-prioritizes: lowers the p1s that pace will not reach this week (`update --priority`), moves them to another session, or tells the human what is held. |
 | `OVER-LIMIT` | the first sized to-do task of the week in force that no longer fits the weekly usage limit left, summed in plan order (`teamrig plan` shows the line) | The lead moves it and the sized tasks after it to next week (`update --week`), cuts or re-sizes work, or tells the human. |
 | `OVER-SIZE` | an unfinished sized task whose cost since it was last sized, as the budget meter attributes it over the 8 UTC days it keeps, passed twice its size [register.check.overSizeMultiple] (0 turns it off); none while the W of one percent is unknown | Its owner (or the lead) re-sizes what is left (`update --size`, which counts from then on), splits the rest into its own task, or drops it; `teamrig budget --task <id>` shows where the W went. |
+| `PREP-LAPSED` | an active task whose prep marker (`--prepares <goal>:<slice>`) no longer stands near: its goal moved past that slice and the next, has no slice open, or lost its rank (the detail says which: `prepares G:5, goal G is on slice 2`); the task then ranks and is flagged as any other | Its leader re-marks it for the slice it now prepares (`update --prepares`), or clears the marker (`--prepares none`). |
 | `OWNER-UNPLANNED` | an order from the human (`--source owner`) that is not in the current week plan | Plan it in (`update --week <week>`), or tell the human what it would push out. |
 | `DUE-UNPLANNED` | effectively due inside the current week but not in its plan | Plan it in with `--week`, or re-date it. |
 | `STOPGAP-DONE` | a `stopgap T<id>` tag names a done or dropped task: in a skill, or a file of [register.check.stopgapFiles] (default `CLAUDE.md` and `.claude/rules` in the project folder); the flag lists where | Done: the file's owner removes the stopgap. Dropped: open a new task for it, or keep it by a decision and drop the tag. |
@@ -326,7 +348,9 @@ checkpoint; a session may run it for itself.
 | `NO-PROGRESS` | no goal or week-plan task moved (its owner started, noted, set waiting, shipped or closed it) since the start of the day before [register.check.goalProgressDays] (0 turns it off), while the week has usage left; the day starts at `wake.dayStartUtc`, else midnight UTC. Raised on the first planned task in plan order that its owner can move now (open or in progress) and that day already held | Its owner moves it, or the next planned task it can; the lead finds what holds the plan (a blocker, the order, a plan to re-cut) and fixes it or tells the human. |
 
 The three week flags need a week plan; until a task is tagged with a week, `check` says
-`no week plan tagged yet, so the week checks are skipped`. A task gets at most one week flag.
+`no week plan tagged yet, so the week checks are skipped`. A task gets at most one week flag. Near-term prep (a
+`--prepares` marker for the ranked goal's open slice or the next) runs outside the week plan's dates: it gets no
+`DUE-UNPLANNED` or `OFF-GOAL`, only `OWNER-UNPLANNED` when the human ordered it.
 
 `check` then prints the hire flags, under a `HIRES <n> flag(s)` line printed only when there are some:
 `HIRE <KIND> (<detail>) <session>: <what to do>`, the session being the area a SCALE-OUT is on or the hired session.
@@ -349,7 +373,7 @@ the tree owns, when that team reads the same folder, is left to that team's `che
 | `FORBIDDEN-KEY` | `allowed-tools is not allowed in a team skill: remove it` | Remove that frontmatter key. |
 | `DESCRIPTION` | `no description`, or `N words > 30` | Write or shorten the description. |
 | `SIGNATURE` | `"Signature: <regex>" is not a valid regex, so the scorecard misses its uses` | Fix the pattern: `teamrig skills scorecard` counts the skill's missed uses with it. |
-| `GRANT` | `pod-exec in a.js, which auto mode does not see: with the owner's grant add "Grants: pod-exec", else drop the call`, or `"Grants: x" names no grant kind` | A script at the top of the skill's folder makes that call: get the owner's grant and name its kind on a `Grants:` line, or drop the call from the script. |
+| `GRANT` | `pod-exec in a.js, which auto mode does not see: with the owner's grant add "Grants: pod-exec", else drop the call`, or `"Grants: x" names no grant kind` | A script the skill runs (at the top of its folder, named on a run line of its SKILL.md, or imported by one of those) makes that call: get the owner's grant and name its kind on a `Grants:` line, or drop the call from the script. |
 | `AREA-OVER-LIMIT` | `N skills > 8: merge before adding` | Merge that area's skills. |
 
 The owner column says who fixes it; the lead tells that session in one inbox line.
@@ -388,11 +412,13 @@ every session needs every turn; each item has one home.
   your skill too, name them on a `Used by: <session>, <session>` line in its body and they list it in full. The
   start line counts the skills listed by name only; a restart reads the skills again.
 - **Grants**: auto mode judges a script call by its own command (`node flow.js`), never by what the script runs,
-  so a script beside the SKILL.md can make a privileged call unseen. Name each kind its scripts make on a
-  `Grants: pod-exec, secret-read, auth-header` line (kubectl exec; a cluster secret or a credential env variable;
-  a credential header), each one the owner granted; without the grant, write the call inline or drop it.
-  `teamrig check` reads the scripts beside the SKILL.md, not their specs (`a.test.ts`, `a.spec.mjs`, `test_a.py`,
-  `a_test.py`): the test runner runs a spec, never the skill.
+  so a script the skill runs can make a privileged call unseen. Name each kind its scripts make on a
+  `Grants: pod-exec, secret-read, auth-header` line (kubectl exec; a cluster secret, a credential env variable or
+  a read of an OS credential store such as `gh auth token`; a credential header), each one the owner granted;
+  without the grant, write the call inline or drop it. `teamrig check` reads the scripts beside the SKILL.md, not
+  their specs (`a.test.ts`, `a.spec.mjs`, `test_a.py`, `a_test.py`): the test runner runs a spec, never the skill.
+  It also reads each script the SKILL.md runs by an absolute or `~` path (`node ~/tools/ship.ts`), and every module
+  those scripts import by a relative path, at most 200 per skill; it never opens a `\\host` share.
 - **Upkeep**: re-verify within 30 days [skills.maxVerifiedAgeDays] and bump the date each time its steps held; at
   most 8 skills per area [skills.maxPerArea], so merge before adding. When a command, flag or path changes,
   update every skill that names it in the same change.

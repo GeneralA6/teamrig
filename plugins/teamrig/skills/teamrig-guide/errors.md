@@ -41,6 +41,7 @@ or take it to the lead.
 | `REFUSED a wait on owner's decision needs a card, so owner decides from it alone: --question ...` | Add the four card flags it prints: what is decided, the options with their numbers, your recommendation, the default. |
 | `REFUSED a card needs --question, --options, --recommend and --default (--options for a decision): ...` | A task not waiting yet has no card to build on: give every part. |
 | `REFUSED --options lists 1: a decision lists at least 2, separated by \|` | List every choice, separated by `\|`; an approval may list none. |
+| `REFUSED --options choice 2 says "D1": ...; --options split into 4 choices at each \|: ...` | A `\|` inside a choice split it: write `\\|` for a literal `\|` in a choice, or reword it. |
 | `REFUSED --recommend says "T378 option 2": give at least 3 plain words besides task ids, so it reads without the task list` (any part) | Say it in words: what the option is and what it costs. |
 | `REFUSED --question, --options, --recommend and --default go only with --status waiting or verifying on a decision or an approval` | Drop the card flags, or wait on the decision. |
 | `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` (or `stays waiting`, for one waiting since before it started) | Leave its status and plan it: `teamrig update T3 --after T2`. |
@@ -101,7 +102,7 @@ or take it to the lead.
 | --- | --- |
 | `REFUSED an inbox item is one non-empty line` | Put it on one line; a longer note goes in a file the line points at. |
 | `REFUSED no team x with a config in this kit home` | Check the team id with `teamrig team tree`. |
-| A refusal to reach another team's session | Any session reaches any session of its tree (`teamrig team tree` shows it); a separate tree is out of reach. `--wake now` reaches another team only from the lead of a team above it: post the line without `--wake`. |
+| A refusal to reach another team's session | Any session reaches any session of its tree (`teamrig team tree` shows it); a separate tree is out of reach. `--wake now` reaches another team only from a team lead: a team below its own, any team's lead, or a session its config names in roles: post the line without `--wake`. |
 
 ## Team, names and sessions
 
@@ -124,8 +125,7 @@ or take it to the lead.
 | `REFUSED <id> is set up with the team, not hired: it has no review day to keep` | Nothing to keep: only a hired session has a review day. |
 | `REFUSED the review day <day> has passed` (or `is not a YYYY-MM-DD date`) | Give a future day, `YYYY-MM-DD`. |
 | `--scope: a keep of <id> changes only its review day` (exit 2; also `--name`, `--model`, `--effort`, `--approved-by`, `--burst`) | Drop the flag: a keep leaves the hire's job and launch as they are. |
-| `REFUSED <id> was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session` | Open it without `--resume`. |
-| `REFUSED not resumed: <why>; open it fresh on its handover: teamrig open <id>` | Its last Claude Code session is gone, too big or too long idle: open it fresh with the command shown. |
+| `REFUSED not resumed: <why>; open it fresh[ on its handover]: teamrig open <id>` | Its last Claude Code session is gone, too big or too long idle: open it fresh with the command shown. |
 | `--resume "<value>" is not a Claude Code session id` (exit 2) | `launch` was given something other than a session id; open the session again with `teamrig open <id>`. |
 | `REFUSED team X has N child teams (...), and a team has at most 8: hang some under another team` | Put the new team under another team with `--parent`. |
 | `REFUSED only web itself or the lead may record its new name` | Ask that session or the lead to run `rename`. |
@@ -253,6 +253,7 @@ From `teamrig restore install` and `uninstall` ([commands.md](commands.md#teamri
 | `priority "2" is not p<n>: write p2` | Write priorities as `p2`. |
 | `priority "t2" is the old tier spelling: write p2` | Write `p2`. |
 | `--tier was renamed: use --priority` | Use `--priority`. |
+| `gh was renamed: use issue` | gh sync is now `teamrig issue sync`, and gh migrate is `teamrig issue migrate`. |
 | `"9" is not a task id like T12` | Write task ids as `T9`. |
 | `--status "finished" is not open\|in-progress\|verifying\|waiting\|done\|dropped` | Use one of those six. |
 | `--status blocked was replaced by waiting: use --status waiting --waits <reason> (...)` | Set `waiting` with what it waits for. |

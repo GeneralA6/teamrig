@@ -61,6 +61,7 @@ const budgetCommands = () => import("./commands/budget.js");
 const budgetSetupCommands = () => import("./commands/budget-setup.js");
 const budgetRollupCommands = () => import("./commands/budget-rollup.js");
 const burstCommands = () => import("./commands/burst.js");
+const scheduleCommands = () => import("./commands/schedule.js");
 const statuslineCommands = () => import("./commands/statusline.js");
 const automodeCommands = () => import("./commands/automode.js");
 const permissionsCommands = () => import("./commands/permissions.js");
@@ -72,10 +73,14 @@ const pipelineCommand = () => import("./commands/pipeline.js");
 const mergeCommand = () => import("./commands/merge.js");
 const deployCommand = () => import("./commands/deploy.js");
 const freezeCommands = () => import("./commands/freeze.js");
+const pipelineFreezeCommands = () => import("./commands/pipeline-freeze.js");
 const stablePeriodsCommand = () => import("./commands/stable-periods.js");
 const jobCommands = () => import("./commands/job.js");
 const deployStatusCommand = () => import("./commands/deploy-status.js");
-const ghCommands = () => import("./commands/gh.js");
+const issueSyncCommands = () => import("./commands/issue-sync.js");
+const issueMigrateCommands = () => import("./commands/issue-migrate.js");
+const issueCommands = () => import("./commands/issue.js");
+const prCommands = () => import("./commands/pr.js");
 const startCommands = () => import("./commands/start.js");
 const meetingCommands = () => import("./commands/meeting.js");
 const meetingsCommands = () => import("./commands/meetings.js");
@@ -96,14 +101,15 @@ const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], switches: ['critical'], load: async () => (await registerCommands()).add },
-    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit'], load: async () => (await registerCommands()).set },
-    update: { effect: 'write', flags: ['session', 'note', 'later', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
+    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'affects', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit', 'security'], load: async () => (await registerCommands()).set },
+    // --prepares only here: a lead marks a task that exists, so `add` (which shares TASK_FIELDS) never takes it.
+    update: { effect: 'write', flags: ['session', 'note', 'later', 'prepares', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
     'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
     // No register changes, but --out writes the path the line names: a line no person typed must not reach that.
     sweep: { effect: 'write', flags: ['session', 'out'], switches: ['tree'], load: async () => (await sweepCommands()).sweep },
     'sweep apply': { effect: 'write', flags: ['session'], switches: ['apply'], load: async () => (await sweepCommands()).apply },
     approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
-    audit: { effect: 'write', flags: ['session', 'file', 'note', 'team'], load: async () => (await auditCommand()).audit },
+    audit: { effect: 'write', flags: ['session', 'file', 'verdict', 'note', 'team'], load: async () => (await auditCommand()).audit },
     list: {
         effect: 'read',
         flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal', 'type'],
@@ -111,14 +117,14 @@ const COMMANDS = {
         load: async () => (await registerCommands()).list,
     },
     // --session names the caller on every task and inbox command, so a session can always pass it.
-    show: { effect: 'read', flags: ['session'], switches: ['tree'], load: async () => (await registerCommands()).show },
+    show: { effect: 'read', flags: ['session'], switches: ['tree', 'history'], load: async () => (await registerCommands()).show },
     check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
     plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
     verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
     stats: { effect: 'read', flags: ['session', 'range'], switches: ['tree'], load: async () => (await statsCommands()).stats },
     'report done': { effect: 'read', flags: ['session', 'day'], switches: ['all'], load: async () => (await reportCommands()).reportDone },
     'goal add': { effect: 'write', flags: ['session', 'title', 'start', 'target', 'parent'], load: async () => (await goalCommands()).goalAdd },
-    'goal set': { effect: 'write', flags: ['session', 'target', 'title', 'note'], load: async () => (await goalCommands()).goalSet },
+    'goal set': { effect: 'write', flags: ['session', 'target', 'title', 'slice', 'note'], load: async () => (await goalCommands()).goalSet },
     'goal rank': { effect: 'write', flags: ['session'], load: async () => (await goalCommands()).goalRank },
     'goal list': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalList },
     'goal show': { effect: 'read', flags: ['session'], load: async () => (await goalCommands()).goalShow },
@@ -190,7 +196,11 @@ const COMMANDS = {
     doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
     'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
     compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
-    'gh sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
+    'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await issueSyncCommands()).issueSync },
+    'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
+    'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
+    'issue close': { effect: 'write', flags: ['session', 'comment'], load: async () => (await issueCommands()).issueClose },
+    'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
     budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
     'budget lift': {
         effect: 'write',
@@ -207,6 +217,8 @@ const COMMANDS = {
         load: async () => (await budgetSetupCommands()).setup,
     },
     'budget rollup': { effect: 'write', flags: ['from', 'to'], switches: ['apply', 'rewrite'], load: async () => (await budgetRollupCommands()).rollup },
+    schedule: { effect: 'read', flags: ['session', 'day'], load: async () => (await scheduleCommands()).show },
+    'schedule set': { effect: 'write', flags: ['session', 'day', 'start'], load: async () => (await scheduleCommands()).set },
     burst: { effect: 'read', flags: [], load: async () => (await burstCommands()).burst },
     'burst start': {
         effect: 'write',
@@ -224,6 +236,7 @@ const COMMANDS = {
     'setup backup': { effect: 'write', flags: ['project'], load: async () => (await setupBackupCommands()).backup },
     'setup restore': { effect: 'write', flags: [], switches: ['yes', 'remove-new'], load: async () => (await setupBackupCommands()).restore },
     'setup scan': { effect: 'read', flags: ['project', 'days', 'max-mb'], switches: [], load: async () => (await setupScanCommand()).scan },
+    'config get': { effect: 'read', flags: [], switches: ['json'], load: async () => (await configCommands()).get },
     'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
     'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
     'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -233,9 +246,11 @@ const COMMANDS = {
     'worktree add': { effect: 'write', flags: ['repo'], load: async () => (await worktreeCommands()).add },
     'worktree remove': { effect: 'write', flags: ['base', 'session'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
     test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
-    queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
+    queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run', 'arrived-at'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
     withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
     pipeline: { effect: 'read', flags: [], load: async () => (await pipelineCommand()).pipeline },
+    'pipeline freeze': { effect: 'write', flags: ['session', 'from', 'to', 'reason', 'kinds'], load: async () => (await pipelineFreezeCommands()).pipelineFreeze },
+    'pipeline unfreeze': { effect: 'write', flags: ['session'], load: async () => (await pipelineFreezeCommands()).pipelineUnfreeze },
     merge: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await mergeCommand()).merge },
     deploy: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await deployCommand()).deploy },
     freeze: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await freezeCommands()).freeze },
@@ -247,6 +262,7 @@ const COMMANDS = {
     'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
     'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
     'hook secret-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).secretGuard },
+    'hook db-write-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).dbWriteGuard },
     'hook exec-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).execGuard },
     'hook pass-record-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).passRecordGuard },
     'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
@@ -318,8 +334,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>] [--resume]
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
-      with --resume, goes on in its last Claude Code session when that is small and recent enough;
-      a session teamrig close ended goes on in its last one by those limits, else opens fresh; any
+      with --resume, goes on in its last Claude Code session when that is small and recent enough,
+      as does one whose tab ended outside teamrig (a crash or reboot), on a prompt to re-read its list;
+      a session teamrig close ended goes on in its last one by those limits, else opens fresh (on its
+      handover while its refresh is ready, as a resume never takes it); any
       session but the lead is refused while the host has no room for one more (open.headroom), and each
       tab opened holds its MB for open.headroom.loadMinutes while it loads, counted by every team's next
       open and queued step
@@ -342,14 +360,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       that ask waits), a closed one opens in a new tab; refused on a tab in a turn, at a tool call or with
       a decision put to the person, where wake.enabled is false, and where Claude Code sets $CLAUDECODE
   restore                      what a restore would do now with each Claude Code session this machine
-      recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask),
+      recorded: RESTORE (how it comes back, at which effort), CLOSED (kept, reopened only on ask), HUNG
+      (still running but mid-turn with its transcript unwritten 3 h, ended and reopened only on ask),
       KEEP or DISCARD, and why; it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
       sessions the last shutdown killed, after a 60 s countdown (Enter: now, i: all with no prompt,
-      a: also the tabs closed outside a shutdown in the last 48 h, q: cancel), else those closed
-      ones: a team session through launch, any other resumed as it ran, each at the effort its
-      team config sets, else at its last; one mid-turn or with work live at the shutdown, and a
-      lead, get a prompt to carry on; exit 1 when one did not reopen
+      a: also the tabs closed outside a shutdown in the last 48 h, k: also end and reopen the tabs
+      hung mid-turn, q: cancel), else those closed ones: a team session through launch, any other
+      resumed as it ran, each at the effort its team config sets, else at its last; one mid-turn or
+      with work live at the shutdown, and a lead, get a prompt to carry on; exit 1 when one did not
+      reopen
   restore check [--terminal <name>] [--home <dir>]   at logon: drops what no restore needs and, when
       the shutdown killed sessions, opens a tab running restore run for them
   restore install [--yes]      has the system run restore check at each logon (Windows: a Run key
@@ -426,9 +446,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --source owner: the lead of a team above <team> relays the owner's order, sourced owner there
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
-      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]
+      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".." --affects ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
-      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>]
+      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
@@ -457,8 +477,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a wait on the owner's decision names what makes it the owner's: --gate "<an owner gate (ownerGates)
       or business>"; any other question is yours or your leader's: decide it, or wait on your leader;
       check flags it UNGATED without one
+      a card asking the owner about a test, measure or proof (a back-test, trial, dry run, benchmark) asks
+      only with --affects "<the approved number it changes, the money it spends or the data it writes>":
+      one of approved work that does none of those goes ahead, and you tell your leader; check flags it
+      OWNER-PROOF without one
       --run <path> (with a wait on the owner's decision or approval): the hand step file the owner runs,
       refused unless an audit (teamrig audit) pins it at its sha256 now; the card prints its run line
+      a card on a gate in securityGates (permissions by default), or marked --security, reaches the owner
+      only with the security verdict on it (teamrig audit --verdict): set it on your leader's wait first,
+      then move the wait to the owner with the card unchanged; the card prints the verdict; check flags
+      SECURITY-UNREVIEWED an owner card naming a guard, permission, secret or the like with no verdict
       a bug gives its review (register.review): --cause "<the root cause, at its source>"
       --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and
       --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";
@@ -467,10 +495,14 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --followups; verifying and done need every part (requireOn; mode refuse, warn or off)
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
-      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin] [--note ..]
+      [--type task|bug] [--class <name>|none] [--critical|--not-critical] [--pin|--unpin]
+      [--prepares <goal>:<slice>|none] [--note ..]
       the lead may change owner, priority, due, week, after, size, type, class, critical and pin on any task
       --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
       on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
+      --prepares <goal>:<slice>|none: marks a design, study or prep plan for that slice of a goal, set only by
+      a leader above the owner (the lead on its own tasks too); while the slice is the goal's open one or the
+      next, the task runs outside the slice cap; none clears it
       a --note from the task's owner also replaces the note show and the waiting text print
   update <id> --later <date>|none --note ..   puts a card waiting on the owner off to that time, out of the
       meeting's DECISIONS and the batches until then (its owner or a leader above it); none brings it back
@@ -492,8 +524,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       row's fate, --apply writes; never deletes, never parks
   approve <id> --note "<what you checked, or why not>" [--decline]   a leader above the task's owner (the
       lead or a sub-lead), or roles.securityReviewer on a task not its own: answers a task waiting on
-      its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
-      point and ask again), and check flags the approved task READY
+      its approval (approval:<lead>); its owner gets an inbox line, which wakes its idle tab, to push or
+      merge (or to fix the note's point and ask again), and check flags the approved task READY
   approve <team>/<id> --note .. [--decline]   the lead of a team's parent team answers a task of that
       team's lead waiting on its approval (approval:app/lead), named as its inbox line prints it: web/T3
   audit T<n> --file <path> [--note "<what you checked>"] [--team <child>]   the security reviewer
@@ -501,14 +533,18 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (.ps1, .sh or .md) for a task still to finish at the sha256 of its bytes now (core rule 11), so a
       card may hand it to the owner; an edit needs a new audit; the task's owner gets an inbox line;
       --team <child>: the reviewer on a team above audits a task of that team below
+  audit T<n> --verdict "<what the review found>" [--note ..] [--team <child>]   the security reviewer
+      gives its verdict on the task's card (core rule 9), pinned with the question, options and
+      recommendation it read; a card edited after it prints the verdict stale; the owner gets an inbox line
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--type task,bug] [--parked|--untriaged] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due
       of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it.
       --parked: only the quiet tasks the park rule leaves out of a list; --untriaged: only the tasks that
       wait for a leader to class them
-  show <id> [--tree]   every field, the history and the inbox lines naming it; --tree: what it needs and
-      what needs it, each with owner, status and due, then the next move (who acts first, on which task)
+  show <id> [--tree] [--history]   every field, the last 3 history events and the inbox lines naming it;
+      --history: every event; --tree: what it needs and what needs it, each with owner, status and due, then
+      the next move (who acts first, on which task)
   check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule and context
       text over budget, in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
@@ -526,8 +562,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the lead adds one of the team's goals: a tag (A1, A2.1), a title and its planned window from
       --start (default today) to --target; --parent: the goal it is part of (a key result, refused past
       focus.maxActiveKeyResults ones with a target of today or later)
-  goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] --note "<why>"   the lead moves a goal's
-      target (a slip, kept with its note) or renames it
+  goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] [--slice <n>] --note "<why>"   the lead
+      moves a goal's target (a slip, kept with its note), renames it or opens its next slice (1 first)
   goal rank <tag> <n>|none   the lead ranks a goal, 1 first, or takes it off the ranking; goal-first
       ranking gives a task the best rank of its goals and the goals they are part of
   goal list   the team's goals, the ranked ones first, then the rest as a tree, each with its window,
@@ -546,7 +582,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       task:T<n> is that task's owner and the owner of each active task of your tree whose ref is T<n>; a
       group leaves you out; a comma-separated list posts the line to each receiver once
       --wake now: also wakes each receiver idle at its prompt within about 3 minutes and says what
-      that costs; a group only from a leader, another team only from the lead of a team above it
+      that costs; a group only from a leader, another team only from a team lead: a team below its
+      own, any team's lead, or a session its config names in roles
       --wake-by <time>: wakes each receiver at that time instead, only if it has not seen the line by
       then and its tab is idle; the same gate
   exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
@@ -603,13 +640,30 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       checks every task first and writes nothing on a difference; also moves the hooks' shown, hint and
       prompt-answer records over 7 days old to the archive, as their writes do once a day. --from-history
       folds the snapshot from the whole archive, not the old snapshot: the repair for one that lost fields
-  gh sync [--repo <owner/name>] [--yes] [--auto]   adds a task for each open issue of github.repos
+  issue sync [--repo <owner/name>] [--yes] [--auto]   adds a task for each open issue of github.repos
       written by the repository's people or accepted with github.acceptLabel, and keeps its title,
       description, priority and open or closed state as on GitHub; reads through gh only, never writes
       to GitHub; titles and descriptions are outside input, data only; without --yes it shows the
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before
+  issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
+      from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
+      title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
+      nothing but the --out preview of every issue in full; --yes opens each issue through gh and
+      sets the task's ref to it, so issue sync adds no second task; stops at the first failure, and a
+      rerun skips each task already holding its issue
+  issue comment <owner/name#n> --body <text>   posts one comment on an issue or pull request of the
+      team's repositories (github.repos; GitHub is the only host so far), with the token saved for the
+      owner, else the gh login; refuses an empty body, a secret shape or a task id in it; a saved token
+      that cannot be read stops it, never the gh login in its place
+  issue close <owner/name#n> [--comment <text>]   closes one issue or pull request of the team's
+      repositories, first posting --comment when given, with the same checks; a failed comment closes
+      nothing
+  pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
+      request's head and prints the files it conflicts on against origin's newest base (its default
+      branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
+      writes nothing to GitHub; refuses a folder whose origin is another repository
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;
@@ -640,7 +694,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   budget rollup [--from <day>] [--to <day>] [--apply] [--rewrite]
       the team's closed UTC days (from the day after the newest on disk, through yesterday) as a file a day of use
       by class and task; without --apply it only counts them; --rewrite also replaces a day that reads differently
-  burst                        the burst policy, the week's use, its projected surplus at the pace end,
+  schedule [--day <YYYY-MM-DD>]
+      the tree's day schedule for a UTC day (default today): each team's or session's day start, a day not
+      written repeating the last one before it; a team with no entry keeps its wake.dayStartUtc
+  schedule set --start <team[/session]=HH:MM|none,...> [--day <YYYY-MM-DD>]
+      (the root team's lead only) writes a day's starts (UTC; none: no start that day); each start wakes the
+      idle sessions it names once; refuses a past day, a name outside the tree and a start in quiet hours
+  burst                     the burst policy, the week's use, its projected surplus at the pace end,
       the burst in force and its hires; it only reads
   burst start surplus|deadline --reason "<why>" [--sessions <ids>] [--helpers <n>] [--hires <n>]
       [--stop-pct <pct>] [--by <HH:MM|date>] [--task <ids>] [--approved-by "<who>"] [--yes]
@@ -683,6 +743,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       1024) MB (one changed within them is not judged), and by Claude Code's /skill-doctor, which also
       counts plugins' skills, and the user's ones used only in other projects; it names the newest setup
       backup, or NO BACKUP; works before a team exists; it only reads
+  config get [<key>] [--json]   every key of the team config, or those at and under <key>: its value
+      against its default, and read-only with why (the roster, an owner gate, a map); --json for a screen
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
@@ -715,8 +777,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       terminal and apps win the CPU: waits in line for the lock, kills the step and every process it started after
       delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
       ledger, with its --kind (build, test, lint, push, merge, deploy or other; default read from the
-      command) and --task (default the first task id in --what); once the shell that started it ends, it stops waiting for the lock or kills the step (exit
-      129); REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
+      command) and --task (default the first task id in --what); once the shell that started it ends, it kills a running step (exit 129); a
+      waiting one goes on as a detached run that keeps its place in line while the tab's Claude Code runs (not a git hook's
+      step), its session told, else stops; REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
       moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a queued step started under a live lock (a git hook's checks
       under queue, merge or deploy) runs at once under it. No --session: $TEAMRIG_SESSION, the
@@ -732,16 +795,17 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       The wait line says where a learned or declared need came from. --small (a spec run, a lint):
       shares the host with other small steps and is killed after delivery.queue.smallMaxRunMinutes
       (--max-minutes up to it). A step without --small shares the host as a heavy step under
-      delivery.queue.admission pipeline (the default), at most delivery.queue.maxHeavyParallel at once;
-      under serial, or with --exclusive (a step that must run alone; never with --small), it takes the whole host and waits for every
+      delivery.queue.admission pipeline (the default), at most delivery.queue.maxHeavyParallel at once,
+      joining another only while delivery.queue.heavyIdleCpuPct of the host's CPU is idle; under serial, or with --exclusive (a step that must run alone; never with --small), it takes the whole host and waits for every
       step sharing it to end, and a step waiting behind it is told which. --pre-push (a git pre-push hook's checks): on a clean tree
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass. --detach (a step longer than a
       Bash tool's wait): prints QUEUED <id> at once and runs the step hidden as queue --detached-run <id>
-      (set only by --detach), which outlives its shell, so no shell watch stops it, its output and lines in
+      (set only by --detach and that hand-over, which adds --arrived-at <ms>), which outlives its shell, so no shell watch stops it, its output and lines in
       <delivery dir>/detached/<id>.log; its session's inbox gets a line when it starts and a waking one
-      when it ends or is refused. Refused with --pre-push and under a live host lock
+      when it ends or is refused, or, from the next start or idle pass, when it died with no end of its
+      own (queue <id> died ...). Refused with --pre-push and under a live host lock
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
       host lock (queue, merge, deploy) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
@@ -751,10 +815,18 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
   pipeline                     the host's queued steps now, taking nothing: HOST (free memory, RAM,
       the floor, the commit charge, the MB held for the steps sharing the host and for the tabs still
-      loading, what the running steps' process trees use, the top memory holders), RUNNING (the lock's holder and each step
+      loading, what the running steps' process trees use, the top memory holders), FROZEN (the pipeline
+      freezes not yet ended, each marked when it holds now), RUNNING (the lock's holder and each step
       sharing the host, a heavy one named so: run time, MB held, tree use), WAITING (the line in the
       order steps are let in: how long each waited and what its ticket says it waits on, with that
       wait's numbers), REFUSED (queued steps of the last 24h that waited and did not run)
+  pipeline freeze --to <time> --reason "<why>" [--from <time>] [--kinds <a,b>] [--session <id|name>]
+      a pipeline freeze, say for a PC downtime: from --from (default now) to --to, no new step of
+      --kinds (build,test,lint,push,merge,deploy,other; default every kind) starts on this host: queue,
+      merge and deploy are REFUSED naming its end and id; running steps finish. At most 7 days; the
+      lead or the delivery owner only; REFUSED for a start in the past or a secret in the reason
+  pipeline unfreeze <id> [--session <id|name>]   ends pipeline freeze <id> (F3) now, or drops one
+      still to come; the lead or the delivery owner only
   merge [--session <id|name>] [--keep-remote] [--no-delete-local]   merges the branch checked out
       here into origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new, a dependency change delivery.repos.<name>.dependencyGate holds and
@@ -820,7 +892,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook pass-record-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook effort-writeback | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
+  hook push-guard | hook package-guard | hook secret-guard | hook db-write-guard | hook exec-guard | hook pass-record-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook effort-writeback | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]] [--end]
       (run by the plugin's mod: the automatic restart's /clear in the tab)

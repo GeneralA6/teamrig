@@ -5,19 +5,26 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, RESERVED_NAMES } from '../core/ids.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
 import {
+  APPLY_FLAG_PATTERN,
   BUDGET_ACCOUNT_MAX_LENGTH,
+  CLIENT_RECEIVER_PATTERN,
   CONFIG_LIMITS,
+  DB_PROGRAM_NAME_PATTERN,
+  DB_WRITE_ENTRYPOINT_LIMITS,
+  DB_WRITE_NAME_LIMITS,
   GITHUB_LABEL_MAX_LENGTH,
   MEETING_COLOUR_PATTERN,
   MEETING_HELD_TEXT_MAX_LENGTH,
+  NODE_MODULE_PATTERN,
   REVIEW_PATH_LIMITS,
   RULE_CONFLICT_LIMITS,
 } from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
+import { SHARED_METHOD_NAMES } from '../db-write-guard/verbs.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS } from '../rules/keys.ts';
-import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, EFFORT_LEVELS, GOALS_MODES, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, VERIFY_GATES } from './types.ts';
+import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, DB_CLIENT_VOCABULARIES, DB_PROGRAM_SHAPES, DB_WRITES, EFFORT_LEVELS, GOALS_MODES, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, ROUTE_ALLOWS, VERIFY_GATES } from './types.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -31,6 +38,13 @@ const EVERY_KEY = {
   team: { id: 'web', parent: 'app' },
   names: { alpha: 'captain' },
   ruleConflicts: [{ file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local', reason: 'solo repo' }],
+  dbWriteGuard: {
+    writes: 'deny',
+    entrypoints: [{ path: 'scripts/backfill.ts', applyFlags: ['--apply'] }],
+    programs: [{ name: 'docsh', reads: 'document-shell' }],
+    nodeClients: [{ module: 'docstore', vocabulary: 'document' }],
+    clientReceivers: ['cache'],
+  },
   launch: { alpha: { model: 'best', effort: 'xhigh' } },
   roles: { lead: 'alpha', deliveryOwner: 'bravo', securityReviewer: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
@@ -117,6 +131,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   skillListingChars: 'contextFiles.maxSkillListingChars',
   sessionListsChars: 'contextFiles.maxSessionListsChars',
   ownerGates: 'ownerGates',
+  securityGates: 'securityGates',
   ruleConflicts: 'ruleConflicts',
   protectedBranches: 'pushGuard.protectedBranches',
   reviewPaths: 'pushGuard.reviewPaths',
@@ -149,6 +164,10 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   secretPaths: 'secretGuard.paths',
   secretEnvNames: 'secretGuard.envNames',
   secretCommands: 'secretGuard.commands',
+  dbWriteEntrypoints: 'dbWriteGuard.entrypoints',
+  dbWritePrograms: 'dbWriteGuard.programs',
+  dbWriteNodeClients: 'dbWriteGuard.nodeClients',
+  dbWriteClientReceivers: 'dbWriteGuard.clientReceivers',
   packageCooldownDays: 'packageGuard.cooldownDays',
   searchNudgeAt: 'leadBoundary.searchNudgeAt',
   turnLogKeepHours: 'turnLog.keepHours',
@@ -161,10 +180,13 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   githubRepos: 'github.repos',
   closedDays: 'github.closedDays',
   githubEveryMinutes: 'github.everyMinutes',
+  similarThreshold: 'github.similarThreshold',
   budgetTargetPct: 'budget.targetPct',
   budgetReservePct: 'budget.reservePct',
   weeklyLimitW: 'budget.weeklyLimitW',
   subagentWeight: 'budget.subagentWeight',
+  budgetModelWeights: 'budget.modelWeights',
+  modelWeight: 'budget.modelWeights[].weight',
   extraWPerUsd: 'budget.extraWPerUsd',
   paceEndHoursBeforeReset: 'budget.paceEndHoursBeforeReset',
   sessionShare: 'budget.sessions.*.share',
@@ -175,6 +197,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   liftMaxStopPct: 'budget.lift.maxStopPct',
   liftReserveStopPct: 'budget.lift.reserveStopPct',
   maxBytesPerHook: 'budget.maxBytesPerHook',
+  budgetResets: 'budget.resets',
+  budgetResetCount: 'budget.resets[].count',
   hiringReviewDays: 'hiring.reviewDays',
   hiringResumeMaxTokens: 'hiring.resumeMaxTokens',
   hiringResumeMaxIdleDays: 'hiring.resumeMaxIdleDays',
@@ -194,8 +218,10 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   queueSmallReserveMb: 'delivery.queue.smallReserveMb',
   queueHeavyReserveMb: 'delivery.queue.heavyReserveMb',
   queueAgingMinutes: 'delivery.queue.agingMinutes',
+  queueMemoryPassMinutes: 'delivery.queue.memoryPassMinutes',
   queuePerSessionRunning: 'delivery.queue.perSessionRunning',
   queueMaxHeavyParallel: 'delivery.queue.maxHeavyParallel',
+  queueHeavyIdleCpuPct: 'delivery.queue.heavyIdleCpuPct',
   headroomSessionMb: 'open.headroom.sessionMb',
   headroomCommitMaxPct: 'open.headroom.commitMaxPct',
   headroomCloseIdleMinutes: 'open.headroom.closeIdleMinutes',
@@ -218,11 +244,17 @@ function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {
   return name in CONFIG_LIMITS;
 }
 
-/** The schema node at a dotted config path such as `skills.maxPerArea`; `*` stands for any key of a map. */
+/**
+ * The schema node at a dotted config path such as `skills.maxPerArea`; `*` stands for any key of a map, and a key
+ * ending in `[]` for the items of its list.
+ */
 function nodeAt(schema: JsonRecord, path: string): JsonRecord {
   const node = path.split('.').reduce<JsonRecord | undefined>((parent, key) => {
-    const child = parent === undefined ? undefined : key === '*' ? anyProperty(parent) : properties(parent)[key];
-    return isRecord(child) ? child : undefined;
+    const list = key.endsWith('[]');
+    const name = list ? key.slice(0, -2) : key;
+    const child = parent === undefined ? undefined : name === '*' ? anyProperty(parent) : properties(parent)[name];
+    const found = list && isRecord(child) ? child['items'] : child;
+    return isRecord(found) ? found : undefined;
   }, schema);
   assert.ok(node !== undefined, `${path} is not in the schema`);
   return node;
@@ -439,6 +471,42 @@ describe('config.schema.json', () => {
 
   it('takes the goals modes the parser takes', async () => {
     assert.deepEqual(nodeAt(await loadSchema(), 'register.goals')['enum'], [...GOALS_MODES]);
+  });
+
+  it('takes the db-write guard entries the parser takes', async () => {
+    const schema = await loadSchema();
+    assert.deepEqual(nodeAt(schema, 'dbWriteGuard.writes')['enum'], [...DB_WRITES]);
+    const entrypoint = nodeAt(schema, 'dbWriteGuard.entrypoints')['items'];
+    const program = nodeAt(schema, 'dbWriteGuard.programs')['items'];
+    const client = nodeAt(schema, 'dbWriteGuard.nodeClients')['items'];
+    const receiver = nodeAt(schema, 'dbWriteGuard.clientReceivers')['items'];
+    assert.ok(isRecord(entrypoint) && isRecord(program) && isRecord(client) && isRecord(receiver));
+    const { path, applyFlags } = properties(entrypoint);
+    const { name, reads } = properties(program);
+    const { module, vocabulary } = properties(client);
+    assert.ok(isRecord(path) && isRecord(applyFlags) && isRecord(name) && isRecord(reads) && isRecord(module) && isRecord(vocabulary));
+    const flag = applyFlags['items'];
+    assert.ok(isRecord(flag));
+    assert.equal(path['maxLength'], DB_WRITE_ENTRYPOINT_LIMITS.pathMaxLength);
+    assert.deepEqual([applyFlags['minItems'], applyFlags['maxItems']], [1, DB_WRITE_ENTRYPOINT_LIMITS.applyFlagsMaxItems]);
+    assert.deepEqual([flag['maxLength'], flag['pattern']], [DB_WRITE_ENTRYPOINT_LIMITS.applyFlagMaxLength, APPLY_FLAG_PATTERN.source]);
+    assert.deepEqual(
+      [name['maxLength'], name['pattern'], reads['enum']],
+      [DB_WRITE_NAME_LIMITS.programNameMaxLength, DB_PROGRAM_NAME_PATTERN.source, [...DB_PROGRAM_SHAPES]],
+    );
+    assert.deepEqual(
+      [module['maxLength'], module['pattern'], vocabulary['enum']],
+      [DB_WRITE_NAME_LIMITS.nodeModuleMaxLength, NODE_MODULE_PATTERN.source, [...DB_CLIENT_VOCABULARIES]],
+    );
+    assert.equal(receiver['pattern'], CLIENT_RECEIVER_PATTERN.source);
+    assert.deepEqual([entrypoint['required'], program['required'], client['required']], [['path', 'applyFlags'], ['name', 'reads'], ['module', 'vocabulary']]);
+  });
+
+  it('names every shared method the db-write guard counts only on a client-named receiver', async () => {
+    const description = nodeAt(await loadSchema(), 'dbWriteGuard.clientReceivers')['description'];
+    assert.ok(typeof description === 'string');
+    const listed = /a shared method \(([^)]*)\)/.exec(description)?.[1]?.split(', ') ?? [];
+    assert.deepEqual(listed.toSorted(), [...SHARED_METHOD_NAMES].map((name) => name.toLowerCase()).toSorted());
   });
 
   it('takes the rule conflicts the parser takes', async () => {

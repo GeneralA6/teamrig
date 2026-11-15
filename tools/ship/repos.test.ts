@@ -9,7 +9,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], local: { runner: null }, regenerated: [] });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [] });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -50,10 +50,49 @@ test('reads the regenerated paths a reship writes again, and refuses a path outs
   assert.throws(() => parseProfiles(entry('["dist/","dist/"]')), /O\/R lists a regenerated path twice/);
 });
 
+test('reads the summary check, and refuses one that is blank or not among the checks', () => {
+  const entry = (summary: string): string => `{"O/R":{"main":"main","gate":"ci","checks":["a","all"],"summary":${summary}}}`;
+  assert.equal(profileFor(parseProfiles(entry('"all"')), 'O/R').summary, 'all');
+  for (const summary of ['"b"', '""', '3', '["all"]']) {
+    assert.throws(() => parseProfiles(entry(summary)), /O\/R "summary" needs the name of one of its "checks"/, summary);
+  }
+});
+
+test('the shipped repos.json names each repo\'s every-check-passed job its summary', () => {
+  const profiles = readProfiles();
+  for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) assert.equal(profileFor(profiles, slug).summary, 'every check passed', slug);
+});
+
 test('the shipped repos.json calls regenerated exactly the dist and the version files a ship writes again', () => {
   const profiles = readProfiles();
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig').regenerated, [`${DIST}/`, ...TEAMRIG_VERSION_FILES.map(file => file.path)]);
   assert.deepEqual(profileFor(profiles, 'GeneralA6/teamrig-pane').regenerated, ['plugins/teamrig-pane/.claude-plugin/plugin.json']);
+});
+
+/** The status checks main's ruleset requires before GitHub accepts a merge. */
+function rulesetRequiredChecks(): string[] {
+  const ruleset: unknown = JSON.parse(readFileSync(new URL('../../.github/rulesets/main.json', import.meta.url), 'utf8'));
+  assert.ok(typeof ruleset === 'object' && ruleset !== null && 'rules' in ruleset && Array.isArray(ruleset.rules));
+  const contexts: string[] = [];
+  for (const rule of ruleset.rules) {
+    if (typeof rule !== 'object' || rule === null || !('parameters' in rule)) continue;
+    const parameters: unknown = rule.parameters;
+    if (typeof parameters !== 'object' || parameters === null || !('required_status_checks' in parameters) || !Array.isArray(parameters.required_status_checks)) continue;
+    for (const check of parameters.required_status_checks) {
+      if (typeof check === 'object' && check !== null && 'context' in check && typeof check.context === 'string') contexts.push(check.context);
+    }
+  }
+  return contexts;
+}
+
+test('the shipped repos.json waits on GitHub for every check main\'s ruleset requires, so a merge is never refused while CI runs', () => {
+  const required = rulesetRequiredChecks();
+  assert.ok(required.length > 0, 'the ruleset requires a status check');
+  for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) {
+    const profile = profileFor(readProfiles(), slug);
+    assert.equal(profile.gate, 'ci', slug);
+    for (const check of required) assert.ok(profile.checks.includes(check), `${slug} waits for ${check}`);
+  }
 });
 
 test('finds the GitHub slug in an SSH or HTTPS remote', () => {
@@ -70,10 +109,12 @@ test('the shipped repos.json still lists every job a teamrig pull request runs, 
   const jobs = [...workflow.matchAll(/^ {4}name: (.+)$/gm)].map(match => match[1] ?? '').filter(name => !name.includes('${{'));
   assert.ok(jobs.includes('commit size rule'), jobs.join(', '));
   for (const job of jobs) assert.ok(teamrig.checks.includes(job), `ci.yml job "${job}" is missing from repos.json, so a CI merge would not wait for it`);
-  for (const os of ['ubuntu-latest', 'windows-latest', 'macos-latest']) {
-    for (const node of [22, 24]) assert.ok(teamrig.checks.includes(`test (${os}, node ${node})`));
-  }
-  assert.equal(teamrig.checks.length, jobs.length + 6);
+  const tests = teamrig.checks.filter(check => check.startsWith('test ('));
+  assert.deepEqual(tests, ['ubuntu-latest', 'windows-latest', 'macos-latest'].map(os => `test (${os}, node 22)`));
+  const matrix = (key: string): string[] => (new RegExp(`^ {8}${key}: \\[([^\\]]+)\\]$`, 'm').exec(workflow)?.[1] ?? '').split(',').map(item => item.trim());
+  const run = matrix('os').flatMap(os => matrix('node').map(node => `test (${os}, node ${node})`));
+  assert.deepEqual(tests, run, 'repos.json must wait for exactly the test runs ci.yml\'s matrix makes');
+  assert.equal(teamrig.checks.length, jobs.length + tests.length);
 });
 
 test('both plugin repos wait for the plugin version gate, so a plugin change cannot merge without a version raise', () => {
@@ -83,11 +124,9 @@ test('both plugin repos wait for the plugin version gate, so a plugin change can
   }
 });
 
-test('while CI is paused both repos merge on the local gate, proved by their own local CI runner', () => {
+test('both repos keep their own local CI runner, which a ship runs before it pushes', () => {
   const profiles = readProfiles();
   for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) {
-    const profile = profileFor(profiles, slug);
-    assert.equal(profile.gate, 'local', slug);
-    assert.deepEqual(profile.local, { runner: 'tools/ci/local.ts' }, slug);
+    assert.deepEqual(profileFor(profiles, slug).local, { runner: 'tools/ci/local.ts' }, slug);
   }
 });

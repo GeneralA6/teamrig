@@ -50,6 +50,8 @@ class FakeHost implements GuardHost {
     this.exitCode = code;
   };
 
+  readonly readStdin = (): Promise<string> => Promise.resolve('{"tool_name":"Bash"}');
+
   crash(cause: unknown): void {
     this.fatal?.(cause);
   }
@@ -122,11 +124,12 @@ describe('judgeGuard', () => {
 });
 
 describe('runGuard', () => {
-  it("runs the CLI with the argv and the entry script, passes its answer on and lets the process end on its own", async () => {
+  it("runs the CLI with the argv, the entry script and the hook's input, passes its answer on and lets the process end on its own", async () => {
     const host = new FakeHost();
     const run = answering(EXIT.ok, [DENY], ['a note']);
     await runGuard(ARGV, SCRIPT, async () => run.main, host);
     assert.deepEqual(run.calls.map(({ argv, entry }) => [argv, entry.script]), [[ARGV, SCRIPT]]);
+    assert.deepEqual(await Promise.all(run.calls.map(({ entry }) => entry.readStdin())), ['{"tool_name":"Bash"}']);
     assert.deepEqual(host.written, [`${DENY}\n`]);
     assert.deepEqual(host.errors, ['a note\n']);
     assert.equal(host.exitCode, 0);

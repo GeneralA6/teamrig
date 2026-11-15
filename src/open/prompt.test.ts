@@ -1,6 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodePrompt, defaultPrompt, encodePrompt, meetAsk, meetPrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from './prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, meetAsk, meetPrompt, PROMPT_MAX, promptProblem, recoverPrompt, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from './prompt.ts';
+
+describe('recoverPrompt', () => {
+  it('tells a session resumed after its tab ended outside teamrig that its tasks may have moved', () => {
+    const recovered = recoverPrompt('shop', 'api');
+    assert.match(recovered, /^You are the api session of team shop, resumed in your last Claude Code session after its tab ended\. Your tasks may have moved since: run `teamrig inbox read` and `teamrig list --session api`/);
+    assert.equal(promptProblem(recovered), undefined);
+  });
+});
 
 describe('defaultPrompt', () => {
   it('names the session and its team, and starts with the inbox and the task list', () => {

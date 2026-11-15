@@ -4,13 +4,13 @@ import { join } from 'node:path';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { leftoversCommand } from './leftovers.ts';
 import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
-import { mergeCommand } from './merge.ts';
+import { mergeBranch, mergeCommand } from './merge.ts';
 import { pushOwnBranch } from './push.ts';
 import { profileFor, readProfiles, slugOf } from './repos.ts';
 import { takeBackEarlierRun } from './rerun.ts';
 import { shipCommand } from './ship-command.ts';
 import { DIST, type ShipDeps } from './ship-commits.ts';
-import { syncToMain } from './sync.ts';
+import { mainMovedPast, syncToMain } from './sync.ts';
 import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
 
 /**
@@ -23,7 +23,7 @@ import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
  *   node ship.ts check <repo dir>
  * And merges a pushed change branch into main (merge.ts: PR, its head proven by the repo's gate, rebase):
  *   node ship.ts merge <repo dir> [--head <branch>, default the checked-out one] [--timeout-min 45] [--interval-s 30]
- * And lists origin's branches whose work is already on main, deleting none (leftovers.ts):
+ * And deletes the heads of closed, unmerged pull requests on origin, then lists the other branches against main (leftovers.ts):
  *   node ship.ts leftovers <repo dir>
  * This file only wires the real git, sync, local gate, push and GitHub merge into those commands; ship.test.ts
  * runs it as its own process.
@@ -54,7 +54,8 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     buildSteps: () => buildSteps(buildScriptOf(readFileSync(join(repo, 'package.json'), 'utf8'))),
     proveTree: () => proveTree(repo, profile.local, realGateDeps(repo, log)),
     push: () => pushOwnBranch(gitLine, profile.main),
-    merge: (branch) => mergeCommand([repo, '--head', branch, ...(noteFile === null ? [] : ['--note-file', noteFile])]),
+    merge: (branch) => mergeBranch([repo, '--head', branch, ...(noteFile === null ? [] : ['--note-file', noteFile])]),
+    mainMove: () => mainMovedPast(gitLine, profile.main),
   };
 }
 

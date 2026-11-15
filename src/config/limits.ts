@@ -15,6 +15,7 @@ export const CONFIG_LIMITS = {
   skillListingChars: { min: 500, max: 500_000 },
   sessionListsChars: { min: 500, max: 500_000 },
   ownerGates: { maxItems: 8, maxLength: 60 },
+  securityGates: { maxItems: 8, maxLength: 60 },
   ruleConflicts: { maxItems: 40 },
   protectedBranches: { maxItems: 8, maxLength: 64 },
   reviewPaths: { maxItems: 128 },
@@ -49,6 +50,10 @@ export const CONFIG_LIMITS = {
   secretPaths: { maxItems: 32, maxLength: 200 },
   secretEnvNames: { maxItems: 16, maxLength: 120 },
   secretCommands: { maxItems: 16, maxLength: 200 },
+  dbWriteEntrypoints: { maxItems: 32 },
+  dbWritePrograms: { maxItems: 16 },
+  dbWriteNodeClients: { maxItems: 16 },
+  dbWriteClientReceivers: { maxItems: 8, maxLength: 40 },
   packageCooldownDays: { min: 0, max: 365 },
   searchNudgeAt: { min: 0, max: 50 },
   turnLogKeepHours: { min: 1, max: 168 },
@@ -61,12 +66,15 @@ export const CONFIG_LIMITS = {
   githubRepos: { maxItems: 20, maxLength: 140 },
   closedDays: { min: 1, max: 365 },
   githubEveryMinutes: { min: 0, max: 1440 },
+  similarThreshold: { min: 0, max: 1 },
   budgetTargetPct: { min: 1, max: 100 },
   budgetReservePct: { min: 0, max: 50 },
   /** 0 turns the floor off; past 50 one team's floor would leave a second less than its own (T2215). */
   shareFloorPct: { min: 0, max: 50 },
   weeklyLimitW: { min: 1_000_000, max: 1_000_000_000_000 },
   subagentWeight: { min: 0.1, max: 10 },
+  budgetModelWeights: { maxItems: 10 },
+  modelWeight: { min: 0.1, max: 20 },
   extraWPerUsd: { min: 1_000, max: 1_000_000_000 },
   paceEndHoursBeforeReset: { min: 0, max: 48 },
   sessionShare: { min: 0, max: 100 },
@@ -77,6 +85,8 @@ export const CONFIG_LIMITS = {
   liftMaxStopPct: { min: 1, max: 100 },
   liftReserveStopPct: { min: 1, max: 100 },
   maxBytesPerHook: { min: 100_000, max: 100_000_000 },
+  budgetResets: { maxItems: 20 },
+  budgetResetCount: { min: 1, max: 20 },
   hiringReviewDays: { min: 1, max: 90 },
   hiringResumeMaxTokens: { min: 10_000, max: 1_000_000 },
   hiringResumeMaxIdleDays: { min: 1, max: 90 },
@@ -97,8 +107,10 @@ export const CONFIG_LIMITS = {
   queueSmallReserveMb: { min: 0, max: 1_048_576 },
   queueHeavyReserveMb: { min: 0, max: 1_048_576 },
   queueAgingMinutes: { min: 0, max: 1440 },
+  queueMemoryPassMinutes: { min: 0, max: 1440 },
   queuePerSessionRunning: { min: 0, max: 64 },
   queueMaxHeavyParallel: { min: 1, max: 64 },
+  queueHeavyIdleCpuPct: { min: 0, max: 100 },
   headroomSessionMb: { min: 100, max: 65_536 },
   headroomCommitMaxPct: { min: 50, max: 100 },
   headroomCloseIdleMinutes: { min: 15, max: 10_080 },
@@ -137,6 +149,34 @@ export const MEETING_HELD_TEXT_MAX_LENGTH = 40;
 
 /** `meeting.statusLine.colour`: a 24-bit `#rrggbb` colour, the form the status line's ANSI foreground code takes. */
 export const MEETING_COLOUR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+/** Bounds on one data script the db-write guard knows (`dbWriteGuard.entrypoints`). */
+export const DB_WRITE_ENTRYPOINT_LIMITS = {
+  pathMaxLength: 260,
+  applyFlagsMaxItems: 4,
+  applyFlagMaxLength: 40,
+} as const;
+
+/**
+ * Bounds on the names in the db-write guard's object lists (`dbWriteGuard.programs[].name`,
+ * `dbWriteGuard.nodeClients[].module`); a `maxLength` in CONFIG_LIMITS bounds a list's string items instead.
+ */
+export const DB_WRITE_NAME_LIMITS = {
+  programNameMaxLength: 60,
+  nodeModuleMaxLength: 120,
+} as const;
+
+/** An entrypoint's apply flag as a line spells it: `--apply`, `-y`. */
+export const APPLY_FLAG_PATTERN = /^--?[A-Za-z][\w-]*$/;
+
+/** A database program's name as a line runs it (`dbWriteGuard.programs[].name`): `psql`, `my-cli`, `tool.exe`. */
+export const DB_PROGRAM_NAME_PATTERN = /^[A-Za-z0-9][\w.+-]*$/;
+
+/** A Node client module as code loads it (`dbWriteGuard.nodeClients[].module`): `store`, `@scope/store`. */
+export const NODE_MODULE_PATTERN = /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/;
+
+/** A word inside a receiver's name that marks a key-value client (`dbWriteGuard.clientReceivers`): `cache`. */
+export const CLIENT_RECEIVER_PATTERN = /^[A-Za-z_$][\w$]*$/;
 
 /** The longest `budget.account` name, on one line. */
 export const BUDGET_ACCOUNT_MAX_LENGTH = 100;

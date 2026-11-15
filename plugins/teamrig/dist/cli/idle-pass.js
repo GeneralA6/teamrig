@@ -6,6 +6,7 @@ import { closedOf, SessionLog } from "../sessions/log.js";
 import { urgentLinesText } from "../wake/asks.js";
 import { byUrgency, COLD_WAKE_W, effectivePriority, HELD_PRIORITY, wakeRestOf } from "../wake/decide.js";
 import { budgetFactsOf } from "./commands/hook-budget.js";
+import { dayStartFor } from "./day-schedule.js";
 import { headroomOf } from "./headroom.js";
 import { closableText, idleFactsOf, idleVerdictOf } from "./idle-check.js";
 import { RefusedError } from "./runtime.js";
@@ -86,7 +87,7 @@ export async function judgeSession(runtime, kit, config, roster, facts, id, fold
         return { kind: 'away', id };
     }
     const asks = facts.asks.get(id) ?? [];
-    const input = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStartUtc: config.wake.dayStartUtc, now, zone };
+    const input = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStart: (await dayStartFor(runtime, { kit, config }, id, now)).at, now, zone };
     const asAwake = reopenVerdict(input);
     if (asAwake.kind === 'asked') {
         return wishOf(folderOf, id, asAwake, undefined);

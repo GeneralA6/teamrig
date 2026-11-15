@@ -1,3 +1,4 @@
+import { constants } from 'node:fs';
 import { appendFile, link, lstat, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from "./guards.js";
@@ -14,6 +15,11 @@ const TEMPORARY_NAME = /^.+\.\d+(?:\.\d+)?\.tmp$/;
 export function isTemporaryName(name) {
     return TEMPORARY_NAME.test(name);
 }
+/**
+ * Read-only and without waiting: opening a named pipe for reading otherwise blocks until a writer opens it, and that
+ * wait holds the caller. Windows has no such flag; its pipes live under `\\.\pipe\`, which a caller can keep away from.
+ */
+const OPEN_READ_NONBLOCKING = constants.O_RDONLY | ('O_NONBLOCK' in constants ? constants.O_NONBLOCK : 0);
 /** The path's stats when a file is there; undefined for a missing path or a folder. */
 async function fileStatsOf(path) {
     try {
@@ -127,6 +133,30 @@ export function nodeFiles(sleep) {
                 const length = Math.min(size, maxBytes);
                 const buffer = Buffer.alloc(length);
                 const { bytesRead } = await handle.read(buffer, 0, length, size - length);
+                return buffer.subarray(0, bytesRead).toString('utf8');
+            }
+            finally {
+                await handle.close();
+            }
+        },
+        async readHead(path, maxBytes) {
+            let handle;
+            try {
+                handle = await open(path, OPEN_READ_NONBLOCKING);
+            }
+            catch (error) {
+                if (errorCode(error) === 'ENOENT') {
+                    return undefined;
+                }
+                throw error;
+            }
+            try {
+                const stats = await handle.stat();
+                if (!stats.isFile()) {
+                    return undefined;
+                }
+                const buffer = Buffer.alloc(Math.min(stats.size, maxBytes));
+                const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
                 return buffer.subarray(0, bytesRead).toString('utf8');
             }
             finally {

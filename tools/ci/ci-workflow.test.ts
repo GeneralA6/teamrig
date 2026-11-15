@@ -47,4 +47,33 @@ describe('ci.yml', () => {
     }
     assert.match(summary, /^ {8}run: exit 1$/m);
   });
+
+  it('fails the summary unless every job of the run passed, each matrix leg alone', () => {
+    const summary = jobs.get(SUMMARY) ?? '';
+    const name = /^ {4}name: (.+)$/m.exec(summary)?.[1];
+    assert.ok(name !== undefined);
+    assert.match(summary, /^ {4}permissions:\n {6}actions: read\n {6}contents: read\n/m, "it lists the run's jobs with a read-only token");
+    assert.ok(summary.includes(`        run: node tools/ci/every-check-cli.ts "${name}"\n`), 'it leaves out itself, by its own name');
+    assert.match(summary, /^ {10}GH_TOKEN: \$\{\{ github\.token \}\}$/m);
+    assert.ok(summary.indexOf('run: exit 1') < summary.indexOf('every-check-cli.ts'), 'the needs check runs first, so a failed job fails the summary with no API call');
+  });
+
+  it('fails a pull request that adds a dependency with a known advisory of any severity and scope', () => {
+    const review = jobs.get('dependency-review') ?? '';
+    assert.match(review, /^ {4}name: dependency review$/m);
+    assert.match(review, /^ {6}- uses: actions\/dependency-review-action@[0-9a-f]{40} # v\d+\.\d+\.\d+$/m);
+    assert.match(review, /^ {8}if: \$\{\{ github\.event_name == 'pull_request' \}\}$/m, 'a push or a run by hand has no pull request to compare, so only the step skips and the job passes');
+    assert.match(review, /^ {10}fail-on-severity: low$/m);
+    const scopes = /^ {10}fail-on-scopes: (.+)$/m.exec(review)?.[1]?.split(',').map((scope) => scope.trim());
+    assert.deepEqual(scopes, ['runtime', 'development', 'unknown'], 'dev dependencies run at install and build time too');
+    assert.doesNotMatch(review, /pull-requests: write/, 'it needs no write token, so a fork pull request runs it too');
+  });
+
+  it('stops every job after at most 20 minutes, so a hung test fails instead of holding the required check', () => {
+    for (const [id, job] of jobs) {
+      const minutes = /^ {4}timeout-minutes: (\d+)$/m.exec(job)?.[1];
+      assert.ok(minutes !== undefined, `job ${id} sets no timeout-minutes, so GitHub's 6-hour default holds it`);
+      assert.ok(Number(minutes) <= 20, `job ${id} waits ${minutes} minutes`);
+    }
+  });
 });

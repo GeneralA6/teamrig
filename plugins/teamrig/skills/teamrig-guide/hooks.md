@@ -1,7 +1,7 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers twenty-seven Claude Code hooks, one row each below however many events a hook runs on, and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work), [the update notice](#the-mod-the-update-notice)). Each runs
-`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` and `hook tool-end` 5); the `PreToolUse` guards that can refuse a call run `node <plugin>/dist/cli/guard-main.js hook <name>`, which blocks the call when the guard [cannot answer](#a-guard-that-cannot-answer). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
+The plugin's `hooks/hooks.json` registers twenty-eight Claude Code hooks, one row each below however many events a hook runs on, and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work), [the update notice](#the-mod-the-update-notice)). Each runs
+`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tool-end` 5); the `PreToolUse` guards that can refuse a call run `node <plugin>/dist/cli/guard-main.js hook <name>`, which blocks the call when the guard [cannot answer](#a-guard-that-cannot-answer). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent, but `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)) and `hook missing-cli` still answers a shell that [no longer finds the bare command](#after-a-shell-call-the-cli-by-its-path).
 
 | Claude Code event | teamrig hook | What it does |
@@ -13,12 +13,13 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, an `npx --no <bin>` that hands the bin's flag to npm, and an install that would rewrite a `node_modules` linked to another checkout's ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read`, `Grep`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment, a Kubernetes secret's data or a dump command's output into the conversation, or whose command line or written text holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook db-write-guard` | Asks before a line that writes to a database by hand (a built-in SQL client, a database program or Node client module the team names, a data script the team names run with its apply flag), so the owner sees counts or a preview first; refuses it instead under `dbWriteGuard.writes: deny` or with asks off ([the db-write guard](#before-a-shell-command-the-db-write-guard)) |
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
-| `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, and to a sub-team's lead, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
+| `PreToolUse` on `AskUserQuestion` and `Bash` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, and to a sub-team's lead, with the reason to decide it if it is the session's own, else record it on its task and go on, and a session's Bash `cd` compound Claude Code would hold on a permission prompt, quoting its form to rerun ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that runs a sanctioned route or provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
@@ -32,7 +33,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's meeting is open, shows its cards in a pane beside the root team lead's chat, in sections (on the table, up next, decided), each with a one-line summary and a decided one with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
 | The mod, a minute after a tab starts and every 10 minutes, and when an install changes `installed_plugins.json` | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
-| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), once to [a hand step typed into its reply](#end-of-a-turn-a-hand-step-typed-into-the-reply), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `issue sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SubagentStop` (a helper about to hand back) | `hook subagent-stop` | Sends the helper back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit) |
 | `SessionEnd` (a tab closes) | `hook effort-writeback` | Writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) with no turn after it to the session's `launch` entry |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
@@ -95,7 +96,11 @@ The injected context holds:
    fresh start (the automatic restart, a `/clear` or a new start) after the handover was written. A compact or resume keeps the old context, so the
    note waits. It then lists what the old session leaves: its scheduled jobs (`CronCreate`; after a `/clear`
    they are still scheduled and the note says so, after a new process it lists them to make again), a pending
-   wake-up to make again (`ScheduleWakeup`), its scratchpad and its plan file. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
+   wake-up to make again (`ScheduleWakeup`), its scratchpad and its plan file, and, when the owner typed in it, a pointer to
+   `<handover dir>/<id>.owner.md`: the owner's own prompts from the old transcript, oldest first (the newest 40 prompts
+   within 16,000 characters), those typed after the handover was last written marked, so a decision the handover
+   missed is not lost. Scheduled checks, notifications, slash commands, teamrig's own prompts and any prompt repeated
+   three times or more are left out; a file from an earlier refresh is removed when there is nothing to carry. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
    handover and carry on, so it does not sit idle until someone types.
 7. **Live tasks**: at that fresh start after a refresh, and at every start after a compaction (Claude Code's
    `/compact` or its automatic one), what `teamrig start` prints first, then the session's active tasks as the
@@ -119,13 +124,14 @@ The injected context holds:
    The `START` line, a `MEETINGS` line on a day with a meeting and the week line are what `teamrig start` prints
    first, so the note is the session's work-block start: it runs `teamrig start` at its next work block, which adds
    only the check flags and the rest of the list, and `teamrig budget --misses` counts the note as that block's
-   start. A note that could not read the register, or has no room for the task block, has no `START` line.
+   start. A note that could not read the register has no `START` line; one with little room keeps it and drops task
+   rows instead (see the cap below).
    Work in hand comes first (in progress, verifying, waiting), then the tasks not started, each in plan order
    (band, a task that can move, score, then effective due date); at most 6 rows, the rest one `+N more` line. A row names the due date (the
    earlier one of a task that needs it, as `due 10-17 (from T21)`), the plan dependencies not finished yet
    (`after`) and, for a waiting task, its wait reasons with the ready ones marked. Then `WAITING ON YOU` lists the
    active tasks of other sessions that need one of the session's unfinished tasks or wait on its decision or
-   approval: at most 3 rows, the rest one `+N more` line naming `teamrig start --session <id> --all`; with none,
+   approval it has not answered yet: at most 3 rows, the rest one `+N more` line naming `teamrig start --session <id> --all`; with none,
    no block. A session with no active task gets one line, `... none active; ...`, then that block. A register it
    cannot read gives a line naming `teamrig list --session <id>` instead. A resume and any other start keep or begin their context, so they get no
    block; `teamrig start` lists the tasks there.
@@ -145,11 +151,22 @@ The injected context holds:
 Claude Code shows a session a start context of at most 10,000 characters whole; a longer one it saves to a file and
 shows only its first 2 KB, so the team rules and the lines after them never reach the session. teamrig keeps the whole
 start within that cap. The team rules files take their room first, then the live tasks, then the verify queue, each
-whole while it fits in the room left. One that does not fit leaves that room to the next and comes as one line naming
-the command that prints it:
+whole while it fits in the room left. The live tasks that do not fit give up one task row at a time, the `+N more`
+line taking in each row left out, and at the least keep the `START`, `MEETINGS` and week lines with no row at all, so
+the note stays the work block's start however long the rules are:
 
 ```text
-LIVE TASKS of web: this start has no room for them; run `teamrig start --session web` first, and where your handover or a compaction summary says otherwise, the register wins.
+START web, Tue 10-17 09:12 IST: this note is your work block's start, so run no `teamrig start` now; ...
+Week: 61.0% used at 09:05 IST (status line); ...
+LIVE TASKS of web, read from the register at this start (8 active; where your handover or a compaction summary says otherwise, the register wins):
+  +8 more: `teamrig list --session web`
+WAITING ON YOU 1 task(s) of other sessions:
+  +1 more: `teamrig start --session web --all`
+```
+
+A verify queue that does not fit leaves its room to the next and comes as one line naming the command that prints it:
+
+```text
 VERIFY: this start has no room for your verifying and watched tasks; `teamrig verify --session web` lists them.
 ```
 
@@ -304,7 +321,9 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,
-wrappers and git aliases, but it does not see a push inside a program the command runs (a script of the interpreters above is judged by its text), `gh pr merge`,
+wrappers and git aliases (an `env -S` string and an alias value split by env's and git's own rules, a CR a plain
+space in both), but it does not see a push inside a program the command runs (a script of the interpreters above
+is judged by its text), `gh pr merge`,
 git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
 branch on your git host too.
 
@@ -399,7 +418,8 @@ with overrides.
 A permission prompt holds the session until a human answers it, for hours when nobody is there. With
 `prompts.hookAsks` set to `refuse` in the team config, every question a teamrig hook would raise is a refusal
 instead: the push guard's (a push to a protected branch, a `--force-with-lease` push, a line it cannot read), the
-commit guard's, the package guard's and the secret guard's under their `ask` choice, and the helper gate's. The hook's own reason
+commit guard's, the package guard's and the secret guard's under their `ask` choice, the db-write guard's, and the
+helper gate's. The hook's own reason
 comes first, then:
 "Asks are off [prompts.hookAsks], so teamrig refuses this instead of asking; do not retry it or route around it.
 Record the step as waiting for the owner (`teamrig set <task> --status waiting --waits approval:owner --note "<the
@@ -419,7 +439,8 @@ allow, in a mode that asks, or a check of its own that always asks): `hook promp
   `upstream` or `tracking` (which sends it to its upstream, `origin/main` for a branch cut from it), keeps the
   prompt. One plain
   command: no `;`, `&`, `|`, `<`, `>` but a lone `2>&1`, no substitution, variable, `$'`, `$"` or `#`, inside quotes
-  too, so a commit message holding one of them gets the cases below.
+  too, so a commit message holding one of them gets the cases below. On Windows the line must be that same route
+  both as written and with its backslash runs halved, as Claude Code's Bash tool hands it to bash (since 0.370.0).
 - **A line that provably only reads runs**, by the [read-only allow](#before-a-shell-command-the-read-only-allow)'s
   check and its trusted prefixes, even with `readonlyShell.enabled` off; one that would print a secret does not. This
   allow also answers a prompt a settings `ask` rule raised, which a `PreToolUse` allow never overrides: keep a line
@@ -444,8 +465,8 @@ person decide those.
 Auto mode can refuse a call before any prompt, and a refusal it makes is a dead end no `PermissionRequest` answer
 reaches. So with asks off, `hook route-allow` (since 0.268.0) lets five of those routes run before any permission
 check, at `PreToolUse`: `teamrig merge`, `teamrig deploy`, `teamrig exec request`, `teamrig worktree remove` and the
-`git commit`, as plain as above. It answers only once the push, package, secret, exec and pass-record guards all passed
-the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
+`git commit`, as plain as above. It answers only once the push, package, secret, db-write, exec and pass-record guards
+all passed the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
 route, never the command (a commit message is free text). `prompts.routeAllow: off` takes this allow away without a
 release; no config adds a route. With asks on it never answers.
 
@@ -461,9 +482,13 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   (`python -c "print(open('.env').read())"`; a wildcard in its strings counts only where the code can expand it, by
   a glob call or by starting a program, so `'*'` as a fallback or `'.*'` in a regex passes), the Read tool on one, or
   a Grep that shows content (`output_mode: content`) of one by its path or glob (each glob of the input apart, as
-  ripgrep gets them; a `!glob` skips files, so it names none).
+  ripgrep gets them, and each of its `{a,b}` alternatives, so `*.{ts,pem}` names `*.pem`; ripgrep reads away a `\`
+  and a `}` no `{` opened, so `*.\pem` and `*.pem}` name it too; a `[...]` set in a group is read as ripgrep reads
+  it, a `/` and a `{` in it members, so `{[{/],*.pem}` names `*.pem`; a glob over 1,024 characters or with over 64
+  alternatives counts as naming one; a `!glob` skips files, so it names none).
   The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
   `~/.aws/credentials`, `**/.kube/config`, `~/.docker/config.json`, `**/.git-credentials`, `~/.config/gh/hosts.yml`,
+  `~/AppData/Roaming/GitHub CLI/hosts.yml` (gh's hosts file on Windows),
   `~/.claude/.credentials.json`, `~/.claude/history.jsonl` (the prompt history), `**/.claude/settings.local.json`
   (its allow rules can hold a credential), `~/.bash_history`, `~/.zsh_history`, `**/PSReadLine/*_history.txt`, the
   key stores `**/*.pem`, `**/*.key`, `**/*.p12`, `**/*.pfx`, `**/*.jks` and `**/*.keystore`, the private keys
@@ -486,6 +511,21 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   `kubectl edit secret`, `kubectl view-secret`, and `kubectl create secret ... -o yaml`.
 - **a dump command's output**: a command that prints credentials whatever it names: `kubectl config view --raw`
   (a plain `view` redacts them), and the team's own `secretGuard.commands`.
+
+It refuses a Bash or PowerShell line that reads a saved credential out of the host's store too, printed or not, since
+a session that only captures a key (`T=$(gh auth token)`) holds it all the same: `git credential fill`,
+`git credential-<helper> get`, `gh auth token`, `gh auth status --show-token`, `security find-generic-password` (and
+`find-internet-password`, `dump-keychain`), `secret-tool lookup` or `search`, `cmdkey /list`, `vaultcmd /listcreds`,
+`keyring get` and `Get-Secret`; and a line that anywhere names a store API (`CredRead`, `CredEnumerate`,
+`PasswordVault`, `Get-StoredCredential`, `keyring.get_password`, `keytar`) or a credential teamrig saves its GitHub
+tokens under (`teamrig-gh-<owner>`, `teamrig-ship-gh`). Without this any session could read every key its user saved,
+so a key kept for one tool drew no line between sessions; teamrig's own commands still read theirs, in their own
+process. A line that only mentions one of these words is refused as well (`grep -rn teamrig-gh- src`): search with the
+Grep tool instead, which runs no shell. `secretGuard.secretReads` settles it; no `!pattern` lets one through. The
+reason: "teamrig secret guard: this call reads a saved credential out of the host's credential store (gh auth token),
+printed or not. A session never reads the store: each tool's key stays with the tool that reads it (teamrig's own
+commands read theirs themselves). To check a saved key, ask the owner to look in their own terminal.
+[secretGuard.secretReads]"
 
 It also refuses a Bash or PowerShell line that holds a secret as text, a quiet one too, since the line itself stays in
 the transcript: a token by its shape (GitHub, Anthropic, `sk-`, AWS, Slack, Google, Stripe live, a JSON web token, a
@@ -532,7 +572,7 @@ reads only the call, so it cannot see the cases below; what such a call prints g
 - a value kept in a variable and printed later (`t=$(cat .env); echo "$t"`), or a path built when the line runs
   (`cat $(ls .env*)`, `Get-Content (Join-Path ~ .npmrc)`);
 - a secret file inside a folder a search walks (`grep -r x .`, a Grep over a folder with no glob or only
-  `!globs`), or one a Grep glob picks through `{a,b}` alternatives (`*.{ts,pem}`);
+  `!globs`);
 - a script or program the line starts (`node print-env.js`), `docker inspect`, or `docker run -e`;
 - a secret written with no shape or frame it knows (`mysql -p<the password>`, `--password <the value>`).
 
@@ -547,7 +587,8 @@ secret-like name, a match of `register.secretPatterns`, and the value of a secre
 `.env` file or `docker inspect` prints it: `NAME=value`, an upper-case name the guard's names judge secret, with no
 space around `=`. A value found once goes from every part of the result, `stdout` and `stderr` alike. A value that
 only names or points to a secret stays: a placeholder or a reference, a number (`TOKEN_LIMIT=200000`), a path
-(`KEY_FILE=~/.ssh/id`) or one lower-case word (`AUTH_MODE=oauth`); source code (`token = x`, `token: string`) is no
+(`KEY_FILE=~/.ssh/id`), one lower-case word (`AUTH_MODE=oauth`) or a function's name right before `(`
+(`TOKEN=makeToken(`, a call no dump prints; a token-shaped value before `(` is still a hit); source code (`token = x`, `token: string`) is no
 such assignment. A URL value (`DB_URL=scheme://...`) is judged by the parts that carry a secret: a login or password,
 a parameter with a secret name (`?access_token=`) or a token-shaped path segment (a webhook's) takes the whole URL,
 and one with none of them (a connection string naming only a certificate file) stays. The model then gets one line
@@ -582,6 +623,86 @@ shows results whole, the owner's call. It does not cover:
 - any other tool's result (WebFetch, WebSearch, an MCP tool), a Read of an image or a notebook, and a result Claude
   Code hands as plain text instead of an object: not yet probed, so they pass as they are;
 - a secret with no shape or frame it knows, as for the guard.
+
+## Before a shell command: the db-write guard
+
+A write to a database run by hand cannot be taken back the way a code change can, so it should follow counts or a
+preview the owner has seen. Before Claude runs a Bash or PowerShell call, `hook db-write-guard` reads the line (as the
+push guard does: chains, subshells, nested shells, `cd`, pipes and substitutions; on Windows a Bash line also as bash
+receives it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and asks the human about one that
+writes:
+
+- **SQL through a built-in client**: `psql` (`-c`, a `-f` file, stdin), `mysql` and `mariadb` (`-e`, stdin) and
+  `sqlite3` (the SQL after its database file, `-cmd`, stdin), with a statement that changes data or its schema:
+  `INSERT`, `UPDATE`, `DELETE`, `DROP`, `TRUNCATE`, `ALTER`, `CREATE`, `GRANT`, `REVOKE`, `REPLACE INTO`, `MERGE INTO`;
+- **a database program the team names**: `dbWriteGuard.programs` lists each by its `name` and the shape it `reads`
+  its code in:
+  - `document-shell`: `--eval` code, `-f` files and a script file named as a word (`fix.js`), calling a method that
+    changes stored data (`insertOne`, `updateMany`, `deleteMany`, `drop`, `bulkWrite`, `createIndex`,
+    `runCommand`...) or an aggregation with `$out` or `$merge`;
+  - `key-value-cli`: a write command (`SET`, `DEL`, `FLUSHALL`, `XTRIM`...), commands piped in one a line, or a Lua
+    script (`EVAL '<script>'`, `--eval trim.lua`) whose `<host>.call('DEL', ...)` writes;
+  - `sql-command`, `sql-execute` and `sql-database-file`: read as `psql`, `mysql` and `sqlite3` are.
+
+  A team's entry is read before the built-in clients, so it can read a built-in name its own way, and never takes
+  one away;
+- **Node code that writes through a client module the team names**: `node`, `tsx` or `ts-node` (through `npx` or
+  `pnpx` too) running `-e` or `-p` code, a script file or code on stdin, read only when it loads a module
+  `dbWriteGuard.nodeClients` names (`require('docstore')`, or a path under it: `from 'docstore/admin'`). Each module
+  has a `vocabulary`: `document` (`insertOne`, `updateMany`, `deleteMany`, `drop`, `bulkWrite`, a model's
+  `create`...) or `key-value` (`set`, `del`, `hset`, `expire`, `flushAll`..., in any case). A key-value name that
+  other objects share (`set`, `rename`, `copy`, `append`, `eval`, `move`, `restore`, `unlink`) counts only on a
+  receiver named like a client: `client` is built in, and `dbWriteGuard.clientReceivers` adds the team's words, so
+  with `cache` there `cache.set(` writes while `map.set(` stays a read. A script that loads none of those modules is
+  never read as one, and `--test`, `--check`, `--version` or `--help` run no script;
+- **a team data script run with an apply flag**: a script `dbWriteGuard.entrypoints` names, matched against the end
+  of the path the line runs, is a dry run without one of its `applyFlags` and passes; with one (`--apply`,
+  `--apply=yes`) it is asked about, whatever the script holds.
+
+```json
+{
+  "dbWriteGuard": {
+    "programs": [{ "name": "docsh", "reads": "document-shell" }, { "name": "kvcli", "reads": "key-value-cli" }],
+    "nodeClients": [
+      { "module": "docstore", "vocabulary": "document" },
+      { "module": "kvstore", "vocabulary": "key-value" }
+    ],
+    "clientReceivers": ["cache"],
+    "entrypoints": [{ "path": "scripts/backfill.ts", "applyFlags": ["--apply"] }]
+  }
+}
+```
+
+The guard reads the code a line hands over: its arguments, the files they name (from the folder the call runs in), a
+here-document, a file redirected in, what `echo`, `printf`, `Write-Output` (`write`) or a `cat` or `Get-Content` of a
+file pipes to it, and the string or here-string a PowerShell statement opens with (`'DEL k' | kvcli`). The line a
+container or a host runs (`kubectl exec ... --`, `docker exec`, `podman exec`, `ssh host '...'`) is read as a line of
+its own, with what the host pipes or redirects into it, and the reason says it runs there. The reason names each
+write and the step to show first:
+
+```text
+teamrig db-write guard: this line writes to a database by hand: docsh runs deleteMany. First run a count or find of what it would change, show the owner the counts or a preview, and run the write only with the owner's OK. [dbWriteGuard.writes]
+```
+
+For a data script it says "First run it without its apply flag (its dry run)". `dbWriteGuard.writes` sets what such
+a call gets: `ask` the human (the default), `deny`, or `allow`. A missing or broken config keeps `ask`, and outside a
+team's projects the guard does nothing; under `prompts.hookAsks: refuse` the question is a refusal with the note
+[asks off](#asks-off-a-refusal-instead-of-a-prompt) adds. The read-only allow cannot let such a line skip the
+question: Claude Code ranks the guard's `ask` over its `allow`. The guard reads only the line and the files it names,
+so it cannot see, and lets through:
+
+- code built or chosen when the line runs (`docsh --eval "$CODE"`, `node $(ls scripts/*.js)`), a variable or a .NET
+  call piped in (`$code | kvcli`, `[IO.File]::ReadAllText('fix.js') | docsh`), a file it cannot
+  read, what follows a file's first MiB, a file on a network share (`//host/share/fix.sql`) or anything that is no
+  regular file (a pipe, a device), and a file on the far side of a container or host (`ssh host 'psql -f fix.sql'`);
+- a script that writes through a client it gets from another module of its own (`import { db } from './db.ts'`): a
+  team names such a script as an entrypoint;
+- a database tool that is no built-in client and not in `programs` (an import or restore tool, a migration command),
+  Node code through a client module not in `nodeClients`, and code another runtime runs (`bun`, `deno`);
+- any script whose path ends as an entrypoint's `path` does, wherever it sits on disk: its apply flags alone decide;
+- the line `npx -c '<line>'` or `--call` hands npm, which runs it in its script shell (cmd on Windows), the SQL file
+  `sqlite3` reads through `-init <file>` or a `.read <file>` command, and what a line pipes into a group or subshell
+  past its first command (`echo 'db.a.drop()' | (cd db && docsh)` hands docsh nothing the guard reads).
 
 ## Before a shell command: the exec guard
 
@@ -696,15 +817,16 @@ and lets it run without a prompt when every command in it, substitutions and loo
 It only ever allows: a line it cannot prove reads prints nothing, and Claude Code's own permission check decides,
 as without the hook; so it does outside a team, with a missing or broken config, or on any error. Claude Code ranks
 one hook's `deny` over another's `ask` over an `allow`, and its settings' deny and ask rules still apply under an
-allow, so the push guard's question and the package, secret and pass-record guards' refusals always win. It never allows a line
+allow, so the push and db-write guards' questions and the package, secret and pass-record guards' refusals always
+win. It never allows a line
 that prints or holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
 `secretGuard.secretReads` or `secretGuard.writes` is `allow`. The hook reads the session's team
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. On Windows, Claude Code's
 Bash tool halves each run of backslashes not followed by a double quote, rounded up, before bash reads the line, so
 a Bash line must only read both as written and halved: `ls a\\\; rm -f x` reads as one `ls`, but bash gets
-`ls a\\; rm -f x` and runs the `rm`, so that line gets the prompt. The push, package, secret and exec guards weigh
-both readings the same way and answer for the stricter one, so `echo a\\\; git push origin HEAD:main` is asked about
-like the push bash runs. Like the guards, it reads only the line, so it cannot see:
+`ls a\\; rm -f x` and runs the `rm`, so that line gets the prompt. The push, package, secret, exec and db-write
+guards weigh both readings the same way and answer for the stricter one, so `echo a\\\; git push origin HEAD:main`
+is asked about like the push bash runs. Like the guards, it reads only the line, so it cannot see:
 
 - git obeying the repository's own config, which can name a program to run (`core.fsmonitor`, `diff.external`): it
   trusts the repository as git does;
@@ -741,6 +863,13 @@ keeps the picker. With tab status on, a
 refused picker leaves the tab's circle as it was, since no question waits. The refusal is the hook's PreToolUse
 `deny`, not a permission rule; outside a team, with the guard off or on any error the hook prints nothing, so the
 picker opens.
+
+The same switch covers a Bash line that leads with `cd D &&` (since 0.375.0). Claude Code asks a person before such a
+line when git runs after the move or `D` lies outside the session's folder, in auto mode too, and that prompt holds the
+session until someone answers. In a team session the hook refuses the line before the prompt opens, and its reason
+quotes the line's rerun form, which runs the same commands in the same folder with no `cd` (`git -C D ...`,
+`env -C D ...`). A line that stays in the folder and runs no git, or has no rerun form, is left to Claude Code; a
+PowerShell line too.
 
 ## After a tool call: the loop nudge
 
@@ -824,6 +953,24 @@ stop. A shell edit (`sed`) is not read. Outside a team it says nothing. `check` 
 collisions common: a `Last verified:` line with a note after its date (`VERIFIED-NOTE`), which every run rewrote at
 its end; with the date alone, two runs agree, and a lesson goes on its own line.
 
+## End of a turn: a hand step typed into the reply
+
+Core rule 11 hands the human a step to run by hand only as a file the security reviewer audited, run by one line
+with its sha256 ([the hand-step skill](../hand-step/SKILL.md)). A decision card is refused at `set` when it types the
+step; a reply is read here. At the end of a turn of a team session, when the turn's reply holds a fenced shell block
+(`bash`, `sh`, `powershell`, `cmd` and the like), a fenced JSON block, or a PowerShell call line (`& '<path>'`, in a
+fence with no language or in the text), and nowhere a sha256 (a whole one, or `sha256` and 8 or more hex just after,
+as the card's run line `(sha256 7a0d9294, audited by security)` shows it), `hook stop` sends the session back once:
+
+```text
+teamrig: your reply handed the human a shell block with no pinned sha256. Core rule 11: a step the human runs by hand that changes anything or touches a secret reaches them only as a file the security reviewer audited, run by one line with its sha256 (skill hand-step). If it is such a step, tell the human now not to run it from chat, and hand it as an audited file. If it only reads (changes nothing, touches no secret), say so in one line; write read-only on the line before such a block next time.
+```
+
+A block or call line whose line before, or own line, says `read-only` is let by. A backticked short hex alone pins
+nothing: a commit id would match it. It asks once per stop (never on a stop a hook already sent back), after a
+dropped skill edit and before the rest of the turn's end. Outside a team, and in a tab that is no session of it, it
+says nothing.
+
 ## End of a turn: keep working while a task waits
 
 A task that waits on a decision, an approval, a peer's task or a time should not idle its session while other work
@@ -838,7 +985,11 @@ T1 waits (decision owner), and you own work that does not come after it: T2 "Fix
 A task it can start is its own task it can go on with, other than the waiting one, most urgent first: open or
 in-progress, or waiting or verifying with every wait cleared, and, when never started, past every `after` task. A
 task not started that comes after the waiting one, directly or through another unfinished task, stays untouched,
-and so do its closed tasks and those still waiting or verifying on a reason not cleared. It asks at one stop only, never on a stop already sent back or while a context
+and so do its closed tasks, those still waiting or verifying on a reason not cleared, and an unstarted one the
+[WIP rule](commands.md#teamrig-set) would hold at its start (Improvements behind Roadmap work that can move, or a class past its
+share of the week [focus.allocation]), so the push never sends a session past the team's ranking. The lead, while
+`leadBoundary` is on, is asked to hand code work to the session owning its area (`teamrig update <id> --owner
+<session>`) and work the rest. It asks at one stop only, never on a stop already sent back or while a context
 refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or while its
 budget holds it or a short day pauses it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
 it would, and a turn that asks the user to decide shows [the decision circle](#every-event-tab-status). A hired
@@ -905,7 +1056,7 @@ rewrite it whole and short, since your fresh start reads all of it. A task you m
 turn's end keeps the refresh pending: the turn's end still takes the handover, after or before that `set`.
 Once it is taken, the turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
 /clear for a fresh start` and sets the tab title to `[shop] web: type /clear`: the user clears once done with the
-screen, which a `/clear` wipes. With `refresh.autoRestart: true` it says `teamrig starts it fresh once it has been
+screen, which a `/clear` wipes. With `refresh.autoRestart` on for the session (`true`, or `"lead"`, the default, for the lead) it says `teamrig starts it fresh once it has been
 idle 15 s (type anything to keep this context)` instead, the title reads `[shop] web: restarting`, and a hidden
 `teamrig restart` then waits until the tab has been idle
 `refresh.restartDelaySeconds` (15) with nothing running and its last turn ended, and the plugin's mod runs `/clear` in
@@ -1052,7 +1203,9 @@ The day start: work already on an idle session's list wakes nothing, so a sessio
 With `wake.dayStartUtc` set (`HH:MM` UTC, outside the budget's quiet hours; unset by default), each session with
 work it can start, of any priority, and no turn since that time gets one wake that day, and a burst wakes each of
 its sessions once when the lead starts it. A session that had a turn since is left alone; quiet hours, a hold by
-its budget or nothing it can start delay the wake until they end. The prompt names the moment, the work and the
+its budget or nothing it can start delay the wake until they end. The root team's lead can move or skip a day's
+start per team or session with [teamrig schedule set](commands.md#teamrig-schedule-set); a team or session the
+schedule names takes its start over `wake.dayStartUtc`. The prompt names the moment, the work and the
 cost; the wake log marks it with `moments`.
 
 The day start and the Claude login, which every tab of the machine shares (the
@@ -1197,6 +1350,11 @@ by itself at `meeting end`, when another meeting starts, or when the meeting lap
 `NOT SPOTLIT` line when PowerShell is missing or will not start. Off Windows, or when `open.terminal` rules out
 Windows Terminal, it prints nothing, as the spotlight cannot run there. Nothing is typed into a
 terminal; the tab's title and the meeting file's path reach the script as variables.
+
+A scheduled meeting dims the same way: `meeting start M3` leaves lit only the window holding the session met's tab
+and records the meeting in `<team>/state/meeting-spotlit.json`. It lifts at `meeting end M3` or its drop, when
+another scheduled meeting starts, or 15 minutes past its booked length. Ending or dropping a meeting the file no longer names
+lifts nothing.
 
 A message that breaks through the meeting hold (one starting CRITICAL, sent to the lead by another session) also
 lifts the dimming, so the owner sees it at once. The cold-send hook records the last such break-through in
@@ -1372,14 +1530,21 @@ While escalated, the model is told with the next prompt, once per level: `teamri
 budget and the team has no room left today, and it is ahead of its pace line. Finish the step in hand and start
 no new work items or helpers.
 Never skip a test or check to save budget. The lead can lift it.` A sub-lead's session reads `Your leader <name> can
-lift it.` instead, and the lead `As the lead, lift it only with a stop %.` A session with an open or in-progress p0 task
+lift it.` instead, and the lead `As the lead, lift it only with a stop %.` Under `budget.overAction` `warn` the line
+only reports the overrun and says no stop, a cut session's too: `... The budget only warns (budget.overAction warn),
+so nothing is held: go on with your task list.` A session with an open or in-progress p0 task
 reads `start no new work items or helpers, except your p0 work (T5): it goes on past the daily stop.`, and its
-leader's line says it goes on with that work past the stop.
+leader's line says it goes on with that work past the stop. An answer another session waits on is a blocker, so it
+goes on the same way: the session's own open or in-progress task that another owner's waiting task names
+(`task:<id>`), and another owner's waiting task that waits on its approval or decision (`approval:<id>`,
+`decision:<id>`). It reads `except the answers other sessions wait on you for (T9): they go on past the daily stop.`
+(both kinds together: `except your p0 work (T5) and the answers other sessions wait on you for (T9): they go on`).
+Waits are read from the session's own team register only.
 
 In quiet hours, `budget.quietHours.action` applies to helper launches as well (`ask` or `block`; `warn` only
 says the team rests), and the stronger of the two wins. Nothing else is ever held, so a fix in hand always
 finishes. The lead's own helpers, those of a session a leader lifted (`teamrig budget lift`, always with a
-stop %; a lift of its group does not count) and did not cut since, and those of a session with an open or in-progress p0 task always go
+stop %; a lift of its group does not count) and did not cut since, and those of a session with an open or in-progress p0 task or an answer another session waits on always go
 ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
 
 A burst ([teamrig burst start](commands.md#teamrig-burst-start)) comes the same way, once each. A session in it
@@ -1486,7 +1651,7 @@ decisions, ends its turn on blue; an ordinary turn end stays green.
 `hook tab-status` sets it at every event but `Stop`, whose `hook stop` sets it with its own output, so each event
 has one writer. It works in any tab of the team, a tab that is no session of it too, and prints nothing outside a
 team, with either switch off, or on any error. It reads Claude Code's switch before any file, so with it off the
-hook costs only a Node start per event; its timeout is 5 seconds. A background command or a monitor still running
+hook costs only a Node start per event; its timeout is 15 seconds. A background command or a monitor still running
 leaves the tab green: only a helper keeps it yellow.
 
 ## Every turn: the turn log
@@ -1514,14 +1679,16 @@ turn as it was.
 
 Claude Code lets a tool call through when a `PreToolUse` command hook ends with any exit code but 0 or 2, or
 outlives its timeout, so a guard that breaks would stop guarding with no sign. The guards that can refuse a call
-(`push-guard`, `package-guard`, `secret-guard`, `exec-guard`, `pass-record-guard`, `cold-send`, `helper-gate` and
-`picker-guard`) therefore run through `dist/cli/guard-main.js`, a runner that loads the CLI itself and blocks the
-call (exit 2) when the guard:
+(`push-guard`, `package-guard`, `secret-guard`, `db-write-guard`, `exec-guard`, `pass-record-guard`, `cold-send`,
+`helper-gate` and
+`picker-guard`) therefore run through `dist/cli/guard-main.js`, a runner that loads the CLI itself on a worker
+thread and blocks the call (exit 2) when the guard:
 
 - cannot load, from a missing or broken file of the install;
-- throws, or leaves an error unhandled;
+- throws, leaves an error unhandled, or its thread ends;
 - gives no answer within 12 seconds, under the hooks' 15 second timeout, so the runner answers before Claude Code
-  lets the call through;
+  lets the call through. This holds for a guard stuck in work that never waits, such as an endless loop: the guard
+  runs on its own thread, so the runner's clock keeps running;
 - ends with an exit code but 0 or 2, or prints something other than its one JSON answer.
 
 The model then reads `teamrig blocked this call: its <hook> guard <what went wrong>, and a guard that cannot answer
@@ -1531,8 +1698,8 @@ call those guards see (shell lines, reads, searches, edits, sends, helper launch
 `hook tab-status` run through the plain CLI: when an allow fails, the call gets Claude Code's own check, and tab
 status never answers for a call.
 
-The runner cannot catch a guard stuck in an endless loop that never waits (Claude Code's timeout then lets the call
-through), the process running out of memory, a broken `guard-main.js` or runner file, and a missing Node.js.
+The runner cannot catch the process running out of memory, a broken `guard-main.js` or runner file, and a missing
+Node.js.
 
 ## Permissions
 
@@ -1563,6 +1730,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   unless `secretGuard.secretReads` (a print) or `secretGuard.writes` (text) is `ask` or `allow`.
 - **The secret redactor** replaces a secret in a call's result on its own, whatever the mode, unless
   `secretGuard.redact` is `false`.
+- **The db-write guard** asks before a line that writes to a database by hand on its own, whatever the mode, unless
+  `dbWriteGuard.writes` is `allow`; under `deny` or `prompts.hookAsks: refuse` it refuses the line.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, any
   `exec` call through a client that is no install of the plugin or was changed, every `owner` command, and a shell fed its commands from a pipe, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,

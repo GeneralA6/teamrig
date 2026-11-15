@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { APP, CliHarness } from '../testing/cli-harness.ts';
+import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { EXIT } from './runtime.ts';
 
@@ -49,6 +49,16 @@ describe('runCli: start prints the start of a work block in one call', () => {
     assert.equal(full.code, EXIT.ok, full.stdout.join('\n'));
     assert.ok(!full.stdout.some((line) => line.includes('--all for every')), full.stdout.join('\n'));
     assert.ok(full.stdout.some((line) => /\bT1\b/.test(line)) && !full.stdout.some((line) => /\bT2\b/.test(line)), full.stdout.join('\n'));
+  });
+
+  it("ends the lead's start with the account's resets in stock, and no other session's (T2450)", async () => {
+    const resets = [{ kind: 'fable', count: 3, expiresUtc: '2030-03-01 08:00', usedUtc: ['2030-01-02 09:00'] }];
+    const kit = new CliHarness({ ...TEAM, budget: { resets } });
+    const lead = await kit.run(['start', '--session', 'lead']);
+    assert.equal(lead.code, EXIT.ok, lead.stdout.join('\n'));
+    assert.match(lead.stdout.at(-2) ?? '', /^Week: /);
+    assert.equal(lead.stdout.at(-1), 'Resets in stock: fable 2 left, the next expiring 2030-03-01 08:00 UTC (in 51 days).');
+    assert.match((await kit.run(['start', '--session', 'alpha'])).stdout.at(-1) ?? '', /^Week: /);
   });
 
   it("gives the lead every task's flags", async () => {

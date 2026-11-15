@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_FOCUS } from '../config/defaults.ts';
 import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
-import type { RankedGoal } from '../register/focus.ts';
+import type { SlicedGoal } from '../register/focus.ts';
 import { ownSizing, treeRanking } from '../register/ranking.ts';
 import { TaskTree } from '../register/tree.ts';
 import { testTask } from '../testing/task.ts';
@@ -13,13 +13,13 @@ const NOW = new Date('2030-01-08T10:00:00Z');
 
 const DECISION_WAIT = { status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] } as const;
 
-function treeOf(tasks: readonly Task[], goals: ReadonlyMap<string, RankedGoal> = new Map()): TaskTree {
+function treeOf(tasks: readonly Task[], goals: ReadonlyMap<string, SlicedGoal> = new Map()): TaskTree {
   const ranking = treeRanking({ focus: DEFAULT_FOCUS, ownerSource: 'owner', goals, sizing: ownSizing });
   return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC, null, undefined, ranking);
 }
 
 /** A register's read whose decisions are `decisions`, among `others`. */
-function readOf(decisions: readonly Task[], others: readonly Task[] = [], team?: string, goals?: ReadonlyMap<string, RankedGoal>): DecisionRead {
+function readOf(decisions: readonly Task[], others: readonly Task[] = [], team?: string, goals?: ReadonlyMap<string, SlicedGoal>): DecisionRead {
   return { tasks: decisions, tree: treeOf([...decisions, ...others], goals), team, focus: DEFAULT_FOCUS };
 }
 
@@ -66,7 +66,7 @@ describe('decisionOrder (T2092)', () => {
   });
 
   it('ranks by the best score over the tasks a decision unblocks, through a chain of needs', () => {
-    const goals = new Map<string, RankedGoal>([['A1', { parent: null, rank: 1 }]]);
+    const goals = new Map<string, SlicedGoal>([['A1', { parent: null, rank: 1, slice: null }]]);
     const plain = testTask({ id: 'T1', ...DECISION_WAIT, workClass: 'Roadmap' });
     const freeing = testTask({ id: 'T2', ...DECISION_WAIT, workClass: 'Roadmap' });
     const middle = testTask({ id: 'T3', workClass: 'Roadmap', after: ['T2'] });

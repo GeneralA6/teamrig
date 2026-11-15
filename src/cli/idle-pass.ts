@@ -10,6 +10,7 @@ import { closedOf, SessionLog, type SessionLogRecord } from '../sessions/log.ts'
 import { urgentLinesText } from '../wake/asks.ts';
 import { byUrgency, COLD_WAKE_W, effectivePriority, HELD_PRIORITY, wakeRestOf, type WakeRest } from '../wake/decide.ts';
 import { budgetFactsOf } from './commands/hook-budget.ts';
+import { dayStartFor } from './day-schedule.ts';
 import { headroomOf } from './headroom.ts';
 import { closableText, idleFactsOf, idleVerdictOf, type Closable, type IdleFacts, type IdleVerdict } from './idle-check.ts';
 import type { Kit } from './kit.ts';
@@ -134,7 +135,7 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
     return { kind: 'away', id };
   }
   const asks = facts.asks.get(id) ?? [];
-  const input: ReopenInput = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStartUtc: config.wake.dayStartUtc, now, zone };
+  const input: ReopenInput = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStart: (await dayStartFor(runtime, { kit, config }, id, now)).at, now, zone };
   const asAwake = reopenVerdict(input);
   if (asAwake.kind === 'asked') {
     return wishOf(folderOf, id, asAwake, undefined);

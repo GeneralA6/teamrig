@@ -34,7 +34,7 @@ import { renderPlan } from '../../register/plan.ts';
 import { noProgressFlag } from '../../register/progress.ts';
 import { overSizeFlags } from '../../register/over-size.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
-import type { Register, RotationOutcome, WriteResult } from '../../register/register.ts';
+import type { GoalTagsReader, Register, RotationOutcome, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
@@ -44,15 +44,18 @@ import { approvalNotice, endedNotice, formatTask, formatTaskDetail, formatTaskTr
 import { isPeerWait, sameWait, waitContext, type PersonWait } from '../../register/waits.ts';
 import { wipHold } from '../../register/wip.ts';
 import { lintSkills } from '../../skills/lint.ts';
-import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
+import { skillsToLint } from '../../skills/run-scripts.ts';
+import { SKILL_FILE } from '../../skills/store.ts';
 import { weekUseOnAccount } from '../account-teams.ts';
 import { readWideAllow, teamSettingsScope } from '../allow-scope.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { handStepPin, readRunFiles } from '../hand-step-file.ts';
-import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, type TypedTimes } from '../inputs.ts';
+import { KitTreeGoals } from '../tree-goals.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, withSecurityCard, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type LeadDecisions, type TaskRow } from '../reports.ts';
 import { fiveHourWarnings } from '../five-hour-check.ts';
+import { resetExpiryWarnings } from '../reset-expiry-check.ts';
 import { idlePassWarnings } from '../idle-pass-check.ts';
 import { restoreLauncherWarnings } from '../launcher-record-check.ts';
 import { secretGuardOffWarnings } from '../secret-guard-off-check.ts';
@@ -74,7 +77,7 @@ import { markBoundary } from './refresh.ts';
 import { markKeepWorkingAsk } from './keep-working.ts';
 import { markLastTaskAsk } from './last-task-ask.ts';
 import { readSpentClasses } from '../class-share.ts';
-import { openTeam, postNamed, teamOf, tellAssigned, tellLine, type Team } from './register-team.ts';
+import { openTeam, postNamed, teamOf, tellAnswer, tellAssigned, tellLine, type Team } from './register-team.ts';
 import { askTeam, treeCallerOf } from './team-ask.ts';
 
 /** What a time the caller types is read against: this moment and the zone of the caller's own team. */
@@ -460,11 +463,11 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
   const { config, paths, register, roster } = team;
   const by = sessionIdOf(roster, caller);
-  const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, typed.status), ...oneCommitOf(args.switches), ...(await runOf(args.flags, runtime)) });
+  const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, withSecurityCard(typed.status, args.switches)), ...oneCommitOf(args.switches), ...(await runOf(args.flags, runtime)) });
   if (typed.ask !== null) {
     return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
   }
-  const { held, due, wip } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config);
+  const { held, due, wip } = await startGatesOf(register, new KitTreeGoals(runtime, paths, config), by, id, input, new Date(runtime.clock.now()), team.zone, config);
   const verdict = await register.setStatus(by, id, input);
   const warned = config.register.verifyGate === 'warn';
   // The start as written: one that named its held proof as met asks the verifying owners to confirm it.
@@ -550,7 +553,7 @@ const OPEN_START: StartGates = { held: undefined, due: undefined, wip: undefined
  * What holds the caller's start of its own task, read before the write: the policy refuses that start (or lets
  * it through in warn mode); the owners of the verifying tasks it needs hear of it either way.
  */
-async function startGatesOf(register: Register, caller: string, id: string, input: StatusInput, now: Date, zone: TimeZone, config: KitConfig): Promise<StartGates> {
+async function startGatesOf(register: Register, goalRecords: Pick<GoalTagsReader, 'sliced'>, caller: string, id: string, input: StatusInput, now: Date, zone: TimeZone, config: KitConfig): Promise<StartGates> {
   if (input.status !== 'in-progress') {
     return OPEN_START;
   }
@@ -562,7 +565,9 @@ async function startGatesOf(register: Register, caller: string, id: string, inpu
   }
   const holds = startHolds(task, input.status, tasks);
   const due = dueStartHolds(task, input.status, tasks, now, zone, config.register.maxVerifying);
-  const wip = wipHold({ ...input, task }, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
+  // The goal records count only for a task with a prep marker, so no other start reads them.
+  const goals = task.prepares === null ? undefined : await goalRecords.sliced();
+  const wip = wipHold({ ...input, task, ...(goals === undefined ? {} : { goals }) }, tasks.values(), waitContext(tasks, now, zone, elsewhere), config.focus, config.register.ownerSource);
   return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due }, wip };
 }
 
@@ -721,7 +726,7 @@ async function approveBelow(args: ParsedArgs, runtime: CliRuntime, caller: strin
   const answered = written.ok ? written.value.task : null;
   if (answered !== null && answered.answer !== null) {
     const shown = formatAddress({ team: below, id: answered.owner });
-    await tellLine(runtime, target, from, answered.owner, approvalNotice({ id: `${below}/${answered.id}` }, answered.answer), `${shown} was not told of the answer on ${below}/${answered.id}`, shown);
+    await tellAnswer(runtime, target, from, answered.owner, approvalNotice({ id: `${below}/${answered.id}` }, answered.answer), `${shown} was not told of the answer on ${below}/${answered.id}`, shown);
   }
   return code;
 }
@@ -746,7 +751,7 @@ export async function approve(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   if (written.ok) {
     const { task } = written.value;
     if (task.answer !== null && task.owner !== by) {
-      await tellLine(runtime, team, by, task.owner, approvalNotice(task, task.answer), `${task.owner} was not told of the answer on ${task.id}`);
+      await tellAnswer(runtime, team, by, task.owner, approvalNotice(task, task.answer), `${task.owner} was not told of the answer on ${task.id}`);
     }
   }
   return code;
@@ -857,8 +862,8 @@ export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 }
 
 /**
- * `show <id> [--tree]`: every field of the task, its history, its files ({@link taskFilesLine}, T1457) and the team's
- * inbox lines that name it (T1196); with `--tree`, its line, then what it needs and what needs it, each node with its
+ * `show <id> [--tree] [--history]`: every field of the task, its last 3 history events (all with `--history`, T2535),
+ * its files ({@link taskFilesLine}, T1457) and the team's inbox lines that name it (T1196); with `--tree`, its line, then what it needs and what needs it, each node with its
  * owner, status and due, then who moves next (views.ts formatTaskTree). A task another register of the team tree
  * holds shows read-only ({@link elsewhereLines}), with its files in that team.
  */
@@ -887,7 +892,8 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
   const sizeCost = (pct: number) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`);
   const files = await taskFilesLine(runtime, own.paths.kitHome, own.team, id);
-  runtime.out.stdout(formatTaskDetail(task, events, tree, { sizeCost, files, runFiles: await readRunFiles(runtime, [task]) }));
+  const allHistory = args.switches.has('history');
+  runtime.out.stdout(formatTaskDetail(task, events, tree, { sizeCost, files, runFiles: await readRunFiles(runtime, [task]), allHistory }));
   const named = await taskLinesOf(inboxDepsOf(runtime, own.paths).inboxes, id);
   formatTaskLines(id, named, tree.zone).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
@@ -1022,7 +1028,8 @@ function withOverLimit(sections: readonly CheckSection[], fit: WeekFit): CheckSe
  * src/cli/idle-pass-check.ts), each of its repositories whose git hooks skip the secret scan (SECRET-HOOK,
  * src/cli/secret-hook-check.ts), each secret guard key or settings file that turns a secret check off
  * (SECRET-GUARD-OFF, src/cli/secret-guard-off-check.ts), a five-hour window near full (FIVE-HOUR,
- * src/cli/five-hour-check.ts) and each part of this machine that starts the restore and starts a file gone or
+ * src/cli/five-hour-check.ts), a reset grant about to expire unused (RESET-EXPIRING, src/cli/reset-expiry-check.ts)
+ * and each part of this machine that starts the restore and starts a file gone or
  * something install did not set up (RESTORE-DEAD, RESTORE-STRAY, src/cli/launcher-record-check.ts) are the unowned
  * warnings, which go to the lead (src/cli/unowned.ts, T951).
  */
@@ -1030,7 +1037,7 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const now = new Date(runtime.clock.now());
   const tree = args.switches.has('tree');
   const read = await readRegisters(args, runtime);
-  const skillFiles = await new SkillDir(runtime.files, read.own.paths.skills).readAll();
+  const skillFiles = await skillsToLint(runtime.files, read.own.paths.skills, runtime.userHome);
   const project = await projectFolder(runtime, read.own.config);
   const tags = [
     ...(await readStopgapTags(runtime.files, project, read.own.config.register.check.stopgapFiles)),
@@ -1082,9 +1089,10 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const settings = await teamSettingsScope(runtime, { paths: own.paths, config: own.config, project });
   const off = await secretGuardOffWarnings(runtime.files, own.config.secretGuard, settings);
   const fiveHour = await fiveHourWarnings(runtime.files, snapshotDirOf(own.config.budget, own.paths), own.config.budget, zone, now.getTime());
+  const resets = resetExpiryWarnings(own.config.budget, zone, now.getTime());
   const restore = await restoreLauncherWarnings(runtime.files, resolveKitHome(runtime.env, runtime.userHome));
   const lead = own.config.roles.lead;
-  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...restore], lead, decisions };
+  return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned: [...unowned, ...idle, ...hooks, ...off, ...fiveHour, ...resets, ...restore], lead, decisions };
 }
 
 /**

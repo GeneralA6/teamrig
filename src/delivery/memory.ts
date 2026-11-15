@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { freemem, totalmem } from 'node:os';
 import { treeOf, wholeNumberLines, type ProcessLink } from './processes.ts';
@@ -26,7 +26,7 @@ export interface CommitCharge {
 
 /** The host's memory as a queued step reads it. */
 export interface MemoryProbe {
-  /** The memory the host can hand out now without paging, in MB (free plus standby on Windows). */
+  /** The memory the host can hand out now without paging, in MB (free plus standby on Windows, free plus inactive on macOS). */
   freeMb(): number;
   /** The host's RAM, in MB. */
   totalMb(): number;
@@ -199,20 +199,23 @@ function programOf(listed: string): string {
   return program.replace(/\.exe$/i, '');
 }
 
+/** What a named process list shows after the memory: the program (`program`), or a command line whose first word is it. */
+export type ListedName = 'program' | 'commandLine';
+
 /**
  * The programs a named process list holds memory in, most first (then by name), each process's memory, in the
  * lister's unit (`bytesPerUnit` bytes), summed by program; a line that is not a whole number and a name is left out.
  */
-export function parseHolders(text: string, bytesPerUnit: number): MemoryHolder[] {
+export function parseHolders(text: string, bytesPerUnit: number, listed: ListedName = 'program'): MemoryHolder[] {
   const held = new Map<string, { readonly bytes: number; readonly processes: number }>();
   for (const line of text.split(/\r?\n/)) {
     const match = HOLDER_LINE.exec(line);
     const amount = Number(match?.[1]);
-    const listed = match?.[2];
-    if (listed === undefined || !Number.isSafeInteger(amount)) {
+    const shown = match?.[2];
+    if (shown === undefined || !Number.isSafeInteger(amount)) {
       continue;
     }
-    const name = programOf(listed);
+    const name = programOf(listed === 'commandLine' ? (shown.split(/\s/)[0] ?? shown) : shown);
     const sum = held.get(name) ?? { bytes: 0, processes: 0 };
     held.set(name, { bytes: sum.bytes + amount * bytesPerUnit, processes: sum.processes + 1 });
   }
@@ -236,44 +239,29 @@ export function holdersText(holders: readonly MemoryHolder[], count: number = TO
  * Lists every process's working set (resident memory) and program name: Win32_Process in bytes, `ps` in KB. Apart
  * from `listCommand`, whose whole-number lines every watch sample parses.
  */
-function namedListCommand(platform: NodeJS.Platform): { readonly file: string; readonly args: readonly string[]; readonly bytesPerUnit: number } {
+function namedListCommand(platform: NodeJS.Platform): {
+  readonly file: string;
+  readonly args: readonly string[];
+  readonly bytesPerUnit: number;
+  readonly listed: ListedName;
+} {
   if (platform === 'win32') {
     const script = "Get-CimInstance Win32_Process | ForEach-Object { '{0},{1}' -f $_.WorkingSetSize,$_.Name }";
-    return { file: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', script], bytesPerUnit: 1 };
+    return { file: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', script], bytesPerUnit: 1, listed: 'program' };
   }
-  // On Linux `comm` is the main thread's name, which a program may set: Node 24 names its own `MainThread`, so every
-  // node process would hold memory under that name. The command line's first word names the program instead.
-  return { file: 'ps', args: ['-A', '-o', platform === 'linux' ? 'rss=,args=' : 'rss=,comm='], bytesPerUnit: 1024 };
-}
-
-/**
- * A Linux `<rss> <command line>` list as `<rss> <program>` lines: the command line's first word, and a kernel
- * thread's bracketed name (`[kworker/0:1]`) without its brackets. A line with no command line is left out.
- */
-export function linuxProgramLines(text: string): string {
-  const lines: string[] = [];
-  for (const line of text.split('\n')) {
-    const match = /^\s*(\d+)\s+(\S.*)$/.exec(line);
-    const amount = match?.[1];
-    const commandLine = match?.[2];
-    if (amount === undefined || commandLine === undefined) {
-      continue;
-    }
-    const kernel = /^\[(.+)\]$/.exec(commandLine.trim());
-    const program = kernel?.[1] ?? commandLine.split(/\s+/)[0] ?? commandLine;
-    lines.push(`${amount} ${program}`);
+  if (platform === 'linux') {
+    // Linux's comm is the main thread's name, which a program may set: Node 24 names its main thread MainThread, so
+    // every node process would be listed as that. The command line's first word is the program as it was started.
+    return { file: 'ps', args: ['-A', '-o', 'rss=,args='], bytesPerUnit: 1024, listed: 'commandLine' };
   }
-  return lines.join('\n');
+  return { file: 'ps', args: ['-A', '-o', 'rss=,comm='], bytesPerUnit: 1024, listed: 'program' };
 }
 
 /** The host's programs by the memory they hold; undefined when the list fails. The lister itself is counted: a few dozen MB. */
 async function holdersOf(platform: NodeJS.Platform): Promise<readonly MemoryHolder[] | undefined> {
-  const { file, args, bytesPerUnit } = namedListCommand(platform);
+  const { file, args, bytesPerUnit, listed } = namedListCommand(platform);
   const text = await outputOf(file, args);
-  if (text === undefined) {
-    return undefined;
-  }
-  return parseHolders(platform === 'linux' ? linuxProgramLines(text) : text, bytesPerUnit);
+  return text === undefined ? undefined : parseHolders(text, bytesPerUnit, listed);
 }
 
 /** What `file` printed, or undefined when it failed. */
@@ -310,14 +298,66 @@ export function linuxCommitOf(overcommitMode: string, meminfo: string): CommitCh
   return overcommitMode.trim() === '2' ? parseMeminfoCommit(meminfo) : undefined;
 }
 
+/** The page counts vm_stat prints whose sum is the memory macOS hands out without paging. */
+const VM_STAT_AVAILABLE = ['free', 'inactive', 'speculative'] as const;
+
 /**
- * The real probe: Node's free and total memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its
- * commit charge. The lister and every process it started are left out, so a watch does not count its own sampling.
+ * The bytes macOS can hand out now, from `vm_stat`: its free, inactive and speculative pages times its page size.
+ * Inactive and speculative (read-ahead) pages are reclaimed at once without paging, and vm_stat's "Pages free" leaves
+ * the speculative ones out, so the three never overlap. Undefined unless the page size and all three counts are there.
  */
-export function nodeMemoryProbe(platform: NodeJS.Platform): MemoryProbe {
+export function parseVmStatAvailable(text: string): number | undefined {
+  const pageSize = /page size of (\d+) bytes/.exec(text)?.[1];
+  if (pageSize === undefined) {
+    return undefined;
+  }
+  let pages = 0;
+  for (const label of VM_STAT_AVAILABLE) {
+    const count = new RegExp(`^Pages ${label}:\\s+(\\d+)\\.?\\s*$`, 'm').exec(text)?.[1];
+    if (count === undefined) {
+      return undefined;
+    }
+    pages += Number(count);
+  }
+  return pages * Number(pageSize);
+}
+
+/** A command's output, read while the caller waits; undefined when it fails. */
+export type RunSync = (file: string, args: readonly string[]) => string | undefined;
+
+/** How long a `vm_stat` read may take before the probe falls back to Node's count: it prints in a few ms. */
+const VM_STAT_TIMEOUT_MS = 2000;
+
+/** Runs `file` and returns what it printed, undefined when it fails or outlasts VM_STAT_TIMEOUT_MS. */
+export const nodeRunSync: RunSync = (file, args) => {
+  try {
+    return execFileSync(file, args, { encoding: 'utf8', windowsHide: true, timeout: VM_STAT_TIMEOUT_MS });
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * The MB the host can hand out now without paging. Node's freemem() is that on Windows (free plus standby) and Linux
+ * (MemAvailable), but on macOS it counts only free pages, a few hundred MB on a Mac with GBs to give, so the queue's
+ * memory gate held its steps for memory the host had (T2634). There `vm_stat` is read instead, freemem() only when
+ * that read fails.
+ */
+export function freeMbOf(platform: NodeJS.Platform, run: RunSync, nodeFreeBytes: () => number): number {
+  const vmStat = platform === 'darwin' ? run('vm_stat', []) : undefined;
+  const available = vmStat === undefined ? undefined : parseVmStatAvailable(vmStat);
+  return Math.round((available ?? nodeFreeBytes()) / MB);
+}
+
+/**
+ * The real probe: the host's free memory (`freeMbOf`, `run` reading vm_stat on macOS) and total memory, the host's
+ * process list from PowerShell on Windows or `ps` elsewhere, and its commit charge. The lister and every process it
+ * started are left out, so a watch does not count its own sampling.
+ */
+export function nodeMemoryProbe(platform: NodeJS.Platform, run: RunSync = nodeRunSync): MemoryProbe {
   const { file, args, bytesPerUnit } = listCommand(platform);
   return {
-    freeMb: () => Math.round(freemem() / MB),
+    freeMb: () => freeMbOf(platform, run, freemem),
     totalMb: () => Math.round(totalmem() / MB),
     processes: () =>
       new Promise((resolve) => {

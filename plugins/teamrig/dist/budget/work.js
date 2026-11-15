@@ -44,15 +44,51 @@ export function workWeightOf(work) {
     return sum;
 }
 /** No queued work: every part falls back to its session's `share`, no session has p0 work, and no task has a size base or measures another. */
-export const NO_WORK = { weights: new Map(), urgent: new Map(), sizeBases: new Map(), likeTasks: [] };
-/** The sessions' queued work at `now`: `workWeights`, each session's open and in-progress p0 tasks, every task's size base, and the like tasks. */
+export const NO_WORK = { weights: new Map(), urgent: new Map(), awaited: new Map(), sizeBases: new Map(), likeTasks: [] };
+function appended(map, session, id) {
+    const ids = map.get(session) ?? [];
+    if (!ids.includes(id)) {
+        map.set(session, [...ids, id]);
+    }
+}
+/**
+ * Each session's answers another session waits on (T2656: a wait on it is a blocker, so the budget never
+ * holds it): its own queued task another owner's waiting task names (`task:<id>`), and another owner's waiting task
+ * that names it for an approval or a decision. A task that is itself waiting gives its owner nothing to do yet, and a
+ * session's wait on its own work is no other session's block, so neither counts. Ids in the register's order.
+ */
+function awaitedAnswers(all) {
+    const byId = new Map(all.map((task) => [task.id, task]));
+    const awaited = new Map();
+    for (const waiter of all) {
+        if (waiter.status !== 'waiting') {
+            continue;
+        }
+        for (const reason of waiter.waits) {
+            if (reason.kind === 'task') {
+                const needed = byId.get(reason.id);
+                if (needed !== undefined && QUEUED.has(needed.status) && needed.owner !== waiter.owner) {
+                    appended(awaited, needed.owner, needed.id);
+                }
+            }
+            else if ((reason.kind === 'approval' || reason.kind === 'decision') && reason.who !== waiter.owner) {
+                appended(awaited, reason.who, waiter.id);
+            }
+        }
+    }
+    return awaited;
+}
+/**
+ * The sessions' queued work at `now`: `workWeights`, each session's open and in-progress p0 tasks, the answers others
+ * wait on it for, every task's size base, and the like tasks.
+ */
 export function queuedWork(tasks, priorities, now) {
     const all = [...tasks];
     const queued = all.filter((task) => QUEUED.has(task.status));
     const urgent = new Map();
     for (const task of queued) {
         if (task.priority === NOW_PRIORITY.id) {
-            urgent.set(task.owner, [...(urgent.get(task.owner) ?? []), task.id]);
+            appended(urgent, task.owner, task.id);
         }
     }
     const sizeBases = new Map();
@@ -61,7 +97,7 @@ export function queuedWork(tasks, priorities, now) {
             sizeBases.set(id, sizeBase);
         }
     }
-    return { weights: workWeights(queued, priorities), urgent, sizeBases, likeTasks: likeTasksOf(all, now) };
+    return { weights: workWeights(queued, priorities), urgent, awaited: awaitedAnswers(all), sizeBases, likeTasks: likeTasksOf(all, now) };
 }
 /** The tasks of the register's working set at `eventsPath`; undefined when it cannot be read, so a damaged register never stops the budget. */
 export async function readTasks(files, eventsPath) {
@@ -83,9 +119,10 @@ export const WORK_CACHE_FILE = 'work.cache.json';
 /**
  * The work cache's format (2: with each session's p0 ids; 3: each session's weights by priority id; 4: its top task's
  * weight only, T1588, so a format-3 cache of every task's weights is read again; 5: with each task's size base, T2141;
- * 6: with the like tasks, T2194); a cache in any other reads as missing and is written again.
+ * 6: with the like tasks, T2194; 7: with the answers awaited, T2656); a cache in any other reads as missing and is
+ * written again.
  */
-const WORK_CACHE_FORMAT = 6;
+const WORK_CACHE_FORMAT = 7;
 function sameKey(a, b) {
     return a.tail === b.tail && a.snapshot === b.snapshot && a.priorities.length === b.priorities.length && a.priorities.every((id, index) => id === b.priorities[index]);
 }
@@ -99,8 +136,8 @@ function isNumberArray(value) {
 function isStringArray(value) {
     return Array.isArray(value) && value.every((each) => typeof each === 'string');
 }
-/** The stored p0 ids by session; undefined when any entry is not a list of ids. */
-function storedUrgent(value) {
+/** The stored task ids by session (p0 or awaited); undefined when any entry is not a list of ids. */
+function storedIdsBySession(value) {
     const urgent = new Map();
     for (const [session, ids] of Object.entries(value)) {
         if (!isStringArray(ids)) {
@@ -169,11 +206,13 @@ function parseWorkCache(text) {
     const key = stored === undefined ? undefined : recordField(stored, 'key');
     const work = stored === undefined ? undefined : stored['work'];
     const urgentField = stored === undefined ? undefined : recordField(stored, 'urgent');
-    const urgent = urgentField === undefined ? undefined : storedUrgent(urgentField);
+    const urgent = urgentField === undefined ? undefined : storedIdsBySession(urgentField);
+    const awaitedField = stored === undefined ? undefined : recordField(stored, 'awaited');
+    const awaited = awaitedField === undefined ? undefined : storedIdsBySession(awaitedField);
     const sizeBasesField = stored === undefined ? undefined : recordField(stored, 'sizeBases');
     const sizeBases = sizeBasesField === undefined ? undefined : storedSizeBases(sizeBasesField);
     const likeTasks = stored === undefined ? undefined : storedLikeTasks(stored['likeTasks']);
-    if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined || sizeBases === undefined || likeTasks === undefined) {
+    if (stored === undefined || recordVersion(stored) !== WORK_CACHE_FORMAT || key === undefined || !isRecord(work) || urgent === undefined || awaited === undefined || sizeBases === undefined || likeTasks === undefined) {
         return undefined;
     }
     const tail = storedStamp(key['tail']);
@@ -190,11 +229,11 @@ function parseWorkCache(text) {
         }
         weights.set(session, byPriority);
     }
-    return { key: { tail, snapshot, priorities }, work: { weights, urgent, sizeBases, likeTasks } };
+    return { key: { tail, snapshot, priorities }, work: { weights, urgent, awaited, sizeBases, likeTasks } };
 }
 function formatWorkCache(key, work) {
     const weights = Object.fromEntries([...work.weights].map(([session, byPriority]) => [session, Object.fromEntries(byPriority)]));
-    return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: weights, urgent: Object.fromEntries(work.urgent), sizeBases: Object.fromEntries(work.sizeBases), likeTasks: work.likeTasks });
+    return JSON.stringify({ [VERSION_FIELD]: WORK_CACHE_FORMAT, key, work: weights, urgent: Object.fromEntries(work.urgent), awaited: Object.fromEntries(work.awaited), sizeBases: Object.fromEntries(work.sizeBases), likeTasks: work.likeTasks });
 }
 /** The key of a reading taken now; undefined when a stamp cannot be taken. */
 async function workKeyOf(files, eventsPath, priorities) {

@@ -8,6 +8,8 @@ import type { DeliveryPlaces } from '../delivery/places.ts';
 import { lineRequestOf, processRequest, type LineTask, type RequestFocus } from '../delivery/process-request.ts';
 import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded, type StepMark, type StepOwner, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
+import { pipelineFrozenRefusal } from '../delivery/pipeline-freezes.ts';
+import type { StepKind } from '../delivery/process-request.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../delivery/steps.ts';
 import type { Files } from '../core/files.ts';
@@ -414,16 +416,21 @@ function mergeOf(cleared: Cleared, plan: Plan, at: string, base: string, head: s
   return verdict.kind === 'self' ? { ...merged, route: 'self' } : { ...merged, route: 'approved', missed: verdict.missed, approvedBy: verdict.approvedBy };
 }
 
-/** Whether the push may start now: the queue cutoff and the reset blackout refuse it, a deploy freeze on what it deploys holds it. */
+/**
+ * Whether the push may start now: the queue cutoff, the reset blackout and a pipeline freeze on merges (or on deploys,
+ * when the push deploys) refuse it, a deploy freeze on what it deploys holds it.
+ */
 function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () => Promise<Readiness> {
   const { schedule } = setup.delivery;
   const targets = repo.config.deploysOnPush;
+  const kinds: readonly StepKind[] = targets.length === 0 ? ['merge'] : ['merge', 'deploy'];
   return async () => {
     const now = ports.clock.now();
     const hours = schedule.resetBlackoutHours;
     const refusal =
       queueCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
-      (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
+      (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone)) ??
+      pipelineFrozenRefusal(await ports.files.read(setup.places.pipelineFreezes), setup.places.pipelineFreezes, now, kinds, setup.zone);
     if (refusal !== undefined) {
       return { kind: 'refuse', reason: refusal };
     }

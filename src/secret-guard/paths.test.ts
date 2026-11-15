@@ -18,6 +18,7 @@ describe('SecretPaths.listed', () => {
       `${HOME}/.docker/config.json`,
       `${HOME}/.git-credentials`,
       `${HOME}/.config/gh/hosts.yml`,
+      `${HOME}/AppData/Roaming/GitHub CLI/hosts.yml`,
       `${HOME}/.claude/.credentials.json`,
       `${HOME}/.claude/history.jsonl`,
       `${REPO}/.claude/settings.local.json`,

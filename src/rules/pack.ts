@@ -106,12 +106,17 @@ function pushRule(pushGuard: PushGuardConfig, hookAsks: HookAsks): string {
 function refusedRouteRule(hookAsks: HookAsks): string {
   return hookAsks === 'refuse'
     ? 'A refused or blocked route waits on approval:owner; take your next task, never route around it or hand it off.'
-    : 'A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed to another session.';
+    : 'A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed off.';
 }
 
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
 function percent(value: number): string {
   return `${Math.round(value * 100) / 100}%`;
+}
+
+/** A clause written to follow a colon, opening its own sentence. */
+function sentenceCase(clause: string): string {
+  return clause.charAt(0).toUpperCase() + clause.slice(1);
 }
 
 /**
@@ -143,7 +148,7 @@ function timesClause(zone: TimeZone, now: Date): string {
   if (label === 'UTC') {
     return " Write times on the team's clock, zone-marked (`04:00 UTC`) [timeZone].";
   }
-  return ` Write times on the team's clock, zone-marked (\`04:00 ${label}\`, ${zone.utcOffset(now)} now); UTC only when UTC is the subject [timeZone].`;
+  return ` Write times on the team's clock, zone-marked (\`04:00 ${label}\`, ${zone.utcOffset(now)} now); UTC only when it is the subject [timeZone].`;
 }
 
 /**
@@ -239,17 +244,17 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       // within the group share its own leader gives it (T784). No member list prints here: `leads` has no size limit,
       // so the pack names the key alone.
       ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order, staffing and budget, answers your waits;' +
-      " asks to a sub-lead's sessions go through it. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead.",
+      " asks to a sub-lead's sessions go through it. Cross-area issues go to the nearest leader over both, unowned warnings to the lead.",
     'own-change':
-      "Own your change end to end: only the session that made it merges, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
+      "Own your change end to end: only the session that made it merges, deploys (if it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
     messages: messagesRule(config, command) + timesClause(zone, clock.now),
     register:
       `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
-      ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain-words description of what and why; ${statusDemands(config, command)}` +
+      ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain description of what and why; ${statusDemands(config, command)}` +
       ' Wait on a peer by its task.' +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
-      `Work your own task list in plan order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` before you start it,` +
+      `Work your own task list in plan order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` first,` +
       ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
       " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask your leader.",
     'owner-gates':
@@ -259,30 +264,43 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
       queuedSteps(config.delivery, command, cutoffSpan),
     'lean-calls':
-      'Lean calls: batch related shell steps in one call (each re-reads the context).' +
-      ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your model and effort.` +
+      'Lean calls: batch related shell steps in one call.' +
+      // The clause alone keeps work in the session (a helper only for parallel work or a review), so the rule spends
+      // no words on saying it; the helper launch reminder still does.
+      ` ${sentenceCase(helperDefaultClause(budget.subagentWeight))}; run helpers on your model and effort.` +
       // T1457: one place for a task's files and one for a session's other notes, so no session invents its own
       // (T1454's layout). A helper is told to save its findings there in its own start line (hooks/helper-start.ts),
       // which sits outside this cap.
       ` Task files go in \`${command} files T<id>\`, other notes in \`--notes\`.` +
-      (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the limit, ${percent(budget.reservePct)} kept for incidents [budget].` : ''),
+      // T2657: a budget hold on a review or a leader's answer stalls every session waiting on it, so
+      // those answers go first past any budget, and a lead plans its cuts around them.
+      (budget.enabled
+        ? ` Pace the week to ${percent(budget.targetPct)} of the limit, ${percent(budget.reservePct)} kept for incidents [budget]; waited-on answers are blockers, never budget-held.`
+        : ''),
     investigate:
-      'Investigate first: frequency × impact, the cheapest fix for the visible symptom.' +
+      'Investigate first: frequency × impact, the cheapest fix for the symptom.' +
+      // Owner order 11-13 (T2607): a hand step named its files repo-relative and the owner had to ask for full paths.
+      // A human reads a path from another folder, so a relative one leads nowhere; a web file is its full URL. To fit
+      // CORE_PACK_MAX_CHARS, rules 4, 8, 13 and 15 took shorter words.
+      ' Humans get absolute paths, full URLs.' +
       // An owner question names no task by its number alone (the register refuses an owner wait without its
       // decision card, register/card.ts). With tab status on, the marker line ends the turn on the decision circle
       // (tabs/status.ts); the words are shorter there so the worst-case pack still fits CORE_PACK_MAX_CHARS. Who
       // decides is an authority test, not a count of good answers (T1194): a question that is no owner gate and no
       // business decision is the leader's however many good answers it has, and rule 1 names staffing the leader's.
+      // T2761: a security-related ask carries the security reviewer's verdict, so the owner never weighs a guard,
+      // permission or secret change alone; the register refuses a card on a security gate without one (policy.ts).
+      // To fit CORE_PACK_MAX_CHARS, rules 5 and 9 took shorter words for it.
       (config.tabStatus.enabled
-        ? ` Ask the owner only gates and business calls: stand alone, no bare ids; options, numbers, your pick, a \`${DECISION_MARKER}\` line.`
-        : ' Ask the owner only on owner gates and business decisions: each question stands alone, no bare task ids, with options, numbers and a recommendation.'),
+        ? ` Ask the owner only gates and business calls: stand alone, no bare ids; options, numbers, your pick, a security ask's verdict, a \`${DECISION_MARKER}\` line.`
+        : " Ask the owner only on owner gates and business decisions: each stands alone, no bare ids; options, numbers, your pick and a security ask's verdict."),
     resources:
       'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement: `stopgap T<id>`.',
     data:
       "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
       ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
       handStepClause(roles.securityReviewer) +
-      ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
+      ' Never print secrets; bind local services to 127.0.0.1, never 0.0.0.0.',
     contracts:
       'Tell the other side before changing a contract it reads (API, table or file).' +
       // T1189: a route removal named the pages it would break, had no answer and shipped; its proof saw the routes
@@ -292,7 +310,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
     skills:
       // The skill limits (description words, Owner and Last verified lines, per-area count, forbidden keys) live in
       // the guide alone: lintSkills (skills/lint.ts) flags each breach in `check`, so the pack names only the pointer.
-      `A procedure you investigated and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
+      `A procedure you investigated and will rerun becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
       ` within the guide's skill limits. Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.`,
     commits:
       'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +

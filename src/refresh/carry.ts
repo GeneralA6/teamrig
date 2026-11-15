@@ -3,6 +3,7 @@ import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { ownerTurnsOf, type OwnerTurn } from './owner-turns.ts';
 import { REFRESH_FORMAT } from './state.ts';
 
 /**
@@ -54,6 +55,8 @@ export interface Carry extends TranscriptCarry {
   readonly scratchpad: { readonly path: string; readonly entries: number } | undefined;
   /** The old session's plan file; undefined when it has none. */
   readonly plan: string | undefined;
+  /** What the owner typed in the old session (`owner-turns.ts`); absent when the handover path was not given. */
+  readonly ownerTurns?: readonly OwnerTurn[];
 }
 
 /** Where Claude Code keeps a session's files outside its transcript. */
@@ -278,10 +281,17 @@ export function scratchpadOf(transcript: string, tempDir: string): string {
 }
 
 /**
- * What the session whose transcript this is leaves for the fresh one, counting the jobs it `inherited`; undefined
- * when the transcript is gone.
+ * What the session whose transcript this is leaves for the fresh one, counting the jobs it `inherited`, and with
+ * `handoverPath` what the owner typed in it; undefined when the transcript is gone.
  */
-export async function readCarry(files: Files, transcript: string, now: number, places: CarryPlaces, inherited: readonly CarriedCron[]): Promise<Carry | undefined> {
+export async function readCarry(
+  files: Files,
+  transcript: string,
+  now: number,
+  places: CarryPlaces,
+  inherited: readonly CarriedCron[],
+  handoverPath?: string,
+): Promise<Carry | undefined> {
   const text = await files.readTail(transcript, CARRY_TAIL_BYTES);
   if (text === undefined) {
     return undefined;
@@ -291,7 +301,8 @@ export async function readCarry(files: Files, transcript: string, now: number, p
   const entries = (await files.list(scratchpad)).length;
   const plan = found.planSlug === undefined ? undefined : join(places.claudeDir, 'plans', `${found.planSlug}.md`);
   const planText = plan === undefined ? undefined : await files.read(plan);
-  return { ...found, scratchpad: entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan };
+  const owner = handoverPath === undefined ? {} : { ownerTurns: ownerTurnsOf(text, handoverPath, [...inherited.map((cron) => cron.prompt)]) };
+  return { ...found, scratchpad: entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan, ...owner };
 }
 
 /** A carried-jobs file's content; undefined when it is damaged or from another format. */
@@ -320,7 +331,7 @@ export function carryStartOf(source: string | undefined): CarryStart {
  * The lines that tell a fresh session what to take over: its jobs (still scheduled after a /clear, proven
  * on Claude Code 2.1.301 (T398), so made again only in a new process, and then only those CronList does not
  * show, as a durable job comes back by itself), the wake-up to schedule again (its time on the team's clock),
- * and where the old scratchpad and plan are. Empty when there is nothing.
+ * and where the old scratchpad and plan are. Empty when there is nothing. What the owner typed goes to its own file.
  */
 export function carryLines(carry: Carry, now: number, start: CarryStart, zone: TimeZone): readonly string[] {
   const lines: string[] = [];

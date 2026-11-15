@@ -38,7 +38,7 @@ async function freezeContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<F
 }
 
 /** The freeze a write returned; a refusal is REFUSED, and a write another writer held up past the wait is FAILED. */
-function writtenOrExit<T>(runtime: CliRuntime, outcome: FreezeOutcome<T>): { readonly kind: 'written'; readonly value: T } | { readonly kind: 'exit'; readonly code: ExitCode } {
+export function writtenOrExit<T>(runtime: CliRuntime, outcome: FreezeOutcome<T>): { readonly kind: 'written'; readonly value: T } | { readonly kind: 'exit'; readonly code: ExitCode } {
   switch (outcome.kind) {
     case 'done':
       return { kind: 'written', value: outcome.value };

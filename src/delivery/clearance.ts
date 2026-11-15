@@ -3,7 +3,8 @@ import type { TimeZone } from '../core/zone.ts';
 import { busyText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
 import type { LineRequest } from './process-request.ts';
 import type { RefusalMark } from './recorded-step.ts';
-import { causeOfLockWait, type WaitCause, type WaitTold } from './wait-log.ts';
+import type { WaitCause } from './wait-cause.ts';
+import { causeOfLockWait, type WaitTold } from './wait-log.ts';
 
 /** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait: a deploy freeze, or a check holding it. */
 export type Readiness =

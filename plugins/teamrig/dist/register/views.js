@@ -1,5 +1,6 @@
 import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
+import { isTaskPrep } from "./events.js";
 import { shortSha256 } from "./hand-step.js";
 import { itemTypeOf } from "./item-types.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
@@ -234,6 +235,9 @@ export function formatTask(task, team, tree) {
     if (task.workClass !== null && tree.rankedOf(task) === undefined) {
         parts.push(`class ${task.workClass}`);
     }
+    if (task.prepares !== null) {
+        parts.push(`prepares ${prepText(task.prepares)}`);
+    }
     return `${parts.join(', ')} | ${task.title}${statusNote(task, tree)}${neededByText(task, tree)}`;
 }
 /**
@@ -287,10 +291,17 @@ function changeText(name, value, zone) {
     if (name === 'workClass') {
         return typeof value === 'string' ? value : 'none';
     }
+    if (name === 'prepares') {
+        return isTaskPrep(value) ? prepText(value) : 'none';
+    }
     if (name === 'goals' && Array.isArray(value) && value.length === 0) {
         return 'none';
     }
     return Array.isArray(value) ? value.join(',') : String(value);
+}
+/** A prep marker as rows print it (T2453): `G1:2`, the goal and the slice the task prepares, as `--prepares` takes it. */
+function prepText(prep) {
+    return `${prep.goal}:${prep.slice}`;
 }
 /** A hand step file an audit pins on its task (T2312), as `show` prints it: path, short sha256, auditor and when. */
 function auditText(audit, zone) {
@@ -317,6 +328,7 @@ export function formatEvent(event, zone) {
                 task.type === null ? undefined : `type=${task.type}`,
                 task.critical ? 'critical=true' : undefined,
                 task.workClass === null ? undefined : `workClass=${task.workClass}`,
+                task.prepares === null ? undefined : `prepares=${prepText(task.prepares)}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');
@@ -350,6 +362,17 @@ export function formatEvent(event, zone) {
     }
 }
 /**
+ * The history events `show` prints without `--history` (T2535, owner-approved fix C4 of T2217): the last 3 hold the
+ * status and wait a proof check reads, so one call still serves it, and the older ones cost every read its text.
+ */
+export const SHOWN_HISTORY_EVENTS = 3;
+/** `history:` and each event, or the last few under a header that counts the rest and names `--history`. */
+function historyLines(events, zone, all) {
+    const shown = all ? events : events.slice(-SHOWN_HISTORY_EVENTS);
+    const header = shown.length === events.length ? 'history:' : `history (last ${shown.length} of ${events.length}; --history prints all):`;
+    return [header, ...shown.map((event) => `  ${formatEvent(event, zone)}`)];
+}
+/**
  * `show`: the task line, its description (what and why, its later lines indented two spaces), its status details,
  * its files, then its history; `tree` reads the task line as {@link formatTask} does, and `extras.sizeCost` words its
  * size's cost beside the percent.
@@ -376,7 +399,7 @@ export function formatTaskDetail(task, events, tree, extras) {
     // Each pin before the card, so the owner of the task sees what its reviewer pinned before a card hands it (T2312).
     lines.push(...task.audits.map((audit) => auditText(audit, tree.zone)));
     if (task.card !== null) {
-        lines.push('card:', ...cardLines(task.card, '  ', task.audits, extras.runFiles));
+        lines.push('card:', ...cardLines(task.card, '  ', task.audits, extras.runFiles, task.securityVerdict));
     }
     if (task.answer !== null) {
         lines.push(`answer: ${task.answer.by} ${task.answer.verdict} at ${tree.zone.minute(new Date(task.answer.at))}${task.answer.note === null ? '' : `: ${task.answer.note}`}`);
@@ -406,7 +429,7 @@ export function formatTaskDetail(task, events, tree, extras) {
     if (extras.files !== undefined) {
         lines.push(extras.files);
     }
-    lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event, tree.zone)}`));
+    lines.push(...historyLines(events.filter((event) => event.id === task.id), tree.zone, extras.allHistory === true));
     return lines.join('\n');
 }
 /**

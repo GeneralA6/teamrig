@@ -6,6 +6,7 @@ import { BurstLog } from '../budget/burst-log.ts';
 import { MeterLog } from '../budget/calibration.ts';
 import { formatConfig } from '../config/load.ts';
 import type { Files } from '../core/files.ts';
+import { formatRunRecord, runRecordPathOf } from '../delivery/detached-runs.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { inboxLineOf } from '../inbox/inbox.ts';
@@ -142,8 +143,8 @@ describe('hook wake-check', () => {
     transcripts.set(join(USER_HOME, '.claude', 'projects', 'work-app', `${ALPHA_TAB}.jsonl`), '{}\n', kit.clock.now() - 5 * MINUTE);
     const text =
       'New work was handed to you while this tab was idle: T2 "Fix the login" (p1). ' +
-      'Start a work block (`teamrig start --session alpha`) and work your list in plan order. This wake costs about 27k W, warm cache.';
-    assert.deepEqual(answerOf(await check(kit, transcripts)), { kind: 'wake', ids: ['T2'], text, toast: 'teamrig woke this tab for T2 (about 27k W, warm cache)' });
+      'Start a work block (`teamrig start --session alpha`) and work your list in plan order. This wake costs at least about 27k W for the first call, warm cache; whole turns usually cost more.';
+    assert.deepEqual(answerOf(await check(kit, transcripts)), { kind: 'wake', ids: ['T2'], text, toast: 'teamrig woke this tab for T2 (at least about 27k W for the first call, warm cache; whole turns usually cost more)' });
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T2'], w: 27_000, cold: false },
     ]);
@@ -170,7 +171,7 @@ describe('hook wake-check', () => {
     await hand(kit, 'Ship the page', 'p2');
     const woke = answerOf(await check(kit));
     assert.ok(typeof woke === 'object' && woke !== null && 'toast' in woke);
-    assert.equal(woke.toast, 'teamrig woke this tab for T2 (about 210k W, cold, 0.02% of the week)');
+    assert.equal(woke.toast, 'teamrig woke this tab for T2 (at least about 210k W for the first call, cold, 0.02% of the week; whole turns usually cost more)');
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T2'], w: 210_000, cold: true, weekPct: 0.021 },
     ]);
@@ -187,7 +188,7 @@ describe('hook wake-check', () => {
     await hand(kit, 'Ship the page', 'p2');
     const woke = answerOf(await check(kit));
     assert.ok(typeof woke === 'object' && woke !== null && 'toast' in woke);
-    assert.equal(woke.toast, 'teamrig woke this tab for T1 (about 210k W, cold, 0.01% of the week)');
+    assert.equal(woke.toast, 'teamrig woke this tab for T1 (at least about 210k W for the first call, cold, 0.01% of the week; whole turns usually cost more)');
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T1'], w: 210_000, cold: true, weekPct: 0.0105 },
     ]);
@@ -206,7 +207,7 @@ describe('hook wake-check', () => {
     await hand(kit, 'Ship the page', 'p2');
     const woke = answerOf(await check(kit));
     assert.ok(typeof woke === 'object' && woke !== null && 'toast' in woke);
-    assert.equal(woke.toast, 'teamrig woke this tab for T1 (about 210k W, cold, 0.01% of the week)', "web's 5M W per percent would say 0.04%");
+    assert.equal(woke.toast, 'teamrig woke this tab for T1 (at least about 210k W for the first call, cold, 0.01% of the week; whole turns usually cost more)', "web's 5M W per percent would say 0.04%");
   });
 
   it("costs the wake at today's W per percent, as the budget table prices today's rows, on a day dearer than its week (T1138)", async () => {
@@ -216,7 +217,7 @@ describe('hook wake-check', () => {
     await hand(kit, 'Ship the page', 'p2');
     const woke = answerOf(await check(kit));
     assert.ok(typeof woke === 'object' && woke !== null && 'toast' in woke);
-    assert.equal(woke.toast, 'teamrig woke this tab for T1 (about 210k W, cold, 0.04% of the week)', 'the week rate would say 0.02%');
+    assert.equal(woke.toast, 'teamrig woke this tab for T1 (at least about 210k W for the first call, cold, 0.04% of the week; whole turns usually cost more)', 'the week rate would say 0.02%');
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T1'], w: 210_000, cold: true, weekPct: 0.042 },
     ]);
@@ -324,8 +325,8 @@ describe('hook wake-check', () => {
     const woke = answerOf(await check(kit));
     assert.ok(typeof woke === 'object' && woke !== null && 'text' in woke && 'toast' in woke && 'ids' in woke);
     assert.deepEqual(woke.ids, []);
-    assert.match(String(woke.text), /^Urgent lines were posted for you while this tab was idle; act on each now:\n- \d\d:\d\d \w+ teamrig: The idle pass closed bravo\.\nThis wake costs about 210k W, cold\.$/);
-    assert.equal(woke.toast, 'teamrig woke this tab for an urgent line from teamrig (about 210k W, cold)');
+    assert.match(String(woke.text), /^Urgent lines were posted for you while this tab was idle; act on each now:\n- \d\d:\d\d \w+ teamrig: The idle pass closed bravo\.\nThis wake costs at least about 210k W for the first call, cold; whole turns usually cost more\.$/);
+    assert.equal(woke.toast, 'teamrig woke this tab for an urgent line from teamrig (at least about 210k W for the first call, cold; whole turns usually cost more)');
     assert.deepEqual(await logLines(kit), [{ v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: [], w: 210_000, cold: true, asks: 1 }]);
     assert.deepEqual(await asks.read('alpha'), []);
     assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'never twice for one line');
@@ -340,7 +341,7 @@ describe('hook wake-check', () => {
     assert.ok(typeof woke === 'object' && woke !== null && 'text' in woke && 'toast' in woke && 'ids' in woke);
     assert.deepEqual(woke.ids, ['T1']);
     assert.match(String(woke.text), /teamrig: The idle pass closed bravo\.\nNew work was handed to you while this tab was idle: T1 "Fix the login" \(p1\)\./);
-    assert.equal(woke.toast, 'teamrig woke this tab for T1 and an urgent line from teamrig (about 210k W, cold)');
+    assert.equal(woke.toast, 'teamrig woke this tab for T1 and an urgent line from teamrig (at least about 210k W for the first call, cold; whole turns usually cost more)');
     await new WakeAsks(kit.files, ASKS).post('alpha', { from: 'bravo', text: 'Bravo has a reply waiting.', at: kit.clock.now() });
     assert.equal((await check(kit)).stdout[0]?.includes('"toast":"teamrig woke this tab for an urgent line from bravo'), true, 'wake.minGapMinutes holds no line');
   });
@@ -364,7 +365,7 @@ describe('hook wake-check', () => {
         assert.deepEqual(answer, { kind: 'wait', watch: watchOf(), recheckAt: null });
       } else {
         assert.ok(typeof answer === 'object' && answer !== null && 'toast' in answer);
-        assert.equal(answer.toast, 'teamrig woke this tab for an urgent line from bravo (about 210k W, cold)');
+        assert.equal(answer.toast, 'teamrig woke this tab for an urgent line from bravo (at least about 210k W for the first call, cold; whole turns usually cost more)');
       }
       assert.deepEqual(await asks.read('alpha'), [], `read: ${read}`);
     }
@@ -537,8 +538,8 @@ describe('hook wake-check at the day start and a burst', () => {
       ids: ['T1'],
       text:
         'The day started at 06:00 UTC and this tab has had no turn since. Work you can start: T1 "Tidy the docs" (p3). ' +
-        'Start a work block (`teamrig start --session alpha`) and work your list in plan order. This wake costs about 210k W, cold.',
-      toast: 'teamrig woke this tab for the day start: T1 (about 210k W, cold)',
+        'Start a work block (`teamrig start --session alpha`) and work your list in plan order. This wake costs at least about 210k W for the first call, cold; whole turns usually cost more.',
+      toast: 'teamrig woke this tab for the day start: T1 (at least about 210k W for the first call, cold; whole turns usually cost more)',
     });
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T1'], w: 210_000, cold: true, moments: ['day-start'] },
@@ -549,7 +550,7 @@ describe('hook wake-check at the day start and a burst', () => {
     const otherCheck = () => kit.run(['hook', 'wake-check'], { stdin: payload({}, OTHER_TAB) });
     assert.deepEqual(answerOf(await otherCheck()), waitTill(TOMORROW_SIX), 'nor in a new tab of the session');
     kit.clock.advance(TOMORROW_SIX - kit.clock.now());
-    assert.match((await otherCheck()).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 \(about 210k W, cold\)"/);
+    assert.match((await otherCheck()).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 \(at least about 210k W for the first call, cold; whole turns usually cost more\)"/);
   });
 
   it('starts a session whose restart waits for work fresh at the day start, the day start left to wake the fresh session (T1383)', async () => {
@@ -597,7 +598,7 @@ describe('hook wake-check at the day start and a burst', () => {
     await startBurst(kit, ['alpha', 'bravo']);
     const woke = (await check(kit, turned)).stdout[0] ?? '';
     assert.match(woke, /"text":"The lead started a surplus burst until .*: app-alpha's daily budget is at least 2\.5%, up to 2 helpers at once\. Work you can start: T1/);
-    assert.match(woke, /"toast":"teamrig woke this tab for the burst: T1 \(about 210k W, cold\)"/);
+    assert.match(woke, /"toast":"teamrig woke this tab for the burst: T1 \(at least about 210k W for the first call, cold; whole turns usually cost more\)"/);
     kit.clock.advance(60 * MINUTE);
     assert.deepEqual(answerOf(await check(kit)), waitTill(TOMORROW_SIX), 'once per burst');
   });
@@ -619,6 +620,45 @@ describe('hook wake-check at the day start and a burst', () => {
     await hand(kit, 'Fix the outage', 'p1');
     assert.match((await check(kit)).stdout[0] ?? '', /"text":"New work was handed to you while this tab was idle: T1/);
     assert.deepEqual(answerOf(await check(kit)), waitTill(kit.clock.now() + 15 * MINUTE));
+  });
+});
+
+describe("hook wake-check at the day schedule's start (T2000)", () => {
+  const DAY_START = { ...TEAM, wake: { dayStartUtc: '06:00' } };
+  const SCHEDULE = join(TEAM_HOME, 'state', 'day-schedule.json');
+  const waitTill = (recheckAt: number | null) => ({ kind: 'wait', watch: watchOf(), recheckAt });
+
+  function schedule(kit: CliHarness, days: Readonly<Record<string, Readonly<Record<string, string>>>>): Promise<void> {
+    return kit.files.write(SCHEDULE, `${JSON.stringify({ v: 1, days })}\n`);
+  }
+
+  it("wakes no one on a day the schedule gives the team none, over the team's configured start, and wakes at the next scheduled start", async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    await schedule(kit, { '2030-01-08': { app: 'none' }, '2030-01-09': { app: '07:00' } });
+    await hand(kit, 'Tidy the docs', 'p3');
+    const tomorrowSeven = Date.parse('2030-01-09T07:00:00.000Z');
+    assert.deepEqual(answerOf(await check(kit)), waitTill(tomorrowSeven));
+    assert.deepEqual(await logLines(kit), []);
+    kit.clock.advance(tomorrowSeven - kit.clock.now());
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
+  });
+
+  it('waits for a start the schedule sets later today, then wakes the session once', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    await schedule(kit, { '2030-01-08': { app: '12:00' } });
+    await hand(kit, 'Tidy the docs', 'p3');
+    const noon = Date.parse('2030-01-08T12:00:00.000Z');
+    assert.deepEqual(answerOf(await check(kit)), waitTill(noon));
+    kit.clock.advance(noon - kit.clock.now());
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
+    assert.deepEqual(answerOf(await check(kit)), waitTill(Date.parse('2030-01-09T12:00:00.000Z')), 'the day repeats until the next written one');
+  });
+
+  it("takes the session's own start over its team's, for a team with no configured day start too", async () => {
+    const kit = await teamWithAlphaTab(TEAM);
+    await schedule(kit, { '2030-01-08': { app: '12:00', 'app/alpha': '08:00' } });
+    await hand(kit, 'Tidy the docs', 'p3');
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
   });
 });
 
@@ -767,6 +807,17 @@ describe('hook wake-check runs the idle pass', () => {
     assert.deepEqual(await logLines(kit, PASS_LOG), [failed, pass(kit.clock.now(), [AWAY_LEAD, AWAY_ALPHA, CLOSED_BRAVO])]);
   });
 
+  it('tells, on a due pass, the session of a detached queue run that died with no end of its own (T2742)', async () => {
+    const kit = await idleTeam();
+    const dir = join(STATE, 'deploys', 'detached');
+    const record = runRecordPathOf(dir, 'r1');
+    await kit.files.write(record, formatRunRecord({ v: 1, id: 'r1', team: 'app', session: 'bravo', what: 'build api', log: join(dir, 'r1.log'), pid: 5150, startedAt: '2030-01-08T09:30:00.000Z' }));
+    assert.deepEqual(answerOf(await passCheck(kit)), WAIT);
+    const told = (await new WakeAsks(kit.files, ASKS).read('bravo')).map((stored) => stored.ask?.text);
+    assert.equal(kit.files.get(record), undefined);
+    assert.deepEqual(told.map((text) => text?.startsWith('queue r1 died while it waited for its turn: build api: ')), [true]);
+  });
+
   it('names once a reopened tab no teamrig hook started in, to the lead with a wake in mode on, and drops the mark once a hook started', async () => {
     for (const mode of ['dry-run', 'on'] as const) {
       const kit = await idleTeam(mode === 'on' ? ON : DRY_RUN);
@@ -890,8 +941,8 @@ function retryAnswer(session: string, sign: string): unknown {
     ids: [],
     text:
       `Your last turn ended on Login expired at 09:30 UTC; ${sign}. ` +
-      `Go on with that turn's work (if a wake started it: \`teamrig start --session ${session}\`). This retry costs about 210k W, cold.`,
-    toast: `teamrig retried this tab's turn that ended on Login expired: ${sign} (about 210k W, cold)`,
+      `Go on with that turn's work (if a wake started it: \`teamrig start --session ${session}\`). This retry costs at least about 210k W for the first call, cold; whole turns usually cost more.`,
+    toast: `teamrig retried this tab's turn that ended on Login expired: ${sign} (at least about 210k W for the first call, cold; whole turns usually cost more)`,
   };
 }
 
@@ -1008,8 +1059,8 @@ function apiRetryAnswer(code: string, n: number, failedAt: string): unknown {
     ids: [],
     text:
       `Your last turn ended on an API error (${code}) at ${failedAt} UTC; retry ${n} of 3. ` +
-      "Go on with that turn's work (if a wake started it: `teamrig start --session alpha`). This retry costs about 210k W, cold.",
-    toast: `teamrig retried this tab's turn that ended on an API error (${code}), ${n} of 3 (about 210k W, cold)`,
+      "Go on with that turn's work (if a wake started it: `teamrig start --session alpha`). This retry costs at least about 210k W for the first call, cold; whole turns usually cost more.",
+    toast: `teamrig retried this tab's turn that ended on an API error (${code}), ${n} of 3 (at least about 210k W for the first call, cold; whole turns usually cost more)`,
   };
 }
 

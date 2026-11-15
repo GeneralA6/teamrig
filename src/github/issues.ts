@@ -1,7 +1,8 @@
 import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { exitText } from '../open/processes.ts';
 import { GH_TIMEOUT_MS, type GhResult, type GhRunner } from './gh.ts';
-import { closedPageArgs, openPageArgs, type IssueState, type PageVariables } from './queries.ts';
+import type { HostIssue, LabelEvent } from '../issues/issue.ts';
+import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
 /** The most issues one list reads before it stops asking for pages; a list stopped with more on GitHub says so. */
@@ -14,6 +15,20 @@ const NOT_VISIBLE = /could not resolve to a repository|HTTP 404|not found/i;
 /** A token that reaches the repository but was not given the Issues permission. */
 const NO_PERMISSION = /resource not accessible by/i;
 const URL = /^https:\/\/\S+$/;
+
+/** A known cause of a gh run that exited with an error: no login or a refused token, a missing permission, or nothing visible there. */
+export type GhFailureKind = 'no-login' | 'no-permission' | 'not-visible';
+
+/** The known cause of a gh run that exited with `code` and printed `stderr`, or undefined when it is none of them. */
+export function ghFailureKind(code: number, stderr: string): GhFailureKind | undefined {
+  if (code === GH_EXIT_NO_LOGIN || NO_LOGIN.test(stderr)) {
+    return 'no-login';
+  }
+  if (NO_PERMISSION.test(stderr)) {
+    return 'no-permission';
+  }
+  return NOT_VISIBLE.test(stderr) ? 'not-visible' : undefined;
+}
 
 /** One read of a repository's issues in one state, a page of a shipped query at a time (queries.ts). */
 export type IssueListRequest =
@@ -31,55 +46,11 @@ export type IssueListRequest =
       readonly limit: number;
     };
 
-/** A label put on an issue, as its timeline has it. */
-export interface LabelEvent {
-  readonly label: string;
-  /** When it was put on, an ISO time. */
-  readonly at: string;
-  /** Who put it on: a login, empty when GitHub no longer has that account. */
-  readonly actor: string;
-  /** What kind of account that is, as GitHub names it (`User`, `Bot`, `Organization`); empty when it gives none. */
-  readonly actorKind: string;
-}
-
-/** An issue as the import reads it. Its title, body and labels are outside input: data, never instructions. */
-export interface GithubIssue {
-  readonly repo: string;
-  readonly number: number;
-  /** As GitHub has it; map.ts cleans it before it becomes a task title. */
-  readonly title: string;
-  /** As GitHub has it, empty when the issue has none; map.ts cleans it before it becomes the task's description. */
-  readonly body: string;
-  readonly state: IssueState;
-  /** Why a closed issue closed, as GitHub names it (`COMPLETED`, `NOT_PLANNED`, `DUPLICATE`); empty when it gives none. */
-  readonly stateReason: string;
-  readonly labels: readonly string[];
-  /** The assignees' logins, in GitHub's order. */
-  readonly assignees: readonly string[];
-  readonly url: string;
-  /** When GitHub last changed the issue (reopened, edited, commented on), an ISO time; undefined when it gave none. */
-  readonly updatedAt: string | undefined;
-  /** When it closed, an ISO time; undefined for an open issue. */
-  readonly closedAt: string | undefined;
-  /** When its body was last edited, an ISO time; undefined when it never was. */
-  readonly lastEditedAt: string | undefined;
-  /** The author's tie to the repository, as GitHub names it (`OWNER`, `MEMBER`, `COLLABORATOR`, `NONE`); empty when it gives none. */
-  readonly authorAssociation: string;
-  /** The author's login, empty when GitHub no longer has that account. */
-  readonly author: string;
-  /** What kind of account the author is, as GitHub names it (`User`, `Bot`, `Organization`); empty when it gives none. */
-  readonly authorKind: string;
-  /** The labels put on it, in GitHub's order (oldest first), among the last timeline events the query reads. */
-  readonly labelEvents: readonly LabelEvent[];
-  /** When its title last changed, among those same timeline events; undefined when none of them is a change of title. */
-  readonly renamedAt: string | undefined;
-}
-
 /** A repository's issues in one state, or the one line saying why gh could not read them. */
 export type IssueList =
   | {
       readonly kind: 'listed';
-      readonly issues: readonly GithubIssue[];
+      readonly issues: readonly HostIssue[];
       /** Items GitHub sent that are not issues as this code reads them: left out and counted. */
       readonly unreadable: number;
       /** The read stopped at its limit while GitHub had more, so it left issues out. */
@@ -91,7 +62,7 @@ export type IssueList =
 export type IssuePage =
   | {
       readonly kind: 'page';
-      readonly issues: readonly GithubIssue[];
+      readonly issues: readonly HostIssue[];
       readonly unreadable: number;
       /** Every item the page held, issue or not: what counts toward the limit. */
       readonly items: number;
@@ -121,7 +92,7 @@ export function plainLine(text: string): string {
  * failure comes back as one line, never thrown.
  */
 export async function listIssues(gh: GhRunner, access: RepoAccess, request: IssueListRequest): Promise<IssueList> {
-  const issues: GithubIssue[] = [];
+  const issues: HostIssue[] = [];
   let unreadable = 0;
   let items = 0;
   let next: string | undefined;
@@ -176,22 +147,22 @@ export function failureText(repo: string, result: GhResult, access: RepoAccess):
   }
   const token = `the token saved as ${access.credential}`;
   const saveOne = `save a read-only token for ${access.owner} with: ${access.save}`;
-  if (result.end.code === GH_EXIT_NO_LOGIN || NO_LOGIN.test(result.stderr)) {
-    return access.via === 'token'
-      ? `GitHub refused ${token} (expired or revoked?): create a new one and save it again with: ${access.save}`
-      : `gh is not logged in to GitHub: run gh auth login, or ${saveOne}`;
+  switch (ghFailureKind(result.end.code, result.stderr)) {
+    case 'no-login':
+      return access.via === 'token'
+        ? `GitHub refused ${token} (expired or revoked?): create a new one and save it again with: ${access.save}`
+        : `gh is not logged in to GitHub: run gh auth login, or ${saveOne}`;
+    case 'no-permission':
+      return access.via === 'token'
+        ? `${token} may not read the issues of ${repo}: on GitHub, edit that token and set Issues to Read-only; its text stays the same, so nothing needs saving again`
+        : `the gh login may not read the issues of ${repo}: ${saveOne}`;
+    case 'not-visible':
+      return access.via === 'token'
+        ? `${repo} is not visible to ${token}: check github.repos, and on GitHub give that token this repository`
+        : `${repo} is not visible to the gh login: check github.repos, or ${saveOne}`;
+    case undefined:
+      return plainLine(`gh api graphql for the issues of ${repo} ${exitText(result.end.code, result.stderr)}`);
   }
-  if (NO_PERMISSION.test(result.stderr)) {
-    return access.via === 'token'
-      ? `${token} may not read the issues of ${repo}: on GitHub, edit that token and set Issues to Read-only; its text stays the same, so nothing needs saving again`
-      : `the gh login may not read the issues of ${repo}: ${saveOne}`;
-  }
-  if (NOT_VISIBLE.test(result.stderr)) {
-    return access.via === 'token'
-      ? `${repo} is not visible to ${token}: check github.repos, and on GitHub give that token this repository`
-      : `${repo} is not visible to the gh login: check github.repos, or ${saveOne}`;
-  }
-  return plainLine(`gh api graphql for the issues of ${repo} ${exitText(result.end.code, result.stderr)}`);
 }
 
 /**
@@ -227,7 +198,7 @@ export function parseIssuePage(stdout: string, request: IssueListRequest): Issue
 }
 
 /** False only for an issue a closed read asked about that closed before its day. */
-function wanted(issue: GithubIssue, request: IssueListRequest): boolean {
+function wanted(issue: HostIssue, request: IssueListRequest): boolean {
   return request.state === 'open' || issue.closedAt === undefined || Date.parse(issue.closedAt) >= Date.parse(sinceTime(request.closedSince));
 }
 
@@ -236,7 +207,7 @@ function sinceTime(day: string): string {
   return `${day}T00:00:00Z`;
 }
 
-function issueOf(item: unknown, repo: string): GithubIssue | null {
+function issueOf(item: unknown, repo: string): HostIssue | null {
   if (!isRecord(item)) {
     return null;
   }

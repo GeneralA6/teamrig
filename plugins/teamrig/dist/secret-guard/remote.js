@@ -38,27 +38,48 @@ const CONTAINER_TOOLS = new Set(['docker', 'podman', 'nerdctl']);
 const SSH_VALUED = new Set('BbcDEeFIiJLlmOoPpQRSWw'.split('').map((letter) => `-${letter}`));
 /**
  * What a call prints from somewhere else: a Kubernetes secret's data (`kubectl get secret -o yaml`), or what the
- * command it runs in a container or on a remote host prints (`kubectl exec`, `docker exec`, `ssh host cmd`), read by
- * `inner`. A container's command runs with no shell, so its words are quoted back into a line; ssh joins them, and
- * the remote shell reads the line.
+ * line it runs in a container or on a remote host prints (see {@link remoteLineOf}), read by `inner`.
  */
 export function remoteFindings(run, inner) {
+    const remote = remoteLineOf(run);
+    if (remote !== undefined) {
+        return inner(remote.line, remote.dialect);
+    }
+    return run.name === 'kubectl' || run.name === 'oc' ? kubectlFindings(run.args.map((arg) => arg.text)) : [];
+}
+/**
+ * The line a call runs in a container or on a remote host (`kubectl exec ... -- cmd`, `docker exec c cmd`,
+ * `ssh host cmd`), or undefined when it runs none. A container's command runs with no shell, so its words are quoted
+ * back into a line; ssh joins them, and the remote shell reads the line. Every guard that reads what a line does
+ * elsewhere reads it through this one function.
+ */
+export function remoteLineOf(run) {
+    const words = remoteWords(run);
+    if (words === undefined || words.length === 0) {
+        return undefined;
+    }
+    const line = run.name === 'ssh' ? words.map((word) => word.text).join(' ') : quoteWords(words);
+    return { line, dialect: 'bash' };
+}
+/** The words of the command a call runs elsewhere, or undefined when it runs none. */
+function remoteWords(run) {
+    const texts = run.args.map((arg) => arg.text);
     if (run.name === 'kubectl' || run.name === 'oc') {
-        return kubectlFindings(run.args, inner);
+        const verbAt = skipOptions(texts, 0, KUBECTL_VALUED);
+        const dashes = texts.indexOf('--', verbAt + 1);
+        return texts[verbAt] === 'exec' && dashes !== -1 ? run.args.slice(dashes + 1) : undefined;
     }
     if (CONTAINER_TOOLS.has(run.name)) {
-        const command = containerCommand(run.args.map((arg) => arg.text));
-        return command === undefined ? [] : inner(quoteWords(run.args.slice(run.args.length - command)), 'bash');
+        const command = containerCommand(texts);
+        return command === undefined ? undefined : run.args.slice(run.args.length - command);
     }
     if (run.name === 'ssh') {
-        const texts = run.args.map((arg) => arg.text);
-        const host = skipOptions(texts, 0, SSH_VALUED);
-        return host + 1 < texts.length ? inner(texts.slice(host + 1).join(' '), 'bash') : [];
+        return run.args.slice(skipOptions(texts, 0, SSH_VALUED) + 1);
     }
-    return [];
+    return undefined;
 }
 /** The index of the first word after `start` that is no option, skipping the value of each option in `valued`. */
-function skipOptions(texts, start, valued) {
+export function skipOptions(texts, start, valued) {
     let index = start;
     while (index < texts.length && (texts[index] ?? '').startsWith('-')) {
         if (texts[index] === '--') {
@@ -68,16 +89,12 @@ function skipOptions(texts, start, valued) {
     }
     return index;
 }
-function kubectlFindings(args, inner) {
-    const texts = args.map((arg) => arg.text);
+/** What a kubectl call that runs nothing elsewhere prints of a secret's data. */
+function kubectlFindings(texts) {
     const verbAt = skipOptions(texts, 0, KUBECTL_VALUED);
     const verb = texts[verbAt];
     const rest = texts.slice(verbAt + 1);
     switch (verb) {
-        case 'exec': {
-            const dashes = rest.indexOf('--');
-            return dashes === -1 ? [] : inner(quoteWords(args.slice(verbAt + 2 + dashes)), 'bash');
-        }
         case 'view-secret':
             return [{ kind: 'kube-secret' }];
         case 'get':

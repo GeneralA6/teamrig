@@ -2,6 +2,7 @@ import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { GateVerdict } from './local-gate.ts';
+import type { MainMove, MergeExit } from './merge.ts';
 import { withRaisedVersion, type Chunk, type ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
 import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
@@ -33,9 +34,14 @@ export interface ShipDeps {
   proveTree: () => GateVerdict;
   /** Pushes the change branch, never main (push.ts); returns its name. */
   push: () => string;
-  /** Merges the pushed branch into main (merge.ts); returns the exit code. */
-  merge: (branch: string) => Promise<number>;
+  /** Merges the pushed branch into main (merge.ts): its exit code, or main's move past the branch, not yet reported. */
+  merge: (branch: string) => Promise<MergeExit>;
+  /** main's tip on origin, fetched now, when the branch does not contain it; null when it does (sync.ts). */
+  mainMove: () => MainMove | null;
 }
+
+/** How many runs a ship makes in all when main keeps moving past it before it merges (T2696). */
+export const SHIP_ATTEMPTS = 3;
 
 export interface DistWeight extends CommitWeight {
   /** Over the commit size rule: the dist commit carries a Large-commit line. */
@@ -72,7 +78,8 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  *      without --merge for an approval), so the plan's chunks and raise are uncommitted again (T1017);
  *   1. sync.ts: when origin/main moved past the branch, rebase onto it and set the plan's version raise again
  *      on main's version; a conflict stops before any check. On every run the plan's subjects and bodies
- *      follow the version the files set, which a rerun after a failed run finds set already (T1472);
+ *      follow the version the files set, which a rerun after a failed run finds set already (T1472). A chunk
+ *      whose files hold no uncommitted change (a version chunk with no raise) is refused here (T2823);
  *   2. typecheck and the coverage gate (stops before any commit when either fails);
  *   3. one signed-off commit per chunk of the plan, in order;
  *   4. the steps of the repo's `npm run build` (build-steps.ts) and a `build: rebuild the plugin dist` commit (with a Large-commit line when the
@@ -81,11 +88,72 @@ function commit(deps: ShipDeps, files: readonly string[], subject: string, body:
  *      steps 2 and 4 did not already run on this content (scrub, DCO, the size rule, dist, docs), then a
  *      pass record for the tree, which merge and the pre-push hook reuse;
  *   6. with --merge: push the change branch (push.ts, never main) and merge it (merge.ts).
+ * Another ship can merge while this one runs its checks (heavy steps share the host), and main then moves past
+ * the branch. When that move changed no file this change changes, the version files and the dist aside (every
+ * run sets those again), the ship renames the branch `<branch>-N` (a pushed branch is never rewritten, the
+ * lead's ruling of 11-06) and goes again from step 0, at most SHIP_ATTEMPTS runs in all; the older pushed name
+ * is deleted by the merge's sweep (leftovers.ts). A move that changed the same files is refused, naming them.
+ * With --merge, local checks that fail on a branch main moved past go again the same way (T2725).
  * A refusal throws `REFUSED <reason>`; a failed step throws its own error.
  */
 export async function shipCommits(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps): Promise<number> {
+  let stem: string | null = null;
+  for (let attempt = 1; ; attempt++) {
+    const exit = await shipOnce(args, written, deps);
+    if (exit.kind === 'done') return exit.code;
+    const tip = exit.tip.slice(0, 7);
+    if (attempt === SHIP_ATTEMPTS) throw new Error(`REFUSED main moved past the branch ${SHIP_ATTEMPTS} times during this ship, last to ${tip}: ship again`);
+    const shared = sharedWithMain(deps, exit.tip);
+    if (shared.length > 0) {
+      throw new Error(`REFUSED main moved to ${tip} and changed ${shared.join(', ')}, which this change changes too: rebase onto origin/main by hand, then ship again under a new branch name`);
+    }
+    stem ??= deps.git(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+    const next = freeBranch(deps, stem);
+    deps.run('git', ['branch', '-m', next]);
+    deps.log(`\nmain moved to ${tip}, touching no file this change touches: shipping again as ${next}`);
+  }
+}
+
+const pathsOf = (text: string): string[] => text.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+
+/** The files both the branch and main's move to `tip` changed, but the version files and the dist. */
+function sharedWithMain(deps: ShipDeps, tip: string): string[] {
+  const from = deps.git(['merge-base', 'HEAD', tip]).trim();
+  const changed = (to: string): string[] => pathsOf(deps.git(['diff', '--name-only', '--no-renames', from, to]));
+  const ours = new Set(changed('HEAD'));
+  const setAgain = new Set(TEAMRIG_VERSION_FILES.map((file) => file.path));
+  return changed(tip).filter((path) => ours.has(path) && !setAgain.has(path) && !path.startsWith(`${DIST}/`));
+}
+
+/** The first `<stem>-N`, N from 2, that names no branch here or on origin. */
+function freeBranch(deps: ShipDeps, stem: string): string {
+  for (let n = 2; ; n++) {
+    const name = `${stem}-${n}`;
+    if (deps.git(['branch', '--list', name]).trim() === '' && deps.git(['ls-remote', '--heads', 'origin', `refs/heads/${name}`]).trim() === '') return name;
+  }
+}
+
+/** One run of steps 0 to 6. */
+/**
+ * Refuses a chunk none of whose files holds an uncommitted change, before any check: its commit would fail only after
+ * the typecheck and the coverage run, at `nothing to commit`. The usual one is a version chunk with no raise in the
+ * tree, as the sync then keeps main's version (T2823).
+ */
+function refuseEmptyChunks(deps: ShipDeps, chunks: readonly Chunk[], versionPaths: readonly string[]): void {
+  for (const chunk of chunks) {
+    if (deps.git(['status', '--porcelain', '--', ...chunk.files]).trim() !== '') continue;
+    const fix = chunk.files.some((path) => versionPaths.includes(path))
+      ? `raise the version in ${versionPaths.join(' and ')}, left uncommitted, then ship again`
+      : 'leave its change uncommitted, or take the chunk out of the plan, then ship again';
+    throw new Error(`REFUSED the plan's chunk "${chunk.subject}" commits nothing: ${chunk.files.join(', ')} hold no uncommitted change; ${fix}`);
+  }
+}
+
+async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDeps): Promise<MergeExit> {
   deps.takeBack(written, args.base);
-  const chunks = withRaisedVersion(written, TEAMRIG_VERSION_FILES.map((file) => file.path), deps.sync().sets);
+  const versionPaths = TEAMRIG_VERSION_FILES.map((file) => file.path);
+  const chunks = withRaisedVersion(written, versionPaths, deps.sync().sets);
+  refuseEmptyChunks(deps, chunks, versionPaths);
 
   deps.node(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json']);
   deps.node(['tools/ci/coverage-cli.ts']);
@@ -103,8 +171,15 @@ export async function shipCommits(args: ShipArgs, written: readonly Chunk[], dep
   deps.log('\nlocal checks:');
   const verdict = deps.proveTree();
   deps.log(deps.git(['log', '--oneline', `${args.base}..HEAD`]));
-  if (!verdict.passed) throw new Error(`REFUSED ${verdict.reason}`);
-  if (!args.merge) return 0;
+  if (!verdict.passed) {
+    // The plugin version gate fails once another ship merged the same raise meanwhile (T2725); a run on the moved
+    // main sets the raise again, and a failure of the change's own fails that run too.
+    const move = args.merge ? deps.mainMove() : null;
+    if (move === null) throw new Error(`REFUSED ${verdict.reason}`);
+    deps.log(`\nlocal checks: ${verdict.reason}, and ${move.reason}`);
+    return { kind: 'moved', ...move };
+  }
+  if (!args.merge) return { kind: 'done', code: 0 };
 
   const branch = deps.push();
   deps.log(`\npushed ${branch}; merging:`);

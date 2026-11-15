@@ -4,7 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { TASK_STATUSES } from '../register/model.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, goalsOf, instantOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, typeOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, goalsOf, instantOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, taskRefOf, typeOf, waitsOf, weekOf, withSecurityCard, type TypedTimes } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -261,6 +261,15 @@ describe('statusInputOf', () => {
   });
 });
 
+describe('withSecurityCard (T2761)', () => {
+  it('marks the card security-related with --security, beside the parts typed or alone, and leaves it be without', () => {
+    const typed = { status: 'waiting' as const, card: { question: 'Grant the read' } };
+    assert.deepEqual(withSecurityCard(typed, new Set(['security'])), { status: 'waiting', card: { question: 'Grant the read', security: true } });
+    assert.deepEqual(withSecurityCard({ status: 'waiting' }, new Set(['security'])), { status: 'waiting', card: { security: true } });
+    assert.equal(withSecurityCard(typed, new Set(['one-commit'])), typed);
+  });
+});
+
 describe('setInputOf', () => {
   it('reads the status alone without --ask', () => {
     assert.deepEqual(setInputOf(flags({ status: 'verifying', proof: 'the nightly run', due: '2030-01-09' }), TIMES), {
@@ -323,12 +332,22 @@ describe('statusInputOf: the decision card', () => {
     assert.deepEqual(statusInputOf(full, TIMES).card, { question: 'Which tier', options: ['Basic', 'Pro at 29'], recommend: 'Basic', byDefault: 'Basic ships' });
     assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner', recommend: 'Pro now' }), TIMES).card, { recommend: 'Pro now' });
     assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'approval:owner', 'why-ask': ' only the owner sees it ' }), TIMES).card, { whyAsk: 'only the owner sees it' });
+    assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'approval:owner', affects: ' buys 400 dollars of data ' }), TIMES).card, { affects: 'buys 400 dollars of data' }, 'T2623');
     assert.equal('card' in statusInputOf(flags({ status: 'waiting', waits: 'decision:owner' }), TIMES), false);
   });
 
   it('refuses a blank part or an empty choice', () => {
     assert.throws(() => statusInputOf(flags({ status: 'waiting', question: ' ' }), TIMES), /--question needs text/);
     assert.throws(() => statusInputOf(flags({ status: 'waiting', options: 'Basic || Pro' }), TIMES), /--options has an empty choice: separate the choices with \|/);
+  });
+
+  it('keeps an escaped \\| inside a choice as a literal |', () => {
+    const typed = flags({ status: 'waiting', waits: 'decision:owner', options: "Approve: add the row 'Account \\| D1 \\| Edit' to the token | Decline: keep the token as it is" });
+    assert.deepEqual(statusInputOf(typed, TIMES).card?.options, ["Approve: add the row 'Account | D1 | Edit' to the token", 'Decline: keep the token as it is']);
+  });
+
+  it('names the choices it split into when one is empty', () => {
+    assert.throws(() => statusInputOf(flags({ status: 'waiting', options: 'Basic || Pro' }), TIMES), /split into 3 choices at each \|: "Basic" \/ "" \/ "Pro"; write \\\| for a \| inside a choice/);
   });
 });
 

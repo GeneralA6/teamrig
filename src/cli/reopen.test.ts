@@ -8,12 +8,13 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { inboxLineOf } from '../inbox/inbox.ts';
 import { lineHash } from '../inbox/line-hash.ts';
-import { decodePrompt, defaultPrompt, reopenPrompt } from '../open/prompt.ts';
+import { decodePrompt, defaultPrompt, refreshPrompt, reopenPrompt } from '../open/prompt.ts';
+import { RefreshStore } from '../refresh/store.ts';
 import { homeCloseOf, SessionLog, type CloseRecord } from '../sessions/log.ts';
 import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
+import { FakePathProbe, FakeProcesses, NO_POWERSHELL } from '../testing/fake-processes.ts';
 import { ok } from '../testing/hired-team.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { WakeAsks } from '../wake/asks.ts';
@@ -72,6 +73,11 @@ function promptOf(argv: readonly string[]): string | undefined {
 function resumedOf(argv: readonly string[]): string | undefined {
   const at = argv.indexOf('--resume');
   return at < 0 ? undefined : argv[at + 1];
+}
+
+/** The team's refresh store, where a session's refresh state and handover sit. */
+function refreshStoreOf(alpha: ClosedAlpha): RefreshStore {
+  return new RefreshStore(alpha.kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
 }
 
 async function logOf(alpha: ClosedAlpha): Promise<unknown> {
@@ -150,6 +156,29 @@ describe('opening a session teamrig closed', () => {
     assert.deepEqual(await logOf(alpha), [HOME, { kind: 'reopen', session: 'alpha', at: new Date(alpha.kit.clock.now()).toISOString() }]);
   });
 
+  it('opens it fresh on its handover when its refresh is ready, and --resume then refuses (T2354)', async () => {
+    const alpha = await closedAlpha(40_000);
+    const store = refreshStoreOf(alpha);
+    await store.setState('alpha', { phase: 'ready', task: 'T3', at: new Date(alpha.kit.clock.now()).toISOString(), tokens: null, noticed: true, transcript: null, claudePid: null });
+    const refused = await open(alpha, ['--resume']);
+    assert.equal(refused.result.code, EXIT.refused);
+    assert.match(refused.result.stdout.join('\n'), /^REFUSED not resumed: its refresh is ready: it starts from its handover; teamrig open alpha opens it fresh$/);
+
+    const { result, argv } = await open(alpha);
+    assert.ok(ok(result).stdout[0]?.endsWith(', fresh (its refresh is ready: it starts from its handover)'), result.stdout[0]);
+    assert.equal(resumedOf(argv), undefined, 'a resume keeps the old context, so its start would never take the handover');
+    assert.equal(promptOf(argv), refreshPrompt('app', 'alpha', store.handoverPath('alpha')));
+    assert.deepEqual(await logOf(alpha), [CLOSED, { kind: 'reopen', session: 'alpha', at: new Date(alpha.kit.clock.now()).toISOString() }]);
+  });
+
+  it('resumes it as before once its refresh is past ready (T2354)', async () => {
+    const alpha = await closedAlpha(40_000);
+    await refreshStoreOf(alpha).setState('alpha', { phase: 'refreshed', task: null, at: new Date(alpha.kit.clock.now()).toISOString() });
+    const { argv } = await open(alpha);
+    assert.equal(resumedOf(argv), CLAUDE_SESSION);
+    assert.equal(promptOf(argv), reopenPrompt('app', 'alpha'));
+  });
+
   it('logs no reopen when no terminal opens', async () => {
     const alpha = await closedAlpha(40_000);
     const result = await alpha.kit.run(['open', 'alpha', '--terminal', 'print'], alpha.options);
@@ -169,8 +198,10 @@ async function handWork(alpha: ClosedAlpha): Promise<void> {
 
 /** Runs the idle pass's reopen of alpha on a host whose memory is `memory`, over `files` when given. */
 async function idleOpen(alpha: ClosedAlpha, memory = new FakeHostMemory().lists([], CHARGE), files?: Files): Promise<{ result: CliResult; argv: readonly string[] }> {
-  const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
+  // No Windows PowerShell, so the tab, which keeps the focus (T2510), starts plainly and its arguments show.
+  const processes = new FakeProcesses().onRun('powershell.exe', NO_POWERSHELL).onStart('wt.exe', { kind: 'started', end: 'exited' });
   const result = await alpha.kit.run(['idle-open', 'alpha', '--team', 'app', '--project', APP], { ...alpha.options, processes, memory, ...(files === undefined ? {} : { files }) });
+  assert.deepEqual(processes.keptFocus, processes.started.length === 0 ? [] : ['wt.exe'], 'the idle pass never takes the focus');
   return { result, argv: processes.started[0]?.args ?? [] };
 }
 

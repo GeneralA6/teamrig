@@ -4,6 +4,8 @@ export function describeFinding(finding) {
         case 'literal':
         case 'written':
             return finding.description;
+        case 'credential':
+            return finding.via;
         case 'file':
             return `the content of ${finding.path}`;
         case 'environment':

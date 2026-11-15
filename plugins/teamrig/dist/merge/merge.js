@@ -6,6 +6,7 @@ import { appendDeploy, rangeText } from "../delivery/ledger.js";
 import { lineRequestOf, processRequest } from "../delivery/process-request.js";
 import { marksOfTaking, recordQueuedStep, recordRefusal, runRecorded } from "../delivery/recorded-step.js";
 import { sayingWaits, WaitLog } from "../delivery/wait-log.js";
+import { pipelineFrozenRefusal } from "../delivery/pipeline-freezes.js";
 import { queueCutoffReason, resetBlackoutReason } from "../delivery/schedule.js";
 import { exitCodeOf } from "../delivery/steps.js";
 import { gitEnvironment } from "../core/git-run.js";
@@ -240,15 +241,20 @@ function mergeOf(cleared, plan, at, base, head) {
     const merged = { at, session: plan.session, repo: plan.repo.name, branch: plan.branch, base, head, ...verdict.facts, review };
     return verdict.kind === 'self' ? { ...merged, route: 'self' } : { ...merged, route: 'approved', missed: verdict.missed, approvedBy: verdict.approvedBy };
 }
-/** Whether the push may start now: the queue cutoff and the reset blackout refuse it, a deploy freeze on what it deploys holds it. */
+/**
+ * Whether the push may start now: the queue cutoff, the reset blackout and a pipeline freeze on merges (or on deploys,
+ * when the push deploys) refuse it, a deploy freeze on what it deploys holds it.
+ */
 function readinessOf(setup, ports, repo) {
     const { schedule } = setup.delivery;
     const targets = repo.config.deploysOnPush;
+    const kinds = targets.length === 0 ? ['merge'] : ['merge', 'deploy'];
     return async () => {
         const now = ports.clock.now();
         const hours = schedule.resetBlackoutHours;
         const refusal = queueCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
-            (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
+            (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone)) ??
+            pipelineFrozenRefusal(await ports.files.read(setup.places.pipelineFreezes), setup.places.pipelineFreezes, now, kinds, setup.zone);
         if (refusal !== undefined) {
             return { kind: 'refuse', reason: refusal };
         }

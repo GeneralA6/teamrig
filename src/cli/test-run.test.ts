@@ -149,6 +149,19 @@ describe('teamrig test', () => {
     assert.equal(shell.ran.length, 0);
   });
 
+  it('refuses on Windows a command with a line break, which cmd.exe would cut, and an empty one, running nothing (T2156)', async () => {
+    const { kit, shell } = harness();
+    for (const [words, reason] of [
+      [['bash', '-c', '\nnpm test'], 'a word of the command holds a line break, and cmd.exe'],
+      [[''], 'the command after -- is empty'],
+    ] as const) {
+      const result = await kit.run(['test', '--', ...words], { shell, platform: 'win32' });
+      assert.equal(result.code, 64);
+      assert.ok(result.stderr[0]?.startsWith(reason), result.stderr[0]);
+    }
+    assert.equal(shell.ran.length, 0);
+  });
+
   it('still refuses -- on a command that takes no command line', async () => {
     const result = await new CliHarness().run(['show', 'T1', '--', 'x']);
     assert.equal(result.code, 64);

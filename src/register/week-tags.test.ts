@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EVENT_VERSION, type RegisterEvent, type TaskFields } from './events.ts';
 import { weekTagAt, weekTagsOf } from './week-tags.ts';
 
-const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null };
+const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], noGoal: false, week: null, after: [], size: null, type: null, critical: false, pin: null, workClass: null, prepares: null };
 
 const MONDAY = '2030-01-07T10:00:00.000Z';
 const TUESDAY = '2030-01-08T10:00:00.000Z';

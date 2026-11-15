@@ -1,7 +1,7 @@
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { GoalStore } from "../../register/goal-store.js";
-import { FIRST_GOAL_RANK, GOAL_TAG, isGoalDay, isGoalRank, MAX_GOAL_RANK, NO_GOAL } from "../../register/goals.js";
+import { FIRST_GOAL_RANK, FIRST_SLICE, GOAL_TAG, isGoalDay, isGoalRank, isSlice, MAX_GOAL_RANK, NO_GOAL } from "../../register/goals.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { fileLockOf } from "../file-locks.js";
 import { callerOf } from "../inputs.js";
@@ -53,6 +53,14 @@ function rankArgOf(text) {
     }
     return rank;
 }
+/** `--slice <n>`: the goal's open slice (T2453), a whole number from 1. */
+function sliceArgOf(text) {
+    const slice = /^\d+$/.test(text) ? Number(text) : Number.NaN;
+    if (!isSlice(slice)) {
+        throw new UsageError(`--slice "${text}" is not a whole number from ${FIRST_SLICE}`);
+    }
+    return slice;
+}
 /** A day flag, `YYYY-MM-DD`. */
 function dayOf(flag, text) {
     const day = text.trim();
@@ -81,11 +89,12 @@ function slipsText(goal) {
     const count = goal.slips.length;
     return count === 0 ? '' : `, ${count} slip${count === 1 ? '' : 's'}`;
 }
-/** One goal as a list line: its tag, window, slips, parent and rank, then its title. */
+/** One goal as a list line: its tag, window, slips, parent, rank and open slice, then its title. */
 export function goalLine(goal) {
     const parent = goal.parent === null ? '' : `, part of ${goal.parent}`;
     const rank = goal.rank === null ? '' : `, rank ${goal.rank}`;
-    return `${goal.tag} ${goal.start} to ${goal.target}${slipsText(goal)}${parent}${rank} | ${goal.title}`;
+    const slice = goal.slice === null ? '' : `, slice ${goal.slice}`;
+    return `${goal.tag} ${goal.start} to ${goal.target}${slipsText(goal)}${parent}${rank}${slice} | ${goal.title}`;
 }
 /**
  * The rows `goal list` prints: the ranked goals first, by rank (a tie in the order added), each on its own, then the
@@ -175,8 +184,10 @@ export async function goalSet(args, runtime) {
     const secrets = new SecretScanner(gk.config.register.secretPatterns);
     const target = args.flags.get('target');
     const title = args.flags.get('title');
+    const slice = args.flags.get('slice');
     const input = {
         tag,
+        slice: slice === undefined ? null : sliceArgOf(slice),
         target: target === undefined ? null : dayOf('target', target),
         title: title === undefined ? null : lineOf('title', title, gk.config.register.maxTitle, secrets),
         note: lineOf('note', requiredFlag(args.flags, 'note'), gk.config.register.maxText, secrets),
@@ -219,6 +230,7 @@ export function goalShowLines(goal, goals, zone) {
         `${goal.tag} | ${goal.title}`,
         `  window ${goal.start} to ${goal.target}${added}`,
         ...(goal.rank === null ? [] : [`  rank ${goal.rank}`]),
+        ...(goal.slice === null ? [] : [`  slice ${goal.slice}`]),
         `  added ${zone.weekdayMinute(new Date(goal.addedAt))} by ${goal.addedBy}`,
         ...(goal.parent === null ? [] : [`  part of ${goal.parent}`]),
         ...(parts.length === 0 ? [] : [`  parts ${parts.join(', ')}`]),

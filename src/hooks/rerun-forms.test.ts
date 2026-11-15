@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NOTHING_QUOTES } from '../testing/ansi-c-quotes.ts';
-import { rerunForm } from './rerun-forms.ts';
+import { rerunForm, rerunOf } from './rerun-forms.ts';
 
 describe('rerunForm', () => {
   it('runs the commands after a leading cd in its folder: git through -C, anything else through env -C', () => {
@@ -67,5 +67,22 @@ describe('rerunForm', () => {
     for (const command of doubts) {
       assert.equal(rerunForm('Bash', command), undefined, command);
     }
+  });
+});
+
+describe('rerunOf', () => {
+  it('names the folder of the leading cd and the program each command after it runs', () => {
+    assert.deepEqual(rerunOf('Bash', 'cd /w && CI=1 npm test 2>&1 | tail -5'), {
+      form: 'env -C /w CI=1 npm test 2>&1 | env -C /w tail -5',
+      folder: '/w',
+      programs: ['npm', 'tail'],
+    });
+    assert.deepEqual(rerunOf('Bash', 'cd /w && git worktree remove ../x')?.programs, ['git']);
+  });
+
+  it('names no folder for a form with no leading cd, and gives nothing where rerunForm gives nothing', () => {
+    assert.deepEqual(rerunOf('Bash', 'git worktree remove /w/x'), { form: 'teamrig worktree remove /w/x', folder: undefined, programs: ['git'] });
+    assert.equal(rerunOf('Bash', 'cd /w; git status'), undefined);
+    assert.equal(rerunOf('PowerShell', 'cd /w && git status'), undefined);
   });
 });

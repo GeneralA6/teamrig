@@ -1,5 +1,5 @@
 import type { StarterWatch, StarterWatching } from '../delivery/starter-watch.ts';
-import type { ProcessInfo } from '../open/session-processes.ts';
+import { isClaudeProcess, type ProcessInfo } from '../open/session-processes.ts';
 
 /** The Bash tool's shell a tab's step runs in. */
 export const SHELL: ProcessInfo = { pid: 4100, parentPid: 4000, name: 'bash.exe', commandLine: 'bash -c teamrig queue' };
@@ -13,6 +13,7 @@ export const CLAUDE: ProcessInfo = { pid: 4000, parentPid: 3000, name: 'claude.e
 export class FakeStarterWatch implements StarterWatch {
   private readonly starters: readonly ProcessInfo[];
   private readonly open = new Set<(starter: ProcessInfo) => void>();
+  private readonly gone = new Set<number>();
 
   constructor(starters: readonly ProcessInfo[] = [SHELL, CLAUDE]) {
     this.starters = starters;
@@ -23,11 +24,12 @@ export class FakeStarterWatch implements StarterWatch {
     return this.open.size;
   }
 
-  /** Ends `starter` (default the first), for every open watch. */
+  /** Ends `starter` (default the first), for every open watch; a tab's Claude Code ended stays ended for `tabAlive`. */
   end(starter: ProcessInfo | undefined = this.starters[0]): void {
     if (starter === undefined) {
       throw new Error('no starter to end: this watch lists none');
     }
+    this.gone.add(starter.pid);
     for (const ended of [...this.open]) {
       ended(starter);
     }
@@ -43,6 +45,7 @@ export class FakeStarterWatch implements StarterWatch {
       }
     };
     this.open.add(ended);
-    return { starters: this.starters, stop: controller.signal, ended: () => found, close: () => this.open.delete(ended) };
+    const tabAlive = (): boolean => this.starters.some((starter) => isClaudeProcess(starter) && !this.gone.has(starter.pid));
+    return { starters: this.starters, stop: controller.signal, ended: () => found, tabAlive, close: () => this.open.delete(ended) };
   }
 }

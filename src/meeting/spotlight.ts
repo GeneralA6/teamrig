@@ -4,18 +4,21 @@ import { powerShellRequest } from '../core/powershell.ts';
 import { MS_PER_SECOND } from '../core/time.ts';
 import { candidatesOf, type OpenTabDeps } from '../open/open-tab.ts';
 import type { HiddenRequest, StartOutcome } from '../open/processes.ts';
-import { MEETING_LAPSE_MS, type Meeting } from './state.ts';
 
 /**
  * The meeting's spotlight (T2517): while the owner's daily meeting is open, every screen is dimmed but the Windows
- * Terminal window holding the lead's tab. A hidden Windows PowerShell runs a borderless black overlay over the whole
- * virtual screen, click-through and never activated, with a hole cut where that window is; it follows the window as it
- * moves and lifts itself once the meeting file says the meeting ended, another one started, or it lapsed. A CRITICAL
+ * Terminal window holding the lead's tab; while a scheduled meeting is on, all but the window of the session met
+ * (spotlit.ts, T2662). A hidden Windows PowerShell runs a borderless black overlay over the whole virtual screen,
+ * click-through and never activated, with a hole cut where that window is; it follows the window as it moves and lifts
+ * itself once the meeting file says the meeting ended, another one started, or it lapsed. A CRITICAL
  * message that broke through the meeting to the lead (src/meeting/breakthrough.ts) hides it for a while, so the owner
  * sees that message at once; it dims again by itself after `meeting.spotlight.breakthroughSeconds` (T2524). Nothing is
  * typed into a terminal, and the tab's title, the meeting file's path and the times reach the script as variables,
  * never inside it.
  */
+
+/** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
+export const SPOTLIGHT_LOG = 'meeting-spotlight.log';
 
 /** The variables the spotlight script reads its values from. */
 export const SPOTLIGHT_VARS = {
@@ -178,13 +181,16 @@ export const WINDOWS_SPOTLIGHT_SCRIPT = [
 ].join('\n');
 
 /**
- * What the spotlight of one meeting needs: the lead's tab title, the meeting file, the meeting it opened and the
- * break-through file.
+ * What the spotlight of one meeting needs: the title of the tab it frames, the meeting file, the start it watches for
+ * there, when it lifts at the latest and the break-through file.
  */
 export interface SpotlightTarget {
   readonly title: string;
   readonly meetingFile: string;
-  readonly meeting: Meeting;
+  /** The meeting's start, as the meeting file holds it: another start there lifts the spotlight. */
+  readonly startedAt: string;
+  /** When it lifts though the file still holds the meeting open, epoch ms: a forgotten end dims nothing for good. */
+  readonly until: number;
   readonly breakthroughFile: string;
   readonly dim: number;
   /** How long a break-through lifts the dimming, in ms. */
@@ -196,7 +202,6 @@ export interface SpotlightTarget {
 /** The hidden program that spotlights the window of `target.title` until the meeting is no longer open. */
 export function spotlightRequest(target: SpotlightTarget, env: Env, cwd: string): HiddenRequest {
   const { program, args } = powerShellRequest(WINDOWS_SPOTLIGHT_SCRIPT);
-  const until = Date.parse(target.meeting.startedAt) + MEETING_LAPSE_MS;
   return {
     command: program,
     args,
@@ -208,8 +213,8 @@ export function spotlightRequest(target: SpotlightTarget, env: Env, cwd: string)
       ...env,
       [SPOTLIGHT_VARS.title]: target.title,
       [SPOTLIGHT_VARS.meeting]: target.meetingFile,
-      [SPOTLIGHT_VARS.startedAt]: target.meeting.startedAt,
-      [SPOTLIGHT_VARS.until]: String(until),
+      [SPOTLIGHT_VARS.startedAt]: target.startedAt,
+      [SPOTLIGHT_VARS.until]: String(target.until),
       [SPOTLIGHT_VARS.dim]: String(target.dim),
       [SPOTLIGHT_VARS.breakthrough]: target.breakthroughFile,
       [SPOTLIGHT_VARS.liftMs]: String(target.liftMs),
@@ -227,7 +232,7 @@ export type SpotlightOutcome =
   | { readonly kind: 'start'; readonly outcome: StartOutcome };
 
 /**
- * Starts the spotlight when the team turned it on and the lead's tab can be found: Windows, with Windows Terminal among
+ * Starts the spotlight when the team turned it on and the tab it frames can be found: Windows, with Windows Terminal among
  * the terminals the team's `open.terminal` tries. Never waits for the overlay to show.
  */
 export async function startSpotlight(

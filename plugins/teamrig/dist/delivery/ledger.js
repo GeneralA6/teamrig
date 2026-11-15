@@ -3,7 +3,7 @@ import { parseJsonl } from "../core/jsonl.js";
 import { formatUtcMinute } from "../core/time.js";
 import { TASK_ID } from "../register/model.js";
 import { isStepKind } from "./process-request.js";
-import { WAIT_CAUSES } from "./wait-log.js";
+import { WAIT_CAUSES } from "./wait-cause.js";
 /** The ledger's file name in the delivery folder: one JSON record a line, appended. */
 export const LEDGER_FILE = 'ledger.jsonl';
 /** The people's ledger beside it: one line a deploy, appended. */

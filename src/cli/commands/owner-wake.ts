@@ -6,6 +6,7 @@ import { TAB_ACTIVITY_CLAUSES, tabActivityNow } from '../idle-check.ts';
 import { findTeam, openKit, sessionIdOf, teamZone } from '../kit.ts';
 import { runningRecordOf } from '../live-run.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { tabFocusOf } from '../tab-focus.ts';
 import { postAtOnce } from '../urgent-line.ts';
 import { openSession, printOpenResult, terminalFlag } from './open.ts';
 import { namesOf, refuseUnderClaudeCode } from './owner.ts';
@@ -45,7 +46,7 @@ export async function ownerWake(args: ParsedArgs, runtime: CliRuntime): Promise<
   const record = await runningRecordOf(runtime, kit.paths, roster.ids, id);
   if (record === undefined) {
     const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
-    return printOpenResult(runtime, await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: false }));
+    return printOpenResult(runtime, await openSession(runtime, kit, config, roster, { team, id, project, terminal, asked: false, focus: await tabFocusOf(runtime) }));
   }
   if (!config.wake.enabled) {
     throw new RefusedError(`${shown} was not woken: wake.enabled is false on team ${team}, so no inbox line wakes its tab; type in its tab instead`);

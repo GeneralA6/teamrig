@@ -186,7 +186,8 @@ it stays `open`, planned after it (`teamrig update T4 --after T5`), and its line
 
 ## Write a decision card
 
-A wait on the owner carries a card (`--question`, `--options`, `--recommend`, `--default`, and `--gate`), which the
+A wait on the owner carries a card (`--question`, `--options`, `--recommend`, `--default`, `--gate`, and `--affects`
+for a test, measure or proof), which the
 lead reads out at the daily meeting and the pane shows. The owner reads it cold, between other cards, so they can
 decide from it alone in about a minute:
 
@@ -257,7 +258,10 @@ so it never loses work to a compaction.
 
    Mid-task it says `teamrig: your context is 132k (refresh at 120k), so refresh now rather than at a task end.`
    If you go on without the fresh start (the user typed), it asks again at your next task end, or once your
-   context grew a fifth of `refresh.contextTokens` more. Within a long turn teamrig's mod asks as soon as a tool
+   context grew a fifth of `refresh.contextTokens` more. A fresh start (a `/clear`, a new process) only measures its
+   context at its first turn end, or at the first tool result the mod reports, and asks nothing; a size or task-count
+   refresh then needs the context to have grown that fifth past the measure, so a session that starts over the
+   threshold is never asked again before it did any work. Within a long turn teamrig's mod asks as soon as a tool
    result shows the context past the threshold (`so refresh within this turn: finish the step you are on and start
    no other`, ending `and end your turn: the fresh start follows it`), and until the fresh start Claude Code's own
    compaction waits, up to `refresh.compactCeilingTokens` (185,000).
@@ -274,7 +278,7 @@ so it never loses work to a compaction.
    `Ready. Ask the user to type /clear; your next start reads <path>.`. At the end of that turn the tab title becomes `[shop] web: type /clear` (the session's team and name;
    `refresh.tabTitle: false` turns that off; with `tabStatus.enabled`, after the tab's state circle).
 4. End your turn and start nothing new. The user types `/clear` once done with your screen, which a `/clear`
-   wipes. With `refresh.autoRestart: true` the title reads `[shop] web: restarting` instead: once the tab has been
+   wipes. With `refresh.autoRestart: true` (the default is `"lead"`: the lead only) the title reads `[shop] web: restarting` instead: once the tab has been
    idle 15 s (`refresh.restartDelaySeconds`), teamrig's
    mod runs `/clear` in this tab, after asking Claude Code that no helper of yours still runs (it waits while one does),
    and once the user is away: it waits while the prompt box holds a draft and for 30 minutes after their last key or
@@ -419,6 +423,12 @@ each flag (full table: [tasks.md](tasks.md#check-flags)):
 - `UNGATED`: a task asks the owner to decide what no owner gate or business decision makes the owner's: never read
   it to the owner; decide it yourself if it is yours to decide, else one inbox line to its owner to decide it, or
   to set it again with `--gate`.
+- `OWNER-PROOF`: a task asks the owner about a test, measure or proof of approved work that changes no approved
+  number, spends no money and writes no data: never read it to the owner; one inbox line to its owner to go ahead
+  and drop the wait, or to set it again with `--affects`.
+- `SECURITY-UNREVIEWED`: a card asks the owner about a guard, a permission, a secret or another security word with
+  no security verdict on it: read it to the owner only once the security reviewer's verdict is on it; one inbox line
+  to its owner to have it read (`audit --verdict`).
 - `RUN-CHANGED`: a card hands the owner a hand step file that changed or went since its audit: never ask the owner
   to run it; one inbox line to its owner to have it audited again, or to set the card again without `--run`.
 - `DECISIONS batch due`: ask the human the batch `teamrig decisions --session lead` prints, together, each card as it
@@ -441,6 +451,8 @@ each flag (full table: [tasks.md](tasks.md#check-flags)):
   next week (`update --week`), or tell the human what it would cut.
 - `OVER-SIZE`: a task cost more than twice its size: one inbox line to its owner to re-size what is left
   (`update --size`), split the rest off or drop it (`teamrig budget --task <id>` shows where the W went).
+- `PREP-LAPSED`: re-mark the task for the slice it now prepares (`update --prepares <goal>:<slice>`), or clear
+  the marker (`--prepares none`).
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the human what it would push out.
 - A `SKILL` flag: tell the skill's owner in one inbox line.
 

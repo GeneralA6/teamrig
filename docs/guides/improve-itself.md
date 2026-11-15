@@ -69,7 +69,7 @@ SKILL UNVERIFIED (last verified 2029-12-01, 38 d ago > 30) web web-deploy
 | `FORBIDDEN-KEY` | a frontmatter key on `skills.forbidFrontmatter` (`allowed-tools`) | Remove the key. |
 | `DESCRIPTION` | no description, or one over `skills.maxDescriptionWords` (30) words | Write or shorten it. |
 | `SIGNATURE` | a `Signature:` that is not a valid regex | Fix the pattern, else the scorecard misses the skill's uses. |
-| `GRANT` | a script beside the `SKILL.md` makes a privileged call (`kubectl exec`, a secret read, a credential header) that no `Grants:` line names | With the owner's grant, name its kind on a `Grants:` line; else drop the call. |
+| `GRANT` | a script the skill runs (beside the `SKILL.md`, named on a run line of it by an absolute or `~` path, or imported by one of those) makes a privileged call (`kubectl exec`, a secret or credential store read, a credential header) that no `Grants:` line names | With the owner's grant, name its kind on a `Grants:` line; else drop the call. |
 | `AREA-OVER-LIMIT` | an area holds more than `skills.maxPerArea` (8) skills | Merge before adding. |
 
 `GRANT` is there because auto mode judges a script call by its own command (`node flow.js`), never by what the script

@@ -322,6 +322,15 @@ describe('checkTasks: PRIORITY-SKIP', () => {
     assert.equal(skips([{ ...waiting, priority: 3 }, { ...working, priority: 1 }]).length, 1, 'a p1 in progress below a p3 of a better band');
   });
 
+  it('ranks a skipped near-term prep task right after expedite, and raises none on prep in progress (T2453)', () => {
+    const near = { T1: { standing: 'near' } as const };
+    assert.match(skips([waiting, working], testRanking({ classes: { T2: 'Roadmap' }, preps: near }))[0] ?? '', /^PRIORITY-SKIP \(T1 \(near-term prep, score 3\.33\) waits open/);
+    assert.deepEqual(skips([waiting, working], testRanking({ classes: { T1: 'Roadmap' }, preps: { T2: { standing: 'near' } } })), [], 'prep in progress over Roadmap');
+    assert.deepEqual(skips([{ ...waiting, critical: true }, working], testRanking({ preps: { T2: { standing: 'near' } } })), [], 'prep in progress, even over expedite');
+    const lapsed = { T2: { standing: 'lapsed', why: 'prepares A1:5, goal A1 is on slice 2' } } as const;
+    assert.equal(skips([waiting, working], testRanking({ classes: { T1: 'Roadmap' }, preps: lapsed })).filter((line) => line.startsWith('PRIORITY-SKIP')).length, 1, 'a lapsed marker skips as any task');
+  });
+
   it('calls a skipped task of the expedite band that, not by its class', () => {
     assert.match(skips([{ ...waiting, critical: true }, working], testRanking({ classes: { T1: 'Maintenance' } }))[0] ?? '', /^PRIORITY-SKIP \(T1 \(expedite, score 66\.67\) waits open/);
   });
@@ -463,6 +472,38 @@ describe('checkTasks: OFF-GOAL', () => {
     ];
     assert.deepEqual(kinds(tasks), ['OWNER-UNPLANNED T1', 'DUE-UNPLANNED T2']);
   });
+
+  it('raises neither OFF-GOAL nor DUE-UNPLANNED on near-term prep, only OWNER-UNPLANNED on an owner order (T2453)', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'in-progress', ...seen }),
+      testTask({ id: 'T2', status: 'in-progress', due: '2030-01-12', ...seen }),
+      testTask({ id: 'T3', status: 'in-progress', source: 'owner', ...seen }),
+    ];
+    const near = { standing: 'near' } as const;
+    const ranking = testRanking({ preps: { T1: near, T2: near, T3: near } });
+    const flags = checkTasks(tasks, NOW, TimeZone.UTC, '2030-01-07', CONFIG, NO_TASKS_ELSEWHERE, ranking).map((flag) => `${flag.kind} ${flag.task.id}`);
+    assert.deepEqual(flags, ['OWNER-UNPLANNED T3']);
+  });
+});
+
+describe('checkTasks: PREP-LAPSED (T2453)', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+
+  it('flags an active task whose prep marker lapsed with what moved, and treats it as any other task: skipping near prep, off goal', () => {
+    const tasks = [testTask({ id: 'T1', status: 'in-progress', ...seen }), testTask({ id: 'T2', ...seen }), testTask({ id: 'T3', status: 'done', ...seen })];
+    const why = 'prepares A1:5, goal A1 is on slice 2';
+    const lapsed = { standing: 'lapsed', why } as const;
+    const ranking = testRanking({ preps: { T1: lapsed, T2: { standing: 'near' }, T3: lapsed } });
+    const flags = checkTasks(tasks, NOW, TimeZone.UTC, '2030-01-07', CONFIG, NO_TASKS_ELSEWHERE, ranking);
+    assert.deepEqual(
+      flags.map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
+      [
+        'PRIORITY-SKIP T1: T2 (near-term prep, score 3.33) waits open, skipped since 01-07 09:00 UTC',
+        `PREP-LAPSED T1: ${why}`,
+        'OFF-GOAL T1: in progress with no goal, not in week 2030-01-07',
+      ],
+    );
+  });
 });
 
 describe('checkTasks: NO-CARD', () => {
@@ -532,6 +573,62 @@ describe('checkTasks: UNGATED', () => {
 
   it('flags nothing while cards are not required', () => {
     assert.deepEqual(flagged(tasks, { ...CONFIG, requireDecisionCard: false }), []);
+  });
+});
+
+// T2623: a card set before the refusal that asks the owner about a test, measure or proof of approved work.
+describe('checkTasks: OWNER-PROOF', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const flagged = (tasks: Parameters<typeof checkTasks>[0], config: typeof CONFIG = CONFIG) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config)
+      .filter((flag) => flag.kind === 'OWNER-PROOF')
+      .map((flag) => `${flag.task.id}: ${flag.detail}`);
+  const fix = (word: string, status: string) =>
+    `its card asks owner about a test, measure or proof ("${word}"): one of approved work that changes no approved number, spends no money and writes no data goes ahead; drop the wait on owner and tell your leader, or set it ${status} again with --affects "<the approved number it changes, the money it spends or the data it writes>"`;
+  const proofCard = { ...TEST_OWNER_CARD, question: 'Approve the back-test design for the entry sheet' };
+  const dryRun = { ...TEST_CARD, question: 'May I run a dry run of the import', options: [] };
+  const tasks = [
+    testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: proofCard, ...seen }),
+    testTask({ id: 'T2', status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }], card: dryRun, ...seen }),
+    testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: { ...proofCard, affects: 'buys 400 dollars of price history' }, ...seen }),
+    testTask({ id: 'T4', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_OWNER_CARD, ...seen }),
+    testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: { ...TEST_CARD, question: proofCard.question }, ...seen }),
+  ];
+
+  it("flags a card on the owner's decision or approval about a test that names nothing it changes, its proof too", () => {
+    assert.deepEqual(flagged(tasks), [`T1: ${fix('back-test', 'waiting')}`, `T2: ${fix('dry run', 'verifying')}`]);
+  });
+
+  it('flags nothing while cards are not required', () => {
+    assert.deepEqual(flagged(tasks, { ...CONFIG, requireDecisionCard: false }), []);
+  });
+});
+
+// T2761: a security-related card on the owner with no security verdict, which the write does not refuse.
+describe('checkTasks: SECURITY-UNREVIEWED', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const flagged = (tasks: Parameters<typeof checkTasks>[0]) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG)
+      .filter((flag) => flag.kind === 'SECURITY-UNREVIEWED')
+      .map((flag) => `${flag.task.id}: ${flag.detail}`);
+  const fix = (id: string, word: string) =>
+    `its card asks owner about a security matter ("${word}") with no security verdict on it: move its wait to your leader, have the security reviewer read it (teamrig audit ${id} --verdict "<what the review found>"), then wait on owner again with the card unchanged`;
+  const guardCard = { ...TEST_OWNER_CARD, question: 'Loosen the push guard for the bot' };
+  const read = { question: guardCard.question, options: [...guardCard.options], recommend: guardCard.recommend };
+  const verdict = { text: 'Pass: read only', read, by: 'bravo', at: FRESH };
+  const onOwner = { status: 'waiting' as const, waits: [{ kind: 'decision' as const, who: 'owner' }], ...seen };
+  const tasks = [
+    testTask({ id: 'T1', ...onOwner, card: guardCard }),
+    testTask({ id: 'T2', status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }], card: { ...TEST_CARD, options: ['Keep it', 'Grant it'] }, ...seen }),
+    testTask({ id: 'T3', ...onOwner, card: guardCard, securityVerdict: verdict }),
+    testTask({ id: 'T4', ...onOwner, card: { ...guardCard, recommend: 'Loosen it, the bot needs it' }, securityVerdict: verdict }),
+    testTask({ id: 'T5', ...onOwner, card: { ...guardCard, run: 'step.ps1' } }),
+    testTask({ id: 'T6', ...onOwner, card: TEST_OWNER_CARD }),
+    testTask({ id: 'T7', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], card: guardCard, ...seen }),
+  ];
+
+  it("flags a security-worded card on the owner's decision or approval that no current verdict or audit covers, its proof too", () => {
+    assert.deepEqual(flagged(tasks), [`T1: ${fix('T1', 'guard')}`, `T2: ${fix('T2', 'Grant')}`, `T4: ${fix('T4', 'guard')}`]);
   });
 });
 

@@ -255,6 +255,14 @@ describe('sessionStartContext: long notes within the context cap (T1376)', () =>
     assert.ok(context({ liveTasksNote: tooLong, verifyNote: verify }).endsWith(`\nL\nVV`), 'a long note that does not fit leaves its room to the next');
   });
 
+  it('gives a long note that does not fit as the longest of its shorter forms the room holds, leaving the rest to the next (T1939)', () => {
+    const room = roomBeside({ liveTasksNote: { text: 'L', pointer: 'L' }, verifyNote: { text: 'V', pointer: 'V' } });
+    const fits = `L${'l'.repeat(room - 2)}`;
+    const live: CuttableNote = { text: `${fits}llll`, shorter: [`${fits}lll`, fits, 'LL'], pointer: 'L' };
+    assert.ok(context({ liveTasksNote: live, verifyNote: { text: 'VV', pointer: 'V' } }).endsWith(`\n${fits}\nVV`), 'the one character left goes to the verify rows');
+    assert.ok(context({ liveTasksNote: { ...live, shorter: [`${fits}lll`] }, verifyNote: { text: 'VV', pointer: 'V' } }).endsWith(`\nL\nVV`), 'no shorter form fits: the pointer');
+  });
+
   it('keeps the worst start a lead gets inside the cap: every note, a long live and verify note and a full rules file', () => {
     const own: TeamRules = { ancestor: undefined, path: '/kit/teams/app/rules.md', text: 'x'.repeat(TEAM_RULES_MAX_CHARS) };
     // The largest parent rules file a lead's worst start still shows in full, with a line on its own file after it:

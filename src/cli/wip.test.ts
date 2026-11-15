@@ -66,6 +66,19 @@ describe('runCli: set and the WIP rule', () => {
     assert.deepEqual(start.stderr, [`WARN ${HOLD}; started anyway, as focus.wip.mode is warn`]);
   });
 
+  it('warns of nothing for near-term prep, read from the goal records, and of a lapsed marker as of any start (T2453)', async () => {
+    const kit = await ranked(new CliHarness({ ...TEAM, focus: { wip: { mode: 'warn', maxInProgress: 3 } } }));
+    await kit.run(['goal', 'add', 'A1', '--title', 'Ship the beta', '--target', '2030-02-01', '--session', 'lead']);
+    await kit.run(['goal', 'rank', 'A1', '1', '--session', 'lead']);
+    await kit.run(['goal', 'set', 'A1', '--slice', '1', '--note', 'slice 1 open', '--session', 'lead']);
+    await kit.run(['update', 'T2', '--prepares', 'A1:3', '--session', 'lead']);
+    assert.deepEqual((await kit.run(START)).stderr, [`WARN ${HOLD}; started anyway, as focus.wip.mode is warn`]);
+    await kit.run(['set', 'T2', '--status', 'open', '--session', 'alpha']);
+    await kit.run(['update', 'T2', '--prepares', 'A1:2', '--session', 'lead']);
+    const start = await kit.run(START);
+    assert.deepEqual([start.code, start.stderr], [EXIT.ok, []], start.stdout.join('\n'));
+  });
+
   it('takes --one-commit in warn mode with no warning, as nothing held the start', async () => {
     const kit = await ranked(new CliHarness({ ...TEAM, focus: { wip: { mode: 'warn', maxInProgress: 3 } } }));
     assert.deepEqual((await kit.run([...START, '--one-commit'])).stderr, []);

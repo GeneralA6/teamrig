@@ -18,7 +18,9 @@ new audit ([tasks.md](../teamrig-guide/tasks.md#task-statuses)).
    then changes only what you saw.
 2. Write the file in the task's folder (`teamrig files T<n>`): a `.ps1` (PowerShell), a `.sh` (bash) or a `.md`
    (steps the human follows by hand); any other kind is refused. ASCII only. Its header says who wrote it, the date,
-   what it changes and why the human runs it. It runs whole, every step in order, never pasted step by step.
+   what it changes and why the human runs it. It runs whole, every step in order, never pasted step by step. Every
+   path in it is absolute, from the drive or root, and a web file is its full URL: the human runs it
+   from any folder, so a repo-relative path like `.github/rulesets/main.json` leads nowhere (core rule 9).
 3. Its first step is read-only and ends on one verdict line: `MATCH` only for the exact state its comment names,
    else `NO MATCH`, or `already there` when nothing is left to do, so a second run changes nothing.
 4. The change runs only when that first step printed `MATCH`, in the same run, and a last step proves the result
@@ -34,7 +36,8 @@ new audit ([tasks.md](../teamrig-guide/tasks.md#task-statuses)).
    get an inbox line naming the pin. Never audit your own task's file: the reviewer's own goes to its leader, and a
    team with no reviewer has any other session audit it.
 7. Set the task waiting on the owner's decision or approval with the card and `--run <path>`. Its text says in
-   plain words what the file changes and its numbers, so the ask stands alone, with no code and no ask to paste. The
+   plain words what the file changes and its numbers, with every path absolute, so the ask stands alone, with no
+   code and no ask to paste. The
    card prints the run line (`& '<path>'`, `bash '<path>'` or `follow the steps in <path>`), its short sha256 and its
    auditor.
 8. Once the human ran it, check the outcome with a read of your own and record it as the task's evidence.

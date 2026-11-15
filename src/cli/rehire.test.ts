@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { projectTranscriptPath } from '../budget/discover.ts';
-import { decodePrompt, rehirePrompt, resumePrompt } from '../open/prompt.ts';
+import { decodePrompt, recoverPrompt, rehirePrompt, resumePrompt } from '../open/prompt.ts';
 import { APP, CLAUDE_SESSION, USER_HOME, type CliHarness, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
@@ -125,13 +125,47 @@ describe('a rehire', () => {
     assert.equal(promptOf(argv), rehirePrompt('app', 'helper', HELPER_HANDOVER));
   });
 
-  it('is the only open --resume takes, and a given prompt wins over the rehire prompt', async () => {
+  it('resumes, and a given prompt wins over the rehire prompt', async () => {
     const kit = await retiredHelper();
     const transcripts = await lastSession(kit, 1000, 1);
-    const alpha = (await open(kit, ['alpha', '--resume'], { transcripts })).result;
-    assert.deepEqual(alpha.stdout, ["REFUSED alpha was neither hired back after a retire nor closed: --resume resumes only a rehired session's last Claude Code session"]);
     ok(await hire(kit, ['--yes'], { transcripts }));
     assert.equal(promptOf((await open(kit, ['helper', '--resume', '--prompt', 'Ship it'], { transcripts })).argv), 'Ship it');
     assert.equal(promptOf((await open(kit, ['helper', '--prompt', 'Ship it'])).argv), 'Ship it');
+  });
+});
+
+// T1743: on 11-01 a reboot left 15 sessions neither closed nor rehired; open --resume refused them all.
+describe('open --resume of a session that ended outside teamrig', () => {
+  /** A team whose alpha read its inbox in Claude Code session CLAUDE_SESSION, then its tab ended with no close. */
+  async function lostAlpha(): Promise<CliHarness> {
+    const kit = await teamWithHelper();
+    ok(await kit.run(['inbox', 'read', '--session', 'alpha'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } }));
+    return kit;
+  }
+
+  it('resumes its last Claude Code session when small and recent, on the recover prompt', async () => {
+    const kit = await lostAlpha();
+    const transcripts = await lastSession(kit, 120_000, 2);
+    const { result, argv } = await open(kit, ['alpha', '--resume'], { transcripts });
+    assert.ok(ok(result).stdout[0]?.endsWith(`, resuming Claude Code session ${CLAUDE_SESSION}`), result.stdout[0]);
+    assert.deepEqual(argv.slice(argv.indexOf('--resume'), argv.indexOf('--resume') + 2), ['--resume', CLAUDE_SESSION]);
+    assert.equal(promptOf(argv), recoverPrompt('app', 'alpha'));
+  });
+
+  it('refuses, with why and the fresh open, past the resume limits or with no session on record', async () => {
+    const kit = await lostAlpha();
+    const stale = (await open(kit, ['alpha', '--resume'], { transcripts: await lastSession(kit, 1000, 30) })).result;
+    assert.equal(stale.code, EXIT.refused);
+    assert.match(stale.stdout[0] ?? '', /^REFUSED not resumed: its last Claude Code session \S+ holds 1000 tokens of context, idle 30\.0 day\(s\): over hiring\.resumeMaxIdleDays 7; open it fresh: teamrig open alpha$/);
+    const never = (await open(await teamWithHelper(), ['alpha', '--resume'])).result;
+    assert.deepEqual(never.stdout, ['REFUSED not resumed: no Claude Code session of it is on record; open it fresh: teamrig open alpha']);
+  });
+
+  it('opens fresh on the default prompt without --resume', async () => {
+    const kit = await lostAlpha();
+    const { result, argv } = await open(kit, ['alpha'], { transcripts: await lastSession(kit, 1000, 1) });
+    ok(result);
+    assert.equal(argv.includes('--resume'), false);
+    assert.match(promptOf(argv) ?? '', /^You are the alpha session of team app\. Run `teamrig inbox read`/);
   });
 });

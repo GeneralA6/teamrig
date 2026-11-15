@@ -122,6 +122,28 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT, 'the notice shows once');
   });
 
+  it("says the lead starts fresh on its own by default, a member waits for /clear, and refresh.autoRestart overrides either", async () => {
+    const ready = async (config: JsonRecord, session: string): Promise<string | undefined> => {
+      const kit = new CliHarness(config);
+      await kit.files.write(TRANSCRIPT, transcript(300_000));
+      await finishTask(kit, session);
+      stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: session }, stdin: stopPayload() }));
+      await kit.files.write(HANDOVER(session), '# In progress\n');
+      return (await kit.run(['refresh', '--ready', '--session', session])).stdout[0];
+    };
+    const own = (path: string): string => `; your next start reads ${path}.`;
+    const fresh = `Ready. End your turn now: teamrig starts you fresh once you are idle, or asks the user to type /clear${own(HANDOVER('lead'))}`;
+    assert.equal(await ready(TEAM, 'lead'), fresh);
+    assert.equal(await ready(TEAM, 'alpha'), `Ready. Ask the user to type /clear${own(HANDOVER('alpha'))}`);
+    assert.equal(await ready({ ...TEAM, refresh: { autoRestart: true } }, 'alpha'), fresh.replace(HANDOVER('lead'), HANDOVER('alpha')));
+    assert.equal(await ready({ ...TEAM, refresh: { autoRestart: false } }, 'lead'), `Ready. Ask the user to type /clear${own(HANDOVER('lead'))}`);
+
+    const requested = await new CliHarness(TEAM).run(['refresh', 'bravo', '--session', 'lead']);
+    assert.match(requested.stdout[0] ?? '', /; then type \/clear in its tab$/);
+    const lead = await new CliHarness(TEAM).run(['refresh', 'lead', '--session', 'lead']);
+    assert.match(lead.stdout[0] ?? '', /; then it starts fresh once idle$/);
+  });
+
   it('asks for the handover at a task boundary over the threshold, then points the cleared session at it', async () => {
     const kit = new CliHarness();
     await kit.files.write(TRANSCRIPT, transcript(300_000));
@@ -185,6 +207,9 @@ describe('runCli: context refresh', () => {
     const remake = '- cron "3 13 * * *"';
     /** The next refresh asked and its handover written, from the session whose transcript is `path`. */
     const refreshFrom = async (path: string, handover: string): Promise<void> => {
+      // The fresh start's first turn end measures its baseline; the refresh comes once the context grew past it.
+      await kit.files.write(path, transcript(100_000));
+      await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(false, { transcript_path: path }) });
       await kit.files.write(path, transcript(300_000));
       await finishTask(kit, 'alpha');
       stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(false, { transcript_path: path }) }));
@@ -407,6 +432,60 @@ describe('runCli: context refresh', () => {
     await kit.files.write(HANDOVER('alpha'), '# In progress\n');
     assert.deepEqual((await kit.run(['refresh', '--ready', '--session', 'alpha'])).stdout, [`Ready. Ask the user to type /clear; your next start reads ${HANDOVER('alpha')}.`]);
     assert.match((await kit.run(['refresh', 'bravo', '--session', 'lead'])).stdout.join('\n'), /; then type \/clear in its tab$/);
+  });
+
+  it('never asks a fresh start to refresh again before its context grew: 130k against 120k', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    await handoverWritten(kit);
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    assert.ok(contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') })).includes('You were refreshed after T1'));
+    const stop = async (tokens: number): Promise<CliResult> => {
+      await kit.files.write(TRANSCRIPT, transcript(tokens));
+      return kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() });
+    };
+    assert.deepEqual(await stop(130_000), SILENT, 'the first turn end only measures');
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed".*"baseline":130000/);
+    assert.deepEqual(await stop(130_000), SILENT, 'no clear loop');
+    for (let task = 0; task < 3; task += 1) {
+      await finishTask(kit, 'alpha');
+      assert.deepEqual(await stop(140_000), SILENT, 'nor after tasks with no growth');
+    }
+    assert.match(JSON.stringify(stopJson(await stop(154_000))), /"decision":"block","reason":"teamrig: your context is 154k/, 'asked once it grew 24k');
+  });
+
+  it('carries what the owner typed in the old session to the fresh start, the prompts after the handover marked', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    await handoverWritten(kit);
+    const line = (entry: object): string => `${JSON.stringify(entry)}\n`;
+    await kit.files.append(
+      TRANSCRIPT,
+      line({ type: 'user', message: { role: 'user', content: 'Decision: approve the release after the photos' } }) +
+        line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'toolu_w', name: 'Write', input: { file_path: HANDOVER('alpha'), content: '# x' } }] } }) +
+        line({ type: 'user', message: { role: 'user', content: 'Hold the migration until Monday' } }) +
+        line({ type: 'user', message: { role: 'user', content: '<task-notification>done</task-notification>' } }),
+    );
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    const owner = join(TEAM_HOME, 'handover', 'alpha.owner.md');
+    await kit.files.write(owner, 'left from an earlier refresh');
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') }));
+    assert.ok(fresh.includes(`The owner typed 3 prompt(s) in your old session, 1 of them after your handover was written: read ${owner}`), fresh);
+    const file = (await kit.files.read(owner)) ?? '';
+    assert.match(file, /## 1\n\ngo\n/);
+    assert.match(file, /## 2\n\nDecision: approve the release after the photos\n/);
+    assert.match(file, /## 3 \(after your handover was written: it does not hold this\)\n\nHold the migration until Monday\n/);
+    assert.ok(!file.includes('task-notification'));
+  });
+
+  it('removes the owner file of an earlier refresh when the old session had nothing from the owner', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    await handoverWritten(kit);
+    await kit.files.write(TRANSCRIPT, `${JSON.stringify({ type: 'assistant', isSidechain: false, message: { usage: { input_tokens: 2, cache_read_input_tokens: 299_998, output_tokens: 9 } } })}\n`);
+    stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }));
+    const owner = join(TEAM_HOME, 'handover', 'alpha.owner.md');
+    await kit.files.write(owner, 'left from an earlier refresh');
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') }));
+    assert.ok(!fresh.includes('The owner typed'), fresh);
+    assert.equal(await kit.files.read(owner), undefined);
   });
 
   it('asks for the handover at any turn end over the threshold, mid-task, and again only once the context grew', async () => {
@@ -714,6 +793,17 @@ describe('runCli: live tasks in the start note', () => {
     assert.ok((await start(kit, 'compact')).endsWith(`\n${START}\n${week ?? ''}\n${LIVE}`), 'every compaction');
   });
 
+  it("gives the lead the account's resets in stock after the week line, and no other session (T2450)", async () => {
+    const resets = [{ kind: 'full', count: 1, expiresUtc: '2030-01-20 22:00', usedUtc: [] }];
+    const kit = new CliHarness({ ...TEAM, budget: { resets } });
+    await finishTask(kit, 'alpha');
+    await addTasks(kit);
+    const [week] = linesBeforeLive(await start(kit, 'compact'), 1);
+    assert.match(week ?? '', /^Week: /, "alpha's note: the week line stays the last before the block");
+    const lead = contextOf(await kit.run(['hook', 'session-start'], { env: { TEAMRIG_SESSION: 'lead' }, stdin: startPayload('compact') }));
+    assert.match(lead, /\nWeek: [^\n]*\nResets in stock: full 1 left, the next expiring 2030-01-20 22:00 UTC \(in 12 days\)\.\n/);
+  });
+
   it("names today's meetings the session is met in, as start does, before the week line (T1529)", async () => {
     const kit = new CliHarness();
     await finishTask(kit, 'alpha');
@@ -737,7 +827,7 @@ describe('runCli: live tasks in the start note', () => {
     assert.ok(lead.endsWith('LIVE TASKS of lead, read from the register at this start: none active; where your handover or a compaction summary says otherwise, the register wins.'), lead);
   });
 
-  it('gives them as a pointer when they and a team rules file would overflow the context cap (T1376)', async () => {
+  it("drops task rows, never start's first lines, when they and a team rules file would overflow the context cap (T1376, T1939)", async () => {
     const kit = new CliHarness(LONG_RULES_TEAM);
     for (const title of ['Write the docs of the long start note', 'Ship the docs of the long start note', 'Plan the week around the release', 'Review the plan of the long start note', 'Merge the fix of the long start note', 'Prove the fix of the long start note']) {
       const added = await kit.run(['add', '--title', title, '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
@@ -752,8 +842,11 @@ describe('runCli: live tasks in the start note', () => {
     const cut = contextOf(await kit.run(['hook', 'session-start'], asLead));
     assert.ok(cut.length <= CONTEXT_MAX_CHARS, String(cut.length));
     assert.ok(cut.endsWith(`# Your team's rules\n${rules}`));
-    assert.ok(cut.includes('\nLIVE TASKS of lead: this start has no room for them; run `teamrig start --session lead` first,'), cut.slice(0, -rules.length).slice(-600));
-    assert.ok(!cut.includes('\nSTART lead,'), 'the pointer names start, so the note is no work block start');
+    const live = cut.slice(0, -rules.length).slice(-1_500);
+    assert.ok(cut.includes('\nSTART lead,'), `the note stays the work block's start: ${live}`);
+    assert.ok(cut.includes('\nLIVE TASKS of lead, read from the register at this start (6 active;'), live);
+    assert.ok(!cut.includes('| Prove the fix of the long start note'), `the sixth row gave way: ${live}`);
+    assert.ok(cut.includes('| Merge the fix of the long start note\n  +1 more: `teamrig list --session lead`\n'), live);
   });
 
   it('names the command that lists the tasks when the register cannot be read', async () => {

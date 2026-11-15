@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { globRegExp, hasWildcard } from './glob.ts';
+import { braceAlternatives, globRegExp, hasWildcard } from './glob.ts';
 
 const ANY = { ignoreCase: false, dotfiles: true };
 const BASH = { ignoreCase: false, dotfiles: false };
@@ -90,6 +90,71 @@ describe('globRegExp', () => {
   it('ignores case when told', () => {
     assert.equal(globRegExp('C:/Users/*/.npmrc', { ignoreCase: true, dotfiles: true }).test('c:/users/u/.NPMRC'), true);
     assert.equal(globRegExp('/a/.npmrc', ANY).test('/a/.NPMRC'), false);
+  });
+});
+
+describe('braceAlternatives', () => {
+  it('spells out each {a,b} group, nested and empty alternatives too', () => {
+    assert.deepEqual(braceAlternatives('*.{ts,pem}', 8), ['*.ts', '*.pem']);
+    assert.deepEqual(braceAlternatives('{a,b}/{c,d}', 8), ['a/c', 'a/d', 'b/c', 'b/d']);
+    assert.deepEqual(braceAlternatives('*.{ts,{pem,key}}', 8), ['*.ts', '*.pem', '*.key']);
+    assert.deepEqual(braceAlternatives('x{,.bak}', 8), ['x', 'x.bak']);
+    assert.deepEqual(braceAlternatives('plain.ts', 8), ['plain.ts']);
+  });
+
+  it('keeps a brace inside a [...] set, or one that never closes, as a plain character', () => {
+    assert.deepEqual(braceAlternatives('[{]a,b', 8), ['[{]a,b']);
+    assert.deepEqual(braceAlternatives('[]{a,b}]', 8), ['[]{a,b}]']);
+    assert.deepEqual(braceAlternatives('a{b', 8), ['a{b']);
+    assert.deepEqual(braceAlternatives('[a{b', 8), ['[a{b']);
+  });
+
+  it('reads a [ that never closes as a plain character, so a group after it still spreads', () => {
+    assert.deepEqual(braceAlternatives('[a{b,c}', 8), ['[ab', '[ac']);
+    assert.deepEqual(braceAlternatives('[!{.env*,x}', 8), ['[!.env*', '[!x']);
+  });
+
+  it('reads a [...] set as ripgrep does: a / and a { in it are members, a ! or ^ negates, a ] may come first', () => {
+    assert.deepEqual(braceAlternatives('{[{/],*.pem}', 8), ['[{/]', '*.pem']);
+    assert.deepEqual(braceAlternatives('{[{/],.env*}', 8), ['[{/]', '.env*']);
+    assert.deepEqual(braceAlternatives('*.{[{/],pem}', 8), ['*.[{/]', '*.pem']);
+    assert.deepEqual(braceAlternatives('{[{/]x,*.key}', 8), ['[{/]x', '*.key']);
+    assert.deepEqual(braceAlternatives('{[!/{],*.pem}', 8), ['[!/{]', '*.pem']);
+    assert.deepEqual(braceAlternatives('{[^]{],*.pem}', 8), ['[^]{]', '*.pem']);
+    assert.deepEqual(braceAlternatives('{[!]{],*.pem}', 8), ['[!]{]', '*.pem']);
+    assert.deepEqual(braceAlternatives('a{b{c,d}', 8), ['a{bc', 'a{bd']);
+  });
+
+  it('reads away a backslash and a } no { opened, as ripgrep does', () => {
+    assert.deepEqual(braceAlternatives('*.\\pem', 8), ['*.pem']);
+    assert.deepEqual(braceAlternatives('*.{ts,\\pem}', 8), ['*.ts', '*.pem']);
+    assert.deepEqual(braceAlternatives('*.pem}', 8), ['*.pem']);
+    assert.deepEqual(braceAlternatives('[{]a,b}', 8), ['[{]a,b']);
+    assert.deepEqual(braceAlternatives('*.{ts,pem}}', 8), ['*.ts', '*.pem']);
+    assert.deepEqual(braceAlternatives('*.[}]pem', 8), ['*.[}]pem']);
+    assert.deepEqual(braceAlternatives('*.pem\\', 8), ['*.pem']);
+  });
+
+  it('takes an escaped character as no part of a group or a set', () => {
+    assert.deepEqual(braceAlternatives('\\{a,b}', 8), ['{a,b']);
+    assert.deepEqual(braceAlternatives('{x\\},.env*}', 8), ['x}', '.env*']);
+    assert.deepEqual(braceAlternatives('{a\\,b,c}', 8), ['a,b', 'c']);
+    assert.deepEqual(braceAlternatives('\\[{a,b}]', 8), ['[a]', '[b]']);
+  });
+
+  it('gives up past the limit', () => {
+    assert.deepEqual(braceAlternatives('{a,b}{c,d}', 4), ['ac', 'ad', 'bc', 'bd']);
+    assert.equal(braceAlternatives('{a,b}{c,d}{e,f}', 4), undefined);
+    assert.equal(braceAlternatives('{a,b,c,d,e}', 4), undefined);
+  });
+
+  it('counts each plain glob against the limit, not only the groups', () => {
+    assert.deepEqual(braceAlternatives('{a{x,y},b}', 3), ['b', 'ax', 'ay']);
+    assert.equal(braceAlternatives('{a{x,y},b,c}', 3), undefined);
+  });
+
+  it('gives up on a group too wide to spread, without throwing', () => {
+    assert.equal(braceAlternatives(`{${Array.from({ length: 200_000 }, () => 'a').join(',')}}`, 64), undefined);
   });
 });
 

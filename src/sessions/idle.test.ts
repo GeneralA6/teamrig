@@ -55,7 +55,7 @@ function reopen(overrides: Partial<ReopenInput>): ReopenVerdict {
     maxPriority: 2,
     parking: TEST_PARKING,
     rest: AWAKE,
-    dayStartUtc: undefined,
+    dayStart: undefined,
     now: NOW,
     zone: UTC,
     ...overrides,
@@ -191,7 +191,7 @@ describe('reopenVerdict', () => {
 
   it('stays closed for a parked task, as news and at a day start alike, and reopens once an event moves it (T2090)', () => {
     const parked = testTask({ ...parkedFacts(NOW) });
-    const morning = { dayStartUtc: '06:00', closedAt: Date.parse('2030-01-08T05:00:00.000Z') };
+    const morning = { dayStart: Date.parse('2030-01-08T06:00:00.000Z'), closedAt: Date.parse('2030-01-08T05:00:00.000Z') };
     assert.deepEqual(reopen({ tasks: tasksOf(parked) }), { kind: 'stay' });
     assert.deepEqual(reopen({ tasks: tasksOf(parked), ...morning }), { kind: 'stay' });
     assert.equal(reopen({ tasks: tasksOf({ ...parked, updatedAt: new Date(NOW).toISOString() }) }).kind, 'handed');
@@ -199,17 +199,18 @@ describe('reopenVerdict', () => {
 
   it('reopens at a day start after its close for any work it can start, less urgent work too', () => {
     const tasks = tasksOf(testTask({ id: 'T2', priority: 3, ownerSeenAt: SEEN }));
-    const verdict = reopen({ tasks, maxPriority: 1, dayStartUtc: '06:00', closedAt: Date.parse('2030-01-08T05:00:00.000Z') });
+    const verdict = reopen({ tasks, maxPriority: 1, dayStart: Date.parse('2030-01-08T06:00:00.000Z'), closedAt: Date.parse('2030-01-08T05:00:00.000Z') });
     assert.deepEqual(verdict, { kind: 'day-start', at: Date.parse('2030-01-08T06:00:00.000Z'), tasks: [...tasks.values()] });
   });
 
   it('stays closed at a day start before its close, while it rests, or with no work to start', () => {
     const work = tasksOf(testTask({ ownerSeenAt: SEEN }));
-    const morning = { dayStartUtc: '06:00', closedAt: Date.parse('2030-01-08T05:00:00.000Z') };
-    assert.deepEqual(reopen({ tasks: work, dayStartUtc: '06:00', closedAt: Date.parse('2030-01-08T07:00:00.000Z') }), { kind: 'stay' });
+    const morning = { dayStart: Date.parse('2030-01-08T06:00:00.000Z'), closedAt: Date.parse('2030-01-08T05:00:00.000Z') };
+    assert.deepEqual(reopen({ tasks: work, dayStart: Date.parse('2030-01-08T06:00:00.000Z'), closedAt: Date.parse('2030-01-08T07:00:00.000Z') }), { kind: 'stay' });
     assert.deepEqual(reopen({ tasks: work, ...morning, rest: { held: false, quiet: true } }), { kind: 'stay' });
     assert.deepEqual(reopen({ tasks: work, ...morning, rest: { held: true, quiet: false } }), { kind: 'stay' });
     assert.deepEqual(reopen({ tasks: tasksOf(testTask({ status: 'done', ownerSeenAt: SEEN })), ...morning }), { kind: 'stay' });
     assert.deepEqual(reopen({ ...morning }), { kind: 'stay' });
+    assert.deepEqual(reopen({ tasks: work, ...morning, dayStart: NOW + HOUR }), { kind: 'stay' }, 'a start the schedule set later today, not reached yet');
   });
 });

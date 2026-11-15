@@ -31,8 +31,22 @@ const SHELL_ONLY: ReadonlySet<string> = new Set([
 /** A leading `NAME=value` word, which sets a variable for the command instead of naming its program. */
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
 
+/** A line's rerun form, with the folder its leading `cd` moved to and the program each command after the move runs. */
+export interface Rerun {
+  readonly form: string;
+  /** D of the line's leading `cd D &&`; undefined when the line does not lead with one. */
+  readonly folder: string | undefined;
+  /** The program of each command the form runs, as the line named it (`git` for a `git worktree remove`). */
+  readonly programs: readonly string[];
+}
+
 /** The exact line to rerun a Bash `command` as, or undefined when no rule gives one or any doubt remains. */
 export function rerunForm(tool: string | undefined, command: string): string | undefined {
+  return rerunOf(tool, command)?.form;
+}
+
+/** The rerun form of a Bash `command` with what it moves and runs, or undefined when no rule gives one or any doubt remains. */
+export function rerunOf(tool: string | undefined, command: string): Rerun | undefined {
   if (tool !== 'Bash') {
     return undefined;
   }
@@ -51,7 +65,11 @@ export function rerunForm(tool: string | undefined, command: string): string | u
   if (!lines.every((line): line is string => line !== undefined) || (folder === undefined && !moved.some(removesWorktree))) {
     return undefined;
   }
-  return moved.map((each, at) => `${lines[at] ?? ''}${separatorAfter(each, at === moved.length - 1)}`).join('');
+  return {
+    form: moved.map((each, at) => `${lines[at] ?? ''}${separatorAfter(each, at === moved.length - 1)}`).join(''),
+    folder,
+    programs: moved.map((each) => split(each).words[0] ?? ''),
+  };
 }
 
 /** A top-level command of static words, no stdin from the line, and no subshell or substitution around it. */

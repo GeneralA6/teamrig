@@ -71,7 +71,7 @@ describe('GoalStore', () => {
     const goals = store(new MemoryFiles());
     await goals.add(A1, LEAD, CAP);
 
-    const write = await goals.set({ tag: 'A1', target: '2030-01-27', title: null, note: 'the pane waits a week on its data' }, LATER);
+    const write = await goals.set({ tag: 'A1', target: '2030-01-27', title: null, slice: null, note: 'the pane waits a week on its data' }, LATER);
 
     assert.equal(write.kind, 'written');
     const goal = (await goals.read()).goals.get('A1');
@@ -82,7 +82,7 @@ describe('GoalStore', () => {
   it('refuses a change to a goal never added', async () => {
     const files = new MemoryFiles();
 
-    const write = await store(files).set({ tag: 'B1', target: '2030-01-27', title: null, note: 'later' }, LATER);
+    const write = await store(files).set({ tag: 'B1', target: '2030-01-27', title: null, slice: null, note: 'later' }, LATER);
 
     assert.equal(write.kind, 'refused');
     assert.equal(files.get(PATH), undefined);

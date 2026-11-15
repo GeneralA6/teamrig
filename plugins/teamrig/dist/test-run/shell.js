@@ -16,6 +16,24 @@ export function commandLine(words, platform) {
     }
     return words.map((word) => (platform === 'win32' ? cmdWord(word) : posixWord(word))).join(' ');
 }
+/** A line break, where cmd.exe ends the line it runs. */
+const LINE_BREAK = /[\r\n]/;
+/**
+ * Why the platform's shell would not run these words as given, or undefined when it would. A blank command runs
+ * nothing and exits 0 in every shell. cmd.exe ends its `/c` line at the first line break, and no quoting keeps one, so
+ * on Windows only what comes before the break runs: a `bash -c` script that starts with one runs nothing, exit 0. A
+ * POSIX shell keeps a quoted line break.
+ */
+export function unrunnableReason(words, platform) {
+    if (words.every((word) => word.trim() === '')) {
+        return 'the command after -- is empty, and a shell runs an empty command as nothing, exit 0';
+    }
+    if (platform === 'win32' && words.some((word) => LINE_BREAK.test(word))) {
+        return ('a word of the command holds a line break, and cmd.exe, which runs the command on Windows, stops reading at it: ' +
+            'only what comes before it would run. Put a multi-line script in a file and run the file, or keep each word on one line');
+    }
+    return undefined;
+}
 /** One word for a POSIX shell: as it is when the shell reads it as plain text, else single-quoted. */
 export function posixWord(word) {
     return POSIX_PLAIN.test(word) ? word : posixQuote(word);

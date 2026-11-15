@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { resetSummaryLine } from '../../budget/resets.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { deliveryPlaces } from '../../delivery/places.ts';
@@ -12,8 +13,8 @@ import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
 import { mergeDigestLines, type MergeDigestInput, type MergeLogAt } from '../../meeting/merges.ts';
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
-import { spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
-import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
+import { SPOTLIGHT_LOG, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
+import { MEETING_LAPSE_MS, MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { MergeLog } from '../../merge/merge-log.ts';
 import { goalScores, type BoardTeam, type GoalScore } from '../../register/goal-board.ts';
 import type { Goal } from '../../register/goals.ts';
@@ -180,9 +181,6 @@ async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number,
   };
 }
 
-/** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
-export const SPOTLIGHT_LOG = 'meeting-spotlight.log';
-
 /** The range of the stats the agenda opens with: the last week, as `stats` reads by default. */
 export const AGENDA_STATS_RANGE: StatsRange = '7d';
 
@@ -241,6 +239,10 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   mergeDigestLines(await mergeDigestOf(runtime, mk, since, rolled)).forEach((line) => runtime.out.stdout(line));
   await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
   runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
+  const resets = resetSummaryLine(mk.config.budget.resets, mk.now, mk.zone, KIT_NAME);
+  if (resets !== undefined) {
+    runtime.out.stdout(resets);
+  }
   const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);
   if (week !== null) {
     fitLines(await weekFitOf(runtime, { own, teams: [own] }, week, false)).forEach((line) => runtime.out.stdout(`  ${line}`));
@@ -270,7 +272,8 @@ export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const spotlit: SpotlightPlace = {
     title: sessionDisplay(mk.kit.paths.team, mk.leadName),
     meetingFile: mk.kit.paths.meeting,
-    meeting,
+    startedAt: meeting.startedAt,
+    until: Date.parse(meeting.startedAt) + MEETING_LAPSE_MS,
     breakthroughFile: mk.kit.paths.meetingBreakthrough,
     log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
   };

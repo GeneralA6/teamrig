@@ -241,8 +241,8 @@ describe('checkLines', () => {
   });
 
   it(`shows fewer flags of every kind when ${MAX_FLAGS_PER_KIND} would pass ${SHORT_FORM_CHARS} characters`, () => {
-    // Short titles keep one flag of each kind within the budget as kinds are added.
-    const flags = FLAG_KINDS.flatMap((kind) => manyTasks(30, 'Short title').map(({ task }) => ({ kind, task, detail: `${kind} detail for ${task.id}` })));
+    // Short titles and details keep one flag of each kind within the budget as kinds are added.
+    const flags = FLAG_KINDS.flatMap((kind) => manyTasks(30, 'Short title').map(({ task }) => ({ kind, task, detail: `detail ${task.id}` })));
     const lines = checkLines(report({ sections: [{ team: undefined, tree: TREE, flags }] }), false);
     assert.equal(printedChars(lines) <= SHORT_FORM_CHARS, true);
     const more = lines.filter((line) => /^ {2}\+\d+ more$/.test(line));

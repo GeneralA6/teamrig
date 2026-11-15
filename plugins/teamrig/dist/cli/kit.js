@@ -53,6 +53,19 @@ export function leadOnly(roster, caller, what) {
     return by;
 }
 /**
+ * The caller's id when it leads the team or holds its delivery owner role; anyone else is refused, naming them and
+ * `what` only they do.
+ */
+export function leadOrDeliveryOwnerOnly(roster, caller, what) {
+    const by = sessionIdOf(roster, caller);
+    const holders = [...new Set([roster.holderOf('lead'), roster.holderOf('deliveryOwner')].flatMap((id) => id ?? []))];
+    if (!holders.includes(by)) {
+        const named = holders.map((id) => roster.nameOf(id) ?? id);
+        throw new RefusedError(`only the lead or the delivery owner${named.length === 0 ? '' : ` (${named.join(', ')})`} ${what}`);
+    }
+    return by;
+}
+/**
  * For a filter or a status: the id when the text names a session, and the id of a session no longer
  * on the team, given as its id or a name it had, so a past session's records stay reachable.
  * Anything else is refused.

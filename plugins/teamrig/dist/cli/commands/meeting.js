@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { resetSummaryLine } from "../../budget/resets.js";
 import { deliveryPlaces } from "../../delivery/places.js";
 import { formatAddress } from "../../core/address.js";
 import { sessionDisplay } from "../../core/ids.js";
@@ -9,8 +10,8 @@ import { agendaLines, agendaSince } from "../../meeting/agenda.js";
 import { mergeDigestLines } from "../../meeting/merges.js";
 import { decisionsByOwner, endNotice } from "../../meeting/notices.js";
 import { MeetingSchedule } from "../../meeting/schedule.js";
-import { spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
-import { MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
+import { SPOTLIGHT_LOG, spotlightLine, startSpotlight } from "../../meeting/spotlight.js";
+import { MEETING_LAPSE_MS, MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
 import { MergeLog } from "../../merge/merge-log.js";
 import { goalScores } from "../../register/goal-board.js";
 import { currentWeekOf } from "../../register/week.js";
@@ -134,8 +135,6 @@ async function mergeDigestOf(runtime, mk, since, { own, teams }) {
         gated: teams.some((rolled) => rolled.config.pushGuard.pushToProtected === 'gated'),
     };
 }
-/** The spotlight's error log, in the team's logs folder: the overlay runs hidden, so a failure shows only there. */
-export const SPOTLIGHT_LOG = 'meeting-spotlight.log';
 /** The range of the stats the agenda opens with: the last week, as `stats` reads by default. */
 export const AGENDA_STATS_RANGE = '7d';
 /**
@@ -185,6 +184,10 @@ async function printAgenda(args, runtime, mk, phase) {
     mergeDigestLines(await mergeDigestOf(runtime, mk, since, rolled)).forEach((line) => runtime.out.stdout(line));
     await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
     runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
+    const resets = resetSummaryLine(mk.config.budget.resets, mk.now, mk.zone, KIT_NAME);
+    if (resets !== undefined) {
+        runtime.out.stdout(resets);
+    }
     const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);
     if (week !== null) {
         fitLines(await weekFitOf(runtime, { own, teams: [own] }, week, false)).forEach((line) => runtime.out.stdout(`  ${line}`));
@@ -213,7 +216,8 @@ export async function meetingStart(args, runtime) {
     const spotlit = {
         title: sessionDisplay(mk.kit.paths.team, mk.leadName),
         meetingFile: mk.kit.paths.meeting,
-        meeting,
+        startedAt: meeting.startedAt,
+        until: Date.parse(meeting.startedAt) + MEETING_LAPSE_MS,
         breakthroughFile: mk.kit.paths.meetingBreakthrough,
         log: join(mk.kit.paths.logs, SPOTLIGHT_LOG),
     };

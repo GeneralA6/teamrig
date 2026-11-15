@@ -40,7 +40,7 @@ To update an installed teamrig, follow
   human has not read them: when you tell the user about one, say what it asks in plain words, never its number alone.
 - **Task register**: an append-only log of task events. Every ask that creates work is a task with an id like
   `T12`, an owner session, a priority `p1` (most urgent) to `p5`, and a status. Only the task's owner sets its
-  status, except on a task `teamrig gh sync` imported from a GitHub issue (source `github`): it opens, finishes or
+  status, except on a task `teamrig issue sync` imported from a GitHub issue (source `github`): it opens, finishes or
   drops it as GitHub has the issue. Nothing goes from the task list to GitHub.
 - **Inbox**: one file per session. A line there is a note the receiver reads at its next work block or prompt;
   it wakes an idle session only when sent with `--wake now`, or with `--wake-by <time>` at that time if still

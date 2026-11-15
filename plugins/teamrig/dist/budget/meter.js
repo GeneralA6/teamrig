@@ -5,7 +5,7 @@ import { MissTracker } from "./misses.js";
 import { emptyPatterns, PatternTracker } from "./patterns.js";
 import { newCursor, pruneUsage, RECENT_KEYS_KEPT, } from "./store.js";
 import { NO_TURN, TurnTasks } from "./tasks.js";
-import { contextTokens, WEIGHTS, weightOf } from "./weights.js";
+import { contextTokens, modelWeightOf, WEIGHTS, weightOf } from "./weights.js";
 /**
  * Totals while a run counts: per-day sums, W per hour and per task, and the latest call keys across all the
  * session's transcripts, so a call two files both logged counts once.
@@ -102,6 +102,7 @@ class TranscriptFold {
     turn;
     tally;
     weight;
+    modelWeights;
     constructor(cursor, tally, transcript) {
         this.call = cursor.call;
         this.tracker = new PatternTracker(cursor.patterns, transcript.weight);
@@ -109,6 +110,11 @@ class TranscriptFold {
         this.turn = transcript.own ? new TurnTasks(cursor.turn, (day, task, w) => tally.chargeTask(day, task, w)) : undefined;
         this.tally = tally;
         this.weight = transcript.weight;
+        this.modelWeights = transcript.modelWeights;
+    }
+    /** The W multiplier of one line: the transcript's (a subagent's) times its model's. */
+    multiplier(line) {
+        return this.weight * modelWeightOf(line.model, this.modelWeights);
     }
     line(raw) {
         const line = parseTranscriptLine(raw);
@@ -142,7 +148,7 @@ class TranscriptFold {
     reply(line) {
         const open = this.call;
         if (open !== null && line.key !== undefined && line.key === open.key) {
-            const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.weight;
+            const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.multiplier(line);
             this.turn?.named(line.tools);
             this.turn?.charged(open.day, added);
             this.tally.day(open.day).w += added;
@@ -159,7 +165,7 @@ class TranscriptFold {
         }
         const day = dayOf(line.at);
         const hour = formatUtcHour(new Date(line.at));
-        const w = weightOf(line.usage) * this.weight;
+        const w = weightOf(line.usage) * this.multiplier(line);
         const context = contextTokens(line.usage);
         const totals = this.tally.day(day);
         totals.w += w;
@@ -187,7 +193,7 @@ class TranscriptFold {
  * hour and per task, calls, loop patterns and rule misses, and saves the totals with each transcript's read position. A transcript
  * seen for the first time (or that shrank, so it was replaced, its held turn ending) is read from today's first line, found
  * by a binary search. One run reads at most `maxBytes`; the rest waits for the next run. A subagent's W
- * is multiplied by `subagentWeight`.
+ * is multiplied by `subagentWeight`, and every call's by its model's weight (`modelWeights`).
  */
 export async function runMeter(deps, run) {
     const { rev, state } = await deps.store.load(run.session);
@@ -200,8 +206,8 @@ export async function runMeter(deps, run) {
     let bytesRead = 0;
     let catchingUp = false;
     const weighted = [
-        ...run.transcripts.main.map((path) => ({ path, weight: 1, own: true })),
-        ...run.transcripts.subagents.map((path) => ({ path, weight: run.subagentWeight, own: false })),
+        ...run.transcripts.main.map((path) => ({ path, weight: 1, own: true, modelWeights: run.modelWeights })),
+        ...run.transcripts.subagents.map((path) => ({ path, weight: run.subagentWeight, own: false, modelWeights: run.modelWeights })),
     ];
     for (const transcript of weighted) {
         const { path } = transcript;

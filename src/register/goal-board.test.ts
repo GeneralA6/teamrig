@@ -12,7 +12,7 @@ import { TaskTree } from './tree.ts';
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
 function goalOf(tag: string, rank: number | null, parent: string | null = null, slips: readonly GoalSlip[] = []): Goal {
-  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target: '2030-02-01', parent, addedAt: '2030-01-01T10:00:00.000Z', addedBy: 'lead', slips, rank };
+  return { tag, title: `Goal ${tag}`, start: '2030-01-01', target: '2030-02-01', parent, addedAt: '2030-01-01T10:00:00.000Z', addedBy: 'lead', slips, rank, slice: null };
 }
 
 function mapOf(goals: readonly Goal[]): ReadonlyMap<string, Goal> {

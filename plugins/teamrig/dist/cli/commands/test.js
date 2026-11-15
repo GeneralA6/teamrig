@@ -7,7 +7,7 @@ import { commandHeader, logBody, pruneLogs, reserveLog } from "../../test-run/lo
 import { cleanOutput, parseTestOutput } from "../../test-run/parse.js";
 import { labelOf, reportLines } from "../../test-run/report.js";
 import { commandLine } from "../../test-run/shell.js";
-import { commandWordsOf, sessionRef } from "../inputs.js";
+import { sessionRef, shellWordsOf } from "../inputs.js";
 import { openKit, rosterOf, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
 /** The session the run is for, as given: `--session`, else the session variable, else none. */
@@ -54,7 +54,7 @@ async function runLogged(runtime, command, log) {
  * command passed, 1 otherwise.
  */
 export async function test(args, runtime) {
-    const words = commandWordsOf(args);
+    const words = shellWordsOf(args, runtime.platform);
     const place = await logPlace(runtime, givenSession(args, runtime));
     const command = commandLine(words, runtime.platform);
     const log = await reserveLog(runtime.files, place.dir, place.session, commandHeader(command));

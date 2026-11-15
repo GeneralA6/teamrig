@@ -1,5 +1,6 @@
 import type { TerminalChoice } from '../config/types.ts';
 import type { Env } from '../core/home.ts';
+import { startKeepingFocus } from './keep-focus.ts';
 import { EXIT_WAIT_MS, type LaunchEnd, type Processes } from './processes.ts';
 import { autoTerminals, tabCommand, type TabRequest, type Terminal } from './terminals.ts';
 
@@ -47,7 +48,11 @@ export async function openTab(deps: OpenTabDeps, choice: TerminalChoice, tab: Ta
       reasons.push(planned.why);
       continue;
     }
-    const outcome = await deps.processes.start(planned.request);
+    // tmux and macOS Terminal keep the focus by their own flags (tabCommand); Windows Terminal has none.
+    const outcome =
+      terminal === 'windows-terminal' && tab.focus === 'keep'
+        ? await startKeepingFocus(deps.processes, deps.env, planned.request)
+        : await deps.processes.start(planned.request);
     switch (outcome.kind) {
       case 'started':
         return { kind: 'opened', terminal, end: outcome.end };

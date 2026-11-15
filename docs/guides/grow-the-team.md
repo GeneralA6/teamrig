@@ -71,7 +71,7 @@ a new one ([Setting up a team](#setting-up-a-team)). You still talk to one lead:
   "your-team/security"`), so its exec requests go to that reviewer; `teamrig doctor` names one that does not hold
   the role there.
 - A child team paces the same week as the team above: each budget key of the account's week it leaves unset
-  (`account`, `enabled`, `weeklyLimitW`, `subagentWeight`, `extraWPerUsd`, `reset`) is the team above's, so it needs
+  (`account`, `enabled`, `weeklyLimitW`, `subagentWeight`, `modelWeights`, `extraWPerUsd`, `reset`) is the team above's, so it needs
   no budget block of its own. A child team that names another `budget.account` keeps its own week.
 - Claude Code session names are machine-wide, so two teams never share one: `team create` refuses a clash and
   `teamrig doctor` names one, along with a broken link in the tree.
@@ -190,7 +190,8 @@ sequenceDiagram
   `open.headroom.loadMinutes` (5) while it loads, so tabs opened one after another, from any team, never count the
   same free memory. A session
   `teamrig close` ended goes on in its last Claude Code session, in the folder it ran in (a worktree too), when that
-  is small and recent enough, else opens fresh; `state/session-log.jsonl` logs each close and reopen, and a reboot's
+  is small and recent enough, else opens fresh, on its handover while its refresh is ready (a resume would never take
+  it); `state/session-log.jsonl` logs each close and reopen, and a reboot's
   restore leaves a closed session closed. `teamrig close` (the lead) ends only a session
   quiet `open.headroom.closeIdleMinutes` (60) or more, with no work it can start and no time wait of its own ending
   within 30 minutes, its last turn ended (not at a tool call or a decision put to the person), no background work

@@ -16,7 +16,7 @@ import type { WideAllow } from '../permissions/trim.ts';
 import { describeRequirement, type RequirementProblem } from '../requirements/requirements.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ContextFiles } from './context-files.ts';
-import { missingDenyLines, SECRET_DENY_LINES, type SettingsDeny } from './deny-lines.ts';
+import { missingDenyLines, type SettingsDeny } from './deny-lines.ts';
 import type { SessionList, SessionListKind, SessionLists } from './session-lists.ts';
 import type { SettingsEnv } from './settings-env.ts';
 import type { ShellHistory } from './shell-history.ts';
@@ -53,7 +53,7 @@ export const UNREAD_INBOX_DAYS = 7;
  *   removes them, run by the owner);
  * - `quiet-ask`: `budget.quietHours.action` is `ask`, so a helper launch in the quiet hours waits on a permission prompt
  *   nobody at the host answers at night, and its tab stalls;
- * - `deny-missing`: secret deny lines (`SECRET_DENY_LINES`) in no settings file a session reads, so a hook's allow or
+ * - `deny-missing`: secret deny lines (the platform's `secretDenyLines`) in no settings file a session reads, so a hook's allow or
  *   auto mode can approve a read of a credential file or an environment dump; the user pastes the lines printed;
  * - `project-missing`: a `team.project` or `launch.<id>.project` that is no folder on this machine, so a tab `open`
  *   starts there refuses to launch;
@@ -110,9 +110,13 @@ export interface DenyFinding extends Finding {
   readonly kind: 'deny-missing';
 }
 
-/** The `permissions.deny` lines of the settings files a session in the project reads, and the user's file, where the missing ones go. */
+/**
+ * The `permissions.deny` lines of the settings files a session in the project reads, the secret deny lines this
+ * machine's platform needs (`secretDenyLines`), and the user's file, where the missing ones go.
+ */
 export interface SecretDeny {
   readonly files: readonly SettingsDeny[];
+  readonly lines: readonly string[];
   readonly pasteInto: string;
 }
 
@@ -464,8 +468,8 @@ export function allowFindings(wide: WideAllow): AllowFinding[] {
  * One finding while a secret deny line is in no settings file a session reads, with the missing lines as a JSON list to
  * paste; `check` shows it the lead too. A file that is not a JSON object counts as holding none, and is named.
  */
-export function denyFindings({ files, pasteInto }: SecretDeny): DenyFinding[] {
-  const missing = missingDenyLines(files);
+export function denyFindings({ files, lines, pasteInto }: SecretDeny): DenyFinding[] {
+  const missing = missingDenyLines(files, lines);
   if (missing.length === 0) {
     return [];
   }
@@ -474,7 +478,7 @@ export function denyFindings({ files, pasteInto }: SecretDeny): DenyFinding[] {
   const where = read.length === 0 ? 'no settings file exists' : `read: ${read.join(', ')}`;
   const skipped = unreadable.length === 0 ? '' : `; ${unreadable.join(', ')} ${plural(unreadable.length, 'is', 'are')} not a JSON object, so its deny lines went unread`;
   const detail =
-    `${missing.length} of ${SECRET_DENY_LINES.length} secret deny line(s) are in no settings file a session reads (${where}${skipped}), ` +
+    `${missing.length} of ${lines.length} secret deny line(s) are in no settings file a session reads (${where}${skipped}), ` +
     "so a hook's allow or auto mode can approve reading a credential file or printing the environment; a deny line beats both, and teamrig never writes permissions: " +
     `paste these into the permissions.deny list of ${pasteInto} yourself: ${JSON.stringify(missing)}`;
   return [{ kind: 'deny-missing', detail }];

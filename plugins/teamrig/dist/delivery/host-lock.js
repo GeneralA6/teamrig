@@ -7,7 +7,8 @@ import { admissionOrder, classOf, placeInLine } from "./admission.js";
 import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText } from "./class-turns.js";
 import { shortText } from "./memory-gate.js";
 import { isLineRequest } from "./process-request.js";
-import { causeOfLockWait, WAIT_CAUSES } from "./wait-log.js";
+import { WAIT_CAUSES } from "./wait-cause.js";
+import { causeOfLockWait } from "./wait-log.js";
 /** Tries per taking: a stale lock removed may be retaken by another step first. */
 const ATTEMPTS = 3;
 /**
@@ -180,6 +181,8 @@ export function holderText(holder, zone) {
             return `${stepsText(holder.running.length, '')} of its session running, its cap ${holder.cap}: ${heldText(holder.running, zone)}`;
         case 'heavyCap':
             return `${stepsText(holder.running.length, 'heavy ')} running, the cap ${holder.cap}: ${heldText(holder.running, zone)}`;
+        case 'cpu':
+            return `host CPU ${holder.idlePct}% idle, ${holder.needPct}% needed (delivery.queue.heavyIdleCpuPct) beside ${stepsText(holder.running.length, 'heavy ')}: ${heldText(holder.running, zone)}`;
         case 'admitting':
             return 'another step being admitted';
     }
@@ -243,6 +246,8 @@ export function busyText(holder, zone) {
             return `session cap still reached: ${holderText(holder, zone)}`;
         case 'heavyCap':
             return `heavy cap still reached: ${holderText(holder, zone)}`;
+        case 'cpu':
+            return `host CPU still busy: ${holderText(holder, zone)}`;
         case 'held':
         case 'unknown':
         case 'queued':
@@ -270,6 +275,7 @@ function waitKey(holder, ahead) {
             return `${holder.kind} ${idsOf(holder.shares)} ${ahead}`;
         case 'sessionCap':
         case 'heavyCap':
+        case 'cpu':
             return `${holder.kind} ${idsOf(holder.running)} ${ahead}`;
         case 'admitting':
             return `admitting ${ahead}`;
@@ -327,6 +333,7 @@ function standingBehind(ahead, holder) {
             break;
         case 'sessionCap':
         case 'heavyCap':
+        case 'cpu':
             for (const info of holder.running) {
                 ids.add(info.id);
             }
@@ -372,7 +379,7 @@ class Patience {
  * take the lock; a ticket whose process is gone or whose wait ran out is removed by the next waiter that sees it.
  * The line is in arrival order; with admission rules in `pipeline` mode it is in admission order (`admissionOrder`:
  * p0 first, then class turn, aged priority, arrival), and a waiter whose session already runs its cap of steps is
- * passed (`placeInLine`). As that order moves with the clock, a waiter that finds itself first looks again and takes
+ * passed, as is one waiting on the host's memory while `memoryPassMinutes` lets it be passed (`placeInLine`). As that order moves with the clock, a waiter that finds itself first looks again and takes
  * its turn under the admit file, `<lock>.admit` ({@link AdmitFile}), so two waiters never both take a turn as first.
  * A wait runs out only once the line has not moved for its whole length (see `Patience`), so a step far back in a line
  * that keeps moving is not refused; its ticket's expiry moves on with its wait each time the line moves.
@@ -390,7 +397,8 @@ class Patience {
  * deploy) and every heavy step in `serial` mode take the lock file instead, which waits for every share to end.
  * With a memory gate in its ports, the first in line takes the lock or a share only once the gate finds the host's
  * memory has room for it, the MB held for the small steps sharing the host counted as taken; until then it waits in
- * its place, so a later step never passes a step waiting on memory, and a lone step is gated as much as one beside others.
+ * its place, and a lone step is gated as much as one beside others. In arrival order a later step never passes a step
+ * waiting on memory; in admission order it does while `placeInLine` lets it, then waits on its own memory gate.
  */
 export class HostLock {
     static UNREADABLE_GRACE_MS = 10_000;
@@ -470,7 +478,7 @@ export class HostLock {
      */
     async acquire(session, purpose, maxWaitMs, pollMs, onWait, ask = {}, stop) {
         const patience = new Patience(this.ports.clock.now(), maxWaitMs);
-        const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask));
+        const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask), ask.arrivedAt);
         const reports = new WaitReports(onWait, this.ports.zone);
         try {
             const waited = await this.waitInLine(ticket, patience, pollMs, reports, ask, stop);
@@ -680,7 +688,8 @@ export class HostLock {
         for (const { session } of running) {
             counts.set(session, (counts.get(session) ?? 0) + 1);
         }
-        const place = placeInLine(admissionOrder(line, this.ports.clock.now(), rules, turnsFor(turns.state, waiting)), ticket.name, counts, rules);
+        const now = this.ports.clock.now();
+        const place = placeInLine(admissionOrder(line, now, rules, turnsFor(turns.state, waiting)), ticket.name, counts, rules, now);
         if (place === undefined) {
             return undefined;
         }
@@ -869,6 +878,13 @@ export class HostLock {
             if (running.length >= hold.cap) {
                 return { kind: 'busy', holder: { kind: 'heavyCap', cap: hold.cap, running } };
             }
+            // A heavy step alone on the host is never held on CPU: a host the day's other work keeps busy would never ship.
+            if (running.length > 0 && this.ports.cpu !== undefined) {
+                const cpu = await this.ports.cpu.look();
+                if (cpu.kind === 'cpu') {
+                    return { kind: 'busy', holder: { ...cpu, running } };
+                }
+            }
         }
         const look = await this.lookAtMemory(need, others);
         if (look !== undefined && look.kind !== 'room') {
@@ -976,9 +992,12 @@ export class HostLock {
         const hold = this.holdOf(ask);
         return { ...request, needMb: this.heldMbOf(need), heavy: hold.kind !== 'small', exclusive: hold.kind === 'whole' };
     }
-    /** Writes this step's ticket at the end of the line, its wait running out at `deadline`, saying what it asks when it names a `request`. */
-    async joinLine(session, purpose, deadline, request) {
-        const now = this.ports.clock.now();
+    /**
+     * Writes this step's ticket in line, its wait running out at `deadline`, saying what it asks when it names a `request`:
+     * at the end, or at its first arrival `arrivedAt` when it joins again (never later than now).
+     */
+    async joinLine(session, purpose, deadline, request, arrivedAt) {
+        const now = Math.min(arrivedAt ?? this.ports.clock.now(), this.ports.clock.now());
         const waiter = {
             id: this.ports.newId(),
             pid: this.ports.pid,

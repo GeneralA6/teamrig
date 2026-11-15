@@ -59,6 +59,23 @@ export function usageOf(message) {
 export function contextTokens(usage) {
     return usage.input + usage.cacheWrite5m + usage.cacheWrite1h + usage.cacheWriteUnsplit + usage.cacheRead;
 }
+/**
+ * What one W of `model` costs against the weekly meter (`budget.modelWeights`): the weight of the longest listed
+ * prefix of the model id, else 1. A line naming no model counts 1, since its cost cannot be told apart. The longest
+ * prefix wins so a listed `claude-fable-5-1` can price one release apart from a broader `claude-fable`.
+ */
+export function modelWeightOf(model, weights) {
+    if (model === undefined) {
+        return 1;
+    }
+    let best;
+    for (const entry of weights) {
+        if (model.startsWith(entry.model) && (best === undefined || entry.model.length > best.model.length)) {
+            best = entry;
+        }
+    }
+    return best?.weight ?? 1;
+}
 /** The call's weighted tokens. */
 export function weightOf(usage) {
     return (usage.input * WEIGHTS.input +

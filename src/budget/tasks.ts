@@ -40,6 +40,7 @@ const MENTION_FLAGS: ReadonlySet<string> = new Set([
   '--recommend',
   '--default',
   '--why-ask',
+  '--affects',
   ...Object.values(REVIEW_FLAGS),
   '--followups',
   '--waits',

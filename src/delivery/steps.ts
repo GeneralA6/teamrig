@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
-import { lowerStep, NODE_PRIORITIES, type Priorities } from './priority.ts';
+import { constants } from 'node:os';
+import { lowerStep, NODE_PRIORITIES, STEP_PRIORITY, type Priorities } from './priority.ts';
 import { nodeTreeKill, type RunKill, type TreeKill } from './tree-kill.ts';
 
 export interface StepRequest {
@@ -46,24 +47,59 @@ export function exitCodeOf(end: StepEnd): number {
   }
 }
 
+/** How a step's command line starts: the program and its arguments, and whether Node hands them to the shell. */
+export interface StepLaunch {
+  readonly file: string;
+  readonly args: readonly string[];
+  readonly shell: boolean;
+  /** Whether the runner lowers the step once it has started, as the launch itself does not. */
+  readonly lowerAfter: boolean;
+}
+
 /**
- * The real runner: Node's `spawn` in the platform's shell, with inherited stdio, lowered to below-normal priority as
- * it starts, before its shell starts anything; its time limit or its `stop` kills the tree. A killed step is reported
- * once the kill is done, so the next holder never shares the host with it.
+ * How a step starts. On POSIX, `/bin/sh` (the shell Node's `shell: true` runs there) starts under `nice`, so the step
+ * runs at `STEP_PRIORITY` from its first instruction: lowered once it has started, it raced its shell, and on Linux,
+ * where a nice value is each thread's, the threads its program started before the lowering stayed at normal. `nice`
+ * adds to this process's own value, so it adds only what brings the step to `STEP_PRIORITY`, and nothing to a process
+ * already running lower. On Windows, the shell is `cmd.exe`, lowered once it has started (its priority class is the
+ * whole process's, and the programs it starts after that inherit it).
+ */
+export function stepLaunchOf(platform: NodeJS.Platform, command: string, ownPriority: number): StepLaunch {
+  if (platform === 'win32') {
+    return { file: command, args: [], shell: true, lowerAfter: true };
+  }
+  const increment = Math.max(0, STEP_PRIORITY - ownPriority);
+  return { file: 'nice', args: ['-n', String(increment), '/bin/sh', '-c', command], shell: false, lowerAfter: false };
+}
+
+/** This process's own priority; normal when the system will not say. */
+function ownPriorityOf(priorities: Priorities): number {
+  try {
+    return priorities.of(process.pid);
+  } catch {
+    return constants.priority.PRIORITY_NORMAL;
+  }
+}
+
+/**
+ * The real runner: Node's `spawn` in the platform's shell, with inherited stdio, at below-normal priority
+ * (`stepLaunchOf`); its time limit or its `stop` kills the tree. A killed step is reported once the kill is done, so
+ * the next holder never shares the host with it.
  */
 export function nodeStepRunner(platform: NodeJS.Platform, kill: TreeKill = nodeTreeKill(platform), priorities: Priorities = NODE_PRIORITIES): StepRunner {
   return {
     run: (request) =>
       new Promise((resolve, reject) => {
-        const child = spawn(request.command, {
-          shell: true,
+        const launch = stepLaunchOf(platform, request.command, ownPriorityOf(priorities));
+        const child = spawn(launch.file, launch.args, {
+          shell: launch.shell,
           cwd: request.cwd,
           env: { ...request.env },
           stdio: 'inherit',
           windowsHide: true,
           detached: platform !== 'win32',
         });
-        if (child.pid !== undefined) {
+        if (launch.lowerAfter && child.pid !== undefined) {
           lowerStep(priorities, child.pid);
         }
         let killed: RunKill | undefined;

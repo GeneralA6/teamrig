@@ -18,7 +18,13 @@ export class KitTreeGoals {
         if (this.config.register.goals === 'free') {
             return NO_GOAL_TAGS;
         }
+        return this.recorded();
+    }
+    async recorded() {
         return new Set((await this.all()).keys());
+    }
+    async sliced() {
+        return this.all();
     }
     /**
      * Every goal a task of the team may serve, whatever `register.goals` says, as a goal's rank counts under `free` too.

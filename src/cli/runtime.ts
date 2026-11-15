@@ -1,5 +1,6 @@
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
+import type { HostCpu } from '../delivery/cpu.ts';
 import type { HostMemory } from '../delivery/memory.ts';
 import type { TreeState } from '../delivery/push-pass.ts';
 import type { StarterWatch } from '../delivery/starter-watch.ts';
@@ -14,6 +15,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import type { StoreFolders } from '../core/plugin-store.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
+import type { PullGit } from '../github/pull-conflicts.ts';
 import type { MergeGit } from '../merge/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { HookRunner } from '../deploy/hooks.ts';
@@ -75,11 +77,13 @@ export interface CliRuntime {
   readonly steps: StepRunner;
   /** The host's free memory, processes and commit charge, and a watch of a queued step's process tree (its ledger record). */
   readonly memory: HostMemory;
+  /** The host's CPU time, which a heavy queued step's admission reads for idle CPU (T2700). */
+  readonly cpu: HostCpu;
   /** The processes that started this one, so a queued step whose launching shell was ended stops too. */
   readonly starters: StarterWatch;
-  /** The GitHub CLI, for `teamrig gh sync`; it runs reads only (github/gh.ts). */
+  /** The GitHub CLI, for `teamrig issue sync`; it runs reads only (github/gh.ts). */
   readonly gh: GhRunner;
-  /** The system's saved secrets, where `teamrig gh sync` finds each owner's read-only GitHub token; only ever read. */
+  /** The system's saved secrets, where `teamrig issue sync` finds each owner's read-only GitHub token; only ever read. */
   readonly credentials: CredentialStore;
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;
@@ -98,6 +102,8 @@ export interface CliRuntime {
   readonly trees: TreeState;
   /** The git steps `teamrig merge` takes. */
   readonly mergeGit: MergeGit;
+  /** The git steps `teamrig pr conflicts` takes: a pull request's head fetched and merged in the object store alone. */
+  readonly pulls: PullGit;
   /** The programs `teamrig deploy` runs, its checks, afterPull hooks and deploy command: no shell, each with a time limit. */
   readonly hooks: HookRunner;
   /** The registry the package guard asks about the versions an install names: their publish times and advisories. */

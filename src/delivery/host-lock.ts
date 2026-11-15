@@ -7,10 +7,12 @@ import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { AdmitFile } from './admit-file.ts';
 import { admissionOrder, classOf, placeInLine, type AdmissionRules } from './admission.ts';
+import type { CpuGate } from './cpu.ts';
 import { charge, DEFAULT_EXPECTED_MINUTES, EMPTY_TURNS, endedAtOf, endedText, isNewerTurns, parseTurns, settle, turnsFor, turnsText, type OpenCharge, type TurnsState } from './class-turns.ts';
 import { shortText, type CommitShort, type MemoryGate, type MemoryLook, type MemoryShort } from './memory-gate.ts';
 import { isLineRequest, type LineRequest } from './process-request.ts';
-import { causeOfLockWait, WAIT_CAUSES, type WaitCause } from './wait-log.ts';
+import { WAIT_CAUSES, type WaitCause } from './wait-cause.ts';
+import { causeOfLockWait } from './wait-log.ts';
 
 /**
  * The host lock's file. Its fields are the ones a team's own deploy tool writes too, so both take the same
@@ -162,12 +164,14 @@ export interface StepNeed {
  * What a step in line asks of the host: how it holds it (`need`; none is a heavy step, with the gate's
  * `heavyReserveMb` held for it), whether it takes the whole host (`exclusive`: the lock file, in `pipeline` mode too,
  * as a merge or a deploy does; it wins over a small need), and what it works for (`request`), which its ticket and
- * share carry.
+ * share carry. `arrivedAt` (epoch ms, never past now) is when the step first joined the line, for a run that took a
+ * step over after its launching shell ended (T2304): its ticket keeps that place instead of going to the end.
  */
 export interface StepAsk {
   readonly need?: StepNeed;
   readonly exclusive?: boolean;
   readonly request?: LineRequest;
+  readonly arrivedAt?: number;
 }
 
 /**
@@ -198,11 +202,23 @@ export interface HeavyCapWait {
 }
 
 /**
+ * A heavy step first in line, below the heavy cap, while the host's CPU is too busy for it beside the heavy steps
+ * already sharing it (`running`, T2700): `idlePct` of its CPU time was idle, `needPct` needed
+ * (`delivery.queue.heavyIdleCpuPct`).
+ */
+export interface CpuWait {
+  readonly kind: 'cpu';
+  readonly idlePct: number;
+  readonly needPct: number;
+  readonly running: readonly HostShare[];
+}
+
+/**
  * What a waiter waits on: the lock's holder, the earlier waiter the free lock goes to next, the steps sharing the host
  * that a step that took the lock waits to end, or, for the first in line, the host's free memory or commit charge
  * (`MemoryWait`). In admission's `pipeline` mode also its session's cap (`sessionCap`), the heavy steps sharing the
- * host at their cap (`heavyCap`), and, for a moment, another step being admitted (`admitting`), which holds the admit
- * file.
+ * host at their cap (`heavyCap`) or with the CPU too busy for one more (`cpu`), and, for a moment, another step being
+ * admitted (`admitting`), which holds the admit file.
  */
 export type LockWait =
   | LockHolder
@@ -211,6 +227,7 @@ export type LockWait =
   | MemoryWait
   | SessionCapWait
   | HeavyCapWait
+  | CpuWait
   | { readonly kind: 'admitting' };
 
 /**
@@ -255,6 +272,11 @@ export interface HostLockPorts {
    * step, as the deploy freezes' writers share.
    */
   readonly memory?: MemoryGate;
+  /**
+   * The gate a heavy step passes on the host's CPU before it joins another heavy step sharing the host (T2700); none
+   * lets it in on memory alone.
+   */
+  readonly cpu?: CpuGate;
   /**
    * How the line is ordered (T2210): absent or `serial`, in arrival order, with no admit file and no session cap;
    * `pipeline`, in admission order (see the class).
@@ -471,6 +493,8 @@ export function holderText(holder: LockWait, zone: TimeZone): string {
       return `${stepsText(holder.running.length, '')} of its session running, its cap ${holder.cap}: ${heldText(holder.running, zone)}`;
     case 'heavyCap':
       return `${stepsText(holder.running.length, 'heavy ')} running, the cap ${holder.cap}: ${heldText(holder.running, zone)}`;
+    case 'cpu':
+      return `host CPU ${holder.idlePct}% idle, ${holder.needPct}% needed (delivery.queue.heavyIdleCpuPct) beside ${stepsText(holder.running.length, 'heavy ')}: ${heldText(holder.running, zone)}`;
     case 'admitting':
       return 'another step being admitted';
   }
@@ -542,6 +566,8 @@ export function busyText(holder: LockWait, zone: TimeZone): string {
       return `session cap still reached: ${holderText(holder, zone)}`;
     case 'heavyCap':
       return `heavy cap still reached: ${holderText(holder, zone)}`;
+    case 'cpu':
+      return `host CPU still busy: ${holderText(holder, zone)}`;
     case 'held':
     case 'unknown':
     case 'queued':
@@ -571,6 +597,7 @@ function waitKey(holder: LockWait, ahead: number): string {
       return `${holder.kind} ${idsOf(holder.shares)} ${ahead}`;
     case 'sessionCap':
     case 'heavyCap':
+    case 'cpu':
       return `${holder.kind} ${idsOf(holder.running)} ${ahead}`;
     case 'admitting':
       return `admitting ${ahead}`;
@@ -632,6 +659,7 @@ function standingBehind(ahead: readonly LockWaiter[], holder: LockWait): Set<str
       break;
     case 'sessionCap':
     case 'heavyCap':
+    case 'cpu':
       for (const info of holder.running) {
         ids.add(info.id);
       }
@@ -682,7 +710,7 @@ class Patience {
  * take the lock; a ticket whose process is gone or whose wait ran out is removed by the next waiter that sees it.
  * The line is in arrival order; with admission rules in `pipeline` mode it is in admission order (`admissionOrder`:
  * p0 first, then class turn, aged priority, arrival), and a waiter whose session already runs its cap of steps is
- * passed (`placeInLine`). As that order moves with the clock, a waiter that finds itself first looks again and takes
+ * passed, as is one waiting on the host's memory while `memoryPassMinutes` lets it be passed (`placeInLine`). As that order moves with the clock, a waiter that finds itself first looks again and takes
  * its turn under the admit file, `<lock>.admit` ({@link AdmitFile}), so two waiters never both take a turn as first.
  * A wait runs out only once the line has not moved for its whole length (see `Patience`), so a step far back in a line
  * that keeps moving is not refused; its ticket's expiry moves on with its wait each time the line moves.
@@ -700,7 +728,8 @@ class Patience {
  * deploy) and every heavy step in `serial` mode take the lock file instead, which waits for every share to end.
  * With a memory gate in its ports, the first in line takes the lock or a share only once the gate finds the host's
  * memory has room for it, the MB held for the small steps sharing the host counted as taken; until then it waits in
- * its place, so a later step never passes a step waiting on memory, and a lone step is gated as much as one beside others.
+ * its place, and a lone step is gated as much as one beside others. In arrival order a later step never passes a step
+ * waiting on memory; in admission order it does while `placeInLine` lets it, then waits on its own memory gate.
  */
 export class HostLock {
   static readonly UNREADABLE_GRACE_MS = 10_000;
@@ -785,7 +814,7 @@ export class HostLock {
    */
   async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, ask: StepAsk = {}, stop?: AbortSignal): Promise<Taking> {
     const patience = new Patience(this.ports.clock.now(), maxWaitMs);
-    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask));
+    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask), ask.arrivedAt);
     const reports = new WaitReports(onWait, this.ports.zone);
     try {
       const waited = await this.waitInLine(ticket, patience, pollMs, reports, ask, stop);
@@ -1004,7 +1033,8 @@ export class HostLock {
     for (const { session } of running) {
       counts.set(session, (counts.get(session) ?? 0) + 1);
     }
-    const place = placeInLine(admissionOrder(line, this.ports.clock.now(), rules, turnsFor(turns.state, waiting)), ticket.name, counts, rules);
+    const now = this.ports.clock.now();
+    const place = placeInLine(admissionOrder(line, now, rules, turnsFor(turns.state, waiting)), ticket.name, counts, rules, now);
     if (place === undefined) {
       return undefined;
     }
@@ -1204,6 +1234,13 @@ export class HostLock {
       if (running.length >= hold.cap) {
         return { kind: 'busy', holder: { kind: 'heavyCap', cap: hold.cap, running } };
       }
+      // A heavy step alone on the host is never held on CPU: a host the day's other work keeps busy would never ship.
+      if (running.length > 0 && this.ports.cpu !== undefined) {
+        const cpu = await this.ports.cpu.look();
+        if (cpu.kind === 'cpu') {
+          return { kind: 'busy', holder: { ...cpu, running } };
+        }
+      }
     }
     const look = await this.lookAtMemory(need, others);
     if (look !== undefined && look.kind !== 'room') {
@@ -1318,9 +1355,12 @@ export class HostLock {
     return { ...request, needMb: this.heldMbOf(need), heavy: hold.kind !== 'small', exclusive: hold.kind === 'whole' };
   }
 
-  /** Writes this step's ticket at the end of the line, its wait running out at `deadline`, saying what it asks when it names a `request`. */
-  private async joinLine(session: string, purpose: string, deadline: number, request: TicketRequest | undefined): Promise<OwnTicket> {
-    const now = this.ports.clock.now();
+  /**
+   * Writes this step's ticket in line, its wait running out at `deadline`, saying what it asks when it names a `request`:
+   * at the end, or at its first arrival `arrivedAt` when it joins again (never later than now).
+   */
+  private async joinLine(session: string, purpose: string, deadline: number, request: TicketRequest | undefined, arrivedAt?: number): Promise<OwnTicket> {
+    const now = Math.min(arrivedAt ?? this.ports.clock.now(), this.ports.clock.now());
     const waiter: LockWaiter = {
       id: this.ports.newId(),
       pid: this.ports.pid,

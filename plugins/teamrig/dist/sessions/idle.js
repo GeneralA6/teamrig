@@ -3,7 +3,7 @@ import { parseObject } from "../core/jsonl.js";
 import { MS_PER_MINUTE, parseDeadline } from "../core/time.js";
 import { asksDecision, messageTextOf } from "../tabs/status.js";
 import { replyOf } from "../turn-log/reply.js";
-import { dayStartAt, startableTasks } from "../wake/day-start.js";
+import { startableTasks } from "../wake/day-start.js";
 import { isNews } from "../wake/decide.js";
 /**
  * Whether an idle session closes and a closed one reopens, pure (T1100). One rule serves both: a session closes when
@@ -120,8 +120,8 @@ export function reopenVerdict(input) {
     if (handed.length > 0) {
         return { kind: 'handed', tasks: handed };
     }
-    const dayStart = input.dayStartUtc === undefined ? undefined : dayStartAt(input.dayStartUtc, now);
-    if (dayStart === undefined || dayStart <= input.closedAt || input.rest.quiet || input.rest.held) {
+    const { dayStart } = input;
+    if (dayStart === undefined || dayStart > now || dayStart <= input.closedAt || input.rest.quiet || input.rest.held) {
         return { kind: 'stay' };
     }
     const startable = startableTasks(tasks, elsewhere, session, now, zone, parking);

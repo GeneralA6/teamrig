@@ -19,7 +19,7 @@ Each session is a tab in the terminal you already have (PowerShell, bash or zsh)
 IDE, no desktop app, no server and no account: in our test, Windows Terminal with twelve session tabs used about
 250 MB of memory.
 
-> **Pre-release.** Nothing is stable yet and there is no release; the repository is private until the first one.
+> **Pre-release.** Nothing is stable yet and there is no release.
 
 ## Get started
 
@@ -33,11 +33,12 @@ claude plugin marketplace add GeneralA6/teamrig-pane
 claude plugin install teamrig-pane@teamrig-pane
 ```
 
-While the repositories are private, accept the invites to both first: Claude Code clones a marketplace with your own
-git login, so `git clone https://github.com/GeneralA6/teamrig` must work in your terminal.
+Both repositories are public, so no GitHub account or key is needed: Claude Code clones over SSH when you have a key,
+else over HTTPS. The plugin brings its own `teamrig` command, which every tab's Bash tool finds on its PATH.
 
 Open Claude Code in your project (in a tab already open, type `/reload-plugins` first), ask for a team, and tell your
-lead what you want done. No config files to write.
+lead what you want done. No config files to write. The first session start lists the secret deny lines your Claude
+settings lack, for you to paste: teamrig never writes your permissions.
 
 - **Your tasks in view:** install [teamrig-pane](https://github.com/GeneralA6/teamrig-pane) and run `/teamrig-pane`
   in a tab. It shows the session's tasks beside the conversation and makes no model calls, so it costs no tokens.
@@ -51,7 +52,7 @@ lead what you want done. No config files to write.
 Claude Code 2.1.139 or later and Node.js 22.18 or later. teamrig checks for anything else when you set up a team and
 when a session starts, and tells you in plain words what is missing and how to fix it. Auto mode runs `teamrig` as is;
 in default mode, allow `Bash(teamrig:*)` ([permissions](plugins/teamrig/skills/teamrig-guide/hooks.md#permissions)).
-Windows and Linux: on Linux the tests and a smoke run pass; the tab circles and teamrig-pane are proven on Windows only.
+Windows and Linux: a fresh install, a first team and every hook pass on both; tab circles and teamrig-pane: Windows only.
 
 ## How it works
 
@@ -149,9 +150,10 @@ you or teamrig closed on purpose, and prompts the ones that were mid-turn to car
 it at each logon on Windows and adds a Start-menu shortcut, `Restore Claude Sessions`, that runs it by hand from
 anywhere. Tabs an expired Claude
 login stopped carry on by themselves once you `/login` in any tab, and a turn cut off by a server error or an
-overloaded API is sent on by itself, up to 3 times. When a member's context
-runs long, it writes a handover; once it has work to go on with and is idle while you're away,
-teamrig restarts it after a 20-second countdown you can hold, and it carries on from the handover by itself.
+overloaded API is sent on by itself, up to 3 times. When a session's context
+runs long, it writes a handover. The lead (by default; every session with `refresh.autoRestart: true`), once it has work
+to go on with and is idle while you're away, is restarted after a 20-second countdown you can hold, and it carries
+on from the handover by itself; any other session asks you to type `/clear`.
 
 *Coming: reopening sessions at logon on macOS and Linux.*
 
@@ -179,7 +181,8 @@ in the last two weeks or with a known advisory, or one that would rewrite a work
 main checkout's. A call that would print a secret file, the whole environment or a
 Kubernetes secret, or whose command line or written file holds a token or a password as text, is refused before it runs, and a secret
 a call prints anyway is redacted before Claude sees it. A repository's git hooks call `teamrig secrets`, which refuses
-a commit or a push that adds a token or a secret file, whoever makes it. Each helper a member starts gets the same team rules and knows whose
+a commit or a push that adds a token or a secret file, whoever makes it. A hand-run write to a database asks you
+first, naming the count or dry run to see before it. Each helper a member starts gets the same team rules and knows whose
 helper it is. Everything runs on your machine, with no account and no cloud bill.
 
 ## Also in the box
@@ -199,7 +202,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
   wrappers and own-branch rebases to Claude Code's auto-mode facts, so auto mode stops asking about them.
 - **A model per session:** each session starts on its own model and effort, and you're told when one runs on another.
   An `/effort` you type in a session's tab becomes its effort in the config, so a restore or restart keeps it.
-- **GitHub issues in the task list:** `teamrig gh sync` reads your repositories' open issues every 15 minutes, one way
+- **GitHub issues in the task list:** `teamrig issue sync` reads your repositories' open issues every 15 minutes, one way
   only ([GitHub sync](docs/github-sync.md)).
 - **Shipping from many sessions:** `teamrig queue` runs builds and test runs under one host lock, `teamrig merge`
   merges a finished branch (by a push, or through your own merge command such as a pull request), `teamrig deploy` brings it to the running system (or, with `--targets`, restarts some services onto new config with
@@ -217,7 +220,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | --- | --- |
 | [Start here](docs/guides/start-here.md) | New to teamrig: install it, set up your first team, and the five words every page uses |
 | [How it works in detail](docs/how-it-works.md) | The design, the files and [updating the plugin](docs/how-it-works.md#updating-the-plugin) |
-| [Keep it safe](docs/guides/keep-it-safe.md) | The guards: safe pushes, skipped hooks, unvetted packages, secrets, privileged commands on review |
+| [Keep it safe](docs/guides/keep-it-safe.md) | The guards: safe pushes, skipped hooks, unvetted packages, secrets, database writes, privileged commands on review |
 | [Run your day](docs/guides/run-your-day.md) | The daily meeting, a question that never stops a session, notes between sessions, waking on urgent work |
 | [Recover from a crash or a full context](docs/guides/recover.md) | Sessions reopened after a crash or a reboot, a fresh context at a task boundary, the turn log |
 | [Plan the week](docs/guides/plan-the-week.md) | The week plan and task sizes against the weekly limit, the week's split among the teams, the daily budget and its pace line, bursts |

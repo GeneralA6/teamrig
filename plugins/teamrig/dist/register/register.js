@@ -2,6 +2,7 @@ import { errorMessage } from "../core/guards.js";
 import { NewerDataError } from "../core/jsonl.js";
 import { EVENT_VERSION, TASK_LINE_VERSION } from "./events.js";
 import { foldEvents, taskNumber } from "./fold.js";
+import { NO_SLICED_GOALS } from "./focus.js";
 import { NO_GOAL_TAGS } from "./goals.js";
 import { GITHUB_ACTOR, NO_SKILL } from "./policy.js";
 import { ACTIVE_STATUSES } from "./model.js";
@@ -10,7 +11,11 @@ import { needsElsewhere, NO_TASKS_ELSEWHERE } from "./tree.js";
 /** The reader of a register no other register shares a tree with: nothing is held elsewhere. */
 export const NOTHING_ELSEWHERE = { read: () => Promise.resolve(NO_TASKS_ELSEWHERE) };
 /** The reader of a team that keeps no goal records, as under `register.goals` free: no tag is read. */
-export const NO_GOAL_RECORDS = { read: () => Promise.resolve(NO_GOAL_TAGS) };
+export const NO_GOAL_RECORDS = {
+    read: () => Promise.resolve(NO_GOAL_TAGS),
+    recorded: () => Promise.resolve(NO_GOAL_TAGS),
+    sliced: () => Promise.resolve(NO_SLICED_GOALS),
+};
 /**
  * The register's write path: under the lock, read the log, replay it, apply the team policy,
  * append its events and return the task as it now stands. Reads take no lock.
@@ -99,7 +104,9 @@ export class Register {
     }
     async setStatus(caller, id, input) {
         const skillExists = await this.skillExists(input);
-        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists })));
+        // Only a start reads the goal records: the WIP rule judges a prep marker against them, before the lock.
+        const goals = input.status === 'in-progress' ? await this.deps.goals.sliced() : NO_SLICED_GOALS;
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists, goals })));
     }
     /**
      * `set <id> --status waiting --ask <session> --text "<the work>"`, in one write: the task asked of that session,
@@ -118,7 +125,7 @@ export class Register {
             const state = foldEvents([created], [], snapshot.state);
             const waits = [...(input.waits ?? []), { kind: 'task', id: askedId }];
             const asking = { ...input, waits, note: input.note ?? fields.value.title };
-            const status = this.statusEvents(task, caller, asking, { state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists });
+            const status = this.statusEvents(task, caller, asking, { state, elsewhere, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists, goals: NO_SLICED_GOALS });
             return status.ok ? { ok: true, value: [created, ...status.value] } : status;
         })));
         if (!written.ok) {
@@ -138,7 +145,9 @@ export class Register {
      */
     update(caller, id, changes, note, sizeBase) {
         return this.asCaller(caller, async () => {
-            const goalTags = await this.goalTagsFor(changes.goals);
+            // A prep marker names a goal record whatever register.goals says (T2453): every recorded tag, a superset of what
+            // `read` gives, which the goals check under free ignores anyway.
+            const goalTags = changes.prepares ? await this.deps.goals.recorded() : await this.goalTagsFor(changes.goals);
             return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => {
                 const change = this.deps.policy.update(task, caller, changes, note, snapshot.state, elsewhere, goalTags);
                 if (!change.ok) {
@@ -263,19 +272,20 @@ export class Register {
         return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.decideFrom(task, note)))));
     }
     /**
-     * `audit <id> --file <path>`: a session of this team pins a hand step file for the task at its sha256 (T2312), an
-     * update that changes no field, so the task's card may hand the file to the owner.
+     * `audit <id> --file <path>` or `--verdict "<text>"`: a session of this team pins a hand step file for the task at
+     * its sha256 (T2312), so the task's card may hand the file to the owner, or its security verdict on the task's card
+     * (T2761), so a security-related card may reach the owner; an update that changes no field.
      */
-    audit(caller, id, pin, note) {
-        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.audit(task, caller, pin, note)))));
+    audit(caller, id, subject, note) {
+        return this.commit(caller, (snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, caller, this.deps.policy.audit(task, caller, subject, note)))));
     }
     /**
-     * `audit <id> --file <path> --team <child>`: an audit from a team above, `asker` being its `<team>/<id>`, as in
-     * approveFrom: the tree decides who that may be, so this team's roster check is skipped; the policy still holds the
-     * audit to the task owner's auditors.
+     * `audit <id> --file <path>|--verdict "<text>" --team <child>`: an audit from a team above, `asker` being its
+     * `<team>/<id>`, as in approveFrom: the tree decides who that may be, so this team's roster check is skipped; the
+     * policy still holds the audit to the task owner's auditors.
      */
-    auditFrom(asker, id, pin, note) {
-        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.auditFrom(task, asker, pin, note)))));
+    auditFrom(asker, id, subject, note) {
+        return this.write((snapshot, elsewhere) => onTask(snapshot, elsewhere, id, (task) => single(this.noFieldEvent(task, asker, this.deps.policy.auditFrom(task, asker, subject, note)))));
     }
     /** The update a Later, a Decided or an audit writes: no field changed; the task's waits from then on, or the file pinned. */
     noFieldEvent(task, by, change) {

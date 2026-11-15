@@ -8,6 +8,7 @@ import type { DeliveryPlaces } from '../delivery/places.ts';
 import { lineRequest, processRequest, type LineRequest, type RequestFocus } from '../delivery/process-request.ts';
 import { NOT_STARTED_EXIT, recordQueuedStep, recordRefusal, type StepRecordPorts } from '../delivery/recorded-step.ts';
 import { sayingWaits, WaitLog } from '../delivery/wait-log.ts';
+import { pipelineFrozenRefusal } from '../delivery/pipeline-freezes.ts';
 import { queueCutoffReason, resetBlackoutReason, type ResetTime } from '../delivery/schedule.ts';
 import type { Files } from '../core/files.ts';
 import type { GitOutcome } from '../core/git-run.ts';
@@ -156,8 +157,8 @@ function hookEnv(setup: DeploySetup, ports: DeployPorts, request: DeployRequest,
 }
 
 /**
- * What stops any change to `targets` before its checks are asked: the queue cutoff and the reset blackout refuse it, a
- * deploy freeze on one of them holds it; undefined when none does.
+ * What stops any change to `targets` before its checks are asked: the queue cutoff, the reset blackout and a pipeline
+ * freeze on deploys refuse it, a deploy freeze on one of them holds it; undefined when none does.
  */
 export async function scheduleReadiness(setup: DeploySetup, ports: DeployPorts, targets: readonly string[]): Promise<Readiness | undefined> {
   const { schedule } = setup.delivery;
@@ -165,7 +166,8 @@ export async function scheduleReadiness(setup: DeploySetup, ports: DeployPorts, 
   const hours = schedule.resetBlackoutHours;
   const refusal =
     queueCutoffReason(now, schedule.queueCutoffUtc, setup.zone) ??
-    (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
+    (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone)) ??
+    pipelineFrozenRefusal(await ports.files.read(setup.places.pipelineFreezes), setup.places.pipelineFreezes, now, ['deploy'], setup.zone);
   if (refusal !== undefined) {
     return { kind: 'refuse', reason: refusal };
   }

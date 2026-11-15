@@ -13,7 +13,7 @@ import { quietWorld } from '../testing/quiet-world.ts';
 import { configChangedMeanwhile, hired } from '../testing/config-race.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
-import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { cutLineMessage } from './cmd-shim.ts';
 import { FULL_HELP_POINTER } from './help.ts';
 import { SHORT_FORM_CHARS } from './reports.ts';
@@ -100,9 +100,9 @@ describe('runCli: help, version and usage errors', () => {
     const setLines = [
       '  set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]',
       '      [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]',
-      '      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]',
+      '      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".." --affects ".."]',
       '      [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]',
-      '      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>]',
+      '      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security]',
       '      [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]',
       '      verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by',
       '      --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live',
@@ -131,8 +131,16 @@ describe('runCli: help, version and usage errors', () => {
       "      a wait on the owner's decision names what makes it the owner's: --gate \"<an owner gate (ownerGates)",
       "      or business>\"; any other question is yours or your leader's: decide it, or wait on your leader;",
       '      check flags it UNGATED without one',
+      '      a card asking the owner about a test, measure or proof (a back-test, trial, dry run, benchmark) asks',
+      '      only with --affects "<the approved number it changes, the money it spends or the data it writes>":',
+      '      one of approved work that does none of those goes ahead, and you tell your leader; check flags it',
+      '      OWNER-PROOF without one',
       "      --run <path> (with a wait on the owner's decision or approval): the hand step file the owner runs,",
       '      refused unless an audit (teamrig audit) pins it at its sha256 now; the card prints its run line',
+      '      a card on a gate in securityGates (permissions by default), or marked --security, reaches the owner',
+      "      only with the security verdict on it (teamrig audit --verdict): set it on your leader's wait first,",
+      '      then move the wait to the owner with the card unchanged; the card prints the verdict; check flags',
+      '      SECURITY-UNREVIEWED an owner card naming a guard, permission, secret or the like with no verdict',
       '      a bug gives its review (register.review): --cause "<the root cause, at its source>"',
       '      --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and',
       '      --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";',
@@ -193,6 +201,16 @@ describe('runCli: help, version and usage errors', () => {
     assert.deepEqual([oldSpelling.code, reasonOf(oldSpelling)], [EXIT.usage, 'priority "t2" is the old tier spelling: write p2']);
     const bare = await kit.run(['update', 'T1', '--priority', '3', '--session', 'alpha']);
     assert.deepEqual([bare.code, reasonOf(bare)], [EXIT.usage, 'priority "3" is not p<n>: write p3']);
+    assert.equal(kit.files.get(EVENTS_PATH), undefined);
+  });
+
+  it('refuses gh sync and gh migrate with their new group, issue, running neither', async () => {
+    const kit = new CliHarness();
+    for (const argv of [['gh', 'sync', '--yes'], ['gh', 'migrate', 'rows.jsonl', '--yes']]) {
+      const result = await kit.run(argv);
+      assert.equal(result.code, EXIT.usage, argv.join(' '));
+      assert.equal(result.stderr[0]?.split('\n')[0], 'gh was renamed: use issue', argv.join(' '));
+    }
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
   });
 });
@@ -371,6 +389,23 @@ describe('runCli: the task register', () => {
     await empty.holdSecretDeny();
     const nothing = await empty.run(['check', '--session', 'alpha']);
     assert.deepEqual(nothing.stdout[0], 'CHECK 0 flag(s), no week plan tagged yet, so the week checks are skipped');
+  });
+
+  it('flags a grant a script makes that the SKILL.md runs from outside its folder, and its imports (T1401)', async () => {
+    const kit = new CliHarness();
+    await kit.holdSecretDeny();
+    const skill = '---\nname: alpha-ship\ndescription: Ship a change.\n---\nOwner: alpha\nLast verified: 2030-01-05\n\nRun `node ~/tools/ship.ts`.\n';
+    await kit.files.write(join(SKILLS_DIR, 'alpha-ship', 'SKILL.md'), skill);
+    await kit.files.write(join(USER_HOME, 'tools', 'ship.ts'), "import { token } from './token.ts';\n");
+    await kit.files.write(join(USER_HOME, 'tools', 'token.ts'), "export const token = execFileSync('gh', ['auth', 'token']);\n");
+    const flagged = await kit.run(['check', '--session', 'alpha', '--all']);
+    assert.ok(
+      flagged.stdout.some((line) => /^SKILL GRANT \(secret-read in ~\/tools\/token\.ts, which auto mode does not see: .*\) alpha alpha-ship$/.test(line)),
+      flagged.stdout.join('\n'),
+    );
+    await kit.files.write(join(SKILLS_DIR, 'alpha-ship', 'SKILL.md'), skill.replace('Owner: alpha\n', 'Owner: alpha\nGrants: secret-read\n'));
+    const granted = await kit.run(['check', '--session', 'alpha', '--all']);
+    assert.ok(!granted.stdout.some((line) => line.startsWith('SKILL GRANT')), granted.stdout.join('\n'));
   });
 
   it('plans the newest started week, or the one given, and refuses before any plan', async () => {
@@ -868,6 +903,35 @@ describe('runCli: hook pass-record-guard', () => {
   it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {
     assert.deepEqual(await new CliHarness(null, null).run(['hook', 'pass-record-guard'], { stdin: write(record) }), { code: EXIT.ok, stdout: [], stderr: [] });
     assert.deepEqual(await new CliHarness().run(['hook', 'pass-record-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
+describe('runCli: hook db-write-guard', () => {
+  const remove = bash('psql -c "DELETE FROM orders"');
+
+  it('asks about a hand-run database write and lets a read run', async () => {
+    const kit = new CliHarness();
+    assert.equal(decisionOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })), 'ask');
+    assert.match(reasonOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })) ?? '', /psql runs DELETE/);
+    assert.deepEqual((await kit.run(['hook', 'db-write-guard'], { stdin: bash('psql -c "SELECT 1"') })).stdout, []);
+  });
+
+  it('refuses or lets it run as the team config says, refuses an ask when asks are off, and asks on a broken config', async () => {
+    assert.equal(decisionOf(await new CliHarness({ ...TEAM, dbWriteGuard: { writes: 'deny' } }).run(['hook', 'db-write-guard'], { stdin: remove })), 'deny');
+    assert.deepEqual((await new CliHarness({ ...TEAM, dbWriteGuard: { writes: 'allow' } }).run(['hook', 'db-write-guard'], { stdin: remove })).stdout, []);
+    const asksOff = await new CliHarness({ ...TEAM, prompts: { hookAsks: 'refuse' } }).run(['hook', 'db-write-guard'], { stdin: remove });
+    assert.equal(decisionOf(asksOff), 'deny');
+    assert.ok(reasonOf(asksOff)?.endsWith(` ${ASK_REFUSED_NOTE}`));
+    const entrypoints = new CliHarness({ ...TEAM, dbWriteGuard: { entrypoints: [{ path: 'scripts/backfill.ts', applyFlags: ['--apply'] }] } });
+    assert.equal(decisionOf(await entrypoints.run(['hook', 'db-write-guard'], { stdin: bash('node scripts/backfill.ts --apply') })), 'ask');
+    for (const kit of [new CliHarness(null), new CliHarness('{ not json')]) {
+      assert.equal(decisionOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })), 'ask');
+    }
+  });
+
+  it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {
+    assert.deepEqual(await new CliHarness(null, null).run(['hook', 'db-write-guard'], { stdin: remove }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness().run(['hook', 'db-write-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
   });
 });
 

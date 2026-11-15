@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { GateVerdict } from './local-gate.ts';
-import { DIST, parseNumstat, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
+import type { MainMove, MergeExit } from './merge.ts';
+import { DIST, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
 import type { Chunk, ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
 
@@ -20,7 +21,12 @@ interface FakeOptions {
   readonly verdict?: GateVerdict;
   /** The first step whose event starts with this throws, like a failed command. */
   readonly failOn?: string;
-  readonly mergeExit?: number;
+  /** What each merge returns, in turn; the last one repeats. */
+  readonly mergeExits?: readonly MergeExit[];
+  /** git's stdout by its args joined with spaces, before the defaults. */
+  readonly answers?: Readonly<Record<string, string>>;
+  /** What each look at main after failed local checks finds, in turn; the last one repeats; none by default. */
+  readonly moves?: readonly (MainMove | null)[];
 }
 
 interface Fake {
@@ -33,6 +39,8 @@ interface Fake {
 function fake(options: FakeOptions = {}): Fake {
   const events: string[] = [];
   const logs: string[] = [];
+  let merges = 0;
+  let looks = 0;
   const step = (event: string): void => {
     events.push(event);
     if (options.failOn !== undefined && event.startsWith(options.failOn)) throw new Error(`${event} failed`);
@@ -41,7 +49,10 @@ function fake(options: FakeOptions = {}): Fake {
     run: (command, args) => step(`${command} ${args.join(' ')}`),
     node: (args) => step(`node ${args.join(' ')}`),
     git: (args) => {
-      events.push(`git ${args.join(' ')}`);
+      const joined = args.join(' ');
+      events.push(`git ${joined}`);
+      const answer = options.answers?.[joined];
+      if (answer !== undefined) return answer;
       return args[0] === 'diff' ? (options.numstat ?? '') : 'abc1234 core: a\n';
     },
     log: (line) => logs.push(line),
@@ -63,7 +74,13 @@ function fake(options: FakeOptions = {}): Fake {
     },
     merge: (branch) => {
       events.push(`merge ${branch}`);
-      return Promise.resolve(options.mergeExit ?? 0);
+      const exits = options.mergeExits ?? [];
+      return Promise.resolve(exits[merges++] ?? exits.at(-1) ?? { kind: 'done', code: 0 });
+    },
+    mainMove: () => {
+      events.push('look at main');
+      const moves = options.moves ?? [];
+      return moves[looks++] ?? moves.at(-1) ?? null;
     },
   };
   return { deps, events, logs };
@@ -78,6 +95,8 @@ test('takes back an earlier run first, then syncs, typechecks, runs the coverage
   assert.deepEqual(events, [
     'take back 2 chunk(s) since origin/main',
     'sync',
+    'git status --porcelain -- src/a.ts',
+    'git status --porcelain -- src/b.ts src/b.test.ts',
     TSC,
     'node tools/ci/coverage-cli.ts',
     'git add -- src/a.ts',
@@ -131,11 +150,30 @@ test('keeps the plan as written when the files set the version it names', async 
   assert.ok(events.includes(committed('plugin: version 0.134.0, a', 'raises 0.134.0')));
 });
 
+test('a version chunk whose files hold no raise is refused before the typecheck, naming the fix (T2823)', async () => {
+  const { deps, events } = fake({ answers: { 'status --porcelain -- plugins/teamrig/.claude-plugin/plugin.json src/core/version.ts': '' } });
+  await assert.rejects(
+    shipCommits(ARGS, RAISING, deps),
+    /^Error: REFUSED the plan's chunk "plugin: version 0\.134\.0, a" commits nothing: plugins\/teamrig\/\.claude-plugin\/plugin\.json, src\/core\/version\.ts hold no uncommitted change; raise the version in plugins\/teamrig\/\.claude-plugin\/plugin\.json and src\/core\/version\.ts, left uncommitted, then ship again$/,
+  );
+  assert.ok(!events.includes(TSC));
+  assert.ok(!events.some((event) => event.startsWith('git add') || event.startsWith('git commit')));
+});
+
+test('any other chunk with nothing to commit is refused before the typecheck too (T2823)', async () => {
+  const { deps, events } = fake({ answers: { 'status --porcelain -- src/a.ts': ' \n' } });
+  await assert.rejects(
+    shipCommits(ARGS, CHUNKS, deps),
+    /^Error: REFUSED the plan's chunk "core: a" commits nothing: src\/a\.ts hold no uncommitted change; leave its change uncommitted, or take the chunk out of the plan, then ship again$/,
+  );
+  assert.ok(!events.includes(TSC));
+});
+
 test('a failed typecheck or coverage gate stops before any commit', async () => {
   for (const failOn of [TSC, 'node tools/ci/coverage-cli.ts']) {
     const { deps, events } = fake({ failOn });
     await assert.rejects(shipCommits(ARGS, CHUNKS, deps), new RegExp(`^Error: ${failOn} failed$`));
-    assert.ok(!events.some((event) => event.startsWith('git ')), failOn);
+    assert.ok(!events.some((event) => event.startsWith('git add') || event.startsWith('git commit')), failOn);
   }
 });
 
@@ -143,14 +181,115 @@ test('a tree the gate does not pass is refused before any push, with --merge too
   const { deps, events } = fake({ verdict: { passed: false, reason: 'tools/ci/local.ts failed on tree tree000' } });
   await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), /^Error: REFUSED tools\/ci\/local\.ts failed on tree tree000$/);
   assert.ok(!events.includes('push'));
-  assert.equal(events.at(-1), 'git log --oneline origin/main..HEAD');
+  // With --merge a failed gate first asks whether main moved past the branch (T2725); here it did not.
+  assert.deepEqual(events.slice(-2), ['git log --oneline origin/main..HEAD', 'look at main']);
 });
 
 test('with --merge, pushes the change branch after the gate and returns the merge exit code', async () => {
-  const { deps, events, logs } = fake({ mergeExit: 3 });
+  const { deps, events, logs } = fake({ mergeExits: [{ kind: 'done', code: 3 }] });
   assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 3);
   assert.deepEqual(events.slice(-3), ['git log --oneline origin/main..HEAD', 'push', 'merge t827-ship-tool']);
   assert.ok(logs.includes('\npushed t827-ship-tool; merging:'));
+});
+
+const TIP = 'fedcba9876543210';
+const MOVED: MergeExit = { kind: 'moved', tip: TIP, reason: 'main moved to fedcba9' };
+const VERSION_AND_DIST = `plugins/teamrig/.claude-plugin/plugin.json\nsrc/core/version.ts\n${DIST}/a.js\n`;
+
+/** git's answers for a move of main to TIP: the branch changed `ours` since it left main, main changed `theirs`. */
+function moveAnswers(ours: string, theirs: string, taken: readonly string[] = []): Record<string, string> {
+  const answers: Record<string, string> = {
+    [`merge-base HEAD ${TIP}`]: 'base111\n',
+    'diff --name-only --no-renames base111 HEAD': ours,
+    [`diff --name-only --no-renames base111 ${TIP}`]: theirs,
+    'rev-parse --abbrev-ref HEAD': 't827-ship-tool\n',
+  };
+  for (let n = 2; n <= 5; n++) {
+    const name = `t827-ship-tool-${n}`;
+    answers[`branch --list ${name}`] = taken.includes(`local ${name}`) ? `  ${name}\n` : '';
+    answers[`ls-remote --heads origin refs/heads/${name}`] = taken.includes(`origin ${name}`) ? `abc\trefs/heads/${name}\n` : '';
+  }
+  return answers;
+}
+
+test('when main moved past the branch touching other files, renames the branch and ships again from the start (T2696)', async () => {
+  const { deps, events, logs } = fake({
+    mergeExits: [MOVED, { kind: 'done', code: 0 }],
+    answers: moveAnswers(`src/a.ts\n${VERSION_AND_DIST}`, `src/other.ts\n${VERSION_AND_DIST}`),
+  });
+  assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 0);
+  const rename = events.indexOf('git branch -m t827-ship-tool-2');
+  assert.ok(rename > events.indexOf('merge t827-ship-tool'));
+  const again = events.slice(rename + 1);
+  assert.deepEqual(again.slice(0, 5), [
+    'take back 2 chunk(s) since origin/main',
+    'sync',
+    'git status --porcelain -- src/a.ts',
+    'git status --porcelain -- src/b.ts src/b.test.ts',
+    TSC,
+  ]);
+  assert.deepEqual(again.slice(-2), ['push', 'merge t827-ship-tool']);
+  assert.equal(events.filter((event) => event === 'sync').length, 2);
+  assert.ok(logs.includes('\nmain moved to fedcba9, touching no file this change touches: shipping again as t827-ship-tool-2'));
+});
+
+test('the new branch name skips one taken here or on origin', async () => {
+  const { deps, events } = fake({
+    mergeExits: [MOVED, { kind: 'done', code: 0 }],
+    answers: moveAnswers('src/a.ts\n', 'src/other.ts\n', ['local t827-ship-tool-2', 'origin t827-ship-tool-3']),
+  });
+  assert.equal(await shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), 0);
+  assert.deepEqual(events.filter((event) => event.startsWith('git branch -m')), ['git branch -m t827-ship-tool-4']);
+});
+
+test('a move of main that changed a file this change changes is refused, naming the files, with no second run', async () => {
+  const { deps, events } = fake({
+    mergeExits: [MOVED],
+    answers: moveAnswers(`src/a.ts\nsrc/b.ts\n${VERSION_AND_DIST}`, `docs/x.md\nsrc/b.ts\nsrc/a.ts\n${VERSION_AND_DIST}`),
+  });
+  await assert.rejects(
+    shipCommits({ ...ARGS, merge: true }, CHUNKS, deps),
+    /^Error: REFUSED main moved to fedcba9 and changed src\/b\.ts, src\/a\.ts, which this change changes too: rebase onto origin\/main by hand, then ship again under a new branch name$/,
+  );
+  assert.ok(!events.some((event) => event.startsWith('git branch -m')));
+  assert.equal(events.filter((event) => event.startsWith('merge ')).length, 1);
+});
+
+test(`gives up after ${SHIP_ATTEMPTS} runs when main keeps moving, keeping the first branch name as the stem`, async () => {
+  const { deps, events } = fake({ mergeExits: [MOVED], answers: moveAnswers('src/a.ts\n', 'src/other.ts\n') });
+  await assert.rejects(
+    shipCommits({ ...ARGS, merge: true }, CHUNKS, deps),
+    new RegExp(`^Error: REFUSED main moved past the branch ${SHIP_ATTEMPTS} times during this ship, last to fedcba9: ship again$`),
+  );
+  assert.equal(events.filter((event) => event.startsWith('merge ')).length, SHIP_ATTEMPTS);
+  assert.equal(events.filter((event) => event.startsWith('git branch -m')).length, SHIP_ATTEMPTS - 1);
+  assert.equal(events.filter((event) => event === 'git rev-parse --abbrev-ref HEAD').length, 1);
+});
+
+const FAILED_GATE: GateVerdict = { passed: false, reason: 'plugin version gate failed on tree tree000' };
+
+test('with --merge, local checks that fail on a branch main moved past ship again on the moved main (T2725)', async () => {
+  const { deps, events, logs } = fake({
+    verdict: FAILED_GATE,
+    moves: [{ tip: TIP, reason: 'origin/main moved to fedcba9, which the branch does not contain' }, null],
+    answers: moveAnswers(`src/a.ts\n${VERSION_AND_DIST}`, `src/other.ts\n${VERSION_AND_DIST}`),
+  });
+  await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), /^Error: REFUSED plugin version gate failed on tree tree000$/);
+  assert.ok(logs.includes('\nlocal checks: plugin version gate failed on tree tree000, and origin/main moved to fedcba9, which the branch does not contain'));
+  const rename = events.indexOf('git branch -m t827-ship-tool-2');
+  assert.ok(rename > events.indexOf('look at main'));
+  assert.equal(events.filter((event) => event === 'sync').length, 2);
+  assert.equal(events.filter((event) => event === 'look at main').length, 2);
+  assert.ok(!events.includes('push'));
+});
+
+test('local checks that fail on a branch main has not moved past, or without --merge, are refused at once', async () => {
+  const unmoved = fake({ verdict: FAILED_GATE });
+  await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, unmoved.deps), /^Error: REFUSED plugin version gate failed/);
+  assert.equal(unmoved.events.filter((event) => event === 'sync').length, 1);
+  const unmerged = fake({ verdict: FAILED_GATE, moves: [{ tip: TIP, reason: 'moved' }] });
+  await assert.rejects(shipCommits(ARGS, CHUNKS, unmerged.deps), /^Error: REFUSED plugin version gate failed/);
+  assert.ok(!unmerged.events.includes('look at main'));
 });
 
 test('parseNumstat reads counts, keeps a binary file uncounted and a path with a tab whole', () => {

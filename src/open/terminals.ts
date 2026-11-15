@@ -6,13 +6,21 @@ import { shellCommand } from './quote.ts';
 /** A terminal `teamrig open` can start a tab in. */
 export type Terminal = Exclude<TerminalChoice, 'auto' | 'print'>;
 
-/** The tab to open: its title, its folder, the command it runs, as an argument list, and the window it opens in. */
+/**
+ * Whether a new tab takes the focus or leaves it where it was (T2510): only a tab the human asked for takes it, so a
+ * restart, reopen or hire never pulls the owner away from the tab they are reading or their meeting.
+ */
+export type TabFocus = 'take' | 'keep';
+
+/** The tab to open: its title, its folder, the command it runs, as an argument list, the window it opens in and its focus. */
 export interface TabRequest {
   readonly title: string;
   readonly folder: string;
   readonly argv: readonly string[];
   /** The named window the tab opens in, made when none of that name is open (`teamWindowOf`); undefined: the most recent one. Windows Terminal alone names windows; the others open as before. */
   readonly window: string | undefined;
+  /** tmux and macOS Terminal keep the focus by their own flags, Windows Terminal through open/keep-focus.ts; the Linux terminals have no call for it. */
+  readonly focus: TabFocus;
 }
 
 /** The window of a team's own its tabs open in when `open.teamWindow` is on, apart from other teams' tabs (T1427). */
@@ -38,11 +46,11 @@ function command(command: string, args: readonly string[], folder: string, mode:
  * to AppleScript as a run argument, never inside the script.
  */
 export function tabCommand(terminal: Terminal, tab: TabRequest): TabCommand {
-  const { title, folder, argv, window } = tab;
+  const { title, folder, argv, window, focus } = tab;
   switch (terminal) {
     case 'tmux':
-      // tmux 3.0 and later run a command given as several arguments without a shell.
-      return command('tmux', ['new-window', '-c', folder, '-n', title, ...argv], folder, 'exit');
+      // tmux 3.0 and later run a command given as several arguments without a shell; -d leaves the current window selected.
+      return command('tmux', ['new-window', ...(focus === 'keep' ? ['-d'] : []), '-c', folder, '-n', title, ...argv], folder, 'exit');
     case 'windows-terminal': {
       const unsafe = [title, folder, ...(window === undefined ? [] : [window]), ...argv].find((arg) => WINDOWS_TERMINAL_UNSAFE.test(arg));
       if (unsafe !== undefined) {
@@ -52,9 +60,23 @@ export function tabCommand(terminal: Terminal, tab: TabRequest): TabCommand {
       return command('wt.exe', ['-w', window ?? '0', 'new-tab', '--title', title, '-d', folder, '--', ...argv], folder, 'exit');
     }
     case 'macos-terminal':
+      // Without `activate`, Terminal opens the window behind the app the owner is in.
       return command(
         'osascript',
-        ['-e', 'on run argv', '-e', 'tell application "Terminal"', '-e', 'activate', '-e', 'do script (item 1 of argv)', '-e', 'end tell', '-e', 'end run', shellCommand('darwin', folder, argv)],
+        [
+          '-e',
+          'on run argv',
+          '-e',
+          'tell application "Terminal"',
+          ...(focus === 'take' ? ['-e', 'activate'] : []),
+          '-e',
+          'do script (item 1 of argv)',
+          '-e',
+          'end tell',
+          '-e',
+          'end run',
+          shellCommand('darwin', folder, argv),
+        ],
         folder,
         'exit',
       );

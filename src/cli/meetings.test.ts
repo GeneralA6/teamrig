@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { readMeetings, type ScheduledMeeting } from '../meeting/schedule.ts';
+import { SPOTLIGHT_VARS } from '../meeting/spotlight.ts';
+import { SpotlitStore, type SpotlitMeeting } from '../meeting/spotlit.ts';
 import { FOCUS_EXIT, FOCUS_TITLE_VAR } from '../open/focus.ts';
 import { decodePrompt } from '../open/prompt.ts';
 import { SessionRecordStore } from '../sessions/record.ts';
@@ -15,6 +17,7 @@ import { openingPrompt } from './commands/meetings.ts';
 import { EXIT } from './runtime.ts';
 
 const MEETINGS_PATH = join(TEAM_HOME, 'state', 'meetings.jsonl');
+const SPOTLIT_PATH = join(TEAM_HOME, 'state', 'meeting-spotlit.json');
 const ASKS_PATH = join(TEAM_HOME, 'state', 'wake-asks');
 const BOOK = ['meeting', 'schedule', '--meets', 'alpha', '--at', '2030-01-08 14:00', '--about', 'the release plan'];
 const MB = 2 ** 20;
@@ -206,6 +209,10 @@ async function alphaRuns(kit: CliHarness): Promise<Pick<RunOptions, 'sessionProc
   };
 }
 
+async function spotlitOf(kit: CliHarness): Promise<SpotlitMeeting | undefined> {
+  return new SpotlitStore(kit.files, SPOTLIT_PATH).read();
+}
+
 async function asksOf(kit: CliHarness, session: string): Promise<readonly string[]> {
   return (await new WakeAsks(kit.files, ASKS_PATH).read(session)).flatMap((stored) => (stored.ask === undefined ? [] : [stored.ask.text]));
 }
@@ -247,7 +254,47 @@ describe('runCli: meeting start <id>', () => {
     assert.deepEqual(focused.stdout.slice(2), [
       "FOCUSED app-alpha's Windows Terminal tab, [app] alpha",
       "WAKES app-alpha with the meeting's opening prompt once its tab is idle, within about 15 s (a running turn ends first)",
+      `SPOTLIGHT every screen dimmed (0.6) but the window of [app] alpha, until the meeting ends; its errors go to ${join(TEAM_HOME, 'state', 'logs', 'meeting-spotlight.log')}`,
     ]);
+  });
+
+  // T2662: a scheduled meeting dims the screens as the daily one does, over the session met's window.
+  it("dims every screen but the session met's window from its start, its spotlight lifted by its end", async () => {
+    const kit = await team();
+    await booked(kit, '--with', 'bravo', '--session', 'lead');
+    const processes = new FakeProcesses().onRun('powershell.exe', { kind: 'exited', code: 0 });
+    const started = await kit.run(['meeting', 'start', 'M1', '--session', 'bravo'], { ...(await alphaRuns(kit)), platform: 'win32', processes });
+    assert.equal(started.code, EXIT.ok, said(started));
+    assert.match(started.stdout.at(-1) ?? '', /^SPOTLIGHT every screen dimmed \(0\.6\) but the window of \[app\] alpha, until the meeting ends/);
+    assert.equal(processes.hidden.length, 1);
+    const env = processes.hidden[0]?.env ?? {};
+    // The title deliver() brings to the front, the file the script watches, the start it watches for there.
+    assert.equal(env[SPOTLIGHT_VARS.title], '[app] alpha');
+    assert.equal(env[SPOTLIGHT_VARS.meeting], SPOTLIT_PATH);
+    assert.equal(env[SPOTLIGHT_VARS.startedAt], '2030-01-08T10:00:00.000Z');
+    // Its 30 minutes and the 15 minutes' grace from the start, not the daily meeting's 4 h.
+    assert.equal(env[SPOTLIGHT_VARS.until], String(Date.parse('2030-01-08T10:45:00.000Z')));
+    assert.deepEqual(await spotlitOf(kit), { id: 'M1', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null });
+
+    kit.clock.advance(20 * MS_PER_MINUTE);
+    assert.equal((await kit.run(['meeting', 'end', 'M1', '--session', 'lead'])).code, EXIT.ok);
+    assert.deepEqual(await spotlitOf(kit), { id: 'M1', startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:20:00.000Z' });
+  });
+
+  it("lifts the spotlight at a drop, and an end or drop of another meeting leaves the one on lit", async () => {
+    const kit = await team();
+    await booked(kit, '--session', 'lead');
+    await booked(kit, '--session', 'lead');
+    const options = { ...(await alphaRuns(kit)), platform: 'win32' as const, processes: new FakeProcesses().onRun('powershell.exe', { kind: 'exited', code: 0 }) };
+    assert.equal((await kit.run(['meeting', 'start', 'M1', '--session', 'lead'], options)).code, EXIT.ok);
+    kit.clock.advance(MS_PER_MINUTE);
+    assert.equal((await kit.run(['meeting', 'start', 'M2', '--session', 'lead'], options)).code, EXIT.ok);
+    assert.equal((await kit.run(['meeting', 'end', 'M1', '--session', 'lead'])).code, EXIT.ok);
+    assert.deepEqual(await spotlitOf(kit), { id: 'M2', startedAt: '2030-01-08T10:01:00.000Z', endedAt: null });
+
+    kit.clock.advance(MS_PER_MINUTE);
+    assert.equal((await kit.run(['meeting', 'drop', 'M2', '--note', 'settled by mail', '--session', 'lead'])).code, EXIT.ok);
+    assert.deepEqual(await spotlitOf(kit), { id: 'M2', startedAt: '2030-01-08T10:01:00.000Z', endedAt: '2030-01-08T10:02:00.000Z' });
   });
 
   it('opens the tab of a session that runs none, the opening prompt ahead of its own first prompt, and leaves no ask behind', async () => {
@@ -256,8 +303,10 @@ describe('runCli: meeting start <id>', () => {
     const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started', end: 'exited' });
     const result = await kit.run(['meeting', 'start', 'M1', '--session', 'bravo'], { platform: 'win32', processes, probe: new FakePathProbe({ folders: [APP] }) });
     assert.equal(result.code, EXIT.ok, said(result));
-    assert.equal(result.stdout.length, 3, 'bravo starts it, so only alpha is told');
+    assert.equal(result.stdout.length, 4, 'bravo starts it, so only alpha is told');
     assert.equal(result.stdout[2], `OPENED app-alpha (session alpha) in a new Windows Terminal tab in ${APP}, on the default model and effort; its first prompt opens the meeting`);
+    // The spotlight frames the new tab's window once it shows.
+    assert.match(result.stdout[3] ?? '', /^SPOTLIGHT every screen dimmed \(0\.6\) but the window of \[app\] alpha/);
     const args = processes.started[0]?.args ?? [];
     const prompt = decodePrompt(args[args.indexOf('--encoded-prompt') + 1] ?? '');
     assert.match(prompt ?? '', /^Urgent lines were posted for you while you were closed; act on each first:\n- 10:00 UTC bravo: The owner starts meeting M1 now/);

@@ -53,6 +53,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     teamDay: NO_ROOM,
     isLead: false,
     urgent: [],
+    awaited: [],
     leader: LEAD,
     zone: TimeZone.UTC,
     ...extra,
@@ -284,6 +285,14 @@ describe('stopWarning', () => {
     assert.match(result.leadLine ?? '', /It goes on with its p0 work \(T5, T7\) past the stop; lift it only with a stop %: teamrig budget lift alpha /);
   });
 
+  it('tells the person and the leader that the answers other sessions wait on go on past the stop, helpers too (T2656)', () => {
+    const result = stopWarning(facts(1.1, AHEAD, DAY, { awaited: ['T9'] }), { ...BUDGET, overAction: 'block' }, undefined);
+    assert.match(result.lines[0] ?? '', /The answers other sessions wait on it for \(T9\) go on past the stop, helpers too; the lead has an inbox line\./);
+    assert.match(result.leadLine ?? '', /It goes on with the answers other sessions wait on it for \(T9\) past the stop; lift it only with a stop %/);
+    const both = stopWarning(facts(1.1, AHEAD, DAY, { urgent: ['T5'], awaited: ['T9'] }), { ...BUDGET, overAction: 'block' }, undefined);
+    assert.match(both.lines[0] ?? '', /Its p0 work \(T5\) and the answers other sessions wait on it for \(T9\) go on past the stop, helpers too/);
+  });
+
   it('never tells the lead about itself', () => {
     const result = stopWarning(facts(1.1, AHEAD, DAY, { isLead: true }), BUDGET, undefined);
     assert.equal(result.leadLine, undefined);
@@ -401,6 +410,17 @@ describe('promptWarning', () => {
     assert.ok(promptWarning(facts(1.3, AHEAD), BUDGET, first.state).line !== undefined);
   });
 
+  it('only reports the overrun under warn, never telling the model to stop, a cut session too (T2783)', () => {
+    const warn: WarnBudget = { ...BUDGET, overAction: 'warn' };
+    assert.equal(
+      promptWarning(facts(1.1, AHEAD), warn, undefined).line,
+      "teamrig budget: you are past today's budget and the team has no room left today, and it is ahead of its pace line. " +
+        'The budget only warns (budget.overAction warn), so nothing is held: go on with your task list.',
+    );
+    assert.doesNotMatch(promptWarning(facts(1.1, BEHIND, DAY, { teamDay: ROOM, cut: cut(), cutBy: LEAD }), warn, undefined).line ?? '', /start no new work/);
+    assert.match(promptWarning(facts(1.1, AHEAD), { ...BUDGET, overAction: 'ask-lead' }, undefined).line ?? '', /start no new work items or helpers/);
+  });
+
   it("tells a sub-lead's member that its own leader can lift it", () => {
     assert.match(promptWarning(facts(1.1, AHEAD, DAY, { leader: SUB_LEAD }), BUDGET, undefined).line ?? '', /Never skip a test or check to save budget\. Your leader app-bravo can lift it\.$/);
   });
@@ -415,6 +435,17 @@ describe('promptWarning', () => {
     assert.match(
       promptWarning(facts(1.1, AHEAD, DAY, { urgent: ['T5'] }), BUDGET, undefined).line ?? '',
       /Finish the step in hand and start no new work items or helpers, except your p0 work \(T5\): it goes on past the daily stop\. Never skip a test/,
+    );
+  });
+
+  it('tells the model the answers other sessions wait on go on past the daily stop, beside its p0 work (T2656)', () => {
+    assert.match(
+      promptWarning(facts(1.1, AHEAD, DAY, { awaited: ['T9', 'T11'] }), BUDGET, undefined).line ?? '',
+      /helpers, except the answers other sessions wait on you for \(T9, T11\): they go on past the daily stop\. Never skip a test/,
+    );
+    assert.match(
+      promptWarning(facts(1.1, AHEAD, DAY, { urgent: ['T5'], awaited: ['T9'] }), BUDGET, undefined).line ?? '',
+      /helpers, except your p0 work \(T5\) and the answers other sessions wait on you for \(T9\): they go on past the daily stop\./,
     );
   });
 
@@ -517,6 +548,12 @@ describe('helperGate', () => {
     assert.equal(helperGate(facts(5, AHEAD, NIGHT), budget).kind, 'deny');
     assert.equal(helperGate(facts(5, AHEAD, DAY, { urgent: ['T5'] }), budget).kind, 'allow');
     assert.equal(helperGate(facts(5, AHEAD, NIGHT, { urgent: ['T5'] }), budget).kind, 'allow');
+  });
+
+  it('lets a session another session waits on launch helpers past its budget and in quiet hours (T2656)', () => {
+    const budget: WarnBudget = { ...BUDGET, overAction: 'block', quietHours: { ...QUIET, action: 'block' } };
+    assert.equal(helperGate(facts(5, AHEAD, DAY, { awaited: ['T9'] }), budget).kind, 'allow');
+    assert.equal(helperGate(facts(5, AHEAD, NIGHT, { awaited: ['T9'] }), budget).kind, 'allow');
   });
 
   it('holds nothing back without quiet hours', () => {

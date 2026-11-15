@@ -30,7 +30,7 @@ export const ENV = {
     claudeTempDir: 'CLAUDE_CODE_TMPDIR',
     /** The session `teamrig launch` runs Claude Code for: it starts Claude Code again after an automatic restart. */
     launched: 'TEAMRIG_LAUNCHED',
-    /** `off` turns `teamrig gh sync` off on this machine: it reads nothing and writes nothing. */
+    /** `off` turns `teamrig issue sync` off on this machine: it reads nothing and writes nothing. */
     github: 'TEAMRIG_GITHUB',
     /** Claude Code's effort for every session and helper that gets it, over `--effort`, `/effort` and per-call Agent `effort`; `doctor` warns when set. */
     effortLevel: 'CLAUDE_CODE_EFFORT_LEVEL',
@@ -110,8 +110,10 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         coldSends: join(state, 'cold-sends.jsonl'),
         meeting: join(state, 'meeting.json'),
         meetingBreakthrough: join(state, 'meeting-breakthrough.json'),
+        meetingSpotlit: join(state, 'meeting-spotlit.json'),
         meetings: join(state, 'meetings.jsonl'),
         meetingsLock: join(state, 'meetings.lock'),
+        daySchedule: join(state, 'day-schedule.json'),
         decisionsAsked: join(state, 'decisions-asked.json'),
         ruleVerdicts: join(state, 'rule-verdicts.json'),
         renames: join(state, 'renames.jsonl'),
