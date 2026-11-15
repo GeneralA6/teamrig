@@ -2,7 +2,7 @@ import { stringField } from "../../core/guards.js";
 import { KIT_NAME } from "../../core/home.js";
 import { LockBusyError } from "../../core/lock.js";
 import { injectFor } from "../../inbox/inject.js";
-import { unseenLinesOf } from "../../inbox/inbox.js";
+import { seenLinesOf, unseenLinesOf } from "../../inbox/inbox.js";
 import { asksNowOf, WakeAsks } from "../../wake/asks.js";
 import { WakeStore } from "../../wake/store.js";
 import { teamZone } from "../kit.js";
@@ -32,15 +32,16 @@ export async function askedLinesOf(runtime, payload) {
     const { files, clock } = runtime;
     const asks = new WakeAsks(files, kit.paths.wakeAsks);
     const unseen = () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id);
+    const seen = () => seenLinesOf(inboxDepsOf(runtime, kit.paths), id);
     // Read first without the lock: at nearly every tool end none is due, and the lock is a file write.
-    const first = await asksNowOf(await asks.read(id), clock.now(), unseen);
+    const first = await asksNowOf(await asks.read(id), clock.now(), unseen, seen);
     if (first.asks.length === 0 && first.spent.length === 0) {
         return undefined;
     }
     const lock = fileLockOf(runtime, new WakeStore(files, kit.paths.wake).lockOf(id), { ...config.lock, waitMs: 0 });
     try {
         return await lock.run(async () => {
-            const found = await asksNowOf(await asks.read(id), clock.now(), unseen);
+            const found = await asksNowOf(await asks.read(id), clock.now(), unseen, seen);
             if (found.asks.length === 0) {
                 await asks.remove(id, found.spent);
                 return undefined;

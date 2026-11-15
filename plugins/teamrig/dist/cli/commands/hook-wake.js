@@ -7,7 +7,7 @@ import { LockBusyError } from "../../core/lock.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { restartMayAct } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
-import { sessionIdOf, unseenLinesOf } from "../../inbox/inbox.js";
+import { seenLinesOf, sessionIdOf, unseenLinesOf } from "../../inbox/inbox.js";
 import { dayProbeClaimLine, dayProbePath } from "../../restore/day-probe.js";
 import { DayProbeStore } from "../../restore/day-probe-store.js";
 import { claudeCredentialsPath, LOGIN_LOCK, loginHoldsDayStart, loginMarkerPath, loginRetryLine } from "../../restore/login.js";
@@ -248,7 +248,7 @@ async function decide(runtime, scope, store, fresh, login) {
         const { tasks } = snapshot.state;
         const batchMs = config.wake.batchSeconds * SECOND_MS;
         const asks = new WakeAsks(files, kit.paths.wakeAsks);
-        const found = await asksNowOf(await asks.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id));
+        const found = await asksNowOf(await asks.read(id), now, () => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id), () => seenLinesOf(inboxDepsOf(runtime, kit.paths), id));
         const asked = askVerdictOf(found, now, batchMs);
         const decision = await restCappedDecision(runtime, scope, {
             tasks,
