@@ -86,4 +86,13 @@ describe('fresh-install-cli', () => {
     assert.match(result.stdout, /^ {2}exit 1 list$/m);
     assert.match(result.stdout, new RegExp(`^fresh-install: 1 problem\\(s\\) on ${process.platform}:\\n {2}list: exit 1: list failed in team demo$`, 'm'));
   });
+
+  it('exits 2 with the read error when the clone holds no hook manifest', () => {
+    commitPlugin('none');
+    repo.git('rm', '-q', 'plugins/teamrig/hooks/hooks.json');
+    repo.git('commit', '-q', '-m', 'no hooks');
+    const result = repo.run(CLI);
+    assert.equal(result.status, 2, `${result.stdout}${result.stderr}`);
+    assert.match(result.stderr, /^fresh-install: ENOENT: .*hooks\.json/m);
+  });
 });
