@@ -1,6 +1,7 @@
 import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
 import type { ClearMerge } from './approval.ts';
+import { freeBranch } from './branch-names.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
@@ -124,7 +125,7 @@ export async function shipCommits(args: ShipArgs, written: readonly Chunk[], dep
       throw new Error(`REFUSED main moved to ${tip} and changed ${shared.join(', ')}, which this change changes too: rebase onto origin/main by hand, then ship again under a new branch name`);
     }
     stem ??= deps.git(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
-    const next = freeBranch(deps, stem);
+    const next = freeBranch((...gitArgs) => deps.git(gitArgs).trim(), stem);
     deps.run('git', ['branch', '-m', next]);
     deps.log(`\nmain moved to ${tip}, touching no file this change touches: shipping again as ${next}`);
   }
@@ -155,14 +156,6 @@ function sharedWithMain(deps: ShipDeps, tip: string): string[] {
   const ours = new Set(changed('HEAD'));
   const setAgain = new Set(TEAMRIG_VERSION_FILES.map((file) => file.path));
   return changed(tip).filter((path) => ours.has(path) && !setAgain.has(path) && !path.startsWith(`${DIST}/`));
-}
-
-/** The first `<stem>-N`, N from 2, that names no branch here or on origin. */
-function freeBranch(deps: ShipDeps, stem: string): string {
-  for (let n = 2; ; n++) {
-    const name = `${stem}-${n}`;
-    if (deps.git(['branch', '--list', name]).trim() === '' && deps.git(['ls-remote', '--heads', 'origin', `refs/heads/${name}`]).trim() === '') return name;
-  }
 }
 
 /**
