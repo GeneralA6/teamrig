@@ -205,7 +205,7 @@ describe('runGuard', () => {
   });
 
   it('blocks any argv but `hook <name>` before it loads the CLI, so the entry runs no other command (T3069)', async () => {
-    for (const argv of [[], ['hook'], ['roles', 'grant', 'github', '--holder', 'alpha'], ['hook', 'push-guard', 'extra'], ['owner', 'next', 'T1'], ['hook', '--help'], ['hook', 'Push_Guard']]) {
+    for (const argv of [[], ['hook'], ['roles', 'grant', 'github', '--holder', 'alpha'], ['hook', 'push-guard', 'extra'], ['owner', 'next', 'T1'], ['hook', '--help'], ['hook', 'Push_Guard'], ['hook', 'slash-command'], ['hook', 'route-allow']]) {
       const host = new FakeHost();
       let loads = 0;
       const load = async (): Promise<GuardMain> => {
@@ -220,8 +220,10 @@ describe('runGuard', () => {
     }
   });
 
-  it('reads `hook <name>` with a plain name as a hook run', () => {
+  it('reads `hook <name>` as a hook run only for a guard hook (T3069)', () => {
     assert.equal(isHookArgv(['hook', 'service-role-guard']), true);
     assert.equal(isHookArgv(['hook', 'push-guard', '--x']), false);
+    assert.equal(isHookArgv(['hook', 'slash-command']), false);
+    assert.equal(isHookArgv(['hook', 'session-start']), false);
   });
 });

@@ -2,13 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord, isStringArray } from '../core/guards.ts';
-import { GUARD_LIMIT_MS } from './guard-runner.ts';
+import { GUARD_HOOKS, GUARD_LIMIT_MS } from './guard-runner.ts';
 
 const RUNNER = '${CLAUDE_PLUGIN_ROOT}/dist/cli/guard-main.js';
 const CLI = '${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js';
 
 /** The PreToolUse hooks that can refuse a call, so they run under the fail-closed runner: a crash must block the call. */
-const WRAPPED: ReadonlySet<string> = new Set(['push-guard', 'package-guard', 'secret-guard', 'db-write-guard', 'exec-guard', 'pass-record-guard', 'service-role-guard', 'cold-send', 'helper-gate', 'picker-guard']);
+const WRAPPED = GUARD_HOOKS;
 
 /** The PreToolUse hooks left on the plain CLI, each with why failing open is its safe side. */
 const UNWRAPPED: ReadonlyMap<string, string> = new Map([
@@ -88,6 +88,11 @@ describe("the plugin's hooks.json and the guard runner", () => {
     for (const { event, timeout } of entries) {
       assert.equal(timeout, 15, `${event}: timeout ${String(timeout)} s`);
     }
+  });
+
+  it("allows through the runner exactly the hooks hooks.json runs through it (T3069)", async () => {
+    const run = new Set((await manifestHooks()).filter(({ script }) => script === RUNNER).map(({ name }) => name));
+    assert.deepEqual([...run].sort(), [...GUARD_HOOKS].sort());
   });
 
   it('uses the runner on PreToolUse hooks only, where a block stops one tool call', async () => {

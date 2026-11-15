@@ -122,16 +122,30 @@ export function judgeGuard(hook: string, outcome: GuardOutcome): GuardVerdict {
   return { exitCode: 0, stdout: `${text}\n`, stderr: '' };
 }
 
-/** A hook name as hooks.json writes it: `push-guard`, `session-start`. */
-const HOOK_NAME = /^[a-z][a-z-]*$/;
+/**
+ * The hooks hooks.json runs through the guard entry, and so the only names it takes (guard-hooks.test.ts holds the two
+ * equal): any other hook would run through an entry no guard expects it in (T3069).
+ */
+export const GUARD_HOOKS: ReadonlySet<string> = new Set([
+  'push-guard',
+  'package-guard',
+  'secret-guard',
+  'db-write-guard',
+  'exec-guard',
+  'pass-record-guard',
+  'service-role-guard',
+  'cold-send',
+  'helper-gate',
+  'picker-guard',
+]);
 
 /**
- * Whether `argv` is `hook <name>` and nothing else. The guard entry loads the whole CLI, so any other words would run
- * a CLI command no guard reads as one (`node <plugin>/dist/cli/guard-main.js roles grant ...`, T3069).
+ * Whether `argv` is `hook <name>` for a guard hook and nothing else. The guard entry loads the whole CLI, so any other
+ * words would run a CLI command no guard reads as one (`node <plugin>/dist/cli/guard-main.js roles grant ...`, T3069).
  */
 export function isHookArgv(argv: readonly string[]): boolean {
   const [group, name] = argv;
-  return argv.length === 2 && group === 'hook' && name !== undefined && HOOK_NAME.test(name);
+  return argv.length === 2 && group === 'hook' && name !== undefined && GUARD_HOOKS.has(name);
 }
 
 /**
