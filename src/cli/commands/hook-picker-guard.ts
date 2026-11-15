@@ -47,7 +47,7 @@ export async function pickerRefusal(runtime: CliRuntime, kit: Kit, config: KitCo
   if (asker === undefined) {
     return undefined;
   }
-  const meeting: LeadMeeting = { open: asker.role === 'lead' && (await meetingOpen(runtime, kit)) };
+  const meeting: LeadMeeting = { open: (asker.role === 'lead' || asker.role === 'subteam-lead') && (await meetingOpen(runtime, kit)) };
   return pickerReason(KIT_NAME, asker, meeting);
 }
 

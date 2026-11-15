@@ -877,10 +877,10 @@ every session and helper of the team, and its reason says what to do instead:
 The lead's own thread is refused too, in the owner's daily meeting as well (from `teamrig meeting start` to its end or
 lapse): the meeting asks in plain text, so the lead's reason there says to read the card, its options numbered and its
 recommendation first, let the owner answer in their own words and record the answer. Outside the meeting the lead's
-card goes on the next meeting's agenda. In a tree of teams (`team.parent`), a sub-team's lead holds no meeting, since
-the user talks only to the root lead: its reason says to record the card, then tell its parent lead in one
-`teamrig inbox add --to <parent team>/<lead>` line, who carries the decision up; with no task left it ends its turn
-without asking the owner. A team whose `team.parent` has
+card goes on the next meeting's agenda. In a tree of teams (`team.parent`), a sub-team's lead in its own open meeting
+with the owner gets the lead's plain-text reason (T2985); outside one its reason says to record the card, then tell
+its parent lead in one `teamrig inbox add --to <parent team>/<lead>` line, who carries the decision up, or ask it at
+the owner's meeting in its tab (`teamrig meeting start`); with no task left it ends its turn. A team whose `team.parent` has
 no config counts as a root. A helper is refused always, the lead's too, since its picker stops the
 session that started it: its reason says to decide it within its brief, else to end its report with the decision,
 for that session to record. `ExitPlanMode` stays allowed: plan mode starts only when the person chose it in that tab,

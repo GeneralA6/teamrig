@@ -70,13 +70,21 @@ describe('pickerReason', () => {
     assert.doesNotMatch(reason, /teamrig set|Decision needed|away for hours/);
   });
 
-  it("tells a sub-team's lead to record the card and pass it to its parent lead, and never to ask the owner from its tab", () => {
+  it("tells a sub-team's lead to record the card and pass it to its parent lead, or ask it at the owner's meeting in its tab", () => {
     const reason = pickerReason('teamrig', { session: 'lead', role: 'subteam-lead', parentLead: PARENT }, CLOSED);
     assert.match(reason, /Else record it on its task as a decision card, its --default included, and take your next task/);
     assert.match(reason, /--session lead`; then tell your parent lead app\/lead \(name `app-lead`\) in one inbox line,/);
     assert.match(reason, /`teamrig inbox add --to app\/lead --text "T<id> waits on the owner's decision: <what is decided>" --session lead`, and it carries the decision up\./);
-    assert.match(reason, /the picker never opens for a sub-team's lead, and its tab never asks the owner: with no task left, end your turn\.$/);
-    assert.doesNotMatch(reason, /Decision needed|meeting start|the lead brings it/);
+    assert.match(reason, /The picker never opens for a sub-team's lead: the owner's meeting in this tab asks it in plain text \(`teamrig meeting start`\); with no task left, end your turn\.$/);
+    assert.doesNotMatch(reason, /Decision needed|the lead brings it/);
+  });
+
+  // T2985: a sub-team's lead meets the owner over its subtree, in its own tab, as the root's lead does.
+  it("tells a sub-team's lead in its open meeting to read the card, let the owner answer in words and record it", () => {
+    const reason = pickerReason('teamrig', { session: 'lead', role: 'subteam-lead', parentLead: PARENT }, { open: true });
+    assert.match(reason, /^teamrig picker guard: the owner's daily meeting asks in plain text\./);
+    assert.match(reason, /`teamrig update <id> --decided --note "owner decided: <decision>" --session lead`\.$/);
+    assert.doesNotMatch(reason, /parent lead|Decision needed/);
   });
 
   it('tells a helper to decide it within its brief, else to end its report with the decision, and to run no set', () => {
