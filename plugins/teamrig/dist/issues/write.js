@@ -4,6 +4,68 @@ import { targetText } from "./host.js";
 import { taskIdIn } from "./posted.js";
 /** The longest comment GitHub takes; another host's limit is checked by the host itself. */
 export const MAX_COMMENT = 65_536;
+/** The longest label name GitHub takes. */
+export const MAX_LABEL = 50;
+/** Why `label` is no label name a host takes, or undefined when it is one: holding a control character, empty, padded or too long. */
+export function labelRefusal(label) {
+    if (/\p{Cc}/u.test(label)) {
+        return `the label ${JSON.stringify(label)} holds a control character`;
+    }
+    if (label.trim() === '') {
+        return 'a label name is empty';
+    }
+    if (label.trim() !== label) {
+        return `the label ${JSON.stringify(label)} starts or ends with a space`;
+    }
+    return label.length > MAX_LABEL ? `the label ${JSON.stringify(label)} is ${label.length} characters, over the ${MAX_LABEL} a label may hold` : undefined;
+}
+/** The labels as a line shows them: each quoted, as a label is outside text and may hold a comma or a space. */
+function labelsText(labels) {
+    return labels.map((label) => JSON.stringify(label)).join(', ');
+}
+/**
+ * Adds and takes off labels through `host`, one line said for each step: ACCESS, then LABELED and UNLABELED, or
+ * FAILED with the reason. Every label to add must already be one of the repository's, read before any write, so a
+ * typo never makes a new label; the first failure stops it, and a failure after a write says what was done. True
+ * when every step was done.
+ */
+export async function labelIssue(host, write, say) {
+    const shown = targetText(write.target);
+    const reach = await host.reach(write.target.repo, 'write');
+    if (reach.kind === 'unreachable') {
+        say(`FAILED ${shown}: ${reach.reason}; nothing was changed`);
+        return false;
+    }
+    say(`ACCESS ${reach.access}`);
+    for (const label of write.add) {
+        const found = await host.labelExists(write.target.repo, label);
+        if (found.kind !== 'found') {
+            const why = found.kind === 'failed' ? found.reason : `${write.target.repo} has no label ${JSON.stringify(label)}: make it there first, as adding it here would make a new one`;
+            say(`FAILED ${shown}: ${why}; nothing was changed`);
+            return false;
+        }
+    }
+    const done = [];
+    if (write.add.length > 0) {
+        const added = await host.addLabels(write.target, write.add);
+        if (added.kind === 'failed') {
+            say(`FAILED ${shown}: ${added.reason}; nothing was changed`);
+            return false;
+        }
+        say(`LABELED ${shown}: ${labelsText(write.add)}`);
+        done.push(`added ${labelsText(write.add)}`);
+    }
+    for (const label of write.remove) {
+        const removed = await host.removeLabel(write.target, label);
+        if (removed.kind === 'failed') {
+            say(`FAILED ${shown}: ${removed.reason}${done.length === 0 ? '' : `; it already ${done.join(', ')}`}`);
+            return false;
+        }
+        say(`UNLABELED ${shown}: ${JSON.stringify(label)}`);
+        done.push(`took off ${JSON.stringify(label)}`);
+    }
+    return true;
+}
 /**
  * Why `text` may not be posted as `subject`, or undefined when it may: it is empty, too long, carries a secret
  * shape or private data (a home folder path, an e-mail address: core/private-shapes.ts), or names a task id (a team's
@@ -52,12 +114,12 @@ export async function writeIssue(host, write, say) {
     if (!write.close) {
         return true;
     }
-    const closed = await host.close(write.target);
+    const closed = await host.close(write.target, write.reason);
     if (closed.kind === 'failed') {
         const rerun = write.comment === undefined ? '' : `; the comment was posted: rerun ${KIT_NAME} issue close ${shown} without --comment`;
         say(`FAILED ${shown}: ${closed.reason}${rerun}`);
         return false;
     }
-    say(`CLOSED ${shown}`);
+    say(`CLOSED ${shown}${write.reason === undefined ? '' : ` as ${write.reason}`}`);
     return true;
 }

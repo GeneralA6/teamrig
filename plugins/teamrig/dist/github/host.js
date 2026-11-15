@@ -1,6 +1,6 @@
 import { targetText, } from "../issues/host.js";
 import { exitText } from "../open/processes.js";
-import { issueCloseArgs, issueCommentArgs, issueCreateArgs } from "./gh.js";
+import { issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, labelReadArgs } from "./gh.js";
 import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, startFailureText } from "./issues.js";
 import { createdNumber } from "./migrate.js";
 import { latestIssues } from "./plan.js";
@@ -85,10 +85,46 @@ export class GitHubIssueHost {
     comment(target, body) {
         return this.write(target, issueCommentArgs(target, body), 'comment on');
     }
-    close(target) {
-        return this.write(target, issueCloseArgs(target), 'close');
+    close(target, reason) {
+        return this.write(target, issueCloseArgs(target, reason), 'close');
     }
-    async write(target, args, what) {
+    /**
+     * Reads the one label: found when gh ends well, missing when GitHub answers Not Found (no such label, or a
+     * repository the access cannot see, which the add would fail on anyway), else failed with gh's own line.
+     */
+    async labelExists(repo, label) {
+        const access = await this.tokens.accessFor(repo);
+        if (access instanceof TokenReadError) {
+            return { kind: 'failed', reason: access.message };
+        }
+        let result;
+        try {
+            result = await this.gh.run({ args: labelReadArgs(repo, label), env: access.env });
+        }
+        catch (error) {
+            return { kind: 'failed', reason: startFailureText(error) };
+        }
+        if (result.end.kind === 'signal') {
+            return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading the label ${JSON.stringify(label)} of ${repo}` };
+        }
+        if (result.end.code === 0) {
+            return { kind: 'found' };
+        }
+        if (ghFailureKind(result.end.code, result.stderr) === 'not-visible') {
+            return { kind: 'missing' };
+        }
+        return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read the label ${JSON.stringify(label)} of ${repo} ${exitText(result.end.code, result.stderr)}`)) };
+    }
+    addLabels(target, labels) {
+        return this.write(target, issueLabelAddArgs(target, labels), 'label');
+    }
+    /** Takes the label off; Not Found here means the issue does not carry it (or is not there), which the reason says. */
+    removeLabel(target, label) {
+        const shown = JSON.stringify(label);
+        return this.write(target, issueLabelRemoveArgs(target, label), `take ${shown} off`, `${targetText(target)} does not carry the label ${shown}, or is not there`);
+    }
+    /** One write; `missing`, when given, says what a Not Found means for it in place of the issue not being there. */
+    async write(target, args, what, missing) {
         const access = await this.tokens.accessFor(target.repo);
         if (access instanceof TokenReadError) {
             return { kind: 'failed', reason: access.message };
@@ -104,7 +140,8 @@ export class GitHubIssueHost {
             return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) on its way to ${what} ${targetText(target)}: look on GitHub before a rerun` };
         }
         if (result.end.code !== 0) {
-            return { kind: 'failed', reason: this.scanner.redact(writeFailureText(target, what, result.end.code, result.stderr, access)) };
+            const notThere = missing !== undefined && ghFailureKind(result.end.code, result.stderr) === 'not-visible';
+            return { kind: 'failed', reason: notThere ? missing : this.scanner.redact(writeFailureText(target, what, result.end.code, result.stderr, access)) };
         }
         return { kind: 'done' };
     }

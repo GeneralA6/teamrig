@@ -23,6 +23,23 @@ export const STATUS_LABELS = {
  * plan waits for the next run, which plans it again from the issues as they are then.
  */
 export const PUSH_WRITES_PER_RUN = 40;
+/**
+ * The writes the automatic push sends in an hour at most. GitHub's secondary limit on content-creating calls is also
+ * 500 an hour; half of it leaves the same room as PUSH_WRITES_PER_RUN does within the minute.
+ */
+export const PUSH_WRITES_PER_HOUR = 250;
+/**
+ * The writes one automatic push sends at most when it runs once per `everyMinutes`: PUSH_WRITES_PER_RUN, lowered so
+ * that the runs of an hour stay within PUSH_WRITES_PER_HOUR, with no count kept between runs. An hour holds up to
+ * ceil(60 / everyMinutes) runs (every 7 minutes: 9, at 0, 7, ..., 56), so the hourly writes are split by that. Every 0
+ * minutes is the automatic sync turned off: no writes.
+ */
+export function autoPushWrites(everyMinutes) {
+    if (everyMinutes <= 0) {
+        return 0;
+    }
+    return Math.min(PUSH_WRITES_PER_RUN, Math.floor(PUSH_WRITES_PER_HOUR / Math.ceil(60 / everyMinutes)));
+}
 /** The issue a task's status calls for. */
 export function issueGoal(status) {
     switch (status) {
@@ -38,12 +55,16 @@ export function issueGoal(status) {
 export function changeWrites(change) {
     return change.add.length + change.remove.length + (change.close === undefined ? 0 : 1);
 }
+/** A session's push: the run's writes, closes sent. */
+export const SESSION_PUSH = { writesPerRun: PUSH_WRITES_PER_RUN, closes: true };
 /**
  * The push of `repo`: for each issue of it a task holds, by `ref: gh:<repo>#<n>`, the writes that make the issue
  * show the task's status, planned against `issues` as the host listed them now (open ones and those closed lately).
  * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work.
+ * The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
+ * is held instead, taking none of the run's writes.
  */
-export function planPush(repo, issues, tasks) {
+export function planPush(repo, issues, tasks, limits = SESSION_PUSH) {
     const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
     const planned = [];
     const closedActive = [];
@@ -74,8 +95,10 @@ export function planPush(repo, issues, tasks) {
             planned.push(change);
         }
     }
-    const { changes, deferred } = withinRun(planned);
-    return { repo, changes, deferred, unchanged, closedActive, unlisted };
+    const heldCloses = limits.closes ? [] : planned.filter((change) => change.close !== undefined);
+    const sendable = limits.closes ? planned : planned.filter((change) => change.close === undefined);
+    const { changes, deferred } = withinRun(sendable, limits.writesPerRun);
+    return { repo, changes, deferred, heldCloses, unchanged, closedActive, unlisted };
 }
 /** The task speaking for each issue number of `repo` a task holds: a team task over one the import added. */
 function holders(repo, tasks) {
@@ -113,13 +136,13 @@ function changeFor(target, task, issue, goal) {
     return add.length === 0 && remove.length === 0 ? undefined : { target, task: task.id, status: task.status, add, remove, close: undefined };
 }
 /** The whole changes that fit in one run's writes, in order, and the rest. A change is never split across runs. */
-function withinRun(planned) {
+function withinRun(planned, writesPerRun) {
     const changes = [];
     const deferred = [];
     let writes = 0;
     for (const change of planned) {
         const cost = changeWrites(change);
-        if (deferred.length === 0 && writes + cost <= PUSH_WRITES_PER_RUN) {
+        if (deferred.length === 0 && writes + cost <= writesPerRun) {
             changes.push(change);
             writes += cost;
         }

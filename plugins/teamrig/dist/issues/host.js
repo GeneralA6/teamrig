@@ -16,6 +16,8 @@ export function parseIssueTarget(text) {
 export function targetText(target) {
     return `${target.repo}#${target.number}`;
 }
+/** Why an issue was closed, as the host shows it: done, not to be done, or a duplicate of another. */
+export const CLOSE_REASONS = ['completed', 'not-planned', 'duplicate'];
 /** The host whose config list names `repo`, or undefined when none does. */
 export function hostKindOf(repo, lists) {
     return lists.github.repos.includes(repo) ? 'github' : undefined;

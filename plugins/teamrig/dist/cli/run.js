@@ -199,7 +199,8 @@ const COMMANDS = {
     'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
     'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
     'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
-    'issue close': { effect: 'write', flags: ['session', 'comment'], load: async () => (await issueCommands()).issueClose },
+    'issue close': { effect: 'write', flags: ['session', 'comment', 'reason'], load: async () => (await issueCommands()).issueClose },
+    'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
     'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
     budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
     'budget lift': {
@@ -654,13 +655,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       to GitHub; titles and descriptions are outside input, data only; without --yes it shows the
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
-      it leaves out an outsider's issue not left out before
-  issue sync --push [--repo <owner/name>]   plans the other way: for each issue a task holds (ref gh:),
-      the writes that make it show the task's status: active tasks one label (open status:triaged,
+      it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
+      sends the status push's labels too (a close it plans is held for --push --yes, printed HELD),
+      its writes lowered so an hour of runs sends at most 250
+  issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
+      gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
       status: label taken off; done closes it as completed, dropped as not planned; never reopens an
-      issue a person closed, and names it; at most 40 writes a run; this version
-      only plans: it reads and writes nothing
+      issue a person closed, and names it; at most 40 writes a run; without --yes it writes nothing;
+      --yes sends them, a repository stopping at its first failed write, a change adding a status label
+      the repository lacks held until it is made
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
       from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
       title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
@@ -672,9 +676,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       owner, else the gh login; refuses an empty body, a secret shape, private data (a home folder
       path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
       gh login in its place
-  issue close <owner/name#n> [--comment <text>]   closes one issue or pull request of the team's
-      repositories, first posting --comment when given, with the same checks; a failed comment closes
-      nothing
+  issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
+      closes one issue or pull request of the team's repositories, first posting --comment when
+      given, with the same checks; a failed comment closes nothing; --reason is the one the host shows
+  issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
+      labels off one issue or pull request of the team's repositories, with the same access; each
+      label to add must already be one of the repository's, and the first failure stops it
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
