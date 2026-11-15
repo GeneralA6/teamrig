@@ -27,7 +27,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.needsYou, { enabled: true, kinds: ['permission', 'question', 'elicitation', 'decision'], osToast: false });
     assert.deepEqual(config.meetingNotices, { enabled: true, beforeMinutes: 10, atStart: true, missedAfterMinutes: 5, osToast: true, tabToast: true, leadInbox: true });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35 });
+    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, probeSeconds: 60, statusPush: false, acceptLabel: 'teamrig', similarThreshold: 0.35 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.delivery, {
@@ -405,10 +405,10 @@ describe('parseConfig', () => {
     }
   });
 
-  it('reads github repos and owners in lowercase, closedDays within 1 to 365 and everyMinutes within 0 to 1440', () => {
+  it('reads github repos and owners in lowercase, closedDays within 1 to 365 and probeSeconds 0 or within 30 to 3600', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      github: { repos: ['Acme/Web', 'acme/docs.site'], owners: { OctoCat: 'bravo' }, closedDays: 365, everyMinutes: 0 },
+      github: { repos: ['Acme/Web', 'acme/docs.site'], owners: { OctoCat: 'bravo' }, closedDays: 365, probeSeconds: 0 },
     });
     assert.deepEqual(issues, []);
     assert.deepEqual(config.github, {
@@ -416,7 +416,7 @@ describe('parseConfig', () => {
       owners: { octocat: 'bravo' },
       sessions: {},
       closedDays: 365,
-      everyMinutes: 0,
+      probeSeconds: 0,
       statusPush: false,
       acceptLabel: 'teamrig',
       similarThreshold: 0.35,
@@ -432,11 +432,18 @@ describe('parseConfig', () => {
       assert.deepEqual(paths(parsed.issues), ['github.closedDays']);
       assert.equal(parsed.config.github.closedDays, 14);
     }
-    for (const wrong of [-1, 1441, 2.5]) {
-      const parsed = parseConfig({ ...ROSTER, github: { everyMinutes: wrong } });
-      assert.deepEqual(paths(parsed.issues), ['github.everyMinutes']);
-      assert.equal(parsed.config.github.everyMinutes, 15);
+    for (const good of [30, 3600]) {
+      assert.equal(parseConfig({ ...ROSTER, github: { probeSeconds: good } }).config.github.probeSeconds, good);
     }
+    for (const wrong of [-1, 1, 29, 3601, 2.5]) {
+      const parsed = parseConfig({ ...ROSTER, github: { probeSeconds: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.probeSeconds']);
+      assert.equal(parsed.config.github.probeSeconds, 60);
+    }
+    assert.deepEqual(parseConfig({ ...ROSTER, github: { probeSeconds: 29 } }).issues[0]?.message, 'expected 0 (no watch) or at least 30, got 29');
+    const dropped = parseConfig({ ...ROSTER, github: { everyMinutes: 15 } });
+    assert.deepEqual(paths(dropped.issues), ['github.everyMinutes']);
+    assert.match(dropped.issues[0]?.message ?? '', /^is no longer read: issue watch syncs when GitHub changed/);
   });
 
   it('reads the github similar threshold within 0 to 1, else keeps 0.35', () => {

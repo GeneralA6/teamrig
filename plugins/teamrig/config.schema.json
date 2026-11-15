@@ -1369,12 +1369,12 @@
           "maximum": 365,
           "default": 14
         },
-        "everyMinutes": {
-          "description": "How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig issue sync --yes.",
+        "probeSeconds": {
+          "description": "How often teamrig issue watch asks GitHub whether a listed repository changed, in seconds: a conditional read that costs no rate limit when nothing changed, the sync running only when something did. One watch runs for the whole team, started by the hooks. 0 runs no watch and leaves the sync to teamrig issue sync --yes; otherwise at least 30. It replaced everyMinutes, which is reported until deleted.",
           "type": "integer",
           "minimum": 0,
-          "maximum": 1440,
-          "default": 15
+          "maximum": 3600,
+          "default": 60
         },
         "statusPush": {
           "description": "Whether the automatic sync also sends the status push (teamrig issue sync --push --yes), so each issue a task holds shows the task's status without a session running it. It sends labels and assignees only: a close waits for a session's teamrig issue sync --push --yes. Off by default: read the push's dry run (teamrig issue sync --push) first.",

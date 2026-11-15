@@ -673,8 +673,11 @@ export interface GithubConfig {
   readonly sessions: Readonly<Record<string, string>>;
   /** How many days back closed issues are read, to finish the tasks they were imported as. */
   readonly closedDays: number;
-  /** How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to `issue sync --yes`. */
-  readonly everyMinutes: number;
+  /**
+   * How often `issue watch` asks GitHub whether a listed repository changed, in seconds (a conditional read, free
+   * when nothing changed), syncing only when one did; 0 runs no watch and leaves the sync to `issue sync --yes`.
+   */
+  readonly probeSeconds: number;
   /**
    * Whether the automatic sync also sends the status push (`issue sync --push --yes`), so each issue a task holds
    * shows the task's status without a session running it. It sends labels and assignees only: a close waits

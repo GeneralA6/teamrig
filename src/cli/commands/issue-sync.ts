@@ -34,7 +34,7 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  * instead. A sync only lists issues, and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
- * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the Stop hook starts (issue-sync-auto.ts), writes as
+ * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the watch runs when GitHub changed (issue-watch.ts), writes as
  * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
  * an issue is newly left out. Exit 1 when a repository could not be read (its tasks stay
  * as they are), 2 when the register refused a step, else 0.
@@ -126,7 +126,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   if (pushing) {
     // The import's tasks are in the register now, so the push plans against them. A repository the import could
     // not read is not pushed: it would fail the same way, and its failure is already told.
-    const writesPerRun = autoPushWrites(config.github.everyMinutes);
+    const writesPerRun = autoPushWrites(config.github.probeSeconds);
     const pushed = await pushRepos(
       {
         host,

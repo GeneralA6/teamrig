@@ -102,6 +102,7 @@ const EXPECTED = {
   doctor: 'read',
   compact: 'write',
   'issue sync': 'write',
+  'issue watch': 'internal',
   'issue migrate': 'write',
   'issue comment': 'write',
   'issue close': 'write',

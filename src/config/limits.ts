@@ -65,7 +65,7 @@ export const CONFIG_LIMITS = {
   maxFailureChars: { min: 500, max: 50_000 },
   githubRepos: { maxItems: 20, maxLength: 140 },
   closedDays: { min: 1, max: 365 },
-  githubEveryMinutes: { min: 0, max: 1440 },
+  githubProbeSeconds: { min: 0, max: 3600 },
   similarThreshold: { min: 0, max: 1 },
   budgetTargetPct: { min: 1, max: 100 },
   budgetReservePct: { min: 0, max: 50 },

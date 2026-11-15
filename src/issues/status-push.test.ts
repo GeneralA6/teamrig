@@ -233,14 +233,15 @@ describe('the assignee (T2999)', () => {
 
 describe('autoPushWrites (T2876)', () => {
   it('keeps the run writes when the hour holds them, and lowers them so an hour of runs stays within the hourly writes', () => {
-    assert.equal(autoPushWrites(15), PUSH_WRITES_PER_RUN);
-    assert.equal(autoPushWrites(5), 20);
-    assert.equal(autoPushWrites(1), 4);
+    assert.equal(autoPushWrites(900), PUSH_WRITES_PER_RUN);
+    assert.equal(autoPushWrites(300), 20);
+    assert.equal(autoPushWrites(60), 4);
+    assert.equal(autoPushWrites(30), 2);
     // Every 7 minutes, 9 runs start within an hour: 27 writes each, not floor(250 * 7 / 60) = 29.
-    assert.equal(autoPushWrites(7), 27);
+    assert.equal(autoPushWrites(420), 27);
     assert.equal(autoPushWrites(0), 0);
-    for (const everyMinutes of [1, 2, 5, 7, 9, 10, 11, 13, 15, 59, 60, 1440]) {
-      assert.ok(autoPushWrites(everyMinutes) * Math.ceil(60 / everyMinutes) <= PUSH_WRITES_PER_HOUR, `every ${everyMinutes} minutes`);
+    for (const probeSeconds of [30, 45, 60, 90, 120, 300, 420, 540, 600, 660, 780, 900, 3540, 3600]) {
+      assert.ok(autoPushWrites(probeSeconds) * Math.ceil(3600 / probeSeconds) <= PUSH_WRITES_PER_HOUR, `every ${probeSeconds} seconds`);
     }
   });
 });

@@ -209,10 +209,14 @@ export interface TeamPaths {
   readonly logs: string;
   /** The automatic GitHub sync's last start, finish and failing repositories (github/auto.ts). */
   readonly githubSync: string;
-  /** Held while a hook claims the next automatic sync or a sync records its finish. */
+  /** Held while a sync records its finish. */
   readonly githubSyncLock: string;
   /** The response clock of each GitHub thread waiting on an answer of ours (github/clock.ts). */
   readonly githubClocks: string;
+  /** The lease of the team's one `issue watch`: its pid and last beat (github/watch.ts). */
+  readonly githubWatch: string;
+  /** Held while a hook claims the watch or the watch claims, renews or drops its lease. */
+  readonly githubWatchLock: string;
   /** The hookless-tab check's last run and the tabs it named (restore/hookless.ts). */
   readonly hookless: string;
   /** Held while a hook runs the hookless-tab check. */
@@ -351,6 +355,8 @@ export function teamPaths(kitHome: string, team: string, claudeDir: string, over
     githubSync: join(state, 'github-sync.json'),
     githubSyncLock: join(state, 'github-sync.lock'),
     githubClocks: join(state, 'github-clocks.json'),
+    githubWatch: join(state, 'github-watch.json'),
+    githubWatchLock: join(state, 'github-watch.lock'),
     hookless: join(state, 'hookless.json'),
     hooklessLock: join(state, 'hookless.lock'),
     idlePass: join(state, 'idle-pass.json'),
