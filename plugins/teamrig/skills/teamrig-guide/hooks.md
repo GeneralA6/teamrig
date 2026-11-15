@@ -866,10 +866,12 @@ It also refuses a session's own write of an owner-gated key of the team config, 
 `alerts`, `github.owners`, `delivery.repos` (each repository's merge, deploy and check commands), `delivery.passEnv`, `permissions` and the
 guards (`pushGuard`, `secretGuard`, `packageGuard`, `dbWriteGuard`, `commitGuard`). It refuses a Write, Edit or
 MultiEdit of any team's config (a path ending in `teams/<team>/config.json`, the session's own and every other
-team's, in any spelling: a Git Bash `/c/` drive is read as `C:`) whose result changes one (the guard applies the edit to that file as it is now and compares
+team's, in any spelling: a Git Bash `/c/` drive is read as `C:`, and its 8.3 short name `CONFIG~1.JSO` or a link to it counts too) whose result changes one (the guard applies the edit to that file as it is now and compares
 each key, a key the file lacks reading as unset), or that it cannot work out (text not found, a notebook edit), and a shell line naming the team config file (`teams/<team>/config.json`, or
 `config.json` with `.teamrig` or `$TEAMRIG_HOME` on the line or the line running in the kit home), its reads too,
-since a shell line's writes cannot be told from its reads. An edit of the config's other keys stays open, and so
+since a shell line's writes cannot be told from its reads. On Windows a file tool's device path (`\\?\`, `\\.\`),
+share path or data stream naming a `config.json` is refused too, as no spelling check holds it to one file. An edit
+of the config's other keys stays open, and so
 does the Read tool. The reason names the keys the call changes: "teamrig config guard: this Edit changes roles, exec in the team config (...). Its owner-gated keys (...) are permissions or owner gates, the owner's to change: a service role's holders with `teamrig roles grant` or `revoke`, which ask the owner, the rest in the owner's own editor. ..."
 
 It has no setting, and a broken config keeps it on: the file is found and read again at each call. Like the
