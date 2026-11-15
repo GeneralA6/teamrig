@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { HookAsks } from '../config/types.ts';
-import { serviceRoleGuardOutput, type ServiceRoleGuardEnv } from './service-role-guard.ts';
+import { changedGatedKeys, OWNER_GATED_KEYS, serviceRoleGuardOutput, type ServiceRoleGuardEnv } from './service-role-guard.ts';
 
 const CONFIG = 'C:/u/.teamrig/teams/shop/config.json';
 
@@ -112,5 +112,67 @@ describe('service-role guard: the team config', () => {
     for (const command of ['cat tsconfig.json', 'cat src/testing/config.json', 'node -e "require(\'./config.json5\')"']) {
       assert.equal(await decide(call('Bash', { command })), undefined, command);
     }
+  });
+});
+
+describe('config guard: every owner-gated key (T3083)', () => {
+  const base = {
+    sessions: ['lead', 'alpha'],
+    serviceRoles: ROLES,
+    roles: { lead: 'lead', securityReviewer: 'sec' },
+    register: { ownerSource: 'owner', staleDays: 3 },
+    prompts: { hookAsks: 'ask', routeAllow: { enabled: false } },
+    readonlyShell: { allowPrefixes: ['git status'] },
+    exec: { webhookEnv: 'HOOK_URL' },
+    github: { owners: { octo: 'alpha' }, everyMinutes: 30 },
+    delivery: { repos: { web: { merge: { command: ['gh', 'pr', 'merge'] } } }, checkTimeoutSeconds: 60 },
+    pushGuard: { pushToProtected: 'ask' },
+  };
+  type Base = typeof base;
+  const text = JSON.stringify(base, null, 2);
+  const changed = (change: (config: Base) => Record<string, unknown>): string => JSON.stringify(change(structuredClone(base)), null, 2);
+
+  it("refuses a session's Write that changes any of them, naming the key", async () => {
+    const changes: readonly (readonly [string, string])[] = [
+      ['roles', changed((c) => ({ ...c, roles: { ...c.roles, securityReviewer: 'alpha' } }))],
+      ['register.ownerSource', changed((c) => ({ ...c, register: { ...c.register, ownerSource: 'alpha' } }))],
+      ['prompts', changed((c) => ({ ...c, prompts: { ...c.prompts, hookAsks: 'off' } }))],
+      ['readonlyShell', changed((c) => ({ ...c, readonlyShell: { allowPrefixes: ['git status', 'rm'] } }))],
+      ['exec', changed((c) => ({ ...c, exec: { webhookEnv: 'OTHER' } }))],
+      ['github.owners', changed((c) => ({ ...c, github: { ...c.github, owners: { octo: 'alpha', mallory: 'alpha' } } }))],
+      ['delivery.repos', changed((c) => ({ ...c, delivery: { ...c.delivery, repos: { web: { merge: { command: ['sh', '-c', 'x'] } } } } }))],
+      ['pushGuard', changed((c) => ({ ...c, pushGuard: { pushToProtected: 'allow' } }))],
+      ['alerts', changed((c) => ({ ...c, alerts: { webhookEnv: 'X' } }))],
+    ];
+    for (const [key, content] of changes) {
+      const output = decisionOf(await serviceRoleGuardOutput(call('Write', { file_path: CONFIG, content }), env({ text })));
+      assert.equal(output?.decision, 'deny', key);
+      assert.ok(output?.reason.includes(`changes ${key} in the team config`), `${key}: ${output?.reason ?? ''}`);
+    }
+  });
+
+  it('refuses an Edit of a gated key inside the text, and passes one of a key beside it', async () => {
+    const owner = { old_string: '"ownerSource": "owner"', new_string: '"ownerSource": "alpha"' };
+    assert.equal(await decide(call('Edit', { file_path: CONFIG, ...owner }), env({ text })), 'deny');
+    const stale = { old_string: '"staleDays": 3', new_string: '"staleDays": 5' };
+    assert.equal(await decide(call('Edit', { file_path: CONFIG, ...stale }), env({ text })), undefined);
+  });
+
+  it('passes a change of its other keys, beside unchanged gated ones', async () => {
+    const other = changed((c) => ({
+      ...c,
+      sessions: ['lead', 'alpha', 'bravo'],
+      register: { ...c.register, staleDays: 5 },
+      github: { ...c.github, everyMinutes: 15 },
+      delivery: { ...c.delivery, checkTimeoutSeconds: 90 },
+    }));
+    assert.equal(await decide(call('Write', { file_path: CONFIG, content: other }), env({ text })), undefined);
+  });
+
+  it('reads a key the config lacks as unset, so adding or removing one is a change', () => {
+    assert.deepEqual(changedGatedKeys(JSON.stringify({ sessions: [] }), JSON.stringify({ sessions: [], alerts: { webhookEnv: 'X' } })), ['alerts']);
+    assert.deepEqual(changedGatedKeys(text, JSON.stringify({ ...base, exec: undefined })), ['exec']);
+    assert.deepEqual(changedGatedKeys(undefined, 'not json'), []);
+    assert.ok(OWNER_GATED_KEYS.some((keyPath) => keyPath.join('.') === 'serviceRoles'));
   });
 });
