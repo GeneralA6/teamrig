@@ -1,7 +1,9 @@
 import type { SecretScanner } from '../core/secrets.ts';
 import type { HostPost } from '../issues/post.ts';
+import { MENTION_PAGE_SIZE, MENTION_PAGES_MAX } from './gh.ts';
 import { areaOwnerOf, issueRef, type ImportRules } from './map.ts';
 import { mentionsOf } from './mentions.ts';
+import { REVIEW_READS_MAX } from './posts.ts';
 import type { OurLogins } from './trust.ts';
 
 /**
@@ -99,6 +101,54 @@ export function mentionRoutes(
     }
   }
   return { routes, seen: after };
+}
+
+/** What the mention scan keeps of one repository between runs: the time its next read starts at, and its seen marks. */
+export interface MentionWatch {
+  /** An ISO time in whole seconds, UTC. */
+  readonly cursor: string;
+  readonly seen: ReadonlyMap<string, SeenMention>;
+}
+
+/** `ms` as a posts read takes a time: ISO, UTC, rounded down to the whole second. */
+export function mentionTime(ms: number): string {
+  return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace('.000Z', 'Z');
+}
+
+/** A repository's watch before its first read: it starts at `readAt`, so the scan never routes what was written before it began. */
+export function firstMentionWatch(readAt: string): MentionWatch {
+  return { cursor: readAt, seen: new Map() };
+}
+
+/**
+ * The time a read of a repository starts at: its cursor, but no earlier than the cutoff, so a team back after a long
+ * while does not hear of mentions older than the seen marks it keeps.
+ */
+export function mentionReadSince(watch: MentionWatch, cutoffMs: number): string {
+  return Date.parse(watch.cursor) >= cutoffMs ? watch.cursor : mentionTime(cutoffMs);
+}
+
+/**
+ * One read of a repository's posts against its watch: the routes (`mentionRoutes`) and the watch after. The next read
+ * starts where this one was cut short (`cutAt`), else at `readAt`, the time this one was asked, so nothing written while
+ * it read is missed; a post read twice routes nothing again. The marks of posts older than the cutoff are dropped.
+ */
+export function mentionStep(
+  repo: string,
+  before: MentionWatch,
+  read: { readonly posts: readonly HostPost[]; readonly cutAt: string | undefined },
+  readAt: string,
+  itemOf: (number: number) => MentionItem,
+  routing: MentionRouting,
+  cutoffMs: number,
+): { readonly routes: MentionRoute[]; readonly after: MentionWatch } {
+  const { routes, seen } = mentionRoutes(repo, read.posts, itemOf, before.seen, routing);
+  return { routes, after: { cursor: read.cutAt ?? readAt, seen: prunedSeen(seen, cutoffMs) } };
+}
+
+/** The watcher's line when a read of `repo` was cut short at `cutAt`: the rest is read by the next sync. */
+export function mentionCutLine(repo: string, cutAt: string): string {
+  return `GitHub mentions of ${repo} cut off: more posts changed than one sync reads (${MENTION_PAGES_MAX} pages of ${MENTION_PAGE_SIZE} per list, the reviews of ${REVIEW_READS_MAX} pull requests); read through ${cutAt}, the next sync goes on from there`;
 }
 
 /** The seen marks of posts written or edited at or after the cutoff time; older ones are dropped. */

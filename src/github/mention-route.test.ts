@@ -3,15 +3,21 @@ import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import type { HostPost } from '../issues/post.ts';
 import {
+  firstMentionWatch,
   MENTION_WAKE_GAP_MINUTES,
+  mentionCutLine,
   mentionLine,
+  mentionReadSince,
   mentionRecipient,
   mentionRoutes,
+  mentionStep,
+  mentionTime,
   prunedSeen,
   wakeRoutes,
   type MentionItem,
   type MentionRoute,
   type MentionRouting,
+  type MentionWatch,
   type SeenMention,
 } from './mention-route.ts';
 
@@ -92,6 +98,45 @@ describe('mentionRoutes', () => {
 
   it('routes nothing for a mention in code or a quote', () => {
     assert.deepEqual(routesOf([post('comment:1', '> @octocat wrote this\n`@hubber`')]), []);
+  });
+});
+
+describe('the mention watch', () => {
+  const cutoff = Date.parse('2030-01-01T00:00:00Z');
+  const readAt = '2030-01-10T12:00:00Z';
+
+  it('gives a read time in whole seconds, rounded down', () => {
+    assert.equal(mentionTime(Date.parse('2030-01-10T12:00:00.999Z')), '2030-01-10T12:00:00Z');
+  });
+
+  it('starts a first watch at its read time, with nothing seen', () => {
+    assert.deepEqual(firstMentionWatch(readAt), { cursor: readAt, seen: new Map() });
+  });
+
+  it('reads from the cursor, but no earlier than the cutoff', () => {
+    assert.equal(mentionReadSince(firstMentionWatch('2030-01-05T00:00:00Z'), cutoff), '2030-01-05T00:00:00Z');
+    assert.equal(mentionReadSince(firstMentionWatch('2029-06-01T00:00:00Z'), cutoff), '2030-01-01T00:00:00Z');
+  });
+
+  it('goes on from the read time, keeping what it routed, and a second read of the same posts routes nothing', () => {
+    const posts = [post('comment:1', '@octocat please')];
+    const first = mentionStep('acme/web', firstMentionWatch('2030-01-09T00:00:00Z'), { posts, cutAt: undefined }, readAt, () => PLAIN, ROUTING, cutoff);
+    assert.deepEqual([first.routes.length, first.after.cursor, [...first.after.seen.keys()]], [1, readAt, ['comment:1']]);
+    const again = mentionStep('acme/web', first.after, { posts, cutAt: undefined }, '2030-01-10T12:15:00Z', () => PLAIN, ROUTING, cutoff);
+    assert.deepEqual([again.routes, again.after.cursor], [[], '2030-01-10T12:15:00Z']);
+  });
+
+  it('goes on from the cut of a read cut short, and drops the marks older than the cutoff', () => {
+    const before: MentionWatch = { cursor: '2030-01-09T00:00:00Z', seen: new Map([['comment:9', { logins: ['octocat'], updatedAt: '2029-12-01T00:00:00Z' }]]) };
+    const step = mentionStep('acme/web', before, { posts: [], cutAt: '2030-01-09T06:00:00Z' }, readAt, () => PLAIN, ROUTING, cutoff);
+    assert.deepEqual(step.after, { cursor: '2030-01-09T06:00:00Z', seen: new Map() });
+  });
+
+  it('names the repository and how far it read when a read was cut short', () => {
+    assert.equal(
+      mentionCutLine('acme/web', '2030-01-09T06:00:00Z'),
+      'GitHub mentions of acme/web cut off: more posts changed than one sync reads (10 pages of 100 per list, the reviews of 20 pull requests); read through 2030-01-09T06:00:00Z, the next sync goes on from there',
+    );
   });
 });
 
