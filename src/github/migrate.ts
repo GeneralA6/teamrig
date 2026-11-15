@@ -163,22 +163,40 @@ function issueRow(raw: JsonRecord, id: string, scanner: SecretScanner): Verdict<
   if (label === undefined) {
     return { ok: false, error: `${id}: priority is not one of ${PRIORITY_LABELS.join(', ')}` };
   }
+  const text = publicIssueText(id, title, body, scanner);
+  if (!text.ok) {
+    return text;
+  }
+  return { ok: true, value: { decision: 'issue', id, repo: repo.trim().toLowerCase(), type, priority: label, ...text.value } };
+}
+
+/** An issue's public wording, trimmed: what a migrate row and `add --issue` both open. */
+export interface PublicIssueText {
+  readonly title: string;
+  readonly body: string;
+}
+
+/**
+ * The checks every issue teamrig opens passes, named after `who` (a task id, or the new task): a one-line title of
+ * 1 to {@link MAX_TITLE} characters, a body, no secret shape and no task id, since a task id is the team's own.
+ */
+export function publicIssueText(who: string, title: string, body: string, scanner: SecretScanner): Verdict<PublicIssueText> {
   const shown = title.trim();
   if (shown === '' || shown.length > MAX_TITLE || /[\r\n]/u.test(shown)) {
-    return { ok: false, error: `${id}: the title is one line of 1 to ${MAX_TITLE} characters` };
+    return { ok: false, error: `${who}: the title is one line of 1 to ${MAX_TITLE} characters` };
   }
   if (body.trim() === '') {
-    return { ok: false, error: `${id}: the body is empty` };
+    return { ok: false, error: `${who}: the body is empty` };
   }
-  const secret = scanner.refusal(`${id}'s title or body`, `${shown}\n${body}`);
+  const secret = scanner.refusal(`${who}'s title or body`, `${shown}\n${body}`);
   if (secret !== undefined) {
     return { ok: false, error: secret };
   }
   const named = taskIdIn(`${shown}\n${body}`);
   if (named !== undefined) {
-    return { ok: false, error: `${id}: the title or body names the task id ${named}: a task id is the team's own, so a posted issue shows none (link issues by #number)` };
+    return { ok: false, error: `${who}: the title or body names the task id ${named}: a task id is the team's own, so a posted issue shows none (link issues by #number)` };
   }
-  return { ok: true, value: { decision: 'issue', id, repo: repo.trim().toLowerCase(), type, priority: label, title: shown, body: body.trim() } };
+  return { ok: true, value: { title: shown, body: body.trim() } };
 }
 
 /** The labels an issue row's issue gets: its kind of work, then its priority. */
