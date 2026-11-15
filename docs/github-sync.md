@@ -311,21 +311,23 @@ ACCESS acme: read with the token saved as teamrig-gh-acme
 PUSH acme/web: 3 to change, 3 unchanged, 1 closed on the host while the task is active
 LABEL acme/web#7 T41 in-progress: add status:in progress, take off status:open
 CLOSE acme/web#9 T42 done: close as completed, take off status:in review
-ASSIGN acme/web#11 T43 open: assign acme
+LABEL acme/web#11 T43 open: add status:claimed, take off status:open, assign acme
 KEPT acme/web#5 T30 open: closed on the host (not_planned) while the task is active; the push never reopens an issue, so set the task to match or reopen the issue
-PREVIEW nothing was written; a push would send 5 write(s) now, at most 40 a run, and plan the rest again on the next
+PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run, and plan the rest again on the next
 ```
 
-- **One status label.** `open` shows `status:open`, `in-progress` `status:in progress`, `waiting`
-  `status:waiting`, `verifying` `status:in review`; any other `status:` label comes off. Done closes the issue as
+- **One status label.** An `open` task no one scheduled shows `status:open`: open to anyone, no one assigned. Once
+  it has a due date, or a person assigned the issue, it shows `status:claimed`. `in-progress` shows
+  `status:in progress`, `waiting` `status:waiting`, `verifying` `status:in review`; any other `status:` label comes
+  off. A goal, a task planned after its parts, shows none: its parts' issues carry theirs. Done closes the issue as
   completed, dropped as not planned. A repository that lacks one of these labels gets it made first, with a
-  `MADE` line: these four are the only labels teamrig ever makes, and only with `--yes` or the automatic push.
+  `MADE` line: these five are the only labels teamrig ever makes, and only with `--yes` or the automatic push.
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
-- **Someone answers for it.** An open issue no one is assigned to gets an assignee: the login `github.owners` maps
-  to the task's owning session, else the account that owns the repository (sessions are not GitHub users). An issue
-  a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may
+- **Someone answers for it.** An open issue of a scheduled task (started, or with a due date) no one is assigned
+  to gets an assignee: the login `github.owners` maps to the task's owning session, else the account that owns the
+  repository (sessions are not GitHub users). An issue a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may
   not assign (not a person with access to it) gets an `UNASSIGNED` line and its issues keep their label changes, as
   GitHub would drop it silently and every run would send it again.
 - **Within GitHub's limit.** At most 40 writes a run, half GitHub's 80 a minute, shared by every repository in

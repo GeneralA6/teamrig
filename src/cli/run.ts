@@ -708,9 +708,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the next session's hook starts it again
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:open,
-      in-progress status:in progress, waiting status:waiting, verifying status:in review), any other
-      status: label taken off; done closes it as completed, dropped as not planned; never reopens an
-      issue a person closed, and names it; an open issue no one is assigned to is assigned to the login
+      status:claimed once it has a due date or an assignee, in-progress status:in progress, waiting
+      status:waiting, verifying status:in review; a goal, a task planned after its parts, none), any
+      other status: label taken off; done closes it as completed, dropped as not planned; never
+      reopens an issue a person closed, and names it; an open issue of a scheduled task (started or
+      with a due date) no one is assigned to is assigned to the login
       github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
       --yes sends them, a repository stopping at its first failed write; a status label the repository
       lacks is made first (MADE)
