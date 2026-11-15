@@ -6,7 +6,11 @@ import { join } from 'node:path';
 import {
   blockedByAddArgs,
   GhRefusedError,
+  assigneeReadArgs,
   isAllowedGh,
+  isAssigneeRead,
+  isIssueAssign,
+  issueAssignArgs,
   isIssueClose,
   isIssueComment,
   isIssueCreate,
@@ -265,6 +269,45 @@ describe('the duplicate close and the issue read', () => {
   });
 });
 
+describe('the assignee calls (T2999)', () => {
+  const ASSIGN = issueAssignArgs(ISSUE, ['octocat', 'mona-lisa']);
+
+  it('takes the command lines issueAssignArgs and assigneeReadArgs build', () => {
+    assert.deepEqual(ASSIGN, ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'assignees[]=octocat', '-f', 'assignees[]=mona-lisa']);
+    assert.deepEqual(assigneeReadArgs('acme/web', 'octocat'), ['api', 'repos/acme/web/assignees/octocat']);
+    assert.ok(isIssueAssign(ASSIGN) && isAssigneeRead(assigneeReadArgs('acme/web', 'octocat')));
+    assert.ok(isAllowedGh(ASSIGN) && isAllowedGh(assigneeReadArgs('acme/web', 'octocat')));
+  });
+
+  it('refuses a removal, another field or flag, a login of another shape, and a read with a method', () => {
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'labels[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-F', 'assignees[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'assignees[]=-octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'assignees[]=octo--cat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'assignees[]=../x'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', `assignees[]=${'a'.repeat(40)}`],
+      ['api', 'repos/acme/web/issues/7', '-X', 'POST', '-f', 'assignees[]=octocat'],
+      ['api', 'repos/acme/../assignees', '-X', 'POST', '-f', 'assignees[]=octocat'],
+    ]) {
+      assert.equal(isIssueAssign(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+    for (const args of [
+      ['api', 'repos/acme/web/assignees/octocat', '-X', 'GET'],
+      ['api', 'repos/acme/web/assignees/octocat', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/assignees/..'],
+      ['api', 'repos/acme/web/assignees/octo%2Fcat'],
+      ['api', 'repos/acme/web/assignees'],
+      ['api', 'repos/../web/assignees/octocat'],
+    ]) {
+      assert.equal(isAssigneeRead(args), false, args.slice(1).join(' '));
+    }
+  });
+});
+
 describe('the label calls', () => {
   const ADD = issueLabelAddArgs(ISSUE, ['type: bug', 'p1']);
   const REMOVE = issueLabelRemoveArgs(ISSUE, 'needs triage');
@@ -408,7 +451,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries and to open, read, comment on, label, close or link an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries and to open, read, comment on, label, assign, close or link an issue: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });

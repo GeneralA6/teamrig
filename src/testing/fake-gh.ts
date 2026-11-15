@@ -1,5 +1,19 @@
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, isIssueRead, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
+import {
+  isAssigneeRead,
+  isIssueAssign,
+  isIssueClose,
+  isIssueComment,
+  isIssueCreate,
+  isIssueRead,
+  isLabelAdd,
+  isLabelRead,
+  isLabelRemove,
+  isLinkAdd,
+  type GhRequest,
+  type GhResult,
+  type GhRunner,
+} from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
 
@@ -133,6 +147,7 @@ export class FakeGh implements GhRunner {
   private failure: Error | undefined;
   private writeFailure: GhResult | undefined;
   private readonly labels = new Map<string, readonly string[]>();
+  private readonly unassignable = new Map<string, readonly string[]>();
   private pageSize = ISSUE_PAGE_SIZE;
 
   /** From now on, `repo` holds these issues (as ghIssue builds them). */
@@ -171,7 +186,13 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
-  /** From now on, a comment on, the close of, a label added to or taken off, or a link added to an issue ends as given. */
+  /** From now on, these logins may not be assigned in `repo` (a read of them is Not Found); every other login may. */
+  cannotAssign(repo: string, logins: readonly string[]): this {
+    this.unassignable.set(repo, logins);
+    return this;
+  }
+
+  /** From now on, a comment on, the close of, a label added to or taken off, an assignee or a link added to an issue ends as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
     return this;
@@ -188,10 +209,13 @@ export class FakeGh implements GhRunner {
     if (isLabelRead(request.args)) {
       return this.labelRead(request.args[1] ?? '');
     }
+    if (isAssigneeRead(request.args)) {
+      return this.assigneeRead(request.args[1] ?? '');
+    }
     if (isIssueRead(request.args)) {
       return this.issueRead(request.args[1] ?? '');
     }
-    if (isIssueComment(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args)) {
+    if (isIssueComment(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
     if (isLinkAdd(request.args)) {
@@ -236,6 +260,18 @@ export class FakeGh implements GhRunner {
       return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ name: decodeURIComponent(label) }), stderr: '' };
     }
     return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
+  }
+
+  /** An assignee read as GitHub answers it: what a test set for the repository, else 204 unless the login may not be assigned there. */
+  private assigneeRead(path: string): GhResult {
+    const [, owner = '', name = '', , login = ''] = path.split('/');
+    const canned = this.canned.get(`${owner}/${name}`);
+    if (canned !== undefined) {
+      return canned;
+    }
+    return (this.unassignable.get(`${owner}/${name}`) ?? []).includes(login)
+      ? { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' }
+      : { end: { kind: 'exited', code: 0 }, stdout: '', stderr: '' };
   }
 
   /**
