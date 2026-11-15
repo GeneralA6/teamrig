@@ -154,6 +154,14 @@ const DEVICE_PATH = /^\/(?:dev|proc)\//;
 /** A file name a shell script has. */
 const SHELL_SCRIPT_NAME = /\.(?:sh|bash)$/i;
 
+/**
+ * True when a program name is git, or one of git's own commands (`git-push`, as in git's exec path), which the
+ * finder reads as git; any other `git-*` file run by its path (`./git-ship.sh`) is a script like any other.
+ */
+function isGitProgram(name: string): boolean {
+  return name === 'git' || (name.startsWith('git-') && BUILTINS.has(name.slice(4)));
+}
+
 /** The file a word names, in `dir` when relative; undefined when it is only known when it runs. */
 function filePath(word: ShellWord, dir: string | undefined): string | undefined {
   if (word.dynamic || word.text === '' || word.text.includes('\n')) {
@@ -487,16 +495,29 @@ class GitInvocationFinder {
     }
   }
 
-  /** A file's text as the line leaves it: as it writes it, else from disk. */
-  private readonly readFile = (path: string): string | undefined =>
-    this.writtenFiles.has(path) ? this.writtenFiles.get(path) : (this.context.readScript ?? readScriptFile)(path);
+  /**
+   * The texts a file may hold when a command of the line runs it: what
+   * the line writes there (undefined when unknown), and what the disk holds, as a write may not run
+   * (`false && cat > f.sh ...`, an `if`); `written` says whether the line writes it at all.
+   */
+  private fileTexts(path: string): { readonly written: boolean; readonly writtenText: string | undefined; readonly diskText: string | undefined } {
+    const written = this.writtenFiles.has(path);
+    return { written, writtenText: written ? this.writtenFiles.get(path) : undefined, diskText: (this.context.readScript ?? readScriptFile)(path) };
+  }
+
+  /** Every text a file may hold, joined, for an interpreter's text rule. */
+  private readonly readFile = (path: string): string | undefined => {
+    const { writtenText, diskText } = this.fileTexts(path);
+    const texts = [writtenText, diskText].filter((text): text is string => text !== undefined);
+    return texts.length === 0 ? undefined : texts.join('\n');
+  };
 
   /**
    * Reads the shell script file `file` names and visits its commands, in
    * a shell of its own or, for `source` / `.`, the same shell. `byPath` is a file run as a program (`./x.sh`): one the
    * guard cannot read is a doubt only when its name says it is a shell script, as a missing binary runs nothing.
-   * A file with a `#!` line for another language is read by that language's rule (see interpreters.ts); a binary is
-   * left alone.
+   * A file with a `#!` line for another language is read by that language's rule (see interpreters.ts); a binary
+   * (a NUL byte in its first line, as bash tells one) is left alone.
    */
   private visitScriptFile(file: ShellWord, chdirs: readonly ShellWord[], env: readonly Assignment[], sameShell: boolean, byPath: boolean, location: Location, depth: number): void {
     const inner = location.child();
@@ -506,16 +527,27 @@ class GitInvocationFinder {
       this.doubt('it runs a shell script file only known when it runs', true);
       return;
     }
-    const text = this.readFile(path);
-    if (text === undefined) {
-      if (this.writtenFiles.has(path)) {
-        this.doubt('it runs a script file the line writes, whose text the guard cannot read', true);
-      } else if (!byPath || SHELL_SCRIPT_NAME.test(path)) {
-        this.doubt('it runs a shell script file the guard cannot read', true);
-      }
-      return;
+    const { written, writtenText, diskText } = this.fileTexts(path);
+    if (written && writtenText === undefined) {
+      this.doubt('it runs a script file the line writes, whose text the guard cannot read', true);
+    } else if (!written && diskText === undefined && (!byPath || SHELL_SCRIPT_NAME.test(path))) {
+      this.doubt('it runs a shell script file the guard cannot read', true);
     }
-    if (text.includes('\0')) {
+    // A write the line makes may not run, so the file on disk is read as well.
+    for (const text of [writtenText, diskText]) {
+      if (text !== undefined) {
+        this.visitScriptText(text, env, sameShell, chdirs, location, depth);
+      }
+    }
+  }
+
+  /** Visits one text a script file holds; see {@link visitScriptFile}. */
+  private visitScriptText(text: string, env: readonly Assignment[], sameShell: boolean, chdirs: readonly ShellWord[], location: Location, depth: number): void {
+    const inner = location.child();
+    chdirs.forEach((chdir) => inner.moveTo(chdir));
+    // bash refuses a file as binary only when a NUL byte comes in its first line; a later one it runs past.
+    const firstLine = text.indexOf('\n') === -1 ? text : text.slice(0, text.indexOf('\n'));
+    if (firstLine.includes('\0')) {
       return;
     }
     const shebang = SHEBANG.exec(text);
@@ -637,7 +669,7 @@ class GitInvocationFinder {
           }
           break;
         }
-        if (dialect === 'bash' && programText !== undefined && programText.includes('/') && interpreterOf(launched) === undefined && !/^git(?:-|$)/.test(programName(programText))) {
+        if (dialect === 'bash' && programText !== undefined && programText.includes('/') && interpreterOf(launched) === undefined && !isGitProgram(programName(programText))) {
           this.visitScriptFile(launched.program, launched.chdirs, launched.env, false, true, location, depth);
           break;
         }

@@ -15,6 +15,11 @@ const FILES: Readonly<Record<string, string>> = {
   '/work/app/tool': '\u007fELF\u0002\u0001\u0001\u0000\u0000git push origin main',
   '/work/app/nested.sh': 'bash x.sh\n',
   '/work/app/loop.sh': 'bash loop.sh\n',
+  '/work/app/git-ship.sh': PUSH_SCRIPT,
+  '/work/app/git-ship': PUSH_SCRIPT,
+  '/work/app/nul.sh': '#!/bin/sh\n# \u0000 data\ngit push origin main\n',
+  '/work/app/old.sh': PUSH_SCRIPT,
+  '/work/app/old.py': 'import subprocess\nsubprocess.run(["git", "push", "origin", "main"])\n',
 };
 
 function find(command: string, files: Readonly<Record<string, string>> = FILES): GitInvocations {
@@ -66,7 +71,7 @@ describe('findGitInvocations on shell script files', () => {
     assert.deepEqual(pushes('bash cdsub.sh && git push origin feat'), ['/work/app|origin feat']);
   });
 
-  it('reads the text a line writes into a script before it runs it, not the file on disk', () => {
+  it('reads the text a line writes into a script before it runs it', () => {
     for (const line of [
       "cat <<'E' > f.sh\ngit push origin main\nE\nbash f.sh",
       "cat > f.sh <<'E'\ngit push origin main\nE\nchmod +x f.sh; ./f.sh",
@@ -111,6 +116,35 @@ describe('findGitInvocations on shell script files', () => {
   it('reads an interpreter script the line writes from what it writes', () => {
     const line = "cat <<'E' > s.py\nimport subprocess\nsubprocess.run(['git', 'push', 'origin', 'main'])\nE\npython3 s.py";
     assert.deepEqual(doubts(line), [
+      '!:it runs a python script that may run git push, whose push the guard cannot read; run the push as a plain git command on the line instead',
+    ]);
+  });
+
+  it('reads a script run by its path whose name starts with git-, unless it names a git command', () => {
+    for (const line of ['./git-ship.sh', './git-ship', '/work/app/git-ship']) {
+      assert.deepEqual(pushes(line), ['/work/app|origin main'], line);
+    }
+    // A git command by its path, such as git's own git-push, is git's.
+    assert.deepEqual(pushes('/usr/lib/git-core/git-push origin feat'), ['/work/app|origin feat']);
+  });
+
+  it('reads a script with a NUL byte after its first line, which bash still runs', () => {
+    for (const line of ['bash nul.sh', './nul.sh', 'sh nul.sh']) {
+      assert.deepEqual(pushes(line), ['/work/app|origin main'], line);
+    }
+  });
+
+  it('reads the file on disk too when the line writes it, as the write may not run', () => {
+    for (const line of [
+      "false && cat <<'E' > old.sh\necho fine\nE\nbash old.sh",
+      "if false; then cat <<'E' > old.sh\necho fine\nE\nfi; bash old.sh",
+      "cat <<'E' > old.sh\necho fine\nE\n./old.sh",
+    ]) {
+      assert.deepEqual(pushes(line), ['/work/app|origin main'], line);
+    }
+    // The text the line writes is read as well.
+    assert.deepEqual(pushes("false && cat <<'E' > ok.sh\ngit push origin feat\nE\nbash ok.sh"), ['/work/app|origin feat']);
+    assert.deepEqual(doubts("false && cat <<'E' > old.py\nprint('fine')\nE\npython3 old.py"), [
       '!:it runs a python script that may run git push, whose push the guard cannot read; run the push as a plain git command on the line instead',
     ]);
   });
