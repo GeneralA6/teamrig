@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { nodeFiles } from '../../src/core/files.ts';
+import { gitSyncIn } from '../lib/git.ts';
 import { realSleep, systemClock } from '../../src/core/lock.ts';
 import { changePatch, clearMergeFrom, shipWritesOf, workCommitsOf } from './approval.ts';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
@@ -38,7 +39,7 @@ function realShipDeps(repo: string, noteFile: string | null): ShipDeps {
     console.log(`\n$ ${command} ${args.join(' ')}`);
     execFileSync(command, args, { cwd: repo, stdio: 'inherit' });
   };
-  const git = (args: readonly string[]): string => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+  const git = gitSyncIn(repo);
   const gitLine = (...args: string[]): string => git(args).trim();
   const log = (line: string): void => console.log(line);
   const profile = profileFor(readProfiles(), slugOf(gitLine('remote', 'get-url', 'origin')));
