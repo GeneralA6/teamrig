@@ -946,7 +946,8 @@ export interface QueueConfig {
    * turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning steps of one session
    * running and maxHeavyParallel heavy steps sharing the host at once, and is the default; `serial` keeps the line in
    * arrival order with no cap and one heavy step at a time, for a team whose own deploy tool takes the lock file
-   * without first waiting for the shares to end.
+   * without first waiting for the shares to end. A step in line reads this key and the four after it again at each
+   * look, so an edit reaches the steps already waiting.
    */
   readonly admission: AdmissionMode;
   /** In `pipeline` admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. */
