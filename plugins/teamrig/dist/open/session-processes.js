@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
 import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
+import { UTF8_OUTPUT } from "../core/powershell.js";
 import { sweepTree, windowsSweepHost } from "../delivery/tree-kill.js";
 import { nodeProgramRunner } from "../github/credentials.js";
 import { exitText, outcomeOfError } from "./processes.js";
@@ -32,21 +33,25 @@ const POSIX_LISTING = ['-A', '-ww', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='];
 function isPid(pid) {
     return Number.isSafeInteger(pid) && pid > 0;
 }
+/** Windows PowerShell's arguments for `script`, its output in UTF-8 so a command line's every character reaches the JSON intact. */
+function windowsArgs(script) {
+    return ['-NoProfile', '-NonInteractive', '-Command', UTF8_OUTPUT + script];
+}
 function windowsLookup(pid) {
     const script = `$p = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; ` +
         'if ($p) { $p | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress }';
-    return ['-NoProfile', '-NonInteractive', '-Command', script];
+    return windowsArgs(script);
 }
 function windowsChildren(pid) {
     const script = `$c = @(Get-CimInstance Win32_Process -Filter 'ParentProcessId=${pid}' | Select-Object ProcessId,ParentProcessId,Name,CommandLine); ` +
         'ConvertTo-Json -Compress -InputObject $c';
-    return ['-NoProfile', '-NonInteractive', '-Command', script];
+    return windowsArgs(script);
 }
 /** Every process, with when it started in milliseconds since 1970 (0 where Windows does not say, as for its own). */
 function windowsListing() {
     const started = "@{n='Started';e={if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 }}}";
     const script = `$a = @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,${started}); ConvertTo-Json -Compress -InputObject $a`;
-    return ['-NoProfile', '-NonInteractive', '-Command', script];
+    return windowsArgs(script);
 }
 /** One process of PowerShell's JSON; undefined for another shape. */
 function processOfRecord(record) {
