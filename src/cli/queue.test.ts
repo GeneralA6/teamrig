@@ -565,7 +565,7 @@ describe('teamrig queue', () => {
   });
 
   for (const [flag, value, message] of [
-    ['--kind', 'tests', /--kind is one of build, test, lint, push, merge, deploy, other/],
+    ['--kind', 'tests', /--kind is one of build, test, lint, push, merge, deploy, other, ship/],
     ['--task', 'merge', /--task is a register task id, such as T12/],
     ['--task', 'T0', /--task is a register task id, such as T12/],
     ['--memory-mb', '0', /--memory-mb is a whole number of MB from 1/],

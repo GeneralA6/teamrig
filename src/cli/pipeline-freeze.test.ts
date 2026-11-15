@@ -46,7 +46,7 @@ describe('teamrig pipeline freeze', () => {
     assert.deepEqual((await kit.run(['pipeline', 'freeze', '--session', 'lead', '--to', '09:00', '--reason', 'late'])).stdout, ['REFUSED a freeze ends after it starts']);
     const unknown = await kit.run(['pipeline', 'freeze', '--session', 'lead', '--to', '12:00', '--kinds', 'merge,nap', '--reason', 'x']);
     assert.equal(unknown.code, EXIT.usage);
-    assert.ok([...unknown.stdout, ...unknown.stderr].some((line) => line.includes('--kinds "merge,nap": nap is not a step kind (build, test, lint, push, merge, deploy, other)')), JSON.stringify(unknown));
+    assert.ok([...unknown.stdout, ...unknown.stderr].some((line) => line.includes('--kinds "merge,nap": nap is not a step kind (build, test, lint, push, merge, deploy, other, ship)')), JSON.stringify(unknown));
     assert.equal((await kit.run(['pipeline', 'freeze', '--session', 'lead', '--to', 'soon', '--reason', 'x'])).code, EXIT.usage);
     assert.equal(kit.files.get(FREEZES), undefined);
   });

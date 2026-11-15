@@ -57,6 +57,7 @@ describe('causeOfLockWait', () => {
       [{ kind: 'sessionCap', cap: 2, running: [INFO] }, 'session'],
       [{ kind: 'heavyCap', cap: 2, running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'heavyCap'],
       [{ kind: 'cpu', idlePct: 10, needPct: 25, running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'cpu'],
+      [{ kind: 'shipSlot', running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'shipSlot'],
       [{ kind: 'admitting' }, 'line'],
     ];
     assert.deepEqual(

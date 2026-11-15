@@ -13,7 +13,7 @@ export interface WaitTold {
 
 /**
  * The cause of a wait on the host lock; a lock file still being written (`unknown`) counts as held, another step
- * being admitted (`admitting`) as a wait in line, and the heavy cap and the CPU under their own names.
+ * being admitted (`admitting`) as a wait in line, and the heavy cap, the CPU and the ship slot under their own names.
  */
 export function causeOfLockWait(wait: LockWait): WaitCause {
   switch (wait.kind) {
@@ -30,6 +30,7 @@ export function causeOfLockWait(wait: LockWait): WaitCause {
     case 'commit':
     case 'heavyCap':
     case 'cpu':
+    case 'shipSlot':
       return wait.kind;
   }
 }

@@ -7,6 +7,7 @@ import {
   lineRequestOf,
   processRequest,
   STEP_KINDS,
+  takesShipSlot,
   taskOfLabel,
   type LineTask,
   type RequestFocus,
@@ -154,5 +155,12 @@ describe('isStepKind', () => {
     const kinds: readonly StepKind[] = STEP_KINDS;
     assert.deepEqual(kinds.filter(isStepKind), kinds);
     assert.deepEqual(['tests', 'Build', '', 5, undefined].filter(isStepKind), []);
+  });
+});
+
+describe('takesShipSlot (T2727)', () => {
+  it('is true for the kinds that move a main branch, and false for the rest and for a step that names no kind', () => {
+    assert.deepEqual(STEP_KINDS.filter(takesShipSlot), ['merge', 'deploy', 'ship']);
+    assert.equal(takesShipSlot(undefined), false);
   });
 });
