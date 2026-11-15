@@ -20,13 +20,18 @@ function fileKey(path: string): string {
   return path.replaceAll('\\', '/').toLowerCase();
 }
 
-/** The real path of each spelling the fake filesystem knows: the kit home, the config, and what links to it. */
+/**
+ * The real path of each spelling the fake filesystem knows: the kit home, the config, and what links to it. An 8.3
+ * short name comes back unchanged, as Node's real path gives it on Windows, so the guard must know it by its name.
+ */
 const REAL: Readonly<Record<string, string>> = {
   [fileKey('C:/u/.teamrig')]: 'C:/u/.teamrig',
   [fileKey(CONFIG)]: CONFIG,
   [fileKey('C:/w/link.json')]: CONFIG,
-  [fileKey('C:/u/.teamrig/teams/shop/CONFIG~1.JSO')]: CONFIG,
-  [fileKey('C:/u/TEAMRI~1/teams/shop/config.json')]: CONFIG,
+  [fileKey('C:/u/.teamrig/teams/shop/CONFIG~1.JSO')]: 'C:/u/.teamrig/teams/shop/CONFIG~1.JSO',
+  [fileKey('C:/u/.teamrig/teams/other/CONFIG~1.JSO')]: 'C:/u/.teamrig/teams/other/CONFIG~1.JSO',
+  [fileKey('C:/u/TEAMRI~1/teams/shop/config.json')]: 'C:/u/TEAMRI~1/teams/shop/config.json',
+  [fileKey('C:/u/TEAMRI~1/teams/SHOP~1/CONFIG~2.JSO')]: 'C:/u/TEAMRI~1/teams/SHOP~1/CONFIG~2.JSO',
 };
 
 interface GuardOptions {
@@ -175,6 +180,20 @@ describe('service-role guard: the team config', () => {
     assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/web/config.json', ...added }), env({ reads })), 'deny');
     assert.deepEqual(reads, ['C:\\u\\.teamrig\\teams\\web\\config.json']);
     assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/web/config.json', old_string: '"lead"', new_string: '"boss"' })), undefined);
+  });
+
+  it('knows a team config by its 8.3 short name, which its real path gives back unchanged', async () => {
+    const added = { old_string: '"alpha"\n      ]', new_string: '"alpha",\n        "bravo"\n      ]' };
+    for (const file_path of ['C:/u/.teamrig/teams/shop/CONFIG~1.JSO', 'C:/u/TEAMRI~1/teams/SHOP~1/CONFIG~2.JSO', '/c/u/.teamrig/teams/shop/config~1.jso']) {
+      assert.equal(await decide(call('Edit', { file_path, ...added })), 'deny', file_path);
+    }
+    const dropGate = { old_string: '"budget"', new_string: '' };
+    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/other/CONFIG~1.JSO', ...dropGate })), 'deny');
+    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/other/CONFIG~1.JSO', ...dropGate }), env({ configPath: undefined })), 'deny');
+    const reads: string[] = [];
+    await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/shop/CONFIG~1.JSO', ...added }), env({ reads }));
+    assert.deepEqual(reads, ['C:\\u\\.teamrig\\teams\\shop\\CONFIG~1.JSO']);
+    assert.equal(await decide(call('Edit', { file_path: 'C:/u/.teamrig/teams/shop/CONFIG~1.JSO', old_string: '"lead"', new_string: '"boss"' })), undefined);
   });
 
   it('holds every other spelling of a team config to the file: links, short names, trailing dots, and refuses device, share and stream forms (T2984)', async () => {

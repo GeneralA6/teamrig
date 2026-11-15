@@ -142,8 +142,11 @@ function kitHomeOf(configPath: string, platform: NodeJS.Platform): string {
 /** A Git Bash drive path's head, `/c/`, which Windows tools read as the drive `c:/`. */
 const MSYS_DRIVE = /^\/([a-z])(?=\/)/i;
 
-/** A team config by its tail, `teams/<team>/config.json`, on a path in its compare form (one slash kind). */
-const TEAM_CONFIG_FILE = /(?:^|\/)teams\/+[^/]+\/+config\.json$/i;
+/**
+ * A team config by its tail, `teams/<team>/config.json`, on a path in its compare form (one slash kind). Its 8.3 short
+ * name (`CONFIG~1.JSO`) counts too: Windows opens the config by it, and the real path gives it back unchanged.
+ */
+const TEAM_CONFIG_FILE = /(?:^|\/)teams\/+[^/]+\/+config(?:\.json|~\d+\.jso)$/i;
 
 /**
  * The absolute path of the team config a file tool's path names, or undefined for another file. Any team's config
