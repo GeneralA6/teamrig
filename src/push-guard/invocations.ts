@@ -1,4 +1,5 @@
-import { interpreterDoubt, interpreterOf, interpreterText, readScriptFile, scriptMayPush } from './interpreters.ts';
+import { isAbsolute, join } from 'node:path';
+import { interpreterDoubt, interpreterLanguage, interpreterOf, interpreterText, readScriptFile, scriptMayPush } from './interpreters.ts';
 import { isAssignment, isShell, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
 import { Location, resolveDir } from './location.ts';
 import { splitGitAlias } from './program-split.ts';
@@ -139,6 +140,27 @@ function commandNames(words: readonly ShellWord[]): string[] {
   return names;
 }
 
+/*
+ * Shell script files. A shell that runs a script file (`bash x.sh`,
+ * `sh x.sh`, `source x.sh`, `. x.sh`) or a text file run by its path (`./x.sh`) runs its lines as commands, so the
+ * guard reads the file and judges them as it judges the line. A file the line itself writes is read as the line
+ * writes it (a heredoc `cat` stores), never from the disk the line is about to overwrite; one whose text the guard
+ * cannot know, or a script file it cannot read or name, is a doubt.
+ */
+/** A script's first line naming the program that runs it, and `env`'s program after it. */
+const SHEBANG = /^#!\s*(\S+)(?:[ \t]+(\S+))?/;
+/** A path into a device or process folder, which no command writes as a script. */
+const DEVICE_PATH = /^\/(?:dev|proc)\//;
+/** A file name a shell script has. */
+const SHELL_SCRIPT_NAME = /\.(?:sh|bash)$/i;
+
+/** The file a word names, in `dir` when relative; undefined when it is only known when it runs. */
+function filePath(word: ShellWord, dir: string | undefined): string | undefined {
+  if (word.dynamic || word.text === '' || word.text.includes('\n')) {
+    return undefined;
+  }
+  return isAbsolute(word.text) ? word.text : dir === undefined ? undefined : join(dir, word.text);
+}
 const MAX_ALIAS_DEPTH = 8;
 const DIALECT_NAMES: Readonly<Record<ShellDialect, string>> = { bash: 'bash', powershell: 'PowerShell', cmd: 'cmd' };
 
@@ -353,6 +375,11 @@ class GitInvocationFinder {
   /** True once the line writes a file, and once it runs a program by its path. */
   private writesFile = false;
   private runsPath = false;
+  /**
+   * The files the line writes, by path, with the text it writes there,
+   * or undefined when that text is not known (`echo ... > f`, `>>`, `tee`).
+   */
+  private readonly writtenFiles = new Map<string, string | undefined>();
   private readonly context: FinderContext;
 
   constructor(context: FinderContext) {
@@ -361,8 +388,8 @@ class GitInvocationFinder {
 
   find(command: string): GitInvocations {
     this.visitScript(staticWord(command), this.context.dialect, new Location(this.context.cwd, this.context.home), 0);
-    // A file the line writes and then runs by its path is a script the guard never reads (only interpreter
-    // scripts are), so text written into it may run.
+    // A file the line writes and then runs by its path may run text written into it as commands (one whose
+    // text the guard cannot know is a doubt of its own; see visitScriptFile).
     if (this.rereads || (this.writesFile && this.runsPath)) {
       this.doubts.push(...this.heldDoubts);
     }
@@ -433,6 +460,81 @@ class GitInvocationFinder {
         }
         piped = use === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
       }
+      this.noteWrites(command, launched, stdin, location);
+    }
+  }
+
+  /**
+   * Records the files `command` writes (see {@link writtenFiles}): a
+   * plain `cat` stores its heredoc or here-string there as written; any other write leaves the text unknown.
+   */
+  private noteWrites(command: ShellCommand, launched: Launch | undefined, stdin: ShellWord | undefined, location: Location): void {
+    const stored = stdin !== undefined && !stdin.dynamic && launched !== undefined && stdinUse(command, launched) === 'stored' ? stdin.text : undefined;
+    const record = (word: ShellWord, text: string | undefined): void => {
+      const path = filePath(word, location.dir);
+      if (path !== undefined && !DEVICE_PATH.test(path)) {
+        this.writtenFiles.set(path, text);
+      }
+    };
+    for (const redirection of command.redirections) {
+      if (WRITES_FILE.test(redirection.operator) && redirection.target !== undefined) {
+        // Only stdout carries what a plain `cat` stores; `>>` appends to text the guard does not know.
+        record(redirection.target, /^(?:1|&)?>[|]?$/.test(redirection.operator) ? stored : undefined);
+      }
+    }
+    if (launched?.kind === 'program' && !launched.program.dynamic && programName(launched.program.text) === 'tee') {
+      launched.args.filter((arg) => !arg.text.startsWith('-')).forEach((arg) => record(arg, undefined));
+    }
+  }
+
+  /** A file's text as the line leaves it: as it writes it, else from disk. */
+  private readonly readFile = (path: string): string | undefined =>
+    this.writtenFiles.has(path) ? this.writtenFiles.get(path) : (this.context.readScript ?? readScriptFile)(path);
+
+  /**
+   * Reads the shell script file `file` names and visits its commands, in
+   * a shell of its own or, for `source` / `.`, the same shell. `byPath` is a file run as a program (`./x.sh`): one the
+   * guard cannot read is a doubt only when its name says it is a shell script, as a missing binary runs nothing.
+   * A file with a `#!` line for another language is read by that language's rule (see interpreters.ts); a binary is
+   * left alone.
+   */
+  private visitScriptFile(file: ShellWord, chdirs: readonly ShellWord[], env: readonly Assignment[], sameShell: boolean, byPath: boolean, location: Location, depth: number): void {
+    const inner = location.child();
+    chdirs.forEach((chdir) => inner.moveTo(chdir));
+    const path = filePath(file, inner.dir);
+    if (path === undefined) {
+      this.doubt('it runs a shell script file only known when it runs', true);
+      return;
+    }
+    const text = this.readFile(path);
+    if (text === undefined) {
+      if (this.writtenFiles.has(path)) {
+        this.doubt('it runs a script file the line writes, whose text the guard cannot read', true);
+      } else if (!byPath || SHELL_SCRIPT_NAME.test(path)) {
+        this.doubt('it runs a shell script file the guard cannot read', true);
+      }
+      return;
+    }
+    if (text.includes('\0')) {
+      return;
+    }
+    const shebang = SHEBANG.exec(text);
+    let program = shebang?.[1] === undefined ? undefined : programName(shebang[1]);
+    if (program === 'env' && shebang?.[2] !== undefined) {
+      program = programName(shebang[2]);
+    }
+    if (program !== undefined && !isShell(program)) {
+      const language = interpreterLanguage(program);
+      if (language !== undefined && scriptMayPush(text, language)) {
+        this.doubt(interpreterDoubt(language), false);
+      } else if (language === undefined && saysPush(text)) {
+        this.doubt(`it runs a ${program} script file that names a push, which the guard cannot read`, false);
+      }
+      return;
+    }
+    this.inheriting(hooksVariableOf(env), sameShell, () => this.visitScript(staticWord(text), 'bash', inner, depth + 1));
+    if (sameShell) {
+      location.adopt(inner);
     }
   }
 
@@ -505,6 +607,9 @@ class GitInvocationFinder {
     const launched = launch(words, dialect, stdin);
     switch (launched.kind) {
       case 'nothing':
+        if (launched.scriptFile !== undefined && dialect === 'bash') {
+          this.visitScriptFile(launched.scriptFile, launched.chdirs ?? [], launched.env ?? [], false, false, location, depth);
+        }
         break;
       case 'opaque':
         this.doubt(launched.reason, launched.gated);
@@ -522,11 +627,25 @@ class GitInvocationFinder {
         break;
       }
       case 'program': {
+        // `source` / `.` run a script file in this shell, and a text
+        // file run by its path is a script its `#!` line names, or a shell's.
+        const programText = launched.program.dynamic ? undefined : launched.program.text;
+        if (dialect === 'bash' && (programText === 'source' || programText === '.')) {
+          const file = launched.args[0];
+          if (file !== undefined) {
+            this.visitScriptFile(file, launched.chdirs, launched.env, true, false, location, depth);
+          }
+          break;
+        }
+        if (dialect === 'bash' && programText !== undefined && programText.includes('/') && interpreterOf(launched) === undefined && !/^git(?:-|$)/.test(programName(programText))) {
+          this.visitScriptFile(launched.program, launched.chdirs, launched.env, false, true, location, depth);
+          break;
+        }
         const language = interpreterOf(launched);
         if (language !== undefined) {
           const inner = location.child();
           launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-          const text = interpreterText(launched, stdin, inner.dir, this.context.readScript ?? readScriptFile, language);
+          const text = interpreterText(launched, stdin, inner.dir, this.readFile, language);
           if (scriptMayPush(text, language)) {
             this.doubt(interpreterDoubt(language), false);
           }

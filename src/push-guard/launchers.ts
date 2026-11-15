@@ -54,8 +54,20 @@ export interface OpaqueLaunch {
   readonly stdinScript?: true;
 }
 
+/**
+ * Nothing the guard reads as a command: a keyword line, an expression, or a script file a POSIX shell runs.
+ * For a script file (`bash x.sh`), `scriptFile` is the word that names
+ * it, with the variables and folder changes of its wrappers, so the finder can read the file.
+ */
+export interface NothingLaunch {
+  readonly kind: 'nothing';
+  readonly scriptFile?: ShellWord;
+  readonly env?: readonly Assignment[];
+  readonly chdirs?: readonly ShellWord[];
+}
+
 /** What one simple command starts: nothing (a keyword line, an expression, a script file), a program, a script, or something unreadable. */
-export type Launch = { readonly kind: 'nothing' } | ProgramLaunch | ScriptLaunch | OpaqueLaunch;
+export type Launch = NothingLaunch | ProgramLaunch | ScriptLaunch | OpaqueLaunch;
 
 /** How a wrapper such as `env`, `sudo` or `timeout` reads its options before the program it runs. */
 interface WrapperSpec {
@@ -440,7 +452,11 @@ class LaunchReader {
     if (command) {
       return operand === undefined ? NOTHING : this.script(operand, 'bash', false);
     }
-    return operand === undefined || stdin ? this.fromStdin('bash') : NOTHING;
+    if (operand === undefined || stdin) {
+      return this.fromStdin('bash');
+    }
+    // The script file it runs, for the finder to read.
+    return { kind: 'nothing', scriptFile: operand, env: this.env, chdirs: this.chdirs };
   }
 
   /**

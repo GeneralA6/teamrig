@@ -320,12 +320,15 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
   (`python3 -c 'print("git push ...")' | sh`, or a `$( )`), its text still names a push for that command, so a shell
   fed a printed push asks. This is a text rule against an accidental push, not a sandbox: a script
   that builds `'gi' + 't'` or decodes its command passes.
+- **Reads a shell script file**: a script `bash`, `sh`, `source`, `.` or its own path runs (`bash x.sh`,
+  `./ship.sh`) is read and judged like the line itself; a file the line writes first (`cat <<'E' > f.sh`) is read as
+  the line writes it. One the guard cannot read, or whose written text it cannot know, is a doubt.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,
-wrappers and git aliases (an `env -S` string and an alias value split by env's and git's own rules, a CR a plain
+shell script files, wrappers and git aliases (an `env -S` string and an alias value split by env's and git's own rules, a CR a plain
 space in both), but it does not see a push inside a program the command runs (a script of the interpreters above
-is judged by its text), `gh pr merge`,
+is judged by its text), a script that builds its git command from pieces, `gh pr merge`,
 git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
 branch on your git host too.
 

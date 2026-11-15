@@ -19,10 +19,11 @@ const INTERPRETER = /^(?:python[\d.]*|pypy[\d.]*|node|nodejs|deno|bun|perl[\d.]*
 
 /** The language an interpreter's program name runs, or undefined when it is not one of {@link INTERPRETER}. */
 export function interpreterOf(launched: ProgramLaunch): string | undefined {
-  if (launched.program.dynamic) {
-    return undefined;
-  }
-  const name = programName(launched.program.text);
+  return launched.program.dynamic ? undefined : interpreterLanguage(programName(launched.program.text));
+}
+
+/** The language an interpreter's program name (as {@link programName} gives it) runs, or undefined. */
+export function interpreterLanguage(name: string): string | undefined {
   if (!INTERPRETER.test(name)) {
     return undefined;
   }
