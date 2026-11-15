@@ -326,10 +326,12 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
   A file bash refuses as binary (a NUL in the first line, within its first 80 bytes) is left alone, except under
   `source` or `.`, which run it; a `git-<command>` file run by its path is read as a script and as git.
 - **Reads what other runners run**: `su -c`, `runuser`, `flock -c`, `script -c`, `find -exec`, `trap`, `nsenter`,
-  `chroot`, `unshare`, `setpriv`, `systemd-run` and `. /dev/stdin <<<` are read like the line. `ssh`, `watch`, `tmux`,
-  `screen`, a terminal's `-e`, `parallel`, `at`, `crontab`, `docker`/`kubectl exec` and awk's `system()` are a doubt
-  when the command they are handed names a push, as is a push written into a shell startup file, `PROMPT_COMMAND` or
-  an alias.
+  `chroot`, `unshare`, `setpriv`, `systemd-run`, `pkexec`, `firejail`, `bwrap`, `fakeroot`, `strace`, `taskset`,
+  `chrt` and `. /dev/stdin <<<` are read like the line, as are the command lines `ssh`, `watch` and `tmux new` hand
+  a shell, `su`, `sudo -s`/`-i` or a shell fed a heredoc or `< file`, and the file `BASH_ENV` names. `screen`, a
+  terminal's `-e`, `parallel`, `at`, `crontab`, `docker`/`kubectl`/`nerdctl exec`, `toolbox`, `distrobox`, `byobu`,
+  `zellij`, awk's `system()` and `vim -c`/`gdb -ex`/`expect -c` are a doubt when the command they are handed names a
+  push, as is a push written into a shell startup file, `PROMPT_COMMAND` or an alias.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,

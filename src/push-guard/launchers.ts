@@ -85,6 +85,8 @@ interface WrapperSpec {
   readonly assignments?: boolean;
   /** True when the program also gets arguments from stdin. */
   readonly stdinArgs?: boolean;
+  /** Options that take two values, such as `bwrap --bind SRC DEST`. */
+  readonly paired?: readonly string[];
   /**
    * Options that start a shell (`sudo -s`, `sudo -i`), which reads its
    * commands from stdin when no program follows.
@@ -158,6 +160,23 @@ const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>(
   ],
   ['runuser', { valued: ['-u', '--user', '-g', '--group', '-G', '--supp-group', '-w', '--whitelist-environment', '-s', '--shell'] }],
   ['flock', { valued: ['-w', '--timeout', '-E', '--conflict-exit-code'], leading: 1 }],
+  // More programs that run the command after their options: with
+  // other privileges, in a sandbox, under a tracer, or with a CPU or scheduling setting.
+  ['pkexec', { valued: ['--user'] }],
+  ['firejail', {}],
+  [
+    'bwrap',
+    {
+      valued: [...['--args', '--userns', '--userns2', '--pidns', '--uid', '--gid', '--hostname', '--unsetenv', '--lock-file', '--sync-fd', '--info-fd', '--json-status-fd'], ...['--block-fd', '--userns-block-fd', '--seccomp', '--add-seccomp-fd', '--exec-label', '--file-label', '--remount-ro', '--tmpfs', '--proc', '--dev', '--dir', '--mqueue', '--cap-add', '--cap-drop', '--size', '--perms', '--argv0']],
+      paired: [...['--bind', '--bind-try', '--dev-bind', '--dev-bind-try', '--ro-bind', '--ro-bind-try', '--overlay-src', '--tmp-overlay', '--ro-overlay', '--bind-fd', '--ro-bind-fd'], ...['--setenv', '--symlink', '--file', '--bind-data', '--ro-bind-data', '--chmod']],
+      chdir: ['--chdir'],
+    },
+  ],
+  ['fakeroot', { valued: ['-l', '--lib', '--faked', '-s', '-i', '-b'] }],
+  ['strace', { valued: ['-e', '-o', '-p', '-s', '-u', '-a', '-b', '-E', '-I', '-O', '-P', '-S', '-X', '-U'], inspect: ['-V', '--version', '-h', '--help'] }],
+  ['ltrace', { valued: ['-e', '-o', '-p', '-s', '-u', '-a', '-n', '-A', '-D', '-F', '-l', '-w', '-x', '-L'] }],
+  ['taskset', { valued: [], inspect: ['-p', '--pid'], leading: 1 }],
+  ['chrt', { valued: ['-T', '--sched-runtime', '-P', '--sched-period', '-D', '--sched-deadline'], inspect: ['-p', '--pid', '-m', '--max'], leading: 1 }],
 ]);
 
 /**
@@ -477,7 +496,7 @@ class LaunchReader {
   private wrapper(spec: WrapperSpec, args: readonly ShellWord[]): Step {
     this.stdinArgs ||= spec.stdinArgs === true;
     const has = (list: readonly string[] | undefined, option: string): boolean => list?.includes(option) === true;
-    const takesValue = (option: string): boolean => has(spec.valued, option) || has(spec.chdir, option) || has(spec.split, option);
+    const takesValue = (option: string): boolean => has(spec.valued, option) || has(spec.chdir, option) || has(spec.split, option) || has(spec.paired, option);
     let leading = spec.leading ?? 0;
     let index = 0;
     let shell = false;
@@ -495,6 +514,9 @@ class LaunchReader {
         option = equals === -1 ? text : text.slice(0, equals);
         if (takesValue(option)) {
           value = equals === -1 ? args[(index += 1)] : { text: text.slice(equals + 1), dynamic: word.dynamic };
+        }
+        if (has(spec.paired, option)) {
+          index += 1;
         }
       } else if (text.startsWith('-')) {
         for (let at = 1; at < text.length; at += 1) {

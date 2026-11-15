@@ -186,9 +186,20 @@ function looksBinary(text: string): boolean {
 const ARGUMENT_RUNNERS: ReadonlySet<string> = new Set([
   ...['ssh', 'watch', 'tmux', 'screen', 'xterm', 'gnome-terminal', 'konsole', 'kitty', 'alacritty', 'xfce4-terminal', 'parallel'],
   ...['docker', 'podman', 'kubectl', 'oc', 'awk', 'gawk', 'mawk', 'nawk'],
+  // Containers, multiplexers and programs with a command option.
+  ...['nerdctl', 'toolbox', 'distrobox', 'byobu', 'zellij', 'expect', 'vim', 'nvim', 'vi', 'ex', 'gdb'],
 ]);
 /** Container tools: only what follows their `exec`, `run` or `debug` is a command (`docker push` pushes an image). */
-const CONTAINER_TOOLS: ReadonlySet<string> = new Set(['docker', 'podman', 'kubectl', 'oc']);
+const CONTAINER_TOOLS: ReadonlySet<string> = new Set(['docker', 'podman', 'kubectl', 'oc', 'nerdctl']);
+/**
+ * Programs that run commands only through an option's value, by the
+ * options that hold one: an editor's `-c` / `+` (`vim -c '!git push'`), gdb's `-ex`, expect's `-c`.
+ */
+const COMMAND_OPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ...['vim', 'nvim', 'vi', 'ex'].map((name): [string, ReadonlySet<string>] => [name, new Set(['-c', '--cmd'])]),
+  ['gdb', new Set(['-ex', '--ex', '-iex', '--iex', '--eval-command', '--init-eval-command'])],
+  ['expect', new Set(['-c'])],
+]);
 const CONTAINER_COMMANDS: ReadonlySet<string> = new Set(['exec', 'run', 'debug']);
 /** awk runs a command only through `system(...)` or a pipe to or from a quoted command. */
 const AWK_RUNS = /system\s*\(|\|\s*"|"\s*\|/;
@@ -201,6 +212,11 @@ function runnerArgs(name: string, args: readonly ShellWord[]): readonly ShellWor
   }
   if (/awk$/.test(name)) {
     return args.filter((arg) => AWK_RUNS.test(arg.text));
+  }
+  const options = COMMAND_OPTIONS.get(name);
+  if (options !== undefined) {
+    // The value after a command option, or `-c` / `--eval-command=` joined to it, and a vim `+command`.
+    return args.filter((arg, at) => options.has(args[at - 1]?.text ?? '') || arg.text.startsWith('+') || [...options].some((option) => option.startsWith('--') && arg.text.startsWith(`${option}=`)));
   }
   return args;
 }

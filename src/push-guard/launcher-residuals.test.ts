@@ -90,6 +90,35 @@ describe('findGitInvocations: launcher residuals of a first security review', ()
     }
   });
 
+  it('reads or doubts the launchers the first reader did not list', () => {
+    const rows: readonly (readonly [string, string])[] = [
+      ['pkexec sh -c X', 'PUSH'],
+      ['pkexec --user u sh -c X', 'PUSH'],
+      ['firejail --net=none sh -c X', 'PUSH'],
+      ['bwrap --ro-bind / / --dev /dev --chdir /work sh -c X', 'PUSH'],
+      ['fakeroot -- sh -c X', 'PUSH'],
+      ['strace -f -o /tmp/t sh -c X', 'PUSH'],
+      ['taskset 0x1 sh -c X', 'PUSH'],
+      ['taskset -c 0-3 sh -c X', 'PUSH'],
+      ['chrt -f 10 sh -c X', 'PUSH'],
+      ['toolbox run sh -c X', 'DOUBT'],
+      ['distrobox enter box -- sh -c X', 'DOUBT'],
+      ['byobu new-session X', 'DOUBT'],
+      ['zellij run -- sh -c X', 'DOUBT'],
+      ['nerdctl exec c sh -c X', 'DOUBT'],
+      ["expect -c 'spawn git push origin main; interact'", 'DOUBT'],
+      ["vim -c '!git push origin main' notes.txt", 'DOUBT'],
+      ["vim '+!git push origin main' notes.txt", 'DOUBT'],
+      ["gdb -ex '!git push origin main' ./app", 'DOUBT'],
+    ];
+    for (const [shape, expected] of rows) {
+      assert.equal(outcome(shape.replaceAll('X', X)), expected, shape);
+    }
+    for (const shape of ['vim push.md', 'gdb ./push-tool', 'strace -c ls', 'taskset -p 1234', 'chrt -m', 'nerdctl push img:1', 'firejail --net=none ls', 'bwrap --ro-bind / / ls']) {
+      assert.equal(outcome(shape), 'pass', shape);
+    }
+  });
+
   it('reads an ssh command in a folder only known on the remote host', () => {
     const found = find("ssh host 'git p\\ush origin main'");
     assert.deepEqual(
