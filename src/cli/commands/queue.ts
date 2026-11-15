@@ -4,7 +4,7 @@ import type { QueueConfig } from '../../config/types.ts';
 import { busyText, holderText, isHeavyShare, underLock, waitText, type HostLockInfo, type StepNeed, type Taking } from '../../delivery/host-lock.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
 import { pipelineFrozenRefusal } from '../../delivery/pipeline-freezes.ts';
-import { formatRunRecord, runRecordPathOf, type DetachedRunRecord } from '../../delivery/detached-runs.ts';
+import { formatRunRecord, RUN_RECORD_FORMAT, runRecordPathOf, type DetachedRunRecord, type LedgerStep } from '../../delivery/detached-runs.ts';
 import { deliveryPlaces, detachedDirOf, detachedLogOf } from '../../delivery/places.ts';
 import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../delivery/push-pass.ts';
 import { isStepKind, kindOfCommand, lineRequestOf, processRequest, STEP_KINDS, taskOfLabel, type ProcessRequest, type StepKind } from '../../delivery/process-request.ts';
@@ -204,11 +204,13 @@ async function report(runtime: CliRuntime, say: Say, end: StepEnd, step: Step): 
 interface Reporting {
   /** The step got its turn and starts now. */
   started(): Promise<void>;
+  /** Its start record is in the ledger, and the step runs now. */
+  opened(step: LedgerStep): Promise<void>;
   /** The step ended, or never ran, as `last` says. */
   ended(last: string): Promise<void>;
 }
 
-const UNREPORTED: Reporting = { started: async () => undefined, ended: async () => undefined };
+const UNREPORTED: Reporting = { started: async () => undefined, opened: async () => undefined, ended: async () => undefined };
 
 /** A detached run (`--detached-run`) as `--detach` started it: its id, its session and its log. */
 interface DetachedRun {
@@ -231,16 +233,19 @@ async function keepRunRecord(runtime: CliRuntime, say: Say, path: string, record
  * A detached run's session hears in its inbox when its step starts, and, with a wake, when it ends or is refused, since
  * no shell waits for its last line; a line that cannot be posted is said in the log, never failing the step. The run
  * keeps its record (detached-runs.ts) from now until its end line, so a sweep tells its session if it dies before
- * then; it logs its pid, so a death can be traced to what ended it.
+ * then, and with its step's start record once that is in the ledger, so the sweep closes it too (T2942); it logs its
+ * pid, so a death can be traced to what ended it.
  */
 async function detachedReporting(runtime: CliRuntime, kit: Kit, config: KitConfig, say: Say, run: DetachedRun & { readonly record: string }): Promise<Reporting> {
   const { id, session, what, log, record: recordPath } = run;
-  const record: DetachedRunRecord = { v: 1, id, team: kit.paths.team, session, what, log, pid: runtime.pid, startedAt: new Date(runtime.clock.now()).toISOString() };
+  const record: DetachedRunRecord = { v: RUN_RECORD_FORMAT, id, team: kit.paths.team, session, what, log, pid: runtime.pid, startedAt: new Date(runtime.clock.now()).toISOString() };
   say(`detached run ${id}: pid ${runtime.pid}`);
   await keepRunRecord(runtime, say, recordPath, record);
+  let running = record;
   return {
     started: async () => {
-      await keepRunRecord(runtime, say, recordPath, { ...record, runningAt: new Date(runtime.clock.now()).toISOString() });
+      running = { ...record, runningAt: new Date(runtime.clock.now()).toISOString() };
+      await keepRunRecord(runtime, say, recordPath, running);
       const text = `queue ${id} started: ${what}; log ${log}`;
       let problem: string | undefined;
       try {
@@ -251,6 +256,9 @@ async function detachedReporting(runtime: CliRuntime, kit: Kit, config: KitConfi
       if (problem !== undefined) {
         say(`its start line was not posted to ${session}'s inbox: ${problem}`);
       }
+    },
+    opened: async (step) => {
+      await keepRunRecord(runtime, say, recordPath, { ...running, step });
     },
     ended: async (last) => {
       // Removed before the line: of this run and a sweep, only the one whose removal takes the record reports a death.
@@ -625,7 +633,7 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       await reporting.started();
       const run = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
       const mark = { ...owner, what, ...waited, ...(taking.sharing === undefined || taking.sharing.heavy ? {} : { shared: true as const }), request: run };
-      const end = await runRecorded(runtime, { places, delivery }, mark);
+      const end = await runRecorded(runtime, { places, delivery, opened: (start) => reporting.opened({ ledger: places.ledger, start }) }, mark);
       const code = await report(runtime, say, end, step);
       return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);
     } finally {

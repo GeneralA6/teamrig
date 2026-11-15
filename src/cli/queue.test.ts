@@ -1067,14 +1067,15 @@ describe('teamrig queue --detached-run (T2227)', () => {
     assert.equal(kit.files.get(DETACHED_RECORD), undefined, 'a refused run ends its record too');
   });
 
-  it('keeps its run record from its start, marked running once its step runs, and removes it before its end line (T2742)', async () => {
+  it('keeps its run record from its start, marked running with its ledger step once its step runs, and removes it before its end line (T2742, T2942)', async () => {
     const { kit, steps } = harness();
     const seen: unknown[] = [];
     steps.ends(0, MINUTE).whileRunning(async () => {
       seen.push(JSON.parse(kit.files.get(DETACHED_RECORD) ?? 'null'));
     });
     assert.equal((await kit.run(DETACHED_BUILD, { steps })).code, 0);
-    assert.deepEqual(seen, [{ v: 1, id: DETACHED_ID, team: 'app', session: 'alpha', what: 'build api', log: DETACHED_LOG, pid: 4242, startedAt: '2030-01-08T10:00:00.000Z', runningAt: '2030-01-08T10:00:02.000Z' }]);
+    const step = { ledger: LEDGER, start: ledgerOf(kit)[0] };
+    assert.deepEqual(seen, [{ v: 2, id: DETACHED_ID, team: 'app', session: 'alpha', what: 'build api', log: DETACHED_LOG, pid: 4242, startedAt: '2030-01-08T10:00:00.000Z', runningAt: '2030-01-08T10:00:02.000Z', step }]);
     assert.equal(kit.files.get(DETACHED_RECORD), undefined);
     assert.equal((await kit.run(['start'], { env: { TEAMRIG_SESSION: 'bravo' } })).code, 0);
     assert.equal((await alphaWakes(kit)).length, 1, 'a sweep after its own end tells nothing more');
@@ -1085,7 +1086,7 @@ describe('teamrig queue --detached-run (T2227)', () => {
     const files = new FaultyFiles(kit.files).fail('write', DETACHED_RECORD, systemError('EACCES', 'EACCES: permission denied'));
     const result = await kit.run(DETACHED_BUILD, { steps: steps.ends(0), files });
     const unwritten = (at: string): string => `2030-01-08 ${at} UTC its run record was not written, so a death of this run goes untold: EACCES: permission denied`;
-    assert.deepEqual([result.code, result.stdout.filter((line) => line.includes('run record'))], [0, [unwritten('10:00:00'), unwritten('10:00:02')]], 'at its start and when its step runs');
+    assert.deepEqual([result.code, result.stdout.filter((line) => line.includes('run record'))], [0, [unwritten('10:00:00'), unwritten('10:00:02'), unwritten('10:00:02')]], 'at its start, when its step runs and when its ledger step opens (T2942)');
   });
 });
 

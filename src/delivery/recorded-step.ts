@@ -38,6 +38,11 @@ export interface RecordedStepPorts extends StepRecordPorts {
 export interface StepRecordSetup {
   readonly places: Pick<DeliveryPlaces, 'ledger'>;
   readonly delivery: { readonly queue: Pick<QueueConfig, 'memorySampleSeconds'> };
+  /**
+   * Told the step's start record once it is in the ledger, before the step runs (T2942): a detached run keeps it, so a
+   * sweep that finds the run's process gone can append the end record its death left unwritten.
+   */
+  opened?(start: QueuedStepRecord): Promise<void>;
 }
 
 /**
@@ -132,6 +137,8 @@ export async function recordQueuedStep<T>(ports: StepRecordPorts, setup: StepRec
   const watching = sampleMs === 0 ? undefined : ports.memory.watch(ports.pid, sampleMs);
   let exitCode = NOT_STARTED_EXIT;
   try {
+    // Inside the try: a hook that throws still leaves an end record, the step recorded as not started.
+    await setup.opened?.(start);
     const result = await work();
     exitCode = exitOf(result);
     return result;

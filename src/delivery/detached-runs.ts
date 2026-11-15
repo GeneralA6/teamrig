@@ -1,9 +1,16 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, numberField, stringField } from '../core/guards.ts';
+import { parseQueuedStep, type QueuedStepRecord } from './ledger.ts';
 
 /** The suffix of a detached run's record, beside its log in the detached folder (`detachedDirOf`). */
 export const RUN_RECORD_SUFFIX = '.run.json';
+
+/**
+ * The run record's format: 2 added `step` (T2942). Format 1 is still read, as it has the same fields less that one; an
+ * older teamrig reads a format 2 record as none, so it leaves that run's death to a newer sweep: told late, never falsely.
+ */
+export const RUN_RECORD_FORMAT = 2;
 
 /**
  * A detached run (`teamrig queue --detached-run`) still going: written by the run first thing, rewritten when its
@@ -11,7 +18,7 @@ export const RUN_RECORD_SUFFIX = '.run.json';
  * gone (T2742), so a run that dies with no end of its own is still told to its session.
  */
 export interface DetachedRunRecord {
-  readonly v: 1;
+  readonly v: typeof RUN_RECORD_FORMAT;
   readonly id: string;
   /** The team whose run it is: the detached folder may be shared by every team pointing `delivery.dir` at one place. */
   readonly team: string;
@@ -24,6 +31,29 @@ export interface DetachedRunRecord {
   readonly startedAt: string;
   /** An ISO time: when its step got its turn and began to run. */
   readonly runningAt?: string;
+  /**
+   * Its step's start record and the ledger it is in, once there: what a sweep closes when the run dies (T2942). The
+   * start record is the ledger's queued step record as `parseQueuedStep` reads it, so a field that record gains is
+   * a new format of this one too.
+   */
+  readonly step?: LedgerStep;
+}
+
+/** A queued step's start record and the ledger that holds it. */
+export interface LedgerStep {
+  readonly ledger: string;
+  readonly start: QueuedStepRecord;
+}
+
+/** The exit code a sweep records for a step whose run died, as `exitCodeOf` records one a signal stopped. */
+export const DIED_EXIT = 1;
+
+/**
+ * The end record of a step whose run died while it ran, under its start's id: the death was seen at `endedAt`, a sweep's
+ * time, so the end is late by at most the time between sweeps, never early.
+ */
+export function diedEndOf(start: QueuedStepRecord, endedAt: string): QueuedStepRecord {
+  return { ...start, endedAt, exitCode: DIED_EXIT };
 }
 
 /** The record of the detached run `id` in the detached folder `dir`. */
@@ -43,7 +73,7 @@ export function parseRunRecord(text: string): DetachedRunRecord | undefined {
   } catch {
     return undefined;
   }
-  if (!isRecord(value) || value['v'] !== 1) {
+  if (!isRecord(value) || (value['v'] !== 1 && value['v'] !== RUN_RECORD_FORMAT)) {
     return undefined;
   }
   const [id, team, session, what, log, startedAt, pid] = [
@@ -59,7 +89,17 @@ export function parseRunRecord(text: string): DetachedRunRecord | undefined {
     return undefined;
   }
   const runningAt = stringField(value, 'runningAt');
-  return { v: 1, id, team, session, what, log, pid, startedAt, ...(runningAt === undefined ? {} : { runningAt }) };
+  const step = value['v'] === RUN_RECORD_FORMAT ? ledgerStepOf(value['step']) : undefined;
+  return { v: RUN_RECORD_FORMAT, id, team, session, what, log, pid, startedAt, ...(runningAt === undefined ? {} : { runningAt }), ...(step === undefined ? {} : { step }) };
+}
+
+/** `value` as a ledger step, or undefined when it is not one: a run whose step is unreadable is still told, only not closed. */
+function ledgerStepOf(value: unknown): LedgerStep | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const [ledger, start] = [stringField(value, 'ledger'), parseQueuedStep(value['start'])];
+  return ledger === undefined || start === undefined ? undefined : { ledger, start };
 }
 
 /** A run whose record is still there but whose process is gone: it died with no end of its own. */

@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { formatRunRecord, runRecordPathOf, type DetachedRunRecord } from '../delivery/detached-runs.ts';
+import { formatRunRecord, RUN_RECORD_FORMAT, runRecordPathOf, type DetachedRunRecord } from '../delivery/detached-runs.ts';
+import { parseLedger, type QueuedStepRecord } from '../delivery/ledger.ts';
 import { CliHarness, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { WakeAsks } from '../wake/asks.ts';
@@ -13,8 +14,17 @@ const LOG = join(DIR, `${ID}.log`);
 const RECORD = runRecordPathOf(DIR, ID);
 const AS_ALPHA: RunOptions = { env: { TEAMRIG_SESSION: 'alpha' } };
 /** A run of alpha's that began to wait at 09:30 UTC, its process 5150 not in the harness's process table. */
-const DEAD: DetachedRunRecord = { v: 1, id: ID, team: 'app', session: 'alpha', what: 'build api', log: LOG, pid: 5150, startedAt: '2030-01-08T09:30:00.000Z' };
+const DEAD: DetachedRunRecord = { v: RUN_RECORD_FORMAT, id: ID, team: 'app', session: 'alpha', what: 'build api', log: LOG, pid: 5150, startedAt: '2030-01-08T09:30:00.000Z' };
 const DIED = `queue ${ID} died while it waited for its turn: build api: its process (pid 5150) ended with no end of its own, so nothing else reports it; re-run it; log ${LOG}`;
+const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
+/** The ledger start record of the step a run began at 09:40 UTC, its end never written. */
+const START: QueuedStepRecord = { type: 'heavy', id: 'step-9', session: 'alpha', what: 'build api', kind: 'build', startedAt: '2030-01-08T09:40:00.000Z', endedAt: null, exitCode: null };
+const OPENED: DetachedRunRecord = { ...DEAD, runningAt: '2030-01-08T09:40:00.000Z', step: { ledger: LEDGER, start: START } };
+
+function ledgerLines(records: readonly QueuedStepRecord[]): string {
+  return records.map((record) => `${JSON.stringify(record)}
+`).join('');
+}
 
 /** Files where the run's record is listed and read, then gone by the time a sweep removes it, as when another took it. */
 class TakenFirst extends FaultyFiles {
@@ -71,6 +81,34 @@ describe('the sweep of detached queue runs that died (T2742)', () => {
     assert.equal(started.code, EXIT.ok);
     assert.equal(started.stderr[0], 'WARN the detached runs were not read: EACCES: permission denied');
     assert.match(started.stdout.at(-1) ?? '', /^Week: /);
+  });
+
+  // As T2313 ship r2 on 11-14: its process ended while its step ran, and its ledger start record stayed open for ever.
+  it('closes the ledger record of a run that died while its step ran: an end under its id at the sweep, exit 1 (T2942)', async () => {
+    const kit = await withRun(OPENED);
+    await kit.files.write(LEDGER, ledgerLines([START]));
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.deepEqual(parseLedger(kit.files.get(LEDGER) ?? ''), [START, { ...START, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 1 }]);
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.equal(parseLedger(kit.files.get(LEDGER) ?? '').length, 2, 'closed once, the run record gone');
+  });
+
+  it('keeps the real end of a run that died after its end record, before it removed its run record', async () => {
+    const kit = await withRun(OPENED);
+    const ended = { ...START, endedAt: '2030-01-08T09:55:00.000Z', exitCode: 0 };
+    await kit.files.write(LEDGER, ledgerLines([START, ended]));
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.deepEqual([parseLedger(kit.files.get(LEDGER) ?? ''), (await alphaWakes(kit)).length], [[START, ended], 1]);
+  });
+
+  it('warns of a ledger it cannot write, the death still told', async () => {
+    const kit = await withRun(OPENED);
+    await kit.files.write(LEDGER, ledgerLines([START]));
+    const files = new FaultyFiles(kit.files).fail('append', LEDGER, systemError('EACCES', 'EACCES: permission denied'));
+    const started = await kit.run(['start'], { ...AS_ALPHA, files });
+    assert.equal(started.code, EXIT.ok);
+    assert.equal(started.stderr[0], `WARN queue ${ID}'s step was not closed in the ledger: EACCES: permission denied`);
+    assert.deepEqual([parseLedger(kit.files.get(LEDGER) ?? ''), (await alphaWakes(kit)).length], [[START], 1]);
   });
 
   it('tells nothing of a run whose record another sweep or the run itself took first', async () => {

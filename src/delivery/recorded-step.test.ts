@@ -43,6 +43,32 @@ describe('runRecorded', () => {
     assert.deepEqual(records(files), [START, { ...START, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 3 }]);
   });
 
+  it('tells the start record once it is in the ledger, before the step runs (T2942)', async () => {
+    const { files, steps, ports } = world();
+    const told: unknown[] = [];
+    steps.ends(0, 1_000);
+    const opened: StepRecordSetup = {
+      ...SAMPLED,
+      opened: async (start) => {
+        told.push([start, records(files).length, steps.ran.length]);
+      },
+    };
+    await runRecorded(ports, opened, STEP);
+    assert.deepEqual(told, [[START, 1, 0]]);
+  });
+
+  it('records a step whose opened hook throws as not started, its end record written, and runs nothing', async () => {
+    const { files, steps, ports } = world();
+    const failing: StepRecordSetup = {
+      ...SAMPLED,
+      opened: async () => {
+        throw new Error('record not written');
+      },
+    };
+    await assert.rejects(runRecorded(ports, failing, STEP), /record not written/);
+    assert.deepEqual([records(files), steps.ran], [[START, { ...START, endedAt: '2030-01-08T10:00:00.000Z', exitCode: NOT_STARTED_EXIT }], []]);
+  });
+
   it('records a step that could not start as exit 1 and passes its error on', async () => {
     const { files, steps, ports } = world();
     steps.failsWith(new Error('no such folder'));
