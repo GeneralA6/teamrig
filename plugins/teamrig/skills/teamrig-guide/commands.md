@@ -1346,7 +1346,8 @@ STOP no session of the team ran for 10 minutes; the next one starts the watch ag
 Its old name, gh migrate, is refused with this one (exit 64).
 Moves the team's tasks to GitHub issues once, from a row file you write: JSON lines, one row per task. An issue row
 is `{"id", "decision": "issue", "repo", "type": "bug"|"task", "priority": "p1"-"p3", "title", "body"}`, with the
-task's public wording, since an issue is open to anyone who can read the repository; a local row is `{"id",
+task's public wording, since an issue is open to anyone who can read the repository: a task about a security hole
+stays local until its fix is released ([security skill](../security/SKILL.md#a-security-hole)); a local row is `{"id",
 "decision": "local", "reason"}` and keeps the task off GitHub. A bad line, one that looks like it holds a secret,
 or an issue row whose title or body names a task id (`T12`, `bravo/T12`: ids are the team's own, so an issue links
 others by `#number`), refuses the whole file, naming the line. Write each body by the
@@ -1397,7 +1398,8 @@ PREVIEW nothing was written; teamrig issue migrate <file> --yes opens the issues
 
 ### teamrig issue comment
 
-Posts one comment on an issue or pull request of the team's repositories, named as `owner/name#number`. GitHub is
+Posts one comment on an issue or pull request of the team's repositories, named as `owner/name#number`. A security
+hole is never its subject: that goes only to private reporting ([security skill](../security/SKILL.md#a-security-hole)). GitHub is
 the only host so far: the repository must be in `github.repos`, and the comment goes through `gh api` with the
 token saved for the owner as `teamrig-gh-<owner>`, else the `gh auth login` account (an `ACCESS` line says which).
 The token needs Issues and Pull requests: Read and write. It refuses, posting nothing, a caller not on the team, a

@@ -26,7 +26,9 @@ description: Land a finished teamrig change through small signed commits, a dist
    `tools/ci/local-checks.ts`) on the committed tree. Never `--no-verify`.
 8. Open the pull request and fill in the template (`.github/pull_request_template.md`): its `## Reach` always, its
    `## Alternatives` when the change settles a design question. A pull request `tools/ship` opens takes its text from
-   `--note-file`: start that file with a `Reach:` line. It is rebase-merged once
+   `--note-file`: start that file with a `Reach:` line. The repository is public: a security fix's commits, pull
+   request text, comments and test names describe the hardening, never how to get past the old code, nor the private
+   report or review by its id ([SECURITY.md](../../../SECURITY.md)). It is rebase-merged once
    every check passes on its head, and the branch is deleted.
 
 ## Traps

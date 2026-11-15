@@ -9,7 +9,8 @@ Please report a vulnerability privately, never in a public issue, pull request o
 2. Say what an attacker can do, the teamrig version (`teamrig --version`), the operating system, and the steps
    that show it. A proof of concept helps; keep it to what shows the flaw.
 
-The report is seen only by the maintainer and you. We answer in the report, work on the fix there, and publish the
+The report is seen only by the maintainer and you. Until the fixed version is out, the fix's commits, pull request
+and tests describe the hardening, not the flaw. We answer in the report, work on the fix there, and publish the
 advisory with the fixed version once it is out, crediting you unless you ask not to be named.
 
 ## What counts
