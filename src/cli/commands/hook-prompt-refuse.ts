@@ -52,10 +52,10 @@ async function promptRefuseOutputOf(runtime: CliRuntime, payload: JsonRecord, de
  * about to raise, per case (hooks/prompt-refuse.ts): a Bash line that runs a sanctioned route (permissions/sanctioned.ts)
  * or provably only reads runs; a line teamrig's rules give a rerun form is refused quoting it; anything else is refused
  * with a reason that says to record the step as waiting for the owner and take the next task. It logs each answer to
- * `state/prompt-answers.jsonl`, its command redacted, a route's only by its id; the log's records over a week old move
- * to `state/archive/` (cli/hook-logs.ts). Outside a team, with asks on or the config missing or broken, for the
- * question picker or plan mode's exit, for input that is not a hook payload or on any error, it prints nothing, so the
- * prompt opens.
+ * `state/prompt-answers.jsonl`, its command masked (hooks/log-mask.ts), a route's only by its id; the log's records
+ * over a week old move to `state/archive/` (cli/hook-logs.ts). Outside a team, with asks on or the config missing or
+ * broken, for the question picker or plan mode's exit, for input that is not a hook payload or on any error, it prints
+ * nothing, so the prompt opens.
  */
 export function promptRefuse(deps: PromptRefuseDeps): (args: ParsedArgs, runtime: CliRuntime) => Promise<ExitCode> {
   return async (args, runtime) => {

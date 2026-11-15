@@ -121,6 +121,13 @@ describe('promptAnswerRecord', () => {
     assert.equal(record['command'], 'curl -H "[redacted credentials in an Authorization header] https://[redacted]@api.example.com/x');
   });
 
+  it("masks the forms the scanner misses: a secret flag's value, a secret env name's, a login's password (T1986)", () => {
+    const value = join('Qx7mRt', '9wLp4Zn');
+    const command = join('API_TO', 'KEN=', value, ' tool --pass', 'word ', value, ' && curl -u app:', value, ' https://api.local');
+    const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: null, tool: 'Bash', answer: { kind: 'refused' }, payload: bashRequest(command) }, SCANNER);
+    assert.equal(record['command'], 'API_TOKEN=[redacted] tool --password [redacted] && curl -u app:[redacted] https://api.local');
+  });
+
   it('redacts before the cut, so a secret the cut would split leaves none of its start', () => {
     const lead = `echo ${'x'.repeat(LOGGED_COMMAND_CHARS - 15)} `;
     const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: null, tool: 'Bash', answer: { kind: 'refused' }, payload: bashRequest(join(lead, 'ghp', '_', 'a1'.repeat(18))) }, SCANNER);

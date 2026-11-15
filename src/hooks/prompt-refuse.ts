@@ -1,8 +1,8 @@
 import type { HookAsks } from '../config/types.ts';
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { SecretScanner } from '../core/secrets.ts';
-import { redact } from '../exec/redact.ts';
 import type { RouteId } from '../permissions/sanctioned.ts';
+import { maskCommand } from './log-mask.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 import { rerunForm } from './rerun-forms.ts';
 
@@ -93,8 +93,9 @@ export interface PromptAnswerFacts {
 
 /**
  * One line of the team's prompt-answers log, for the daily triage that turns each refused line into a fixed guard or a
- * new rerun form. The command is redacted (a URL's user part and the scanner's secret shapes), then cut to its first
- * `LOGGED_COMMAND_CHARS` characters: redacting first leaves no secret whose start the cut would keep. A route's line
+ * new rerun form. The command is masked (`maskCommand`: a secret name's value, a secret flag's, a login's password, a
+ * long base64 run, a URL's user part and the scanner's secret shapes), then cut to its first `LOGGED_COMMAND_CHARS`
+ * characters: masking first leaves no secret whose start the cut would keep. A route's line
  * keeps only its route, never its command: a commit message is free text (security ruling Q7.4). The rest of the
  * input is never kept.
  */
@@ -109,7 +110,7 @@ export function promptAnswerRecord(facts: PromptAnswerFacts, scanner: SecretScan
     tool: facts.tool,
     answer: answer.kind,
     ...(answer.kind === 'route' ? { route: answer.route } : {}),
-    command: command === undefined ? null : redact(command, [], scanner).slice(0, LOGGED_COMMAND_CHARS),
+    command: command === undefined ? null : maskCommand(command, scanner).slice(0, LOGGED_COMMAND_CHARS),
   };
 }
 
