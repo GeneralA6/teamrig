@@ -462,8 +462,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       problem design; --critical marks a bug in a critical area; its line shows "bug" or "critical bug";
       a task with no type whose title or description matches register.review.hintPattern prints a hint
       to mark it, here and when it starts
-      --class: the work class, one of focus.classes (Roadmap, Maintenance, Improvements by default); a task
-      without one counts as focus.defaultClass
+      --class: the work class, one of focus.classes in any case, stored as configured (Roadmap, Maintenance,
+      Improvements by default); a task without one counts as focus.defaultClass
   add --team <team> [--owner <s>] [--source owner] --title .. --description .. --priority p<n> [...]   asks a team of your tree for work
       --source owner: the lead of a team above <team> relays the owner's order, sourced owner there
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
