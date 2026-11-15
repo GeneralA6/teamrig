@@ -146,6 +146,13 @@ export function printsValue(bare) {
     }
     return bare.dialect === 'bash' && head === 'env' && !texts.some((text) => ENV_EMPTIED.has(text));
 }
+/**
+ * PowerShell static calls whose result is what they were given, encoded, decoded or joined
+ * (`[Convert]::ToBase64String`, `[Text.Encoding]::UTF8.GetBytes`, `[string]::Join`), so printing the result prints
+ * their arguments. A call that answers about its arguments (`[string]::IsNullOrEmpty`) is not one: a list, not a rule,
+ * so a test of a token stays readable.
+ */
+const PASS_THROUGH = /^\[(?:system\.)?(?:convert\]::(?:to|from)(?:base64string|hexstring)|convert\]::tostring|(?:text\.)?encoding\]::\w+\.get(?:bytes|string|chars)|string\]::(?:concat|join|format|copy|new)|uri\]::(?:escapedatastring|escapeuristring|unescapedatastring)|net\.webutility\]::(?:urlencode|htmlencode|urldecode|htmldecode)|bitconverter\]::tostring|(?:text\.regularexpressions\.)?regex\]::(?:escape|unescape))$/;
 /** True for a PowerShell `[Type]::Member( )`: what it prints is what the call returns, not the arguments it takes. */
 function isStaticCall(bare) {
     const [head, group] = bare.words;
@@ -171,7 +178,7 @@ export function bareFindings(bare, secrets) {
         return operand === undefined || (!operand.startsWith('/') && !operand.includes('=')) ? [{ kind: 'environment' }] : [];
     }
     if (bare.dialect === 'powershell' && printsValue(bare)) {
-        const printing = isStaticCall(bare) ? texts.slice(2) : texts;
+        const printing = isStaticCall(bare) && !PASS_THROUGH.test(head) ? texts.slice(2) : texts;
         return ENVIRONMENT_DUMP.test(head) ? [{ kind: 'environment' }] : variables(printing.flatMap((text) => printedNames(text, 'powershell')), secrets);
     }
     return [];

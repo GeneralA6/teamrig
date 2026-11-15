@@ -7,6 +7,7 @@ import { uniqueFindings } from "./findings.js";
 import { inlineFindings } from "./inline.js";
 import { quiet } from "./output.js";
 import { remoteFindings } from "./remote.js";
+import { consoleWriteFindings, fileReadFindings } from "./static-calls.js";
 /** Lines run in a container or on a remote host deeper than this are not read. */
 const MAX_REMOTE_DEPTH = 4;
 /**
@@ -30,7 +31,11 @@ export function shellFindings(command, context, rules, depth = 0) {
             ...inlineFindings(run, rules),
             ...remoteFindings(run, inner),
         ]),
-        ...printingBare.flatMap((bare) => bareFindings(bare, rules.names)),
+        ...printingBare.flatMap((bare) => [
+            ...bareFindings(bare, rules.names),
+            ...fileReadFindings(bare, { dialect: bare.dialect, dir: context.cwd, home: rules.home }, rules.paths),
+        ]),
         ...(printingBare.some(readsEnvironment) ? environmentReads(command, rules.names) : []),
+        ...(context.dialect === 'powershell' ? consoleWriteFindings(command, rules.names) : []),
     ]);
 }
