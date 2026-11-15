@@ -11,14 +11,17 @@ const LIST_MAX_BUFFER = 16 * 2 ** 20;
 /**
  * The processes the last kill missed: a member it did not end (same id, same start), and the tree of each process
  * a member started (its parent is a member) before the kill ended. A process whose parent id is now held by a
- * different live process, or that started after the kill ended, is a stranger behind a reused id and is left alone.
+ * different live process, that started after the kill ended, or that started before the member it names as its
+ * parent, is a stranger behind a reused id and is left alone. The last is a detached queue waiter (T2785): its
+ * launcher ends at once, Windows hands that id to a later process of some tab, and a sweep of that tab ended the
+ * waiter as the member's orphan.
  */
 export function stragglersOf(rows, members, killedAtMs) {
     const liveStart = new Map(rows.map((row) => [row.pid, row.startedMs]));
     const parentIsMember = (row) => {
         const memberStart = members.get(row.parent);
         const parentStart = liveStart.get(row.parent);
-        return memberStart !== undefined && (parentStart === undefined || parentStart === memberStart);
+        return memberStart !== undefined && memberStart <= row.startedMs && (parentStart === undefined || parentStart === memberStart);
     };
     const seeds = rows.filter((row) => (members.has(row.pid) ? members.get(row.pid) === row.startedMs : parentIsMember(row) && row.startedMs <= killedAtMs));
     const found = new Map();
