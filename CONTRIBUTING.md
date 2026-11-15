@@ -180,9 +180,15 @@ is turned off.
 - **Your commit e-mail**: the `Signed-off-by:` line carries your commit e-mail, and the scrub refuses an e-mail
   address in a commit message unless it is one of GitHub's no-reply addresses. Before your first commit, set the
   no-reply address GitHub shows under Settings, Emails: `git config user.email <id>+<user>@users.noreply.github.com`.
-- **A version clash**: when `main` moves on with a version raise of its own, rebase onto it. `plugin.json`,
-  `src/core/version.ts` and the dist clash: take `main`'s side, raise the version above it again and rebuild the dist
-  (`npm run build`), each in its own commit as before.
+- **A version clash**: when `main` moves on with a version raise of its own, the maintainer's merge
+  (`tools/ship/merge.ts`) catches the pull request up: it drops its version and dist commits, replays its other
+  commits on `main`, raises the version again above `main`'s with the same commit message and rebuilds the dist. The
+  review holds while the work's diff stays the same. It works only when the raise and the dist each sit in a commit
+  of their own; a commit that mixes them with work, a conflict, or work that writes the raised version down (a doc's
+  "since 0.4.0") is rebased by hand: take `main`'s side of `plugin.json`, `src/core/version.ts` and the dist, raise
+  the version above it again and rebuild the dist (`npm run build`), each in its own commit as before.
+- **A flaky test leg**: the merge re-runs a test leg listed `flaky` in `tools/ship/repos.json` once when only it
+  failed, and reads the checks once more after a GitHub server error or timeout; a second failure stops the merge.
 - **Review**: a code owner (`.github/CODEOWNERS`: the maintainer) reviews the code and approves the last push, and a
   new push dismisses an approval given before it. A change to the git hooks, CI, the scrub or teamrig's guards
   (`.githooks/`, `.github/`, `tools/scrub/`, `tools/ci/`, `src/hooks/`, `src/push-guard/`, `src/secret-guard/`,
