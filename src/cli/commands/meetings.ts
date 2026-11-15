@@ -15,6 +15,7 @@ import {
   isMeetingId,
   isMissed,
   isOpenMeeting,
+  meetingInTabOf,
   MeetingSchedule,
   nextMeetingId,
   type MeetingsRead,
@@ -23,6 +24,7 @@ import {
 } from '../../meeting/schedule.ts';
 import { SPOTLIGHT_LOG, spotlightLine, startSpotlight, type SpotlightPlace } from '../../meeting/spotlight.ts';
 import { SpotlitStore, spotlitUntil } from '../../meeting/spotlit.ts';
+import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { WAKE_TICK_MS } from '../../mod/wake-hand.ts';
 import { focusTab, type FocusOutcome } from '../../open/focus.ts';
 import { shellCommand } from '../../open/quote.ts';
@@ -39,12 +41,14 @@ import { sessionProjectOf } from './setup.ts';
 import { fileLockOf } from '../file-locks.ts';
 
 /**
- * `meeting schedule|list|move|start <id>|end <id>|drop` (T1358): the owner's meetings with one session at a set time,
- * apart from the daily meeting with the lead (meeting.ts). The lead or the session met books, moves, ends and drops
- * one; the session met and those joining get one inbox line when it is booked, moved, started or dropped. Any
- * session starts one, as the owner does from whichever tab they are in: its opening prompt reaches the session met
- * as an urgent line its idle tab wakes on, or opens its tab when none runs. Every change is made under the team's
- * meetings lock, so two sessions never book one id.
+ * `meeting schedule|list|move|start <id>|start --about|end <id>|drop` (T1358): the owner's meetings with one session,
+ * any session, a worker's as well as a lead's, at a set time or on the spot (T2985), apart from the daily meeting with
+ * the lead (meeting.ts). The lead or the session met books, moves, ends and drops one; the session met and those
+ * joining get one inbox line when it is booked, moved, started or dropped. Any session starts one, as the owner does
+ * from whichever tab they are in: its opening prompt reaches the session met as an urgent line its idle tab wakes on,
+ * or opens its tab when none runs. While it is on, that tab is in meeting mode: messages to its session are held
+ * (hook-meeting.ts), the picker guard asks in plain text and its status line leads with the meeting's title. Every
+ * change is made under the team's meetings lock, so two sessions never book one id.
  */
 
 /** The longest meeting a schedule takes, in minutes: a working day. */
@@ -231,25 +235,30 @@ function bookedText(meeting: ScheduledMeeting, zone: TimeZone): string {
   return `${zone.weekdayMinute(new Date(meeting.at))} (${meeting.minutes} min) with ${meeting.session}: ${meeting.about}${tasks}${brief}`;
 }
 
-/** `meeting schedule`: books a meeting and tells the session met and those joining. */
-export async function meetingSchedule(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  noPositionals(args);
-  const mk = await meetingsKit(args, runtime, 'write');
+/** What a booking with `session` at `at` takes from its flags: those joining, its length, what it is about, its tasks and brief. */
+async function bookingOf(args: ParsedArgs, runtime: CliRuntime, mk: MeetingsKit, session: string, at: number): Promise<Pick<ScheduledMeeting, 'with' | 'at' | 'minutes' | 'about' | 'tasks' | 'brief'>> {
   const secrets = new SecretScanner(mk.config.register.secretPatterns);
-  const session = sessionIdOf(mk.roster, requiredFlag(args.flags, 'meets'));
-  mayChange(mk, session, `book a meeting with ${session}`);
   const withText = args.flags.get('with');
-  const joining = withText === undefined ? [] : [...new Set(listOf('--with', withText).map((each) => sessionIdOf(mk.roster, each)))].filter((each) => each !== session);
   const brief = args.flags.get('brief')?.trim();
-  const fields = {
-    at: futureAt(requiredFlag(args.flags, 'at'), mk),
+  return {
+    with: withText === undefined ? [] : [...new Set(listOf('--with', withText).map((each) => sessionIdOf(mk.roster, each)))].filter((each) => each !== session),
+    at,
     minutes: minutesOf(args.flags.get('minutes')),
     about: lineOf('--about', requiredFlag(args.flags, 'about'), secrets),
     tasks: await tasksOf(runtime, args.flags.get('tasks')),
     brief: brief === undefined || brief === '' ? null : brief,
   };
+}
+
+/** `meeting schedule`: books a meeting and tells the session met and those joining. */
+export async function meetingSchedule(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const mk = await meetingsKit(args, runtime, 'write');
+  const session = sessionIdOf(mk.roster, requiredFlag(args.flags, 'meets'));
+  mayChange(mk, session, `book a meeting with ${session}`);
+  const fields = await bookingOf(args, runtime, mk, session, futureAt(requiredFlag(args.flags, 'at'), mk));
   const meeting = await mk.lock.run(async () => {
-    const booked: ScheduledMeeting = { id: nextMeetingId(await mk.schedule.read()), session, with: joining, ...fields, status: 'scheduled', notifiedAt: null, by: mk.caller, changedAt: mk.now, note: null };
+    const booked: ScheduledMeeting = { id: nextMeetingId(await mk.schedule.read()), session, ...fields, status: 'scheduled', notifiedAt: null, by: mk.caller, changedAt: mk.now, note: null };
     await mk.schedule.write(booked, mk.now);
     return booked;
   });
@@ -439,12 +448,53 @@ export async function meetingStartScheduled(args: ParsedArgs, runtime: CliRuntim
     await mk.schedule.write(changed, mk.now);
     return changed;
   });
+  await announce(runtime, mk, started);
+  return EXIT.ok;
+}
+
+/**
+ * `meeting start --about`: a meeting with the owner now, on the spot, in the tab of the session met: the caller's own,
+ * else `--meets`'s, a worker's as well as a lead's (T2985). It is booked and started at once, so it lists, holds
+ * messages, marks the status line and ends as a booked one does. Refused while that session is in a meeting already.
+ */
+export async function meetingStartNow(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const mk = await meetingsKit(args, runtime, 'write');
+  const meets = args.flags.get('meets');
+  const session = meets === undefined ? mk.caller : sessionIdOf(mk.roster, meets);
+  mayChange(mk, session, `start a meeting with ${session}`);
+  const fields = await bookingOf(args, runtime, mk, session, mk.now);
+  const started = await mk.lock.run(async () => {
+    const read = await mk.schedule.read();
+    const on = meetingInTabOf(read.meetings, session, mk.now);
+    if (on !== undefined) {
+      throw new RefusedError(`${session} is in meeting ${on.id} already: ${KIT_NAME} meeting end ${on.id} ends it first`);
+    }
+    const meeting: ScheduledMeeting = { id: nextMeetingId(read), session, ...fields, status: 'started', notifiedAt: null, by: mk.caller, changedAt: mk.now, note: null };
+    await mk.schedule.write(meeting, mk.now);
+    return meeting;
+  });
+  await announce(runtime, mk, started);
+  return EXIT.ok;
+}
+
+/**
+ * The meeting just started: printed, and its opening prompt brought to the session met. Started in that session's own
+ * tab, the prompt prints there, as no line or wake reaches a tab that is mid-turn already; else it goes as an inbox
+ * line and to its tab (deliver). Those joining get one line saying where it is held; the spotlight frames the tab.
+ */
+async function announce(runtime: CliRuntime, mk: MeetingsKit, started: ScheduledMeeting): Promise<void> {
   runtime.out.stdout(`STARTED ${meetingLine(started, mk.zone, mk.now)}`);
   const { inboxes } = inboxDepsOf(runtime, mk.kit.paths);
   const secrets = new SecretScanner(mk.config.register.secretPatterns);
-  const met = await postLines([{ inboxes, to: started.session, from: mk.caller }], secrets, { text: openingPrompt(started), now: new Date(mk.now) });
-  runtime.out.stdout(met === undefined ? `TOLD ${started.session}` : `NOT TOLD ${started.session}: ${met}`);
-  const delivered = await deliver(runtime, mk, started, met === undefined);
+  let delivered: string[] = [];
+  if (started.session === mk.caller) {
+    runtime.out.stdout(`MEETING in this tab: messages to ${nameOf(mk, started.session)} are held but CRITICAL ones. ${openingPrompt(started)}`);
+  } else {
+    const met = await postLines([{ inboxes, to: started.session, from: mk.caller }], secrets, { text: openingPrompt(started), now: new Date(mk.now) });
+    runtime.out.stdout(met === undefined ? `TOLD ${started.session}` : `NOT TOLD ${started.session}: ${met}`);
+    delivered = await deliver(runtime, mk, started, met === undefined);
+  }
   const joining = started.with.filter((session) => session !== mk.caller);
   if (joining.length > 0) {
     const text = `Meeting ${started.id} with the owner started in ${started.session}'s tab: ${started.about}`;
@@ -456,7 +506,25 @@ export async function meetingStartScheduled(args: ParsedArgs, runtime: CliRuntim
   if (spotlit !== undefined) {
     runtime.out.stdout(spotlit);
   }
-  return EXIT.ok;
+}
+
+/**
+ * The id of the meeting held in the caller's tab now, which `meeting end` with no id ends (T2985); undefined when it
+ * holds none, or for the lead while its daily meeting is still to end, which that `meeting end` ends first.
+ */
+export async function ownMeetingIdOf(args: ParsedArgs, runtime: CliRuntime): Promise<string | undefined> {
+  const mk = await meetingsKit(args, runtime, 'read');
+  const on = meetingInTabOf((await mk.schedule.read()).meetings, mk.caller, mk.now);
+  if (on === undefined) {
+    return undefined;
+  }
+  if (mk.caller === mk.roster.holderOf('lead')) {
+    const daily = phaseOf(await new MeetingStore(runtime.files, mk.kit.paths.meeting).read(), mk.now);
+    if (daily.kind === 'open' || daily.kind === 'lapsed') {
+      return undefined;
+    }
+  }
+  return on.id;
 }
 
 /** Lifts the spotlight of meeting `id` once it is ended or dropped; one over another meeting stays. */

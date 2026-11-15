@@ -206,7 +206,7 @@ describe('runCli: meeting move, end and drop', () => {
     assert.match(said(task), /"T1" is not a meeting id like M3/);
     const daily = await kit.run(['meeting', 'end', '--note', 'done', '--session', 'lead']);
     assert.equal(daily.code, EXIT.usage);
-    assert.match(said(daily), /--note goes with meeting end <id>, a scheduled meeting/);
+    assert.match(said(daily), /--note goes with meeting end <id>, a booked or on-the-spot meeting/);
   });
 });
 
@@ -353,7 +353,59 @@ describe('runCli: meeting start <id>', () => {
     assert.match(said(again), /^REFUSED M1 is started: meeting start takes a scheduled meeting/);
     const daily = await kit.run(['meeting', 'start', '--session', 'alpha']);
     assert.equal(daily.code, EXIT.refused);
-    assert.match(said(daily), /only the lead \(app-lead\) runs the owner's daily meeting/);
+    assert.match(said(daily), /only the lead \(app-lead\) runs the owner's daily meeting; a meeting of your own with the owner: teamrig meeting start --about "<what>"/);
+  });
+});
+
+describe('runCli: meeting start --about, a meeting on the spot (T2985)', () => {
+  it("starts a worker's own meeting in its tab, refuses a second, and meeting end with no id ends it", async () => {
+    const kit = await team();
+    const started = await kit.run(['meeting', 'start', '--about', 'the cache design.', '--with', 'bravo', '--tasks', 'T1', '--session', 'alpha']);
+    assert.equal(started.code, EXIT.ok, said(started));
+    assert.equal(started.stdout[0], 'STARTED M1 started, Tue 01-08 10:00 UTC, 30 min, alpha with bravo, tasks T1 | the cache design.');
+    assert.match(said(started), /MEETING in this tab: messages to app-alpha are held but CRITICAL ones\. The owner starts meeting M1 now \(30 min\): the cache design\./);
+    assert.doesNotMatch(said(started), /TOLD alpha/);
+    const meeting = await stored(kit, 'M1');
+    assert.deepEqual(
+      { status: meeting?.status, session: meeting?.session, with: meeting?.with, tasks: meeting?.tasks, by: meeting?.by, at: meeting?.at },
+      { status: 'started', session: 'alpha', with: ['bravo'], tasks: ['T1'], by: 'alpha', at: kit.clock.now() },
+    );
+    assert.doesNotMatch((await inboxOf(kit, 'alpha')).join('\n'), /meeting M1/, 'the opening prompt printed in its own tab');
+    assert.ok((await inboxOf(kit, 'bravo')).some((line) => line.endsWith("Meeting M1 with the owner started in alpha's tab: the cache design.")));
+
+    const again = await kit.run(['meeting', 'start', '--about', 'another', '--session', 'alpha']);
+    assert.equal(again.code, EXIT.refused);
+    assert.match(said(again), /alpha is in meeting M1 already: teamrig meeting end M1 ends it first/);
+
+    const ended = await kit.run(['meeting', 'end', '--note', 'the cache stays', '--session', 'alpha']);
+    assert.equal(ended.code, EXIT.ok, said(ended));
+    assert.match(ended.stdout[0] ?? '', /^ENDED M1 done, /);
+    assert.equal((await stored(kit, 'M1'))?.note, 'the cache stays');
+    const none = await kit.run(['meeting', 'end', '--session', 'alpha']);
+    assert.equal(none.code, EXIT.refused, 'no meeting left in its tab: the daily end is the lead\'s');
+    assert.match(said(none), /only the lead \(app-lead\) runs the owner's daily meeting/);
+  });
+
+  it('starts one with another session for the lead or that session only, its opening prompt sent to its tab', async () => {
+    const kit = await team();
+    const other = await kit.run(['meeting', 'start', '--about', 'the API', '--meets', 'alpha', '--session', 'bravo']);
+    assert.equal(other.code, EXIT.refused);
+    assert.match(said(other), /only the lead \(app-lead\) or alpha, the session met, may start a meeting with alpha/);
+    const options = await alphaRuns(kit);
+    const started = await kit.run(['meeting', 'start', '--about', 'the API', '--meets', 'alpha', '--session', 'lead'], options);
+    assert.equal(started.code, EXIT.ok, said(started));
+    assert.match(said(started), /^TOLD alpha$/m);
+    assert.equal((await stored(kit, 'M1'))?.status, 'started');
+  });
+
+  it("ends the lead's daily meeting first, then the lead's own one", async () => {
+    const kit = await team();
+    assert.equal((await kit.run(['meeting', 'start', '--session', 'lead'])).code, EXIT.ok);
+    assert.equal((await kit.run(['meeting', 'start', '--about', 'the hiring plan', '--session', 'lead'])).code, EXIT.ok);
+    assert.equal((await kit.run(['meeting', 'end', '--session', 'lead'])).code, EXIT.ok);
+    assert.equal((await stored(kit, 'M1'))?.status, 'started', 'the daily meeting ended first');
+    assert.equal((await kit.run(['meeting', 'end', '--session', 'lead'])).code, EXIT.ok);
+    assert.equal((await stored(kit, 'M1'))?.status, 'done');
   });
 });
 

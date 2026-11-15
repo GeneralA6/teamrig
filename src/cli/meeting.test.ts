@@ -94,10 +94,10 @@ describe('runCli: the daily meeting', () => {
     const kit = await teamBeforeTheMeeting();
     for (const command of ['start', 'agenda', 'end']) {
       const refused = await kit.run(['meeting', command, '--session', 'alpha']);
-      assert.deepEqual([refused.code, refused.stdout], [EXIT.refused, ["REFUSED only the lead (app-lead) runs the owner's daily meeting"]]);
+      assert.deepEqual([refused.code, refused.stdout], [EXIT.refused, [`REFUSED only the lead (app-lead) runs the owner's daily meeting; a meeting of your own with the owner: teamrig meeting start --about "<what>"`]]);
     }
     const noLead = new CliHarness({ sessions: ['alpha', 'bravo'] }); // a config missing its lead still reads
-    assert.deepEqual((await noLead.run(['meeting', 'agenda', '--session', 'alpha'])).stdout, ["REFUSED only the lead runs the owner's daily meeting"]);
+    assert.deepEqual((await noLead.run(['meeting', 'agenda', '--session', 'alpha'])).stdout, [`REFUSED only the lead runs the owner's daily meeting; a meeting of your own with the owner: teamrig meeting start --about "<what>"`]);
   });
 
   it('leaves a meeting already open as it is, and prints its agenda', async () => {
