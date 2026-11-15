@@ -2,7 +2,7 @@ import type { HostPull, PullChecks, PullMergeable, PullReview } from '../issues/
 import { cut } from '../register/views.ts';
 import { branchTaskOf } from '../worktree/owner.ts';
 import { issueRef } from './map.ts';
-import { isInsideAuthor } from './trust.ts';
+import { isOurAuthor, type OurLogins } from './trust.ts';
 
 /**
  * The pull request monitor's decisions, kept pure: what happened to a repository's pull requests between two reads
@@ -121,17 +121,17 @@ function newest(times: readonly string[], cursor: string | undefined): string | 
 
 /**
  * Who hears about `pull`: the owner of the task its branch names (`t<id>-...`, worktree/owner.ts), when it is a
- * branch of the repository itself by an author inside it, else `watcher`. A fork's branch name, or an outsider's,
- * is theirs to choose, so it never routes news to a session.
+ * branch of the repository itself by one of the team's own authors (`isOurAuthor`), else `watcher`. A fork's
+ * branch name, or anyone else's, is theirs to choose, so it never routes news to a session.
  */
-export function pullRecipient(pull: HostPull, ownerOf: (task: string) => string | undefined, watcher: string): string {
-  const task = ownBranchTask(pull);
+export function pullRecipient(pull: HostPull, ours: OurLogins, ownerOf: (task: string) => string | undefined, watcher: string): string {
+  const task = ownBranchTask(pull, ours);
   return (task === undefined ? undefined : ownerOf(task)) ?? watcher;
 }
 
-/** The task an inside author's own branch of the repository names (`t<id>-...`); undefined for a fork, an outsider or another branch name. */
-export function ownBranchTask(pull: HostPull): string | undefined {
-  return pull.fork || !isInsideAuthor(pull.authorAssociation) ? undefined : branchTaskOf(pull.head);
+/** The task one of our authors' own branch of the repository names (`t<id>-...`); undefined for a fork, anyone else or another branch name. */
+export function ownBranchTask(pull: HostPull, ours: OurLogins): string | undefined {
+  return pull.fork || !isOurAuthor(pull.authorAssociation, pull.author, ours) ? undefined : branchTaskOf(pull.head);
 }
 
 /** The events of each recipient, in the order first seen (`pullRecipient`). */
@@ -173,10 +173,11 @@ export interface PullNews {
  * the rest counted. A title is outside input: quoted, as data, and cut short. Failing checks with an excerpt name
  * each failed job and step, quoted and cut the same way, and the file holding its log's end. It wakes the session only for what
  * needs its hand now (T3021 section 3): an outsider's new pull request, and a conflict or failing checks on a
- * session's own pull request (an inside author's branch that names a task). The rest (a merge, a close, a review, an
- * outsider's conflict or red checks, which are the outsider's to fix) waits for the session's next turn.
+ * session's own pull request (one of our authors' branch that names a task, `ownBranchTask`). The rest (a merge, a
+ * close, a review, an outsider's conflict or red checks, which are the outsider's to fix) waits for the session's
+ * next turn. Anyone not one of `ours` counts as an outsider, a collaborator too.
  */
-export function pullNewsText(events: readonly PullEvent[]): PullNews {
+export function pullNewsText(events: readonly PullEvent[], ours: OurLogins): PullNews {
   const byPull = new Map<string, { pull: HostPull; events: PullEvent[] }>();
   for (const event of events) {
     const key = issueRef(event.pull.repo, event.pull.number);
@@ -184,22 +185,22 @@ export function pullNewsText(events: readonly PullEvent[]): PullNews {
     entry.events.push(event);
     byPull.set(key, entry);
   }
-  const entries = [...byPull].map(([ref, { pull, events: own }]) => `${ref} ${JSON.stringify(cut(pull.title, TITLE_CHARS))}: ${own.map(eventWords).join(', ')}`);
+  const entries = [...byPull].map(([ref, { pull, events: own }]) => `${ref} ${JSON.stringify(cut(pull.title, TITLE_CHARS))}: ${own.map((event) => eventWords(event, ours)).join(', ')}`);
   const more = entries.length - NAMED_PULLS;
   return {
     text: `GitHub pull requests: ${entries.slice(0, NAMED_PULLS).join('; ')}${more > 0 ? `; and ${more} more` : ''}`,
-    wake: events.some(({ kind, pull }) => wakes(kind, pull)),
+    wake: events.some(({ kind, pull }) => wakes(kind, pull, ours)),
   };
 }
 
 /** Whether `kind` on `pull` wakes its recipient (pullNewsText). */
-function wakes(kind: PullEventKind, pull: HostPull): boolean {
+function wakes(kind: PullEventKind, pull: HostPull, ours: OurLogins): boolean {
   switch (kind) {
     case 'opened':
-      return !isInsideAuthor(pull.authorAssociation);
+      return !isOurAuthor(pull.authorAssociation, pull.author, ours);
     case 'conflict':
     case 'checks-failing':
-      return ownBranchTask(pull) !== undefined;
+      return ownBranchTask(pull, ours) !== undefined;
     case 'merged':
     case 'closed':
     case 'approved':
@@ -208,7 +209,7 @@ function wakes(kind: PullEventKind, pull: HostPull): boolean {
   }
 }
 
-function eventWords({ kind, pull, ci }: PullEvent): string {
+function eventWords({ kind, pull, ci }: PullEvent, ours: OurLogins): string {
   if (kind === 'checks-failing' && ci !== undefined) {
     const jobs = ci.jobs.map(({ name, step }) => `${JSON.stringify(cut(name, JOB_CHARS))}${step === undefined ? '' : ` at ${JSON.stringify(cut(step, JOB_CHARS))}`}`);
     return `${EVENT_WORDS[kind]} (${jobs.join(', ')}; log end in ${ci.file})`;
@@ -217,6 +218,6 @@ function eventWords({ kind, pull, ci }: PullEvent): string {
     return EVENT_WORDS[kind];
   }
   const by = pull.author === '' ? 'a deleted account' : pull.author;
-  const where = [...(isInsideAuthor(pull.authorAssociation) ? [] : ['outside']), ...(pull.fork ? ['fork'] : []), ...(pull.draft ? ['draft'] : [])];
+  const where = [...(isOurAuthor(pull.authorAssociation, pull.author, ours) ? [] : ['outside']), ...(pull.fork ? ['fork'] : []), ...(pull.draft ? ['draft'] : [])];
   return `opened by ${by}${where.length > 0 ? ` (${where.join(', ')})` : ''}`;
 }

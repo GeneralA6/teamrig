@@ -16,6 +16,7 @@ import {
 } from '../../github/auto.ts';
 import { issueRef } from '../../github/map.ts';
 import { pullNewsText } from '../../github/pull-news.ts';
+import { ourLogins } from '../../github/trust.ts';
 import { securityLine, securityPageText, unpagedIssues, unpagedLine, type SecurityIssue } from '../../github/security-alert.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { sendOwnerPage } from '../login-page.ts';
@@ -83,8 +84,9 @@ export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitC
       posts.push({ to: config.roles.lead, text, wake: false });
     }
   }
+  const ours = ourLogins(config.github);
   for (const [to, events] of run.pullNews) {
-    posts.push({ to, ...pullNewsText(events) });
+    posts.push({ to, ...pullNewsText(events, ours) });
   }
   const lines: string[] = [];
   // Each open security issue not paged before wakes its session and pages the owner; the state now holds it as paged,

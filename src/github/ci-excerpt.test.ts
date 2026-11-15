@@ -46,7 +46,7 @@ class FullDisk extends MemoryFiles {
 }
 
 function deps(host: FakeIssueHost, files: MemoryFiles = new MemoryFiles()): CiDeps {
-  return { host, files, dir: DIR, now: NOW };
+  return { host, files, dir: DIR, now: NOW, ours: new Set(['dev']) };
 }
 
 describe('withCiExcerpts', () => {
@@ -61,10 +61,11 @@ describe('withCiExcerpts', () => {
     assert.match((await files.read(file)) ?? '', /## Job "test \(ubuntu-latest\)", step "Run tests"\n\n```text\nnot ok 3 - parses\nError: exit code 1\n```/);
   });
 
-  it("reads no log for an outsider's, a fork's or another branch's red checks, nor for any other event", async () => {
+  it("reads no log for an outsider's, an unlisted collaborator's, a fork's or another branch's red checks, nor for any other event", async () => {
     const host = new FakeIssueHost();
     const events: PullEvent[] = [
-      { kind: 'checks-failing', pull: pull(1, { authorAssociation: 'CONTRIBUTOR' }) },
+      { kind: 'checks-failing', pull: pull(1, { authorAssociation: 'CONTRIBUTOR', author: 'stranger' }) },
+      { kind: 'checks-failing', pull: pull(6, { authorAssociation: 'COLLABORATOR', author: 'helper' }) },
       { kind: 'checks-failing', pull: pull(2, { fork: true }) },
       { kind: 'checks-failing', pull: pull(3, { head: 'main-hotfix' }) },
       { kind: 'conflict', pull: pull(4) },

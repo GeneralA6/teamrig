@@ -6,6 +6,8 @@ import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient, type PullEv
 const T0 = '2030-01-01T00:00:00Z';
 const T1 = '2030-01-02T00:00:00Z';
 const T2 = '2030-01-03T00:00:00Z';
+/** One login the team named in github.owners; the default author is ours as the repository owner. */
+const OURS: ReadonlySet<string> = new Set(['teammate']);
 
 /** An open, clean pull request of acme/web by its owner, opened and changed at T0. */
 function pull(number: number, overrides: Partial<HostPull> = {}): HostPull {
@@ -107,8 +109,8 @@ describe('pullRecipient', () => {
   const ownerOf = (task: string): string | undefined => (task === 'T12' ? 'bravo' : undefined);
 
   it("routes an inside author's own branch to the owner of the task it names", () => {
-    assert.equal(pullRecipient(pull(1, { head: 't12-fix' }), ownerOf, 'watch'), 'bravo');
-    assert.equal(pullRecipient(pull(1, { head: 'T12', authorAssociation: 'member' }), ownerOf, 'watch'), 'bravo');
+    assert.equal(pullRecipient(pull(1, { head: 't12-fix' }), OURS, ownerOf, 'watch'), 'bravo');
+    assert.equal(pullRecipient(pull(1, { head: 'T12', authorAssociation: 'member', author: 'Teammate' }), OURS, ownerOf, 'watch'), 'bravo');
   });
 
   it('routes a fork, an outsider, a branch naming no task or a task the register lacks to the watcher', () => {
@@ -118,7 +120,16 @@ describe('pullRecipient', () => {
       pull(1, { head: 'feature-x' }),
       pull(1, { head: 't99-gone' }),
     ]) {
-      assert.equal(pullRecipient(other, ownerOf, 'watch'), 'watch', JSON.stringify(other));
+      assert.equal(pullRecipient(other, OURS, ownerOf, 'watch'), 'watch', JSON.stringify(other));
+    }
+  });
+
+  it("routes an unlisted collaborator's or member's task branch as an outside pull request, to the watcher", () => {
+    for (const association of ['COLLABORATOR', 'MEMBER']) {
+      const helper = pull(1, { head: 't12-fix', authorAssociation: association, author: 'helper' });
+      assert.equal(pullRecipient(helper, OURS, ownerOf, 'watch'), 'watch', association);
+      assert.deepEqual(pullNewsText([{ kind: 'opened', pull: helper }], OURS), { text: 'GitHub pull requests: gh:acme/web#1 "Change 1": opened by helper (outside)', wake: true });
+      assert.equal(pullNewsText([{ kind: 'checks-failing', pull: helper }], OURS).wake, false, `${association}'s red checks are theirs to fix`);
     }
   });
 
@@ -128,7 +139,7 @@ describe('pullRecipient', () => {
       { kind: 'conflict', pull: pull(2, { head: 't12-a' }) },
       { kind: 'closed', pull: pull(3, { head: 'y' }) },
     ];
-    const grouped = eventsByRecipient(events, (one) => pullRecipient(one, ownerOf, 'watch'));
+    const grouped = eventsByRecipient(events, (one) => pullRecipient(one, OURS, ownerOf, 'watch'));
     assert.deepEqual([...grouped].map(([to, list]) => [to, list.map((event) => event.pull.number)]), [['watch', [1, 3]], ['bravo', [2]]]);
   });
 });
@@ -140,38 +151,38 @@ describe('pullNewsText', () => {
       { kind: 'merged', pull: pull(1) },
       { kind: 'conflict', pull: long },
       { kind: 'checks-failing', pull: long },
-    ]);
+    ], OURS);
     assert.equal(news.text, `GitHub pull requests: gh:acme/web#1 "Change 1": merged; gh:acme/web#2 ${JSON.stringify(`Fix "the" ${'x'.repeat(49)}…`)}: conflicts with its base, checks failing`);
     assert.equal(news.wake, true);
   });
 
   it('names each failed job, its step and the excerpt file of failing checks that carry one', () => {
     const ci = { file: '/state/github-ci/acme-web-2.md', jobs: [{ name: 'test (ubuntu-latest)', step: 'Run tests' }, { name: `j${'x'.repeat(60)}`, step: undefined }] };
-    const news = pullNewsText([{ kind: 'checks-failing', pull: pull(2), ci }]);
+    const news = pullNewsText([{ kind: 'checks-failing', pull: pull(2), ci }], OURS);
     assert.equal(news.text, `GitHub pull requests: gh:acme/web#2 "Change 2": checks failing ("test (ubuntu-latest)" at "Run tests", "j${'x'.repeat(38)}…"; log end in /state/github-ci/acme-web-2.md)`);
   });
 
   it('says who opened one and from where', () => {
     const outside = pull(3, { authorAssociation: 'NONE', author: 'stranger', fork: true, draft: true });
-    assert.equal(pullNewsText([{ kind: 'opened', pull: outside }]).text, 'GitHub pull requests: gh:acme/web#3 "Change 3": opened by stranger (outside, fork, draft)');
-    assert.equal(pullNewsText([{ kind: 'opened', pull: pull(4, { author: '' }) }]).text, 'GitHub pull requests: gh:acme/web#4 "Change 4": opened by a deleted account');
+    assert.equal(pullNewsText([{ kind: 'opened', pull: outside }], OURS).text, 'GitHub pull requests: gh:acme/web#3 "Change 3": opened by stranger (outside, fork, draft)');
+    assert.equal(pullNewsText([{ kind: 'opened', pull: pull(4, { author: '' }) }], OURS).text, 'GitHub pull requests: gh:acme/web#4 "Change 4": opened by a deleted account');
   });
 
   it("wakes for an outsider's new pull request, and a conflict or red checks on a session's own", () => {
     for (const kind of ['merged', 'closed', 'approved', 'opened', 'changes-requested'] as const) {
-      assert.equal(pullNewsText([{ kind, pull: pull(1) }]).wake, false, kind);
+      assert.equal(pullNewsText([{ kind, pull: pull(1) }], OURS).wake, false, kind);
     }
-    assert.equal(pullNewsText([{ kind: 'opened', pull: pull(1, { authorAssociation: 'CONTRIBUTOR' }) }]).wake, true);
+    assert.equal(pullNewsText([{ kind: 'opened', pull: pull(1, { authorAssociation: 'CONTRIBUTOR' }) }], OURS).wake, true);
     for (const kind of ['conflict', 'checks-failing'] as const) {
-      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix' }) }]).wake, true, kind);
-      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 'main-hotfix' }) }]).wake, false, `${kind} on a branch naming no task`);
-      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix', fork: true, authorAssociation: 'NONE' }) }]).wake, false, `${kind} on an outsider's fork`);
+      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix' }) }], OURS).wake, true, kind);
+      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 'main-hotfix' }) }], OURS).wake, false, `${kind} on a branch naming no task`);
+      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix', fork: true, authorAssociation: 'NONE' }) }], OURS).wake, false, `${kind} on an outsider's fork`);
     }
   });
 
   it('counts the pull requests past the ones it names', () => {
     const events = Array.from({ length: 10 }, (_, index): PullEvent => ({ kind: 'merged', pull: pull(index + 1) }));
-    const text = pullNewsText(events).text;
+    const text = pullNewsText(events, OURS).text;
     assert.ok(text.endsWith('gh:acme/web#8 "Change 8": merged; and 2 more'), text);
   });
 });

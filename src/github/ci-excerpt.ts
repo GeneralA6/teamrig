@@ -5,6 +5,7 @@ import type { HostJobLog, IssueHost } from '../issues/host.ts';
 import type { FailedJob, HostPull } from '../issues/pull.ts';
 import { issueRef } from './map.ts';
 import { ownBranchTask, type PullEvent } from './pull-news.ts';
+import type { OurLogins } from './trust.ts';
 
 /**
  * The CI part of the pull request monitor (T3021 section 7): when a session's own pull request starts failing its
@@ -34,10 +35,12 @@ export interface CiDeps {
   readonly files: Files;
   readonly dir: string;
   readonly now: string;
+  /** The team's own logins: only their branches are a session's own (`ownBranchTask`). */
+  readonly ours: OurLogins;
 }
 
 /**
- * `events` with each `checks-failing` of a session's own pull request (an inside author's branch naming a task)
+ * `events` with each `checks-failing` of a session's own pull request (one of our authors' branch naming a task)
  * carrying its excerpt: the logs of its failed jobs read, at most LOG_READS_PER_RUN in the whole run, and written to
  * its file. A file that cannot be written leaves its event as it was, and says so in a line.
  */
@@ -46,7 +49,7 @@ export async function withCiExcerpts(deps: CiDeps, events: readonly PullEvent[])
   const read: PullEvent[] = [];
   const lines: string[] = [];
   for (const event of events) {
-    const failed = event.kind === 'checks-failing' && ownBranchTask(event.pull) !== undefined ? event.pull.failedJobs : [];
+    const failed = event.kind === 'checks-failing' && ownBranchTask(event.pull, deps.ours) !== undefined ? event.pull.failedJobs : [];
     const jobs = failed.slice(0, left);
     if (jobs.length === 0) {
       read.push(event);
