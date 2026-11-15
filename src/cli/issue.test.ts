@@ -10,7 +10,7 @@ import { EXIT } from './runtime.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web'] } };
 const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
-const LOGIN = 'ACCESS acme: writes with the gh login; no token saved as teamrig-gh-acme';
+const LOGIN = 'ACCESS acme: writes with the token saved as teamrig-gh-acme';
 
 describe('teamrig issue comment', () => {
   it('posts one comment through the allowlisted call and writes nothing to the task list', async () => {
@@ -147,7 +147,7 @@ describe('teamrig issue close', () => {
     const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'close', 'acme/web#7', '--comment', 'Thanks'], { ...AS_LEAD, gh });
     assert.equal(result.code, EXIT.failed);
     assert.deepEqual(result.stdout.slice(1), [
-      'FAILED acme/web#7: the gh login may not comment on acme/web#7: save a token for acme with Issues and Pull requests read and write, with: save teamrig-gh-acme; it was not closed',
+      'FAILED acme/web#7: the token saved as teamrig-gh-acme may not comment on acme/web#7: on GitHub, edit that token and set Issues and Pull requests to Read and write; its text stays the same, so nothing needs saving again; it was not closed',
     ]);
     assert.equal(gh.ran.length, 1);
   });

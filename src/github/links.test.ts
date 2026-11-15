@@ -8,7 +8,7 @@ import type { RepoAccess } from './tokens.ts';
 
 const REPO = 'acme/web';
 
-const LOGIN: RepoAccess = { via: 'login', owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme', env: { HOME: '/u' } };
+const ACCESS: RepoAccess = { owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme', env: { HOME: '/u', GH_TOKEN: 'read-token' } };
 
 function page(nodes: readonly unknown[], next?: string): string {
   return JSON.stringify({ data: { repository: { issues: { pageInfo: { hasNextPage: next !== undefined, endCursor: next ?? null }, nodes } } } });
@@ -63,7 +63,7 @@ describe('parseLinksPage', () => {
 describe('listLinks', () => {
   it('reads every issue, open and closed, a page of the shipped links query at a time', async () => {
     const gh = new FakeGh().pages(2).holds(REPO, [ghIssue(REPO, 1), ghIssue(REPO, 2, { state: 'CLOSED' }), ghIssue(REPO, 3, { blockedBy: [{ repo: REPO, number: 1 }] })]);
-    const links = await listLinks(gh, LOGIN, REPO);
+    const links = await listLinks(gh, ACCESS, REPO);
     assert.deepEqual(links.kind === 'listed' && [links.issues.map((issue) => [issue.number, issue.blockedBy]), links.notes], [
       [
         [1, []],
@@ -79,7 +79,7 @@ describe('listLinks', () => {
 
   it('says when it stopped at its limit, or left out items it could not read', async () => {
     const gh = new FakeGh().pages(2).holds(REPO, [ghIssue(REPO, 1), { ...ghIssue(REPO, 2), fullDatabaseId: null }, ghIssue(REPO, 3)]);
-    const links = await listLinks(gh, LOGIN, REPO, 2);
+    const links = await listLinks(gh, ACCESS, REPO, 2);
     assert.deepEqual(links.kind === 'listed' && [links.issues.map((issue) => issue.number), links.notes], [
       [1],
       ['the links read reached 2 issues, so it may leave some out', '1 item(s) gh printed did not read as issues with links and were left out'],
@@ -87,22 +87,22 @@ describe('listLinks', () => {
   });
 
   it('gives nothing when any page fails, a repository that is not owner/name, or a gh that cannot start', async () => {
-    assert.deepEqual(await listLinks(new FakeGh(), LOGIN, 'acme/nope'), {
+    assert.deepEqual(await listLinks(new FakeGh(), ACCESS, 'acme/nope'), {
       kind: 'failed',
-      reason: 'acme/nope is not visible to the gh login: check github.repos, or save a read-only token for acme with: save teamrig-gh-acme',
+      reason: 'acme/nope is not visible to the token saved as teamrig-gh-acme: check github.repos, and on GitHub give that token this repository',
     });
     const gh = new FakeGh();
-    assert.deepEqual(await listLinks(gh, LOGIN, 'acme'), { kind: 'failed', reason: 'acme is not owner/name: check github.repos' });
+    assert.deepEqual(await listLinks(gh, ACCESS, 'acme'), { kind: 'failed', reason: 'acme is not owner/name: check github.repos' });
     assert.deepEqual(gh.ran, []);
     const absent = new FakeGh().failsWith(Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }));
-    const failed = await listLinks(absent, LOGIN, REPO);
+    const failed = await listLinks(absent, ACCESS, REPO);
     assert.ok(failed.kind === 'failed' && failed.reason.startsWith('gh, the GitHub CLI, is not installed'));
   });
 
   it('stops at a page with nothing on it, even one that says more follow', async () => {
     const empty: GhResult = { end: { kind: 'exited', code: 0 }, stdout: page([], 'Y3Vyc29y'), stderr: '' };
     const gh = new FakeGh().answers(REPO, empty);
-    assert.deepEqual(await listLinks(gh, LOGIN, REPO), { kind: 'listed', issues: [], notes: ['GitHub sent an empty page that said more follow, so the links read may leave some out'] });
+    assert.deepEqual(await listLinks(gh, ACCESS, REPO), { kind: 'listed', issues: [], notes: ['GitHub sent an empty page that said more follow, so the links read may leave some out'] });
     assert.equal(gh.ran.length, 1);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
-import { repoOwner, RepoTokens, TokenReadError, tokenName } from './tokens.ts';
+import { NoAccessError, repoOwner, RepoTokens, TokenMissingError, TokenReadError, tokenName } from './tokens.ts';
 
 const ENV = { HOME: '/u' };
 
@@ -17,15 +17,22 @@ describe('RepoTokens', () => {
     const store = new FakeCredentials().saves('teamrig-gh-acme', 'acme-token');
     const tokens = new RepoTokens(store, ENV);
     assert.deepEqual(await tokens.accessFor('acme/web'), {
-      via: 'token', env: { HOME: '/u', GH_TOKEN: 'acme-token' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme',
+      env: { HOME: '/u', GH_TOKEN: 'acme-token' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme',
     });
     const api = await tokens.accessFor('acme/api');
-    assert.ok(!(api instanceof TokenReadError));
+    assert.ok(!(api instanceof NoAccessError));
     assert.equal(api.env['GH_TOKEN'], 'acme-token');
-    assert.deepEqual(await tokens.accessFor('globex/api'), {
-      via: 'login', env: ENV, owner: 'globex', credential: 'teamrig-gh-globex', save: 'save teamrig-gh-globex',
-    });
+    assert.ok(await tokens.accessFor('globex/api') instanceof NoAccessError);
     assert.deepEqual(store.reads, ['teamrig-gh-acme', 'teamrig-gh-globex']);
+  });
+
+  it('gives no access, never the gh login, when no key is saved for the owner', async () => {
+    const access = await new RepoTokens(new FakeCredentials(), { HOME: '/u', GH_TOKEN: 'login-token' }).accessFor('globex/api');
+    assert.ok(access instanceof TokenMissingError);
+    assert.equal(
+      access.message,
+      "no token for globex is saved as teamrig-gh-globex in the test store; teamrig reaches a repository only with its owner's saved token, never the gh login: save one with: save teamrig-gh-globex",
+    );
   });
 
   it('gives no access, never the gh login, when the store holds the key but cannot read it', async () => {

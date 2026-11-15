@@ -1,4 +1,13 @@
 import type { CredentialRead, CredentialStore } from '../github/credentials.ts';
+import { tokenName } from '../github/tokens.ts';
+
+/** The repository owners the specs' GitHub teams list: `acme/web`, `globex/api`. */
+export const TEST_OWNERS: readonly string[] = ['acme', 'globex'];
+
+/** The token a store holds for `owner` once `savesTokensFor` saved it. */
+export function ownerToken(owner: string): string {
+  return `${owner}-token`;
+}
 
 /** A store of saved secrets held in memory: empty until a test saves one, and each read is recorded. */
 export class FakeCredentials implements CredentialStore {
@@ -10,6 +19,14 @@ export class FakeCredentials implements CredentialStore {
   /** From now on, `name` holds `secret`. */
   saves(name: string, secret: string): this {
     this.held.set(name, { kind: 'found', secret });
+    return this;
+  }
+
+  /** From now on, each owner's key is saved under its own name, holding `ownerToken(owner)`. */
+  savesTokensFor(owners: readonly string[]): this {
+    for (const owner of owners) {
+      this.saves(tokenName(owner), ownerToken(owner));
+    }
     return this;
   }
 

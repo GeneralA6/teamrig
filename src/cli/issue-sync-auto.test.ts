@@ -293,7 +293,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     assert.equal(result.code, EXIT.failed, [...result.stdout, ...result.stderr].join('\n'));
     assert.ok(!writes(gh).some((args) => args.includes('acme/api')), writes(gh).join('\n'));
     const told = githubLines(kit, 'lead').find((line) => line.startsWith('GitHub sync could not read ')) ?? '';
-    assert.match(told, /acme\/web \(status push: the gh login may not label acme\/web#7: save a token for acme /u);
+    assert.match(told, /acme\/web \(status push: the token saved as teamrig-gh-acme may not label acme\/web#7: on GitHub, edit that token /u);
     assert.match(told, /acme\/api \(/u);
     assert.deepEqual([...(parseSyncState(kit.files.get(STATE) ?? '')?.failing ?? [])].sort(), ['acme/api', 'acme/web']);
   });

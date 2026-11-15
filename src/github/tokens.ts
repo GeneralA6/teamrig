@@ -2,30 +2,41 @@ import type { Env } from '../core/home.ts';
 import type { CredentialRead, CredentialStore } from './credentials.ts';
 
 /**
- * How a command reaches one repository: through the gh login, or through the token saved for the repository's
- * owner, which gh gets as `GH_TOKEN` for that run only. The secret is never printed.
+ * How a command reaches one repository: through the token saved for the repository's owner, which gh gets as
+ * `GH_TOKEN` for that run only. The secret is never printed.
  */
 export interface RepoAccess {
-  readonly via: 'login' | 'token';
-  /** The environment gh runs with: `GH_TOKEN` is set only when a token reads the repository. */
+  /** The environment gh runs with, `GH_TOKEN` set to the owner's saved token. */
   readonly env: Env;
   /** The repository's owner, in lowercase. */
   readonly owner: string;
-  /** The credential that holds the owner's token: the one read, or the name to save one under. */
+  /** The credential that holds the owner's token. */
   readonly credential: string;
   /** The command that saves that credential, for a message that says how. */
   readonly save: string;
 }
 
 /**
- * The store holds an owner's credential but could not read it, such as a locked keyring. The command stops: the gh
- * login may reach far more than the saved key does, so it never stands in for a key that is there.
+ * The owner's saved key cannot be used, so the command stops for that owner. The gh login never stands in for it:
+ * that login may reach far more repositories, with far more rights, than the key the team saved for the owner.
  */
-export class TokenReadError extends Error {
+export abstract class NoAccessError extends Error {}
+
+/** The store holds an owner's credential but could not read it, such as a locked keyring. */
+export class TokenReadError extends NoAccessError {
   override readonly name = 'TokenReadError';
 
   constructor(credential: string, label: string, reason: string, save: string) {
     super(`could not read ${credential} from ${label}: ${reason}; unlock the store and rerun, or save the key again with: ${save}`);
+  }
+}
+
+/** No key is saved for the owner. */
+export class TokenMissingError extends NoAccessError {
+  override readonly name = 'TokenMissingError';
+
+  constructor(owner: string, credential: string, label: string, save: string) {
+    super(`no token for ${owner} is saved as ${credential} in ${label}; teamrig reaches a repository only with its owner's saved token, never the gh login: save one with: ${save}`);
   }
 }
 
@@ -51,9 +62,8 @@ export function tokenName(owner: string): string {
 /**
  * The access to each repository, reading the store once per owner. A fine-grained GitHub token reaches the
  * repositories of one owner only, so a team that reads a personal account's and an organisation's
- * repositories saves one token for each, by name: no config names them. An owner with no saved token is
- * reached through the gh login; a token the store holds but could not read gives a TokenReadError, which stops
- * the command: never the gh login in its place.
+ * repositories saves one token for each, by name: no config names them. An owner with no saved token, or one
+ * the store could not read, gives a NoAccessError, which stops the command for that owner.
  */
 export class RepoTokens {
   private readonly store: CredentialStore;
@@ -65,19 +75,19 @@ export class RepoTokens {
     this.env = env;
   }
 
-  /** The access to `repo`, or, when the store holds its owner's key but could not read it, the error that stops the command. */
-  async accessFor(repo: string): Promise<RepoAccess | TokenReadError> {
+  /** The access to `repo` through its owner's saved token, or the error that stops the command when there is none to use. */
+  async accessFor(repo: string): Promise<RepoAccess | NoAccessError> {
     const owner = repoOwner(repo);
     const credential = tokenName(owner);
-    const login: RepoAccess = { via: 'login', env: this.env, owner, credential, save: this.store.saveCommand(credential) };
+    const save = this.store.saveCommand(credential);
     const read = await this.readOnce(credential);
     switch (read.kind) {
       case 'found':
-        return { ...login, via: 'token', env: { ...this.env, GH_TOKEN: read.secret } };
+        return { env: { ...this.env, GH_TOKEN: read.secret }, owner, credential, save };
       case 'missing':
-        return login;
+        return new TokenMissingError(owner, credential, this.store.label, save);
       case 'failed':
-        return new TokenReadError(credential, this.store.label, read.reason, login.save);
+        return new TokenReadError(credential, this.store.label, read.reason, save);
     }
   }
 

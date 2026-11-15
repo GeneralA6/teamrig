@@ -10,9 +10,7 @@ import type { RepoAccess } from './tokens.ts';
 
 const OPEN: IssueListRequest = { repo: 'acme/web', state: 'open', limit: 500 };
 const CLOSED: IssueListRequest = { repo: 'acme/web', state: 'closed', closedSince: '2029-12-25', limit: 500 };
-/** Reading through the gh login, as when no token is saved for acme. */
-const LOGIN: RepoAccess = { via: 'login', env: { HOME: '/u' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
-const TOKEN: RepoAccess = { ...LOGIN, via: 'token', env: { HOME: '/u', GH_TOKEN: 'read-token' } };
+const TOKEN: RepoAccess = { env: { HOME: '/u', GH_TOKEN: 'read-token' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
 
 /** A gh error, as `spawn` raises it. */
 function spawnError(message: string, code: string): Error {
@@ -95,7 +93,7 @@ describe('listIssues', () => {
         ],
       }),
     ]);
-    const list = await listIssues(gh, LOGIN, OPEN);
+    const list = await listIssues(gh, TOKEN, OPEN);
     assert.equal(list.kind, 'listed');
     assert.deepEqual(list.kind === 'listed' ? list.issues : [], [
       readIssue(7, {
@@ -131,7 +129,7 @@ describe('listIssues', () => {
       }),
       ghIssue('acme/web', 8, { state: 'CLOSED', stateReason: 'COMPLETED' }),
     ]);
-    assert.deepEqual(await listIssues(gh, LOGIN, OPEN), {
+    assert.deepEqual(await listIssues(gh, TOKEN, OPEN), {
       kind: 'listed',
       issues: [
         readIssue(7, {
@@ -149,13 +147,13 @@ describe('listIssues', () => {
       unreadable: 0,
       full: false,
     });
-    assert.deepEqual(gh.ran, [{ args: issuePageArgs(OPEN, undefined), env: { HOME: '/u' } }]);
+    assert.deepEqual(gh.ran, [{ args: issuePageArgs(OPEN, undefined), env: { HOME: '/u', GH_TOKEN: 'read-token' } }]);
     assert.ok(gh.ran.every((request) => isIssueQuery(request.args)));
   });
 
   it('reads page after page, each after the cursor the one before ended on', async () => {
     const gh = new FakeGh().pages(2).holds('acme/web', openIssues(5));
-    const list = await listIssues(gh, LOGIN, OPEN);
+    const list = await listIssues(gh, TOKEN, OPEN);
     assert.deepEqual(list.kind === 'listed' && [list.issues.map((issue) => issue.number), list.full], [[1, 2, 3, 4, 5], false]);
     assert.deepEqual(
       gh.ran.map((request) => request.args),
@@ -165,22 +163,22 @@ describe('listIssues', () => {
 
   it('stops at its limit, and says it left issues out only when GitHub has more', async () => {
     const stopped = new FakeGh().pages(2).holds('acme/web', openIssues(5));
-    const cut = await listIssues(stopped, LOGIN, { ...OPEN, limit: 4 });
+    const cut = await listIssues(stopped, TOKEN, { ...OPEN, limit: 4 });
     assert.deepEqual(cut.kind === 'listed' && [cut.issues.map((issue) => issue.number), cut.full], [[1, 2, 3, 4], true]);
     assert.equal(stopped.ran.length, 2);
-    const whole = await listIssues(new FakeGh().pages(2).holds('acme/web', openIssues(5)), LOGIN, { ...OPEN, limit: 5 });
+    const whole = await listIssues(new FakeGh().pages(2).holds('acme/web', openIssues(5)), TOKEN, { ...OPEN, limit: 5 });
     assert.deepEqual(whole.kind === 'listed' && [whole.issues.length, whole.full], [5, false]);
   });
 
   it('ends on a page with nothing on it, even when GitHub says more follow', async () => {
     const gh = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 0 }, stdout: pageText([], { hasNextPage: true, endCursor: 'x' }), stderr: '' });
-    assert.deepEqual(await listIssues(gh, LOGIN, OPEN), { kind: 'listed', issues: [], unreadable: 0, full: true });
+    assert.deepEqual(await listIssues(gh, TOKEN, OPEN), { kind: 'listed', issues: [], unreadable: 0, full: true });
     assert.equal(gh.ran.length, 1);
   });
 
   it('fails the whole read when a later page fails, so nothing is judged on half of it', async () => {
     const gh = new SecondPageFails();
-    assert.deepEqual(await listIssues(gh, LOGIN, OPEN), {
+    assert.deepEqual(await listIssues(gh, TOKEN, OPEN), {
       kind: 'failed',
       reason: 'gh api graphql for the issues of acme/web exited with code 1: HTTP 403: API rate limit exceeded',
     });
@@ -189,7 +187,7 @@ describe('listIssues', () => {
 
   it('runs nothing for a repository that is not owner/name', async () => {
     const gh = new FakeGh();
-    assert.deepEqual(await listIssues(gh, LOGIN, { ...OPEN, repo: 'acme\u001b[2J' }), { kind: 'failed', reason: 'acme [2J is not owner/name: check github.repos' });
+    assert.deepEqual(await listIssues(gh, TOKEN, { ...OPEN, repo: 'acme\u001b[2J' }), { kind: 'failed', reason: 'acme [2J is not owner/name: check github.repos' });
     assert.deepEqual(gh.ran, []);
   });
 
@@ -200,7 +198,7 @@ describe('listIssues', () => {
       ghIssue('acme/web', 9, { state: 'CLOSED', updatedAt: '2030-01-02T00:00:00Z', closedAt: '2029-12-24T23:59:59Z' }),
       ghIssue('acme/web', 10, { state: 'CLOSED', updatedAt: '2030-01-02T00:00:00Z', closedAt: '2029-12-25T00:00:00Z' }),
     ]);
-    const list = await listIssues(gh, LOGIN, CLOSED);
+    const list = await listIssues(gh, TOKEN, CLOSED);
     assert.deepEqual(list.kind === 'listed' && list.issues, [
       readIssue(8, { state: 'closed', stateReason: 'COMPLETED', closedAt: '2030-01-01T00:00:00Z' }),
       readIssue(10, { state: 'closed', updatedAt: '2030-01-02T00:00:00Z', closedAt: '2029-12-25T00:00:00Z' }),
@@ -209,26 +207,11 @@ describe('listIssues', () => {
     assert.deepEqual(gh.ran.map((request) => request.args), [issuePageArgs(CLOSED, undefined)]);
   });
 
-  it('says how to fix a repository the login cannot see', async () => {
-    assert.deepEqual(await listIssues(new FakeGh(), LOGIN, { ...OPEN, repo: 'acme/nope' }), {
+  it('says to save a new token when gh answers as if it had no login', async () => {
+    const gh = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 4 }, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' });
+    assert.deepEqual(await listIssues(gh, TOKEN, OPEN), {
       kind: 'failed',
-      reason: 'acme/nope is not visible to the gh login: check github.repos, or save a read-only token for acme with: save teamrig-gh-acme',
-    });
-  });
-
-  it('says to log in when gh has no login', async () => {
-    const byCode = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 4 }, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' });
-    const byText = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 401: Bad credentials (https://api.github.com/graphql)\n' });
-    for (const gh of [byCode, byText]) {
-      assert.deepEqual(await listIssues(gh, LOGIN, OPEN), { kind: 'failed', reason: 'gh is not logged in to GitHub: run gh auth login, or save a read-only token for acme with: save teamrig-gh-acme' });
-    }
-  });
-
-  it('says the login may not read the issues, and saving a token would', async () => {
-    const gh = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'GraphQL: Resource not accessible by personal access token (repository.issues)\n' });
-    assert.deepEqual(await listIssues(gh, LOGIN, OPEN), {
-      kind: 'failed',
-      reason: 'the gh login may not read the issues of acme/web: save a read-only token for acme with: save teamrig-gh-acme',
+      reason: 'GitHub refused the token saved as teamrig-gh-acme (expired or revoked?): create a new one and save it again with: save teamrig-gh-acme',
     });
   });
 
@@ -255,11 +238,11 @@ describe('listIssues', () => {
   });
 
   it('says gh is not installed, or why it could not start', async () => {
-    assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh ENOENT', 'ENOENT')), LOGIN, OPEN), {
+    assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh ENOENT', 'ENOENT')), TOKEN, OPEN), {
       kind: 'failed',
       reason: 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com, then run gh auth login',
     });
-    assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh EACCES', 'EACCES')), LOGIN, OPEN), {
+    assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh EACCES', 'EACCES')), TOKEN, OPEN), {
       kind: 'failed',
       reason: 'gh could not start: spawn gh EACCES',
     });
@@ -267,9 +250,9 @@ describe('listIssues', () => {
 
   it('gives any other failure as gh first stderr line, on one plain line, and a stop by its signal', async () => {
     const failed = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 502:\u001b[31m Bad Gateway\nretry later\n' });
-    assert.deepEqual(await listIssues(failed, LOGIN, OPEN), { kind: 'failed', reason: 'gh api graphql for the issues of acme/web exited with code 1: HTTP 502: [31m Bad Gateway' });
+    assert.deepEqual(await listIssues(failed, TOKEN, OPEN), { kind: 'failed', reason: 'gh api graphql for the issues of acme/web exited with code 1: HTTP 502: [31m Bad Gateway' });
     const stopped = new FakeGh().answers('acme/web', { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
-    assert.deepEqual(await listIssues(stopped, LOGIN, OPEN), { kind: 'failed', reason: 'gh was stopped (SIGTERM) before it listed the issues of acme/web; it gets 60 s' });
+    assert.deepEqual(await listIssues(stopped, TOKEN, OPEN), { kind: 'failed', reason: 'gh was stopped (SIGTERM) before it listed the issues of acme/web; it gets 60 s' });
   });
 });
 

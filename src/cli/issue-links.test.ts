@@ -9,8 +9,8 @@ import { EXIT } from './runtime.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web'] } };
 const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
-const READ_LOGIN = 'ACCESS acme: read with the gh login; no token saved as teamrig-gh-acme';
-const WRITE_LOGIN = 'ACCESS acme: writes with the gh login; no token saved as teamrig-gh-acme';
+const READ_LOGIN = 'ACCESS acme: read with the token saved as teamrig-gh-acme';
+const WRITE_LOGIN = 'ACCESS acme: writes with the token saved as teamrig-gh-acme';
 
 /** A whole (#9) planned after two parts (#10, #11) and a task of another repository, as the register holds them. */
 async function treeKit(): Promise<CliHarness> {
@@ -90,7 +90,7 @@ describe('teamrig issue links', () => {
   it('fails a repository GitHub does not show, and refuses one not in github.repos, running no gh', async () => {
     const failed = await (await treeKit()).run(['issue', 'links'], { ...AS_LEAD, gh: new FakeGh() });
     assert.equal(failed.code, EXIT.failed);
-    assert.match(failed.stdout.join('\n'), /^FAILED acme\/web: acme\/web is not visible to the gh login/mu);
+    assert.match(failed.stdout.join('\n'), /^FAILED acme\/web: acme\/web is not visible to the token saved as /mu);
     const gh = new FakeGh();
     const refused = await (await treeKit()).run(['issue', 'links', '--repo', 'acme/api'], { ...AS_LEAD, gh });
     assert.equal(refused.code, EXIT.refused);

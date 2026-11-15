@@ -14,7 +14,7 @@ const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web', 'acme/a
 const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
 const ROWS = join(APP, 'rows.jsonl');
 const PREVIEW = join(APP, 'preview.md');
-const NO_TOKEN = 'ACCESS acme: opens issues with the gh login; no token saved as teamrig-gh-acme';
+const NO_TOKEN = 'ACCESS acme: opens issues with the token saved as teamrig-gh-acme';
 
 function issueRow(id: string, repo: string, title: string, overrides: JsonRecord = {}): string {
   return JSON.stringify({ id, decision: 'issue', repo, type: 'task', priority: 'p2', title, body: `Why ${title}.`, ...overrides });

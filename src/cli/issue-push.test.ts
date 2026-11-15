@@ -14,7 +14,7 @@ const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
 const AS_BRAVO = { env: { TEAMRIG_SESSION: 'bravo' } };
 
 /** What a run that reads acme's repositories with no token saved prints first. */
-const NO_TOKEN = 'ACCESS acme: read with the gh login; no token saved as teamrig-gh-acme';
+const NO_TOKEN = 'ACCESS acme: read with the token saved as teamrig-gh-acme';
 
 /** acme/web's issues: 7 and 8 open, 9 open and labelled triaged, 5 closed as not planned; acme/api has none. */
 function issues(): FakeGh {
