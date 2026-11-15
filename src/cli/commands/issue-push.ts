@@ -4,7 +4,7 @@ import type { RepoFailure } from '../../github/auto.ts';
 import { closedSince } from '../../github/sync.ts';
 import { targetText, type IssueHost } from '../../issues/host.ts';
 import { applyPush } from '../../issues/push-apply.ts';
-import { changeLine, changeWrites, PUSH_WRITES_PER_RUN, planPush, type PushPlan } from '../../issues/status-push.ts';
+import { changeLine, changeWrites, planPush, SESSION_PUSH, type PushLimits, type PushPlan } from '../../issues/status-push.ts';
 import type { Task } from '../../register/fold.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -57,12 +57,12 @@ export async function issuePush(args: ParsedArgs, runtime: CliRuntime): Promise<
       since: closedSince(new Date(runtime.clock.now()), config.github.closedDays),
       tasks: async () => (await team.register.snapshot()).state.tasks.values(),
       send,
-      writesPerRun: PUSH_WRITES_PER_RUN,
+      limits: SESSION_PUSH,
       told: new Set(),
     },
     say,
   );
-  say(pushEndLine(send, totals, PUSH_WRITES_PER_RUN));
+  say(pushEndLine(send, totals, SESSION_PUSH.writesPerRun));
   return totals.failures.length > 0 ? EXIT.failed : EXIT.ok;
 }
 
@@ -76,8 +76,8 @@ export interface PushRun {
   readonly tasks: () => Promise<Iterable<Task>>;
   /** Without it the run plans and prints, and writes nothing. */
   readonly send: boolean;
-  /** The writes the whole run sends at most, over every repository, in their order. */
-  readonly writesPerRun: number;
+  /** The writes the whole run sends at most, over every repository, in their order, and whether it may close. */
+  readonly limits: PushLimits;
   /** The scopes whose ACCESS line was already printed, so each is printed once per command. */
   readonly told: Set<string>;
 }
@@ -92,11 +92,11 @@ export interface PushTotals {
 /**
  * Plans each repository of `run` against the register's tasks and, with send, sends the plan (issues/push-apply.ts),
  * a repository stopping at its first failed write. The run's writes are shared: each repository's plan is given what
- * the ones before it left, counted by what they planned, so a run never sends more than `writesPerRun`.
+ * the ones before it left, counted by what they planned, so a run never sends more than `limits.writesPerRun`.
  */
 export async function pushRepos(run: PushRun, say: (line: string) => void): Promise<PushTotals> {
   const failures: RepoFailure[] = [];
-  let left = run.writesPerRun;
+  let left = run.limits.writesPerRun;
   let writes = 0;
   let sent = 0;
   for (const repo of run.repos) {
@@ -117,7 +117,7 @@ export async function pushRepos(run: PushRun, say: (line: string) => void): Prom
       continue;
     }
     read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
-    const plan = planPush(repo, read.issues, await run.tasks(), left);
+    const plan = planPush(repo, read.issues, await run.tasks(), { writesPerRun: left, closes: run.limits.closes });
     planLines(plan).forEach(say);
     const planned = plan.changes.reduce((sum, change) => sum + changeWrites(change), 0);
     left -= planned;
@@ -148,6 +148,7 @@ export function planLines(plan: PushPlan): string[] {
     `${plan.changes.length} to change`,
     `${plan.unchanged} unchanged`,
     ...(plan.deferred.length === 0 ? [] : [`${plan.deferred.length} left for the next run`]),
+    ...(plan.heldCloses.length === 0 ? [] : [`${plan.heldCloses.length} close(s) held for a session's push`]),
     ...(plan.closedActive.length === 0 ? [] : [`${plan.closedActive.length} closed on the host while the task is active`]),
     ...(plan.unlisted.length === 0 ? [] : [`${plan.unlisted.length} not listed`]),
   ];
@@ -156,6 +157,9 @@ export function planLines(plan: PushPlan): string[] {
   return [
     `PUSH ${plan.repo}: ${counts.join(', ')}`,
     ...(more > 0 ? [...changes.slice(0, SHOWN_CHANGES), `... and ${more} more`] : changes),
+    ...plan.heldCloses.map(
+      (held) => `${changeLine(held).replace(/^CLOSE/u, 'HELD')}; the automatic push sends labels only: a session's teamrig issue sync --push --yes sends the close`,
+    ),
     ...plan.closedActive.map(
       (closed) =>
         `KEPT ${targetText(closed.target)} ${closed.task} ${closed.status}: closed on the host${closed.stateReason === '' ? '' : ` (${closed.stateReason.toLowerCase()})`} while the task is active; the push never reopens an issue, so set the task to match or reopen the issue`,

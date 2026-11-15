@@ -98,6 +98,8 @@ export interface PushPlan {
   readonly changes: readonly IssueChange[];
   /** The changes left for the next run, past the run's writes. */
   readonly deferred: readonly IssueChange[];
+  /** The closes this push may not send (PushLimits.closes off): planned and printed, sent by a session's push. */
+  readonly heldCloses: readonly IssueChange[];
   /** Issues already showing their task's status. */
   readonly unchanged: number;
   readonly closedActive: readonly ClosedActive[];
@@ -110,13 +112,29 @@ export function changeWrites(change: IssueChange): number {
   return change.add.length + change.remove.length + (change.close === undefined ? 0 : 1);
 }
 
+/** What one push may send. */
+export interface PushLimits {
+  /** The writes the run sends at most; the rest is deferred. */
+  readonly writesPerRun: number;
+  /**
+   * Whether the push may close an issue. The automatic push may not (security verdict F1 on T2876): a close is the
+   * one write a person sees as a decision, so only a session's `issue sync --push --yes` sends it; the automatic push
+   * holds it, printed, outside the run's writes.
+   */
+  readonly closes: boolean;
+}
+
+/** A session's push: the run's writes, closes sent. */
+export const SESSION_PUSH: PushLimits = { writesPerRun: PUSH_WRITES_PER_RUN, closes: true };
+
 /**
  * The push of `repo`: for each issue of it a task holds, by `ref: gh:<repo>#<n>`, the writes that make the issue
  * show the task's status, planned against `issues` as the host listed them now (open ones and those closed lately).
  * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work.
- * The run sends at most `writesPerRun` writes; the rest is deferred.
+ * The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
+ * is held instead, taking none of the run's writes.
  */
-export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iterable<Task>, writesPerRun: number = PUSH_WRITES_PER_RUN): PushPlan {
+export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iterable<Task>, limits: PushLimits = SESSION_PUSH): PushPlan {
   const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
   const planned: IssueChange[] = [];
   const closedActive: ClosedActive[] = [];
@@ -145,8 +163,10 @@ export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iter
       planned.push(change);
     }
   }
-  const { changes, deferred } = withinRun(planned, writesPerRun);
-  return { repo, changes, deferred, unchanged, closedActive, unlisted };
+  const heldCloses = limits.closes ? [] : planned.filter((change) => change.close !== undefined);
+  const sendable = limits.closes ? planned : planned.filter((change) => change.close === undefined);
+  const { changes, deferred } = withinRun(sendable, limits.writesPerRun);
+  return { repo, changes, deferred, heldCloses, unchanged, closedActive, unlisted };
 }
 
 /** The task speaking for each issue number of `repo` a task holds: a team task over one the import added. */

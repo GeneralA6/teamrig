@@ -677,7 +677,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
-      sends the status push (--push --yes) too, its writes lowered so an hour of runs sends at most 250
+      sends the status push's labels too (a close it plans is held for --push --yes, printed HELD),
+      its writes lowered so an hour of runs sends at most 250
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other

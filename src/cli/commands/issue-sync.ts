@@ -123,7 +123,8 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
         since,
         tasks: async () => (await register.snapshot()).state.tasks.values(),
         send: true,
-        writesPerRun,
+        // No closes: the automatic push sends labels only (security verdict F1 on T2876); it prints each close held.
+        limits: { writesPerRun, closes: false },
         told,
       },
       say,

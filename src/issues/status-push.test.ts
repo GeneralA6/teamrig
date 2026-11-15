@@ -159,7 +159,7 @@ describe('planPush (T2682)', () => {
   it('sends at most the writes a run is given, deferring the rest', () => {
     const issues = [1, 2, 3].map((number) => testHostIssue(number, { labels: ['status:triaged'] }));
     const tasks = [1, 2, 3].map((number) => holding(`T${number}`, number, { status: 'in-progress' }));
-    const plan = planPush(REPO, issues, tasks, 5);
+    const plan = planPush(REPO, issues, tasks, { writesPerRun: 5, closes: true });
     assert.deepEqual(
       plan.changes.map((change) => change.task),
       ['T1', 'T2'],
@@ -168,7 +168,26 @@ describe('planPush (T2682)', () => {
       plan.deferred.map((change) => change.task),
       ['T3'],
     );
-    assert.deepEqual(planPush(REPO, issues, tasks, 0).changes, []);
+    assert.deepEqual(planPush(REPO, issues, tasks, { writesPerRun: 0, closes: true }).changes, []);
+  });
+
+  it('without closes holds each closing change, printed apart, and gives the run writes to the label changes', () => {
+    const issues = [1, 2, 3].map((number) => testHostIssue(number, { labels: ['status:triaged'] }));
+    const tasks = [holding('T1', 1, { status: 'done' }), holding('T2', 2, { status: 'dropped' }), holding('T3', 3, { status: 'in-progress' })];
+    const plan = planPush(REPO, issues, tasks, { writesPerRun: 2, closes: false });
+    assert.deepEqual(
+      plan.heldCloses.map((change) => [change.task, change.close]),
+      [
+        ['T1', 'completed'],
+        ['T2', 'not-planned'],
+      ],
+    );
+    assert.deepEqual(
+      plan.changes.map((change) => change.task),
+      ['T3'],
+    );
+    assert.deepEqual(plan.deferred, []);
+    assert.deepEqual(planPush(REPO, issues, tasks).heldCloses, []);
   });
 });
 
