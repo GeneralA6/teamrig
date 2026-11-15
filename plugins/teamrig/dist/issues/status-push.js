@@ -7,6 +7,8 @@ import { parseIssueTarget, targetText } from "./host.js";
  * the task with the issue as the host lists it now, not with what an earlier run sent, so five status changes since
  * the last run are one label swap, a run that failed half way is redone by the next, and a status label someone
  * edited by hand is set back. A person's close is never undone here: the issue stays closed and the plan names it.
+ * An open issue with no assignee gets one (T2999): the login of the task's owning session, else the repository's owner
+ * account; an issue a person assigned keeps its assignees, and the push takes none off.
  */
 /** The label namespace the push owns: any label in it but the task's own is taken off. */
 export const STATUS_LABEL_PREFIX = 'status:';
@@ -51,9 +53,27 @@ export function issueGoal(status) {
             return { open: true, label: STATUS_LABELS[status] };
     }
 }
-/** The writes one change sends: one per label added or taken off, and one for the close. */
+/** The session-to-login map of `owners`, a login-to-session map such as `github.owners`. */
+export function sessionLogins(owners) {
+    const logins = new Map();
+    for (const [login, session] of Object.entries(owners)) {
+        if (!logins.has(session)) {
+            logins.set(session, login);
+        }
+    }
+    return logins;
+}
+/**
+ * Who an issue of `repo` whose task `session` owns is assigned to: the session's login, else the account that owns
+ * the repository, who answers for the team's work there. Sessions are not GitHub users, so a session no login maps
+ * to cannot be named itself.
+ */
+export function assigneeOf(repo, session, logins) {
+    return logins.get(session) ?? repo.slice(0, repo.indexOf('/'));
+}
+/** The writes one change sends: one per label added or taken off, one for the assign, and one for the close. */
 export function changeWrites(change) {
-    return change.add.length + change.remove.length + (change.close === undefined ? 0 : 1);
+    return change.add.length + change.remove.length + (change.assign === undefined ? 0 : 1) + (change.close === undefined ? 0 : 1);
 }
 /** A session's push: the run's writes, closes sent. */
 export const SESSION_PUSH = { writesPerRun: PUSH_WRITES_PER_RUN, closes: true };
@@ -62,9 +82,10 @@ export const SESSION_PUSH = { writesPerRun: PUSH_WRITES_PER_RUN, closes: true };
  * show the task's status, planned against `issues` as the host listed them now (open ones and those closed lately).
  * When a team task and an imported one hold the same issue, the team task speaks for it: the issue is its work.
  * The run sends at most `limits.writesPerRun` writes; the rest is deferred. Without `limits.closes` a closing change
- * is held instead, taking none of the run's writes.
+ * is held instead, taking none of the run's writes. With `logins` an open issue with no assignee is assigned
+ * (assigneeOf); without, the plan assigns nobody.
  */
-export function planPush(repo, issues, tasks, limits = SESSION_PUSH) {
+export function planPush(repo, issues, tasks, limits = SESSION_PUSH, logins) {
     const listed = new Map(issues.filter((issue) => issue.repo === repo).map((issue) => [issue.number, issue]));
     const planned = [];
     const closedActive = [];
@@ -87,7 +108,8 @@ export function planPush(repo, issues, tasks, limits = SESSION_PUSH) {
             closedActive.push({ target, task: task.id, status: task.status, stateReason: issue.stateReason });
             continue;
         }
-        const change = changeFor(target, task, issue, goal);
+        const assign = goal.open && logins !== undefined && issue.assignees.length === 0 ? assigneeOf(repo, task.owner, logins) : undefined;
+        const change = changeFor(target, task, issue, goal, assign);
         if (change === undefined) {
             unchanged += 1;
         }
@@ -121,9 +143,10 @@ export function heldIssue(task) {
 }
 /**
  * The writes for one listed issue, or undefined when it already shows its task's status. A closing issue loses its
- * status labels too, so a closed issue never shows work as still going on.
+ * status labels too, so a closed issue never shows work as still going on. `assign`, set for an open issue with no
+ * assignee, is the login it gets.
  */
-function changeFor(target, task, issue, goal) {
+function changeFor(target, task, issue, goal, assign) {
     const statusLabels = issue.labels.filter((label) => label.startsWith(STATUS_LABEL_PREFIX));
     if (!goal.open) {
         if (issue.state === 'closed') {
@@ -133,7 +156,10 @@ function changeFor(target, task, issue, goal) {
     }
     const add = statusLabels.includes(goal.label) ? [] : [goal.label];
     const remove = statusLabels.filter((label) => label !== goal.label);
-    return add.length === 0 && remove.length === 0 ? undefined : { target, task: task.id, status: task.status, add, remove, close: undefined };
+    if (add.length === 0 && remove.length === 0 && assign === undefined) {
+        return undefined;
+    }
+    return { target, task: task.id, status: task.status, add, remove, close: undefined, ...(assign === undefined ? {} : { assign }) };
 }
 /** The whole changes that fit in one run's writes, in order, and the rest. A change is never split across runs. */
 function withinRun(planned, writesPerRun) {
@@ -152,12 +178,20 @@ function withinRun(planned, writesPerRun) {
     }
     return { changes, deferred };
 }
-/** One change on one line: the issue, its task and status, then each write. */
+/** One change on one line: CLOSE, LABEL or, for an assign alone, ASSIGN; the issue, its task and status, then each write. */
 export function changeLine(change) {
     const writes = [
         ...(change.close === undefined ? [] : [`close as ${change.close}`]),
         ...change.add.map((label) => `add ${label}`),
         ...change.remove.map((label) => `take off ${label}`),
+        ...(change.assign === undefined ? [] : [`assign ${change.assign}`]),
     ];
-    return `${change.close === undefined ? 'LABEL' : 'CLOSE'} ${targetText(change.target)} ${change.task} ${change.status}: ${writes.join(', ')}`;
+    return `${changeTag(change)} ${targetText(change.target)} ${change.task} ${change.status}: ${writes.join(', ')}`;
+}
+/** The word a change's line starts with. */
+function changeTag(change) {
+    if (change.close !== undefined) {
+        return 'CLOSE';
+    }
+    return change.add.length === 0 && change.remove.length === 0 ? 'ASSIGN' : 'LABEL';
 }

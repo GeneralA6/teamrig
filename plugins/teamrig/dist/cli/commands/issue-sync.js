@@ -4,7 +4,7 @@ import { addedTasks } from "../../github/auto.js";
 import { importRules } from "../../github/map.js";
 import { importedTasks, linkedRefs, planSync } from "../../github/plan.js";
 import { applySteps, closedSince } from "../../github/sync.js";
-import { autoPushWrites } from "../../issues/status-push.js";
+import { autoPushWrites, sessionLogins } from "../../issues/status-push.js";
 import { priorityText } from "../../register/model.js";
 import { GITHUB_ACTOR } from "../../register/policy.js";
 import { noPositionals } from "../args.js";
@@ -126,8 +126,9 @@ export async function issueSync(args, runtime) {
             since,
             tasks: async () => (await register.snapshot()).state.tasks.values(),
             send: true,
-            // No closes: the automatic push sends labels only (security verdict F1 on T2876); it prints each close held.
+            // No closes: the automatic push sends labels and assignees only (security verdict F1 on T2876); it prints each close held.
             limits: { writesPerRun, closes: false },
+            logins: sessionLogins(config.github.owners),
             told,
         }, say);
         say(pushEndLine(true, pushed, writesPerRun));

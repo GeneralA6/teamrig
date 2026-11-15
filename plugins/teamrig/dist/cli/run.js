@@ -200,7 +200,7 @@ const COMMANDS = {
     'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
     'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
     'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
-    'issue close': { effect: 'write', flags: ['session', 'comment', 'reason'], load: async () => (await issueCommands()).issueClose },
+    'issue close': { effect: 'write', flags: ['session', 'comment', 'reason', 'duplicate-of'], load: async () => (await issueCommands()).issueClose },
     'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
     'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
     'issue links': { effect: 'write', flags: ['repo'], switches: ['yes'], load: async () => (await issueLinksCommands()).issueLinks },
@@ -658,13 +658,15 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
-      sends the status push's labels too (a close it plans is held for --push --yes, printed HELD),
+      sends the status push's labels and assignees too (a close it plans is held for --push --yes,
+      printed HELD),
       its writes lowered so an hour of runs sends at most 250
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
       in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
       status: label taken off; done closes it as completed, dropped as not planned; never reopens an
-      issue a person closed, and names it; at most 40 writes a run; without --yes it writes nothing;
+      issue a person closed, and names it; an open issue no one is assigned to is assigned to the login
+      github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
       --yes sends them, a repository stopping at its first failed write, a change adding a status label
       the repository lacks held until it is made
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
@@ -679,8 +681,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
       gh login in its place
   issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
-      closes one issue or pull request of the team's repositories, first posting --comment when
-      given, with the same checks; a failed comment closes nothing; --reason is the one the host shows
+      [--duplicate-of <owner/name#n>]   closes one issue or pull request of the team's repositories,
+      first posting --comment when given, with the same checks; a failed comment closes nothing;
+      --reason is the one the host shows; --duplicate-of closes it as a duplicate of that issue of the
+      same repository, which the host links, and is refused when the host has no such issue
   issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
       labels off one issue or pull request of the team's repositories, with the same access; each
       label to add must already be one of the repository's, and the first failure stops it
@@ -689,10 +693,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
       writes nothing to GitHub; refuses a folder whose origin is another repository
   issue links [--repo <owner/name>] [--yes]   puts the task tree on the issues of github.repos: each
-      task planned after another, both mirrored in one repository, is marked blocked by it on GitHub,
-      and a part of one whole becomes its sub-issue; without --yes it reads the links GitHub has and
-      shows what it would add, writing nothing; adds only, never removes or moves a link a person set;
-      stops a repository at its first failure, and a rerun adds only what is still missing
+      task planned after or waiting on another, both mirrored in one repository, is marked blocked by
+      it on GitHub, and a part of one whole becomes its sub-issue; without --yes it reads the links
+      GitHub has and shows what it would add, writing nothing; adds only, never removes or moves a
+      link a person set; stops a repository at its first failure, and a rerun adds only what is still
+      missing
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;

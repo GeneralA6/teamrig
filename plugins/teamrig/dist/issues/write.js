@@ -92,8 +92,9 @@ export function postRefusal(subject, text, scanner) {
 /**
  * Writes `write` through `host`, one line said for each step: ACCESS (how the host is reached), then COMMENTED
  * and CLOSED, or FAILED with the host's reason. The host is reached before any write, so a key that cannot be
- * read writes nothing; a failed comment closes nothing, and a close that fails after its comment says so, so a
- * rerun does not post the comment twice. True when every step was done.
+ * read writes nothing; so does an issue the duplicate close names that the host has not, read before the comment.
+ * A failed comment closes nothing, and a close that fails after its comment says so, so a rerun does not post the
+ * comment twice. True when every step was done.
  */
 export async function writeIssue(host, write, say) {
     const shown = targetText(write.target);
@@ -103,6 +104,11 @@ export async function writeIssue(host, write, say) {
         return false;
     }
     say(`ACCESS ${reach.access}`);
+    const duplicate = write.close && write.duplicateOf !== undefined ? await duplicateIdOf(host, write.duplicateOf) : undefined;
+    if (duplicate?.kind === 'refused') {
+        say(`FAILED ${shown}: ${duplicate.reason}; nothing was written`);
+        return false;
+    }
     if (write.comment !== undefined) {
         const commented = await host.comment(write.target, write.comment);
         if (commented.kind === 'failed') {
@@ -114,12 +120,22 @@ export async function writeIssue(host, write, say) {
     if (!write.close) {
         return true;
     }
-    const closed = await host.close(write.target, write.reason);
+    const closed = await host.close(write.target, write.reason, duplicate?.id);
     if (closed.kind === 'failed') {
         const rerun = write.comment === undefined ? '' : `; the comment was posted: rerun ${KIT_NAME} issue close ${shown} without --comment`;
         say(`FAILED ${shown}: ${closed.reason}${rerun}`);
         return false;
     }
-    say(`CLOSED ${shown}${write.reason === undefined ? '' : ` as ${write.reason}`}`);
+    const of = write.duplicateOf === undefined ? '' : ` of ${targetText(write.duplicateOf)}`;
+    say(`CLOSED ${shown}${write.reason === undefined ? '' : ` as ${write.reason}${of}`}`);
     return true;
+}
+/** The host's id of the issue a duplicate close names, or why it cannot be named: the host has no such issue, or the read failed. */
+async function duplicateIdOf(host, original) {
+    const read = await host.issueId(original);
+    if (read.kind === 'found') {
+        return read;
+    }
+    const reason = read.kind === 'failed' ? read.reason : `${targetText(original)} is no issue the access can see: name an existing one as the original`;
+    return { kind: 'refused', reason };
 }

@@ -1,6 +1,6 @@
 import { targetText, } from "../issues/host.js";
 import { exitText } from "../open/processes.js";
-import { blockedByAddArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, labelReadArgs, subIssueAddArgs, } from "./gh.js";
+import { assigneeReadArgs, blockedByAddArgs, issueAssignArgs, issueCloseArgs, issueCommentArgs, issueCreateArgs, issueLabelAddArgs, issueLabelRemoveArgs, issueReadArgs, labelReadArgs, subIssueAddArgs, } from "./gh.js";
 import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, startFailureText } from "./issues.js";
 import { listLinks } from "./links.js";
 import { createdNumber } from "./migrate.js";
@@ -86,27 +86,66 @@ export class GitHubIssueHost {
     comment(target, body) {
         return this.write(target, issueCommentArgs(target, body), 'comment on');
     }
-    close(target, reason) {
-        return this.write(target, issueCloseArgs(target, reason), 'close');
+    close(target, reason, duplicateId) {
+        return this.write(target, issueCloseArgs(target, reason, duplicateId), 'close');
+    }
+    /**
+     * Reads the one issue for its `id`: found with it, missing when GitHub answers Not Found (no such issue, or one the
+     * access cannot see), else failed with gh's own line, or when the answer holds no id.
+     */
+    async issueId(target) {
+        const shown = targetText(target);
+        const access = await this.tokens.accessFor(target.repo);
+        if (access instanceof TokenReadError) {
+            return { kind: 'failed', reason: access.message };
+        }
+        let result;
+        try {
+            result = await this.gh.run({ args: issueReadArgs(target), env: access.env });
+        }
+        catch (error) {
+            return { kind: 'failed', reason: startFailureText(error) };
+        }
+        if (result.end.kind === 'signal') {
+            return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading ${shown}` };
+        }
+        if (result.end.code !== 0) {
+            return ghFailureKind(result.end.code, result.stderr) === 'not-visible'
+                ? { kind: 'missing' }
+                : { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read ${shown} ${exitText(result.end.code, result.stderr)}`)) };
+        }
+        const id = issueIdIn(result.stdout);
+        return id === undefined ? { kind: 'failed', reason: `gh printed no id for ${shown}` } : { kind: 'found', id };
     }
     /**
      * Reads the one label: found when gh ends well, missing when GitHub answers Not Found (no such label, or a
      * repository the access cannot see, which the add would fail on anyway), else failed with gh's own line.
      */
-    async labelExists(repo, label) {
+    labelExists(repo, label) {
+        return this.exists(repo, labelReadArgs(repo, label), `the label ${JSON.stringify(label)} of ${repo}`);
+    }
+    /**
+     * Reads whether the login may be assigned: found when gh ends well, missing when GitHub answers Not Found (not a
+     * person with access, an organisation, or a repository the access cannot see), else failed with gh's own line.
+     */
+    assigneeExists(repo, login) {
+        return this.exists(repo, assigneeReadArgs(repo, login), `whether ${login} may be assigned in ${repo}`);
+    }
+    /** One read of `what` in `repo`: found when gh ends well, missing on Not Found, else failed with gh's own line. */
+    async exists(repo, args, what) {
         const access = await this.tokens.accessFor(repo);
         if (access instanceof TokenReadError) {
             return { kind: 'failed', reason: access.message };
         }
         let result;
         try {
-            result = await this.gh.run({ args: labelReadArgs(repo, label), env: access.env });
+            result = await this.gh.run({ args, env: access.env });
         }
         catch (error) {
             return { kind: 'failed', reason: startFailureText(error) };
         }
         if (result.end.kind === 'signal') {
-            return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading the label ${JSON.stringify(label)} of ${repo}` };
+            return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading ${what}` };
         }
         if (result.end.code === 0) {
             return { kind: 'found' };
@@ -114,7 +153,7 @@ export class GitHubIssueHost {
         if (ghFailureKind(result.end.code, result.stderr) === 'not-visible') {
             return { kind: 'missing' };
         }
-        return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read the label ${JSON.stringify(label)} of ${repo} ${exitText(result.end.code, result.stderr)}`)) };
+        return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read ${what} ${exitText(result.end.code, result.stderr)}`)) };
     }
     addLabels(target, labels) {
         return this.write(target, issueLabelAddArgs(target, labels), 'label');
@@ -134,6 +173,9 @@ export class GitHubIssueHost {
     }
     addBlockedBy(target, blockerId) {
         return this.write(target, blockedByAddArgs(target, blockerId), 'add a blocker to');
+    }
+    assign(target, logins) {
+        return this.write(target, issueAssignArgs(target, logins), 'assign');
     }
     /** One write; `missing`, when given, says what a Not Found means for it in place of the issue not being there. */
     async write(target, args, what, missing) {
@@ -184,4 +226,19 @@ export function writeFailureText(target, what, code, stderr, access) {
         case undefined:
             return plainLine(`gh api to ${what} ${shown} ${exitText(code, stderr)}`);
     }
+}
+/** The `id` of an issue as GitHub's REST API prints it: a positive safe integer, else undefined. */
+export function issueIdIn(stdout) {
+    let parsed;
+    try {
+        parsed = JSON.parse(stdout);
+    }
+    catch {
+        return undefined;
+    }
+    if (typeof parsed !== 'object' || parsed === null || !('id' in parsed)) {
+        return undefined;
+    }
+    const { id } = parsed;
+    return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
