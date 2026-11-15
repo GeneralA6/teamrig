@@ -9,7 +9,10 @@ import {
   isMeetingId,
   isMissed,
   keptMeetings,
+  MEETING_TITLE_MAX,
+  meetingInTabOf,
   MeetingSchedule,
+  meetingTitleOf,
   nextMeetingId,
   readMeetings,
   type ScheduledMeeting,
@@ -122,5 +125,21 @@ describe('meeting views', () => {
     assert.equal(inBookedMeeting([meeting({ changedAt: start })], 'ops', AT), false, 'a scheduled one whose time came holds nothing before its start');
     assert.equal(inBookedMeeting([meeting({ status: 'done', changedAt: start }), meeting({ id: 'M2', status: 'dropped', changedAt: start })], 'ops', AT), false, 'ended or dropped');
     assert.equal(inBookedMeeting([], 'ops', AT), false);
+  });
+
+  it('puts the tab of the session met, not those joining, in meeting mode while its started meeting runs (T2985)', () => {
+    const start = AT - 15 * MS_PER_MINUTE;
+    const started = meeting({ status: 'started', with: ['beta'], changedAt: start });
+    assert.equal(meetingInTabOf([started], 'ops', AT), started);
+    assert.equal(meetingInTabOf([started], 'beta', AT), undefined, 'one joining is met in the tab of ops');
+    assert.equal(meetingInTabOf([started], 'ops', start + MEETING_LAPSE_MS), undefined, 'lapsed');
+    assert.equal(meetingInTabOf([meeting(), meeting({ id: 'M2', status: 'done', changedAt: start })], 'ops', AT), undefined, 'scheduled or done');
+  });
+
+  it('titles a meeting by what it is about, cut with an ellipsis past the status line limit', () => {
+    assert.equal(meetingTitleOf(meeting({ about: 'the release plan.' })), 'the release plan');
+    const long = meetingTitleOf(meeting({ about: 'the technical design of the queue ledger' }));
+    assert.equal(long.length, MEETING_TITLE_MAX);
+    assert.equal(long, 'the technical design of…');
   });
 });

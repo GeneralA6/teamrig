@@ -183,6 +183,29 @@ export function inBookedMeeting(meetings: readonly ScheduledMeeting[], session: 
   return bookedMeetingOf(meetings, session, now) !== undefined;
 }
 
+/**
+ * The booked meeting held in `session`'s own tab now, which puts that tab in meeting mode (T2985): one started that it
+ * is met in, not one it only joins, as the owner meets it in its tab alone; under MEETING_LAPSE_MS since its start, as
+ * {@link bookedMeetingOf} holds it. Undefined when none is.
+ */
+export function meetingInTabOf(meetings: readonly ScheduledMeeting[], session: string, now: number): ScheduledMeeting | undefined {
+  return meetingsOnOf(meetings, now).find((meeting) => meeting.session === session);
+}
+
+/** The booked meetings on now: started, neither ended nor dropped, and under MEETING_LAPSE_MS since their start. */
+export function meetingsOnOf(meetings: readonly ScheduledMeeting[], now: number): ScheduledMeeting[] {
+  return meetings.filter((meeting) => meeting.status === 'started' && now < meeting.changedAt + MEETING_LAPSE_MS);
+}
+
+/** The longest meeting title a status line shows, in characters, so the rest of its line still fits a tab. */
+export const MEETING_TITLE_MAX = 24;
+
+/** A meeting's short title for a status line: what it is about, cut to MEETING_TITLE_MAX with an ellipsis. */
+export function meetingTitleOf(meeting: ScheduledMeeting): string {
+  const about = meeting.about.trim().replace(/[.\s]+$/, '');
+  return about.length <= MEETING_TITLE_MAX ? about : `${about.slice(0, MEETING_TITLE_MAX - 1).trimEnd()}…`;
+}
+
 /** When a meeting's slot ends, epoch ms. */
 export function endOf(meeting: ScheduledMeeting): number {
   return meeting.at + meeting.minutes * MS_PER_MINUTE;
