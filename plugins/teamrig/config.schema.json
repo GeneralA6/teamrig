@@ -1350,7 +1350,7 @@
           "default": []
         },
         "owners": {
-          "description": "The session that owns an issue assigned to each GitHub login; matched without case. An issue with no listed assignee goes to its repository's session in sessions, else the lead.",
+          "description": "The session that owns an issue assigned to each GitHub login; matched without case. An issue with no listed assignee goes to its repository's session in sessions, else the lead. These logins, with the repository's owner, are the team's own authors: only their t<id>- branches route pull request news to that task's owner.",
           "type": "object",
           "propertyNames": {
             "type": "string",

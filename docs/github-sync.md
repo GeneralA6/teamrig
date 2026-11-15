@@ -183,12 +183,14 @@ compares them with what that run kept. The news is a pull request opened, merged
 starts to conflict with its base, to fail its checks, or gets approved or changes requested. Each is told once, never
 again while it lasts; the first run on a repository only notes what is there.
 
-- It goes to the owner of the task the pull request's branch names (`t42-login` names T42) when someone inside the
-  repository pushed that branch to the repository itself. A fork's or an outsider's pull request, or a branch that
-  names no task, goes to `github.watcher` in the team config, else the lead.
+- It goes to the owner of the task the pull request's branch names (`t42-login` names T42) when one of the team's
+  own authors pushed that branch to the repository itself: the repository's owner, or a login in `owners`. A
+  collaborator or member the team never listed counts as an outsider, since write access lets anyone push a
+  `t<id>-` branch. A fork's or an outsider's pull request, or a branch that names no task, goes to
+  `github.watcher` in the team config, else the lead.
 - Each session gets one inbox line, for example
   `github: GitHub pull requests: gh:acme/web#20 "Fix the login redirect": conflicts with its base`. A conflict or
-  failing checks on the session's own pull request (an inside author's `t<id>-` branch, not a fork), and an
+  failing checks on the session's own pull request (a `t<id>-` branch of one of the team's authors, not a fork), and an
   outsider's new pull request, also wake the session (when `wake.enabled`); a merge, a close, an approval, changes
   requested, or an outsider's conflict or red checks wait for its next turn.
 - When the checks of a session's own pull request start failing, the run reads the end of each failed job's log
