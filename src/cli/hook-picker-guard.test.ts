@@ -188,6 +188,19 @@ describe('hook picker-guard', () => {
     assert.deepEqual(await locked.run(HOOK, { stdin: call('AskUserQuestion'), env: ALPHA, files }), NOTHING);
   });
 
+  // T3015: the meeting files only pick the refusal's reason, so an unreadable one still refuses the picker.
+  it("refuses a worker's and the lead's picker when the meeting schedule or the meeting file cannot be read", async () => {
+    const kit = new CliHarness(ON_TEAM);
+    const state = join(TEAM_HOME, 'state');
+    const files = new FaultyFiles(kit.files).fail('read', join(state, 'meetings.jsonl'), systemError('EACCES')).fail('read', join(state, 'meeting.json'), systemError('EACCES'));
+    const worker = await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: ALPHA, files });
+    assert.equal(decisionOf(worker), 'deny');
+    assert.match(reasonOf(worker) ?? '', /--session alpha`; the lead brings it to the owner\./, 'read as no meeting in its tab');
+    const lead = await kit.run(HOOK, { stdin: call('AskUserQuestion'), env: LEAD, files });
+    assert.equal(decisionOf(lead), 'deny');
+    assert.match(reasonOf(lead) ?? '', /the agenda of the owner's next daily meeting lists it/, 'read as no open meeting');
+  });
+
   it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {
     assert.deepEqual(await new CliHarness(ON_TEAM, null).run(HOOK, { stdin: call('AskUserQuestion'), env: ALPHA }), NOTHING);
     assert.deepEqual(await new CliHarness(ON_TEAM).run(HOOK, { stdin: 'not json', env: ALPHA }), NOTHING);

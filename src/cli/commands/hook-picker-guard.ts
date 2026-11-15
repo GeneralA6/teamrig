@@ -14,9 +14,28 @@ import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 
-/** Whether the owner's daily meeting is open now (src/meeting/state.ts). */
+/**
+ * Whether the owner's daily meeting is open now (src/meeting/state.ts). An unreadable meeting file reads as closed:
+ * the meeting only picks the refusal's reason, so the guard refuses the picker either way (T3015).
+ */
 async function meetingOpen(runtime: CliRuntime, kit: Kit): Promise<boolean> {
-  return phaseOf(await new MeetingStore(runtime.files, kit.paths.meeting).read(), runtime.clock.now()).kind === 'open';
+  try {
+    return phaseOf(await new MeetingStore(runtime.files, kit.paths.meeting).read(), runtime.clock.now()).kind === 'open';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The id of the meeting held in `session`'s tab now (src/meeting/schedule.ts), else undefined. An unreadable schedule
+ * reads as no meeting, as `meetingOpen` does, so the guard refuses the picker either way (T3015).
+ */
+async function meetingInTab(runtime: CliRuntime, kit: Kit, session: string): Promise<string | undefined> {
+  try {
+    return meetingInTabOf((await new MeetingSchedule(runtime.files, kit.paths.meetings).read()).meetings, session, runtime.clock.now())?.id;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -48,8 +67,7 @@ export async function pickerRefusal(runtime: CliRuntime, kit: Kit, config: KitCo
   if (asker === undefined) {
     return undefined;
   }
-  const now = runtime.clock.now();
-  const inTab = asker.role === 'helper' ? undefined : meetingInTabOf((await new MeetingSchedule(runtime.files, kit.paths.meetings).read()).meetings, asker.session, now)?.id;
+  const inTab = asker.role === 'helper' ? undefined : await meetingInTab(runtime, kit, asker.session);
   const meeting: LeadMeeting = { open: (asker.role === 'lead' || asker.role === 'subteam-lead') && (await meetingOpen(runtime, kit)), inTab };
   return pickerReason(KIT_NAME, asker, meeting);
 }
