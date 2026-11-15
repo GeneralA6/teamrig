@@ -66,6 +66,8 @@ import { ownerBatchOf, type BatchedTeam } from '../owner-batch.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { splitUnowned } from '../unowned.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { addIssuePlan } from '../../github/issue-at-add.ts';
+import { ADD_ISSUE_FLAGS, addIssueAskOf, openAddedIssue } from './add-issue.ts';
 import { loadTree, skillOwnersElsewhere, type KitTree, type TreeTeam } from '../tree.ts';
 import { readBursts } from '../burst-reading.ts';
 import { readScaleOutBudget } from '../hire-cost.ts';
@@ -183,6 +185,10 @@ async function addToTeam(args: ParsedArgs, runtime: CliRuntime, caller: string, 
   if (asked === team) {
     return addHere(args, runtime, caller);
   }
+  const issueFlag = ADD_ISSUE_FLAGS.find((flag) => args.flags.has(flag));
+  if (issueFlag !== undefined) {
+    throw new UsageError(`--${issueFlag} works on an add to your own team: on team ${asked} the task's owner gives it its issue`);
+  }
   const from = await treeCallerOf(runtime, team, caller, asked);
   const source = args.flags.get('source');
   const { ownerSource } = from.config.register;
@@ -201,18 +207,31 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   return asked === undefined ? addHere(args, runtime, caller) : addToTeam(args, runtime, caller, asked);
 }
 
-/** A task of the caller's own team, owned by `--owner`, else by the caller. */
+/**
+ * A task of the caller's own team, owned by `--owner`, else by the caller. Its issue flags (github/issue-at-add.ts)
+ * are judged first, so a refused one writes nothing; a local task is written with its reason as its ref, and an
+ * issue opens once the task is written (add-issue.ts).
+ */
 async function addHere(args: ParsedArgs, runtime: CliRuntime, caller: string): Promise<ExitCode> {
   const team = await openTeam(runtime, 'write');
   const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, team.zone)), ...criticalOf(args.switches) };
+  const scanner = new SecretScanner(team.config.register.secretPatterns);
+  const issue = addIssuePlan(addIssueAskOf(args.flags, input), team.config.github, scanner);
+  if (!issue.ok) {
+    throw new RefusedError(issue.error);
+  }
   const by = sessionIdOf(team.roster, caller);
-  const verdict = await team.register.add(by, addInputIds(team, input));
+  const written = issue.value.kind === 'local' ? { ...input, ref: issue.value.ref } : input;
+  const verdict = await team.register.add(by, addInputIds(team, written));
   const code = report(runtime, verdict, 'ADDED', team);
   if (verdict.ok) {
     noteBugHint(runtime, team, verdict.value.task);
   }
   await tellNewOwner(runtime, team, by, verdict);
-  return code;
+  if (!verdict.ok || issue.value.kind !== 'open') {
+    return code;
+  }
+  return openAddedIssue(runtime, team, by, verdict.value.task.id, issue.value.draft, scanner);
 }
 
 /** A NOTE asking to mark the task a bug when its text reads like one and no one gave it a type (register/bug-hint.ts). */
