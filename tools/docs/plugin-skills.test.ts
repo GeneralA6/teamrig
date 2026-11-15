@@ -77,6 +77,12 @@ describe('the security skill', () => {
   it('scopes an override to its major', () => {
     assert.match(skill, /`"flat-cache@6": "6\.1\.13"`/);
   });
+
+  it("holds a security fix's branch name to the hardening, as its commits are, and names it apart from a task title", () => {
+    const section = skill.slice(skill.indexOf('## A security hole'));
+    assert.match(section, /The fix's branch name, commit messages, pull request text, code comments and test names describe the\s+hardening/);
+    assert.ok(section.includes('`teamrig worktree add <branch>`'));
+  });
 });
 
 describe('the write-issue skill', () => {
