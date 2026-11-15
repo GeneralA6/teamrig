@@ -20,6 +20,15 @@ const FILES: Readonly<Record<string, string>> = {
   '/work/app/nul.sh': '#!/bin/sh\n# \u0000 data\ngit push origin main\n',
   '/work/app/old.sh': PUSH_SCRIPT,
   '/work/app/old.py': 'import subprocess\nsubprocess.run(["git", "push", "origin", "main"])\n',
+  // A NUL in line 1 (bash refuses it, source runs it), one past the 80 bytes bash
+  // samples and one inside them, a NUL inside a word, and scripts named like git's own commands.
+  '/work/app/nul1.sh': 'echo L1 #\u0000\ngit push origin main\n',
+  '/work/app/nul81.sh': `#${'x'.repeat(90)}\u0000\ngit push origin main\n`,
+  '/work/app/nul61.sh': `#${'x'.repeat(60)}\u0000\ngit push origin main\n`,
+  '/work/app/split.sh': '#!/bin/sh\ngit pu\u0000sh origin main\n',
+  '/work/app/git-status': PUSH_SCRIPT,
+  '/work/app/sub/git-status': PUSH_SCRIPT,
+  '/work/app/git-core/git-push': '\u007fELF\u0002\u0001\u0001\u0000\u0000git-push binary',
 };
 
 function find(command: string, files: Readonly<Record<string, string>> = FILES): GitInvocations {
@@ -132,6 +141,28 @@ describe('findGitInvocations on shell script files', () => {
     for (const line of ['bash nul.sh', './nul.sh', 'sh nul.sh']) {
       assert.deepEqual(pushes(line), ['/work/app|origin main'], line);
     }
+  });
+
+  it('reads a script with a NUL in line 1 that source or . runs, or past the 80 bytes bash samples', () => {
+    for (const line of ['source nul1.sh', '. nul1.sh', 'bash nul81.sh', 'sh nul81.sh', 'bash split.sh', 'source split.sh']) {
+      assert.deepEqual(pushes(line), ['/work/app|origin main'], line);
+    }
+    // bash refuses these as binary files.
+    for (const line of ['bash nul1.sh', './nul1.sh', 'bash nul61.sh']) {
+      assert.deepEqual(pushes(line), [], line);
+      assert.deepEqual(doubts(line), [], line);
+    }
+  });
+
+  it('reads a script by its path named like a git command, and still reads git by its path as git', () => {
+    for (const line of ['./git-status', './sub/git-status', '/work/app/git-status', 'cd sub && ./git-status']) {
+      assert.deepEqual(pushes(line).length, 1, line);
+    }
+    assert.deepEqual(pushes('./git-status'), ['/work/app|origin main']);
+    // git's own binary is left to the git reader, and a missing one too.
+    assert.deepEqual(pushes('/work/app/git-core/git-push origin feat'), ['/work/app|origin feat']);
+    assert.deepEqual(pushes('/usr/lib/git-core/git-push origin feat'), ['/work/app|origin feat']);
+    assert.deepEqual(find('./git-status').doubts, []);
   });
 
   it('reads the file on disk too when the line writes it, as the write may not run', () => {

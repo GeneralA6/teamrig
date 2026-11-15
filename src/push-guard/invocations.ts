@@ -162,6 +162,20 @@ function isGitProgram(name: string): boolean {
   return name === 'git' || (name.startsWith('git-') && BUILTINS.has(name.slice(4)));
 }
 
+/** The bytes of a script's start that bash samples to tell a binary file. */
+const BINARY_SAMPLE = 80;
+
+/**
+ * True when bash refuses to run `text` as a binary file: a NUL byte before
+ * the first newline within its first {@link BINARY_SAMPLE} bytes. The text is measured as UTF-8 again, which is never
+ * shorter than the bytes it was read from, so a NUL past byte 80 is never taken for one inside it.
+ */
+function looksBinary(text: string): boolean {
+  const sample = Buffer.from(text, 'utf8').subarray(0, BINARY_SAMPLE);
+  const newline = sample.indexOf(0x0a);
+  return (newline === -1 ? sample : sample.subarray(0, newline)).includes(0);
+}
+
 /** The file a word names, in `dir` when relative; undefined when it is only known when it runs. */
 function filePath(word: ShellWord, dir: string | undefined): string | undefined {
   if (word.dynamic || word.text === '' || word.text.includes('\n')) {
@@ -517,7 +531,7 @@ class GitInvocationFinder {
    * a shell of its own or, for `source` / `.`, the same shell. `byPath` is a file run as a program (`./x.sh`): one the
    * guard cannot read is a doubt only when its name says it is a shell script, as a missing binary runs nothing.
    * A file with a `#!` line for another language is read by that language's rule (see interpreters.ts); a binary
-   * (a NUL byte in its first line, as bash tells one) is left alone.
+   * a shell refuses (see {@link looksBinary}) is left alone.
    */
   private visitScriptFile(file: ShellWord, chdirs: readonly ShellWord[], env: readonly Assignment[], sameShell: boolean, byPath: boolean, location: Location, depth: number): void {
     const inner = location.child();
@@ -542,14 +556,16 @@ class GitInvocationFinder {
   }
 
   /** Visits one text a script file holds; see {@link visitScriptFile}. */
-  private visitScriptText(text: string, env: readonly Assignment[], sameShell: boolean, chdirs: readonly ShellWord[], location: Location, depth: number): void {
+  private visitScriptText(read: string, env: readonly Assignment[], sameShell: boolean, chdirs: readonly ShellWord[], location: Location, depth: number): void {
     const inner = location.child();
     chdirs.forEach((chdir) => inner.moveTo(chdir));
-    // bash refuses a file as binary only when a NUL byte comes in its first line; a later one it runs past.
-    const firstLine = text.indexOf('\n') === -1 ? text : text.slice(0, text.indexOf('\n'));
-    if (firstLine.includes('\0')) {
+    // bash refuses a file it runs as binary only when a NUL byte comes in its first line within the first 80
+    // bytes it samples; a later one it runs past. `source` and `.` refuse nothing.
+    if (!sameShell && looksBinary(read)) {
       return;
     }
+    // bash drops the NUL bytes it reads, so `git pu<NUL>sh` runs `git push`.
+    const text = read.replaceAll('\0', '');
     const shebang = SHEBANG.exec(text);
     let program = shebang?.[1] === undefined ? undefined : programName(shebang[1]);
     if (program === 'env' && shebang?.[2] !== undefined) {
@@ -669,9 +685,13 @@ class GitInvocationFinder {
           }
           break;
         }
-        if (dialect === 'bash' && programText !== undefined && programText.includes('/') && interpreterOf(launched) === undefined && !isGitProgram(programName(programText))) {
+        if (dialect === 'bash' && programText !== undefined && programText.includes('/') && interpreterOf(launched) === undefined) {
           this.visitScriptFile(launched.program, launched.chdirs, launched.env, false, true, location, depth);
-          break;
+          // Git, or one of git's own commands, run by its path may be git's
+          // binary, which the script reader leaves alone, or a script of that name (`./git-status`): read it as both.
+          if (!isGitProgram(programName(programText))) {
+            break;
+          }
         }
         const language = interpreterOf(launched);
         if (language !== undefined) {

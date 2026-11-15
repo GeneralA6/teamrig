@@ -323,6 +323,8 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
 - **Reads a shell script file**: a script `bash`, `sh`, `source`, `.` or its own path runs (`bash x.sh`,
   `./ship.sh`) is read and judged like the line itself; a file the line writes first (`cat <<'E' > f.sh`) is read as
   the line writes it. One the guard cannot read, or whose written text it cannot know, is a doubt.
+  A file bash refuses as binary (a NUL in the first line, within its first 80 bytes) is left alone, except under
+  `source` or `.`, which run it; a `git-<command>` file run by its path is read as a script and as git.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,
