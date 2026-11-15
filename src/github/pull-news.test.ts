@@ -27,6 +27,7 @@ function pull(number: number, overrides: Partial<HostPull> = {}): HostPull {
     mergeable: 'mergeable',
     checks: 'passing',
     review: 'none',
+    failedJobs: [],
     ...overrides,
   };
 }

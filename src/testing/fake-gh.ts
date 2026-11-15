@@ -140,6 +140,8 @@ export interface PullSpec {
   readonly reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
   /** The last commit's check rollup; null for a commit with no checks. */
   readonly checks?: 'SUCCESS' | 'FAILURE' | 'ERROR' | 'PENDING' | 'EXPECTED' | null;
+  /** The rollup's contexts, as GitHub sends them (a CheckRun's `name`, `conclusion`, `databaseId`); none unless set. */
+  readonly contexts?: readonly unknown[];
 }
 
 /** A pull request as the shipped pull request query (queries.ts) gets it from GitHub, opened and changed on 2030-01-01. */
@@ -163,7 +165,7 @@ export function ghPull(repo: string, number: number, spec: PullSpec = {}): JsonR
     isCrossRepository: spec.fork ?? false,
     mergeable: spec.mergeable ?? 'MERGEABLE',
     reviewDecision: spec.reviewDecision ?? null,
-    commits: { nodes: [{ commit: { statusCheckRollup: spec.checks === null || spec.checks === undefined ? null : { state: spec.checks } } }] },
+    commits: { nodes: [{ commit: { statusCheckRollup: spec.checks === null || spec.checks === undefined ? null : { state: spec.checks, contexts: { nodes: [...(spec.contexts ?? [])] } } } }] },
   };
 }
 

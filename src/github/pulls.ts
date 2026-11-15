@@ -1,5 +1,5 @@
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import type { HostPull, PullChecks, PullMergeable, PullReview, PullState } from '../issues/pull.ts';
+import type { FailedJob, HostPull, PullChecks, PullMergeable, PullReview, PullState } from '../issues/pull.ts';
 import type { GhRunner } from './gh.ts';
 import { connectionPage, loginOf, plainLine, repoPage, runRead, timeField, WEB_URL, type ReadKind } from './issues.ts';
 import { pullPageArgs, type PullRead } from './queries.ts';
@@ -116,17 +116,44 @@ export function pullOf(item: unknown, repo: string): HostPull | null {
     head,
     fork: item['isCrossRepository'] === true,
     mergeable: MERGEABLE[stringField(item, 'mergeable') ?? ''] ?? 'unknown',
-    checks: CHECKS[rollupOf(item) ?? ''] ?? 'none',
+    checks: CHECKS[rollupStateOf(item) ?? ''] ?? 'none',
     review: REVIEWS[stringField(item, 'reviewDecision') ?? ''] ?? 'none',
+    failedJobs: failedJobsOf(rollupOf(item)),
   };
 }
 
-/** The check rollup state of the last commit (`commits(last: 1)`); undefined when it has no checks. */
-function rollupOf(item: JsonRecord): string | undefined {
+/** How a check run ends that counts as failed: each makes the rollup fail, and each may leave a log to read. */
+const FAILED_CONCLUSIONS: ReadonlySet<string> = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'STARTUP_FAILURE']);
+
+/** The failed check runs of a rollup's contexts; a status context (no id, no log) or an unreadable node is left out. */
+function failedJobsOf(rollup: JsonRecord | undefined): FailedJob[] {
+  const contexts = rollup === undefined ? undefined : recordField(rollup, 'contexts');
+  const nodes = contexts?.['nodes'];
+  const jobs: FailedJob[] = [];
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    if (!isRecord(node) || node['__typename'] !== 'CheckRun' || !FAILED_CONCLUSIONS.has(stringField(node, 'conclusion') ?? '')) {
+      continue;
+    }
+    const name = stringField(node, 'name');
+    const id = node['databaseId'];
+    if (name !== undefined && typeof id === 'number' && Number.isSafeInteger(id) && id > 0) {
+      jobs.push({ name, id });
+    }
+  }
+  return jobs;
+}
+
+/** The check rollup state of the last commit; undefined when it has no checks. */
+function rollupStateOf(item: JsonRecord): string | undefined {
+  const rollup = rollupOf(item);
+  return rollup === undefined ? undefined : stringField(rollup, 'state');
+}
+
+/** The check rollup of the last commit (`commits(last: 1)`); undefined when it has no checks. */
+function rollupOf(item: JsonRecord): JsonRecord | undefined {
   const commits = recordField(item, 'commits');
   const nodes = commits?.['nodes'];
   const last: unknown = Array.isArray(nodes) ? nodes.at(-1) : undefined;
   const commit = isRecord(last) ? recordField(last, 'commit') : undefined;
-  const rollup = commit === undefined ? undefined : recordField(commit, 'statusCheckRollup');
-  return rollup === undefined ? undefined : stringField(rollup, 'state');
+  return commit === undefined ? undefined : recordField(commit, 'statusCheckRollup');
 }

@@ -30,6 +30,7 @@ function readPull(number: number, overrides: Partial<HostPull> = {}): HostPull {
     mergeable: 'mergeable',
     checks: 'none',
     review: 'none',
+    failedJobs: [],
     ...overrides,
   };
 }
@@ -137,6 +138,29 @@ describe('pullOf', () => {
       assert.equal(pullOf(ghPull('acme/web', 1, { checks: state }), 'acme/web')?.checks, checks, String(state));
     }
     assert.equal(pullOf(ghPull('acme/web', 1, { state: 'CLOSED', reviewDecision: 'APPROVED', mergeable: 'UNKNOWN' }), 'acme/web')?.mergedAt, undefined);
+  });
+
+  it('names each failed check run with its job id, leaving out passing runs, status contexts and bad ids', () => {
+    const run = (name: string, conclusion: string | null, databaseId: unknown) => ({ __typename: 'CheckRun', name, conclusion, databaseId });
+    const contexts = [
+      run('test (ubuntu-latest)', 'FAILURE', 41),
+      run('lint', 'SUCCESS', 42),
+      run('test (windows-latest)', 'TIMED_OUT', 43),
+      run('build', 'CANCELLED', 44),
+      run('setup', 'STARTUP_FAILURE', 45),
+      run('still running', null, 46),
+      run('no id', 'FAILURE', null),
+      run('bad id', 'FAILURE', -1),
+      { __typename: 'StatusContext', context: 'ci/external', state: 'FAILURE' },
+      'junk',
+    ];
+    assert.deepEqual(pullOf(ghPull('acme/web', 1, { checks: 'FAILURE', contexts }), 'acme/web')?.failedJobs, [
+      { name: 'test (ubuntu-latest)', id: 41 },
+      { name: 'test (windows-latest)', id: 43 },
+      { name: 'build', id: 44 },
+      { name: 'setup', id: 45 },
+    ]);
+    assert.deepEqual(pullOf(ghPull('acme/web', 1, { checks: null }), 'acme/web')?.failedJobs, []);
   });
 
   it('gives null for an item missing what a monitor needs', () => {

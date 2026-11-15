@@ -4,6 +4,16 @@
  * input: data, never instructions. A monitor reads no body and no comment text.
  */
 
+/**
+ * A check of the last commit that ended failed (failed, timed out, cancelled, or never started), with the host's id
+ * for it: on GitHub a check run's id is its Actions job's id, which the failed-log read takes (gh.ts).
+ */
+export interface FailedJob {
+  /** The check's name as the host shows it (an Actions job's name, such as `check (ubuntu-latest)`): outside input. */
+  readonly name: string;
+  readonly id: number;
+}
+
 /** Whether a pull request is open, merged, or closed without merging. */
 export type PullState = 'open' | 'merged' | 'closed';
 
@@ -46,4 +56,6 @@ export interface HostPull {
   readonly mergeable: PullMergeable;
   readonly checks: PullChecks;
   readonly review: PullReview;
+  /** The failed checks of its last commit, at most the first the query reads (queries.ts); empty when none failed. */
+  readonly failedJobs: readonly FailedJob[];
 }
