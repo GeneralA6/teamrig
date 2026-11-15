@@ -286,4 +286,13 @@ describe('runCli: a tool call cannot move its tab to another session by reading 
     const restarted = { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666', CLAUDECODE: '1' };
     assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'], { env: restarted })).code, EXIT.ok, 'a new Claude Code session');
   });
+
+  it('refuses a start as another session too, as its inbox read binds the tab', async () => {
+    const kit = new CliHarness();
+    await kit.run(['inbox', 'read', '--session', 'alpha'], { env: UNDER_CLAUDE });
+    const bound = await marks(kit);
+    assert.equal((await kit.run(['start', '--session', 'bravo'], { env: UNDER_CLAUDE })).code, EXIT.refused);
+    assert.equal(await marks(kit), bound);
+    assert.equal((await kit.run(['start', '--session', 'alpha'], { env: UNDER_CLAUDE })).code, EXIT.ok);
+  });
 });
