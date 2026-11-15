@@ -1,4 +1,5 @@
 import { DESIGN_LABEL } from './design-label.ts';
+import type { HostIssue, IssueComment } from './issue.ts';
 import { isInsider } from '../github/trust.ts';
 
 /**
@@ -45,28 +46,11 @@ export interface Claim {
   readonly at: number;
 }
 
-/** One comment as the claim plan reads it; `login` is empty for a bot or a deleted account. */
-export interface ClaimComment {
-  readonly login: string;
-  /** GitHub's author association (`NONE`, `CONTRIBUTOR`, `MEMBER`, ...). */
-  readonly association: string;
-  readonly body: string;
-  /** Ms since the epoch. */
-  readonly at: number;
-}
+/** The issue facts a claim plan reads. */
+export type ClaimIssue = Pick<HostIssue, 'repo' | 'number' | 'state' | 'labels' | 'assignees' | 'comments' | 'linkedPulls'>;
 
-/** An issue as the claim plan reads it. */
-export interface ClaimIssue {
-  readonly repo: string;
-  readonly number: number;
-  readonly open: boolean;
-  readonly labels: readonly string[];
-  readonly assignees: readonly string[];
-  /** Its newest comments, any order. */
-  readonly comments: readonly ClaimComment[];
-  /** True when an open or merged pull request links it, so a claim on it is being worked. */
-  readonly linkedPull: boolean;
-}
+/** The account kind of a person; an app (`Bot`) or an organization never claims. */
+const PERSON = 'User';
 
 /** What a sync does with claims: assign each new one, take the assignee off each that ran out, keep the rest. */
 export interface ClaimPlan {
@@ -93,10 +77,10 @@ export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim
   const expired: Claim[] = [];
   for (const claim of claims) {
     const issue = byNumber.get(`${claim.repo}#${claim.number}`);
-    if (issue === undefined || !issue.open || !issue.assignees.includes(claim.login)) {
+    if (issue === undefined || issue.state !== 'open' || !issue.assignees.includes(claim.login)) {
       continue;
     }
-    if (!issue.linkedPull && times.now - claim.at >= CLAIM_DAYS * DAY_MS) {
+    if (issue.linkedPulls === 0 && times.now - claim.at >= CLAIM_DAYS * DAY_MS) {
       expired.push(claim);
     } else {
       kept.push(claim);
@@ -110,7 +94,7 @@ export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim
     const holding = new Set([...kept, ...made].filter((claim) => claim.repo === issue.repo).map((claim) => claim.login));
     const comment = firstClaim(issue, times.since, holding);
     if (comment !== undefined) {
-      made.push({ repo: issue.repo, number: issue.number, login: comment.login, at: comment.at });
+      made.push({ repo: issue.repo, number: issue.number, login: comment.login, at: Date.parse(comment.at) });
     }
   }
   return { made, expired, kept };
@@ -118,12 +102,20 @@ export function planClaims(issues: readonly ClaimIssue[], claims: readonly Claim
 
 /** An open issue with no assignee that is not a design issue (talk, never work to take). */
 function claimable(issue: ClaimIssue): boolean {
-  return issue.open && issue.assignees.length === 0 && !issue.labels.includes(DESIGN_LABEL);
+  return issue.state === 'open' && issue.assignees.length === 0 && !issue.labels.includes(DESIGN_LABEL);
 }
 
-/** The oldest claim comment since `since` by an outside login holding no other claim in the repository. */
-function firstClaim(issue: ClaimIssue, since: number, holding: ReadonlySet<string>): ClaimComment | undefined {
+/** The oldest claim comment since `since` by an outside person holding no other claim in the repository. */
+function firstClaim(issue: ClaimIssue, since: number, holding: ReadonlySet<string>): IssueComment | undefined {
   return [...issue.comments]
-    .sort((a, b) => a.at - b.at)
-    .find((comment) => comment.at >= since && comment.login !== '' && !isInsider(comment.association) && !holding.has(comment.login) && isClaim(comment.body));
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+    .find(
+      (comment) =>
+        comment.claims &&
+        Date.parse(comment.at) >= since &&
+        comment.login !== '' &&
+        comment.authorKind === PERSON &&
+        !isInsider(comment.authorAssociation) &&
+        !holding.has(comment.login),
+    );
 }
