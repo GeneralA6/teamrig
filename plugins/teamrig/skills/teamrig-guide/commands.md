@@ -5086,7 +5086,7 @@ being killed. The step's start and end go to the delivery ledger,
 it (`kit`), the kind of work it is (`kind`), the task it works for (`task`, when it names one) and that task's
 register priority as it queued (`priority`, 1 for `p1`; left out when the register lacks the task), when it began to
 wait (`queuedAt`), the host's free memory then (`queueFreeMb`), the ms its wait took by cause (`waits`: `lock`,
-`line`, `draining`, `memory`, `commit`, `freeze`, `check`, `session`, `heavyCap`, `cpu`, each one that took time) and, sampled every
+`line`, `draining`, `memory`, `commit`, `freeze`, `check`, `session`, `heavyCap`, `cpu`, `shipSlot`, each one that took time) and, sampled every
 `delivery.queue.memorySampleSeconds` (15; 0 samples nothing), the host's free memory as it started (`startFreeMb`),
 the most memory its process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`),
 and `shared: true` for a small step. A step killed at its limit or as its shell ended also records the host's free
@@ -5214,10 +5214,12 @@ Flags:
   whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock; with `--small`, from 1 to
   `smallMaxRunMinutes` (a longer step runs without `--small`).
 - `--kind <kind>`: the kind of work the step is, recorded on its ledger records: `build`, `test`, `lint`, `push`,
-  `merge`, `deploy` or `other`. Default: read from the command. A `git push` pushes; `node --test`, a test runner or a
-  package's `test` script tests; a linter or a `lint` script lints; `tsc`, a bundler or a `build` or `typecheck`
-  script builds; anything else (`npm run check`, a script of the team's own) is `other`. Any other value is refused
-  (exit 64).
+  `merge`, `deploy`, `ship` or `other`. Default: read from the command. A `git push` pushes; `node --test`, a test
+  runner or a package's `test` script tests; a linter or a `lint` script lints; `tsc`, a bundler or a `build` or
+  `typecheck` script builds; anything else (`npm run check`, a script of the team's own) is `other`. Any other value
+  is refused (exit 64). A `ship`, `merge` or `deploy` step holds the host's one ship slot (T2727): while one does, a
+  second waits in its place as `shipSlot`, and other steps pass it. A ship or merge script is read as `other`, so
+  queue it with `--kind ship` or `--kind merge`, or it takes no slot and two ships still race to main.
 - `--task <T id>`: the register task the step works for, recorded on its ledger records with that task's register
   priority; default the first task id `--what` names (`--what "T12 specs"`), else, for a step that runs a configured
   ship tool (`delivery.repos.<name>.shipTool`), the task its worktree's branch names (`feat/t12-parser` is T12), so a
