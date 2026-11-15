@@ -2,7 +2,7 @@ import { stringField, type JsonRecord } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { LockBusyError } from '../../core/lock.ts';
 import { injectFor } from '../../inbox/inject.ts';
-import { unseenLinesOf } from '../../inbox/inbox.ts';
+import { seenLinesOf, unseenLinesOf } from '../../inbox/inbox.ts';
 import { asksNowOf, WakeAsks } from '../../wake/asks.ts';
 import { WakeStore } from '../../wake/store.ts';
 import { teamZone } from '../kit.ts';
@@ -34,15 +34,16 @@ export async function askedLinesOf(runtime: CliRuntime, payload: JsonRecord): Pr
   const { files, clock } = runtime;
   const asks = new WakeAsks(files, kit.paths.wakeAsks);
   const unseen = (): Promise<ReadonlySet<string>> => unseenLinesOf(inboxDepsOf(runtime, kit.paths), id);
+  const seen = (): Promise<ReadonlySet<string>> => seenLinesOf(inboxDepsOf(runtime, kit.paths), id);
   // Read first without the lock: at nearly every tool end none is due, and the lock is a file write.
-  const first = await asksNowOf(await asks.read(id), clock.now(), unseen);
+  const first = await asksNowOf(await asks.read(id), clock.now(), unseen, seen);
   if (first.asks.length === 0 && first.spent.length === 0) {
     return undefined;
   }
   const lock = fileLockOf(runtime, new WakeStore(files, kit.paths.wake).lockOf(id), { ...config.lock, waitMs: 0 });
   try {
     return await lock.run(async (): Promise<string | undefined> => {
-      const found = await asksNowOf(await asks.read(id), clock.now(), unseen);
+      const found = await asksNowOf(await asks.read(id), clock.now(), unseen, seen);
       if (found.asks.length === 0) {
         await asks.remove(id, found.spent);
         return undefined;

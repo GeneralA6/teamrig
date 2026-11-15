@@ -332,6 +332,33 @@ describe('hook wake-check', () => {
     assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: watchOf(), recheckAt: null }, 'never twice for one line');
   });
 
+  it('wakes for an unread urgent line, but never lists one already read through the inbox', async () => {
+    for (const read of [false, true]) {
+      const kit = await teamWithAlphaTab();
+      await check(kit);
+      const asks = new WakeAsks(kit.files, ASKS);
+      // Several urgent lines posted as `inbox add --wake now` does: the inbox line, then a plain ask.
+      for (const text of ['Merge T6.', 'Deploy T7.']) {
+        assert.equal((await kit.run(['inbox', 'add', '--to', 'alpha', '--text', text, '--session', 'bravo'])).code, EXIT.ok);
+        await asks.post('alpha', { from: 'bravo', text, at: kit.clock.now() });
+        kit.clock.advance(MINUTE);
+      }
+      if (read) {
+        // Read in an earlier turn; the session is then resumed, and only the idle wake is evaluated.
+        assert.equal((await kit.run(['inbox', 'read', '--session', 'alpha'])).code, EXIT.ok);
+      }
+      kit.clock.advance(120 * SECOND);
+      const answer = answerOf(await check(kit));
+      if (read) {
+        assert.deepEqual(answer, { kind: 'wait', watch: watchOf(), recheckAt: null });
+      } else {
+        assert.ok(typeof answer === 'object' && answer !== null && 'text' in answer);
+        assert.match(String(answer.text), /bravo: Merge T6\.\n- \d\d:\d\d \w+ bravo: Deploy T7\./);
+      }
+      assert.deepEqual(await asks.read('alpha'), [], `read: ${read}`);
+    }
+  });
+
   it('wakes for an urgent line and the work handed with it in one wake, and for the next line with no gap since', async () => {
     const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 } });
     await check(kit);
