@@ -2,6 +2,8 @@ import { KIT_NAME } from '../core/home.ts';
 import { privateShapeIn } from '../core/private-shapes.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { targetText, type CloseReason, type IssueHost, type IssueTarget } from './host.ts';
+import type { LabelSpec } from './host.ts';
+import { managedLabel } from './managed-labels.ts';
 import { taskIdIn } from './posted.ts';
 
 /** The longest comment GitHub takes; another host's limit is checked by the host itself. */
@@ -90,13 +92,25 @@ export async function labelIssue(host: IssueHost, write: LabelWrite, say: (line:
     return false;
   }
   say(`ACCESS ${reach.access}`);
+  const toMake: LabelSpec[] = [];
   for (const label of write.add) {
     const found = await host.labelExists(write.target.repo, label);
-    if (found.kind !== 'found') {
+    const managed = managedLabel(label);
+    if (found.kind === 'missing' && managed !== undefined) {
+      toMake.push(managed);
+    } else if (found.kind !== 'found') {
       const why = found.kind === 'failed' ? found.reason : `${write.target.repo} has no label ${JSON.stringify(label)}: make it there first, as adding it here would make a new one`;
       say(`FAILED ${shown}: ${why}; nothing was changed`);
       return false;
     }
+  }
+  for (const label of toMake) {
+    const made = await host.createLabel(write.target.repo, label);
+    if (made.kind === 'failed') {
+      say(`FAILED ${shown}: ${made.reason}; nothing was changed`);
+      return false;
+    }
+    say(`MADE ${write.target.repo}: the label ${JSON.stringify(label.name)}, one teamrig makes`);
   }
   const done: string[] = [];
   if (write.add.length > 0) {

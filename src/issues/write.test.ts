@@ -175,6 +175,29 @@ describe('labelIssue', () => {
     ]);
   });
 
+  it('makes a label teamrig manages that the repository lacks, then adds it (T3096)', async () => {
+    const host = new FakeIssueHost().hasLabels('p2');
+    assert.deepEqual(await label(host, { add: ['design', 'p2'], remove: [] }), {
+      done: true,
+      lines: ['ACCESS acme: writes as the test', 'MADE acme/web: the label "design", one teamrig makes', 'LABELED acme/web#7: "design", "p2"'],
+    });
+    assert.deepEqual(host.calls, [
+      { kind: 'label-create', repo: 'acme/web', label: { name: 'design', color: 'd4c5f9', description: 'Design talk: discussion only, not work to take until it is agreed' } },
+      { kind: 'label-add', target: TARGET, labels: ['design', 'p2'] },
+    ]);
+  });
+
+  it('changes nothing on the issue when the make fails, nor when a managed label is asked in another case', async () => {
+    const refused = new FakeIssueHost().failsLabelCreate('HTTP 403');
+    assert.deepEqual((await label(refused, { add: ['design'], remove: [] })).lines.slice(1), ['FAILED acme/web#7: HTTP 403; nothing was changed']);
+    assert.deepEqual(refused.calls.map((call) => call.kind), ['label-create']);
+    const cased = new FakeIssueHost();
+    assert.deepEqual((await label(cased, { add: ['Design'], remove: [] })).lines.slice(1), [
+      'FAILED acme/web#7: acme/web has no label "Design": make it there first, as adding it here would make a new one; nothing was changed',
+    ]);
+    assert.deepEqual(cased.calls, []);
+  });
+
   it('changes nothing when a label to add is not one of the repository, or its read fails', async () => {
     const typo = new FakeIssueHost().hasLabels('p1');
     assert.deepEqual(await label(typo, { add: ['p1', 'tpye: bug'], remove: ['p2'] }), {

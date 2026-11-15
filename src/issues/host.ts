@@ -115,7 +115,7 @@ export interface IssueHost {
   issueId(target: IssueTarget): Promise<HostIssueId>;
   /** Whether `repo` has the label `label`, so a label is only added once the repository has it. */
   labelExists(repo: string, label: string): Promise<HostLabel>;
-  /** Makes `label` in the repository; only the status push calls it, for its own labels (STATUS_LABEL_SPECS). */
+  /** Makes `label` in the repository; only for a label teamrig makes (MANAGED_LABEL_SPECS), by the push or issue label. */
   createLabel(repo: string, label: LabelSpec): Promise<HostEnd>;
   /** Adds `labels` to the issue or pull request. */
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd>;

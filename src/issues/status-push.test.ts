@@ -29,27 +29,36 @@ function holding(id: string, number: number, overrides: Partial<Task> = {}): Tas
 
 describe('issueGoal (T2682)', () => {
   const task = (overrides: Partial<Task>): Task => testTask(overrides);
+  const FREE = { assigned: false, design: false };
+  const TAKEN = { assigned: true, design: false };
 
   it('gives each started status its one label, its issue claimed', () => {
-    assert.deepEqual(issueGoal(task({ status: 'in-progress' }), false), { open: true, label: 'status:in progress', claim: true });
-    assert.deepEqual(issueGoal(task({ status: 'waiting' }), false), { open: true, label: 'status:waiting', claim: true });
-    assert.deepEqual(issueGoal(task({ status: 'verifying' }), false), { open: true, label: 'status:in review', claim: true });
+    assert.deepEqual(issueGoal(task({ status: 'in-progress' }), FREE), { open: true, label: 'status:in progress', claim: true });
+    assert.deepEqual(issueGoal(task({ status: 'waiting' }), FREE), { open: true, label: 'status:waiting', claim: true });
+    assert.deepEqual(issueGoal(task({ status: 'verifying' }), FREE), { open: true, label: 'status:in review', claim: true });
   });
 
   it('leaves an open task no one scheduled or took open to anyone, and claims one with a due date or an assignee (T3021)', () => {
-    assert.deepEqual(issueGoal(task({ status: 'open' }), false), { open: true, label: 'status:open', claim: false });
-    assert.deepEqual(issueGoal(task({ status: 'open', due: '2030-01-09' }), false), { open: true, label: 'status:claimed', claim: true });
-    assert.deepEqual(issueGoal(task({ status: 'open' }), true), { open: true, label: 'status:claimed', claim: false });
+    assert.deepEqual(issueGoal(task({ status: 'open' }), FREE), { open: true, label: 'status:open', claim: false });
+    assert.deepEqual(issueGoal(task({ status: 'open', due: '2030-01-09' }), FREE), { open: true, label: 'status:claimed', claim: true });
+    assert.deepEqual(issueGoal(task({ status: 'open' }), TAKEN), { open: true, label: 'status:claimed', claim: false });
   });
 
   it('gives a goal, a task planned after its parts, no status label (T3056)', () => {
-    assert.deepEqual(issueGoal(task({ status: 'open', after: ['T2'] }), false), { open: true, label: undefined, claim: false });
-    assert.deepEqual(issueGoal(task({ status: 'in-progress', after: ['T2'] }), false), { open: true, label: undefined, claim: true });
+    assert.deepEqual(issueGoal(task({ status: 'open', after: ['T2'] }), FREE), { open: true, label: undefined, claim: false });
+    assert.deepEqual(issueGoal(task({ status: 'in-progress', after: ['T2'] }), FREE), { open: true, label: undefined, claim: true });
+  });
+
+  it('gives a design issue no status label and no claim, whatever its task, until the task closes (T3096)', () => {
+    const DESIGN = { assigned: false, design: true };
+    assert.deepEqual(issueGoal(task({ status: 'open' }), DESIGN), { open: true, label: undefined, claim: false });
+    assert.deepEqual(issueGoal(task({ status: 'in-progress', due: '2030-01-09' }), { assigned: true, design: true }), { open: true, label: undefined, claim: false });
+    assert.deepEqual(issueGoal(task({ status: 'done' }), DESIGN), { open: false, reason: 'completed' });
   });
 
   it('closes a done task as completed and a dropped one as not planned, goal or not', () => {
-    assert.deepEqual(issueGoal(task({ status: 'done' }), false), { open: false, reason: 'completed' });
-    assert.deepEqual(issueGoal(task({ status: 'dropped', after: ['T2'] }), false), { open: false, reason: 'not-planned' });
+    assert.deepEqual(issueGoal(task({ status: 'done' }), FREE), { open: false, reason: 'completed' });
+    assert.deepEqual(issueGoal(task({ status: 'dropped', after: ['T2'] }), FREE), { open: false, reason: 'not-planned' });
   });
 });
 
@@ -256,6 +265,14 @@ describe('the assignee (T2999)', () => {
     const plan = planPush(REPO, issues, [holding('T1', 7, { owner: 'bravo' }), holding('T2', 8, { owner: 'bravo' })], undefined, logins);
     assert.equal(plan.unchanged, 1);
     assert.deepEqual(plan.changes.map(changeLine), ['LABEL acme/web#8 T2 open: add status:claimed, take off status:open']);
+  });
+
+  it('takes every status label off a design issue and assigns it to no one, even once scheduled (T3096)', () => {
+    const issues = [testHostIssue(7, { labels: ['design', 'status:open'] }), testHostIssue(8, { labels: ['design'] })];
+    const tasks = [holding('T1', 7, { owner: 'bravo' }), holding('T2', 8, { owner: 'bravo', status: 'in-progress', due: '2030-01-09' })];
+    const plan = planPush(REPO, issues, tasks, undefined, logins);
+    assert.equal(plan.unchanged, 1);
+    assert.deepEqual(plan.changes.map(changeLine), ['LABEL acme/web#7 T1 open: take off status:open']);
   });
 
   it('takes every status label off a goal, and still assigns it once scheduled (T3056)', () => {

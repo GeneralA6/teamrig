@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { Env } from '../core/home.ts';
 import { endOf, type ShellEnd } from '../test-run/shell.ts';
 import type { CloseReason, IssueDraft, LabelSpec } from '../issues/host.ts';
-import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
+import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
 import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 
 /**
@@ -12,11 +12,11 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
  * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
  * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
  * --duplicate-of), logins added to one issue's assignees, the read of one user, for the case GitHub spells its login
- * in, the read of whether one login may be assigned, and the creation of one of its own status labels (the status
- * push), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes, conditional reads
- * that tell whether a repository changed (isWatchProbe). The runner refuses any other command line before it starts:
- * no title or state edit besides the close, no reopen, assignee removal, label create but the push's own, label edit
- * or delete, link removal, merge or branch delete.
+ * in, and the read of whether one login may be assigned (the status push), the creation of one of the labels teamrig
+ * makes (the status push and issue label), one sub-issue or blocked-by link added (issue links), and `issue watch`'s
+ * two probes, conditional reads that tell whether a repository changed (isWatchProbe). The runner refuses any other
+ * command line before it starts: no title or state edit besides the close, no reopen, assignee removal, label create
+ * but teamrig's own, label edit or delete, link removal, merge or branch delete.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -330,13 +330,13 @@ export function isUserRead(args: readonly string[]): boolean {
 const LABELS_PATH = /^repos\/([^/]+\/[^/]+)\/labels$/u;
 
 /**
- * True for the command line labelCreateArgs builds for one of the status push's own labels (STATUS_LABEL_SPECS) and
- * nothing more: its name, colour and description word for word, in that order. So the runner makes no other label,
+ * True for the command line labelCreateArgs builds for one of the labels teamrig makes (MANAGED_LABEL_SPECS: the
+ * status push's own and the design label) and nothing more: its name, colour and description word for word, in that order. So the runner makes no other label,
  * and edits or deletes none, whatever a caller passes.
  */
 export function isLabelCreate(args: readonly string[]): boolean {
   const repo = LABELS_PATH.exec(args[1] ?? '')?.[1] ?? '';
-  return args[0] === 'api' && REPO_NAME.test(repo) && STATUS_LABEL_SPECS.some((label) => sameArgs(args, labelCreateArgs(repo, label)));
+  return args[0] === 'api' && REPO_NAME.test(repo) && MANAGED_LABEL_SPECS.some((label) => sameArgs(args, labelCreateArgs(repo, label)));
 }
 
 /** True when the two command lines are the same, word for word. */

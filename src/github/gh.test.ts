@@ -41,7 +41,7 @@ import {
   type IssueNumber,
 } from './gh.ts';
 import type { IssueDraft } from '../issues/host.ts';
-import { STATUS_LABEL_SPECS } from '../issues/status-push.ts';
+import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs } from './queries.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));
@@ -319,12 +319,12 @@ describe('the duplicate close and the issue read', () => {
   });
 });
 
-describe('the status label create (T2999)', () => {
-  const [OPEN_LABEL] = STATUS_LABEL_SPECS;
+describe('the managed label create (T2999, T3096)', () => {
+  const [OPEN_LABEL] = MANAGED_LABEL_SPECS;
 
-  it('takes the create of each of the push\'s own status labels', () => {
-    assert.equal(STATUS_LABEL_SPECS.length, 5);
-    for (const label of STATUS_LABEL_SPECS) {
+  it('takes the create of each of the push\'s own status labels and design', () => {
+    assert.deepEqual(MANAGED_LABEL_SPECS.map((label) => label.name).slice(-2), ['status:in review', 'design']);
+    for (const label of MANAGED_LABEL_SPECS) {
       const args = labelCreateArgs('acme/web', label);
       assert.deepEqual(args, ['api', 'repos/acme/web/labels', '-X', 'POST', '-f', `name=${label.name}`, '-f', `color=${label.color}`, '-f', `description=${label.description}`]);
       assert.ok(isLabelCreate(args) && isAllowedGh(args), label.name);

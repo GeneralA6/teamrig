@@ -1,5 +1,6 @@
 import type { Task } from '../register/fold.ts';
 import { GITHUB_SOURCE, ISSUE_REF_PREFIX, type TaskStatus } from '../register/model.ts';
+import { DESIGN_LABEL } from './design-label.ts';
 import { parseIssueTarget, targetText, type CloseReason, type IssueTarget, type LabelSpec } from './host.ts';
 import type { HostIssue } from './issue.ts';
 
@@ -94,20 +95,35 @@ export function isGoal(task: Pick<Task, 'after'>): boolean {
   return task.after.length > 0;
 }
 
-/** The issue a task calls for; `assigned` is whether the issue already has an assignee, someone who took it. */
-export function issueGoal(task: GoalFacts, assigned: boolean): IssueGoal {
+/**
+ * What the issue shows besides its task: whether it has an assignee (someone took it), and whether it is a design issue
+ * (talk only, design-label.ts).
+ */
+export interface IssueFacts {
+  readonly assigned: boolean;
+  readonly design: boolean;
+}
+
+/**
+ * The issue a task calls for. A design issue shows no status label and is assigned to no one: it is talk, not work
+ * to take, until it is agreed (T3096).
+ */
+export function issueGoal(task: GoalFacts, issue: IssueFacts): IssueGoal {
   switch (task.status) {
     case 'done':
       return { open: false, reason: 'completed' };
     case 'dropped':
       return { open: false, reason: 'not-planned' };
     default: {
+      if (issue.design) {
+        return { open: true, label: undefined, claim: false };
+      }
       const claim = scheduled(task);
       if (isGoal(task)) {
         return { open: true, label: undefined, claim };
       }
       if (task.status === 'open') {
-        return { open: true, label: claim || assigned ? STATUS_LABELS.claimed : STATUS_LABELS.open, claim };
+        return { open: true, label: claim || issue.assigned ? STATUS_LABELS.claimed : STATUS_LABELS.open, claim };
       }
       return { open: true, label: STATUS_LABELS[task.status], claim };
     }
@@ -221,7 +237,7 @@ export function planPush(repo: string, issues: readonly HostIssue[], tasks: Iter
   let unchanged = 0;
   for (const [target, task] of [...holders(repo, tasks)].sort(([a], [b]) => a - b).map(([number, holder]) => [{ repo, number }, holder] as const)) {
     const issue = listed.get(target.number);
-    const goal = issueGoal(task, issue !== undefined && issue.assignees.length > 0);
+    const goal = issueGoal(task, { assigned: issue !== undefined && issue.assignees.length > 0, design: issue?.labels.includes(DESIGN_LABEL) ?? false });
     if (issue === undefined) {
       // The list holds every open issue, so one it left out is closed (or gone): as a closed task wants it.
       if (goal.open) {
