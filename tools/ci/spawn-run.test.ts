@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnRun } from './spawn-run.ts';
@@ -16,7 +16,8 @@ process.stdin.on('end', () => {
 
 describe('spawnRun', () => {
   it('hands the program its stdin, arguments, folder and environment, and returns its exit and output', () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'spawn-run-'));
+    // The real path: macOS's temp folder sits under the /var symlink, and the child's cwd reads /private/var.
+    const cwd = realpathSync.native(mkdtempSync(join(tmpdir(), 'spawn-run-')));
     try {
       const result = spawnRun(
         { file: process.execPath, args: ['-e', ECHO, 'first', '3'], input: 'stdin' },
