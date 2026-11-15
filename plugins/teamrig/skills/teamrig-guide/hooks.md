@@ -736,7 +736,10 @@ so it cannot see, and lets through:
 A [privileged command](commands.md#privileged-commands) runs only after a reviewer approves it, and the CLI takes
 the reviewer from `--session` as given, while one allow rule lets every `teamrig` command run unasked. Before Claude
 runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the push guard does) and finds each
-`exec` command, run as `teamrig` or as `node <plugin>/dist/cli/main.js`. It refuses:
+`exec` command, however the line starts teamrig: as `teamrig`, as one of its entry scripts (`dist/cli/main.js`, or
+`dist/cli/guard-main.js` beside it) through `node` or any other script host (`tsx`, `bun`, `npx tsx`), or through a
+package runner naming `teamrig` or `teamrig@<version>` (`npx`, `pnpm dlx`, `pnpm exec`, `npm exec`, `yarn`,
+`bunx`). It refuses:
 
 - **a review as another**: `exec approve`, `refuse` or `escalate` that names no `--session`, names it twice, names
   a session the team does not have, or one that is not the tab's own. `--session` wins over `$TEAMRIG_SESSION` in
@@ -753,10 +756,12 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
   (Git Bash's `/c/x` too, and a relative one from the folder the line has moved to), else the first `teamrig` the
   shell's PATH search finds (Bash: `~/bin` first; cmd: its folder first; PowerShell: `.ps1` and the `PATHEXT`
   names). A bare `teamrig` it finds nowhere is the plugin bin the Bash tool appends to PATH last. The reason names
-  the file and the plugin's own client; a `teamrig` found on PATH is to be taken off it.
-- **a program known only when it runs**: `$T exec approve ...`, `node "$SCRIPT" exec run ...` or a relative client
-  path from a folder only known when the line runs, whenever the words after it are an `exec` command, as no
-  file can be checked; write the program out. `$DOCKER exec ctr ls` is not one.
+  the file and the plugin's own client; a `teamrig` found on PATH is to be taken off it. An `exec` command through a
+  package runner is refused too, as the runner may find or fetch a teamrig other than this install.
+- **a program known only when it runs**: `$T exec approve ...`, `node "$SCRIPT" exec run ...`, a package runner's
+  `npx "$P" exec ...` or a relative client path from a folder only known when the line runs, whenever the words
+  after it are an `exec` command, as no file can be checked; write the program out. `$DOCKER exec ctr ls` is not
+  one.
 - **a changed client**: any `exec` command while the files (`bin`, `dist`, `hooks`; not their test files) of the install
   it starts differ from the SHA-256 list its build wrote (`dist/integrity.json`), or that list is missing, since an approved
   command runs inside that client. Each install a line starts is checked once; the reason names up to five changed
@@ -1766,6 +1771,10 @@ thread and blocks the call (exit 2) when the guard:
   lets the call through. This holds for a guard stuck in work that never waits, such as an endless loop: the guard
   runs on its own thread, so the runner's clock keeps running;
 - ends with an exit code but 0 or 2, or prints something other than its one JSON answer.
+
+The runner runs nothing but a hook: its words must be exactly `hook <name>`, and any other (`guard-main.js owner
+next ...`, `guard-main.js exec approve ...`) exits 2, saying "teamrig blocked this run", before the CLI loads, so the
+guard entry is no second way into the CLI's commands.
 
 The model then reads `teamrig blocked this call: its <hook> guard <what went wrong>, and a guard that cannot answer
 must not let a call through. Fix: ...` ([errors](errors.md#a-blocked-tool-call)). So a broken install blocks every
