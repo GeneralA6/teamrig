@@ -3,7 +3,7 @@ import { isAssignment, launch, programName, staticWord, type Assignment, type La
 import { Location, resolveDir } from './location.ts';
 import { splitGitAlias } from './program-split.ts';
 import { redirectsInput, stdinUse } from './stdin.ts';
-import { parseHeldText, parseShell, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
+import { parseHeldText, parseShell, type ShellCommand, type ShellDialect, type ShellParse, type ShellWord } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
 /** One git config value: set, unset (git exits 1), or unreadable (git failed or is missing). */
@@ -234,6 +234,17 @@ export function configWrite(args: readonly ShellWord[]): ConfigWrite | undefined
   return value === undefined ? undefined : { kind: 'set', key, value };
 }
 
+/** A command's terminator that pipes its output to the next command, a newline or two after it. */
+const PIPE_TERMINATOR = /^\|&?\n*$/;
+
+/**
+ * True when what `command` prints goes on to another command: down a pipe (`|`, `|&`, also from a `( )` group the
+ * command ends), or into the command holding the substitution it sits in.
+ */
+function outputFeedsCommand(command: ShellCommand): boolean {
+  return command.nesting > 0 || PIPE_TERMINATOR.test(command.terminator.replace(/[()]/g, ''));
+}
+
 /** Quotes a word for a bash command line, so a git shell alias gets its arguments as typed. */
 function shellQuote(word: ShellWord): string {
   return word.dynamic ? word.text : `'${word.text.replace(/'/g, `'\\''`)}'`;
@@ -343,8 +354,10 @@ class GitInvocationFinder {
       location.enter(command.subshells);
       const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
       // An interpreter's words and stdin are its script, judged by visitCommand, not shell words that name a push:
-      // a python heredoc that posts a message saying "push" arms no doubt about the line.
-      const script = launched?.kind === 'program' && interpreterOf(launched) !== undefined;
+      // a python heredoc that posts a message saying "push" arms no doubt about the line. Its output feeding another
+      // command (a pipe, a substitution) may be shell code it prints, so there its words and stdin still name a push
+      // for the gated doubts that command raises (`python3 -c 'print("git push ...")' | sh`).
+      const script = launched?.kind === 'program' && interpreterOf(launched) !== undefined && !outputFeedsCommand(command);
       if (!script) {
         command.words.forEach((word) => this.mention(word.text));
       }

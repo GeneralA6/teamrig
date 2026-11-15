@@ -316,7 +316,9 @@ it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and 
   process call such as `subprocess`, `os.system`, `child_process` or `Deno.Command`, a backtick in perl, ruby or php,
   or a git library such as GitPython or simple-git) asks: "it runs a <language> script that may run git push, whose
   push the guard cannot read; run the push as a plain git command on the line instead". A script that only talks about
-  a push, or only runs `git status`, passes. This is a text rule against an accidental push, not a sandbox: a script
+  a push, or only runs `git status`, passes. Where its output goes on to another command
+  (`python3 -c 'print("git push ...")' | sh`, or a `$( )`), its text still names a push for that command, so a shell
+  fed a printed push asks. This is a text rule against an accidental push, not a sandbox: a script
   that builds `'gi' + 't'` or decodes its command passes.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard

@@ -970,3 +970,25 @@ describe('decisionReason, leasedReason and doubtReason', () => {
     );
   });
 });
+
+describe('evaluatePushes: an interpreter whose output feeds a shell', () => {
+  it('asks when what an interpreter prints goes on to a shell and names a push', () => {
+    expectRows([
+      ['python3 -c \'print("git push origin main")\' | sh', 'ask', 'doubt'],
+      ['node -e "console.log(\'git push origin main\')" | bash', 'ask', 'doubt'],
+      ['python3 -c \'print("git push origin main")\' |& sh', 'ask', 'doubt'],
+      ['(python3 -c \'print("git push origin main")\') | sh', 'ask', 'doubt'],
+      ["python3 - <<'PY' | sh\nprint('git push origin main')\nPY", 'ask', 'doubt'],
+      ['eval "$(python3 -c \'print("git push origin main")\')"', 'ask', 'doubt'],
+    ]);
+  });
+
+  it('still lets its words pass where its output ends the line, goes to a file, or feeds no shell', () => {
+    expectRows([
+      ['python3 -c \'print("git push origin main")\'', 'allow'],
+      ['python3 -c \'print("git push origin main")\' > out.txt', 'allow'],
+      ['python3 -c \'print("pushed")\' | grep push', 'allow'],
+      ["python3 -c 'print(1)' | sh", 'allow'],
+    ]);
+  });
+});
