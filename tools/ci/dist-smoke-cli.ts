@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -7,6 +6,7 @@ import { createGit } from '../lib/git.ts';
 import { runMain } from '../lib/run-main.ts';
 import { isRecord, stringField } from '../lib/guards.ts';
 import { launcherModeFinding, smokeDist, type Runner } from './dist-smoke.ts';
+import { spawnRun } from './spawn-run.ts';
 
 const PLUGIN_ROOT = resolve('plugins', 'teamrig');
 
@@ -25,18 +25,7 @@ async function main(): Promise<number> {
   const home = mkdtempSync(join(tmpdir(), 'teamrig-smoke-'));
   try {
     const env = { ...process.env, TEAMRIG_HOME: home, TEAMRIG_TEAM: 'smoke' };
-    const run: Runner = (request) => {
-      const result = spawnSync(request.file, request.args, {
-        input: request.input,
-        encoding: 'utf8',
-        env,
-        cwd: home,
-        timeout: 15_000,
-        windowsVerbatimArguments: request.verbatim ?? false,
-      });
-      // A file that cannot start (missing, or not executable) has no output, only an error.
-      return { status: result.status, stdout: result.stdout, stderr: result.error === undefined ? result.stderr : result.error.message };
-    };
+    const run: Runner = (request) => spawnRun(request, { env, cwd: home, timeout: 15_000 });
     const findings = smokeDist(
       {
         platform: process.platform,
