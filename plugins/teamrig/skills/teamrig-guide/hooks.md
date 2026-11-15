@@ -493,7 +493,8 @@ PowerShell, Read or Grep call, `hook secret-guard` reads it (a shell line as the
 nested shells, `cd`, pipes and substitutions) and refuses a call that would print:
 
 - **a secret file's content**: a printer (`cat`, `head`, `grep`, `sed`, `jq`, `base64`, `Get-Content`,
-  `Select-String`...) or `git show`, `diff` or `blame` naming one (the script or pattern a `sed`, `grep`, `awk` or
+  `Select-String`...), .NET's `[IO.File]::ReadAllText(".env")` and its kin when their result prints, or
+  `git show`, `diff` or `blame` naming one (the script or pattern a `sed`, `grep`, `awk` or
   `jq` takes first is not a file, so `grep -n .env README.md` passes), a `<` feeding one, inline code that prints one
   (`python -c "print(open('.env').read())"`; a wildcard in its strings counts only where the code can expand it, by
   a glob call or by starting a program, so `'*'` as a fallback or `'.*'` in a regex passes), the Read tool on one, or
@@ -518,8 +519,10 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   `[Environment]::GetEnvironmentVariables()`, `/proc/<pid>/environ`, and inline code that prints `process.env` or
   `os.environ`.
 - **a secret variable's value**: `echo $GITHUB_TOKEN`, `printenv NPM_TOKEN`, a bare `$env:GH_TOKEN`,
-  `[Environment]::GetEnvironmentVariable("X")`, and inline code (`node -e`, `python -c`, `ruby -e`, `perl -e`,
-  `php -r`) that prints one. A name is secret when a default pattern matches it (case ignored): `TOKEN`, `SECRET`,
+  `[Environment]::GetEnvironmentVariable("X")`, `[Console]::WriteLine($env:X)` (even in an assignment), a call that
+  passes one on into what it prints (`[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:X))`,
+  `[string]::Join`; a call that only tests it, such as `[string]::IsNullOrEmpty($env:X)`, passes), and inline code
+  (`node -e`, `python -c`, `ruby -e`, `perl -e`, `php -r`) that prints one. A name is secret when a default pattern matches it (case ignored): `TOKEN`, `SECRET`,
   `PASSW`, `PASS`, `CRED`, `AUTH` (not `AUTHOR`, nor an auth mechanism or source), `PRIVATE`, `KEY`, `DSN`, `WEBHOOK`,
   `COOKIE`, `PAT`, `SALT`, and a store's connection URL or string by its kind (`DB_URL`, `DATABASE_URL`, `PG_URI`,
   `CACHE_URL`, `BROKER_URL`, `CONNECTION_STRING`).
