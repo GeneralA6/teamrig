@@ -105,65 +105,90 @@ export function readScriptFile(path: string): string | undefined {
 
 /**
  * How each language's interpreter takes its program from its options: the short and long
- * options whose value is inline code (no script file follows), a module (likewise), the script file itself, or any
- * other value (skipped), and the subcommand words that come before the script under deno and bun (`deno run x.ts`).
+ * options whose value is inline code (no script file follows), a module (likewise), the script file itself, a file
+ * it loads before the script (a preload), or any other value (skipped), and the subcommand words that come
+ * before the script under deno and bun (`deno run x.ts`). `programs` adds options only some programs of a language
+ * take (deno's `-c` is its config file; to node, `-c` is `--check`, which takes no value).
  */
 interface OptionTable {
   readonly code: readonly string[];
   readonly module: readonly string[];
   readonly file: readonly string[];
+  readonly preload: readonly string[];
   readonly value: readonly string[];
   readonly subcommands: readonly string[];
+  readonly programs?: Readonly<Record<string, readonly string[]>>;
 }
 
 const OPTIONS: Readonly<Record<string, OptionTable>> = {
-  python: { code: ['-c'], module: ['-m'], file: [], value: ['-W', '-X', '--check-hash-based-pycs'], subcommands: [] },
+  python: { code: ['-c'], module: ['-m'], file: [], preload: [], value: ['-W', '-X', '--check-hash-based-pycs'], subcommands: [] },
   JavaScript: {
     code: ['-e', '-p', '--eval', '--print'],
     module: [],
     file: [],
-    value: ['-r', '--require', '--import', '--loader', '--experimental-loader', '-C', '--conditions', '--input-type', '--env-file'],
+    preload: ['-r', '--require', '--import', '--loader', '--experimental-loader'],
+    value: ['-C', '--conditions', '--input-type', '--env-file', '--env-file-if-exists', '--disable-warning', '--title', '--watch-path'],
     subcommands: ['run'],
+    programs: { deno: ['-c', '--config', '--cert', '--lock', '--import-map', '-L', '--log-level'], bun: ['-c', '--config', '--cwd'] },
   },
-  perl: { code: ['-e', '-E'], module: [], file: [], value: ['-I', '-M', '-m', '-x'], subcommands: [] },
-  ruby: { code: ['-e'], module: [], file: [], value: ['-I', '-r', '-C', '-E'], subcommands: [] },
-  php: { code: ['-r', '-B', '-R', '-E', '-F'], module: [], file: ['-f'], value: ['-d', '-c', '-z'], subcommands: [] },
+  perl: { code: ['-e', '-E'], module: [], file: [], preload: [], value: ['-I', '-M', '-m', '-x'], subcommands: [] },
+  ruby: { code: ['-e'], module: [], file: [], preload: ['-r'], value: ['-I', '-C', '-E'], subcommands: [] },
+  php: { code: ['-r', '-B', '-R', '-E', '-F'], module: [], file: ['-f'], preload: [], value: ['-d', '-c', '-z', '-S', '-t'], subcommands: [] },
 };
 
+/** Python modules that run the script file named by their first argument (`python3 -m runpy push.py`). */
+const SCRIPT_RUNNERS: ReadonlySet<string> = new Set(['runpy', 'pdb', 'cProfile', 'profile']);
+
 /**
- * The index of the argument an interpreter run reads as its script file, or undefined when it runs inline code, a
- * module or stdin. Its options are skipped (with the value of one that takes a value), and so is a subcommand word
- * before the script. The arguments after the script are the script's own data, never its program.
+ * How an interpreter run reads its program from its arguments: `script`, the index of the argument it runs as its
+ * script file (undefined when it runs inline code, a module or stdin), and `end`, the index of the last argument
+ * that is still the interpreter's own (an option, its value, a preload, or the script). The arguments after `end`
+ * are the script's own data, never its program.
  */
-export function scriptArgIndex(args: readonly ShellWord[], language: string, program = ''): number | undefined {
+export interface ProgramArgs {
+  readonly script: number | undefined;
+  readonly end: number;
+}
+
+/**
+ * Reads an interpreter run's arguments ({@link ProgramArgs}). Its options are skipped (with the value of one that
+ * takes a value), and so is a subcommand word before the script; `python -m runpy x.py` runs `x.py`.
+ */
+export function programArgs(args: readonly ShellWord[], language: string, program = ''): ProgramArgs {
   const table = OPTIONS[language];
-  // Only deno and bun take a subcommand before the script; to node, `run` is a script file.
-  const subcommands = /^(?:deno|bun)$/.test(program) ? (table?.subcommands ?? []) : [];
   if (table === undefined) {
-    return undefined;
+    return { script: undefined, end: -1 };
   }
+  // Only deno and bun take a subcommand before the script; to node, `run` is a script file.
+  const subcommands = /^(?:deno|bun)$/.test(program) ? table.subcommands : [];
+  const value = [...table.value, ...table.preload, ...(table.programs?.[program] ?? [])];
+  const script = (index: number): ProgramArgs => (index < args.length ? { script: index, end: index } : { script: undefined, end: args.length - 1 });
+  const none = (index: number): ProgramArgs => ({ script: undefined, end: index });
   let subcommandSeen = false;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === undefined) {
-      return undefined;
+      return none(index);
     }
     const text = arg.text;
     if (arg.dynamic && text.startsWith('-')) {
       continue;
     }
     if (text === '--') {
-      return index + 1 < args.length ? index + 1 : undefined;
+      return script(index + 1);
     }
     if (text === '-') {
-      return undefined; // the program comes from stdin
+      return none(index); // the program comes from stdin
     }
     if (text.startsWith('--')) {
       const name = text.split('=', 1)[0] ?? text;
-      if (table.code.includes(name) || table.module.includes(name)) {
-        return undefined;
+      if (table.code.includes(name)) {
+        return none(index);
       }
-      if (table.value.includes(name) && !text.includes('=')) {
+      if (table.module.includes(name)) {
+        return moduleRun(args, index + 1);
+      }
+      if (value.includes(name) && !text.includes('=')) {
         index += 1;
       }
       continue;
@@ -173,13 +198,16 @@ export function scriptArgIndex(args: readonly ShellWord[], language: string, pro
       for (let at = 1; at < text.length; at += 1) {
         const option = `-${text[at]}`;
         const attached = at + 1 < text.length;
-        if (table.code.includes(option) || table.module.includes(option)) {
-          return undefined;
+        if (table.code.includes(option)) {
+          return none(index);
+        }
+        if (table.module.includes(option)) {
+          return attached ? moduleRun(args, index, text.slice(at + 1)) : moduleRun(args, index + 1);
         }
         if (table.file.includes(option)) {
-          return attached ? undefined : index + 1 < args.length ? index + 1 : undefined;
+          return attached ? none(index) : script(index + 1);
         }
-        if (table.value.includes(option)) {
+        if (value.includes(option)) {
           if (!attached) {
             index += 1;
           }
@@ -192,16 +220,44 @@ export function scriptArgIndex(args: readonly ShellWord[], language: string, pro
       subcommandSeen = true;
       continue;
     }
-    return index;
+    return script(index);
   }
-  return undefined;
+  return none(args.length - 1);
+}
+
+/**
+ * A python `-m` run whose module name is at `at` (or attached, as in `-mrunpy`): a module that runs a script
+ * file names it in its first argument that is not an option; any other module reads its arguments as data.
+ */
+function moduleRun(args: readonly ShellWord[], at: number, attached?: string): ProgramArgs {
+  const name = attached ?? args[at]?.text;
+  if (name === undefined || !SCRIPT_RUNNERS.has(name)) {
+    return { script: undefined, end: Math.min(at, args.length - 1) };
+  }
+  const index = args.findIndex((arg, each) => each > at && !arg.text.startsWith('-'));
+  return index === -1 ? { script: undefined, end: args.length - 1 } : { script: index, end: index };
+}
+
+/** The index of the argument an interpreter run reads as its script file; see {@link programArgs}. */
+export function scriptArgIndex(args: readonly ShellWord[], language: string, program = ''): number | undefined {
+  return programArgs(args, language, program).script;
+}
+
+/** The file an argument names, in `dir` when relative; undefined when it names none the guard can read as written. */
+function argPath(arg: ShellWord | undefined, dir: string | undefined): string | undefined {
+  if (arg === undefined || arg.dynamic || arg.text === '' || arg.text.includes('\n')) {
+    return undefined;
+  }
+  return isAbsolute(arg.text) ? arg.text : dir === undefined ? undefined : join(dir, arg.text);
 }
 
 /**
  * The text an interpreter run takes as its program: every argument (inline `-c`/`-e`/`--eval` code, and the rest,
- * which only makes the rule stricter), the stdin a heredoc or here-string gives it, and the script file it runs
- * ({@link scriptArgIndex}) when that names a readable file in `dir`. The arguments after the script are its data:
- * they are judged as written, never read as files (a transcript that quotes `git push` is no program). An
+ * which only makes the rule stricter), the stdin a heredoc or here-string gives it, and each file among its own
+ * arguments ({@link programArgs}: a preload such as `node -r ./x.js`, and the script) that is readable in `dir`.
+ * The arguments after the script are its data: they are judged as written, never read as files (a transcript
+ * that quotes `git push` is no program). When the script it names is not a readable file, as when an option the
+ * guard does not know took the script's place, every readable argument that is no option is read instead. An
  * argument only known when it runs is read as written.
  */
 export function interpreterText(
@@ -215,15 +271,28 @@ export function interpreterText(
   if (stdin !== undefined) {
     parts.push(stdin.text);
   }
-  const index = scriptArgIndex(launched.args, language, programName(launched.program.text));
-  const arg = index === undefined ? undefined : launched.args[index];
-  if (arg !== undefined && !arg.dynamic && arg.text !== '' && !arg.text.includes('\n')) {
-    const path = isAbsolute(arg.text) ? arg.text : dir === undefined ? undefined : join(dir, arg.text);
-    const body = path === undefined ? undefined : readScript(path);
-    if (body !== undefined) {
-      parts.push(body);
+  const read = (arg: ShellWord | undefined): string | undefined => {
+    const path = argPath(arg, dir);
+    return path === undefined ? undefined : readScript(path);
+  };
+  const own = programArgs(launched.args, language, programName(launched.program.text));
+  const scriptArg = own.script === undefined ? undefined : launched.args[own.script];
+  const unreadScript = scriptArg !== undefined && !scriptArg.dynamic && read(scriptArg) === undefined;
+  launched.args.forEach((arg, index) => {
+    const ownArg = index <= own.end;
+    if ((ownArg || unreadScript) && !arg.text.startsWith('-')) {
+      const body = read(arg);
+      if (body !== undefined) {
+        parts.push(body);
+      }
+    } else if (ownArg && arg.text.startsWith('--') && arg.text.includes('=')) {
+      // A preload written `--require=./x.js`.
+      const body = read({ ...arg, text: arg.text.slice(arg.text.indexOf('=') + 1) });
+      if (body !== undefined) {
+        parts.push(body);
+      }
     }
-  }
+  });
   return parts.join('\n');
 }
 

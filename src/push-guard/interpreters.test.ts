@@ -116,6 +116,62 @@ describe('findGitInvocations on interpreter scripts', () => {
     }
   });
 
+  // A value option the guard did not know, or a preload, hid the script that pushes.
+  const PUSH_PY = 'import subprocess\nsubprocess.run(["git", "push", "origin", "main"])\n';
+  const PUSH_JS = 'require("child_process").execSync("git push origin main")\n';
+  const PUSH_RB = 'system("git push origin main")\n';
+  const PUSH_PHP = '<?php shell_exec("git push origin main");\n';
+  const QUIET = { '/w/deno.json': '{"tasks":{}}', '/w/app.js': 'console.log(1)\n', '/w/app.rb': 'puts 1\n' };
+  const inWork = (files: Record<string, string>): FinderContext => ({ ...context(files), cwd: '/w' });
+
+  it('doubts a script that pushes behind an option it takes a value for, a preload, or python -m runpy', () => {
+    const files = { ...QUIET, '/w/push.ts': 'Deno.run({cmd:["git","push","origin","main"]})\n', '/w/push.js': PUSH_JS, '/w/push.mjs': PUSH_JS, '/w/push.rb': PUSH_RB, '/w/push.py': PUSH_PY, '/w/push.php': PUSH_PHP };
+    for (const command of [
+      'deno run -c deno.json push.ts',
+      'deno run --config deno.json push.ts',
+      'node --disable-warning ExperimentalWarning push.js',
+      'php -S localhost:8000 push.php',
+      'node -r ./push.js app.js',
+      'node --require ./push.js app.js',
+      'node --require=./push.js app.js',
+      'node --import ./push.mjs app.js',
+      'node --loader ./push.mjs app.js',
+      'node -r ./push.js -e "console.log(1)"',
+      'ruby -r ./push.rb app.rb',
+      'python3 -m runpy push.py',
+      'python3 -I -m pdb push.py',
+      'node --some-new-flag value push.js',
+    ]) {
+      const found = findGitInvocations(command, inWork(files));
+      assert.ok(
+        found.doubts.some((doubt) => !doubt.gated && /script that may run git push/.test(doubt.reason)),
+        `${command}: ${JSON.stringify(found.doubts)}`,
+      );
+    }
+  });
+
+  it('still passes those shapes when nothing they load pushes, and keeps the data after a readable script unread', () => {
+    const files = { ...QUIET, '/w/ok.ts': 'console.log(1)\n', '/w/ok.js': 'console.log(1)\n', '/w/ok.py': 'print(1)\n', '/w/transcript.jsonl': TRANSCRIPT };
+    for (const command of [
+      'deno run -c deno.json ok.ts transcript.jsonl',
+      'node --disable-warning ExperimentalWarning ok.js transcript.jsonl',
+      'node -r ./ok.js app.js transcript.jsonl',
+      'ruby -r ./app.rb app.rb transcript.jsonl',
+      'python3 -m runpy ok.py transcript.jsonl',
+      'python3 -m json.tool transcript.jsonl',
+      'python3 missing.py',
+      'python3 "$S" transcript.jsonl',
+    ]) {
+      assert.deepEqual(findGitInvocations(command, inWork(files)).doubts, [], command);
+    }
+  });
+
+  it('falls back to reading every readable argument when the script it names is not a readable file', () => {
+    const files = { '/w/transcript.jsonl': TRANSCRIPT };
+    const found = findGitInvocations('python3 missing.py transcript.jsonl', inWork(files));
+    assert.ok(found.doubts.some((doubt) => !doubt.gated), JSON.stringify(found.doubts));
+  });
+
   it('still reads a shell fed a heredoc, and a program only known when it runs', () => {
     assert.ok(findGitInvocations("bash <<'X'\ngit push origin main\nX", context()).invocations.some((i) => i.subcommand === 'push'));
     const dynamic = findGitInvocations("\"$PY\" - <<'PY'\nprint('push')\nPY", context());
