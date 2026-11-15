@@ -1,32 +1,30 @@
 import { resolve } from 'node:path';
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { issueCreateArgs } from "../../github/gh.js";
-import { plainLine, startFailureText } from "../../github/issues.js";
 import { issueRef } from "../../github/map.js";
-import { countsLine, createdNumber, parseMigrateRows, planMigration, previewMarkdown, replacedRefNote } from "../../github/migrate.js";
-import { RepoTokens, TokenReadError } from "../../github/tokens.js";
-import { exitText } from "../../open/processes.js";
+import { countsLine, parseMigrateRows, planMigration, previewMarkdown, replacedRefNote } from "../../github/migrate.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { onePositional } from "../args.js";
 import { callerOf } from "../inputs.js";
+import { hostOf } from "../issue-hosts.js";
 import { sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { GITHUB_OFF, githubOff } from "./gh-auto.js";
+import { GITHUB_OFF, githubOff } from "./issue-sync-auto.js";
 import { reportRotation } from "./register.js";
 import { openTeam } from "./register-team.js";
 /** The ids of live tasks with no row a run names on its NO ROW line; the rest are counted. */
 export const SHOWN_UNROWED = 20;
 /**
- * `gh migrate <file> [--out <preview.md>] [--yes]` (T2550): moves the caller's team's tasks to GitHub issues from a
+ * `issue migrate <file> [--out <preview.md>] [--yes]` (T2550): moves the caller's team's tasks to GitHub issues from a
  * file of JSON-lines rows (github/migrate.ts), each a task's public wording or the reason it stays local. Without
  * `--yes` it writes nothing but the `--out` preview, a page with every issue in full for a reviewer. `--yes` opens
- * each planned issue through gh with the token saved for the repository's owner (github/tokens.ts), else, when none
- * is saved, the gh login (a saved token the store could not read stops the run), then points the task's ref at it as `update <id> --ref` by the caller would, so the sync adds no second
+ * each planned issue through the issue host port (issues/host.ts; on GitHub with the token saved for the repository's
+ * owner, else, when none is saved, the gh login; a saved token the store could not read stops the run), then points
+ * the task's ref at it as `update <id> --ref` by the caller would, so the sync adds no second
  * task for it; a ref that is no issue gives way, named in the update's note. It stops at the first failure, and a rerun skips each task already holding its issue. Exit 1 when
  * gh failed, 2 when the register refused a ref, else 0.
  */
-export async function ghMigrate(args, runtime) {
+export async function issueMigrate(args, runtime) {
     const path = resolve(runtime.cwd, onePositional(args, 'file'));
     const write = args.switches.has('yes');
     const caller = callerOf(args.flags, runtime.env);
@@ -58,7 +56,7 @@ export async function ghMigrate(args, runtime) {
     }
     planLines(plan).forEach(say);
     if (!write) {
-        say(`PREVIEW nothing was written; ${KIT_NAME} gh migrate <file> --yes opens the issues and sets each task's ref`);
+        say(`PREVIEW nothing was written; ${KIT_NAME} issue migrate <file> --yes opens the issues and sets each task's ref`);
         return EXIT.ok;
     }
     return openIssues(runtime, team, by, plan.creates, scanner);
@@ -93,28 +91,29 @@ function planLines(plan) {
 /** Opens each issue and sets its task's ref, in order, stopping at the first failure. */
 async function openIssues(runtime, team, by, creates, scanner) {
     const say = (line) => runtime.out.stdout(line);
-    const tokens = new RepoTokens(runtime.credentials, runtime.env);
+    // planMigration plans issues only for github.repos, GitHub's list, so every one is GitHub's.
+    const host = hostOf('github', runtime, scanner);
     const told = new Set();
     let opened = 0;
     const stopped = (id) => `STOPPED at ${id} after opening ${opened} issue(s); fix the cause and rerun: tasks holding their issue are skipped`;
     for (const create of creates) {
-        const access = await tokens.accessFor(create.draft.repo);
-        if (access instanceof TokenReadError) {
-            say(`FAILED ${create.id}: ${access.message}`);
+        const reach = await host.reach(create.draft.repo, 'open');
+        if (reach.kind === 'unreachable') {
+            say(`FAILED ${create.id}: ${reach.reason}`);
             say(stopped(create.id));
             return EXIT.failed;
         }
-        if (!told.has(access.owner)) {
-            told.add(access.owner);
-            say(accessLine(access));
+        if (!told.has(reach.scope)) {
+            told.add(reach.scope);
+            say(`ACCESS ${reach.access}`);
         }
-        const end = await createIssue(runtime.gh, access, create.draft, scanner);
+        const end = await host.open(create.draft);
         if (end.kind === 'failed') {
             say(`FAILED ${create.id}: ${end.reason}`);
             say(stopped(create.id));
             return EXIT.failed;
         }
-        const ref = issueRef(create.draft.repo, end.number);
+        const ref = issueRef(end.target.repo, end.target.number);
         const verdict = await team.register.update(by, create.id, { ref }, refNote(create.replaces));
         if (!verdict.ok) {
             say(`REFUSED ${create.id}: ${verdict.error}; its issue ${ref} was opened: set it with ${KIT_NAME} update ${create.id} --ref ${ref}`);
@@ -127,33 +126,4 @@ async function openIssues(runtime, team, by, creates, scanner) {
     }
     say(`DONE opened ${opened} issue(s) and set each task's ref`);
     return EXIT.ok;
-}
-/** How an owner's issues are opened, said once per owner: a token by the name it is saved under, or the gh login when none is saved. */
-export function accessLine(access) {
-    return access.via === 'token'
-        ? `ACCESS ${access.owner}: opens issues with the token saved as ${access.credential}`
-        : `ACCESS ${access.owner}: opens issues with the gh login; no token saved as ${access.credential}`;
-}
-/**
- * Opens one issue. A failure is one plain line with gh's own first error line, any secret shape in it redacted; a
- * run stopped by a signal, or one that printed no issue number, may still have opened it, so its line says to
- * look before a rerun.
- */
-async function createIssue(gh, access, draft, scanner) {
-    let result;
-    try {
-        result = await gh.run({ args: issueCreateArgs(draft), env: access.env });
-    }
-    catch (error) {
-        return { kind: 'failed', reason: startFailureText(error) };
-    }
-    const look = `look for it on ${draft.repo} before a rerun, and set the task's ref if it is there`;
-    if (result.end.kind === 'signal') {
-        return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while opening the issue: ${look}` };
-    }
-    if (result.end.code !== 0) {
-        return { kind: 'failed', reason: scanner.redact(plainLine(`gh api for an issue of ${draft.repo} ${exitText(result.end.code, result.stderr)}`)) };
-    }
-    const number = createdNumber(result.stdout);
-    return number === undefined ? { kind: 'failed', reason: `gh printed no issue number: ${look}` } : { kind: 'opened', number };
 }

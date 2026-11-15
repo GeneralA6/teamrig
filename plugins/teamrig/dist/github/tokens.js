@@ -19,7 +19,7 @@ export const SHIP_TOKEN = 'teamrig-ship-gh';
 export function repoOwner(repo) {
     return repo.slice(0, repo.indexOf('/')).toLowerCase();
 }
-/** The name of the credential `teamrig gh sync` looks for to read `owner`'s repositories. */
+/** The name of the credential `teamrig issue sync` looks for to read `owner`'s repositories. */
 export function tokenName(owner) {
     return `${TOKEN_PREFIX}${owner.toLowerCase()}`;
 }

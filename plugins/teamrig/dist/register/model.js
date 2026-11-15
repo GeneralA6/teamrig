@@ -29,7 +29,7 @@ export function isTaskStatus(value) {
 /** Session and area names: the shared id rule, as they name inbox files and folders. */
 export const SESSION_NAME = ID_PATTERN;
 /**
- * The source of a task imported from a GitHub issue: only `teamrig gh sync` writes one (github/sync.ts),
+ * The source of a task imported from a GitHub issue: only `teamrig issue sync` writes one (github/sync.ts),
  * and a session cannot give it to a task (policy.ts). Kept here, with the register's other names, so the
  * read side (views.ts, and the pane's copy of it) needs no write policy.
  */

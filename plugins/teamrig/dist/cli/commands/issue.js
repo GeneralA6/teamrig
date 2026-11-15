@@ -1,15 +1,14 @@
 import { ENV } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { GitHubIssueHost } from "../../github/host.js";
-import { RepoTokens } from "../../github/tokens.js";
 import { hostKindOf, parseIssueTarget } from "../../issues/host.js";
 import { postRefusal, writeIssue } from "../../issues/write.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { onePositional, requiredFlag } from "../args.js";
 import { callerOf } from "../inputs.js";
+import { hostOf } from "../issue-hosts.js";
 import { sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { GITHUB_OFF, githubOff } from "./gh-auto.js";
+import { GITHUB_OFF, githubOff } from "./issue-sync-auto.js";
 import { openTeam } from "./register-team.js";
 /**
  * `issue comment <owner/name#n> --body <text>` (T2660): posts one comment on an issue or pull request of the team's
@@ -63,11 +62,4 @@ async function writeOn(args, runtime, write, textFlag) {
         return EXIT.ok;
     }
     return (await writeIssue(hostOf(kind, runtime, scanner), write, say)) ? EXIT.ok : EXIT.failed;
-}
-/** The adapter for a host kind. */
-function hostOf(kind, runtime, scanner) {
-    switch (kind) {
-        case 'github':
-            return new GitHubIssueHost(runtime.gh, new RepoTokens(runtime.credentials, runtime.env), scanner);
-    }
 }
