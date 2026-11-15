@@ -533,7 +533,7 @@ function runFixture(fixture: RunFixture = {}): {
       if (answer === undefined) throw new Error(`unexpected git ${key}`);
       return answer;
     },
-    profiles: parseProfiles(`{"${REPO}":{"main":"main","gate":"${fixture.local === undefined ? 'ci' : 'local'}","checks":["gates","test"],${LOCAL_PROFILE}}}`),
+    profiles: parseProfiles(`{"${REPO}":{"main":"main","gate":"${fixture.local === undefined ? 'ci' : 'local'}","checks":["gates","test"],"regenerated":["out/"],${LOCAL_PROFILE}}}`),
     credential: () => fixture.credential ?? { kind: 'found', secret: GH_SECRET },
     ghFor,
     waiter: fakeWaiter(),
@@ -690,7 +690,7 @@ test('a head main moved past while the merge waited is caught up as a new branch
   assert.deepEqual(err, []);
   assert.deepEqual(
     catchUp.mock.calls.map(call => call.arguments[0]),
-    [{ head: BRANCH, stem: BRANCH, tip: MOVED, main: 'main' }],
+    [{ head: BRANCH, stem: BRANCH, tip: MOVED, main: 'main', regenerated: ['out/'] }],
   );
   assert.ok(gitCalls.includes(`fetch --quiet origin ${NEXT} main`), 'the second run reads the new head as pushed');
   assert.equal(out.at(-1), 'MERGED #3 into main, now at main999');
@@ -716,7 +716,7 @@ test('a head refused clearance is never caught up, even when main moved past it'
 test('without --head the caught-up head is the branch checked out; a ship merge gets the move back and catches nothing up', async () => {
   const checkedOut = runFixture({ mainTip: MOVED, catchUp: [CAUGHT_UP] });
   assert.equal(await runMerge({ ...ARGS, head: null }, checkedOut.deps), 0);
-  assert.deepEqual(checkedOut.catchUp.mock.calls[0]?.arguments[0], { head: BRANCH, stem: BRANCH, tip: MOVED, main: 'main' });
+  assert.deepEqual(checkedOut.catchUp.mock.calls[0]?.arguments[0], { head: BRANCH, stem: BRANCH, tip: MOVED, main: 'main', regenerated: ['out/'] });
 
   const shipped = runFixture({ mainTip: MOVED, catchUp: [CAUGHT_UP] });
   assert.equal((await mergeBranch(['C:/repo', '--head', BRANCH], () => shipped.deps)).kind, 'moved');

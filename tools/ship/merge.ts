@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { nodeFiles } from '../../src/core/files.ts';
 import { realSleep, systemClock } from '../../src/core/lock.ts';
 import { type ClearMerge, clearMergeFrom } from './approval.ts';
+import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { type CatchUp, type CatchUpRequest, catchUp } from './catch-up.ts';
 import { type CheckOutcome, type Gh, type RequiredChecks, ghWithToken, readChecks, rerunFailedJobs, verdictOf } from './github.ts';
 import { type Credential, SHIP_TOKEN_TARGET, readCredential, windowsPowerShell } from './keychain.ts';
@@ -459,8 +462,8 @@ export async function runMerge(args: MergeArgs, deps: MergeDeps): Promise<number
     // The checkout has not changed since the run read it.
     const head = current.head ?? checkedOutBranch(deps.git);
     stem ??= head;
-    const main = profileFor(deps.profiles, slugOf(deps.git('remote', 'get-url', 'origin'))).main;
-    const caught = deps.catchUp({ head, stem, tip: exit.tip, main });
+    const { main, regenerated } = profileFor(deps.profiles, slugOf(deps.git('remote', 'get-url', 'origin')));
+    const caught = deps.catchUp({ head, stem, tip: exit.tip, main, regenerated });
     if (caught.kind === 'refused') {
       deps.err(`REFUSED ${caught.reason}`);
       return 1;
@@ -541,7 +544,21 @@ export function realMergeDeps(dir: string): MergeDeps {
     renamedCallers: (base, tip, repo) => renamedCallersRefusal({ base, tip, repo }, { env: process.env, userHome: homedir() }, realRenamedCallersDeps(dir, out)),
     sweep: (merged, profile, gh) => sweepAfterMerge(merged, profile, { git, pullsOf: pullsOfHead(gh, merged.repo), out, err }),
     clearMerge: clearMergeFrom(process.env, { env: process.env, userHome: homedir(), files: nodeFiles(realSleep), clock: systemClock }),
-    catchUp: request => catchUp({ git, log: out }, request),
+    catchUp: request =>
+      catchUp(
+        {
+          git,
+          log: out,
+          readText: (path) => readFileSync(join(dir, path), 'utf8'),
+          writeText: (path, text) => writeFileSync(join(dir, path), text),
+          build: () => {
+            for (const step of buildSteps(buildScriptOf(readFileSync(join(dir, 'package.json'), 'utf8')))) {
+              execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', ...step], { cwd: dir, stdio: 'inherit' });
+            }
+          },
+        },
+        request,
+      ),
     out,
     err,
   };

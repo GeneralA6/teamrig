@@ -15,7 +15,8 @@ export const DIST = 'plugins/teamrig/dist';
 /** The subject of the commit that holds the rebuilt dist; rerun.ts knows the ship's own dist commit by it. */
 export const DIST_SUBJECT = 'build: rebuild the plugin dist';
 
-const TRAILER = 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>';
+/** The trailer of every commit a ship or a merge's catch-up makes. */
+export const TRAILER = 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>';
 
 /** What a ship does to the repo dir and the outside world; ship.ts wires the real ones, specs pass fakes. */
 export interface ShipDeps {
