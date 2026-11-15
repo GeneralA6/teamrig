@@ -6,7 +6,7 @@ description: Use before installing or upgrading a package, editing overrides or 
 # Security steps
 
 The core rules hold what applies on any turn (never print a secret value; bind local services to 127.0.0.1, never
-0.0.0.0). This skill holds the steps for the moments below. The
+0.0.0.0; report a security hole only privately). This skill holds the steps for the moments below. The
 [package guard](../teamrig-guide/hooks.md#before-a-shell-command-the-package-guard) refuses an ad-hoc package run and
 the [secret guard](../teamrig-guide/hooks.md#before-a-shell-command-or-a-read-the-secret-guard) a call that prints a
 secret file or variable, by themselves.
