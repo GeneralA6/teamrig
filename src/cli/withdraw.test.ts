@@ -112,7 +112,7 @@ describe('teamrig withdraw', () => {
     const own = await kit.run(['withdraw', '--all'], { env: TAB, sessionProcesses: running() });
     assert.deepEqual(
       [theirs, own.stdout],
-      [{ code: 2, stdout: ["REFUSED this tab is alpha's: a session withdraws only its own steps, not bravo's"], stderr: [] }, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58 UTC: it stops at its next look']],
+      [{ code: 2, stdout: ["REFUSED this tab is alpha's: a session runs teamrig's writes only as itself, not as bravo"], stderr: [] }, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58 UTC: it stops at its next look']],
     );
     assert.deepEqual(await kit.files.list(QUEUE), [nameOf(THEIRS)]);
   });

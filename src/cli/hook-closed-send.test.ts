@@ -17,12 +17,12 @@ function send(to: string, message = 'Review the fix on T1.'): string {
   return JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, tool_name: 'SendMessage', tool_input: { to, message } });
 }
 
-/** A team in idle mode `mode` whose alpha the idle pass closed, and whose lead reads its inbox in the sending tab. */
-async function closedAlpha(mode: string, extra: JsonRecord = {}): Promise<CliHarness> {
+/** A team in idle mode `mode` whose alpha the idle pass closed, and whose `reader` (the lead) reads its inbox in the sending tab, binding it. */
+async function closedAlpha(mode: string, extra: JsonRecord = {}, reader = 'lead'): Promise<CliHarness> {
   const config: JsonRecord = { ...TEAM, open: { idle: { mode } }, ...extra };
   const kit = new CliHarness(config);
   await new SessionLog(kit.files, join(TEAM_HOME, 'state', 'session-log.jsonl')).append(CLOSED);
-  const read = await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+  const read = await kit.run(['inbox', 'read', '--session', reader], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
   assert.equal(read.code, 0, read.stderr.join('\n'));
   return kit;
 }
@@ -66,8 +66,7 @@ describe('a send to a session teamrig closed', () => {
     await new SessionRecordStore(byHand.files, { sessions: join(TEAM_HOME, 'state', 'sessions') }).write('alpha', { claudePid: 43, claudeSession: ALPHA_TAB, at: '2030-01-08T09:00:00.000Z' });
     assert.deepEqual((await coldSend(byHand, send('alpha'))).stdout, [], 'started by hand since its close');
 
-    const own = await closedAlpha('on');
-    await own.run(['inbox', 'read', '--session', 'alpha'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
+    const own = await closedAlpha('on', {}, 'alpha');
     assert.deepEqual((await coldSend(own, send('alpha'))).stdout, [], "the sender's own session");
 
     const silent = await closedAlpha('on');
