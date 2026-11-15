@@ -11,8 +11,9 @@ import { type Version, type VersionFile, bumpKindOf, bumped, formatVersion, vers
  *
  * The change's version raise is uncommitted, in the plan's last chunk (SKILL.md): it is set aside, the branch
  * and the plan's other uncommitted files are moved onto main, and the same raise (patch, minor or major) is
- * set again on main's version. A conflict, a committed raise, or the old version named anywhere else in the
- * change is refused before any check runs, with the work left as it was.
+ * set again on main's version; a line the plan adds that names the old version names the new one (T2809). A
+ * conflict, a committed raise, or the old version named in a commit of the branch is refused before any check
+ * runs, the first two with the work left as it was.
  */
 
 export interface SyncDeps {
@@ -122,8 +123,13 @@ export function syncToMain(deps: SyncDeps, options: SyncOptions): SyncResult {
   const sets = formatVersion(to);
   deps.log(`version ${from} -> ${sets}: origin/${main} is at ${formatVersion(versionAt(tip, primary))}, the change raises its ${kind}`);
   if (from !== sets) {
-    const named = filesNaming(git, tip, from, [...files.map((file) => file.path), ...options.generated]);
-    if (named.length > 0) refuse(`the change names its old version ${from} in ${named.join(', ')}: set it to ${sets} there, then ship again`);
+    const skipped = [...files.map((file) => file.path), ...options.generated];
+    // A doc line the plan adds ("since 0.88.1") names the version the change takes, which main's raise moved on:
+    // refused, a ship that lost its number to another ship could not land without a hand edit and a new queue wait (T2809).
+    const rewritten = setOwnMentions(deps, from, sets, skipped);
+    if (rewritten.length > 0) deps.log(`the plan named its old version ${from} in ${rewritten.join(', ')}: set ${sets} there`);
+    const named = filesNaming(git, tip, from, skipped);
+    if (named.length > 0) refuse(`a commit of the branch names its old version ${from} in ${named.join(', ')}: set it to ${sets} there in the plan, then ship again`);
   }
   return { kind: 'rebased', onto: tip, sets };
 }
@@ -141,15 +147,67 @@ function setAside(deps: SyncDeps): string {
   return saved;
 }
 
-/** The files whose lines added since `rev` (working tree included) contain `text`, outside `skipped`. */
-function filesNaming(git: SyncDeps['git'], rev: string, text: string, skipped: readonly string[]): string[] {
-  const diff = git('diff', '--unified=0', rev, '--', '.', ...skipped.map((path) => `:(exclude)${path}`));
-  const mention = versionMention(text);
-  const named = new Set<string>();
+/** The working tree's lines added since `rev` that mention `version` outside `skipped`, by file. */
+function addedMentions(git: SyncDeps['git'], rev: string, version: string, skipped: readonly string[]): Map<string, number[]> {
+  return mentionsIn(git('diff', '--unified=0', rev, '--', '.', ...skipped.map((path) => `:(exclude)${path}`)), versionMention(version));
+}
+
+/** `@@ -<from>[,<count>] +<from>[,<count>] @@`: a hunk's removed and added lines, which follow it. */
+const HUNK = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+/**
+ * The line numbers (from 1, in the newer side) of the lines a `--unified=0` diff adds that `mention` matches, by file.
+ * A hunk's counts say which rows are its lines, so an added line that itself starts with `++ ` is not read as a file.
+ */
+export function mentionsIn(diff: string, mention: RegExp): Map<string, number[]> {
+  const found = new Map<string, number[]>();
   let file = '';
-  for (const line of diff.split('\n')) {
-    if (line.startsWith('+++ ')) file = line.replace(/^\+\+\+ (b\/)?/, '');
-    else if (line.startsWith('+') && mention.test(line)) named.add(file);
+  let line = 0;
+  let removed = 0;
+  let added = 0;
+  for (const row of diff.split('\n')) {
+    if (row.startsWith('\\')) continue; // "\ No newline at end of file"
+    if (removed + added > 0) {
+      if (row.startsWith('-')) {
+        removed -= 1;
+        continue;
+      }
+      if (mention.test(row)) found.set(file, [...(found.get(file) ?? []), line]);
+      line += 1;
+      added -= 1;
+      continue;
+    }
+    const hunk = HUNK.exec(row);
+    if (row.startsWith('+++ ')) file = row.replace(/^\+\+\+ (b\/)?/, '');
+    else if (hunk !== null) {
+      removed = Number(hunk[1] ?? '1');
+      line = Number(hunk[2]);
+      added = Number(hunk[3] ?? '1');
+    }
   }
-  return [...named];
+  return found;
+}
+
+/** The files whose lines added since `rev` (working tree included) contain `version`, outside `skipped`. */
+function filesNaming(git: SyncDeps['git'], rev: string, version: string, skipped: readonly string[]): string[] {
+  return [...addedMentions(git, rev, version, skipped).keys()];
+}
+
+/**
+ * Sets `to` for `from` on the lines the plan's uncommitted changes add (the working tree against HEAD), outside
+ * `skipped`; returns the files it changed. Lines main or a commit of the branch holds are left alone: main's may name
+ * the same number for another change, and a committed line is no longer the plan's to change.
+ */
+function setOwnMentions(deps: SyncDeps, from: string, to: string, skipped: readonly string[]): string[] {
+  const found = addedMentions(deps.git, 'HEAD', from, skipped);
+  const every = versionMention(from, 'g');
+  for (const [path, lines] of found) {
+    const rows = deps.readText(path).split('\n');
+    for (const at of lines) {
+      const row = rows[at - 1];
+      if (row !== undefined) rows[at - 1] = row.replace(every, to);
+    }
+    deps.writeText(path, rows.join('\n'));
+  }
+  return [...found.keys()];
 }

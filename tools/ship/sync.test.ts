@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, it, test } from 'node:test';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { mainMovedPast, type SyncDeps, type SyncOptions, syncToMain } from './sync.ts';
-import { TEAMRIG_VERSION_FILES } from './version-bump.ts';
+import { mainMovedPast, mentionsIn, type SyncDeps, type SyncOptions, syncToMain } from './sync.ts';
+import { TEAMRIG_VERSION_FILES, versionMention } from './version-bump.ts';
 
 const TIP = '9f0e1d2c3b4a59687766554433221100ffeeddcc';
 const BASE = '1234567890abcdef1234567890abcdef12345678';
@@ -64,7 +64,8 @@ function sceneDeps(scene: Scene): { deps: SyncDeps; calls: string[]; files: Map<
     [`rebase --quiet ${TIP}`]: '',
     [`stash apply --quiet ${SAVED}`]: '',
     [`reset --hard --quiet ${HEAD}`]: '',
-    [`diff --unified=0 ${TIP} -- . :(exclude)${JSON_PATH} :(exclude)${KIT_PATH} :(exclude)plugins/teamrig/dist`]: '+++ b/docs/guide.md\n+Since the next version, a ship rebases.',
+    [`diff --unified=0 ${TIP} -- . :(exclude)${JSON_PATH} :(exclude)${KIT_PATH} :(exclude)plugins/teamrig/dist`]: '+++ b/docs/guide.md\n@@ -4,0 +5 @@\n+Since the next version, a ship rebases.',
+    [`diff --unified=0 HEAD -- . :(exclude)${JSON_PATH} :(exclude)${KIT_PATH} :(exclude)plugins/teamrig/dist`]: '+++ b/docs/guide.md\n@@ -4,0 +5 @@\n+Since the next version, a ship rebases.',
     ...scene.answers,
   };
   const calls: string[] = [];
@@ -145,10 +146,38 @@ test('main that moved without a raise of its own keeps the change\'s version, wi
   assert.ok(!calls.some((call) => call.startsWith('diff --unified')));
 });
 
-test('refuses a change that names its old version outside the version files, naming each file', () => {
-  const diff = `+++ b/docs/guide.md\n+Since 0.88.1, a tab runs its own teamrig.\n+++ b/README.md\n+Needs teamrig 0.88.12.\n+++ b/SKILL.md\n-was 0.88.1\n+(0.88.1)`;
+test('refuses a commit of the branch that names its old version outside the version files, naming each file', () => {
+  const diff = `+++ b/docs/guide.md\n@@ -2,0 +3 @@\n+Since 0.88.1, a tab runs its own teamrig.\n+++ b/README.md\n@@ -7,0 +8 @@\n+Needs teamrig 0.88.12.\n+++ b/SKILL.md\n@@ -1 +1 @@\n-was 0.88.1\n+(0.88.1)`;
   const { deps } = sceneDeps({ answers: { [`diff --unified=0 ${TIP} -- . :(exclude)${JSON_PATH} :(exclude)${KIT_PATH} :(exclude)plugins/teamrig/dist`]: diff } });
-  assert.throws(() => syncToMain(deps, OPTIONS), /^Error: REFUSED the change names its old version 0\.88\.1 in docs\/guide\.md, SKILL\.md: set it to 0\.89\.1 there, then ship again$/);
+  assert.throws(
+    () => syncToMain(deps, OPTIONS),
+    /^Error: REFUSED a commit of the branch names its old version 0\.88\.1 in docs\/guide\.md, SKILL\.md: set it to 0\.89\.1 there in the plan, then ship again$/,
+  );
+});
+
+test('mentionsIn reads the added lines by hunk, with their line numbers, and never an added line as a file name', () => {
+  const diff = [
+    'diff --git a/docs/a.md b/docs/a.md',
+    '--- a/docs/a.md',
+    '+++ b/docs/a.md',
+    '@@ -3,2 +3 @@ ## Usage',
+    '-gone 0.88.1',
+    '-gone too',
+    '+since 0.88.1',
+    '@@ -9,0 +9,3 @@',
+    '+++ 0.88.1 is a line, not a file',
+    '+no version (10.88.1, 0.88.12)',
+    '+(0.88.1)',
+    '\\ No newline at end of file',
+    '--- a/b.md',
+    '+++ b/b.md',
+    '@@ -0,0 +1 @@',
+    '+0.88.1',
+  ].join('\n');
+  assert.deepEqual([...mentionsIn(diff, versionMention('0.88.1'))], [
+    ['docs/a.md', [3, 9, 11]],
+    ['b.md', [1]],
+  ]);
 });
 
 test('refuses a raise committed in the branch before touching the work', () => {
@@ -215,13 +244,17 @@ test('the rebuilt dist is dropped before the rebase, staged and new files too: t
   assert.ok(!untracked.calls.includes('checkout -- plugins/teamrig/dist'), 'a folder git tracks nothing in is not checked out');
 });
 
+/** The guide on the clone's base: main's move changes its first line, far enough from its end for the plan to add lines there. */
+const GUIDE = 'one\n2\n3\n4\n5\n6\nend\n';
+
 /**
  * A real clone: main holds the version files, a guide and a built dist; the branch `change` adds src/a.ts; then main
- * moves, changing the guide and the dist. origin is the repo itself, so `fetch origin main` reads its own main.
+ * moves, changing the guide's first line and the dist, and raising the version to `mainVersion` when given (naming it
+ * in that line). origin is the repo itself, so `fetch origin main` reads its own main.
  */
-function movedClone(): { repo: TempRepo; head: string; deps: SyncDeps } {
+function movedClone(mainVersion?: string): { repo: TempRepo; head: string; deps: SyncDeps } {
   const repo = new TempRepo('sync').init();
-  const files: Record<string, string> = { [JSON_PATH]: pluginJson('0.88.0'), [KIT_PATH]: kitVersion('0.88.0'), 'docs/guide.md': 'one\n', 'plugins/teamrig/dist/teamrig.js': 'a\n' };
+  const files: Record<string, string> = { [JSON_PATH]: pluginJson('0.88.0'), [KIT_PATH]: kitVersion('0.88.0'), 'docs/guide.md': GUIDE, 'plugins/teamrig/dist/teamrig.js': 'a\n' };
   for (const [path, text] of Object.entries(files)) repo.write(path, text);
   repo.git('add', '-A');
   repo.git('commit', '-q', '-m', 'base');
@@ -232,7 +265,11 @@ function movedClone(): { repo: TempRepo; head: string; deps: SyncDeps } {
   repo.git('add', '-A');
   repo.git('commit', '-q', '-m', 'core: a');
   repo.git('checkout', '-q', 'main');
-  repo.write('docs/guide.md', 'two\n');
+  repo.write('docs/guide.md', GUIDE.replace('one', mainVersion === undefined ? 'two' : `two, since ${mainVersion}`));
+  if (mainVersion !== undefined) {
+    repo.write(JSON_PATH, pluginJson(mainVersion));
+    repo.write(KIT_PATH, kitVersion(mainVersion));
+  }
   repo.write('plugins/teamrig/dist/teamrig.js', 'b\n');
   repo.git('commit', '-q', '-am', 'docs: two');
   repo.git('checkout', '-q', 'change');
@@ -277,6 +314,24 @@ describe('on a real clone', () => {
     assert.equal(readFileSync(join(clone.repo.dir, 'docs/other.md'), 'utf8'), 'mine\n');
     assert.equal(readFileSync(join(clone.repo.dir, 'plugins/teamrig/dist/teamrig.js'), 'utf8'), 'b\n', "main's dist, which the build then writes again");
     assert.equal(clone.repo.has('plugins/teamrig/dist/new.js'), false);
+  });
+
+  it('names the new version on the lines the plan adds that named the old one, and leaves main\'s line naming it alone (T2809)', () => {
+    const clone = movedClone('0.88.1');
+    repo = clone.repo;
+    clone.repo.write('docs/guide.md', GUIDE.replace('end\n', 'end\nSince 0.88.1, a ship rebases (0.88.1, not 0.88.12).\n'));
+    const logged: string[] = [];
+    assert.deepEqual(syncToMain({ ...clone.deps, log: (line) => logged.push(line) }, OPTIONS), {
+      kind: 'rebased',
+      onto: clone.repo.git('rev-parse', 'main').trim(),
+      sets: '0.88.2',
+    });
+    assert.equal(
+      readFileSync(join(clone.repo.dir, 'docs/guide.md'), 'utf8'),
+      GUIDE.replace('one', 'two, since 0.88.1').replace('end\n', 'end\nSince 0.88.2, a ship rebases (0.88.2, not 0.88.12).\n'),
+    );
+    assert.equal(readFileSync(join(clone.repo.dir, JSON_PATH), 'utf8'), pluginJson('0.88.2'));
+    assert.ok(logged.includes('the plan named its old version 0.88.1 in docs/guide.md: set 0.88.2 there'), logged.join('\n'));
   });
 });
 
