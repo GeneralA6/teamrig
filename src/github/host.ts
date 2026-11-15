@@ -3,6 +3,7 @@ import {
   targetText,
   type CloseReason,
   type HostEnd,
+  type HostIssueId,
   type HostLabel,
   type HostLinks,
   type HostList,
@@ -22,6 +23,7 @@ import {
   issueCreateArgs,
   issueLabelAddArgs,
   issueLabelRemoveArgs,
+  issueReadArgs,
   labelReadArgs,
   subIssueAddArgs,
   type GhResult,
@@ -119,8 +121,36 @@ export class GitHubIssueHost implements IssueHost {
     return this.write(target, issueCommentArgs(target, body), 'comment on');
   }
 
-  close(target: IssueTarget, reason?: CloseReason): Promise<HostEnd> {
-    return this.write(target, issueCloseArgs(target, reason), 'close');
+  close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd> {
+    return this.write(target, issueCloseArgs(target, reason, duplicateId), 'close');
+  }
+
+  /**
+   * Reads the one issue for its `id`: found with it, missing when GitHub answers Not Found (no such issue, or one the
+   * access cannot see), else failed with gh's own line, or when the answer holds no id.
+   */
+  async issueId(target: IssueTarget): Promise<HostIssueId> {
+    const shown = targetText(target);
+    const access = await this.tokens.accessFor(target.repo);
+    if (access instanceof TokenReadError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    let result: GhResult;
+    try {
+      result = await this.gh.run({ args: issueReadArgs(target), env: access.env });
+    } catch (error) {
+      return { kind: 'failed', reason: startFailureText(error) };
+    }
+    if (result.end.kind === 'signal') {
+      return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading ${shown}` };
+    }
+    if (result.end.code !== 0) {
+      return ghFailureKind(result.end.code, result.stderr) === 'not-visible'
+        ? { kind: 'missing' }
+        : { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read ${shown} ${exitText(result.end.code, result.stderr)}`)) };
+    }
+    const id = issueIdIn(result.stdout);
+    return id === undefined ? { kind: 'failed', reason: `gh printed no id for ${shown}` } : { kind: 'found', id };
   }
 
   /**
@@ -224,4 +254,19 @@ export function writeFailureText(target: IssueTarget, what: string, code: number
     case undefined:
       return plainLine(`gh api to ${what} ${shown} ${exitText(code, stderr)}`);
   }
+}
+
+/** The `id` of an issue as GitHub's REST API prints it: a positive safe integer, else undefined. */
+export function issueIdIn(stdout: string): number | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || !('id' in parsed)) {
+    return undefined;
+  }
+  const { id } = parsed;
+  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }

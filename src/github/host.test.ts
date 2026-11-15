@@ -5,8 +5,8 @@ import { FakeCredentials } from '../testing/fake-credentials.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { IssueDraft } from '../issues/host.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
-import { GitHubIssueHost } from './host.ts';
+import { isIssueClose, isIssueComment, isIssueCreate, isIssueQuery, isIssueRead, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
+import { GitHubIssueHost, issueIdIn } from './host.ts';
 import { ISSUE_LIMIT, issuePageArgs } from './issues.ts';
 import { CLOSED_ISSUES_QUERY } from './queries.ts';
 import { RepoTokens } from './tokens.ts';
@@ -152,6 +152,36 @@ describe('GitHubIssueHost', () => {
     const secret = ['tok', '_abcd1234'].join('');
     const odd = await hostWith(new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: `gh: HTTP 502 ${secret}\n` })).labelExists('acme/web', 'p1');
     assert.ok(odd.kind === 'failed' && !odd.reason.includes(secret) && odd.reason.startsWith('gh api to read the label "p1" of acme/web exited with code 1: gh: HTTP 502 [redacted'), JSON.stringify(odd));
+  });
+
+  it("reads an issue's id: found, missing on Not Found, else failed with gh's line redacted, or with no id printed", async () => {
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7)]);
+    const host = hostWith(gh);
+    assert.deepEqual(await host.issueId(TARGET), { kind: 'found', id: 1007 });
+    assert.deepEqual(await host.issueId({ repo: 'acme/web', number: 8 }), { kind: 'missing' });
+    assert.deepEqual(gh.ran.map((request) => request.args), [['api', 'repos/acme/web/issues/7', '-X', 'GET'], ['api', 'repos/acme/web/issues/8', '-X', 'GET']]);
+    assert.ok(gh.ran.every((request) => isIssueRead(request.args)));
+    const secret = ['tok', '_abcd1234'].join('');
+    const odd = await hostWith(new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: `gh: HTTP 502 ${secret}\n` })).issueId(TARGET);
+    assert.ok(odd.kind === 'failed' && !odd.reason.includes(secret) && odd.reason.startsWith('gh api to read acme/web#7 exited with code 1: gh: HTTP 502 [redacted'), JSON.stringify(odd));
+    const blank = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 0 }, stdout: '{"number":7}', stderr: '' });
+    assert.deepEqual(await hostWith(blank).issueId(TARGET), { kind: 'failed', reason: 'gh printed no id for acme/web#7' });
+    const stopped = new FakeGh().answers('acme/web', { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
+    assert.deepEqual(await hostWith(stopped).issueId(TARGET), { kind: 'failed', reason: 'gh was stopped (SIGTERM) while reading acme/web#7' });
+    const absent = new FakeGh().failsWith(Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }));
+    const notInstalled = await hostWith(absent).issueId(TARGET);
+    assert.ok(notInstalled.kind === 'failed' && notInstalled.reason.startsWith('gh, the GitHub CLI, is not installed'));
+    const lockedGh = new FakeGh();
+    const locked = await hostWith(lockedGh, new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked')).issueId(TARGET);
+    assert.equal(locked.kind, 'failed');
+    assert.deepEqual(lockedGh.ran, []);
+  });
+
+  it('takes as an id only a positive whole number in the printed issue', () => {
+    assert.equal(issueIdIn('{"id":4242,"number":7}'), 4242);
+    for (const stdout of ['', 'not json', 'null', '[]', '7', '{"number":7}', '{"id":"4242"}', '{"id":0}', '{"id":-3}', '{"id":1.5}', '{"id":1e300}']) {
+      assert.equal(issueIdIn(stdout), undefined, stdout);
+    }
   });
 
   it('names a label read that gh could not start, was stopped, or had no key to run with', async () => {

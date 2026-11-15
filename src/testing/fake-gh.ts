@@ -1,5 +1,5 @@
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
+import { isIssueClose, isIssueComment, isIssueCreate, isIssueRead, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
 
@@ -188,6 +188,9 @@ export class FakeGh implements GhRunner {
     if (isLabelRead(request.args)) {
       return this.labelRead(request.args[1] ?? '');
     }
+    if (isIssueRead(request.args)) {
+      return this.issueRead(request.args[1] ?? '');
+    }
     if (isIssueComment(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
@@ -233,6 +236,22 @@ export class FakeGh implements GhRunner {
       return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ name: decodeURIComponent(label) }), stderr: '' };
     }
     return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
+  }
+
+  /**
+   * An issue read as GitHub's REST API answers it: what a test set for the repository, else the issue's number and
+   * its id, 1000 + the number, when the repository holds it, else Not Found.
+   */
+  private issueRead(path: string): GhResult {
+    const [, owner = '', name = '', , number = ''] = path.split('/');
+    const canned = this.canned.get(`${owner}/${name}`);
+    if (canned !== undefined) {
+      return canned;
+    }
+    const held = (this.issues.get(`${owner}/${name}`) ?? []).some((issue) => String(issue['number']) === number);
+    return held
+      ? { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ id: 1000 + Number(number), number: Number(number) }), stderr: '' }
+      : { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
   }
 
   /**

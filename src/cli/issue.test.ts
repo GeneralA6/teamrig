@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment, isLabelAdd, isLabelRead, isLabelRemove } from '../github/gh.ts';
+import { isIssueClose, isIssueComment, isIssueRead, isLabelAdd, isLabelRead, isLabelRemove } from '../github/gh.ts';
 import { CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
-import { FakeGh } from '../testing/fake-gh.ts';
+import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { EXIT } from './runtime.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web'] } };
@@ -80,6 +80,47 @@ describe('teamrig issue close', () => {
     assert.equal(refused.code, EXIT.refused);
     assert.match([...refused.stdout, ...refused.stderr].join('\n'), /--reason takes completed, not-planned, duplicate, not "reopened"/u);
     assert.equal(gh.ran.length, 1);
+  });
+
+  it('closes as a duplicate of an issue of the same repository, naming it by the id GitHub gives for it', async () => {
+    const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 3)]);
+    const kit = new CliHarness(GITHUB_TEAM);
+    const result = await kit.run(['issue', 'close', 'acme/web#7', '--duplicate-of', 'Acme/Web#3'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    assert.deepEqual(result.stdout, [LOGIN, 'CLOSED acme/web#7 as duplicate of acme/web#3']);
+    assert.deepEqual(gh.ran.map((request) => request.args), [
+      ['api', 'repos/acme/web/issues/3', '-X', 'GET'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=duplicate', '-F', 'duplicate_issue_id=1003'],
+    ]);
+    const named = await kit.run(['issue', 'close', 'acme/web#8', '--reason', 'duplicate', '--duplicate-of', 'acme/web#3'], { ...AS_LEAD, gh });
+    assert.deepEqual(named.stdout, [LOGIN, 'CLOSED acme/web#8 as duplicate of acme/web#3']);
+  });
+
+  it('writes nothing, not even the comment, when GitHub has no such original', async () => {
+    const gh = new FakeGh().holds('acme/web', []);
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'close', 'acme/web#7', '--comment', 'Same as #3.', '--duplicate-of', 'acme/web#3'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.failed);
+    assert.deepEqual(result.stdout.slice(1), ['FAILED acme/web#7: acme/web#3 is no issue the access can see: name an existing one as the original; nothing was written']);
+    assert.equal(gh.ran.length, 1);
+    assert.ok(isIssueRead(gh.ran[0]?.args ?? []));
+  });
+
+  it('refuses, running no gh, --duplicate-of with another reason, naming no issue, one of another repository, or the issue itself', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const gh = new FakeGh();
+    const cases: Array<[readonly string[], RegExp]> = [
+      [['--reason', 'completed', '--duplicate-of', 'acme/web#3'], /--duplicate-of closes as a duplicate, so it takes no --reason completed/u],
+      [['--duplicate-of', 'web#3'], /--duplicate-of web#3 names no issue: give it as owner\/name#number/u],
+      [['--duplicate-of', 'acme/api#3'], /--duplicate-of names an issue of acme\/api: name one of acme\/web/u],
+      [['--duplicate-of', 'acme/web#7'], /--duplicate-of names acme\/web#7 itself/u],
+    ];
+    for (const [flags, error] of cases) {
+      const result = await kit.run(['issue', 'close', 'acme/web#7', ...flags], { ...AS_LEAD, gh });
+      const printed = [...result.stdout, ...result.stderr].join('\n');
+      assert.equal(result.code, EXIT.refused, `${flags.join(' ')}\n${printed}`);
+      assert.match(printed, error, flags.join(' '));
+    }
+    assert.deepEqual(gh.ran, []);
   });
 
   it('closes with no comment when none is given', async () => {

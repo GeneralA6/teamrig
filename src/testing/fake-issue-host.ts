@@ -1,4 +1,4 @@
-import type { CloseReason, HostEnd, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, IssueDraft, IssueHost, IssueTarget } from '../issues/host.ts';
+import type { CloseReason, HostEnd, HostIssueId, HostLabel, HostLinks, HostList, HostOpen, HostReach, HostUse, IssueDraft, IssueHost, IssueTarget } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 
 /** What each use does, as the fake's access line words it. */
@@ -8,7 +8,7 @@ const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'reads', open: 'open
 export type HostCall =
   | { readonly kind: 'open'; readonly draft: IssueDraft }
   | { readonly kind: 'comment'; readonly target: IssueTarget; readonly body: string }
-  | { readonly kind: 'close'; readonly target: IssueTarget; readonly reason?: CloseReason }
+  | { readonly kind: 'close'; readonly target: IssueTarget; readonly reason?: CloseReason; readonly duplicateId?: number }
   | { readonly kind: 'label-add'; readonly target: IssueTarget; readonly labels: readonly string[] }
   | { readonly kind: 'label-remove'; readonly target: IssueTarget; readonly label: string }
   | { readonly kind: 'sub-issue'; readonly parent: IssueTarget; readonly childId: number }
@@ -17,8 +17,9 @@ export type HostCall =
 /**
  * An issue host that reaches nothing and holds no issue: a list is empty, each write is recorded, and ends done
  * unless a test set it to fail; opened issues are numbered from 1. Its repositories have the labels a test gave it,
- * and its links read gives the issues a test gave it, by repository. It is reached as `<owner>: writes as the test`
- * (or reads, or opens issues), scoped to the owner, unless a test made it unreachable.
+ * and every issue a test did not make missing, with the id 1000 + its number; its links read gives the issues a test
+ * gave it, by repository. It is reached as `<owner>: writes as the test` (or reads, or opens issues), scoped to the
+ * owner, unless a test made it unreachable.
  */
 export class FakeIssueHost implements IssueHost {
   readonly name = 'the test host';
@@ -33,6 +34,7 @@ export class FakeIssueHost implements IssueHost {
   private readonly labels = new Set<string>();
   private linkEnd: HostEnd = { kind: 'done' };
   private readonly linked = new Map<string, HostLinks>();
+  private idRead: HostIssueId | undefined;
 
   /** From now on, every repository has these labels. */
   hasLabels(...labels: string[]): this {
@@ -76,6 +78,12 @@ export class FakeIssueHost implements IssueHost {
     return this;
   }
 
+  /** From now on, a read of any issue's id ends as given: missing, or failed with its reason. */
+  readsId(end: HostIssueId): this {
+    this.idRead = end;
+    return this;
+  }
+
   /** From now on, the host cannot be reached, for `reason`. */
   unreachable(reason: string): this {
     this.unreachableFor = reason;
@@ -116,9 +124,13 @@ export class FakeIssueHost implements IssueHost {
     return Promise.resolve(this.commentEnd);
   }
 
-  close(target: IssueTarget, reason?: CloseReason): Promise<HostEnd> {
-    this.calls.push(reason === undefined ? { kind: 'close', target } : { kind: 'close', target, reason });
+  close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd> {
+    this.calls.push({ kind: 'close', target, ...(reason === undefined ? {} : { reason }), ...(duplicateId === undefined ? {} : { duplicateId }) });
     return Promise.resolve(this.closeEnd);
+  }
+
+  issueId(target: IssueTarget): Promise<HostIssueId> {
+    return Promise.resolve(this.idRead ?? { kind: 'found', id: 1000 + target.number });
   }
 
   labelExists(_repo: string, label: string): Promise<HostLabel> {

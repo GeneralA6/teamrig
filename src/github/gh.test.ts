@@ -11,6 +11,7 @@ import {
   isIssueComment,
   isIssueCreate,
   isIssueQuery,
+  isIssueRead,
   isLabelAdd,
   isLabelRead,
   isLabelRemove,
@@ -20,6 +21,7 @@ import {
   issueCreateArgs,
   issueLabelAddArgs,
   issueLabelRemoveArgs,
+  issueReadArgs,
   labelReadArgs,
   nodeGhRunner,
   subIssueAddArgs,
@@ -202,6 +204,67 @@ describe('isIssueClose', () => {
   });
 });
 
+describe('the duplicate close and the issue read', () => {
+  const DUPLICATE = issueCloseArgs(ISSUE, 'duplicate');
+
+  it('names the original by its id, as a typed field, only with the duplicate reason', () => {
+    const args = issueCloseArgs(ISSUE, 'duplicate', 4242);
+    assert.deepEqual(args, ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=duplicate', '-F', 'duplicate_issue_id=4242']);
+    assert.equal(isIssueClose(args), true);
+    assert.equal(isAllowedGh(args), true);
+    assert.deepEqual(issueCloseArgs(ISSUE, 'completed', 4242), issueCloseArgs(ISSUE, 'completed'));
+  });
+
+  it('refuses the id with another reason or none, sent as text, not digits, out of range, or any other typed field', () => {
+    for (const args of [
+      [...issueCloseArgs(ISSUE, 'completed'), '-F', 'duplicate_issue_id=4242'],
+      [...issueCloseArgs(ISSUE), '-F', 'duplicate_issue_id=4242'],
+      [...DUPLICATE, '-f', 'duplicate_issue_id=4242'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=@file'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=0'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=-1'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=12a'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id='],
+      [...DUPLICATE, '-F', `duplicate_issue_id=${'9'.repeat(17)}`],
+      [...DUPLICATE, '-F', 'state=open'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=1', '-F', 'duplicate_issue_id=2'],
+      [...DUPLICATE, '-F'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-F', 'duplicate_issue_id=1'],
+    ]) {
+      assert.equal(isIssueClose(args), false, args.slice(4).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(4).join(' '));
+    }
+  });
+
+  it('reads one issue with GET and nothing more', () => {
+    const read = issueReadArgs(ISSUE);
+    assert.deepEqual(read, ['api', 'repos/acme/web/issues/7', '-X', 'GET']);
+    assert.equal(isIssueRead(read), true);
+    assert.equal(isAllowedGh(read), true);
+    for (const args of [
+      [...read, '-f', 'state=closed'],
+      [...read, '-F', 'title=t'],
+      [...read, '--hostname', 'example.com'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/comments', '-X', 'GET'],
+      ['api', 'repos/acme/web/issues', '-X', 'GET'],
+      ['api', 'repos/acme/web/issues/x', '-X', 'GET'],
+    ]) {
+      assert.equal(isIssueRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it('is never taken for a close, a comment or a label call, nor they for a read', () => {
+    const read = issueReadArgs(ISSUE);
+    assert.ok(!isIssueClose(read) && !isIssueComment(read) && !isIssueCreate(read) && !isIssueQuery(read) && !isLabelRead(read));
+    for (const args of [READ, DUPLICATE, issueCommentArgs(ISSUE, 'b'), labelReadArgs('acme/web', 'p1'), issueCreateArgs(DRAFT)]) {
+      assert.equal(isIssueRead(args), false, args[1]);
+    }
+  });
+});
+
 describe('the label calls', () => {
   const ADD = issueLabelAddArgs(ISSUE, ['type: bug', 'p1']);
   const REMOVE = issueLabelRemoveArgs(ISSUE, 'needs triage');
@@ -345,7 +408,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries and to open, comment on, label, close or link an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries and to open, read, comment on, label, close or link an issue: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });

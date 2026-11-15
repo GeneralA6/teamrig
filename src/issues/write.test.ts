@@ -74,6 +74,29 @@ describe('writeIssue', () => {
     assert.deepEqual(closing.calls.map((call) => call.kind), ['close']);
   });
 
+  it('closes as a duplicate, naming the original by the host id read for it before anything is written', async () => {
+    const host = new FakeIssueHost();
+    const write: IssueWrite = { target: TARGET, comment: 'Same as #3.', close: true, reason: 'duplicate', duplicateOf: { repo: 'acme/web', number: 3 } };
+    assert.deepEqual(await run(host, write), {
+      done: true,
+      lines: ['ACCESS acme: writes as the test', 'COMMENTED acme/web#7', 'CLOSED acme/web#7 as duplicate of acme/web#3'],
+    });
+    assert.deepEqual(host.calls, [{ kind: 'comment', target: TARGET, body: 'Same as #3.' }, { kind: 'close', target: TARGET, reason: 'duplicate', duplicateId: 1003 }]);
+  });
+
+  it('writes nothing, not even the comment, when the original is missing or its read fails', async () => {
+    const write: IssueWrite = { target: TARGET, comment: 'Same as #3.', close: true, reason: 'duplicate', duplicateOf: { repo: 'acme/web', number: 3 } };
+    const missing = new FakeIssueHost().readsId({ kind: 'missing' });
+    assert.deepEqual(await run(missing, write), {
+      done: false,
+      lines: ['ACCESS acme: writes as the test', 'FAILED acme/web#7: acme/web#3 is no issue the access can see: name an existing one as the original; nothing was written'],
+    });
+    assert.deepEqual(missing.calls, []);
+    const failing = new FakeIssueHost().readsId({ kind: 'failed', reason: 'gh: HTTP 502' });
+    assert.deepEqual((await run(failing, write)).lines.slice(1), ['FAILED acme/web#7: gh: HTTP 502; nothing was written']);
+    assert.deepEqual(failing.calls, []);
+  });
+
   it('writes nothing when the host cannot be reached', async () => {
     const host = new FakeIssueHost().unreachable('the keyring is locked');
     assert.deepEqual(await run(host, { target: TARGET, comment: 'Thanks', close: true }), {

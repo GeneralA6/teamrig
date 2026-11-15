@@ -218,7 +218,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
   'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
   'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
-  'issue close': { effect: 'write', flags: ['session', 'comment', 'reason'], load: async () => (await issueCommands()).issueClose },
+  'issue close': { effect: 'write', flags: ['session', 'comment', 'reason', 'duplicate-of'], load: async () => (await issueCommands()).issueClose },
   'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
   'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
   'issue links': { effect: 'write', flags: ['repo'], switches: ['yes'], load: async () => (await issueLinksCommands()).issueLinks },
@@ -700,8 +700,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
       gh login in its place
   issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
-      closes one issue or pull request of the team's repositories, first posting --comment when
-      given, with the same checks; a failed comment closes nothing; --reason is the one the host shows
+      [--duplicate-of <owner/name#n>]   closes one issue or pull request of the team's repositories,
+      first posting --comment when given, with the same checks; a failed comment closes nothing;
+      --reason is the one the host shows; --duplicate-of closes it as a duplicate of that issue of the
+      same repository, which the host links, and is refused when the host has no such issue
   issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
       labels off one issue or pull request of the team's repositories, with the same access; each
       label to add must already be one of the repository's, and the first failure stops it

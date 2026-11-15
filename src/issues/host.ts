@@ -46,6 +46,9 @@ export type HostReach =
 /** How one write to a host ended: done, or one plain line saying why not. */
 export type HostEnd = { readonly kind: 'done' } | { readonly kind: 'failed'; readonly reason: string };
 
+/** The host's own id of one issue, which a link to it names; missing when the host has no such issue. */
+export type HostIssueId = { readonly kind: 'found'; readonly id: number } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
 /** Whether a repository has a label: it has, it has not, or the read failed, with one plain line saying why. */
 export type HostLabel = { readonly kind: 'found' } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
@@ -88,8 +91,13 @@ export interface IssueHost {
   open(draft: IssueDraft): Promise<HostOpen>;
   /** Posts `body` as one comment. */
   comment(target: IssueTarget, body: string): Promise<HostEnd>;
-  /** Closes the issue or pull request, giving `reason` when there is one. */
-  close(target: IssueTarget, reason?: CloseReason): Promise<HostEnd>;
+  /**
+   * Closes the issue or pull request, giving `reason` when there is one; a duplicate also names the issue it
+   * duplicates by its host id (issueId), which the host links. `duplicateId` is used only with the duplicate reason.
+   */
+  close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd>;
+  /** The host's id of one issue, read so a link can name it. */
+  issueId(target: IssueTarget): Promise<HostIssueId>;
   /** Whether `repo` has the label `label`, so a label is only added once the repository has it. */
   labelExists(repo: string, label: string): Promise<HostLabel>;
   /** Adds `labels` to the issue or pull request. */

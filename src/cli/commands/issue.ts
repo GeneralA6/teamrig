@@ -1,6 +1,6 @@
 import { ENV } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { CLOSE_REASONS, hostKindOf, parseIssueTarget, type CloseReason, type IssueHost, type IssueTarget } from '../../issues/host.ts';
+import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type IssueHost, type IssueTarget } from '../../issues/host.ts';
 import { labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
@@ -23,16 +23,25 @@ export async function issueComment(args: ParsedArgs, runtime: CliRuntime): Promi
 }
 
 /**
- * `issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]` (T2660, T2679): closes
- * one issue or pull request of the team's repositories, first posting `--comment` when given, through the same host
- * and checks as `issue comment`; `--reason` is the one the host shows. A failed comment closes nothing. Exit 1 when
- * the host failed, else 0.
+ * `issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate] [--duplicate-of
+ * <owner/name#n>]` (T2660, T2679, T2999): closes one issue or pull request of the team's repositories, first posting
+ * `--comment` when given, through the same host and checks as `issue comment`; `--reason` is the one the host
+ * shows. `--duplicate-of` closes it as a duplicate of another issue of the same repository, which the host links.
+ * A failed comment closes nothing. Exit 1 when the host failed, else 0.
  */
 export async function issueClose(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const target = targetOf(args);
   const comment = args.flags.get('comment');
-  const reason = closeReasonOf(args.flags.get('reason'));
-  const write: IssueWrite = { target, close: true, ...(comment === undefined ? {} : { comment }), ...(reason === undefined ? {} : { reason }) };
+  const given = closeReasonOf(args.flags.get('reason'));
+  const duplicateOf = duplicateOfFlag(args.flags.get('duplicate-of'), target, given);
+  const reason: CloseReason | undefined = duplicateOf === undefined ? given : 'duplicate';
+  const write: IssueWrite = {
+    target,
+    close: true,
+    ...(comment === undefined ? {} : { comment }),
+    ...(reason === undefined ? {} : { reason }),
+    ...(duplicateOf === undefined ? {} : { duplicateOf }),
+  };
   return writeOn(args, runtime, write, '--comment');
 }
 
@@ -85,6 +94,30 @@ function labelsOf(text: string | undefined, flag: string): string[] {
     }
   }
   return labels;
+}
+
+/**
+ * The issue `--duplicate-of` names, or undefined when it is not given. Refused with a reason other than duplicate,
+ * when it names no issue, the closed one itself, or one of another repository: the close's access is for its own.
+ */
+function duplicateOfFlag(text: string | undefined, target: IssueTarget, reason: CloseReason | undefined): IssueTarget | undefined {
+  if (text === undefined) {
+    return undefined;
+  }
+  if (reason !== undefined && reason !== 'duplicate') {
+    throw new RefusedError(`--duplicate-of closes as a duplicate, so it takes no --reason ${reason}`);
+  }
+  const original = parseIssueTarget(text);
+  if (original === undefined) {
+    throw new RefusedError(`--duplicate-of ${text} names no issue: give it as owner/name#number, such as acme/web#7`);
+  }
+  if (original.repo !== target.repo) {
+    throw new RefusedError(`--duplicate-of names an issue of ${original.repo}: name one of ${target.repo}, the repository of the issue it closes`);
+  }
+  if (original.number === target.number) {
+    throw new RefusedError(`--duplicate-of names ${targetText(target)} itself: name the issue it duplicates`);
+  }
+  return original;
 }
 
 /** The issue or pull request the one positional names; refused when it names none. */
