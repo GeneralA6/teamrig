@@ -2325,7 +2325,8 @@ service past every permission check, from its own tab only: the team's `serviceR
 each role to its holders and its commands. The commands come from teamrig's table, each a reviewed shape
 (`issue close`, `issue comment`); a name outside it fails the config load. `team` holds a role for every session
 only where each command checks its caller itself; the others name their sessions. The hook allow that
-lets a holder run them is not in place yet: today a grant is only recorded and listed.
+lets a holder run them is not in place yet: today a grant is only recorded and listed. See
+[the service-role guard](hooks.md#before-a-write-or-a-shell-command-the-service-role-guard).
 
 A grant or a revoke changes a permission, an owner gate: teamrig's guard asks the owner before any session's call
 of either, whatever `--yes` says, and refuses a session's direct edit of `serviceRoles`, so the owner runs them
@@ -6423,6 +6424,25 @@ teamrig hook pass-record-guard < pre-tool-use.json
 Output: nothing for a call that does not reach the records, outside a team's projects, or for input that is not a
 hook payload; otherwise a JSON permission decision `deny` with the reason naming the file or the line.
 
+### teamrig hook service-role-guard
+
+Before a Bash or PowerShell call, asks the owner when the line runs `teamrig roles grant` or `revoke`, and refuses one
+naming the team config file; before a Write, Edit, MultiEdit or NotebookEdit of the team config, refuses one that
+changes `serviceRoles` or that it cannot work out. See
+[Hooks and permissions](hooks.md#before-a-write-or-a-shell-command-the-service-role-guard).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook service-role-guard < pre-tool-use.json
+```
+
+Output: nothing for a call that neither changes a role nor reaches the team config, outside a team's projects, or for
+input that is not a hook payload; otherwise a JSON permission decision, `ask` for a grant or revoke (`deny` with asks
+off) and `deny` for a write of `serviceRoles`, with the reason.
+
 ### teamrig hook readonly-allow
 
 Before a Bash or PowerShell command, with `readonlyShell.enabled` in the team config, lets a line whose every
@@ -6500,7 +6520,7 @@ into a dead end: `teamrig merge`, `teamrig deploy --repo <name>`, `teamrig exec 
 (no `--base`) and a `git commit` with its hooks running (only `-a -s -q -m -F` and paths). The line must be one plain
 command through this install's own `teamrig`, or a bare `git`: no `;`, `&`, `|`, `<`, `>` but a lone `2>&1`, no
 substitution, variable, `$'`, `$"` or `#`, inside quotes too. It answers only once the push, package, secret,
-db-write, exec and pass-record guards all passed the same call; when one asks or refuses, that answer stands. Each allow is a line in
+db-write, exec, pass-record and service-role guards all passed the same call; when one asks or refuses, that answer stands. Each allow is a line in
 `state/prompt-answers.jsonl` naming the route, never the command. `prompts.routeAllow: off` takes the allow away. See
 [Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
 

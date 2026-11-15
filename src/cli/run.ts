@@ -290,6 +290,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'hook db-write-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).dbWriteGuard },
   'hook exec-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).execGuard },
   'hook pass-record-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).passRecordGuard },
+  'hook service-role-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).serviceRoleGuard },
   'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
   'hook failed-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).failedSend },
   'hook missing-cli': { effect: 'internal', flags: [], load: async () => (await missingCliCommand()).missingCli },
@@ -963,7 +964,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook db-write-guard | hook exec-guard | hook pass-record-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook effort-writeback | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
+  hook push-guard | hook package-guard | hook secret-guard | hook db-write-guard | hook exec-guard | hook pass-record-guard | hook service-role-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook effort-writeback | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]] [--end]
       (run by the plugin's mod: the automatic restart's /clear in the tab)

@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers twenty-eight Claude Code hooks, one row each below however many events a hook runs on, and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work), [the update notice](#the-mod-the-update-notice)). Each runs
+The plugin's `hooks/hooks.json` registers twenty-nine Claude Code hooks, one row each below however many events a hook runs on, and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work), [the update notice](#the-mod-the-update-notice)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tool-end` 5); the `PreToolUse` guards that can refuse a call run `node <plugin>/dist/cli/guard-main.js hook <name>`, which blocks the call when the guard [cannot answer](#a-guard-that-cannot-answer). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent, but `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)) and `hook missing-cli` still answers a shell that [no longer finds the bare command](#after-a-shell-call-the-cli-by-its-path).
 
@@ -17,6 +17,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
+| `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Asks the owner before a session's `teamrig roles grant` or `revoke`, and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `AskUserQuestion` and `Bash` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, to a sub-team's lead, and to a session in its own meeting with the owner, with the reason to decide it if it is the session's own, else record it on its task and go on, and a session's Bash `cd` compound Claude Code would hold on a permission prompt, quoting its form to rerun ([the picker guard](#before-a-question-the-picker-guard)) |
@@ -485,7 +486,7 @@ person decide those.
 Auto mode can refuse a call before any prompt, and a refusal it makes is a dead end no `PermissionRequest` answer
 reaches. So with asks off, `hook route-allow` (since 0.268.0) lets five of those routes run before any permission
 check, at `PreToolUse`: `teamrig merge`, `teamrig deploy`, `teamrig exec request`, `teamrig worktree remove` and the
-`git commit`, as plain as above. It answers only once the push, package, secret, db-write, exec and pass-record guards
+`git commit`, as plain as above. It answers only once the push, package, secret, db-write, exec, pass-record and service-role guards
 all passed the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
 route, never the command (a commit message is free text). `prompts.routeAllow: off` takes this allow away without a
 release; no config adds a route. With asks on it never answers.
@@ -809,6 +810,27 @@ It has no setting, and a missing or broken config keeps it on. It reads only the
 line starts (`node write-record.js`), a path built when the line runs, or a write by a program that is not a Claude
 tool: while sessions and the runner share one account, it stops a slip, not a determined session.
 
+## Before a write or a shell command: the service-role guard
+
+A service role [serviceRoles] lets its holders run a few teamrig commands for an outside service past every
+permission check, so who holds one is a permission, the owner's to give. Before Claude runs a Bash or PowerShell
+call, `hook service-role-guard` asks the owner when the line runs `teamrig roles grant` or `teamrig roles revoke`,
+by any client (`teamrig`, node and teamrig's entry, a program only known when the line runs, or a `roles` command
+only known when it runs), whatever `--yes` says; with asks off it refuses instead, with the note to record the step
+as waiting for the owner. The owner runs a grant from their own terminal, or types `/teamrig roles grant ...` in a
+tab. The route allow never lets one through, as it answers only once every guard passed.
+
+It also refuses a session's own write of `serviceRoles`: a Write, Edit or MultiEdit of the team config whose result
+changes the key (the guard applies the edit to the file as it is now and compares the key), or that it cannot work
+out (text not found, a notebook edit), and a shell line naming the team config file (`teams/<team>/config.json`, or
+`config.json` with `.teamrig` or `$TEAMRIG_HOME` on the line or the line running in the kit home), its reads too,
+since a shell line's writes cannot be told from its reads. An edit of the config's other keys stays open, and so
+does the Read tool. The reason: "teamrig service-role guard: this Edit changes serviceRoles in the team config (...). Who holds a service role is the owner's to change, with `teamrig roles grant` or `revoke`, which ask the owner; change the config's other keys without touching serviceRoles, read it with the Read tool, and do not retry this or route around it."
+
+It has no setting, and a broken config keeps it on: the file is found and read again at each call. Like the
+pass-record guard it reads only the call, so it cannot see a script the line starts that writes the file: while
+sessions and the owner share one account, it stops a slip, not a determined session.
+
 ## Before a shell command: the read-only allow
 
 Claude Code asks before a shell line its settings do not allow, reads included, and a settings rule matches only a
@@ -843,8 +865,8 @@ and lets it run without a prompt when every command in it, substitutions and loo
 It only ever allows: a line it cannot prove reads prints nothing, and Claude Code's own permission check decides,
 as without the hook; so it does outside a team, with a missing or broken config, or on any error. Claude Code ranks
 one hook's `deny` over another's `ask` over an `allow`, and its settings' deny and ask rules still apply under an
-allow, so the push and db-write guards' questions and the package, secret and pass-record guards' refusals always
-win. It never allows a line
+allow, so the push, db-write and service-role guards' questions and the package, secret, pass-record and service-role
+guards' refusals always win. It never allows a line
 that prints or holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
 `secretGuard.secretReads` or `secretGuard.writes` is `allow`. The hook reads the session's team
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. On Windows, Claude Code's
@@ -1723,7 +1745,7 @@ turn as it was.
 
 Claude Code lets a tool call through when a `PreToolUse` command hook ends with any exit code but 0 or 2, or
 outlives its timeout, so a guard that breaks would stop guarding with no sign. The guards that can refuse a call
-(`push-guard`, `package-guard`, `secret-guard`, `db-write-guard`, `exec-guard`, `pass-record-guard`, `cold-send`,
+(`push-guard`, `package-guard`, `secret-guard`, `db-write-guard`, `exec-guard`, `pass-record-guard`, `service-role-guard`, `cold-send`,
 `helper-gate` and
 `picker-guard`) therefore run through `dist/cli/guard-main.js`, a runner that loads the CLI itself on a worker
 thread and blocks the call (exit 2) when the guard:

@@ -906,6 +906,29 @@ describe('runCli: hook pass-record-guard', () => {
   });
 });
 
+describe('runCli: hook service-role-guard', () => {
+  const edit = (old_string: string, new_string: string): string => JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: CONFIG_PATH, old_string, new_string }, cwd: APP });
+
+  it('asks before a roles grant, refuses asks-off, and refuses an edit adding serviceRoles, on a broken config too', async () => {
+    assert.equal(decisionOf(await new CliHarness().run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles grant github --holder alpha --yes') })), 'ask');
+    const off = new CliHarness({ ...TEAM, prompts: { hookAsks: 'refuse' } });
+    assert.equal(decisionOf(await off.run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles revoke github --yes') })), 'deny');
+    const kit = new CliHarness();
+    const text = kit.files.get(CONFIG_PATH) ?? '';
+    const added = edit(text.slice(0, 1), `{"serviceRoles": {"github": {"holders": ["alpha"], "commands": ["issue close"]}},`);
+    assert.equal(decisionOf(await kit.run(['hook', 'service-role-guard'], { stdin: added })), 'deny');
+    const broken = new CliHarness('{ not json');
+    assert.equal(decisionOf(await broken.run(['hook', 'service-role-guard'], { stdin: edit('{ not json', '{"serviceRoles": {}}') })), 'deny');
+  });
+
+  it("lets other calls run, and prints nothing outside a team's projects or for input that is not a hook payload", async () => {
+    const kit = new CliHarness();
+    assert.deepEqual(await kit.run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles list') }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness(null, null).run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles grant github --holder alpha') }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness().run(['hook', 'service-role-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
 describe('runCli: hook db-write-guard', () => {
   const remove = bash('psql -c "DELETE FROM orders"');
 

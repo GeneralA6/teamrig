@@ -10,6 +10,7 @@ import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts
 import { hookAsksOf } from '../../hooks/permission.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
 import { secretGuardOf, secretGuardOutput, secretPatternsOf } from '../../hooks/secret-guard.ts';
+import { serviceRoleGuardOutput } from '../../hooks/service-role-guard.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
@@ -187,5 +188,22 @@ export function execGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload
     search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
     checkClient: (root) => checkClient(root, runtime.files),
     platform: runtime.platform,
+  });
+}
+
+/**
+ * The service-role guard's answer (T2984): an ask before a session's `roles grant` or `revoke`, a refusal of its own
+ * write of `serviceRoles`. The config path comes from the kit even when its config cannot be loaded, so a broken
+ * config is no way around it; the file is read again at each call.
+ */
+export function serviceRoleGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload: unknown): Promise<string> {
+  const configPath = guard.kit?.load.path;
+  return serviceRoleGuardOutput(payload, {
+    cwd: runtime.cwd,
+    home: runtime.userHome,
+    hookAsks: hookAsksOf(guard.load),
+    platform: runtime.platform,
+    configPath,
+    readConfig: () => (configPath === undefined ? Promise.resolve(undefined) : runtime.files.read(configPath)),
   });
 }
