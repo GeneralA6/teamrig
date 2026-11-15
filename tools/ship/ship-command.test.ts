@@ -21,7 +21,8 @@ function shipDeps(verdict: GateVerdict, mergeExit: number): ShipDeps {
   return {
     run: () => undefined,
     node: () => undefined,
-    git: () => '',
+    // The plan's change is uncommitted in the tree, so every chunk has something to commit (T2823).
+    git: (args) => (args[0] === 'status' ? ' M src/a.ts\n' : ''),
     log: () => undefined,
     takeBack: () => undefined,
     sync: () => ({ kind: 'current', sets: '0.1.0' }),
