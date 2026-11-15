@@ -2564,7 +2564,22 @@ no restart), unless a context reaches `refresh.compactCeilingTokens`.
 
 Flags:
 
+With `--about`, `meeting start --about "<what>"` is the owner's meeting on the spot, unplanned, with any session, a
+worker as well as a lead (T2985): the caller's own, as when the owner asks the session in its tab for a meeting now,
+else the one `--meets` names (the lead or that session runs it). It is booked and started at once under the next id,
+so it lists, notifies and ends as a booked one does; it is refused while that session is in a meeting already.
+Started in the session met's own tab, the opening prompt prints there (`MEETING in this tab: ...`) and no line is
+posted to it; else it goes to its tab as above. While any booked or on-the-spot meeting is on, its session's tab is
+in meeting mode, as the lead's is in the daily one: messages to it are held but a `CRITICAL` one (the cold-send
+hook), its question picker is refused with the reason to ask in plain text and record the answer
+([the picker guard](hooks.md#before-a-question-the-picker-guard)), its status line leads with `Meeting: <title>` in
+teamrig's purple ([statusline](#teamrig-statusline)), its context refresh waits and a tab opened meanwhile keeps the
+focus where it was. A session that is not the lead and runs `meeting start` with no id is refused with this form.
+
 - `--session <area>`: who you are: the lead, or for a scheduled meeting any session.
+- `--about "<one line>"`: with no id, start a meeting on the spot about it.
+- `--meets <id|name>`, `--minutes <n>`, `--with a,b`, `--tasks T1,T2`, `--brief <path>`: with `--about`, as in
+  `meeting schedule`; `--meets` defaults to the caller.
 
 Example:
 
@@ -2671,8 +2686,10 @@ no more.
 
 With a meeting id, `meeting end M3` ends a scheduled meeting instead: one booked with
 `meeting schedule`, scheduled or started, is done; `--note` records what came of it. The lead or the session met
-runs it, and the session met and those joining, but the caller, are told by one inbox line with the note. The daily
-meeting takes no `--note`: its decisions are recorded on their tasks.
+runs it, and the session met and those joining, but the caller, are told by one inbox line with the note. With no id,
+`meeting end` ends the meeting on in the caller's tab, booked or on the spot, `--note` included (T2985); the lead with
+its daily meeting open ends that one first. The daily meeting takes no `--note`: its decisions are recorded on their
+tasks.
 
 Flags:
 
@@ -5920,10 +5937,12 @@ on by default; with `branch` off, git is never asked). While the owner's meeting
 it (`teamrig meeting start`, until `meeting end` or its lapse), the lead's tab that started it leads its line with
 `Meeting: daily | ` and every other tab, a sub-team's too, adds `meeting.statusLine.heldText` (`meeting on: held`)
 last; only that mark takes `meeting.statusLine.colour` (`#8b57e3`, teamrig's purple, by default), and
-`meeting.statusLine.enabled: false` turns both off. While a rush is in force
-([teamrig burst start](#teamrig-burst-start)), every tab of the team adds `RUSH <goal> to <end>` after the five-hour
-use. The tab is known by `$TEAMRIG_SESSION` or its inbox mark, and the meeting files of its team and the teams above
-are read once a tick. To go on in a session by hand,
+`meeting.statusLine.enabled: false` turns both off. The tab of a session the owner meets in a booked or on-the-spot
+meeting, any session's, a worker's too, leads its line with `Meeting: <its title> | `, what the meeting is about cut
+to 24 characters, in the same colour, until `meeting end` or its lapse (T2985); those joining keep their line. While
+a rush is in force ([teamrig burst start](#teamrig-burst-start)), every tab of the team adds `RUSH <goal> to <end>`
+after the five-hour use. The tab is known by `$TEAMRIG_SESSION` or its inbox mark, and the meeting files of its team
+and the teams above are read once a tick. To go on in a session by hand,
 [teamrig restore](#teamrig-restore) brings it back by its recorded Claude session. It also removes the folder's snapshots written more than
 8 days ago, which hold no reading of the current week, and the temporary files over an hour old that a status line
 stopped before its rename left, sweeping the folder at most once an hour (its `.pruned` file says when it last did),
@@ -6340,6 +6359,8 @@ inbox line if the receiver need not act now, or to put every ask for it in one m
 
 While the owner's daily meeting is open (`teamrig meeting start`), it holds every message to the lead from another
 session, a resend too, unless the message starts with `CRITICAL`; the note says to leave an inbox line instead.
+So does a booked or on-the-spot meeting for the session met, any session, from `meeting start` to its end or lapse
+(T2985): its note names the meeting, what it is about and its start; those joining are not held.
 This hold works with `messages.coldAfterMinutes` at 0 too.
 
 With `open.idle.mode: on`, a message to a team session teamrig closed (its last close in `state/session-log.jsonl`,
