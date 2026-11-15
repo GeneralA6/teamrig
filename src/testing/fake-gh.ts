@@ -17,11 +17,15 @@ import {
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
+  isMentionRead,
+  isReviewRead,
   isWatchProbe,
+  MENTION_PAGE_SIZE,
   WATCH_PATHS,
   type GhRequest,
   type GhResult,
   type GhRunner,
+  type MentionList,
   type WatchPath,
 } from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
@@ -198,6 +202,62 @@ function notVisible(repo: string): GhResult {
   };
 }
 
+/** What a test sets on a post the REST API lists; the rest takes a plain default. */
+export interface RestPostSpec {
+  readonly author?: string | null;
+  readonly body?: string | null;
+  readonly updatedAt?: string;
+}
+
+/** A comment on issue or pull request `number` as `GET repos/<repo>/issues/comments` lists it. */
+export function restComment(repo: string, number: number, id: number, spec: RestPostSpec = {}): JsonRecord {
+  return {
+    ...restPost(spec),
+    id,
+    html_url: `https://github.com/${repo}/issues/${number}#issuecomment-${id}`,
+    issue_url: `https://api.github.com/repos/${repo}/issues/${number}`,
+  };
+}
+
+/** An inline review comment on pull request `number` as `GET repos/<repo>/pulls/comments` lists it. */
+export function restReviewComment(repo: string, number: number, id: number, spec: RestPostSpec = {}): JsonRecord {
+  return {
+    ...restPost(spec),
+    id,
+    html_url: `https://github.com/${repo}/pull/${number}#discussion_r${id}`,
+    pull_request_url: `https://api.github.com/repos/${repo}/pulls/${number}`,
+  };
+}
+
+/** An issue, or a pull request when `pull` is set, as `GET repos/<repo>/issues` lists it, for its body. */
+export function restIssue(repo: string, number: number, spec: RestPostSpec & { readonly pull?: boolean } = {}): JsonRecord {
+  const page = spec.pull === true ? 'pull' : 'issues';
+  return {
+    ...restPost(spec),
+    id: 5000 + number,
+    number,
+    html_url: `https://github.com/${repo}/${page}/${number}`,
+    ...(spec.pull === true ? { pull_request: { url: `https://api.github.com/repos/${repo}/pulls/${number}` } } : {}),
+  };
+}
+
+/** A review of pull request `number` as `GET repos/<repo>/pulls/<number>/reviews` lists it; `updatedAt` is its submit time. */
+export function restReview(repo: string, number: number, id: number, spec: RestPostSpec & { readonly state?: string } = {}): JsonRecord {
+  const { updated_at: submitted_at, ...post } = restPost(spec);
+  return { ...post, id, state: spec.state ?? 'COMMENTED', submitted_at, html_url: `https://github.com/${repo}/pull/${number}#pullrequestreview-${id}` };
+}
+
+function restPost(spec: RestPostSpec): { readonly user: JsonRecord | null; readonly body: string | null; readonly updated_at: string } {
+  const author = spec.author === undefined ? 'someone' : spec.author;
+  return { user: author === null ? null : { login: author }, body: spec.body === undefined ? '' : spec.body, updated_at: spec.updatedAt ?? '2030-01-10T00:00:00Z' };
+}
+
+/** A page of a mention list's path: its repository, list, since time and page. */
+const MENTION_PAGE = /^repos\/([^/]+\/[^/]+)\/(issues\/comments|pulls\/comments|issues)\?since=([^&]+)&.*&page=([0-9]+)$/;
+
+/** A pull request's reviews path: its repository and number. */
+const REVIEW_PAGE = /^repos\/([^/]+\/[^/]+)\/pulls\/([0-9]+)\/reviews\?/;
+
 /**
  * A gh that reaches no network: each request is recorded, so a test can hold every one to a read. A page of the
  * open or closed issue query gets the issues `holds` set for the repository in that state, closed ones changed
@@ -220,6 +280,9 @@ export class FakeGh implements GhRunner {
   private userAnswer: GhResult | undefined;
   private commentsAnswer: GhResult | undefined;
   private readonly jobLogs = new Map<number, string>();
+  /** REST posts by `<repo> <list>`, and reviews by `<repo>#<number>`. */
+  private readonly posts = new Map<string, readonly JsonRecord[]>();
+  private readonly reviews = new Map<string, readonly JsonRecord[]>();
   /** Set by `pages`; else each query's own page size. */
   private pageSize: number | undefined;
   /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
@@ -271,6 +334,21 @@ export class FakeGh implements GhRunner {
   /** From now on, a failed-log read of job `jobId` prints `stdout`; a job with none set is Not Found. */
   holdsJobLog(jobId: number, stdout: string): this {
     this.jobLogs.set(jobId, stdout);
+    return this;
+  }
+
+  /**
+   * From now on, `repo`'s `list` holds these posts (as restComment, restReviewComment or restIssue build them): a page
+   * gives those changed at or after its since time, oldest change first, MENTION_PAGE_SIZE at a time (the size the read asks for, so `pages` leaves it be).
+   */
+  holdsPosts(repo: string, list: MentionList, posts: readonly JsonRecord[]): this {
+    this.posts.set(`${repo} ${list}`, posts);
+    return this;
+  }
+
+  /** From now on, pull request `number` of `repo` has these reviews (as restReview builds them). */
+  holdsReviews(repo: string, number: number, reviews: readonly JsonRecord[]): this {
+    this.reviews.set(`${repo}#${number}`, reviews);
     return this;
   }
 
@@ -362,6 +440,13 @@ export class FakeGh implements GhRunner {
     if (isIssueRead(request.args)) {
       return this.issueRead(request.args[1] ?? '');
     }
+    if (isMentionRead(request.args)) {
+      return this.postRead(request.args[1] ?? '');
+    }
+    if (isReviewRead(request.args)) {
+      const [, repo = '', number = ''] = REVIEW_PAGE.exec(request.args[1] ?? '') ?? [];
+      return this.canned.get(repo) ?? { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify(this.reviews.get(`${repo}#${number}`) ?? []), stderr: '' };
+    }
     if (isJobLogRead(request.args)) {
       const repo = request.args[6] ?? '';
       const log = this.jobLogs.get(Number(request.args[3]));
@@ -432,6 +517,21 @@ export class FakeGh implements GhRunner {
       return { end: { kind: 'exited', code: 1 }, stdout: `HTTP/2.0 304 Not Modified\r\nEtag: ${tag.slice(2)}\r\n\r\n`, stderr: 'gh: HTTP 304\n' };
     }
     return { end: { kind: 'exited', code: 0 }, stdout: `HTTP/2.0 200 OK\r\nEtag: ${tag}\r\n\r\n[]`, stderr: '' };
+  }
+
+  /** A page of a mention list as the REST API answers it: what a test set for the repository, else the posts held, oldest change first. */
+  private postRead(path: string): GhResult {
+    const [, repo = '', list = '', since = '', page = '1'] = MENTION_PAGE.exec(path) ?? [];
+    const canned = this.canned.get(repo);
+    if (canned !== undefined) {
+      return canned;
+    }
+    const size = MENTION_PAGE_SIZE;
+    const changed = (this.posts.get(`${repo} ${list}`) ?? [])
+      .filter((post) => Date.parse(stringField(post, 'updated_at') ?? '') >= Date.parse(since))
+      .sort((a, b) => Date.parse(stringField(a, 'updated_at') ?? '') - Date.parse(stringField(b, 'updated_at') ?? ''));
+    const from = (Number(page) - 1) * size;
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify(changed.slice(from, from + size)), stderr: '' };
   }
 
   /** A label read as GitHub answers it: what a test set for the repository, else the label when the repository has it, else Not Found. */
