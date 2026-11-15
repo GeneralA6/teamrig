@@ -125,6 +125,14 @@ describe('secretFindingsOf', () => {
     assert.deepEqual(grep('{[{/],*.ts}'), []);
   });
 
+  it('reads a Grep glob set that reaches a /, or a negated one that fits it, as ripgrep picks files (T2357)', () => {
+    for (const glob of ['b[./]pem', 'b[/.]pem', '[./]env*', 'b[!/]pem', 'b[!a]pem', 'b[]./]pem', 'b[.-/]pem', '*[/]e.pem']) {
+      assert.deepEqual(grep(glob), [glob]);
+    }
+    assert.deepEqual(grep('b[!.]pem'), []);
+    assert.deepEqual(grep('*.ts'), [], '*.ts meets .env.* only as .env.ts, each wildcard over the other’s text');
+  });
+
   it('counts a Grep glob too long to read in time as naming a secret, one at the bound still read', () => {
     const padded = (length: number): string => `*.ts${'x'.repeat(length - 4)}`;
     assert.deepEqual(grep(padded(1024)), []);
