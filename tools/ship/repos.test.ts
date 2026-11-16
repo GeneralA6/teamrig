@@ -9,7 +9,7 @@ const LOCAL = '"local":{"runner":"tools/ci/local.ts"}';
 
 test('reads each repo\'s main branch, gate and check lists, looked up without regard to case', () => {
   const profiles = parseProfiles(`{"Owner/Repo":{"main":"main","gate":"ci","checks":["a","b"]}}`);
-  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], aliases: [], mergeChecks: 'full' });
+  assert.deepEqual(profileFor(profiles, 'owner/repo'), { slug: 'Owner/Repo', main: 'main', gate: 'ci', checks: ['a', 'b'], summary: null, local: { runner: null }, regenerated: [], flaky: [], aliases: [], mergeChecks: 'full', pullSections: [] });
   const local = parseProfiles(`{"Owner/Local":{"main":"main","gate":"local","checks":[],${LOCAL}}}`);
   assert.deepEqual(profileFor(local, 'Owner/Local').local, { runner: 'tools/ci/local.ts' });
 });
@@ -27,6 +27,14 @@ test('refuses an entry with no main, a blank or non-text check, or a check liste
   assert.throws(() => parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a",""]}}'), /O\/R needs "main" and a "checks" list/);
   assert.throws(() => parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a",3]}}'), /O\/R needs "main" and a "checks" list/);
   assert.throws(() => parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a","a"]}}'), /O\/R lists a check twice/);
+});
+
+test('reads the sections a pull request note must hold, and refuses a list that is not distinct names', () => {
+  assert.deepEqual(profileFor(parseProfiles('{"O/R":{"main":"main","gate":"ci","checks":["a"],"pullSections":["Reach"]}}'), 'O/R').pullSections, ['Reach']);
+  for (const sections of ['"Reach"', '[""]', '["Reach","Reach"]', '[3]']) {
+    assert.throws(() => parseProfiles(`{"O/R":{"main":"main","gate":"ci","checks":["a"],"pullSections":${sections}}}`), /O\/R "pullSections" needs a list of distinct section names/, sections);
+  }
+  assert.deepEqual(readProfiles().get('generala6/teamrig')?.pullSections, ['Reach']);
 });
 
 test('refuses a missing or unknown gate', () => {
