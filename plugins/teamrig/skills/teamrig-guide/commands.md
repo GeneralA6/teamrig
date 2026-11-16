@@ -2688,8 +2688,8 @@ with no permission check, up to `prompts.serviceRoleDailyCap` closes and comment
 ([the service-role allow](hooks.md#before-a-shell-command-the-service-role-allow)). See also
 [the service-role guard](hooks.md#before-a-write-or-a-shell-command-the-service-role-guard).
 
-A grant or a revoke changes a permission, an owner gate: teamrig's guard asks the owner before any session's call
-of either, whatever `--yes` says, and refuses a session's direct edit of `serviceRoles`, so the owner runs them
+A grant or a revoke changes a permission, an owner gate: teamrig's guard refuses any session's call of either,
+whatever `--yes` says, and refuses a session's direct edit of `serviceRoles`, so the owner runs them
 from their own terminal or prompt. Without `--yes` each shows the change and writes nothing. With it, the old
 config goes into the backups folder and `serviceRoles` is rewritten; the next call reads it.
 
@@ -6843,8 +6843,8 @@ INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is
 
 ### teamrig hook push-guard
 
-Before a Bash or PowerShell command, asks the human about a push to a protected branch (or, under
-`pushGuard.pushToProtected` `lead` or `gated`, clears or refuses it) and refuses a force-push or deletion of one. It also refuses (or asks about, as `commitGuard.skipHooks` says) a git command run without the
+Before a Bash or PowerShell command, refuses a push to a protected branch with the route to take (or, under
+`pushGuard.pushToProtected` `allow`, `lead` or `gated`, clears or refuses it) and refuses a force-push or deletion of one. It also refuses (or lets run, as `commitGuard.skipHooks` says) a git command run without the
 repository's hooks: `--no-verify`, `git commit -n`, `HUSKY=0`, or a `core.hooksPath` override. See
 [Hooks and permissions](hooks.md#before-a-shell-command-the-commit-guard).
 
@@ -6856,9 +6856,9 @@ Example:
 teamrig hook push-guard < pre-tool-use.json
 ```
 
-Output: nothing for a command that pushes no protected branch; otherwise a JSON permission decision (`ask` or
-`deny`) with the reason; under `prompts.hookAsks: refuse` an `ask` is a `deny` whose reason says what to do instead
-([Asks off](hooks.md#asks-off-a-refusal-instead-of-a-prompt)).
+Output: nothing for a command that pushes no protected branch; otherwise a JSON permission decision, always
+`deny`, with the reason and the route to take
+([No teamrig hook asks a person](hooks.md#no-teamrig-hook-asks-a-person)).
 
 ### teamrig hook package-guard
 
@@ -6882,9 +6882,8 @@ teamrig hook package-guard < pre-tool-use.json
 
 Output: nothing for a command that runs no package ad hoc (or with `adHocRunners` set to `allow`), installs only
 vetted versions (or with `installs` set to `allow`) and hands no flag to npm; otherwise a JSON permission decision
-(`deny`, or `ask` for an ad-hoc run or an unvetted install when the team set it, `deny` when any part of the line is
-refused) with every reason; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says what to do
-instead.
+(always `deny`; under the team's `ask` for an ad-hoc run or an unvetted install the reason ends with the route to
+take, as no teamrig hook asks a person) with every reason.
 
 ### teamrig hook secret-guard
 
@@ -6908,9 +6907,8 @@ teamrig hook secret-guard < pre-tool-use.json
 ```
 
 Output: nothing for a call that prints or holds no secret (or whose key, `secretReads` or `writes`, is `allow`), outside a team's projects,
-or for input that is not a hook payload; otherwise a JSON permission decision (`deny`, or `ask` when the team set
-it) with the reason naming each secret; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says
-what to do instead.
+or for input that is not a hook payload; otherwise a JSON permission decision (always `deny`; under the team's `ask` the
+reason ends with the route to take) with the reason naming each secret.
 
 ### teamrig hook secret-redact
 
@@ -6949,9 +6947,8 @@ teamrig hook db-write-guard < pre-tool-use.json
 ```
 
 Output: nothing for a line that writes to no database, with `writes` set to `allow`, or for input that is not a hook
-payload; otherwise a JSON permission decision (`ask`, or `deny` when the team set it) with the reason naming each
-write and the count or dry run to show the owner first; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose
-reason says what to do instead. A missing or broken config keeps `ask`.
+payload; otherwise a JSON permission decision (always `deny`) with the reason naming each
+write and the count or dry run to show the owner first, and under `ask` (the default) the route to take. A missing or broken config keeps `ask`.
 
 ### teamrig hook exec-guard
 
@@ -6991,7 +6988,7 @@ hook payload; otherwise a JSON permission decision `deny` with the reason naming
 
 ### teamrig hook service-role-guard
 
-Before a Bash or PowerShell call, asks the owner when the line runs `teamrig roles grant` or `revoke`, and refuses one
+Before a Bash or PowerShell call, refuses a line that runs `teamrig roles grant` or `revoke`, and one
 naming the team config file; before a Write, Edit, MultiEdit or NotebookEdit of the team config, refuses one that
 changes `serviceRoles` or that it cannot work out. See
 [Hooks and permissions](hooks.md#before-a-write-or-a-shell-command-the-service-role-guard).
@@ -7055,8 +7052,8 @@ lead's picker, in a meeting too; nothing for a tab that is no session of the tea
 
 ### teamrig hook prompt-refuse
 
-When Claude Code is about to show a permission prompt (`PermissionRequest`), with `prompts.hookAsks: refuse` in the
-team config, answers it for its case: nobody may be there to answer, and the prompt holds the session until someone
+When Claude Code is about to show a permission prompt (`PermissionRequest`), with `prompts.hookAsks: refuse` (the default) in
+the team config, answers it for its case: nobody may be there to answer, and the prompt holds the session until someone
 does. A Bash line that runs one of the session's own jobs (a sanctioned route: `teamrig merge`, `deploy`, `exec
 request`, `worktree remove`, a register or inbox command, a `git commit` with its hooks, a `git push` of a task branch
 you own) runs; a line that provably only reads runs; a Bash line teamrig's rules give a rerun form (after a leading
@@ -7065,7 +7062,7 @@ the tool's name and the note to record the step as waiting for the owner and tak
 in `state/prompt-answers.jsonl`, its command masked of every secret value, a route's by its route alone; lines over 7 days old move to the
 archive (see
 [teamrig compact](#teamrig-compact)). The question picker (`AskUserQuestion`) and plan mode's exit (`ExitPlanMode`)
-still open. See [Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
+still open. See [Hooks and permissions](hooks.md#no-teamrig-hook-asks-a-person).
 
 Flags: none.
 
@@ -7080,15 +7077,15 @@ nothing with asks on, for the picker or plan mode's exit, outside a team, or on 
 
 ### teamrig hook route-allow
 
-Before a Bash command, with `prompts.hookAsks: refuse` and `prompts.routeAllow: on` (its default) in the team config,
+Before a Bash command, with `prompts.hookAsks: refuse` and `prompts.routeAllow: on` (both defaults) in the team config,
 lets a line that runs one of the session's own jobs run with no permission check at all, so auto mode never turns it
 into a dead end: `teamrig merge`, `teamrig deploy --repo <name>`, `teamrig exec request`, `teamrig worktree remove`
 (no `--base`) and a `git commit` with its hooks running (only `-a -s -q -m -F` and paths). The line must be one plain
 command through this install's own `teamrig`, or a bare `git`: no `;`, `&`, `|`, `<`, `>` but a lone `2>&1`, no
 substitution, variable, `$'`, `$"` or `#`, inside quotes too. It answers only once the push, package, secret,
-db-write, exec, pass-record and service-role guards all passed the same call; when one asks or refuses, that answer stands. Each allow is a line in
+db-write, exec, pass-record and service-role guards all passed the same call; when one refuses, that refusal stands. Each allow is a line in
 `state/prompt-answers.jsonl` naming the route, never the command. `prompts.routeAllow: off` takes the allow away. See
-[Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
+[Hooks and permissions](hooks.md#no-teamrig-hook-asks-a-person).
 
 Flags: none.
 
@@ -7227,9 +7224,8 @@ Example:
 teamrig hook helper-gate < pre-tool-use.json
 ```
 
-Output: JSON with the helper default as `additionalContext`, plus a permission decision (`ask` or `deny`) with the
-reason for a launch held back (under `prompts.hookAsks: refuse` an `ask` is a `deny` whose reason says what to do
-instead); nothing outside a team session.
+Output: JSON with the helper default as `additionalContext`, plus a permission decision (`deny`) with the
+reason for a launch held back and the route to take; nothing outside a team session.
 
 ### teamrig hook stop
 At the end of each turn, first sends you back once to a skill edit of the turn that Claude Code refused and you never

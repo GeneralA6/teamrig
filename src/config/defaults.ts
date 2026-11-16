@@ -159,8 +159,8 @@ export const DEFAULT_PROMPTS: PromptsConfig = { hookAsks: 'refuse', routeAllow: 
 export const DEFAULT_SECRET_GUARD: SecretGuardConfig = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
 
 /**
- * Asked by default: a hand-run write is sometimes the right step, once the owner has seen its counts or preview, so
- * the human answers it rather than the guard refusing it (T661). The SQL clients are built in; no other program, Node
+ * `ask` by default: a hand-run write is sometimes the right step, once the owner has seen its counts or preview, so
+ * its refusal names the count or dry run to show the owner first (T661); no teamrig hook asks a person (T3356). The SQL clients are built in; no other program, Node
  * client or script is the guard's until a team names it.
  */
 export const DEFAULT_DB_WRITE_GUARD: DbWriteGuardConfig = { writes: 'ask', entrypoints: [], programs: [], nodeClients: [], clientReceivers: [] };

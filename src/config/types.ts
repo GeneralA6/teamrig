@@ -244,12 +244,12 @@ export interface PushGuardConfig {
 }
 
 /**
- * A normal push to a protected branch: `ask` the human, `allow` it with a note, or `lead`: the lead's own goes through
- * with a note, another session's only once the lead approved one of its waiting tasks (`teamrig approve`, T684), else
- * it is refused with how to ask, never asked of the human. `gated` (T800 §2.1, T858) clears a hand push as `lead` does,
+ * A normal push to a protected branch: `ask` refuses it with the route to take, as no teamrig hook asks a person
+ * (T3356), `allow` lets it through with a note, or `lead`: the lead's own goes through with a note, another session's
+ * only once the lead approved one of its waiting tasks (`teamrig approve`, T684), else it is refused with how to ask. `gated` (T800 §2.1, T858) clears a hand push as `lead` does,
  * and `teamrig merge` merges a change that holds the self-merge gates with no approval, logging it, and holds one
  * that misses a gate for its session's leader. None changes a refusal, a `--force-with-lease` push, or a command the
- * guard cannot read, which still asks.
+ * guard cannot read, which is still refused with its route.
  */
 export type PushToProtected = 'ask' | 'allow' | 'lead' | 'gated';
 
@@ -299,14 +299,14 @@ export interface PackageGuardConfig {
 /**
  * An install the guard cannot vet (`npm install`, `pnpm add`, `yarn add`, `bun add` and their updates): a range or a
  * bare update rather than an exact version or tag, a git or URL source, or a version published fewer than
- * `cooldownDays` ago or with a known advisory: `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ * `cooldownDays` ago or with a known advisory: `deny` refuses it, `ask` refuses it too, its reason naming the route to take (no teamrig hook asks a person), `allow` lets it run.
  */
 export type PackageInstalls = 'deny' | 'ask' | 'allow';
 
 /**
  * An ad-hoc package run, one that fetches a package outside the project's lockfile and runs it at once (`npx` of a
  * tool not in `node_modules/.bin`, `npm exec`, `npm create`/`init <x>`, `pnpm dlx`, `yarn dlx`, `bunx`): `deny`
- * refuses it, `ask` asks the human, `allow` lets it run.
+ * refuses it, `ask` refuses it too, its reason naming the route to take (no teamrig hook asks a person), `allow` lets it run.
  */
 export type AdHocRunners = 'deny' | 'ask' | 'allow';
 
@@ -318,7 +318,7 @@ export interface CommitGuardConfig {
 /**
  * A git command run without the repository's hooks: `--no-verify` (or `-n` for `git commit` and `git am`), `HUSKY`
  * set for it, or a `core.hooksPath` that `-c`, a `GIT_CONFIG*` variable or `git config` sets or unsets: `deny`
- * refuses it, `ask` asks the human, `allow` lets it run.
+ * refuses it, `ask` refuses it too, its reason naming the route to take (no teamrig hook asks a person), `allow` lets it run.
  */
 export type SkipHooks = 'deny' | 'ask' | 'allow';
 
@@ -395,14 +395,14 @@ export interface SecretGuardConfig {
  * whole environment (`env`, `printenv`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`), a
  * Kubernetes secret's data or a dump command's output (`kubectl config view --raw`), and a shell line that reads a saved
  * credential out of the host's store, printed or not (`gh auth token`, `git credential fill`, `CredRead`):
- * `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ * `deny` refuses it, `ask` refuses it too, its reason naming the route to take (no teamrig hook asks a person), `allow` lets it run.
  */
 export type SecretReads = 'deny' | 'ask' | 'allow';
 
 /**
  * A call that holds a secret as text: a Bash or PowerShell line with a token, credentials in a URL or an
  * `Authorization` header in it, or a Write, Edit, MultiEdit or NotebookEdit whose text holds one outside a secret file:
- * `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ * `deny` refuses it, `ask` refuses it too, its reason naming the route to take (no teamrig hook asks a person), `allow` lets it run.
  */
 export type SecretWrites = 'deny' | 'ask' | 'allow';
 
@@ -430,7 +430,7 @@ export interface DbWriteGuardConfig {
 /**
  * A hand-run database write: a SQL client or a team's database program whose code writes, a Node script or `node -e`
  * whose team-named client writes, a container or remote host running one, or an entrypoint run with an apply flag:
- * `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ * `deny` refuses it, `ask` refuses it too, its reason naming the route to take (no teamrig hook asks a person), `allow` lets it run.
  */
 export type DbWrites = 'deny' | 'ask' | 'allow';
 
@@ -782,7 +782,8 @@ export function isWeekday(value: unknown): value is Weekday {
 export const OVER_ACTIONS = ['warn', 'ask-lead', 'ask', 'block'] as const;
 /**
  * What the live warning does past a session's daily budget: lines only; also an inbox line to the
- * lead; also asking the person before a helper launch; or refusing helper launches.
+ * lead; also refusing a helper launch with its route, as no teamrig hook asks a person (T3356); or refusing helper
+ * launches.
  */
 export type OverAction = (typeof OVER_ACTIONS)[number];
 

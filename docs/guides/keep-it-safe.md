@@ -1,7 +1,8 @@
 # Keep it safe
 
 Your sessions run for hours while you are away, and a rule in their instructions can be missed. teamrig's guards
-hold those rules on every line: before Claude runs a command, they read it and ask you, or refuse, when it would push
+hold those rules on every line: before Claude runs a command, they read it and refuse it with the route to take (none ever asks you: a prompt would hold the session until you
+answer) when it would push
 to a protected branch, skip the repository's git hooks, run a package nobody vetted, write to a database by hand or
 print a secret, and a privileged command runs only once a reviewer approves it. On Windows they read a Bash line both
 as written and as Claude Code's Bash tool hands it to bash, with each run of backslashes halved, and answer for the
@@ -25,20 +26,20 @@ Each hook, and every line it refuses with its fix, is in
 
 ## Safe pushes
 
-Before Claude runs a `git push`, teamrig reads the command and asks you, or refuses, when it would change a
+Before Claude runs a `git push`, teamrig reads the command and refuses it, naming the route to take, when it would change a
 protected branch (by default `main` and `master`, set in `pushGuard.protectedBranches`; an empty list guards nothing).
 
 ```mermaid
 flowchart TD
   cmd["Claude runs a Bash or PowerShell command"] --> read{"Can teamrig read every git command in it?"}
-  read -- "no, and it may push" --> doubt["You are asked, told what it could not read"]
+  read -- "no, and it may push" --> doubt["Refused, told what it could not read"]
   read -- yes --> push{"Is there a git push in it?"}
   push -- "no, or --dry-run" --> run["Runs as usual"]
   push -- "--mirror" --> deny["Refused"]
   push -- yes --> branch{"Does it update a protected branch?"}
   branch -- no --> run
   branch -- "yes, with --force, + or a delete" --> deny
-  branch -- "yes, with --force-with-lease" --> ask["You are asked, with any large commits listed"]
+  branch -- "yes, with --force-with-lease" --> ask["Refused with the route, any large commits listed"]
   branch -- yes --> mode{"pushGuard.pushToProtected"}
   mode -- ask --> ask
   mode -- allow --> note["Runs, with a note and any large commits listed"]
@@ -48,21 +49,20 @@ flowchart TD
   cleared -- "no, under gated" --> merge["Refused: merge the branch with teamrig merge"]
 ```
 
-- `pushGuard.pushToProtected` (since 0.11.0) is `ask` by default; set to `allow`, a normal push to a protected branch
-  runs with a one-line note instead of a question, and Claude Code's own permissions still decide. Each question
-  about a normal push ends by naming this switch.
+- `pushGuard.pushToProtected` (since 0.11.0) is `ask` by default, which refuses a normal push to a protected branch with
+  the route to take (no teamrig hook asks a person, since 0.460.0); set to `allow`, such a push runs with a one-line
+  note, and Claude Code's own permissions still decide.
 - Set to `lead` (since 0.126.0), the lead approves pushes instead of the human: the lead's own runs with a note (a
   child team's lead's only while its parent team's lead's approval stands on one of its tasks); a
   session's runs with a note while the lead's `teamrig approve` stands on one of its tasks waiting `approval:<lead>`
-  (until the task's next status), and is refused otherwise, with how to ask on the register. The human is never
-  asked about a normal push, and the refusal holds whatever `prompts.hookAsks` says.
+  (until the task's next status), and is refused otherwise, with how to ask on the register.
 - Set to `gated` (since 0.218.0), a hand push is cleared as under `lead`, and refused otherwise with how to merge
   it: `teamrig merge`, which merges a change that holds the self-merge gates with no approval and holds one that
   misses a gate for a leader ([the self-merge gates](ship-from-many-sessions.md#the-self-merge-gates)).
-- `--force-with-lease` is asked, not refused, under any setting. `commits.gate` set to `refuse` turns the ask (or
-  the allowed push) into a refusal when a commit is over the size rule (400 changed lines or 15 files, tests not
+- `--force-with-lease` is refused with its route under any setting. `commits.gate` set to `refuse` refuses an
+  allowed push too when a commit is over the size rule (400 changed lines or 15 files, tests not
   counted) with no `Large-commit:` reason.
-- `--all` is asked, and refused with `--force` or `--prune`; large commits are those not yet on the last-fetched
+- `--all` counts as a push to every protected branch, and is refused outright with `--force` or `--prune`; large commits are those not yet on the last-fetched
   `origin/<branch>`.
 - `teamrig commits check --base <ref>` runs the same size rule in a script or CI.
 - Outside a project tied to a team, the guard stays silent.
@@ -81,17 +81,18 @@ PowerShell or cmd, each measured on the real shell), so it finds a push wherever
   aliases included) and the commands git runs itself (`submodule foreach`, `rebase --exec`, `bisect run`);
 - folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`; on Windows a
   Git Bash drive folder (`cd /c/work && git push`, `git -C /c/work push`, `env -C /c/work`) is the folder `C:\work`;
-- a branch named alone, which goes where git sends it: under `push.default upstream`, `git push origin t1-x` asks
-  when that branch's upstream is protected, and is refused with `--force`. It asks in doubt when `remote.<name>.push`
+- a branch named alone, which goes where git sends it: under `push.default upstream`, `git push origin t1-x` counts
+  as a push to that branch's upstream when it is protected, and is refused outright with `--force`. It is refused
+  in doubt when `remote.<name>.push`
   is set for that remote, or when an earlier command in the line changes that config, makes a branch or gives one an
   upstream. A plain `git remote add up <url>` changes none of it; `--mirror`, or a word only known when it runs,
   does. Write `git push origin t1-x:t1-x` to send a branch to its own name for certain;
 - bash variables set earlier in the line: `B=feat; git push -u origin $B` reads as `git push -u origin feat`,
-  and `B=main; git push origin $B` still asks. `NAME=value` or `export NAME=value` must run before the push,
+  and `B=main; git push origin $B` still counts as a push to main. `NAME=value` or `export NAME=value` must run before the push,
   through `;`, `&&`, a newline, a `for`, `while` or `until` loop, an `if` or a `{ }` group, in the same shell or
   in a subshell started after it (`( )`, `$( )`), and the line must never give the name another value. The
   value may hold quoted text, blanks and variables set the same way before it; used unquoted, it splits into
-  words as bash splits it, so `G="git -C /w"; $G push origin main` still asks. `$HOME`, and a value's leading
+  words as bash splits it, so `G="git -C /w"; $G push origin main` still counts as one. `$HOME`, and a value's leading
   `~` or `~/`, read as your home folder in the line's own shell, while the line gives HOME no value of its own;
   a script the line starts, such as `bash -c '...'`, may be handed another HOME, so there it stays unknown. A
   value with a substitution, any other tilde (`~bob`, `a:~/x`) or a file name pattern, a prefix
@@ -102,7 +103,7 @@ PowerShell or cmd, each measured on the real shell), so it finds a push wherever
   heredoc that never closes) leaves it unknown. A `${...}` that only reads, such as `${B:-x}` or `${x%%|*}`, is
   fine.
 
-When it cannot read part of a line with confidence, it asks and says why: a quote that never closes, a git
+When it cannot read part of a line with confidence, it refuses it and says why, so the push is written out plainly: a quote that never closes, a git
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
 too deep, a push held in quoted text as a command substitution (`x='a[$(git push origin main)]'`), which bash runs
 if an expansion reads the text again (`${x@P}`, `${!x}`, `$((x))`, `let`, `[[ -eq ]]`, or `read`, `printf -v`,
@@ -113,8 +114,8 @@ version, its host or how it is started also counts: a NUL or a `` `u{2d} `` in P
 before a line end in cmd, or a `"`, a `\`, an empty value, a bare comma or a `--%` handed to a program from
 PowerShell, as Windows PowerShell 5.1 rebuilds that program's line and the words it gets can differ from the words
 typed. Every reading of such a line is judged, so a refusal in any one of them stands. Some of
-these, such as `eval "$X"`, `bash -c "$CMD"`, an unclosed quote or a line with more than one reading, ask only when
-the line, or a script or alias it runs, names a push: a
+these, such as `eval "$X"`, `bash -c "$CMD"`, an unclosed quote or a line with more than one reading, are refused only
+when the line, or a script or alias it runs, names a push: a
 word, or a piece of one between blanks, quotes, operators and path separators, that is `push`, `--push` or
 `git-push`. A folder such as `src/push-guard`, a file `x-push.log`, a comment, a redirection target or a heredoc a
 plain `cat` stores in a file does not count. Each command Claude runs starts in a fresh shell, so a push the line
@@ -161,7 +162,8 @@ maintainer account publishes with valid provenance. So the guard reads each pack
 registry for the version it resolves to, and refuses one published inside `packageGuard.cooldownDays` (14 days by
 default) or with a known advisory, and any install it cannot vet: a range, a git or URL source, an update with no
 exact version. A registry it cannot ask within 10 s vouches for nothing. `packageGuard.installs` (`deny` by default,
-`ask` or `allow`) sets what such a line gets; a team on a private registry sets `ask` or `allow`.
+`ask` or `allow`) sets what such a line gets; a team on a private registry sets `allow`; `ask`
+refuses as `deny` does, adding the route, since no teamrig hook asks a person.
 
 A worktree's `node_modules` is often a link to the main checkout's (`teamrig worktree add` makes one), so an install
 there rewrites the folder every checkout shares, and `npm ci` empties it first: one `npm ci` in a worktree once left a
@@ -255,7 +257,7 @@ one, the team's `register.secretPatterns` and `secretGuard.paths` are added. `te
 
 A write to a database run by hand cannot be taken back like a code change, so it should follow counts or a preview
 you have seen. Before each Bash or PowerShell call, the db-write guard reads the line (with the push guard's parser)
-and asks you about one that writes: SQL that changes data or its schema through `psql`, `mysql`, `mariadb` or
+and refuses one that writes, naming the count or dry run to show you first: SQL that changes data or its schema through `psql`, `mysql`, `mariadb` or
 `sqlite3`; the code a database program the team names in `dbWriteGuard.programs` runs, by the shape it reads (a
 document shell's `--eval` or script, a key-value client's command or Lua script); Node code that writes through a
 client module the team names in `dbWriteGuard.nodeClients`; and a team data script in `dbWriteGuard.entrypoints` run
@@ -263,8 +265,8 @@ with its apply flag (`--apply`), whose run without it is a dry run and passes. I
 first MiB of each, never a pipe, a device or a network share) and what it pipes or redirects in, and the line a
 container or a host runs (`kubectl exec`, `docker exec`, `ssh`). Reads
 pass, and the reason names each write and the count or dry run to show you first. `dbWriteGuard.writes` (`ask` by
-default, `deny` or `allow`) sets what such a call gets, and under `prompts.hookAsks: refuse` the question is a
-refusal, so the session records the write for you and goes on. A write you approve and want reviewed runs as a
+default, `deny` or `allow`) sets what such a call gets: `ask` refuses it with the route to take, so the session
+records the write for you and goes on. A write you approve and want reviewed runs as a
 [privileged command](#privileged-commands-on-review) of kind `db-write`
 ([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-db-write-guard)).
 
@@ -318,7 +320,7 @@ so it cannot tell `grep x f` from `grep x f > out.txt`. With `readonlyShell.enab
 (Bash with the push guard's parser) and allows it when every command in it provably only reads: known readers, git
 and kubectl reading subcommands, the team's trusted prefixes (`readonlyShell.allowPrefixes`), and no write, file
 redirection, command that runs code or variable a program reads. It only ever allows: any other line gets Claude
-Code's own check, a guard's ask or refusal wins over its allow, a line that prints a secret is never allowed, and on
+Code's own check, a guard's refusal wins over its allow, a line that prints a secret is never allowed, and on
 Windows a Bash line must only read both as written and with its backslash runs halved, as Claude Code's Bash tool
 hands it to bash ([what it cannot see](../../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-read-only-allow)).
 
