@@ -96,6 +96,39 @@ describe('GIT_MERGE where a checkout is', () => {
   });
 });
 
+describe('GIT_MERGE reading the checkout a file is in (T3368)', () => {
+  it('reads its top, repository, change, tracking, HEAD and main trees', () => {
+    const { repo } = repoWithOrigin('merge-file-checkout');
+    try {
+      const read = git.fileCheckout(join(repo.dir, 'app.txt'));
+      const repository = git.repositoryOf(repo.dir);
+      assert.ok(read.ok && read.value !== undefined && repository.ok && repository.value !== undefined);
+      const facts = read.value;
+      sameFolder(facts.top, repo.dir);
+      sameFolder(facts.commonDir, repository.value);
+      assert.deepEqual([facts.clean, facts.tracked, facts.head, facts.mainRef], [true, true, repo.git('rev-parse', 'HEAD').trim(), 'origin/main']);
+      assert.equal(facts.headTree, facts.mainTree);
+      repo.write('extra.txt', 'new');
+      const extra = git.fileCheckout(join(repo.dir, 'extra.txt'));
+      assert.deepEqual(extra.ok ? [extra.value?.clean, extra.value?.tracked] : extra.reason, [false, false]);
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it('names the read git did not answer, never reading it as no checkout', () => {
+    const { repo } = repoWithOrigin('merge-file-unanswered');
+    try {
+      const read = git.fileCheckout(join(repo.outside, 'gone', 'ship.ts'));
+      assert.match(read.ok ? 'answered' : read.reason, /^git rev-parse --path-format=absolute --show-toplevel --git-common-dir in .+ did not answer: /);
+      const repository = git.repositoryOf(join(repo.outside, 'gone'));
+      assert.match(repository.ok ? 'answered' : repository.reason, /did not answer/);
+    } finally {
+      repo.remove();
+    }
+  });
+});
+
 describe('GIT_MERGE reading the ssh command', () => {
   it("reads core.sshCommand from git's config, and no longer once it is unset", () => {
     const { repo } = repoWithOrigin('merge-ssh');

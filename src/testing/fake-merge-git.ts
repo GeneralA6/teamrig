@@ -1,5 +1,6 @@
+import { dirname } from 'node:path';
 import type { GitOutcome } from '../core/git-run.ts';
-import { ORIGIN, type Checkout, type MergeGit, type LocalUpdate } from '../merge/git.ts';
+import { ORIGIN, pathInCheckout, type Checkout, type FileCheckout, type GitRead, type MergeGit, type LocalUpdate } from '../merge/git.ts';
 
 /** The linked worktree a fake merge runs in. */
 export const WORKTREE = '/w/feat';
@@ -80,6 +81,11 @@ export class FakeMergeGit implements MergeGit {
   resetFails: string | undefined;
   /** The `core.sshCommand` git's config sets; none by default. */
   sshCommandIs: string | undefined;
+  /**
+   * Why git does not answer the next reads that tell an unanswered read from git's "no" (`fileCheckout`,
+   * `repositoryOf`), one reason per read, oldest first, as when git cannot start under load (T3368).
+   */
+  readonly unanswered: string[] = [];
 
   /** A push of ours lands: origin's branch moves, and so does its tracking ref, as git push moves both. */
   pushed(branch: string, commit: string): void {
@@ -111,6 +117,38 @@ export class FakeMergeGit implements MergeGit {
 
   checkoutOf(dir: string): Checkout | undefined {
     return this.checkouts.get(dir);
+  }
+
+  /** The checkout holding `file`, read from the checkouts, heads and status above; or the next unanswered read. */
+  fileCheckout(file: string): GitRead<FileCheckout | undefined> {
+    const unanswered = this.unanswered.shift();
+    if (unanswered !== undefined) {
+      return { ok: false, reason: unanswered };
+    }
+    const checkout = this.checkoutOf(dirname(file));
+    const commonDir = checkout === undefined ? undefined : this.commonDir(checkout.top);
+    if (checkout === undefined || commonDir === undefined) {
+      return { ok: true, value: undefined };
+    }
+    const path = pathInCheckout(checkout.top, file);
+    const mainRef = `${ORIGIN}/${this.defaultBranch()}`;
+    const value: FileCheckout = {
+      top: checkout.top,
+      commonDir,
+      clean: this.changes(checkout.top, true)?.length === 0,
+      tracked: path !== undefined && this.blobsAt(checkout.top, 'HEAD', [path])?.has(path) === true,
+      head: this.sha(checkout.top, 'HEAD'),
+      headTree: this.treeOf(checkout.top, 'HEAD'),
+      mainRef,
+      mainTree: this.treeOf(checkout.top, mainRef),
+    };
+    return { ok: true, value };
+  }
+
+  /** The `.git` folder of the main checkout of the checkout `dir` is; or the next unanswered read. */
+  repositoryOf(dir: string): GitRead<string | undefined> {
+    const unanswered = this.unanswered.shift();
+    return unanswered === undefined ? { ok: true, value: this.commonDir(dir) } : { ok: false, reason: unanswered };
   }
 
   /** The `.git` folder of the checkout's main checkout. */
