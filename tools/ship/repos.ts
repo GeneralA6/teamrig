@@ -58,6 +58,12 @@ export interface RepoProfile {
   flaky: readonly string[];
   /** What a --merge run checks locally before it pushes; `full` when not listed. `changed` needs the `ci` gate. */
   mergeChecks: MergeChecks;
+  /**
+   * The `## <name>` sections the --note-file must hold for merge to open a pull request (T3058): the repo's template
+   * asks each pull request to say them (teamrig's `Reach`), and a note without them would open one that does not.
+   * Empty when not listed: any note, or none, opens one.
+   */
+  pullSections: readonly string[];
 }
 
 export const PROFILES_PATH = new URL('./repos.json', import.meta.url);
@@ -86,6 +92,12 @@ function parseFlaky(slug: string, value: unknown, checks: readonly string[], sum
     throw new Error(`repos.json: ${slug} "flaky" needs a list of its "checks", the summary apart`);
   }
   if (new Set(value).size !== value.length) throw new Error(`repos.json: ${slug} lists a flaky check twice`);
+  return value;
+}
+
+function parsePullSections(slug: string, value: unknown): readonly string[] {
+  if (value === undefined) return [];
+  if (!isNameList(value) || new Set(value).size !== value.length) throw new Error(`repos.json: ${slug} "pullSections" needs a list of distinct section names`);
   return value;
 }
 
@@ -122,7 +134,7 @@ export function repoSlugs(profiles: ReadonlyMap<string, RepoProfile>): string[] 
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
   const body: unknown = JSON.parse(json);
-  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "aliases", "mergeChecks" } }');
+  if (!isRecord(body)) throw new Error('repos.json: expected { "<owner>/<repo>": { "main", "gate", "checks", "summary", "local", "regenerated", "flaky", "aliases", "mergeChecks", "pullSections" } }');
   const profiles = new Map<string, RepoProfile>();
   for (const [slug, entry] of Object.entries(body)) {
     if (!isRecord(entry) || typeof entry['main'] !== 'string' || !isNameList(entry['checks'])) throw new Error(`repos.json: ${slug} needs "main" and a "checks" list of names`);
@@ -142,6 +154,7 @@ export function parseProfiles(json: string): Map<string, RepoProfile> {
       regenerated: parseRegenerated(slug, entry['regenerated']),
       flaky: parseFlaky(slug, entry['flaky'], entry['checks'], summary),
       mergeChecks: parseMergeChecks(slug, entry['mergeChecks'], gate),
+      pullSections: parsePullSections(slug, entry['pullSections']),
     };
     for (const name of [slug, ...aliases]) {
       const key = name.toLowerCase();
