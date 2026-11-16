@@ -201,16 +201,53 @@ describe('labelIssue', () => {
     assert.deepEqual(refused.calls.map((call) => call.kind), ['label-create']);
     const cased = new FakeIssueHost();
     assert.deepEqual((await label(cased, { add: ['Design'], remove: [] })).lines.slice(1), [
-      'FAILED acme/web#7: acme/web has no label "Design": make it there first, as adding it here would make a new one; nothing was changed',
+      'FAILED acme/web#7: acme/web has no label "Design", and it has no .github/labels.json: add it to that file or make it there first, as adding it here would make a new one; nothing was changed',
     ]);
     assert.deepEqual(cased.calls, []);
+  });
+
+  it("makes a label the repository's label file names, as that file spells it, reading the file once (T3198)", async () => {
+    const area = { name: 'area:cli', color: '1d76db', description: 'Area: the command line' };
+    const docs = { name: 'area:docs', color: '0e8a16', description: 'Area: the docs' };
+    const host = new FakeIssueHost().hasLabels('p2').holdsLabelFile('acme/web', { kind: 'read', labels: [area, docs] });
+    assert.deepEqual(await label(host, { add: ['Area:CLI', 'p2', 'area:docs'], remove: [] }), {
+      done: true,
+      lines: [
+        'ACCESS acme: writes as the test',
+        'MADE acme/web: the label "area:cli", as its .github/labels.json names it',
+        'MADE acme/web: the label "area:docs", as its .github/labels.json names it',
+        'LABELED acme/web#7: "Area:CLI", "p2", "area:docs"',
+      ],
+    });
+    assert.deepEqual(host.calls.slice(0, 2), [
+      { kind: 'label-create', repo: 'acme/web', label: area },
+      { kind: 'label-create', repo: 'acme/web', label: docs },
+    ]);
+    assert.deepEqual(host.labelFileReads, ['acme/web']);
+  });
+
+  it('reads no label file for a label the repository has or one teamrig makes', async () => {
+    const host = new FakeIssueHost().hasLabels('p1');
+    assert.equal((await label(host, { add: ['p1', 'design'], remove: [] })).done, true);
+    assert.deepEqual(host.labelFileReads, []);
+  });
+
+  it("changes nothing for a missing label the file does not name, nor when the file's read fails", async () => {
+    const other = new FakeIssueHost().holdsLabelFile('acme/web', { kind: 'read', labels: [{ name: 'area:cli', color: '1d76db', description: 'x' }] });
+    assert.deepEqual((await label(other, { add: ['area:cl'], remove: [] })).lines.slice(1), [
+      'FAILED acme/web#7: acme/web has no label "area:cl", and its .github/labels.json does not name it: add it to that file or make it there first, as adding it here would make a new one; nothing was changed',
+    ]);
+    assert.deepEqual(other.calls, []);
+    const broken = new FakeIssueHost().holdsLabelFile('acme/web', { kind: 'failed', reason: 'the .github/labels.json of acme/web does not parse: x' });
+    assert.deepEqual((await label(broken, { add: ['area:cli'], remove: [] })).lines.slice(1), ['FAILED acme/web#7: the .github/labels.json of acme/web does not parse: x; nothing was changed']);
+    assert.deepEqual(broken.calls, []);
   });
 
   it('changes nothing when a label to add is not one of the repository, or its read fails', async () => {
     const typo = new FakeIssueHost().hasLabels('p1');
     assert.deepEqual(await label(typo, { add: ['p1', 'tpye: bug'], remove: ['p2'] }), {
       done: false,
-      lines: ['ACCESS acme: writes as the test', 'FAILED acme/web#7: acme/web has no label "tpye: bug": make it there first, as adding it here would make a new one; nothing was changed'],
+      lines: ['ACCESS acme: writes as the test', 'FAILED acme/web#7: acme/web has no label "tpye: bug", and it has no .github/labels.json: add it to that file or make it there first, as adding it here would make a new one; nothing was changed'],
     });
     assert.deepEqual(typo.calls, []);
     const unread = new FakeIssueHost().failsLabelRead('HTTP 502');
