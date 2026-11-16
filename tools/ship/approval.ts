@@ -4,6 +4,7 @@ import { RefusedError } from '../../src/cli/runtime.ts';
 import { mergeStandingOf, tabCallerOf, type MergeStanding } from '../../src/cli/ship-approval.ts';
 import { ENV, type Env } from '../../src/core/home.ts';
 import { approvedTaskOf } from '../../src/register/approval.ts';
+import { branchTaskOf } from '../../src/worktree/owner.ts';
 import type { VersionFile } from './version-bump.ts';
 
 /**
@@ -15,14 +16,15 @@ export type MergeClearance =
   | { readonly kind: 'self' }
   | { readonly kind: 'approved'; readonly by: string };
 
-const BRANCH_TASK = /^t(\d+)-/;
 const SHA = /^[0-9a-f]{7,40}$/;
 const SHA_RUN = /\b[0-9a-f]{7,40}\b/g;
 
-/** The task a branch is cut for, from its `t<id>-` prefix (`t2788-ship-approval` → `T2788`); null for any other name. */
+/**
+ * The task a branch is cut for, read as the plugin reads it (`branchTaskOf`), so a branch `teamrig worktree add --task`
+ * names by delivery.branches (`fix/t3164-rate-fit`) merges too (T3193); null for a branch named for no task.
+ */
 export function taskOfBranch(branch: string): string | null {
-  const match = BRANCH_TASK.exec(branch);
-  return match === null ? null : `T${match[1]}`;
+  return branchTaskOf(branch) ?? null;
 }
 
 const refused = (reason: string): MergeClearance => ({ kind: 'refused', reason });

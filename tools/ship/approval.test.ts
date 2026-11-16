@@ -40,6 +40,13 @@ describe('taskOfBranch', () => {
     assert.equal(taskOfBranch('fix-t12-thing'), null);
     assert.equal(taskOfBranch('t-12-thing'), null);
   });
+
+  it('reads it from a part of the name, as delivery.branches names a branch, the way worktree remove does (T3193)', () => {
+    assert.equal(taskOfBranch('fix/t3164-rate-fit-after-a-partial-reset-fits'), 'T3164');
+    assert.equal(taskOfBranch('feat/t12-parser'), 'T12');
+    assert.equal(taskOfBranch('team/feat/t7-thing'), 'T7');
+    assert.equal(taskOfBranch('fix/x-t12-thing'), null);
+  });
 });
 
 describe('mergeClearance: the merge needs its approver to have approved the head it merges (T2788)', () => {
