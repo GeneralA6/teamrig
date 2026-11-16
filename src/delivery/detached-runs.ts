@@ -119,7 +119,22 @@ export interface DeadRunPorts {
  * that process ends too: its death is told late, never falsely.
  */
 export async function deadRunsOf(ports: DeadRunPorts, dir: string, team: string): Promise<DeadRun[]> {
-  const dead: DeadRun[] = [];
+  return (await runsOf(ports, dir, team)).filter(({ alive }) => !alive).map(({ path, record }) => ({ path, record }));
+}
+
+/** The runs of `team` in the detached folder `dir` whose process still goes: each waits for its turn or runs. */
+export async function liveRunsOf(ports: DeadRunPorts, dir: string, team: string): Promise<DetachedRunRecord[]> {
+  return (await runsOf(ports, dir, team)).filter(({ alive }) => alive).map(({ record }) => record);
+}
+
+/** A run record of the detached folder and whether its process is alive. */
+interface SeenRun extends DeadRun {
+  readonly alive: boolean;
+}
+
+/** Every readable run record of `team` in `dir`. */
+async function runsOf(ports: DeadRunPorts, dir: string, team: string): Promise<SeenRun[]> {
+  const runs: SeenRun[] = [];
   for (const name of await ports.files.list(dir)) {
     if (!name.endsWith(RUN_RECORD_SUFFIX)) {
       continue;
@@ -127,11 +142,11 @@ export async function deadRunsOf(ports: DeadRunPorts, dir: string, team: string)
     const path = join(dir, name);
     const text = await ports.files.read(path);
     const record = text === undefined ? undefined : parseRunRecord(text);
-    if (record !== undefined && record.team === team && !ports.alive(record.pid)) {
-      dead.push({ path, record });
+    if (record !== undefined && record.team === team) {
+      runs.push({ path, record, alive: ports.alive(record.pid) });
     }
   }
-  return dead;
+  return runs;
 }
 
 /** The line a dead run's session hears: what died, at which stage, and that nothing will report its end. */

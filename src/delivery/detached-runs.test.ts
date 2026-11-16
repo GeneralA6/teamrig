@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { deadRunsOf, DIED_EXIT, diedEndOf, diedText, formatRunRecord, parseRunRecord, RUN_RECORD_FORMAT, runRecordPathOf, type DetachedRunRecord } from './detached-runs.ts';
+import { deadRunsOf, liveRunsOf, DIED_EXIT, diedEndOf, diedText, formatRunRecord, parseRunRecord, RUN_RECORD_FORMAT, runRecordPathOf, type DetachedRunRecord } from './detached-runs.ts';
 import type { QueuedStepRecord } from './ledger.ts';
 
 const DIR = resolve('/', 'deploys', 'detached');
@@ -72,6 +72,21 @@ describe('deadRunsOf', () => {
 
   it('finds none in a folder no run has written to', async () => {
     assert.deepEqual(await deadRunsOf({ files: new MemoryFiles(), alive: () => false }, DIR, 'app'), []);
+  });
+});
+
+describe('liveRunsOf', () => {
+  it("finds only this team's runs whose process still goes, waiting or running", async () => {
+    const path = (id: string): string => runRecordPathOf(DIR, id);
+    const files = new MemoryFiles({
+      [path('dead')]: formatRunRecord({ ...WAITING, id: 'dead', pid: 1 }),
+      [path('running')]: formatRunRecord({ ...RUNNING, id: 'running', pid: 2 }),
+      [path('waiting')]: formatRunRecord({ ...WAITING, id: 'waiting', pid: 4 }),
+      [path('other-team')]: formatRunRecord({ ...WAITING, id: 'other-team', team: 'web', pid: 3 }),
+      [path('torn')]: '{"v":1,',
+    });
+    const live = await liveRunsOf({ files, alive: (pid) => pid !== 1 }, DIR, 'app');
+    assert.deepEqual(live.map(({ id }) => id).sort(), ['running', 'waiting']);
   });
 });
 
