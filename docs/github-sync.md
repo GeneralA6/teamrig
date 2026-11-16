@@ -417,10 +417,15 @@ PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run,
   `--yes` or the automatic push.
 - **A design issue shows none.** An issue labelled `design` is talk about how something should work, not work to
   take until it is agreed: the push takes every `status:` label off it and assigns it to no one, whatever its task's
-  status. Done or dropped still closes it.
+  status. Its task ending never closes it: an `OPEN` line names it, and the maintainers' `Agreed:` ends it.
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
+- **A taker's issue stays theirs.** A done or dropped task closes its issue only when the issue is unassigned or
+  assigned to the team: the logins `github.owners` maps and the account that owns the repository. An issue assigned
+  only to people outside the team is their work, and a task that only took part in it (a comment, an answer) ends
+  without closing it: an `OPEN` line names it, for its taker's pull request or a person to close. A session's second
+  login in `github.owners` reads as outside the team here; map each session to the one login it assigns by.
 - **Someone answers for it.** An open issue of a scheduled task (started, or with a due date), not a design issue,
   no one is assigned to gets an assignee: the login `github.owners` maps to the task's owning session, else the account that owns the
   repository (sessions are not GitHub users). An issue a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may
