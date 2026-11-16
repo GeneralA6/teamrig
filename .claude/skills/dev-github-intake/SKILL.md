@@ -57,6 +57,18 @@ page you point them to.
    our name. Comment on the pull request naming the landed commit, and close it.
 6. Reply as yourself, in plain words, with the next step and its date, and keep each promise in a task.
 
+## Replying: the state with the words
+
+A reply never says more than the thread shows. Every comment goes through `teamrig issue reply`, which sets the
+state first and posts the words last, or nothing when a step fails:
+
+- Taking an issue: `--status 'in progress' --assign <login>`, so it shows claimed and assigned as the words say.
+- Answering it with a pull request: `--status 'in review' --followups <tasks|none> --pr <n>`; the pull request gets
+  a `Closes #<n>` line and the issue's labels.
+- Leaving part for later: `--followup '<title>' --followup-body-file <path>` opens that issue and names it in the
+  comment.
+- On a pull request from outside: label it first (`teamrig issue label`), then reply on it.
+
 ## A design issue
 
 - It is never a task to take: no claim, assignee, branch or pull request until it is agreed. Join the talk by
@@ -86,7 +98,7 @@ CI green on the pull request's head, or edit or delete someone else's comment.
 
 Never post a secret, token or key, a private path, host name or e-mail address, a private log, or a security hole,
 in an issue, a comment, a pull request or a commit. Read your own text for them before each post: `teamrig issue
-comment` refuses a secret it finds, the rest is on you. A security hole someone posted in public is not repeated or
+reply` refuses a secret it finds, the rest is on you. A security hole someone posted in public is not repeated or
 discussed there: tell the maintainer at once, so the comment is hidden and the report moves to a private advisory
 ([SECURITY.md](../../../SECURITY.md)), and reply only with a pointer to it.
 

@@ -20,7 +20,7 @@ should work. Anyone and their agent may give their side; no one takes it as work
    question is a new design issue.
 4. Before posting, take out every secret, token or key, private path, host name, e-mail address and private log
    line. A log goes in cut to the lines that matter, its private values replaced. A teamrig session posts with
-   `teamrig issue comment`, which refuses a secret it finds; the rest of the list is on you.
+   `teamrig issue reply`, which refuses a secret it finds; the rest of the list is on you.
 5. Then wait: no claim, no assignee, no branch, no code and no pull request. Once an `Agreed:` comment sums up the
    decision and the `design` label is off, take the work like any other issue.
 
