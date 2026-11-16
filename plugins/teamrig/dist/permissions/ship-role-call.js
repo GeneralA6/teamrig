@@ -1,8 +1,10 @@
 import { ABSOLUTE } from "./route-kit.js";
 /** The queue's options a ship call may carry; `--kind` must be there. */
 const QUEUE_OPTIONS = new Set(['kind', 'session', 'what', 'task', 'max-minutes', 'detach']);
-/** The queue kinds a ship call runs under. */
-const SHIP_KINDS = new Set(['ship', 'merge']);
+/** The queue kinds a ship call that merges runs under: the ones that take the ship slot. */
+const MERGE_KINDS = new Set(['ship', 'merge']);
+/** The queue kind a ship call without --merge runs under. */
+const REVIEW_KIND = 'test';
 /** The one node flag a ship call may pass: it hides the type-stripping warning, and changes nothing the tool does. */
 const NODE_FLAG = '--disable-warning=ExperimentalWarning';
 /** A commit sha, short or full, as the tool's `--approved` takes it. */
@@ -64,12 +66,15 @@ export function shipRunOf(rest, isShipTool, task) {
 export async function shipCallOf(program, parsed, context) {
     const options = [...parsed.flags.keys(), ...parsed.switches];
     const kind = parsed.flags.get('kind');
-    if (parsed.command !== 'queue' || parsed.help || parsed.positionals.length > 0 || kind === undefined || !SHIP_KINDS.has(kind)) {
+    if (parsed.command !== 'queue' || parsed.help || parsed.positionals.length > 0 || kind === undefined || (!MERGE_KINDS.has(kind) && kind !== REVIEW_KIND)) {
         return undefined;
     }
     if (!options.every((name) => QUEUE_OPTIONS.has(name))) {
         return undefined;
     }
     const run = shipRunOf(parsed.rest, context.isShipTool, parsed.flags.get('task'));
-    return run !== undefined && (await context.ownClient(program)) ? run : undefined;
+    if (run === undefined || run.merges !== MERGE_KINDS.has(kind)) {
+        return undefined;
+    }
+    return (await context.ownClient(program)) ? run : undefined;
 }

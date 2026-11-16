@@ -26,7 +26,7 @@ import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, te
 import { parentLockOf } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
-import { shipTaskOfWords, shipToolOfWords, shipToolPinOf, shipToolStartRefusal } from "../ship-role-check.js";
+import { shipKindRefusal, shipTaskOfWords, shipToolOfWords, shipToolPinOf, shipToolStartRefusal } from "../ship-role-check.js";
 import { postUrgentLine } from "../urgent-line.js";
 import { envSession, markedSessionOf } from "./hook-input.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -108,12 +108,17 @@ async function startRefusal(runtime, gate) {
  * The start check of a step that runs a configured ship tool (T3223): pinned as this run of queue begins, the --detach
  * call, its detached run and a hand-over's run each, so a tool whose checkout is not main's current code is refused
  * before it waits, and one whose checkout moved while it waited is refused at its start. Nothing is taken from the
- * arguments, so no flag can loosen it; a step that runs no ship tool has no check.
+ * arguments, so no flag can loosen it; a step that runs no ship tool has no check. A run whose kind does not fit it,
+ * a merge that would not take the ship slot or a run without --merge that would (T3414), is refused before it waits.
  */
-function shipToolCheckOf(runtime, kit, config, words) {
+function shipToolCheckOf(runtime, kit, config, words, kind) {
     const tool = shipToolOfWords(kit, config, words, runtime.cwd);
     if (tool === undefined) {
         return () => Promise.resolve(undefined);
+    }
+    const misfit = shipKindRefusal(kit, config, words, runtime.cwd, kind);
+    if (misfit !== undefined) {
+        return () => Promise.resolve(misfit);
     }
     const pin = shipToolPinOf(runtime.mergeGit, kit, config, tool);
     // A stale tool's refusal comes from the gate (`refuseUnstartable`), so a detached run refused before it waits still tells its session.
@@ -477,7 +482,7 @@ export async function queue(args, runtime) {
     const lock = hostLockOf(runtime, places.hostLock, delivery.queue, config.open.headroom, teamAdmissionOf(config, () => reloadTeamConfig(runtime, kit)), zone);
     const parent = await parentLockOf(runtime, lock, say);
     const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
-    const gate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone, shipTool: shipToolCheckOf(runtime, kit, config, words) };
+    const gate = { cutoffUtc: delivery.schedule.queueCutoffUtc, pipelineFreezes: places.pipelineFreezes, kind: request.kind, zone, shipTool: shipToolCheckOf(runtime, kit, config, words, request.kind) };
     if (detach) {
         if (parent !== undefined) {
             throw new UsageError('--detach under a live host lock: a step a queued step starts runs at once under its lock, and that step waits for its result; run it without --detach');

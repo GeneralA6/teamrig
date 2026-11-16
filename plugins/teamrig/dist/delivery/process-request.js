@@ -3,7 +3,8 @@ import { classOf } from "../register/focus.js";
 import { TASK_ID } from "../register/model.js";
 /**
  * What kind of work a queued step is: given with `queue --kind`, else read from its command (`kindOfCommand`); merge and
- * deploy name their own, and a ship (a tool that builds, checks, pushes and merges a change) says so with `--kind ship`.
+ * deploy name their own, and a ship tool's merge (it pushes and merges a change) says so with `--kind ship`; its run without --merge only
+ * commits and checks a worktree, so it is `--kind test` (T3414).
  * A step's need is learned from the steps of its kind when its own label has no runs. A new kind goes at the end: an
  * older kit reads a ticket or ledger record of a kind it does not know as naming none.
  */
