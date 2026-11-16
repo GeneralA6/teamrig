@@ -19,7 +19,7 @@ import {
   type SeenMention,
 } from '../../github/mention-route.ts';
 import { securityIssues, type SecurityIssue } from '../../github/security-alert.ts';
-import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
+import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from '../../github/pull-news.ts';
 import { ourLogins } from '../../github/trust.ts';
 import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts';
 import type { IssueHost } from '../../issues/host.ts';
@@ -200,11 +200,19 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
     ends.push(end);
   }
-  const owners = new Map([...(await register.snapshot()).state.tasks.values()].map((task) => [task.id, task.owner]));
+  const finalTasks = [...(await register.snapshot()).state.tasks.values()];
+  const owners = new Map(finalTasks.map((task) => [task.id, task.owner]));
+  const holders = refHolders(finalTasks);
   // Only --auto tells the news, so only it reads the failed jobs' logs for it and writes their excerpts.
   const ci = auto ? await withCiExcerpts({ host, files: runtime.files, dir: kit.paths.githubCi, now: new Date(runtime.clock.now()).toISOString(), ours }, pullNews) : { events: pullNews, lines: [] };
   ci.lines.forEach(say);
-  const news = eventsByRecipient(ci.events, (pull) => pullRecipient(pull, ours, (task) => owners.get(task), watcher));
+  // Checks turning green, and the copies for a linked task's owner and the followers, are activity (github.activity).
+  const heard = config.github.activity ? ci.events : ci.events.filter((event) => event.kind !== 'checks-passing');
+  const news = eventsByRecipient(heard, (pull) => {
+    const recipient = pullRecipient(pull, ours, (task) => owners.get(task), watcher);
+    const ref = issueRef(pull.repo, pull.number);
+    return config.github.activity ? pullListeners(recipient, holders.get(ref)?.owner, followers.get(ref) ?? []) : [{ to: recipient, followed: false }];
+  });
   for (const [to, events] of news) {
     const { text, wake } = pullNewsText(events, ours);
     say(`PULL NEWS ${to}${wake ? ' (wakes)' : ''}: ${text}`);

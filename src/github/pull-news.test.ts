@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { HostPull } from '../issues/pull.ts';
-import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from './pull-news.ts';
+import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient, type PullEvent, type PullWatch } from './pull-news.ts';
 
 const T0 = '2030-01-01T00:00:00Z';
 const T1 = '2030-01-02T00:00:00Z';
@@ -72,8 +72,18 @@ describe('pullEvents', () => {
     const first = pullEvents(watched(1), [turned], []);
     assert.deepEqual(kinds(first.events), ['1 conflict', '1 checks-failing', '1 changes-requested']);
     assert.deepEqual(pullEvents(first.after, [turned], []).events, []);
-    assert.deepEqual(kinds(pullEvents(first.after, [pull(1, { review: 'approved' })], []).events), ['1 approved']);
+    assert.deepEqual(kinds(pullEvents(first.after, [pull(1, { checks: 'failing', review: 'approved' })], []).events), ['1 approved']);
     assert.deepEqual(pullEvents(watched(1), [pull(1, { checks: 'pending', review: 'review-required' })], []).events, []);
+  });
+
+  it('tells checks turning passing from failing or pending, a CI run that ended green, but not from none', () => {
+    const failing = pullEvents(watched(1), [pull(1, { checks: 'failing' })], []).after;
+    assert.deepEqual(kinds(pullEvents(failing, [pull(1)], []).events), ['1 checks-passing']);
+    const pending = pullEvents(watched(1), [pull(1, { checks: 'pending' })], []).after;
+    assert.deepEqual(kinds(pullEvents(pending, [pull(1)], []).events), ['1 checks-passing']);
+    assert.deepEqual(pullEvents(pullEvents(watched(1), [pull(1, { checks: 'none' })], []).after, [pull(1)], []).events, []);
+    const fresh = pull(2, { createdAt: T1, updatedAt: T1 });
+    assert.deepEqual(kinds(pullEvents(watched(1), [fresh, pull(1)], [fresh]).events), ['2 opened']);
   });
 
   it('keeps the last known mergeable while GitHub has not worked it out', () => {
@@ -139,8 +149,25 @@ describe('pullRecipient', () => {
       { kind: 'conflict', pull: pull(2, { head: 't12-a' }) },
       { kind: 'closed', pull: pull(3, { head: 'y' }) },
     ];
-    const grouped = eventsByRecipient(events, (one) => pullRecipient(one, OURS, ownerOf, 'watch'));
+    const grouped = eventsByRecipient(events, (one) => [{ to: pullRecipient(one, OURS, ownerOf, 'watch'), followed: false }]);
     assert.deepEqual([...grouped].map(([to, list]) => [to, list.map((event) => event.pull.number)]), [['watch', [1, 3]], ['bravo', [2]]]);
+  });
+
+  it('gives each follower its own copy of an event, marked followed', () => {
+    const conflict: PullEvent = { kind: 'conflict', pull: pull(2, { head: 't12-a' }) };
+    const grouped = eventsByRecipient([conflict], () => [{ to: 'bravo', followed: false }, { to: 'charlie', followed: true }]);
+    assert.deepEqual(grouped, new Map([['bravo', [conflict]], ['charlie', [{ ...conflict, followed: true }]]]));
+  });
+});
+
+describe('pullListeners', () => {
+  it("lists the recipient, then a linked task's owner and the followers as followers, each session once", () => {
+    assert.deepEqual(pullListeners('bravo', 'alpha', ['charlie', 'bravo', 'alpha']), [
+      { to: 'bravo', followed: false },
+      { to: 'alpha', followed: true },
+      { to: 'charlie', followed: true },
+    ]);
+    assert.deepEqual(pullListeners('watch', undefined, []), [{ to: 'watch', followed: false }]);
   });
 });
 
@@ -168,12 +195,14 @@ describe('pullNewsText', () => {
     assert.equal(pullNewsText([{ kind: 'opened', pull: pull(4, { author: '' }) }], OURS).text, 'GitHub pull requests: gh:acme/web#4 "Change 4": opened by a deleted account');
   });
 
-  it("wakes for an outsider's new pull request, and a conflict or red checks on a session's own", () => {
-    for (const kind of ['merged', 'closed', 'approved', 'opened', 'changes-requested'] as const) {
+  it("wakes for an outsider's new pull request, and a conflict, red checks or changes requested on a session's own", () => {
+    for (const kind of ['merged', 'closed', 'approved', 'opened', 'checks-passing'] as const) {
       assert.equal(pullNewsText([{ kind, pull: pull(1) }], OURS).wake, false, kind);
     }
+    assert.equal(pullNewsText([{ kind: 'checks-passing', pull: pull(1, { head: 't12-fix' }) }], OURS).wake, false);
     assert.equal(pullNewsText([{ kind: 'opened', pull: pull(1, { authorAssociation: 'CONTRIBUTOR' }) }], OURS).wake, true);
-    for (const kind of ['conflict', 'checks-failing'] as const) {
+    for (const kind of ['conflict', 'checks-failing', 'changes-requested'] as const) {
+      assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix' }), followed: true }], OURS).wake, false, `${kind} told to a follower`);
       assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix' }) }], OURS).wake, true, kind);
       assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 'main-hotfix' }) }], OURS).wake, false, `${kind} on a branch naming no task`);
       assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix', fork: true, authorAssociation: 'NONE' }) }], OURS).wake, false, `${kind} on an outsider's fork`);

@@ -28,13 +28,15 @@ export interface PullWatch {
 }
 
 /** What happened to a pull request between two reads. */
-export type PullEventKind = 'opened' | 'merged' | 'closed' | 'conflict' | 'checks-failing' | 'approved' | 'changes-requested';
+export type PullEventKind = 'opened' | 'merged' | 'closed' | 'conflict' | 'checks-failing' | 'checks-passing' | 'approved' | 'changes-requested';
 
 export interface PullEvent {
   readonly kind: PullEventKind;
   readonly pull: HostPull;
   /** For failing checks of a session's own pull request: the file its failed jobs' log ends went to (ci-excerpt.ts). */
   readonly ci?: CiExcerpt;
+  /** A copy of the event for a session that only follows the pull request (`eventsByRecipient`): it never wakes. */
+  readonly followed?: true;
 }
 
 /** Where a pull request's failed jobs' log ends were written, and each job's name and failed step (undefined when unread). */
@@ -59,7 +61,8 @@ const FRESH = { mergeable: 'mergeable', checks: 'none', review: 'none' } as cons
  * With no `before` (the first read of a repository) nothing is news: it only marks, so the history is never replayed.
  * An open one with no mark opened since the cursor, unless it was opened before it (reopened, or past an open read
  * cut at its limit): that one is marked silently. A conflict, failing checks or a review state is news when it
- * starts, never again while it lasts; GitHub's `unknown` mergeable (not worked out yet) keeps the last known value. A
+ * starts, never again while it lasts; checks turning passing from failing or pending (a CI run that ended green) are
+ * news too, from none (no run seen) not; GitHub's `unknown` mergeable (not worked out yet) keeps the last known value. A
  * merged or closed one is news when it was marked open, or ended after the cursor. A mark of one neither open nor
  * ended in this read is dropped, as an open read cut at its limit leaves it out; it marks again silently when read.
  */
@@ -104,6 +107,7 @@ function changes(last: PullMark, now: PullMark): PullEventKind[] {
   return [
     ...(now.mergeable === 'conflicting' && last.mergeable !== 'conflicting' ? ['conflict' as const] : []),
     ...(now.checks === 'failing' && last.checks !== 'failing' ? ['checks-failing' as const] : []),
+    ...(now.checks === 'passing' && (last.checks === 'failing' || last.checks === 'pending') ? ['checks-passing' as const] : []),
     ...(now.review !== last.review && now.review === 'approved' ? ['approved' as const] : []),
     ...(now.review !== last.review && now.review === 'changes-requested' ? ['changes-requested' as const] : []),
   ];
@@ -129,17 +133,39 @@ export function pullRecipient(pull: HostPull, ours: OurLogins, ownerOf: (task: s
   return (task === undefined ? undefined : ownerOf(task)) ?? watcher;
 }
 
+/** One session that hears about a pull request, and whether it only follows it (its copy never wakes). */
+export interface PullListener {
+  readonly to: string;
+  readonly followed: boolean;
+}
+
+/**
+ * Everyone who hears about a pull request: its `recipient` (`pullRecipient`), then the `holder`, the owner of a task
+ * whose ref links it, and its `followers` (follows.ts), those two as followers: the pull request's needs are its
+ * recipient's to wake for. A session is listed once, as the first it is.
+ */
+export function pullListeners(recipient: string, holder: string | undefined, followers: readonly string[]): PullListener[] {
+  const listeners: PullListener[] = [{ to: recipient, followed: false }];
+  for (const to of [...(holder === undefined ? [] : [holder]), ...followers]) {
+    if (!listeners.some((listener) => listener.to === to)) {
+      listeners.push({ to, followed: true });
+    }
+  }
+  return listeners;
+}
+
 /** The task one of our authors' own branch of the repository names (`t<id>-...`); undefined for a fork, anyone else or another branch name. */
 export function ownBranchTask(pull: HostPull, ours: OurLogins): string | undefined {
   return pull.fork || !isOurAuthor(pull.authorAssociation, pull.author, ours) ? undefined : branchTaskOf(pull.head);
 }
 
-/** The events of each recipient, in the order first seen (`pullRecipient`). */
-export function eventsByRecipient(events: readonly PullEvent[], recipientOf: (pull: HostPull) => string): Map<string, PullEvent[]> {
+/** The events of each listener, in the order first seen (`pullListeners`); a follower gets its own copy, marked `followed`. */
+export function eventsByRecipient(events: readonly PullEvent[], listenersOf: (pull: HostPull) => readonly PullListener[]): Map<string, PullEvent[]> {
   const byRecipient = new Map<string, PullEvent[]>();
   for (const event of events) {
-    const to = recipientOf(event.pull);
-    byRecipient.set(to, [...(byRecipient.get(to) ?? []), event]);
+    for (const { to, followed } of listenersOf(event.pull)) {
+      byRecipient.set(to, [...(byRecipient.get(to) ?? []), followed ? { ...event, followed: true } : event]);
+    }
   }
   return byRecipient;
 }
@@ -158,6 +184,7 @@ const EVENT_WORDS: Readonly<Record<PullEventKind, string>> = {
   closed: 'closed unmerged',
   conflict: 'conflicts with its base',
   'checks-failing': 'checks failing',
+  'checks-passing': 'checks passing',
   approved: 'approved',
   'changes-requested': 'changes requested',
 };
@@ -172,10 +199,11 @@ export interface PullNews {
  * The inbox line for `events`, one entry per pull request in the order first seen, at most NAMED_PULLS named and
  * the rest counted. A title is outside input: quoted, as data, and cut short. Failing checks with an excerpt name
  * each failed job and step, quoted and cut the same way, and the file holding its log's end. It wakes the session only for what
- * needs its hand now (T3021 section 3): an outsider's new pull request, and a conflict or failing checks on a
- * session's own pull request (one of our authors' branch that names a task, `ownBranchTask`). The rest (a merge, a
- * close, a review, an outsider's conflict or red checks, which are the outsider's to fix) waits for the session's
- * next turn. Anyone not one of `ours` counts as an outsider, a collaborator too.
+ * needs its hand now (T3021 section 3): an outsider's new pull request, and a conflict, failing checks or changes
+ * requested on a session's own pull request (one of our authors' branch that names a task, `ownBranchTask`). The rest
+ * (a merge, a close, an approval, checks passing, an outsider's conflict or red checks, which are the outsider's to
+ * fix, and anything a follower hears) waits for the session's next turn. Anyone not one of `ours` counts as an
+ * outsider, a collaborator too.
  */
 export function pullNewsText(events: readonly PullEvent[], ours: OurLogins): PullNews {
   const byPull = new Map<string, { pull: HostPull; events: PullEvent[] }>();
@@ -189,7 +217,7 @@ export function pullNewsText(events: readonly PullEvent[], ours: OurLogins): Pul
   const more = entries.length - NAMED_PULLS;
   return {
     text: `GitHub pull requests: ${entries.slice(0, NAMED_PULLS).join('; ')}${more > 0 ? `; and ${more} more` : ''}`,
-    wake: events.some(({ kind, pull }) => wakes(kind, pull, ours)),
+    wake: events.some(({ kind, pull, followed }) => followed !== true && wakes(kind, pull, ours)),
   };
 }
 
@@ -200,11 +228,12 @@ function wakes(kind: PullEventKind, pull: HostPull, ours: OurLogins): boolean {
       return !isOurAuthor(pull.authorAssociation, pull.author, ours);
     case 'conflict':
     case 'checks-failing':
+    case 'changes-requested':
       return ownBranchTask(pull, ours) !== undefined;
     case 'merged':
     case 'closed':
+    case 'checks-passing':
     case 'approved':
-    case 'changes-requested':
       return false;
   }
 }

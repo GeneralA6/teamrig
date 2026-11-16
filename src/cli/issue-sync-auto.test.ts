@@ -335,10 +335,27 @@ describe('teamrig issue sync --auto, the activity on a task\'s or a followed ite
     assert.equal(githubLines(kit, 'charlie').length, 1);
   });
 
-  it('tells no activity while github.activity is off', async () => {
+  /** An outsider's pull request #9, first with its checks running, then green with changes requested. */
+  const outsidePull = (checks: 'PENDING' | 'SUCCESS', reviewDecision: 'CHANGES_REQUESTED' | null, updatedAt: string): JsonRecord =>
+    ghPull('acme/web', 9, { head: 'feature', author: 'visitor', authorAssociation: 'CONTRIBUTOR', checks, reviewDecision, updatedAt });
+
+  it("tells a pull request's news to its recipient, and unwoken to the owner of a task linking it and its followers, green checks too", async () => {
+    const kit = await linkedTeam(ACTIVITY_TEAM);
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [outsidePull('PENDING', null, '2030-01-01T00:00:00Z')]));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [outsidePull('SUCCESS', 'CHANGES_REQUESTED', '2030-01-02T00:00:00Z')]));
+    const news = 'GitHub pull requests: gh:acme/web#9 "Change 9": checks passing, changes requested';
+    for (const id of ['lead', 'alpha', 'charlie']) {
+      assert.deepEqual(githubLines(kit, id), [news], id);
+      assert.equal(await asks(kit, id), 0, id);
+    }
+  });
+
+  it('tells no activity while github.activity is off: no posts, no green checks, no copies for a linked task or a follower', async () => {
     const kit = await linkedTeam({ ...ACTIVITY_TEAM, github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, activity: false } });
-    await run(kit, new FakeGh().holds('acme/web', []));
-    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', [ask]));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [outsidePull('PENDING', null, '2030-01-01T00:00:00Z')]));
+    const pull = outsidePull('SUCCESS', 'CHANGES_REQUESTED', '2030-01-02T00:00:00Z');
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [pull]).holdsPosts('acme/web', 'issues/comments', [ask]));
+    assert.deepEqual(githubLines(kit, 'lead'), ['GitHub pull requests: gh:acme/web#9 "Change 9": changes requested']);
     assert.deepEqual(githubLines(kit, 'alpha'), []);
     assert.deepEqual(githubLines(kit, 'charlie'), []);
   });
