@@ -15,6 +15,7 @@ import {
   type SyncRun,
   type SyncState,
 } from '../../github/auto.ts';
+import { issueChangeLine, issueRoutesBySession } from '../../github/issue-marks.ts';
 import { issueRef } from '../../github/map.ts';
 import { mentionCutLine, mentionLine, wakeRoutes } from '../../github/mention-route.ts';
 import { pullNewsText } from '../../github/pull-news.ts';
@@ -70,7 +71,8 @@ async function writableState(runtime: CliRuntime, kit: Kit): Promise<SyncState |
  * (`leftOutNews`), and one to each session with pull request news (`pullNewsText`), which also wakes it when
  * the news needs a hand soon and the team has wake on, and one to the routed session for each mention of one of ours
  * (mention-route.ts), which wakes it at most once per item every MENTION_WAKE_GAP_MINUTES, one to each session told
- * the activity on a task's or a followed item (activity.ts), which wakes it for a question within the same gap, and one to the watcher for a
+ * the activity on a task's or a followed item (activity.ts), which wakes it for a question within the same gap, one to
+ * each session told a watched issue's close, reopen or labels (issue-marks.ts), never woken, and one to the watcher for a
  * repository whose posts it could not read through. It gives a line for each inbox line that was refused, such as an
  * issue title that matches a secret pattern.
  */
@@ -101,6 +103,9 @@ export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitC
   const wokenQuestions = new Set(questions.filter((_, index) => wakes[run.mentionRoutes.length + index] ?? false));
   for (const [to, routes] of routesBySession(run.activityRoutes)) {
     posts.push({ to, text: activityLine(routes), wake: routes.some((route) => wokenQuestions.has(route)) });
+  }
+  for (const [to, routes] of issueRoutesBySession(run.issueRoutes)) {
+    posts.push({ to, text: issueChangeLine(routes), wake: false });
   }
   const watcher = config.github.watcher ?? config.roles.lead;
   for (const [repo, cutAt] of run.mentionCuts) {

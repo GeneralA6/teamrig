@@ -3,6 +3,7 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { activityRoutes, type ActivityAudience, type ActivityRoute } from '../../github/activity.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
 import { followersOf, parseFollows } from '../../github/follows.ts';
+import { issueMarkStep, type IssueAudience, type IssueChangeRoute, type IssueMark } from '../../github/issue-marks.ts';
 import { importRules, issueOwner, issueRef } from '../../github/map.ts';
 import { importedTasks, linkedRefs, planSync, refHolders, type SyncPlan, type SyncStep } from '../../github/plan.ts';
 import { withCiExcerpts } from '../../github/ci-excerpt.ts';
@@ -25,6 +26,7 @@ import { applySteps, closedSince, type StepOutcome } from '../../github/sync.ts'
 import type { IssueHost } from '../../issues/host.ts';
 import type { HostPull } from '../../issues/pull.ts';
 import { autoPushWrites, sessionLogins } from '../../issues/status-push.ts';
+import type { Task } from '../../register/fold.ts';
 import { priorityText } from '../../register/model.ts';
 import { GITHUB_ACTOR } from '../../register/policy.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -108,6 +110,9 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   const mentionRoutes: MentionRoute[] = [];
   const mentionCuts = new Map<string, string>();
   const activity: ActivityRoute[] = [];
+  const lastIssues = last?.issues ?? new Map<string, ReadonlyMap<number, IssueMark>>();
+  const issueMarks = new Map<string, ReadonlyMap<number, IssueMark>>();
+  const issueRoutes: IssueChangeRoute[] = [];
   // Read once, without the lock: a follow made while this run reads is heard from the next run.
   const followers = auto && config.github.activity ? followersOf(parseFollows((await runtime.files.read(kit.paths.githubFollows)) ?? '')) : new Map<string, string[]>();
   const ours = ourLogins(config.github);
@@ -148,6 +153,15 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     // A security issue goes to its task's owner, else where the import would route it; an outsider's left-out report too.
     security.set(repo, securityIssues(read.issues, (issue) => imported.get(issueRef(issue.repo, issue.number))?.owner ?? issueOwner(issue, rules)));
     leftOut.set(repo, plan.leftOut);
+    // The tasks holding each ref before this run wrote, so a close that finishes a task now is news to its owner.
+    const holders = refHolders(tasks);
+    if (auto && config.github.activity) {
+      const audienceOf = (number: number): IssueAudience => issueAudience(holders.get(issueRef(repo, number)), followers.get(issueRef(repo, number)) ?? []);
+      const marked = issueMarkStep(repo, read.issues, lastIssues.get(repo) ?? new Map<number, IssueMark>(), audienceOf, routing);
+      issueMarks.set(repo, marked.after);
+      issueRoutes.push(...marked.routes);
+      marked.routes.forEach((route) => say(`ISSUE NEWS ${route.to}: ${route.ref} ${route.changes.join(', ')}`));
+    }
     const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
     let end: RepoEnd = 'ok';
     if (write) {
@@ -179,7 +193,6 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     pulls.set(repo, watch.after);
     pullNews.push(...watch.events);
     if (auto) {
-      const holders = refHolders(tasks);
       const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => holders.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
       const audienceOf = config.github.activity ? (number: number): ActivityAudience => ({ owner: items(number).taskOwner, followers: followers.get(issueRef(repo, number)) ?? [] }) : undefined;
       const scan = await readMentions(host, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing, audienceOf });
@@ -253,7 +266,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     }
   }
   if (auto) {
-    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security, mentions, mentionRoutes, mentionCuts, activityRoutes: activity })).forEach(say);
+    (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security, mentions, mentionRoutes, mentionCuts, activityRoutes: activity, issues: issueMarks, issueRoutes })).forEach(say);
   } else if (news.size > 0) {
     say(`NOTE only ${KIT_NAME} issue sync --auto tells the pull request news and keeps what it read, so the next run names it again`);
   }
@@ -409,4 +422,9 @@ export function stepLine(step: SyncStep, id: string): string {
     case 'status':
       return `SET ${id} ${step.ref} ${step.input.status}: ${step.input.note ?? ''}`;
   }
+}
+
+/** Who hears of an issue's close, reopen and labels: the owner of the task holding it, finished once done or dropped, and its followers. */
+function issueAudience(task: Pick<Task, 'owner' | 'status'> | undefined, followers: readonly string[]): IssueAudience {
+  return { owner: task === undefined ? undefined : { to: task.owner, finished: task.status === 'done' || task.status === 'dropped' }, followers };
 }

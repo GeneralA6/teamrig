@@ -37,6 +37,7 @@ describe('teamrig issue sync --auto', () => {
     const first = kit.clock.now();
     // acme/web's scan starts at the first run, acme/api's at the first that reads it: both at this third run's time,
     // since the second read of acme/web goes on from the time it was asked.
+    const OPEN_BARE = { open: true, labels: [] };
     const SCAN_START = { cursor: '2030-01-08T10:30:00Z', seen: new Map() };
     const failing = (): FakeGh => new FakeGh().holds('acme/web', issues).answers('acme/api', REFUSED);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: failing() })).code, EXIT.failed);
@@ -53,7 +54,7 @@ describe('teamrig issue sync --auto', () => {
     kit.clock.advance(15 * MINUTE);
     assert.equal((await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', issues).holds('acme/api', []) })).code, EXIT.ok);
     assert.equal(githubLines(kit, 'lead')[2], 'GitHub sync reads every repository again (acme/api failed before)');
-    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map(), mentions: new Map([['acme/web', SCAN_START], ['acme/api', SCAN_START]]), mentionWakes: new Map() });
+    assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? ''), { startedAt: first, finishedAt: kit.clock.now(), failing: [], leftOut: new Map(), pulls: new Map([['acme/web', NO_PULLS], ['acme/api', NO_PULLS]]), paged: new Map(), mentions: new Map([['acme/web', SCAN_START], ['acme/api', SCAN_START]]), mentionWakes: new Map(), issues: new Map([['acme/web', new Map([[7, OPEN_BARE], [8, OPEN_BARE]])], ['acme/api', new Map()]]) });
   });
 
   it("tells the lead an outsider's issue it left out once, again only for a new one, also across a failed read", async () => {
@@ -349,6 +350,21 @@ describe('teamrig issue sync --auto, the activity on a task\'s or a followed ite
     assert.equal(await asks(kit, 'alpha'), 0);
   });
 
+  /** Issue #9 open with a bug label, then closed with help wanted instead. */
+  const openNine = ghIssue('acme/web', 9, { title: 'Fix login', labels: ['bug'] });
+  const closedNine = ghIssue('acme/web', 9, { title: 'Fix login', labels: ['help wanted'], state: 'CLOSED', closedAt: '2030-01-08T10:00:00Z', updatedAt: '2030-01-08T10:00:00Z' });
+
+  it("tells a watched issue's close and labels to its task's owner and its follower, unwoken, once", async () => {
+    const kit = await linkedTeam(ACTIVITY_TEAM);
+    await run(kit, new FakeGh().holds('acme/web', [openNine]));
+    await run(kit, new FakeGh().holds('acme/web', [closedNine]));
+    await run(kit, new FakeGh().holds('acme/web', [closedNine]));
+    const news = 'GitHub issue changes: gh:acme/web#9 closed, labelled "help wanted", unlabelled "bug"';
+    assert.deepEqual(githubLines(kit, 'alpha'), [news]);
+    assert.deepEqual(githubLines(kit, 'charlie'), [news]);
+    assert.deepEqual([await asks(kit, 'alpha'), await asks(kit, 'charlie')], [0, 0]);
+  });
+
   /** An outsider's pull request #9, first with its checks running, then green with changes requested. */
   const outsidePull = (checks: 'PENDING' | 'SUCCESS', reviewDecision: 'CHANGES_REQUESTED' | null, updatedAt: string): JsonRecord =>
     ghPull('acme/web', 9, { head: 'feature', author: 'visitor', authorAssociation: 'CONTRIBUTOR', checks, reviewDecision, updatedAt });
@@ -364,11 +380,11 @@ describe('teamrig issue sync --auto, the activity on a task\'s or a followed ite
     }
   });
 
-  it('tells no activity while github.activity is off: no posts, no green checks, no copies for a linked task or a follower', async () => {
+  it('tells no activity while github.activity is off: no posts, no issue changes, no green checks, no copies for a linked task or a follower', async () => {
     const kit = await linkedTeam({ ...ACTIVITY_TEAM, github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, activity: false } });
-    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [outsidePull('PENDING', null, '2030-01-01T00:00:00Z')]));
+    await run(kit, new FakeGh().holds('acme/web', [openNine]).holdsPulls('acme/web', [outsidePull('PENDING', null, '2030-01-01T00:00:00Z')]));
     const pull = outsidePull('SUCCESS', 'CHANGES_REQUESTED', '2030-01-02T00:00:00Z');
-    await run(kit, new FakeGh().holds('acme/web', []).holdsPulls('acme/web', [pull]).holdsPosts('acme/web', 'issues/comments', [ask]));
+    await run(kit, new FakeGh().holds('acme/web', [closedNine]).holdsPulls('acme/web', [pull]).holdsPosts('acme/web', 'issues/comments', [ask]));
     assert.deepEqual(githubLines(kit, 'lead'), ['GitHub pull requests: gh:acme/web#9 "Change 9": changes requested']);
     assert.deepEqual(githubLines(kit, 'alpha'), []);
     assert.deepEqual(githubLines(kit, 'charlie'), []);
