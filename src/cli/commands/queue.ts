@@ -30,7 +30,7 @@ import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, te
 import { parentLockOf } from '../parent-lock.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
-import { shipToolOfWords, shipToolPinOf, shipToolStartRefusal } from '../ship-role-check.ts';
+import { shipTaskOfWords, shipToolOfWords, shipToolPinOf, shipToolStartRefusal } from '../ship-role-check.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { envSession, markedSessionOf } from './hook-input.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -100,6 +100,15 @@ function declaredMbOf(args: ParsedArgs): number | undefined {
 /** What the step asks for besides its label, recorded on its start and refusal records. */
 function requestOf(args: ParsedArgs, words: readonly string[], what: string): ProcessRequest {
   return processRequest(kindOf(args, words), taskOf(args, what));
+}
+
+/**
+ * `request`, given the task its ship tool ships (`shipped`) when neither `--task` nor its label names one (T3286): a
+ * ship line names none, so its ticket would take the default class and no priority. Read only for a step that queues.
+ */
+function withShipTask(request: ProcessRequest, shipped: () => string | undefined): ProcessRequest {
+  const task = request.task ?? shipped();
+  return task === request.task ? request : processRequest(request.kind, task);
 }
 
 /**
@@ -601,7 +610,8 @@ export async function queue(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     await refuseUnstartable(runtime, gate);
     // The register is read only for a step that queues: a nested step or one refused at once records nothing.
     const register = new JsonlEventLog(runtime.files, kit.paths.events);
-    const line = await lineRequestOf(request, async (id) => (await register.read()).state.tasks.get(id), config.focus);
+    const shipped = withShipTask(request, () => shipTaskOfWords(runtime.mergeGit, kit, config, words, runtime.cwd));
+    const line = await lineRequestOf(shipped, async (id) => (await register.read()).state.tasks.get(id), config.focus);
     // Only the ticket carries the class for now: the ledger's start and refusal records keep the fields their readers take.
     const owner: StepOwner = { session, ...processRequest(line.kind, line.task, line.priority) };
     const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());

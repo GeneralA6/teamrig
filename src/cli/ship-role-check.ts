@@ -101,7 +101,26 @@ export interface ShipToolPin {
 
 /** The configured ship tool a step's words run, each word read from the step's folder; undefined when they run none. */
 export function shipToolOfWords(kit: Kit, config: KitConfig, words: readonly string[], cwd: string): string | undefined {
-  return words.map((word) => (isAbsolute(word) ? word : resolve(cwd, word))).find((word) => shipRepoOf(kit, config, word) !== undefined);
+  return words.map((word) => placeOfWord(word, cwd)).find((word) => shipRepoOf(kit, config, word) !== undefined);
+}
+
+/** A step's word as a place: as it is when absolute, else read from the step's folder `cwd`. */
+function placeOfWord(word: string, cwd: string): string {
+  return isAbsolute(word) ? word : resolve(cwd, word);
+}
+
+/**
+ * The task a step that runs a configured ship tool ships (T3286): the one its worktree's branch names, the worktree
+ * being the word after the tool (after its `merge` in the merge form), read from the step's folder. A ship line names
+ * no task of its own, so its ticket takes this one's priority and class; undefined for a step that runs no ship tool
+ * or a worktree on no task branch.
+ */
+export function shipTaskOfWords(git: MergeGit, kit: Kit, config: KitConfig, words: readonly string[], cwd: string): string | undefined {
+  const at = words.findIndex((word) => shipRepoOf(kit, config, placeOfWord(word, cwd)) !== undefined);
+  const [first, second] = at < 0 ? [] : words.slice(at + 1);
+  const worktree = first === 'merge' ? second : first;
+  const branch = worktree === undefined ? undefined : git.checkoutOf(placeOfWord(worktree, cwd))?.branch;
+  return branch === undefined ? undefined : taskBranchOf(branch, config.pushGuard.protectedBranches);
 }
 
 /** A stale or changed ship tool's refusal: what it is not, and how to move its checkout to the newest main. */

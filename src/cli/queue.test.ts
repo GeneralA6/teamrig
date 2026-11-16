@@ -1244,3 +1244,40 @@ describe("teamrig queue runs a configured ship tool only from main's current cod
     assert.deepEqual([result.code, steps.ran.length], [EXIT.ok, 1]);
   });
 });
+
+describe("teamrig queue gives a ship step the task its worktree's branch names (T3286)", () => {
+  const WORKTREE = '/repo/app/.claude/worktrees/t1-cli';
+  const PLAN = '/tasks/T1/plan.json';
+
+  /** The ship tool's checkout at main's current code, with the worktree on `branch` (undefined: a detached HEAD). */
+  function worktreeGit(branch: string | undefined): FakeMergeGit {
+    const git = shipGit();
+    git.checkouts.set(WORKTREE, { top: WORKTREE, branch, mainCheckout: MAIN_CHECKOUT, linked: true });
+    return git;
+  }
+
+  /** The task each of the ledger's records names, in order. */
+  function tasksOf(kit: CliHarness): unknown[] {
+    return ledgerOf(kit).map((record) => (typeof record === 'object' && record !== null && 'task' in record ? record.task : undefined));
+  }
+
+  for (const [label, flags, tool, branch, task] of [
+    ['a ship whose line names no task', ['--kind', 'ship'], [WORKTREE, PLAN], 'feat/t1-cli', 'T1'],
+    ['a merge in the merge form', ['--kind', 'merge'], ['merge', WORKTREE, '--approved', 'abc1234'], 'feat/t1-cli', 'T1'],
+    ['a ship whose --task names another, which wins', ['--kind', 'ship', '--task', 'T9'], [WORKTREE, PLAN], 'feat/t1-cli', 'T9'],
+    ['a worktree on no task branch, with none', ['--kind', 'ship'], [WORKTREE, PLAN], 'release-notes', undefined],
+    ['a worktree on a detached HEAD, with none', ['--kind', 'ship'], [WORKTREE, PLAN], undefined, undefined],
+  ] as const) {
+    it(`records on its start and end records the task of ${label}`, async () => {
+      const { kit, steps } = harness(SHIPPING);
+      const result = await kit.run(['queue', '--session', 'alpha', '--what', 'teamrig ship', ...flags, '--', 'node', SHIP_TOOL, ...tool], { steps, mergeGit: worktreeGit(branch) });
+      assert.deepEqual([result.code, tasksOf(kit)], [EXIT.ok, [task, task]]);
+    });
+  }
+
+  it('names no task for a step that runs no ship tool, whatever the branch of a folder it names', async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const result = await kit.run(['queue', '--session', 'alpha', '--what', 'checks', '--', 'node', '/repo/other/run.ts', WORKTREE, PLAN], { steps, mergeGit: worktreeGit('feat/t1-cli') });
+    assert.deepEqual([result.code, tasksOf(kit)], [EXIT.ok, [undefined, undefined]]);
+  });
+});
