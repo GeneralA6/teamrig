@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parsePlan, parseShipArgs, withPlanVersion, withRaisedVersion } from './ship-plan.ts';
+import { isRaiseOnly, parsePlan, parseShipArgs, withPlanVersion, withRaiseLast, withRaisedVersion } from './ship-plan.ts';
 
 test('reads a ship\'s repo, plan and base, merging only when asked', () => {
   assert.deepEqual(parseShipArgs(['C:/w', 'C:/s/plan.json']), { repo: 'C:/w', plan: 'C:/s/plan.json', base: 'origin/main', merge: false, noteFile: null, approved: null });
@@ -70,4 +70,22 @@ test('keeps the plan when it names the version the files set, raises no version,
   assert.deepEqual(withRaisedVersion([noRaise], VERSION_PATHS, '0.89.1'), [noRaise]);
   const unnamed = { files: ['src/core/version.ts'], subject: 'plugin: raise the version', body: 'from 0.88.1' };
   assert.deepEqual(withRaisedVersion([unnamed], VERSION_PATHS, '0.89.1'), [unnamed]);
+});
+
+const VERSIONS = ['plugins/teamrig/.claude-plugin/plugin.json', 'src/core/version.ts'];
+const WORK_A = { files: ['src/a.ts'], subject: 'core: a', body: 'a' };
+const WORK_B = { files: ['docs/b.md'], subject: 'docs: b', body: 'b' };
+const RAISE = { files: VERSIONS, subject: 'plugin: version 0.2.0, a', body: 'raise' };
+const MIXED = { files: ['src/c.ts', 'src/core/version.ts'], subject: 'core: c', body: 'c' };
+
+test('isRaiseOnly: a chunk of version files only, not one that also commits other files', () => {
+  assert.equal(isRaiseOnly(RAISE, VERSIONS), true);
+  assert.equal(isRaiseOnly(MIXED, VERSIONS), false);
+  assert.equal(isRaiseOnly(WORK_A, VERSIONS), false);
+});
+
+test('withRaiseLast moves the version-only chunks after the rest, each side in its own order', () => {
+  assert.deepEqual(withRaiseLast([WORK_A, RAISE, WORK_B], VERSIONS), [WORK_A, WORK_B, RAISE]);
+  assert.deepEqual(withRaiseLast([RAISE, MIXED, WORK_A], VERSIONS), [MIXED, WORK_A, RAISE]);
+  assert.deepEqual(withRaiseLast([WORK_A, WORK_B], VERSIONS), [WORK_A, WORK_B]);
 });

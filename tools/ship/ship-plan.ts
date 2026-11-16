@@ -96,3 +96,15 @@ export function withRaisedVersion(chunks: readonly Chunk[], versionPaths: readon
   const named = raise === undefined ? undefined : FIRST_VERSION.exec(raise.subject)?.[0];
   return named === undefined || named === sets ? [...chunks] : withPlanVersion(chunks, { from: named, to: sets });
 }
+
+/** Whether a chunk commits only version files: the version raise, which every run sets again on its own base. */
+export const isRaiseOnly = (chunk: Chunk, versionPaths: readonly string[]): boolean => chunk.files.every((path) => versionPaths.includes(path));
+
+/**
+ * The plan with each chunk that commits only version files moved after the others, their order kept otherwise. The
+ * raise and the dist are then the branch's newest commits, so a run without --merge can take them back and leave the
+ * work alone on the head its approver reviews.
+ */
+export function withRaiseLast(chunks: readonly Chunk[], versionPaths: readonly string[]): Chunk[] {
+  return [...chunks.filter((chunk) => !isRaiseOnly(chunk, versionPaths)), ...chunks.filter((chunk) => isRaiseOnly(chunk, versionPaths))];
+}

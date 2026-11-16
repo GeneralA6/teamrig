@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import type { MergeClearance, WorkCommit } from './approval.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
-import { DIST, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
+import { DIST, leaveForReview, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
 import type { Chunk, ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
 
@@ -43,6 +47,8 @@ interface Fake {
   /** Every command, git call, gate run, push and merge, in order. */
   readonly events: string[];
   readonly logs: string[];
+  /** The subjects of the plan each take back was given, in order. */
+  readonly takenBack: string[][];
 }
 
 /** The branch and head every fake run has checked out, read by a --merge run's clearance. */
@@ -52,6 +58,7 @@ const BRANCH_ANSWERS: Readonly<Record<string, string>> = { 'rev-parse --abbrev-r
 function fake(options: FakeOptions = {}): Fake {
   const events: string[] = [];
   const logs: string[] = [];
+  const takenBack: string[][] = [];
   let merges = 0;
   let looks = 0;
   let patches = 0;
@@ -73,6 +80,7 @@ function fake(options: FakeOptions = {}): Fake {
     log: (line) => logs.push(line),
     takeBack: (chunks, base) => {
       events.push(`take back ${chunks.length} chunk(s) since ${base}`);
+      takenBack.push(chunks.map((chunk) => chunk.subject));
     },
     sync: () => {
       events.push('sync');
@@ -111,7 +119,7 @@ function fake(options: FakeOptions = {}): Fake {
       return options.work?.[rev] ?? [];
     },
   };
-  return { deps, events, logs };
+  return { deps, events, logs, takenBack };
 }
 
 const committed = (subject: string, body: string, ...extra: string[]): string =>
@@ -152,10 +160,9 @@ test('commits a rebuilt dist apart, with a Large-commit line only when it goes o
 });
 
 /** A plan whose last chunk raises the version, named in its subject as SKILL.md writes it. */
-const RAISING: readonly Chunk[] = [
-  { files: ['src/a.ts'], subject: 'core: a', body: 'why a, since 0.134.0' },
-  { files: ['plugins/teamrig/.claude-plugin/plugin.json', 'src/core/version.ts'], subject: 'plugin: version 0.134.0, a', body: 'raises 0.134.0' },
-];
+const WORK: Chunk = { files: ['src/a.ts'], subject: 'core: a', body: 'why a, since 0.134.0' };
+const RAISE: Chunk = { files: ['plugins/teamrig/.claude-plugin/plugin.json', 'src/core/version.ts'], subject: 'plugin: version 0.134.0, a', body: 'raises 0.134.0' };
+const RAISING: readonly Chunk[] = [WORK, RAISE];
 
 test('sets the version raise again in the chunks when the sync rebased onto a main with a newer version', async () => {
   const { deps, events } = fake({ sync: { kind: 'rebased', onto: 'def5678', sets: '0.135.0' } });
@@ -176,6 +183,96 @@ test('keeps the plan as written when the files set the version it names', async 
   const { deps, events } = fake({ sync: { kind: 'rebased', onto: 'def5678', sets: '0.134.0' } });
   await shipCommits(ARGS, RAISING, deps);
   assert.ok(events.includes(committed('plugin: version 0.134.0, a', 'raises 0.134.0')));
+});
+
+const VERSION_FILES = 'plugins/teamrig/.claude-plugin/plugin.json src/core/version.ts';
+/** RAISING as a session may write it, the raise first: the ship commits it after the work all the same. */
+const RAISE_FIRST: readonly Chunk[] = [RAISE, WORK];
+const DIST_STAT = `3\t1\t${DIST}/a.js\n`;
+
+test('without --merge, the review head holds the work alone: the raise and the dist are committed for the checks, then taken back', async () => {
+  const { deps, events, logs, takenBack } = fake({ numstat: DIST_STAT });
+  assert.equal(await shipCommits(ARGS, RAISE_FIRST, deps), 0);
+  assert.deepEqual(takenBack, [['core: a', 'plugin: version 0.134.0, a']]);
+  assert.deepEqual(events.slice(events.indexOf(TSC) + 2), [
+    'git add -- src/a.ts',
+    committed('core: a', 'why a, since 0.134.0'),
+    `git add -- ${VERSION_FILES}`,
+    committed('plugin: version 0.134.0, a', 'raises 0.134.0'),
+    'node tools/build/bundle.ts',
+    `git add -- ${DIST}`,
+    'git diff --cached --numstat',
+    `git add -- ${DIST}`,
+    committed('build: rebuild the plugin dist', 'Compiled from the commits above by npm run build.'),
+    'prove',
+    'git reset -q --soft HEAD~2',
+    `git restore --staged -- ${VERSION_FILES}`,
+    `git restore --source=HEAD --staged --worktree -- ${DIST}`,
+    'git log --oneline origin/main..HEAD',
+  ]);
+  assert.ok(logs.some((line) => line.includes('left for review: the work commits')));
+});
+
+test('without --merge and with no rebuilt dist, only the raise is taken back', async () => {
+  const { deps, events } = fake();
+  await shipCommits(ARGS, RAISING, deps);
+  assert.deepEqual(
+    events.filter((event) => event.startsWith('git reset') || event.startsWith('git restore')),
+    ['git reset -q --soft HEAD~1', `git restore --staged -- ${VERSION_FILES}`],
+  );
+});
+
+test('with --merge, the raise and the dist are committed once after the work and pushed, nothing taken back', async () => {
+  const { deps, events } = fake({ numstat: DIST_STAT });
+  assert.equal(await shipCommits({ ...ARGS, merge: true }, RAISE_FIRST, deps), 0);
+  assert.deepEqual(events.filter((event) => event.startsWith('git commit')), [
+    committed('core: a', 'why a, since 0.134.0'),
+    committed('plugin: version 0.134.0, a', 'raises 0.134.0'),
+    committed('build: rebuild the plugin dist', 'Compiled from the commits above by npm run build.'),
+  ]);
+  assert.ok(!events.some((event) => event.startsWith('git reset') || event.startsWith('git restore')));
+  assert.deepEqual(events.slice(-2), ['push', 'merge t827-ship-tool']);
+});
+
+test('without --merge, a tree the gate does not pass keeps its raise and dist commits, for the rerun to take back', async () => {
+  const { deps, events } = fake({ numstat: DIST_STAT, verdict: { passed: false, reason: 'tools/ci/local.ts failed on tree tree000' } });
+  await assert.rejects(shipCommits(ARGS, RAISING, deps), /^Error: REFUSED tools\/ci\/local\.ts failed on tree tree000$/);
+  assert.ok(!events.some((event) => event.startsWith('git reset') || event.startsWith('look at main')));
+});
+
+test("leaveForReview in a real repo: the work commit stays, the raise is left uncommitted and the dist is the head's", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'review-'));
+  try {
+    const git = (args: readonly string[]): string => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
+    const write = (path: string, text: string): void => {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    };
+    const commitAll = (subject: string): void => {
+      git(['add', '-A']);
+      git(['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', subject]);
+    };
+    git(['init', '-q', '-b', 'main']);
+    for (const [path, text] of [['src/a.ts', 'a\n'], ['plugins/teamrig/.claude-plugin/plugin.json', '0.1.0\n'], ['src/core/version.ts', '0.1.0\n'], [`${DIST}/a.js`, 'a\n']] as const) write(path, text);
+    commitAll('base');
+    write('src/a.ts', 'a2\n');
+    commitAll('core: a');
+    const work = git(['rev-parse', 'HEAD']);
+    write('plugins/teamrig/.claude-plugin/plugin.json', '0.2.0\n');
+    write('src/core/version.ts', '0.2.0\n');
+    commitAll('plugin: version 0.2.0, a');
+    write(`${DIST}/a.js`, 'a2\n');
+    write(`${DIST}/b.js`, 'b\n');
+    commitAll('build: rebuild the plugin dist');
+
+    leaveForReview({ ...fake().deps, git }, [RAISE], true);
+
+    assert.equal(git(['rev-parse', 'HEAD']), work);
+    assert.equal(git(['status', '--porcelain']), ' M plugins/teamrig/.claude-plugin/plugin.json\n M src/core/version.ts\n');
+    assert.equal(git(['show', 'HEAD:src/a.ts']), 'a2\n');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a version chunk whose files hold no raise is refused before the typecheck, naming the fix (T2823)', async () => {
