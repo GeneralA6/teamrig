@@ -39,7 +39,20 @@ function settledOf(record) {
     const dayStart = optionalTimeOf(raw, 'dayStart');
     const burst = optionalTimeOf(raw, 'burst');
     const poke = optionalTimeOf(raw, 'poke');
-    return { ok: dayStart.ok && burst.ok && poke.ok, value: { dayStart: dayStart.value, burst: burst.value, poke: poke.value } };
+    const mark = pokeMarkFrom(raw);
+    const value = { dayStart: dayStart.value, burst: burst.value, poke: poke.value };
+    return { ok: dayStart.ok && burst.ok && poke.ok && mark.ok, value: mark.value === undefined ? value : { ...value, pokeMark: mark.value } };
+}
+/** The stored mark of the last poke: absent (a poke kept before marks) is none; damage is not ok. */
+function pokeMarkFrom(settled) {
+    const raw = settled['pokeMark'];
+    if (raw === undefined) {
+        return { ok: true, value: undefined };
+    }
+    const mark = isRecord(raw) ? raw : undefined;
+    const lines = mark === undefined ? undefined : finiteField(mark, 'lines');
+    const startable = mark?.['startable'];
+    return lines !== undefined && isStringArray(startable) ? { ok: true, value: { lines, startable } } : { ok: false, value: undefined };
 }
 /** A wake file's content; undefined when it is damaged or from another format, which starts the tab over. */
 export function parseWakeState(text) {
@@ -57,8 +70,13 @@ export function parseWakeState(text) {
     }
     return { tab, known, pending: pending.value, lastWakeAt: last.value, settled: settled.value };
 }
-function formatSettled({ dayStart, burst, poke }) {
-    return { ...(dayStart === undefined ? {} : { dayStart }), ...(burst === undefined ? {} : { burst }), ...(poke === undefined ? {} : { poke }) };
+function formatSettled({ dayStart, burst, poke, pokeMark }) {
+    return {
+        ...(dayStart === undefined ? {} : { dayStart }),
+        ...(burst === undefined ? {} : { burst }),
+        ...(poke === undefined ? {} : { poke }),
+        ...(pokeMark === undefined ? {} : { pokeMark: { lines: pokeMark.lines, startable: [...pokeMark.startable] } }),
+    };
 }
 export function formatWakeState(state) {
     const settled = formatSettled(state.settled);
