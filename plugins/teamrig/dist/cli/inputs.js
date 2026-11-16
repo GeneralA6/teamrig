@@ -159,6 +159,10 @@ export function withSecurityCard(status, switches) {
 export function oneCommitOf(switches) {
     return switches.has('one-commit') ? { oneCommit: true } : {};
 }
+/** `--drop-approval`: the set gives up the approval the task holds, for a new ask; nothing without it. */
+export function dropApprovalOf(switches) {
+    return switches.has('drop-approval') ? { dropApproval: true } : {};
+}
 /** `--goals A1,B2`: the goal tags the task serves; `none` alone says it serves none, and is never a tag beside others. */
 export function goalsOf(text) {
     const goals = listOf('--goals', text);
