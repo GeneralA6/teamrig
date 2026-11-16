@@ -78,3 +78,27 @@ describe('rulesets for main', () => {
     assert.deepEqual(owners, [`* @${slug.split('/')[0] ?? ''}`]);
   });
 });
+
+describe('rulesets for releases', () => {
+  const branch = readRecord('.github/rulesets/release.json');
+  const tags = readRecord('.github/rulesets/release-tags.json');
+
+  it('are on, with no bypass actor: the release workflow only fast-forwards the branch and only creates tags', () => {
+    for (const ruleset of [branch, tags]) {
+      assert.equal(ruleset['enforcement'], 'active');
+      assert.deepEqual(ruleset['bypass_actors'], []);
+    }
+  });
+
+  it('the release branch, which installs read, can be neither deleted nor rewritten', () => {
+    assert.equal(branch['target'], 'branch');
+    assert.deepEqual(recordField(branch, 'conditions'), { ref_name: { include: ['refs/heads/release'], exclude: [] } });
+    assert.deepEqual([...rulesOf(branch).keys()].sort(), ['deletion', 'non_fast_forward']);
+  });
+
+  it("a release tag, the build's v<version> and main's teamrig-v<version>, can be neither deleted nor moved", () => {
+    assert.equal(tags['target'], 'tag');
+    assert.deepEqual(recordField(tags, 'conditions'), { ref_name: { include: ['refs/tags/v*', 'refs/tags/teamrig-v*'], exclude: [] } });
+    assert.deepEqual([...rulesOf(tags).keys()].sort(), ['deletion', 'non_fast_forward', 'update']);
+  });
+});
