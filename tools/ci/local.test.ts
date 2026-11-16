@@ -52,6 +52,31 @@ describe('local (the local gate CLI)', () => {
     assert.match(result.stdout, /^local checks: passed earlier on tree [0-9a-f]{7} \(commit [0-9a-f]{7}, 2026-10-15T10:00:00\.000Z, 1 check\(s\)\)\n$/);
   });
 
+  it('--short runs the short checks, naming the changed specs since the base, and reuses a short record (T3414)', () => {
+    const { head: base } = commit();
+    repo.write('src/x.ts', 'export const x = 1;\n');
+    repo.write('src/x.test.ts', '// x\n');
+    repo.write('notes.md', 'n\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'x');
+    const head = repo.git('rev-parse', 'HEAD').trim();
+    const tree = repo.git('rev-parse', 'HEAD^{tree}').trim();
+    const intro = (count: number, since: string): string => `short checks: scrub, DCO, typecheck and ${count} changed spec(s) since ${since}; required CI runs the whole suite on the pull request`;
+
+    const run = repo.run(CLI, ['--short', '--base', base]);
+    assert.equal(run.status, 1, run.stderr);
+    assert.ok(run.stdout.startsWith(`${intro(1, base)}\n  src/x.test.ts\nFAIL: scrub: tree (exit 1, `), run.stdout);
+
+    repo.write(`.git/local-ci/short/${tree}.json`, JSON.stringify({ tree, commit: head, checks: ['scrub: tree'], passedAt: '2026-10-15T10:00:00.000Z', node: 'v22.0.0' }));
+    const reused = repo.run(CLI, ['--short', '--base', 'HEAD']);
+    assert.equal(reused.status, 0, reused.stderr);
+    assert.match(reused.stdout, new RegExp(`^${intro(0, 'HEAD').replace(/[()]/g, '\\$&')}\nshort checks: passed earlier on tree [0-9a-f]{7} \\(commit [0-9a-f]{7}, 2026-10-15T10:00:00\\.000Z, 1 check\\(s\\)\\)\n$`));
+
+    const full = repo.run(CLI);
+    assert.equal(full.status, 1, 'a short record never passes a full proof');
+    assert.match(full.stdout, /^FAIL: scrub: tree/);
+  });
+
   it('refuses uncommitted changes', () => {
     commit();
     repo.write('b.txt', 'b\n');

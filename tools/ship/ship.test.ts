@@ -6,7 +6,7 @@ import { SHIP_USAGE } from './ship-plan.ts';
 
 const CLI = fileURLToPath(new URL('./ship.ts', import.meta.url));
 
-/** Runs as its own process: ship.ts dispatches on import. Only refusals run here, which stop before any git or GitHub call. */
+/** Runs as its own process: ship.ts dispatches on import. Only refusals run here, which stop before any change to the repo or call to GitHub. */
 describe('ship cli', () => {
   let repo: TempRepo;
 
@@ -38,5 +38,18 @@ describe('ship cli', () => {
     const result = repo.run(CLI, [repo.dir, plan]);
     assert.equal(result.status, 1, result.stdout);
     assert.equal(result.stderr, `${plan}: expected { "chunks": [ ... ] }\n`);
+  });
+
+  it('wires the real deps for a repo repos.json lists, then stops at its first git read when the base does not exist', () => {
+    repo.init().write('a.txt', 'a\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '-m', 'a');
+    repo.git('remote', 'add', 'origin', 'https://github.com/GeneralA6/teamrig.git');
+    const head = repo.git('rev-parse', 'HEAD').trim();
+    const plan = repo.write('plan.json', JSON.stringify({ chunks: [{ files: ['a.txt'], subject: 'core: a', body: 'why a' }] }));
+    const result = repo.run(CLI, [repo.dir, plan, 'refs/heads/no-such-base']);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /no-such-base/);
+    assert.equal(repo.git('rev-parse', 'HEAD').trim(), head);
   });
 });
