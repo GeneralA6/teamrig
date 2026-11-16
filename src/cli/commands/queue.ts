@@ -120,13 +120,13 @@ interface StartGate {
   readonly pipelineFreezes: string;
   readonly kind: StepKind;
   readonly zone: TimeZone;
-  readonly shipTool: () => string | undefined;
+  readonly shipTool: () => Promise<string | undefined>;
 }
 
 /** Why the step may not start now (the queue cutoff, a pipeline freeze on its kind, a moved ship tool), or undefined when it may. */
 async function startRefusal(runtime: CliRuntime, gate: StartGate): Promise<string | undefined> {
   const now = runtime.clock.now();
-  return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone) ?? gate.shipTool();
+  return queueCutoffReason(now, gate.cutoffUtc, gate.zone) ?? pipelineFrozenRefusal(await runtime.files.read(gate.pipelineFreezes), gate.pipelineFreezes, now, [gate.kind], gate.zone) ?? (await gate.shipTool());
 }
 
 /**
@@ -135,14 +135,14 @@ async function startRefusal(runtime: CliRuntime, gate: StartGate): Promise<strin
  * before it waits, and one whose checkout moved while it waited is refused at its start. Nothing is taken from the
  * arguments, so no flag can loosen it; a step that runs no ship tool has no check.
  */
-function shipToolCheckOf(runtime: CliRuntime, kit: Kit, config: KitConfig, words: readonly string[]): () => string | undefined {
+function shipToolCheckOf(runtime: CliRuntime, kit: Kit, config: KitConfig, words: readonly string[]): () => Promise<string | undefined> {
   const tool = shipToolOfWords(kit, config, words, runtime.cwd);
   if (tool === undefined) {
-    return () => undefined;
+    return () => Promise.resolve(undefined);
   }
   const pin = shipToolPinOf(runtime.mergeGit, kit, config, tool);
   // A stale tool's refusal comes from the gate (`refuseUnstartable`), so a detached run refused before it waits still tells its session.
-  return 'refused' in pin ? () => pin.refused : () => shipToolStartRefusal(runtime.mergeGit, kit, config, pin);
+  return 'refused' in pin ? () => Promise.resolve(pin.refused) : () => shipToolStartRefusal(runtime.mergeGit, kit, config, pin, runtime.sleep);
 }
 
 async function refuseUnstartable(runtime: CliRuntime, gate: StartGate): Promise<void> {

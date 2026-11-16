@@ -12,6 +12,7 @@ import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { CLAUDE, FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeMergeGit, MAIN_CHECKOUT } from '../testing/fake-merge-git.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
+import { SHIP_TOOL_READS, SHIP_TOOL_REREAD_MS } from './ship-role-check.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
@@ -1229,6 +1230,52 @@ describe("teamrig queue runs a configured ship tool only from main's current cod
     const moved = `the ship tool ${SHIP_TOOL} changed from base while the step waited and is not origin/main's current code in a checkout with no change: ${MOVE}`;
     assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${moved}`, []]);
     assert.deepEqual(ledgerOf(kit).map((record) => (typeof record === 'object' && record !== null && 'outcome' in record ? record.outcome : undefined)), ['refused']);
+  });
+
+  const UNANSWERED = 'git rev-parse in /repo/ship did not answer: ended with 0xC0000142, as a process that died starting does';
+
+  /** A sleep on the harness clock that records each wait of the ship tool check. */
+  function rereads(kit: CliHarness): { sleep: (ms: number) => Promise<void>; slept: number[] } {
+    const slept: number[] = [];
+    const sleep = async (ms: number): Promise<void> => {
+      if (ms === SHIP_TOOL_REREAD_MS) {
+        slept.push(ms);
+      }
+      await kit.clock.sleep(ms);
+    };
+    return { sleep, slept };
+  }
+
+  it("runs a ship step whose tool's checkout git did not answer, reading it again until git answers (T3368)", async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const git = shipGit();
+    git.unanswered.push(UNANSWERED, UNANSWERED);
+    const { sleep, slept } = rereads(kit);
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git, sleep });
+    assert.deepEqual([result.code, steps.ran.length, slept, git.unanswered], [EXIT.ok, 1, [SHIP_TOOL_REREAD_MS], []]);
+  });
+
+  it('refuses, naming the read git did not answer and never as a changed tool, when git keeps not answering (T3368)', async () => {
+    const unread = `could not read the checkout of the ship tool ${SHIP_TOOL}, so the step did not run: ${UNANSWERED}, at each of ${SHIP_TOOL_READS} reads 15 s apart; git gave no answer, which says nothing of the tool, so queue the step again once git answers on this host`;
+    for (const detach of [false, true]) {
+      const { kit, steps } = harness(SHIPPING);
+      const git = shipGit();
+      git.unanswered.push(...Array.from({ length: 10 }, () => UNANSWERED));
+      const { sleep, slept } = rereads(kit);
+      const processes = new FakeProcesses();
+      const argv = detach ? [...SHIP_STEP.slice(0, 7), '--detach', ...SHIP_STEP.slice(7)] : SHIP_STEP;
+      const result = await kit.run(argv, { steps, mergeGit: git, sleep, processes });
+      assert.deepEqual([result.code, result.stdout.at(-1), steps.ran, processes.hidden, slept.length], [EXIT.refused, `REFUSED ${unread}`, [], [], SHIP_TOOL_READS - 1], `detach ${String(detach)}`);
+    }
+  });
+
+  it("refuses as stale a tool git did not answer for at its queueing that is not main's current code at its start (T3368)", async () => {
+    const { kit, steps } = harness(SHIPPING);
+    const git = shipGit();
+    git.unanswered.push(UNANSWERED);
+    git.heads.set('/repo/ship', 'old');
+    const result = await kit.run(SHIP_STEP, { steps, mergeGit: git });
+    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [EXIT.refused, `REFUSED ${STALE}`, []]);
   });
 
   it('runs a ship step whose tool moved on to the newest main while it waited', async () => {

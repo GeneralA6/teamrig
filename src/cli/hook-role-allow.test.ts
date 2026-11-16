@@ -227,6 +227,12 @@ describe('hook route-allow: the ship role (T2984)', () => {
     assert.equal(decisionOf(await same.kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: same.git })), 'allow', "another commit that makes main's tree");
   });
 
+  it("gives no ship when git does not answer a read of the tool's checkout (C5 fails closed, T3368)", async () => {
+    const { kit, git } = await shipKit();
+    git.unanswered.push('git rev-parse in /repo/ship did not answer: stopped by SIGTERM');
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: git }), NOTHING);
+  });
+
   it('gives no ship to a team whose repository names no ship tool', async () => {
     const { kit, git } = await shipKit({ delivery: { repos: { app: { mainCheckout: MAIN_CHECKOUT } } } });
     assert.deepEqual(await kit.run(HOOK, { stdin: call(SHIP), env: ALPHA, mergeGit: git }), NOTHING);
