@@ -2,8 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { MARKETPLACE, readCatalog } from '../ci/plugin-version.ts';
 import { isRecord, stringField } from '../lib/guards.ts';
+import { MARKETPLACE, readCatalog } from '../lib/marketplace.ts';
 
 const read = (path: string): string => readFileSync(fileURLToPath(new URL(`../../${path}`, import.meta.url)), 'utf8');
 const README = read('README.md');
