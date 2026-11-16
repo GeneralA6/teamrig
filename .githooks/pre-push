@@ -2,7 +2,9 @@
 # Refuses a pushed commit that adds a secret (teamrig secrets pushed), then a push to main, which changes only through
 # a pull request, then runs every check CI runs on the pushed commits (tools/ci/local.ts), once per tree: a tree that
 # passed is recorded and not checked again. Both read the refs git writes to stdin, so it is read once for both.
+# The remote's name and URL go to local.ts too: a branch of a repo whose tools/ship/repos.json entry says
+# "mergeChecks": "changed" gets the short checks, as its required CI runs the whole suite on the pull request.
 # There is no skip: never push with --no-verify.
 updates=$(cat)
 printf '%s\n' "$updates" | node src/cli/main.ts secrets pushed "$1" || exit 1
-printf '%s\n' "$updates" | node tools/ci/local.ts --pre-push
+printf '%s\n' "$updates" | node tools/ci/local.ts --pre-push "$1" "$2"
