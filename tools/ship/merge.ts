@@ -1,8 +1,9 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { nodeFiles } from '../../src/core/files.ts';
+import { ENV } from '../../src/core/home.ts';
 import { realSleep, systemClock } from '../../src/core/lock.ts';
 import { type ClearMerge, clearMergeFrom } from './approval.ts';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
@@ -372,6 +373,64 @@ export function pullBody(subjects: readonly string[], note: string | null = null
   return [...opening, ...shown, '', '🤖 Generated with [Claude Code](https://claude.com/claude-code)'].join('\n');
 }
 
+/**
+ * The host share of the queued step a merge runs in (`teamrig step-away` and `step-back`, T3336). On the `ci` gate the
+ * merge only waits on GitHub, so it sets the share aside and the host's one ship slot goes to the next step in line.
+ */
+export interface StepShare {
+  /** Sets the step's share aside; false when it keeps it (no queued step, a step holding the whole host, a failure). */
+  away(): Promise<boolean>;
+  /** Takes the share back in its turn, for the local work after main moved; null once held, else why not. */
+  back(): Promise<string | null>;
+}
+
+/** The step's share through the CLI `runCli` runs; nothing outside a queued step ($TEAMRIG_HOST_LOCK unset). */
+export function stepShareOf(env: Readonly<Record<string, string | undefined>>, runCli: (args: readonly string[]) => Promise<number>): StepShare {
+  const queued = (env[ENV.hostLock] ?? '').trim() !== '';
+  return {
+    away: async () => queued && (await runCli(['step-away'])) === 0,
+    back: async () => {
+      const code = await runCli(['step-back']);
+      return code === 0 ? null : `teamrig step-back exited ${code}`;
+    },
+  };
+}
+
+/** A proof and whether its run set the step's share aside. */
+interface ProofAway {
+  readonly proof: Proof;
+  readonly away: () => boolean;
+}
+
+/**
+ * The ci gate's proof with the step's host share set aside as it starts: from its wait on GitHub's checks to the
+ * merge call, no local work needs the host's ship slot. A head already behind main is turned back before it.
+ */
+function awayDuring(proof: Proof, share: StepShare): ProofAway {
+  let away = false;
+  return {
+    proof: {
+      before: sha => proof.before(sha),
+      prove: async (sha, log) => {
+        away = await share.away();
+        return proof.prove(sha, log);
+      },
+    },
+    away: () => away,
+  };
+}
+
+/** The CLI of the checkout this tool runs from (main's current code, T3223), its lines going to the step's log. */
+const OWN_CLI = join(import.meta.dirname, '..', '..', 'src', 'cli', 'main.ts');
+
+function runOwnCli(args: readonly string[]): Promise<number> {
+  return new Promise(settle => {
+    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', OWN_CLI, ...args], { stdio: 'inherit', windowsHide: true });
+    child.on('error', () => settle(1));
+    child.on('exit', code => settle(code ?? 1));
+  });
+}
+
 /** What the command reaches outside itself, so a test can stand in for each. */
 export interface MergeDeps {
   /** Runs git in the repo dir and returns its trimmed stdout; throws when git fails. */
@@ -391,6 +450,8 @@ export interface MergeDeps {
   clearMerge: ClearMerge;
   /** A head main moved past, rebased onto main's tip and pushed as a new branch when its diff stays the same (catch-up.ts). */
   catchUp: (request: CatchUpRequest) => CatchUp;
+  /** The queued step's host share, set aside while the merge waits on GitHub (T3336). */
+  share: StepShare;
   out: (line: string) => void;
   err: (line: string) => void;
 }
@@ -505,16 +566,24 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
   const gh = deps.ghFor(credential.secret);
   const proof =
     profile.gate === 'ci'
-      ? ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 })
-      : localProof(args.dir, profile.local, deps.gate);
+      ? awayDuring(ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 }), deps.share)
+      : { proof: localProof(args.dir, profile.local, deps.gate), away: () => false };
   const result = await mergeThroughPull(
     { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },
     gh,
     mainBranchOf(git, profile.main),
-    proof,
+    proof.proof,
     deps.out,
   );
-  if (result.kind === 'moved') return { kind: 'moved', tip: result.tip, reason: result.reason };
+  if (result.kind === 'moved') {
+    // A move is caught up or shipped again: local work (rebase, build, specs) that takes the share back first.
+    const lost = proof.away() ? await deps.share.back() : null;
+    if (lost !== null) {
+      deps.err(`REFUSED ${result.reason}, and its host share was not taken back for the catch-up: ${lost}`);
+      return done(1);
+    }
+    return { kind: 'moved', tip: result.tip, reason: result.reason };
+  }
   if (result.kind === 'refused') {
     deps.err(`REFUSED ${result.reason}`);
     return done(1);
@@ -559,6 +628,7 @@ export function realMergeDeps(dir: string): MergeDeps {
         },
         request,
       ),
+    share: stepShareOf(process.env, runOwnCli),
     out,
     err,
   };

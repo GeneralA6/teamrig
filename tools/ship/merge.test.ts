@@ -6,7 +6,7 @@ import type { CatchUp } from './catch-up.ts';
 import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
-import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, runMerge, waitForChecks } from './merge.ts';
+import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, runMerge, stepShareOf, waitForChecks } from './merge.ts';
 import { parseProfiles } from './repos.ts';
 
 const REPO = 'Owner/repo';
@@ -58,6 +58,12 @@ function fakeWaiter(): Waiter & { slept: number[] } {
 /** A job's name, status and conclusion; `unstarted` gives it no steps, as GitHub shows a job that never got a runner. */
 type JobState = readonly [name: string, status: string, conclusion: string | null, unstarted?: 'unstarted'];
 
+/** A head pushed for a pull request: the sha GitHub opens it at, and the branch its workflow run names. */
+interface PushedHead {
+  readonly sha: string;
+  readonly branch: string;
+}
+
 interface FakeGitHub {
   gh: ReturnType<typeof mock.fn<Gh>>;
   writes: string[][];
@@ -70,17 +76,20 @@ const RERUN_PATH = `repos/${REPO}/actions/runs/1/rerun-failed-jobs`;
  * makes its next attempt, or throws `rerun` when given. Each merge call answers the next of `merges` (the last
  * repeats) when given, else `merge`.
  */
-function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; openedSha?: string; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error; branch?: string }): FakeGitHub {
+function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPullSha?: string | null; openedSha?: string; merge?: string | Error; merges?: readonly (string | Error)[]; rerun?: Error; branch?: string; heads?: readonly PushedHead[] }): FakeGitHub {
   const writes: string[][] = [];
   let round = 0;
   let attempt = 1;
   let mergeCalls = 0;
+  let opened = 0;
+  const openedHead = (): PushedHead | undefined => options.heads?.[Math.min(opened++, options.heads.length - 1)];
+  const branchOf = (path: string): string | undefined => options.heads?.find(head => path.includes(`head_sha=${head.sha}`))?.branch;
   const pull = (sha: string): string => JSON.stringify({ number: 3, html_url: `https://github.com/${REPO}/pull/3`, head: { ref: 'dev', sha }, base: { ref: 'main' } });
   const gh = mock.fn<Gh>(args => {
     const path = args[1] ?? '';
     if (args.includes('-X')) writes.push([...args]);
     if (path.startsWith(`repos/${REPO}/pulls?state=open`)) return options.openPullSha === null || options.openPullSha === undefined ? '[]' : `[${pull(options.openPullSha)}]`;
-    if (path === `repos/${REPO}/pulls`) return pull(options.openedSha ?? SHA);
+    if (path === `repos/${REPO}/pulls`) return pull(openedHead()?.sha ?? options.openedSha ?? SHA);
     if (path === `repos/${REPO}/pulls/3/merge`) {
       const answer = options.merges === undefined ? options.merge : options.merges[Math.min(mergeCalls, options.merges.length - 1)];
       mergeCalls += 1;
@@ -93,7 +102,7 @@ function fakeGitHub(options: { rounds: readonly (readonly JobState[])[]; openPul
       return '';
     }
     if (path.includes('/actions/runs?head_sha=')) {
-      return JSON.stringify({ workflow_runs: [{ id: 1, workflow_id: 1, event: 'pull_request', run_number: 1, run_attempt: attempt, head_branch: options.branch ?? HEAD }] });
+      return JSON.stringify({ workflow_runs: [{ id: 1, workflow_id: 1, event: 'pull_request', run_number: 1, run_attempt: attempt, head_branch: branchOf(path) ?? options.branch ?? HEAD }] });
     }
     if (path.includes('/actions/runs/1/jobs')) {
       const jobs = options.rounds[Math.min(round, options.rounds.length - 1)] ?? [];
@@ -428,6 +437,11 @@ interface RunFixture {
   catchUp?: readonly CatchUp[];
   /** Whether REBASED still misses main's tip, as when main moved again during its checks. */
   rebasedBehind?: boolean;
+  /** Whether the step's host share is set aside (yes unless given), and why taking it back fails (it never does unless given). */
+  away?: boolean;
+  lostShare?: string;
+  /** Whether main, at BASE when the merge starts, moves to MOVED while the first head's checks run (mainTip unset). */
+  movesDuringWait?: boolean;
 }
 
 /** The head a catch-up pushes: BRANCH rebased onto MOVED. */
@@ -490,8 +504,11 @@ function runFixture(fixture: RunFixture = {}): {
   sweep: ReturnType<typeof mock.fn<MergeDeps['sweep']>>;
   clearMerge: ReturnType<typeof mock.fn<MergeDeps['clearMerge']>>;
   catchUp: ReturnType<typeof mock.fn<MergeDeps['catchUp']>>;
+  /** Each step-away and step-back of the step's host share, in turn, with the catch-ups run before it. */
+  shareCalls: string[];
 } {
   const gitCalls: string[] = [];
+  const shareCalls: string[] = [];
   const answers: Record<string, string> = {
     'remote get-url origin': fixture.remote ?? `git@github.com:${REPO}.git`,
     'rev-parse --abbrev-ref HEAD': fixture.checkedOut ?? BRANCH,
@@ -516,7 +533,10 @@ function runFixture(fixture: RunFixture = {}): {
   const err: string[] = [];
   // Main at MOVED reaches GitHub only through a caught-up head: NEXT at REBASED is the pull request's and the run's.
   const caughtUpHead = fixture.mainTip === MOVED;
-  const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green], openedSha: caughtUpHead ? REBASED : SHA, branch: caughtUpHead ? NEXT : BRANCH });
+  // A main that moves during the wait sees the first head's pull request opened, then the caught-up one's.
+  const heads: readonly PushedHead[] | undefined = fixture.movesDuringWait === true ? [{ sha: SHA, branch: BRANCH }, { sha: REBASED, branch: NEXT }] : undefined;
+  const { gh, writes } = fakeGitHub({ rounds: fixture.rounds ?? [green], openedSha: caughtUpHead ? REBASED : SHA, branch: caughtUpHead ? NEXT : BRANCH, ...(heads === undefined ? {} : { heads }) });
+  let mainReads = 0;
   const local = fakeGate(fixture.local ?? {}, line => out.push(line));
   const ghFor = mock.fn((_token: string): Gh => gh);
   const renamedCallers = mock.fn((_base: string, _tip: string, _repo: string): string | null => fixture.renamedCallers ?? null);
@@ -529,6 +549,7 @@ function runFixture(fixture: RunFixture = {}): {
     git: (...args) => {
       const key = args.join(' ');
       gitCalls.push(key);
+      if (fixture.movesDuringWait === true && key === 'rev-parse refs/remotes/origin/main') return mainReads++ === 0 ? BASE : MOVED;
       const answer = answers[key];
       if (answer === undefined) throw new Error(`unexpected git ${key}`);
       return answer;
@@ -542,10 +563,20 @@ function runFixture(fixture: RunFixture = {}): {
     sweep,
     clearMerge,
     catchUp,
+    share: {
+      away: () => {
+        shareCalls.push(`away after ${catchUp.mock.callCount()} catch-up(s)`);
+        return Promise.resolve(fixture.away ?? true);
+      },
+      back: () => {
+        shareCalls.push(`back after ${catchUp.mock.callCount()} catch-up(s)`);
+        return Promise.resolve(fixture.lostShare ?? null);
+      },
+    },
     out: line => out.push(line),
     err: line => err.push(line),
   };
-  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge, catchUp };
+  return { deps, gitCalls, out, err, ghFor, ghWrites: writes, local, renamedCallers, sweep, clearMerge, catchUp, shareCalls };
 }
 
 const ARGS: MergeArgs = { dir: 'C:/repo', head: BRANCH, timeoutMin: 10, intervalS: 60, noteFile: null, approved: null };
@@ -735,6 +766,56 @@ test(`main moving past ${MERGE_ATTEMPTS} heads in one merge is refused, each new
   );
   assert.deepEqual(err, [`REFUSED main moved to moved00, which ${NEXT} rebased does not contain: rebase ${NEXT} onto origin/main, push it and run merge again (main moved past ${MERGE_ATTEMPTS} heads during this merge)`]);
   assert.equal(sweep.mock.callCount(), 0);
+});
+
+test("on the ci gate the step's host share is set aside for the checks' wait and the merge call, never taken back once merged (T3336)", async () => {
+  const merged = runFixture();
+  assert.equal(await runMerge(ARGS, merged.deps), 0);
+  assert.deepEqual(merged.shareCalls, ['away after 0 catch-up(s)']);
+  const failed = runFixture({ rounds: [[['gates', 'completed', 'failure'], ['test', 'completed', 'success']]] });
+  assert.equal(await runMerge(ARGS, failed.deps), 1);
+  assert.deepEqual(failed.shareCalls, ['away after 0 catch-up(s)'], 'a refused merge ends its step: nothing to take back');
+});
+
+test('a main that moved during the wait takes the share back before the catch-up, and sets it aside again for the next head (T3336)', async () => {
+  const { deps, shareCalls } = runFixture({ movesDuringWait: true, catchUp: [CAUGHT_UP] });
+  assert.equal(await runMerge(ARGS, deps), 0);
+  assert.deepEqual(shareCalls, ['away after 0 catch-up(s)', 'back after 0 catch-up(s)', 'away after 1 catch-up(s)']);
+});
+
+test('a head already behind main is caught up with its share kept; a share not taken back refuses the catch-up (T3336)', async () => {
+  const stale = runFixture({ mainTip: MOVED, catchUp: [CAUGHT_UP] });
+  assert.equal(await runMerge(ARGS, stale.deps), 0);
+  assert.deepEqual(stale.shareCalls, ['away after 1 catch-up(s)'], 'turned back before the wait: never set aside for it');
+
+  const lost = runFixture({ movesDuringWait: true, catchUp: [CAUGHT_UP], lostShare: 'teamrig step-back exited 1' });
+  assert.equal(await runMerge(ARGS, lost.deps), 1);
+  assert.equal(lost.catchUp.mock.callCount(), 0);
+  assert.match(lost.err.at(-1) ?? '', /^REFUSED .+, and its host share was not taken back for the catch-up: teamrig step-back exited 1$/);
+});
+
+test('a share the step kept (outside a queue, the whole host held) is never taken back; the local gate keeps it throughout (T3336)', async () => {
+  const kept = runFixture({ movesDuringWait: true, catchUp: [CAUGHT_UP], away: false });
+  assert.equal(await runMerge(ARGS, kept.deps), 0);
+  assert.deepEqual(kept.shareCalls, ['away after 0 catch-up(s)', 'away after 1 catch-up(s)']);
+  const local = runFixture({ local: {} });
+  assert.equal(await runMerge(ARGS, local.deps), 0);
+  assert.deepEqual(local.shareCalls, []);
+});
+
+test("the step's share runs teamrig step-away and step-back only inside a queued step, failing closed on a nonzero exit (T3336)", async () => {
+  const runs: string[] = [];
+  const codes = [0, 0, 1, 1];
+  const runCli = (args: readonly string[]): Promise<number> => {
+    runs.push(args.join(' '));
+    return Promise.resolve(codes[runs.length - 1] ?? 1);
+  };
+  const queued = stepShareOf({ TEAMRIG_HOST_LOCK: 'm1' }, runCli);
+  assert.deepEqual([await queued.away(), await queued.back(), await queued.away(), await queued.back()], [true, null, false, 'teamrig step-back exited 1']);
+  assert.deepEqual(runs, ['step-away', 'step-back', 'step-away', 'step-back']);
+  const outside = stepShareOf({ TEAMRIG_HOST_LOCK: ' ' }, runCli);
+  assert.equal(await outside.away(), false);
+  assert.equal(runs.length, 4, 'nothing runs outside a queued step');
 });
 
 test("once merged, drifted or not, it sweeps the merged head's leftovers; a refusal sweeps nothing", async () => {
