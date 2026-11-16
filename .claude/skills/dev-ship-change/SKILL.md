@@ -36,8 +36,11 @@ description: Land a finished teamrig change through small signed commits, a dist
 - Main moved while you worked: the merge catches the branch up itself when the version raise and the dist each sit
   in a commit of their own (`tools/ship/merge.ts`). When it refuses, rebase onto `origin/main` by hand and
   set the version raise again from main's version.
+- `tools/ship` run without `--merge`, for an approval, leaves the work alone on the head: it raises the version and
+  builds the dist only to run the checks, then takes both back, the raise left uncommitted. The `--merge` run commits
+  both once, on the base it lands on, and the approval still holds, as it reads the change apart from those files.
 - The local gate proves a committed tree, so it refuses uncommitted changes: commit or stash them first.
 - A missing sign-off: `git commit --amend -s` for the last commit; the `commit-msg` hook from `npm run setup` catches
   it before the push.
 
-Last verified: 2026-11-15
+Last verified: 2026-11-16
