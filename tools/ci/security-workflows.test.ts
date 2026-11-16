@@ -32,7 +32,13 @@ describe('every workflow', () => {
 
   it('never merges a pull request, so no dependency update lands without a person checking it', () => {
     for (const [name, text] of workflows) {
-      assert.doesNotMatch(text, /gh pr merge|--auto\b|enablePullRequestAutoMerge|dependabot\/fetch-metadata|pull-requests: write/, name);
+      assert.doesNotMatch(text, /gh pr merge|--auto\b|enablePullRequestAutoMerge|dependabot\/fetch-metadata/, name);
+    }
+  });
+
+  it('writes pull requests only from release.yml, once, to open the release pull request a person merges', () => {
+    for (const [name, text] of workflows) {
+      assert.equal(text.match(/pull-requests: write/g)?.length ?? 0, name === 'release.yml' ? 1 : 0, name);
     }
   });
 });

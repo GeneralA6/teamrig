@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/v17.6.0/schemas/config.json",
+  "bootstrap-sha": "84111627c6198caca23b8bc76a199193c47d4e90",
+  "signoff": "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "teamrig",
+      "component": "teamrig",
+      "include-component-in-tag": true,
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "plugins/teamrig/.claude-plugin/plugin.json", "jsonpath": "$.version" },
+        { "type": "generic", "path": "src/core/version.ts" }
+      ]
+    }
+  }
+}
