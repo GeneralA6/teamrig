@@ -11,6 +11,7 @@ import { DIST, leaveForReview, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDi
 import type { MergeChecks } from './repos.ts';
 import type { Chunk, ShipArgs } from './ship-plan.ts';
 import type { SyncResult } from './sync.ts';
+import { KIT_VERSION } from '../../src/core/version.ts';
 
 const ARGS: ShipArgs = { repo: 'C:/repo', plan: 'plan.json', base: 'origin/main', merge: false, noteFile: null, approved: null };
 const CHUNKS: readonly Chunk[] = [
@@ -18,7 +19,7 @@ const CHUNKS: readonly Chunk[] = [
   { files: ['src/b.ts', 'src/b.test.ts'], subject: 'release: 0.134.0', body: 'raises 0.134.0' },
 ];
 const PASS: GateVerdict = { passed: true, tree: 'tree000', record: 'C:/records/tree000.json', reused: false };
-const TRAILER = 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>';
+const TRAILER = `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nMade-with: teamrig ${KIT_VERSION}`;
 
 interface FakeOptions {
   readonly sync?: SyncResult;

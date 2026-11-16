@@ -1,4 +1,5 @@
 import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
+import { stampTrailer } from '../../src/core/stamp.ts';
 import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
 import { workChanges, type ClearMerge, type WorkCommit } from './approval.ts';
 import { freeBranch } from './branch-names.ts';
@@ -17,8 +18,11 @@ export const DIST = 'plugins/teamrig/dist';
 /** The subject of the commit that holds the rebuilt dist; rerun.ts knows the ship's own dist commit by it. */
 export const DIST_SUBJECT = 'build: rebuild the plugin dist';
 
-/** The trailer of every commit a ship or a merge's catch-up makes. */
-export const TRAILER = 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>';
+/**
+ * The trailers of every commit a ship or a merge's catch-up makes, one paragraph so git reads both as its trailer
+ * block: the co-author, then the made-with-teamrig stamp (#1102) at the version the ship runs from.
+ */
+export const TRAILER = ['Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>', stampTrailer()].join('\n');
 
 /** What a ship does to the repo dir and the outside world; ship.ts wires the real ones, specs pass fakes. */
 export interface ShipDeps {

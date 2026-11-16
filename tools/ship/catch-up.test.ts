@@ -268,6 +268,8 @@ test('a teamrig head main moved past drops its version and dist commits, replays
   assert.deepEqual(git('log', '--format=%s', `${tip}..HEAD`).split('\n'), ['build: rebuild the plugin dist', 'plugin: version 0.2.1, a changes (T9)', 'a: a changes (T9)']);
   assert.match(git('log', '-1', '--format=%B', 'HEAD~1'), /^plugin: version 0\.2\.1, a changes \(T9\)\n\nThe raise for a\.\n\nSigned-off-by: t <t@example\.com>$/);
   assert.match(git('log', '-1', '--format=%B', 'HEAD'), /^build: rebuild the plugin dist\n\nCompiled from the commits above by npm run build\.\n\n(.+\n)*Co-Authored-By: /);
+  const trailers = git('log', '-1', '--format=%(trailers:key=Made-with,valueonly)', 'HEAD').trim();
+  assert.match(trailers, /^teamrig \d+\.\d+\.\d+$/, 'the dist commit carries one made-with-teamrig trailer, in its trailer block (#1102)');
   assert.equal(readFileSync(join(dir, KIT), 'utf8'), "export const KIT_VERSION = '0.2.1';\n", 'the rest of the file as main has it');
   assert.equal(readFileSync(join(dir, PLUGIN), 'utf8'), '{\n  "name": "teamrig",\n  "version": "0.2.1"\n}\n');
   assert.equal(git('show', 'HEAD:plugins/teamrig/dist/a.js'), '// built\nexport const a = 2;', 'the dist built from the replayed source');
