@@ -112,6 +112,8 @@ const EXPECTED = {
   'issue label': 'write',
   'pr conflicts': 'write',
   'issue links': 'write',
+  follow: 'write',
+  unfollow: 'write',
   budget: 'read',
   'budget lift': 'write',
   'budget cut': 'write',

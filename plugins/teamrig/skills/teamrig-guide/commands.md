@@ -1622,6 +1622,55 @@ SUB-ISSUE #10 under #9
 WROTE 2 link(s) on GitHub; the task list was only read
 ```
 
+### teamrig follow
+
+Follows an issue or pull request of `github.repos`, named `owner/name#n` (its ref `gh:owner/name#n` works too), for
+the calling session. With [github.activity] on, the automatic sync then tells the session the item's new comments,
+reviews, review comments, CI results, labels, closes and merges, as it tells a task's owner those of the item its
+task holds: what asks the session to act (changes requested, a failed check, a question, a mention) wakes it, the
+rest are quiet inbox lines. It reads nothing more from GitHub. A session follows at most [github.followMax] items
+(20 by default). Refused while `github.activity` is off or `github.followMax` is 0, past that cap, and for a
+repository outside `github.repos`, which the sync never reads. Following an item again only says so. Exit 0, 2 when
+refused, 64 for an item not named `owner/name#n`.
+
+Flags:
+
+- `--list`: prints each item the session follows, oldest first, and takes no item.
+- `--session <id|name>`: the session that follows; else `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig follow acme/web#7
+```
+
+Output:
+
+```text
+FOLLOWING gh:acme/web#7: its new comments, reviews, CI results, labels, closes and merges reach your inbox from the next sync
+```
+
+### teamrig unfollow
+
+Stops the calling session following an issue or pull request it follows (`teamrig follow`). Refused, exit 2, for one
+it does not follow; else exit 0.
+
+Flags:
+
+- `--session <id|name>`: the session that stops following; else `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig unfollow acme/web#7
+```
+
+Output:
+
+```text
+UNFOLLOWED gh:acme/web#7
+```
+
 ## Inbox
 
 ### teamrig inbox read

@@ -96,6 +96,7 @@ const stablePeriodsCommand = () => import('./commands/stable-periods.ts');
 const jobCommands = () => import('./commands/job.ts');
 const deployStatusCommand = () => import('./commands/deploy-status.ts');
 const issueSyncCommands = () => import('./commands/issue-sync.ts');
+const followCommands = () => import('./commands/follow.ts');
 const issueWatchCommands = () => import('./commands/issue-watch.ts');
 const issueMigrateCommands = () => import('./commands/issue-migrate.ts');
 const issueCommands = () => import('./commands/issue.ts');
@@ -231,6 +232,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
   'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
   'issue links': { effect: 'write', flags: ['repo'], switches: ['yes'], load: async () => (await issueLinksCommands()).issueLinks },
+  follow: { effect: 'write', flags: ['session'], switches: ['list'], load: async () => (await followCommands()).follow },
+  unfollow: { effect: 'write', flags: ['session'], load: async () => (await followCommands()).unfollow },
   budget: { effect: 'read', flags: ['day', 'task'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
   'budget lift': {
     effect: 'write',
@@ -720,6 +723,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       watch's over), when github.probeSeconds is set to 0 (read each round; $TEAMRIG_GITHUB=off counts
       only as the watch starts), after 24 hours, and once no session of the team ran for 10 minutes;
       the next session's hook starts it again
+  follow <owner/name#n> | --list   follows an issue or pull request of github.repos: with github.activity
+      on, the automatic sync tells you its new comments, reviews, CI results, labels, closes and merges
+      as it tells a task's owner those of the item its task holds; what asks you to act (changes
+      requested, a failed check, a question, a mention) wakes you, the rest are quiet inbox lines; at
+      most github.followMax items (20 by default; 0 turns following off); --list prints what you follow
+  unfollow <owner/name#n>   stops following an issue or pull request
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
       gh:), the writes that make it show the task's status: active tasks one label (open status:open,
       status:claimed once it has a due date or an assignee, in-progress status:in progress, waiting
