@@ -63,7 +63,7 @@ export function unansweredOf(end: GitEnd): string | undefined {
 }
 
 export function runGit(dir: string, args: readonly string[], timeout: number = QUERY_TIMEOUT_MS): GitRun {
-  const result = spawnSync('git', args, { cwd: dir, env: gitEnvironment(process.env), encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 });
+  const result = spawnSync('git', args, { cwd: dir, windowsHide: true, env: gitEnvironment(process.env), encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 });
   const unanswered = unansweredOf(result);
   return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '', ...(unanswered === undefined ? {} : { unanswered }) };
 }

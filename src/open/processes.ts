@@ -97,6 +97,7 @@ function startUntilExit(request: StartRequest, waitMs: number): Promise<StartOut
   return new Promise((resolve) => {
     let child;
     try {
+      // Shown on purpose: an `exit` launcher opens the session's terminal window or tab.
       child = spawn(request.command, request.args, { cwd: request.cwd, stdio: ['ignore', 'ignore', 'pipe'] });
     } catch (error) {
       resolve(outcomeOfError(error));
@@ -128,6 +129,7 @@ function startDetached(request: ProgramRequest): Promise<StartOutcome> {
   return new Promise((resolve) => {
     let child;
     try {
+      // Shown on purpose: a `spawn` launcher is the new window.
       child = spawn(request.command, request.args, { cwd: request.cwd, detached: true, stdio: 'ignore' });
     } catch (error) {
       resolve(outcomeOfError(error));
@@ -285,6 +287,7 @@ function runAttached(request: RunRequest, interrupts: Interrupts): Promise<RunOu
     };
     let child;
     try {
+      // Shown on purpose: the program runs in this tab, on its console.
       child = spawn(request.command, request.args, { cwd: request.cwd, env: { ...request.env }, stdio: 'inherit' });
     } catch (error) {
       settle(outcomeOfError(error));

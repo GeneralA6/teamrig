@@ -37,7 +37,7 @@ log('started');
 const main = teamrigCli();
 const run = main === undefined
   ? undefined
-  : spawnSync(process.execPath, [main, 'restore', 'check', '--home', kitHome], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  : spawnSync(process.execPath, [main, 'restore', 'check', '--home', kitHome], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', windowsHide: true });
 let problem;
 if (run === undefined) {
   problem = 'teamrig not found in the Claude Code plugin list';
@@ -82,7 +82,7 @@ ${FIND_TEAMRIG_CLI}
 process.title = 'Restore Claude sessions';
 const kitHome = dirname(dirname(fileURLToPath(import.meta.url)));
 const main = teamrigCli();
-const run = main === undefined ? undefined : spawnSync(process.execPath, [main, 'restore', 'run', '--tab', '--home', kitHome], { stdio: 'inherit' });
+const run = main === undefined ? undefined : spawnSync(process.execPath, [main, 'restore', 'run', '--tab', '--home', kitHome], { stdio: 'inherit', windowsHide: true });
 let problem;
 if (run === undefined) {
   problem = 'teamrig not found in the Claude Code plugin list';
