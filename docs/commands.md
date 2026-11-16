@@ -262,8 +262,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       the next move (who acts first, on which task)
   check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule and context
       text over budget, in a short form within 3,000 characters; --all: every flag in full
-  plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
-      --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
+  plan [--week <date>] [--tree] [--by-slice]    the week plan (default: the newest week that has
+      started); --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>;
+      --by-slice: the week's tasks under each slice of the team's goals first, then the rest by band
   verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
       the date to verify by, then its done tasks still watched for a sighting (--watch)
   stats [--range 7d|30d|90d|180d|1y|all] [--session <id|name>] [--tree]   the register's numbers
@@ -279,12 +280,16 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       focus.maxActiveKeyResults ones with a target of today or later)
   goal set <tag> [--target <YYYY-MM-DD>] [--title "<title>"] [--slice <n>] --note "<why>"   the lead
       moves a goal's target (a slip, kept with its note), renames it or opens its next slice (1 first)
+  goal slice <tag> <n> [--title "<title>"] [--owner <session>] [--ship <YYYY-MM-DD>] [--proof "<proof>"]
+      [--tasks T1,T2] [--size <pct>] [--proven "<evidence>"] --note "<why>"   the lead adds a shippable
+      slice of a goal, naming all but --size and --proven, or changes it (a ship day move is a slip kept
+      with its note); the slice's owner records only --proven, once its live proof exists
   goal rank <tag> <n>|none   the lead ranks a goal, 1 first, or takes it off the ranking; goal-first
       ranking gives a task the best rank of its goals and the goals they are part of
   goal list   the team's goals, the ranked ones first, then the rest as a tree, each with its window,
       slips, rank and title
-  goal show <tag>   one goal: its window, rank, who added it and when, its parts, and each slip with its
-      note
+  goal show <tag>   one goal: its window, rank, who added it and when, its parts, each slip with its
+      note, and its slices with their ship day moves and proof
   files <id> | files --notes [--session <id|name>]   prints the folder for a task's files (design.md,
       build.md, plan.md, review.md, evidence/, scripts/, out/) in the team that holds it, or for your notes
       that belong to no task; makes it when missing

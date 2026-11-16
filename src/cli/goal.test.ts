@@ -38,7 +38,7 @@ describe('runCli: goal add', () => {
     ok(added);
     assert.deepEqual(added.stdout, ['ADDED goal A1 2030-01-08 to 2030-02-01 | Ship the beta']);
     const goal = readGoals(await goalsText(kit)).goals.get('A1');
-    assert.deepEqual(goal, { tag: 'A1', title: 'Ship the beta', start: '2030-01-08', target: '2030-02-01', parent: null, addedAt: '2030-01-08T10:00:00.000Z', addedBy: 'lead', slips: [], rank: null, slice: null });
+    assert.deepEqual(goal, { tag: 'A1', title: 'Ship the beta', start: '2030-01-08', target: '2030-02-01', parent: null, addedAt: '2030-01-08T10:00:00.000Z', addedBy: 'lead', slips: [], rank: null, slice: null, slices: [] });
   });
 
   it('refuses a key result past focus.maxActiveKeyResults open ones, and lets a top goal in (T2083)', async () => {
@@ -275,8 +275,68 @@ describe('runCli: goal list', () => {
   });
 });
 
+describe('runCli: goal slice (T2203)', () => {
+  const SLICE_1 = ['goal', 'slice', 'A1', '1', '--title', 'Login page', '--owner', 'alpha', '--ship', '2030-01-10', '--proof', 'a user logs in live', '--tasks', 'T1,T2', '--note', 'first slice', '--session', 'lead'];
+
+  it('adds a slice as the lead, moves its ship day as a slip, lets its owner record the proof, and shows it all', async () => {
+    const kit = await withGoals();
+    const added = await kit.run(SLICE_1);
+    ok(added);
+    assert.deepEqual(added.stdout, ['SLICE A1:1 Login page | owner alpha, ships 2030-01-10, tasks T1,T2 | proof: a user logs in live | not proven']);
+    kit.clock.advance(DAY_MS);
+    ok(await kit.run(['goal', 'slice', 'A1', '1', '--ship', '2030-01-12', '--size', '3', '--note', 'review slipped', '--session', 'lead']));
+    kit.clock.advance(DAY_MS);
+    const proven = await kit.run(['goal', 'slice', 'A1', '1', '--proven', 'login works on the beta', '--note', 'shipped', '--session', 'alpha']);
+    ok(proven);
+    assert.match(proven.stdout.join('\n'), /\| proven by alpha: login works on the beta$/);
+    const shown = await kit.run(['goal', 'show', 'A1']);
+    ok(shown);
+    assert.deepEqual(shown.stdout.slice(-3), [
+      '  SLICES 1',
+      '    A1:1 Login page | owner alpha, ships 2030-01-12, tasks T1,T2, size 3% | proof: a user logs in live | proven by alpha: login works on the beta',
+      '      Wed 01-09 10:00 UTC lead: ships 2030-01-10 -> 2030-01-12 | review slipped',
+    ]);
+    const listed = await kit.run(['goal', 'list']);
+    assert.match(listed.stdout.join('\n'), /A1 [^\n]*, 1 slice record \| Ship the beta/);
+  });
+
+  it('refuses a slice write by a session not the lead and a new slice missing a field, writing nothing', async () => {
+    const kit = await withGoals();
+    ok(await kit.run(SLICE_1));
+    const before = await goalsText(kit);
+    const notLead = await kit.run(['goal', 'slice', 'A1', '1', '--ship', '2030-01-20', '--note', 'later', '--session', 'alpha']);
+    assert.equal(notLead.code, EXIT.refused);
+    assert.match(said(notLead), /only the lead \(lead\) adds and changes a goal's slices; a slice's owner records only its --proven/);
+    const partial = await kit.run(['goal', 'slice', 'A1', '2', '--title', 'Only a title', '--note', 'half', '--session', 'lead']);
+    assert.equal(partial.code, EXIT.refused);
+    assert.match(said(partial), /slice A1:2 is new: name its --title, --owner, --ship, --proof and --tasks/);
+    assert.equal(await goalsText(kit), before);
+  });
+
+  it('reads a bad slice number, task id, size, ship day and a missing note as usage errors', async () => {
+    const kit = await withGoals();
+    const cases: readonly (readonly [readonly string[], RegExp])[] = [
+      [['goal', 'slice', 'A1', '0', '--note', 'x'], /slice "0" is not a whole number from 1/],
+      [['goal', 'slice', 'A1'], /goal slice needs <goal tag> <slice number>/],
+      [['goal', 'slice', 'A1', '1', 'extra', '--note', 'x'], /unexpected "extra"/],
+      [['goal', 'slice', 'A1', '1', '--tasks', 'T1,ten', '--note', 'x'], /ten/],
+      [['goal', 'slice', 'A1', '1', '--size', 'big', '--note', 'x'], /--size/],
+      [['goal', 'slice', 'A1', '1', '--ship', '2030-02-30', '--note', 'x'], /ship/],
+      [['goal', 'slice', 'A1', '1', '--ship', '2030-01-20'], /--note/],
+    ];
+    for (const [args, reason] of cases) {
+      const result = await kit.run([...args, '--session', 'lead']);
+      assert.equal(result.code, EXIT.usage, said(result));
+      assert.match(said(result), reason);
+    }
+    const ghost = await kit.run(['goal', 'slice', 'A1', '1', '--owner', 'nobody', '--note', 'x', '--session', 'lead']);
+    assert.notEqual(ghost.code, EXIT.ok);
+    assert.match(said(ghost), /nobody/);
+  });
+});
+
 function goal(tag: string, parent: string | null, rank: number | null = null): Goal {
-  return { tag, title: tag, start: '2030-01-08', target: '2030-02-01', parent, addedAt: '2030-01-08T10:00:00.000Z', addedBy: 'lead', slips: [], rank, slice: null };
+  return { tag, title: tag, start: '2030-01-08', target: '2030-02-01', parent, addedAt: '2030-01-08T10:00:00.000Z', addedBy: 'lead', slips: [], rank, slice: null, slices: [] };
 }
 
 describe('goalTree', () => {
