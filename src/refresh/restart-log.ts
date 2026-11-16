@@ -1,5 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
+import { recordField, stringField } from '../core/guards.ts';
+import { parseObject } from '../core/jsonl.ts';
 import type { TeamPaths } from '../core/home.ts';
 import type { RestartResult } from './restart.ts';
 
@@ -30,4 +32,36 @@ export class RestartLog {
   record(entry: RestartRecord): Promise<void> {
     return this.files.append(this.path, `${JSON.stringify(entry)}\n`);
   }
+
+  /** The newest row of `session`, as `check` names it (#705); undefined with none, damaged rows skipped. */
+  async lastRowOf(session: string): Promise<RestartRow | undefined> {
+    const lines = ((await this.files.read(this.path)) ?? '').split('\n');
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const row = rowOf(lines[index] ?? '');
+      if (row !== undefined && row.session === session) {
+        return row;
+      }
+    }
+    return undefined;
+  }
+}
+
+/** A restart-log row as `check` reads it: when it ended, its result's kind and its `why` when it has one. */
+export interface RestartRow {
+  readonly session: string;
+  readonly endedAt: string;
+  readonly kind: string;
+  readonly why: string | null;
+}
+
+function rowOf(line: string): RestartRow | undefined {
+  const record = parseObject(line.trim());
+  const result = record === undefined ? undefined : recordField(record, 'result');
+  const session = record === undefined ? undefined : stringField(record, 'session');
+  const endedAt = record === undefined ? undefined : stringField(record, 'endedAt');
+  const kind = result === undefined ? undefined : stringField(result, 'kind');
+  if (result === undefined || session === undefined || endedAt === undefined || kind === undefined) {
+    return undefined;
+  }
+  return { session, endedAt, kind, why: stringField(result, 'why') ?? null };
 }
