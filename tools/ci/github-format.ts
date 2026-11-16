@@ -1,5 +1,3 @@
-import { isRecord, stringField } from '../lib/guards.ts';
-
 /**
  * The format every issue and pull request on the repo carries: the sections that hold a task's fields
  * (what, why, how to tell it is done) and the type label the import reads as the task's type. The issue
@@ -31,44 +29,6 @@ export const ISSUE_FORMS: Readonly<Record<string, IssueForm>> = {
 
 /** The pull request template's `## ` sections, in order. */
 export const PULL_SECTIONS: readonly string[] = ['What', 'Why', 'Reach', 'Changes', 'Old-code proof', 'Tests', 'Issue', 'Checklist'];
-
-/** A label as GitHub stores it. */
-export interface RepoLabel {
-  readonly name: string;
-  /** Six hex digits, no `#`. */
-  readonly color: string;
-  readonly description: string;
-}
-
-/** GitHub refuses a label description longer than this. */
-export const LABEL_DESCRIPTION_MAX = 100;
-
-/** The labels of `.github/labels.json`, refusing a malformed, duplicate or over-long one. */
-export function parseLabels(json: string): RepoLabel[] {
-  const body: unknown = JSON.parse(json);
-  const list = isRecord(body) ? body['labels'] : undefined;
-  if (!Array.isArray(list)) {
-    throw new Error('labels.json: expected { "labels": [ { "name", "color", "description" } ] }');
-  }
-  const labels = list.map((entry: unknown): RepoLabel => {
-    const name = isRecord(entry) ? stringField(entry, 'name') : undefined;
-    const color = isRecord(entry) ? stringField(entry, 'color') : undefined;
-    const description = isRecord(entry) ? stringField(entry, 'description') : undefined;
-    if (name === undefined || name.trim() === '' || color === undefined || !/^[0-9a-f]{6}$/.test(color) || description === undefined) {
-      throw new Error(`labels.json: each label needs a name, a six-digit lowercase hex color and a description (at ${JSON.stringify(entry)})`);
-    }
-    if (description.length > LABEL_DESCRIPTION_MAX) {
-      throw new Error(`labels.json: ${name}'s description is over ${LABEL_DESCRIPTION_MAX} characters, which GitHub refuses`);
-    }
-    return { name, color, description };
-  });
-  const names = labels.map((label) => label.name.toLowerCase());
-  const twice = names.find((name, index) => names.indexOf(name) !== index);
-  if (twice !== undefined) {
-    throw new Error(`labels.json: ${twice} is listed twice (GitHub label names ignore case)`);
-  }
-  return labels;
-}
 
 /** One input of an issue form file, as its YAML declares it. */
 export interface FormInput {
