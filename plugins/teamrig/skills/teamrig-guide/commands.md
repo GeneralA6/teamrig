@@ -4682,14 +4682,16 @@ for `delivery.queue.waitMinutes` (60 by default). Waiters take it in their turn:
 first live one may take the lock, looking every 2 s; the rest look every `delivery.wait.pollSeconds` (30). With
 `delivery.queue.admission` `pipeline` the line is in admission order: a p0 step first, then by class
 turn, then by priority, which rises a level for each `delivery.queue.agingMinutes` (15) waited but never to p0, then by
-arrival. Class turns share the host among the work classes by `focus.allocation`: each class (its task's, else
+arrival. Under `pipeline` a `--small` step and a heavy step stand in two lines, each in that order: a small step waits
+only behind earlier small steps, never behind a heavy one, and a heavy one only behind earlier heavy steps. Class turns
+share the host among the work classes by `focus.allocation`: each class (its task's, else
 `focus.defaultClass`) keeps a virtual time in `<lock>.turns.json`, charged at a step's admission the minutes it is
 expected to run (the median of the runs its need is learned from, else 5) times 100 over its percent (a 0% class counts
 as 1%), and corrected to the minutes it ran once it ends: the step marks its end in `<lock>.ended` before it lets go,
 and the next admission settles the mark. The waiting class with the least virtual time goes next. A class with no step
 waiting or running is lifted to the least virtual time of the classes in play, so idle time banks no turns; a damaged
-turns file reads as none and is written whole again. A step whose
-session already runs `delivery.queue.perSessionRunning` (2) steps, under the lock or sharing the host, waits for one to
+turns file reads as none and is written whole again. A heavy step whose
+session already runs `delivery.queue.perSessionRunning` (2) heavy steps, under the lock or sharing the host, waits for one to
 end while later steps pass it (`2 steps of its session running, its cap 2: ...`, refused with `session cap still
 reached: ...`). A step waiting on host memory or the commit charge lets later steps that fit pass it too: always while
 no queued step runs, as only memory outside the queue holds it then, and for its first
@@ -4728,6 +4730,9 @@ a declared need holds `delivery.queue.smallReserveMb` (2048). The wait line says
 
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
 In its turn, while the lock is not held and host memory lets it in, it writes a share in `<lock>.shared` and runs.
+Under `pipeline` at most `delivery.queue.maxSmallParallel` (4) small steps run at once; past that cap it waits
+(`4 small steps running, the cap 4 (delivery.queue.maxSmallParallel): ...`, refused with `small cap still reached:
+...`). The heavy steps running count toward neither that cap nor a small step's session cap.
 
 A step without `--small` is a heavy step. With `delivery.queue.admission` `pipeline` (the default) it shares the
 host too, as a heavy share in `<lock>.shared` marked `heavy`, while fewer than `delivery.queue.maxHeavyParallel` (2)
@@ -4858,8 +4863,10 @@ Flags:
   script builds; anything else (`npm run check`, a script of the team's own) is `other`. Any other value is refused
   (exit 64).
 - `--task <T id>`: the register task the step works for, recorded on its ledger records with that task's register
-  priority; default the first task id `--what` names (`--what "T12 specs"`), else none. A value that is not a task id
-  is refused (exit 64).
+  priority; default the first task id `--what` names (`--what "T12 specs"`), else, for a step that runs a configured
+  ship tool (`delivery.repos.<name>.shipTool`), the task its worktree's branch names (`feat/t12-parser` is T12), so a
+  ship or merge waits with its task's priority and class rather than the default class; else none. A value that is not
+  a task id is refused (exit 64).
 - `--memory-mb <MB>`: the MB the step needs besides `memoryFloorMb`, held when it is at least the need learned from
   its past runs (see above); a whole number from 1, else refused (exit 64).
 - `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).

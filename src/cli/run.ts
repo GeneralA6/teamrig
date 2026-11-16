@@ -878,7 +878,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       delivery.queue.maxRunMinutes (--max-minutes) and records its start and end in the delivery
       ledger, with its --kind (build, test, lint, push, merge, deploy, other or ship; default read from the
       command; a ship, merge or deploy holds the host's one ship slot: a second one waits as shipSlot while other steps
-      pass it) and --task (default the first task id in --what); once the shell that started it ends, it kills a running step (exit 129); a
+      pass it) and --task (default the first task id in --what, else for a ship tool's step the task its worktree's branch
+      names); once the shell that started it ends, it kills a running step (exit 129); a
       waiting one goes on as a detached run that keeps its place in line while the tab's Claude Code runs (not a git hook's
       step), its session told, else stops; REFUSED from delivery.schedule.queueCutoffUtc to midnight UTC and once its line has not
       moved for delivery.queue.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
@@ -894,8 +895,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the same --kind and size, never other), or its --memory-mb when more; at least
       delivery.queue.heavyReserveMb without --small, else with neither delivery.queue.smallReserveMb.
       The wait line says where a learned or declared need came from. --small (a spec run, a lint):
-      shares the host with other small steps and is killed after delivery.queue.smallMaxRunMinutes
-      (--max-minutes up to it). A step without --small shares the host as a heavy step under
+      shares the host with other small steps, waiting in a line of its own, never behind a heavy step,
+      under pipeline at most delivery.queue.maxSmallParallel at once, and is killed after
+      delivery.queue.smallMaxRunMinutes (--max-minutes up to it). A step without --small shares the host as a heavy step under
       delivery.queue.admission pipeline (the default), at most delivery.queue.maxHeavyParallel at once,
       joining another only while delivery.queue.heavyIdleCpuPct of the host's CPU is idle; under serial, or with --exclusive (a step that must run alone; never with --small), it takes the whole host and waits for every
       step sharing it to end, and a step waiting behind it is told which. --pre-push (a git pre-push hook's checks): on a clean tree

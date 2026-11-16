@@ -37,8 +37,9 @@ DONE exit 0
 
 Waiting steps go in admission order, each told its place in line: an incident's (p0) step first, then the
 work class whose turn it is, so each class gets its `focus.allocation` share of the host's run time, then the task's
-priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, then arrival. A session runs at most
-`delivery.queue.perSessionRunning` (2) steps at once while later steps of other sessions pass it. A step waiting on
+priority, raised a level for each `delivery.queue.agingMinutes` (15) waited, then arrival. A small step waits only behind
+earlier small steps, a heavy one only behind earlier heavy steps. A session runs at most
+`delivery.queue.perSessionRunning` (2) heavy steps at once while later steps of other sessions pass it. A step waiting on
 host memory is passed by later steps that fit: always while no queued step runs, else for its first
 `delivery.queue.memoryPassMinutes` (15) of that wait, after which it holds its place so the memory freed goes to it.
 That is the default `delivery.queue.admission: pipeline`; `serial` keeps the line in arrival order with no cap and one
@@ -62,8 +63,8 @@ starts on a host about to run out of memory, nor just as a tab opened. A step's 
 has a run.
 
 A small step, such as a spec run or a lint, runs with `--small`: it shares the host with other small steps instead
-of taking the lock. A small step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step
-waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) shares the host too, at
+of taking the lock, at most `delivery.queue.maxSmallParallel` (4) at once, and never waits behind a heavy step. A
+small step is killed after `smallMaxRunMinutes` (10), since a hung one holds back every step waiting for the lock. A heavy step (one without `--small`, such as a build or a full suite) shares the host too, at
 most `delivery.queue.maxHeavyParallel` (2) at once, so two builds that fit in memory no longer wait for each other
 (the second one joins only while `delivery.queue.heavyIdleCpuPct` (25) of the CPU is idle, so two test runs do not
 slow each other into their time limits), while a merge, a deploy and a step queued with `--exclusive` take the lock and wait for every step sharing the host to
