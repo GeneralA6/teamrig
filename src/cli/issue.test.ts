@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isLabelAdd, isLabelRead, isLabelRemove } from '../github/gh.ts';
+import { isIssueBodyEdit, isIssueClose, isIssueComment, isIssueRead, isLabelAdd, isLabelFileRead, isLabelRead, isLabelRemove } from '../github/gh.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FakeCredentials } from '../testing/fake-credentials.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
@@ -168,8 +168,19 @@ describe('teamrig issue label', () => {
     const gh = new FakeGh().hasLabels('acme/web', ['p1']);
     const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'label', 'acme/web#7', '--add', 'tpye: bug'], { ...AS_LEAD, gh });
     assert.equal(result.code, EXIT.failed);
-    assert.deepEqual(result.stdout.slice(1), ['FAILED acme/web#7: acme/web has no label "tpye: bug": make it there first, as adding it here would make a new one; nothing was changed']);
-    assert.ok(gh.ran.every((request) => isLabelRead(request.args)));
+    assert.deepEqual(result.stdout.slice(1), ['FAILED acme/web#7: acme/web has no label "tpye: bug", and it has no .github/labels.json: add it to that file or make it there first, as adding it here would make a new one; nothing was changed']);
+    assert.ok(gh.ran.every((request) => isLabelRead(request.args) || isLabelFileRead(request.args)));
+  });
+
+  it("makes a missing label the repository's .github/labels.json defines, then adds it (T3206)", async () => {
+    const file = JSON.stringify({ labels: [{ name: 'area:cli', color: '1d76db', description: 'Area: the teamrig command line' }] });
+    const gh = new FakeGh().hasLabels('acme/web', ['p1']).holdsLabelFile('acme/web', file);
+    const result = await new CliHarness(GITHUB_TEAM).run(['issue', 'label', 'acme/web#7', '--add', 'area:cli'], { ...AS_LEAD, gh });
+    assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('MADE acme/web: the label "area:cli", as its .github/labels.json names it'), result.stdout.join('\n'));
+    const create = gh.ran.find((request) => request.args.includes('-X') && request.args.includes('repos/acme/web/labels'));
+    assert.deepEqual(create?.args, ['api', 'repos/acme/web/labels', '-X', 'POST', '-f', 'name=area:cli', '-f', 'color=1d76db', '-f', 'description=Area: the teamrig command line']);
+    assert.ok(gh.ran.some((request) => isLabelAdd(request.args)));
   });
 
   it('refuses, running no gh, no list, a label in both, an empty or control-character label, and a repository not listed', async () => {
