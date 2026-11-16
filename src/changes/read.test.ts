@@ -131,6 +131,18 @@ describe('readChanges', () => {
     assert.deepEqual(none.kind === 'report' ? [none.releases, none.failed] : [], [[], [{ source: 'git', error: 'fatal: not a git repository' }]]);
   });
 
+  it('escapes the control characters and bidi marks outside text holds, keeping its lines', async () => {
+    const git = new FakeChangeGit([commitOf('e1000000000', '2026-11-16T13:00:00.000Z', 'feat(cli): a \u202eflag\u001b[2J'), ...HISTORY.slice(1)], RELEASES);
+    const report = await reportOf({ since: { kind: 'version', version: '0.3.0' } }, deps({ git }));
+    assert.deepEqual(shown(report.entries), ['unreleased feature cli: a \\u202eflag\\x1b[2J']);
+    const noted = new MemoryFiles({ '/work/app/changes/a.md': '---\narea: setup\nkind: action\naction: run \u001b]0;x\u0007\n---\nLine one\u001b[1m.\nLine two.\n' });
+    const notes = await reportOf({ sources: ['notes'], since: { kind: 'version', version: '0.3.0' } }, deps({ files: noted }));
+    assert.deepEqual(
+      notes.entries.map((entry) => [entry.text, entry.action]),
+      [['Line one\\x1b[1m.\nLine two.', 'run \\x1b]0;x\\x07']],
+    );
+  });
+
   it('passes the file and area only to a source that can narrow by them', async () => {
     const asked: (string | undefined)[] = [];
     const narrowing: ChangeSource = {
