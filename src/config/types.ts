@@ -720,7 +720,8 @@ export interface GithubConfig {
   readonly followMax: number;
   /**
    * The session that hears the pull request news no task owner takes: a pull request from a fork or by an author
-   * outside the repository, or from a branch that names no task. Unset, the lead.
+   * outside the repository, or from a branch that names no task. Unset, the first holder of a service role holding
+   * `issue comment` (github/watcher.ts), else the lead.
    */
   readonly watcher?: string;
   /**

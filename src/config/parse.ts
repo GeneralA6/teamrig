@@ -791,7 +791,7 @@ function readProbeSeconds(read: ConfigReader, raw: JsonRecord): number {
   return seconds;
 }
 
-/** `github.watcher`: one of the sessions, else left unset (the lead) with the wrong one reported. */
+/** `github.watcher`: one of the sessions, else left unset (githubWatcher then picks the GitHub answerer, else the lead) with the wrong one reported. */
 function readGithubWatcher(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): { watcher?: string } {
   const watcher = read.optionalString(raw, 'watcher', 'github', isSessionName);
   if (watcher === undefined) {

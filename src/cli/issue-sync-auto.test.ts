@@ -82,7 +82,7 @@ describe('teamrig issue sync --auto', () => {
     assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? '')?.leftOut, new Map([['acme/web', [9, 10]], ['acme/api', [3]]]));
   });
 
-  it("tells the owner of the task a pull request's branch names and the watcher the rest, once, waking for what needs a hand", async () => {
+  it("tells the owner of the task a pull request's branch names and the watcher the rest, once, waking only the owner of a pull request in trouble", async () => {
     for (const wake of [true, false]) {
       const kit = new CliHarness({ ...TEAM, wake: { enabled: wake }, github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' }, watcher: 'alpha' } });
       const issues = [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] })];
@@ -104,7 +104,7 @@ describe('teamrig issue sync --auto', () => {
       assert.deepEqual(githubLines(kit, 'alpha'), ['GitHub pull requests: gh:acme/web#22 "Change 22": opened by stranger (outside, fork); gh:acme/web#21 "Change 21": merged']);
       assert.deepEqual(githubLines(kit, 'lead'), []);
       const asks = new WakeAsks(kit.files, join(TEAM_HOME, 'state', 'wake-asks'));
-      assert.deepEqual([(await asks.read('bravo')).length, (await asks.read('alpha')).length], wake ? [1, 1] : [0, 0], `wake ${wake}`);
+      assert.deepEqual([(await asks.read('bravo')).length, (await asks.read('alpha')).length], wake ? [1, 0] : [0, 0], `wake ${wake}: an outsider's new pull request is intake work, told without a wake`);
     }
   });
 

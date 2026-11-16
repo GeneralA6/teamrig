@@ -1282,9 +1282,9 @@ unmerged, or one that starts to conflict with its base, to fail its checks, or g
 and with [github.activity] on one whose checks pass after failing or running; each is told once, never again while
 it lasts, and the first read of a repository only marks what is there. It goes to the owner of the task the pull
 request's branch names (`t<id>-...`) when an author inside the repository pushed that branch to the repository
-itself, else to `[github.watcher]` (unset: the lead). With [github.activity] on, an unwoken copy also goes to the owner
-of the task holding the pull request or a same-repository issue it closes, and to each session following it
-(`teamrig follow`). A run by hand prints a
+itself, else to `[github.watcher]` (unset: the first holder of a service role holding `issue comment`, else the
+lead). With [github.activity] on, an unwoken copy also goes to the owner of the task holding the pull request or a
+same-repository issue it closes, and to each session following it (`teamrig follow`). A run by hand prints a
 `PULL NEWS <session>` line per session and keeps nothing; `--auto` posts it. Titles are outside input, quoted as data.
 A repository whose pull requests cannot be read gets a `FAILED <repo> pull requests:` line and exit 1; its issues still
 sync. Reading them needs Pull requests: Read-only on the token.
@@ -1298,7 +1298,8 @@ Flags:
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
   ref only, at most ten named), and one to each session with pull request news (at most eight pull requests named;
   it also wakes the session for a conflict, failing checks or changes requested on its own pull request, a `t<id>-` branch by the
-  repository's owner or a login in `github.owners`, or an outsider's new pull request, when `wake.enabled`). When its own pull request's checks start failing, it reads the
+  repository's owner or a login in `github.owners`, when `wake.enabled`; an outsider's new pull request wakes no one, as
+  it is the watcher's intake work). When its own pull request's checks start failing, it reads the
   end of each failed job's log (at most 5 a run) into `state/github-ci/<owner>-<name>-<number>.md` and the line names
   the job, its failed step and that file. An open issue labelled `security` wakes the session it routes to and pages
   the owner through the `alerts` page webhook, once per issue ever and for at most 3 issues a run (the rest go to the

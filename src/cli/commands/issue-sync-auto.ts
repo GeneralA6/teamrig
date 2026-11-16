@@ -30,6 +30,7 @@ import type { CliRuntime } from '../runtime.ts';
 import { postUrgentLine } from '../urgent-line.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { fileLockOf } from '../file-locks.ts';
+import { githubWatcher } from '../../github/watcher.ts';
 
 /**
  * The automatic GitHub sync's report: `issue watch` (issue-watch.ts) runs `issue sync --auto` when GitHub changed,
@@ -107,7 +108,7 @@ export async function reportAutoSync(runtime: CliRuntime, kit: Kit, config: KitC
   for (const [to, routes] of issueRoutesBySession(run.issueRoutes)) {
     posts.push({ to, text: issueChangeLine(routes), wake: false });
   }
-  const watcher = config.github.watcher ?? config.roles.lead;
+  const watcher = githubWatcher(config);
   for (const [repo, cutAt] of run.mentionCuts) {
     posts.push({ to: watcher, text: mentionCutLine(repo, cutAt), wake: false });
   }

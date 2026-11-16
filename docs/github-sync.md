@@ -185,15 +185,17 @@ while it lasts; the first run on a repository only notes what is there.
   own authors pushed that branch to the repository itself: the repository's owner, or a login in `owners`. A
   collaborator or member the team never listed counts as an outsider, since write access lets anyone push a
   `t<id>-` branch. A fork's or an outsider's pull request, or a branch that names no task, goes to
-  `github.watcher` in the team config, else the lead.
+  `github.watcher` in the team config; unset, the session holding a service role with `issue comment`, the one that
+  answers on GitHub; else the lead.
 - With `github.activity` on, the same news also goes to the owner of the task holding the pull request or an issue
   of the same repository it closes (a `Fixes #12` link GitHub knows), whatever its branch or author, and to each
   session following it (`teamrig follow`). Such a copy never wakes.
 - Each session gets one inbox line, for example
   `github: GitHub pull requests: gh:acme/web#20 "Fix the login redirect": conflicts with its base`. A conflict,
   failing checks or changes requested on the session's own pull request (a `t<id>-` branch of one of the team's
-  authors, not a fork), and an outsider's new pull request, also wake the session (when `wake.enabled`); a merge, a
-  close, an approval, green checks, or an outsider's conflict, red checks or changes requested wait for its next turn.
+  authors, not a fork) also wake the session (when `wake.enabled`); a merge, a close, an approval, green checks, an
+  outsider's conflict, red checks or changes requested, and an outsider's new pull request, which is the watcher's
+  intake work, wait for its next turn.
 - When the checks of a session's own pull request start failing, the run reads the end of each failed job's log
   (`gh run view --job <id> --log-failed`, at most 5 jobs a run) and writes it to
   `~/.teamrig/teams/<team>/state/github-ci/<owner>-<name>-<number>.md`, one file per pull request, the newest
@@ -214,7 +216,7 @@ repository written or edited since the last automatic run, and looks for an `@` 
 - The first automatic run that reads a repository starts its scan there: nothing written before it is told.
 - Each new mention goes to one session: the owner of the task holding the issue (or, for a pull request, of the task
   a team author's `t<id>-` branch names, else of the task holding an issue it closes), else the session `github.areaOwners` gives one of its labels, else
-  the session `github.owners` maps the mentioned login to, else `github.watcher` (else the lead). The inbox line
+  the session `github.owners` maps the mentioned login to, else the watcher (above). The inbox line
   names the item, the logins, the author and the link, with up to 300 characters of the text around the mention,
   quoted as data: `github: GitHub gh:acme/web#9 mentions @octocat: visitor wrote at https://github.com/acme/web/issues/9#issuecomment-2, it says "could you look?"`.
   Text that looks like it holds a secret is left out, with only the link.

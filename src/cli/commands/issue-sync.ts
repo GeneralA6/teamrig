@@ -40,6 +40,7 @@ import { claimBudget, recordClaims } from './issue-claim.ts';
 import { recordClocks, repoThreads } from './issue-clock.ts';
 import { issuePush, pushEndLine, pushRepos } from './issue-push.ts';
 import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from './issue-sync-auto.ts';
+import { githubWatcher } from '../../github/watcher.ts';
 
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
@@ -116,7 +117,7 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
   // Read once, without the lock: a follow made while this run reads is heard from the next run.
   const followers = auto && config.github.activity ? followersOf(parseFollows((await runtime.files.read(kit.paths.githubFollows)) ?? '')) : new Map<string, string[]>();
   const ours = ourLogins(config.github);
-  const watcher = config.github.watcher ?? config.roles.lead;
+  const watcher = githubWatcher(config);
   const routing: MentionRouting = { ours, self: undefined, rules, watcher, secrets: new SecretScanner(config.register.secretPatterns) };
   const pulls = new Map<string, PullWatch>();
   const pullNews: PullEvent[] = [];

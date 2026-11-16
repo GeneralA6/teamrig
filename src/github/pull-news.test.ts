@@ -139,7 +139,7 @@ describe('pullRecipient', () => {
     for (const association of ['COLLABORATOR', 'MEMBER']) {
       const helper = pull(1, { head: 't12-fix', authorAssociation: association, author: 'helper' });
       assert.equal(pullRecipient(helper, OURS, ownerOf, 'watch'), 'watch', association);
-      assert.deepEqual(pullNewsText([{ kind: 'opened', pull: helper }], OURS), { text: 'GitHub pull requests: gh:acme/web#1 "Change 1": opened by helper (outside)', wake: true });
+      assert.deepEqual(pullNewsText([{ kind: 'opened', pull: helper }], OURS), { text: 'GitHub pull requests: gh:acme/web#1 "Change 1": opened by helper (outside)', wake: false });
       assert.equal(pullNewsText([{ kind: 'checks-failing', pull: helper }], OURS).wake, false, `${association}'s red checks are theirs to fix`);
     }
   });
@@ -196,12 +196,12 @@ describe('pullNewsText', () => {
     assert.equal(pullNewsText([{ kind: 'opened', pull: pull(4, { author: '' }) }], OURS).text, 'GitHub pull requests: gh:acme/web#4 "Change 4": opened by a deleted account');
   });
 
-  it("wakes for an outsider's new pull request, and a conflict, red checks or changes requested on a session's own", () => {
+  it("wakes for a conflict, red checks or changes requested on a session's own, never for a new pull request, an outsider's either (T3412)", () => {
     for (const kind of ['merged', 'closed', 'approved', 'opened', 'checks-passing'] as const) {
       assert.equal(pullNewsText([{ kind, pull: pull(1) }], OURS).wake, false, kind);
     }
     assert.equal(pullNewsText([{ kind: 'checks-passing', pull: pull(1, { head: 't12-fix' }) }], OURS).wake, false);
-    assert.equal(pullNewsText([{ kind: 'opened', pull: pull(1, { authorAssociation: 'CONTRIBUTOR' }) }], OURS).wake, true);
+    assert.equal(pullNewsText([{ kind: 'opened', pull: pull(1, { authorAssociation: 'CONTRIBUTOR' }) }], OURS).wake, false);
     for (const kind of ['conflict', 'checks-failing', 'changes-requested'] as const) {
       assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix' }), followed: true }], OURS).wake, false, `${kind} told to a follower`);
       assert.equal(pullNewsText([{ kind, pull: pull(1, { head: 't12-fix' }) }], OURS).wake, true, kind);
