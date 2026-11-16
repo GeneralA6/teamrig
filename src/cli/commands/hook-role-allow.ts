@@ -27,7 +27,7 @@ async function holderOf(runtime: CliRuntime, kit: Kit, config: KitConfig, claude
 
 /**
  * What the route-allow hook prints for a service role's call: an allow when the tab's holder holds a role giving the
- * call's command, every guard passed it (`guardsPass`), a close, comment or migrate's issue rows fit under the role's
+ * call's command, every guard passed it (`guardsPass`), a close or a migrate's issue rows fit under the role's
  * daily cap, a migrate reads its rows from one of the team's task folders (migrate-role-check.ts) and a ship or merge
  * runs the team's landed ship tool on the holder's own task branch (ship-role-check.ts); an ask of the owner past the
  * cap; else '', so the permission check decides. It answers only with the switch on and a config that loaded with no
@@ -53,8 +53,8 @@ export async function roleAllowOutputOf(runtime: CliRuntime, kit: Kit, payload: 
     return '';
   }
   // A ship is held to the holder's own task branch (C4) and logged by it, a migrate to a rows file in the team's task
-  // files; a close or comment counts one toward the cap (C6), a migrate each issue row of its file (T4606), so a file
-  // the allow cannot weigh is left to the permission check.
+  // files; a close counts one toward the cap (C6), a migrate each issue row of its file (T4606), so a file the allow
+  // cannot weigh is left to the permission check.
   const migrates = call.command === MIGRATE_COMMAND;
   const target = 'ship' in call ? await shipBranchOf(runtime, kit, config, holder, call.ship) : migrates ? migrateRowsFileOf(kit.paths, call.target) : call.target;
   const count = target !== undefined && migrates ? await migrateWeightOf(runtime.files, target, config.register.secretPatterns) : undefined;

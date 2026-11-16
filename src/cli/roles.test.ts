@@ -25,11 +25,10 @@ describe('roles grant, revoke and list', () => {
   it('previews a grant and writes nothing without --yes', async () => {
     const kit = new CliHarness(TEAM);
     const before = kit.files.get(CONFIG_PATH);
-    const result = ok(await kit.run(['roles', 'grant', 'github', '--holder', 'alpha', '--commands', 'issue close,issue comment']));
+    const result = ok(await kit.run(['roles', 'grant', 'github', '--holder', 'alpha', '--commands', 'issue close']));
     assert.deepEqual(result.stdout, [
-      'PREVIEW roles grant github: held by alpha; runs issue close, issue comment; nothing written (add --yes to write)',
+      'PREVIEW roles grant github: held by alpha; runs issue close; nothing written (add --yes to write)',
       `REACH issue close: ${SERVICE_COMMAND_REACH['issue close']}`,
-      `REACH issue comment: ${SERVICE_COMMAND_REACH['issue comment']}`,
     ]);
     assert.match(result.stdout.join('\n'), /any issue or pull request of github.repos, an outside author's too/, 'a grant says it reaches pull requests (T2984)');
     assert.equal(kit.files.get(CONFIG_PATH), before);
@@ -44,9 +43,9 @@ describe('roles grant, revoke and list', () => {
     assert.equal(kit.files.get(join(TEAM_HOME, 'backups', 'config.roles-grant.json')), before);
     assert.deepEqual(rolesOf(kit), { github: { holders: ['alpha'], commands: ['issue close'] } });
     ok(await kit.run(['config', 'validate']));
-    ok(await kit.run(['roles', 'grant', 'github', '--holder', 'bravo', '--commands', 'issue comment', '--yes']));
-    assert.deepEqual(rolesOf(kit), { github: { holders: ['alpha', 'bravo'], commands: ['issue close', 'issue comment'] } });
-    assert.deepEqual(ok(await kit.run(['roles', 'list'])).stdout, ['github: held by alpha, bravo; runs issue close, issue comment']);
+    ok(await kit.run(['roles', 'grant', 'github', '--holder', 'bravo', '--yes']));
+    assert.deepEqual(rolesOf(kit), { github: { holders: ['alpha', 'bravo'], commands: ['issue close'] } });
+    assert.deepEqual(ok(await kit.run(['roles', 'list'])).stdout, ['github: held by alpha, bravo; runs issue close']);
   });
 
   it('revokes one holder, then the whole role, dropping serviceRoles once empty', async () => {
@@ -80,7 +79,10 @@ describe('roles grant, revoke and list', () => {
     const kit = new CliHarness(TEAM);
     const unknown = await kit.run(['roles', 'grant', 'github', '--holder', 'alpha', '--commands', 'pr merge']);
     assert.equal(unknown.code, EXIT.usage);
-    assert.match(unknown.stderr.join('\n'), /"pr merge" is no command a service role may hold; one of: issue close, issue comment/);
+    assert.match(unknown.stderr.join('\n'), /"pr merge" is no command a service role may hold; one of: issue close/);
+    const comment = await kit.run(['roles', 'grant', 'github', '--holder', 'alpha', '--commands', 'issue comment']);
+    assert.equal(comment.code, EXIT.usage, 'a bare comment is no command a role holds (T3169)');
+    assert.match(comment.stderr.join('\n'), /"issue comment" is no command a service role may hold; one of: issue close, queue ship, queue merge$/m);
     assert.equal((await kit.run(['roles', 'grant', 'github', '--commands', 'issue close'])).code, EXIT.usage);
   });
 });

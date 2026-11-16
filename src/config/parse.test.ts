@@ -580,14 +580,15 @@ describe('parseConfig', () => {
   });
 
   it('reads a service role whose commands come from the table and whose holders are sessions of the team (T2984)', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, serviceRoles: { github: { holders: ['bravo'], commands: ['issue close', 'issue comment'] } } });
+    const { config, issues } = parseConfig({ ...ROSTER, serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] } } });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.serviceRoles, { github: { holders: ['bravo'], commands: ['issue close', 'issue comment'] } });
+    assert.deepEqual(config.serviceRoles, { github: { holders: ['bravo'], commands: ['issue close'] } });
   });
 
   it('fails the load on an unknown command, a holder off the roster or a misspelt key, and leaves the role out (T2984 C3)', () => {
     const cases: readonly [unknown, readonly string[]][] = [
       [{ holders: ['bravo'], commands: ['issue delete'] }, ['serviceRoles.github.commands[0]']],
+      [{ holders: ['bravo'], commands: ['issue close', 'issue comment'] }, ['serviceRoles.github.commands[1]']],
       [{ holders: ['bravo'], commands: ['issue *'] }, ['serviceRoles.github.commands[0]']],
       [{ holders: ['bravo'], commands: ['issue close', 'issue close'] }, ['serviceRoles.github.commands[1]']],
       [{ holders: ['bravo'], commands: [] }, ['serviceRoles.github.commands']],
@@ -611,8 +612,8 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, serviceRoles: { ship: { holders: 'team', commands: ['queue ship', 'queue merge'] } } });
     assert.deepEqual(issues, []);
     assert.deepEqual(config.serviceRoles, { ship: { holders: 'team', commands: ['queue ship', 'queue merge'] } });
-    const mixed = parseConfig({ ...ROSTER, serviceRoles: { ship: { holders: 'team', commands: ['queue ship', 'issue comment'] } } });
-    assert.match(mixed.issues[0]?.message ?? '', /every session issue comment,/);
+    const mixed = parseConfig({ ...ROSTER, serviceRoles: { ship: { holders: 'team', commands: ['queue ship', 'issue close'] } } });
+    assert.match(mixed.issues[0]?.message ?? '', /every session issue close,/);
   });
 
   it('refuses "team" holders for a command that acts as whoever runs it (T2984 C4)', () => {

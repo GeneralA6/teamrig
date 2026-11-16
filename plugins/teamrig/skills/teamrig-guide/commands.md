@@ -2791,11 +2791,11 @@ NOTE backend has an inbox line: lead took back the sessions you led (importer, s
 Service roles (`teamrig roles grant`, `revoke` and `list`) let a named session run a few teamrig commands for an outside
 service past every permission check, from its own tab only: the team's `serviceRoles` config [serviceRoles] maps
 each role to its holders and its commands. The commands come from teamrig's table, each a reviewed shape
-(`issue close`, `issue comment`, `issue migrate`, `queue ship`, `queue merge`); a name outside it fails the config
+(`issue close`, `issue migrate`, `queue ship`, `queue merge`); a name outside it fails the config
 load. `team` holds a role for every session only where each command checks its caller itself, as a ship or merge
 does (it runs only on the session's own task branch); the others name their sessions. `hook route-allow` lets the
-holder's own tab run them with no permission check, up to `prompts.serviceRoleDailyCap` closes, comments and migrate
-runs a role in 24 hours
+holder's own tab run them with no permission check, up to `prompts.serviceRoleDailyCap` closes and migrate runs
+a role in 24 hours
 ([the service-role allow](hooks.md#before-a-shell-command-the-service-role-allow)). See also
 [the service-role guard](hooks.md#before-a-write-or-a-shell-command-the-service-role-guard).
 
@@ -2807,7 +2807,7 @@ config goes into the backups folder and `serviceRoles` is rewritten; the next ca
 `roles grant <role> --holder <id|name|team> [--commands <a,b>]` creates the role (it needs `--commands`), or adds
 the holder and any new commands to it. It refuses a grant that changes nothing. Its preview and its result add a
 `REACH` line for each command of the role, saying what it acts on: GitHub numbers issues and pull requests as one,
-so `issue close` and `issue comment` reach every pull request of `github.repos` too, an outside author's included.
+so `issue close` reaches every pull request of `github.repos` too, an outside author's included.
 
 Flags:
 
@@ -2818,15 +2818,14 @@ Flags:
 Example:
 
 ```sh
-teamrig roles grant github --holder backend --commands "issue close,issue comment" --yes
+teamrig roles grant github --holder backend --commands "issue close" --yes
 ```
 
 Output:
 
 ```text
-GRANTED github: held by backend; runs issue close, issue comment; the old config is at ~/.teamrig/teams/shop/backups/config.roles-grant.json
+GRANTED github: held by backend; runs issue close; the old config is at ~/.teamrig/teams/shop/backups/config.roles-grant.json
 REACH issue close: closes any issue or pull request of github.repos, an outside author's too (a pull request closes unmerged), posting its --comment first
-REACH issue comment: posts a comment on any issue or pull request of github.repos, an outside author's too
 ```
 
 ### teamrig roles revoke
@@ -2867,7 +2866,7 @@ teamrig roles list
 Output:
 
 ```text
-github: held by backend; runs issue close, issue comment
+github: held by backend; runs issue close
 ```
 
 ### teamrig rules

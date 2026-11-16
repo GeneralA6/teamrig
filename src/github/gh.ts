@@ -10,7 +10,7 @@ import { QUERY_VARIABLES, RAW_FIELD } from './queries.ts';
 /**
  * The kinds of `gh` command line teamrig runs: a page of a shipped query (the issue import, the links read and the
  * pull request monitor, which never write to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), one
- * comment on or the close of one issue or pull request (issue comment and issue close, a close with or without its
+ * comment on or the close of one issue or pull request (issue reply and issue close, a close with or without its
  * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
  * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
  * --duplicate-of), logins added to one issue's assignees, the read of one user, for the case GitHub spells its login

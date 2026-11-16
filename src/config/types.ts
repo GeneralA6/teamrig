@@ -333,8 +333,8 @@ export interface PromptsConfig {
   readonly routeAllow: RouteAllow;
   /**
    * How many calls one service role lets run with no permission check in 24 hours (T2984, security condition C6), a
-   * migrate counting each issue row (T4606), so a holder steered by outside text closes, comments or migrates only so
-   * much; past it, the role's next call is refused.
+   * migrate counting each issue row (T4606), so a holder steered by outside text closes or migrates only so much; past
+   * it, the role's next call is refused.
    */
   readonly serviceRoleDailyCap: number;
 }

@@ -27,14 +27,19 @@ describe('service-role call: the mask', () => {
 });
 
 describe('service-role call: the shapes', () => {
-  it('reads issue close and issue comment on a team repository, with the session the line names', async () => {
+  it('reads issue close on a team repository, with the session the line names', async () => {
     assert.deepEqual(await roleCallOf('teamrig issue close acme/web#7 --session gh', CONTEXT), { command: 'issue close', target: 'acme/web#7', session: 'gh' });
     assert.deepEqual(await roleCallOf('teamrig issue close Acme/Web#7 --comment "Fixed in #8; thanks!" --session gh', CONTEXT), {
       command: 'issue close',
       target: 'acme/web#7',
       session: 'gh',
     });
-    assert.deepEqual(await roleCallOf('teamrig issue comment acme/web#12 --session gh --body "Looking at it" 2>&1', CONTEXT), { command: 'issue comment', target: 'acme/web#12', session: 'gh' });
+    assert.deepEqual(await roleCallOf('teamrig issue close acme/web#12 --session gh --comment "Landed" 2>&1', CONTEXT), { command: 'issue close', target: 'acme/web#12', session: 'gh' });
+  });
+
+  it('reads no bare comment, which no role holds (T3169)', async () => {
+    assert.equal(await roleCallOf('teamrig issue comment acme/web#12 --session gh --body "Looking at it"', CONTEXT), undefined);
+    assert.equal(await roleCallOf('teamrig issue reply acme/web#12 --session gh --body-file reply.md', CONTEXT), undefined);
   });
 
   it('reads no call off the table, off the repositories, through another program or joined to another command', async () => {
@@ -68,15 +73,12 @@ describe('service-role call: the shapes', () => {
 
   it('reads no call posting a format or bidi character, a line separator or an @-mention (T2984)', async () => {
     for (const text of ['a\u202Eb', 'zero\u200Bwidth', 'iso\u2066late\u2069', 'line\u2028break', 'cc @bob', '@acme/team look', '(@bob)', 'hi\u00ADdden']) {
-      for (const flag of ['--comment', '--body']) {
-        const command = flag === '--comment' ? 'close' : 'comment';
-        const line = `teamrig issue ${command} acme/web#7 ${flag} "${text}" --session gh`;
-        assert.equal(await roleCallOf(line, CONTEXT), undefined, JSON.stringify(line));
-      }
+      const line = `teamrig issue close acme/web#7 --comment "${text}" --session gh`;
+      assert.equal(await roleCallOf(line, CONTEXT), undefined, JSON.stringify(line));
     }
     assert.equal(await roleCallOf('teamrig issue close acme/web#7 --comment @bob --session gh', CONTEXT), undefined, 'a bare word');
     for (const text of [`mail ${['ops', 'acme.dev'].join('@')}`, 'see a@b', 'déjà vu, 日本', 'x @ y']) {
-      assert.deepEqual(await roleCallOf(`teamrig issue comment acme/web#7 --body "${text}" --session gh`, CONTEXT), { command: 'issue comment', target: 'acme/web#7', session: 'gh' }, text);
+      assert.deepEqual(await roleCallOf(`teamrig issue close acme/web#7 --comment "${text}" --session gh`, CONTEXT), { command: 'issue close', target: 'acme/web#7', session: 'gh' }, text);
     }
   });
 

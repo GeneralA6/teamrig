@@ -18,12 +18,12 @@ const CLOSE = `${UNNAMED} --session alpha`;
 /** A token shape the secret guard knows, built here so no token sits in the source. */
 const TOKEN = ['gh', 'p_', 'a1'.repeat(18)].join('');
 
-/** A team whose `github` role gives alpha both issue commands on acme/web. */
+/** A team whose `github` role gives alpha issue close on acme/web. */
 function roleTeam(extra: JsonRecord = {}): JsonRecord {
   return {
     ...TEAM,
     github: { repos: ['acme/web'] },
-    serviceRoles: { github: { holders: ['alpha'], commands: ['issue close', 'issue comment'] } },
+    serviceRoles: { github: { holders: ['alpha'], commands: ['issue close'] } },
     ...extra,
   };
 }
@@ -66,10 +66,10 @@ describe('hook route-allow: service roles', () => {
     const result = await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA });
     assert.equal(decisionOf(result), 'allow');
     assert.deepEqual(result.stderr, []);
-    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call('teamrig issue comment acme/web#9 --body "On it" --session alpha'), env: {} })), 'allow');
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call('teamrig issue close acme/web#9 --comment "Done in #10" --session alpha'), env: {} })), 'allow');
     assert.deepEqual(await answersOf(kit), [
       { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: CLAUDE_SESSION, tool: 'Bash', event: 'PreToolUse', answer: 'role', role: 'github', command: 'issue close', target: 'acme/web#7' },
-      { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: CLAUDE_SESSION, tool: 'Bash', event: 'PreToolUse', answer: 'role', role: 'github', command: 'issue comment', target: 'acme/web#9' },
+      { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: CLAUDE_SESSION, tool: 'Bash', event: 'PreToolUse', answer: 'role', role: 'github', command: 'issue close', target: 'acme/web#9' },
     ]);
     assert.ok(!(await kit.files.read(ANSWERS_LOG))?.includes('thanks'));
   });
@@ -96,17 +96,17 @@ describe('hook route-allow: service roles', () => {
     assert.deepEqual(await kit.run(HOOK, { stdin: call(UNNAMED), env: {} }), NOTHING);
   });
 
-  it('gives no role for a call off its shape, a repository off the list, or a command the role does not hold', async () => {
-    const kit = await boundKit({ serviceRoles: { github: { holders: ['alpha'], commands: ['issue comment'] } } });
-    for (const line of [CLOSE, 'teamrig issue comment other/web#7 --body "x" --session alpha', 'teamrig issue comment acme/web#7 --body "x" --session alpha; rm -rf y', 'teamrig issue sync']) {
+  it('gives no role for a call off its shape, a repository off the list, or a bare comment, which no role holds (T3169)', async () => {
+    const kit = await boundKit();
+    for (const line of ['teamrig issue comment acme/web#7 --body "x" --session alpha', 'teamrig issue close other/web#7 --session alpha', `${CLOSE}; rm -rf y`, 'teamrig issue sync']) {
       assert.deepEqual(await kit.run(HOOK, { stdin: call(line), env: ALPHA }), NOTHING, line);
     }
-    assert.deepEqual(await kit.run(HOOK, { stdin: call('teamrig issue comment acme/web#7 --body "x" --session alpha', { tool_name: 'PowerShell' }), env: ALPHA }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(CLOSE, { tool_name: 'PowerShell' }), env: ALPHA }), NOTHING);
   });
 
   it('stays out when a guard refuses the call, so that guard answers it', async () => {
     const kit = await boundKit();
-    assert.deepEqual(await kit.run(HOOK, { stdin: call(`teamrig issue comment acme/web#7 --body "${TOKEN}" --session alpha`), env: ALPHA }), NOTHING);
+    assert.deepEqual(await kit.run(HOOK, { stdin: call(`teamrig issue close acme/web#7 --comment "${TOKEN}" --session alpha`), env: ALPHA }), NOTHING);
     assert.deepEqual(await answersOf(kit), []);
   });
 
