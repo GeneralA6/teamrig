@@ -4963,6 +4963,50 @@ Output:
 WITHDRAWN heavy: build api, waiting since 2030-01-08 11:58 IST: it stops at its next look
 ```
 
+### teamrig step-away
+
+Run inside a queued step (`teamrig queue`) while the step only waits on a remote service, such as a merge waiting
+on its pull request's checks: it sets the step's host share aside, so the ship slot, its heavy place and the MB it
+held go to the next step in line, and the step goes on running. `teamrig step-back` takes the share back before the
+step does local work again. A share set aside is dropped when the step ends. `KEPT` when the step holds the whole
+host (an exclusive step), which it keeps; `NONE` when it holds nothing. Refused outside a queued step, which
+`$TEAMRIG_HOST_LOCK` names. Exit 0 set aside, 1 `KEPT` or `NONE`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig step-away
+```
+
+Output:
+
+```text
+AWAY heavy: merge api: its host share (4096 MB) goes to the next step in line until teamrig step-back takes it back in turn
+```
+
+### teamrig step-back
+
+Takes back, in its turn, the host share its queued step set aside with `teamrig step-away`, at the place of the
+step's first taking, so it goes ahead of steps that came later. It waits as `teamrig queue` does, printing each new
+reason once. `NONE` when no share is set aside. Refused outside a queued step. Exit 0 taken back or `NONE`, 1 when
+its wait ran out (`GAVE UP`) or it was withdrawn (`WITHDRAWN`).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig step-back
+```
+
+Output:
+
+```text
+BACK heavy: merge api: its host share is taken back
+```
+
 ### teamrig pipeline
 
 Shows the host's queued steps (`queue`, `merge`, `deploy`) in one read, taking nothing and changing nothing, so a

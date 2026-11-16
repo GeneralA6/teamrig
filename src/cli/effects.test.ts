@@ -80,6 +80,8 @@ const EXPECTED = {
   rename: 'write',
   queue: 'write',
   withdraw: 'write',
+  'step-away': 'write',
+  'step-back': 'write',
   pipeline: 'read',
   'pipeline freeze': 'write',
   'pipeline unfreeze': 'write',
