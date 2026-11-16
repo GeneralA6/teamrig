@@ -836,6 +836,10 @@ Flags:
 - `--session <id|name>`: the caller.
 - `--week <date>`: that week instead.
 - `--tree`: the lead only: also every team under it.
+- `--by-slice`: a `## Slices` section first: each slice of the team's goals (`goal slice`), the ranked goals first,
+  that is not proven yet or has a task in the week, headed by its owner, ship day, size, proof and whether it shipped
+  or is **late**, with the week's tasks that make it under it and its other tasks named; the bands then hold the
+  rest of the week's tasks.
 
 Example:
 
@@ -1088,6 +1092,45 @@ Refused, writing nothing: another session, a goal not added (`goal B9 does not e
 naming no field (`goal set changes --target, --title, --slice or more`) or changing nothing (`goal A1 already reads
 so; nothing to change`), and a target before the start. A slice that is not a whole number from 1 is a usage error.
 
+### teamrig goal slice
+
+Adds a shippable slice of a goal, or changes one, with a note saying why; the lead only, but for its proof. A slice is
+a part of the goal one session ships and proves live by a day: its owner, the day it ships, the live proof that says
+it shipped, and the tasks that make it (a task makes one slice of a goal). A new slice names all of those; a later
+call names only what changes, and a moved ship day is a slip the slice keeps with its note. Once the proof exists,
+the slice's owner (or the lead) records it with `--proven`, once. `plan --by-slice` groups the week by slice, and
+`check` flags `SLICE-LATE` on a slice past its ship day with no proof.
+
+Flags:
+
+- `--session <id|name>`: the caller: the lead, or the slice's owner with `--proven` alone.
+- `--title "<title>"`: what the slice ships.
+- `--owner <session>`: the session that ships and proves it.
+- `--ship <YYYY-MM-DD>`: the day it ships.
+- `--proof "<live proof>"`: what shows it shipped, live.
+- `--tasks T1,T2`: the tasks that make it, in the team's own register.
+- `--size <pct>`: what it costs, in % of the weekly limit, as a task's size.
+- `--proven "<evidence>"`: the evidence that its proof exists: the slice shipped.
+- `--note "<why>"`: required: why it changed.
+
+Example:
+
+```sh
+teamrig goal slice A1 1 --title "Login page" --owner alpha --ship 2026-10-20 --proof "a user logs in on the beta" --tasks T4,T5 --note "first slice" --session lead
+```
+
+Output:
+
+```text
+SLICE A1:1 Login page | owner alpha, ships 2026-10-20, tasks T4,T5 | proof: a user logs in on the beta | not proven
+```
+
+Refused, writing nothing: a goal not added, another session (`only the lead (lead) adds and changes a goal's slices; a
+slice's owner records only its --proven`), a new slice missing a field (`slice A1:2 is new: name its --title, --owner,
+--ship, --proof and --tasks`) or given `--proven` before it is added, a slice proven already, a task that makes
+another slice of the goal, a task named twice, and a call that changes nothing. A slice number that is not a whole
+number from 1, a bad day, task id or size, an unknown owner or no `--note` is a usage error.
+
 ### teamrig goal rank
 
 Ranks a goal, 1 first, or takes it off the ranking with `none`; the lead only. Goal-first ranking gives each task the
@@ -1152,7 +1195,8 @@ With none: `GOALS 0: the lead adds one with teamrig goal add <tag> --title "<tit
 ### teamrig goal show
 
 Prints one goal: its window (with the target first planned, once it slipped), its rank once ranked, who added it and
-when, its parts or the goal it is part of, and each slip with its note.
+when, its parts or the goal it is part of, each slip with its note, and its slices (`goal slice`), each with its
+ship day moves and whether its proof is recorded.
 
 Flags:
 
