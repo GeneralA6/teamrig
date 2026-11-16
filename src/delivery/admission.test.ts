@@ -292,5 +292,22 @@ describe('placeInLine', () => {
     it('holds a later step back while it waits on anything else', () => {
       assert.deepEqual(aheadOf(behind('build', 'heavyCap'), PIPELINE), ['ship']);
     });
+
+    it('lets a step that holds no slot pass every ship waiting behind the one on the slot, whatever its own reason (T3336)', () => {
+      const line: InLine[] = [
+        ticket('early', { session: 'delta', waitedMinutes: 40, kind: 'merge', waitingOn: { reason: 'heavyCap', forMinutes: 0 } }),
+        ticket('ship', { session: 'alpha', waitedMinutes: 30, kind: 'ship', waitingOn: { reason: 'shipSlot', forMinutes: 20 } }),
+        ticket('ship2', { session: 'gamma', waitedMinutes: 20, kind: 'ship', waitingOn: { reason: 'line', forMinutes: 10 } }),
+        ticket('merge2', { session: 'gamma', waitedMinutes: 15, kind: 'merge', waitingOn: { reason: 'memory', forMinutes: 5 } }),
+        ticket('build', { session: 'epsilon', waitedMinutes: 12, kind: 'build', waitingOn: { reason: 'line', forMinutes: 5 } }),
+        ticket('later', { session: 'beta', waitedMinutes: 1, kind: 'test' }),
+      ];
+      const ahead = (id: string): string[] => {
+        const name = line.find((entry) => idsOf([entry])[0] === id)?.name ?? '';
+        return idsOf(placeInLine(line, name, runs({ charlie: 1 }), PIPELINE, NOW)?.ahead ?? []);
+      };
+      assert.deepEqual(ahead('later'), ['early', 'build'], 'a ship ahead of the slot waiter still holds it back');
+      assert.deepEqual(ahead('merge2'), ['early', 'ship', 'ship2'], 'ships keep their order');
+    });
   });
 });
