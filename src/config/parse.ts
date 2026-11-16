@@ -1,4 +1,5 @@
 import { ADMISSION_MODES, isAdmissionMode } from '../delivery/admission.ts';
+import { CHANGE_SOURCE_IDS, isChangeSourceId } from '../changes/ids.ts';
 import { deployTargetsOf } from '../delivery/targets.ts';
 import { ADDRESS_PATTERN, splitAddress } from '../core/address.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
@@ -30,6 +31,7 @@ import {
   DEFAULT_QUEUE,
   DEFAULT_HIRING,
   DEFAULT_EXEC,
+  DEFAULT_CHANGES,
   DEFAULT_LOCK,
   DEFAULT_LEAD_BOUNDARY,
   DEFAULT_TURN_LOG,
@@ -145,6 +147,7 @@ import {
   SKIP_HOOKS,
   TERMINALS,
   type AlertsConfig,
+  type ChangesConfig,
   type ContextFilesConfig,
   type ExecConfig,
   type OtherAreaListing,
@@ -565,6 +568,7 @@ export function parseConfig(raw: JsonRecord, above?: AccountBudget): ConfigParse
       waitMs: read.integer(lock, 'waitMs', 'lock', DEFAULT_LOCK.waitMs, { min: 0 }),
     },
     exec: parseExec(read, read.section(raw, 'exec', '')),
+    changes: parseChanges(read, read.section(raw, 'changes', '')),
     pushGuard: {
       protectedBranches: read.stringList(
         pushGuard,
@@ -1657,6 +1661,12 @@ function parseStatusAmong(read: ConfigReader, value: unknown, path: string, allo
   }
   read.report(path, `expected one of ${allowed.join(', ')}, got ${describe(value)}`);
   return undefined;
+}
+
+function parseChanges(read: ConfigReader, raw: JsonRecord): ChangesConfig {
+  const known = `one of ${CHANGE_SOURCE_IDS.join(', ')}`;
+  const sources = read.stringList(raw, 'sources', 'changes', DEFAULT_CHANGES.sources, (id) => (isChangeSourceId(id) ? undefined : known), CHANGE_SOURCE_IDS.length);
+  return { sources: [...new Set(sources.filter(isChangeSourceId))] };
 }
 
 function parseExec(read: ConfigReader, raw: JsonRecord): ExecConfig {

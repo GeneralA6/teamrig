@@ -215,6 +215,16 @@ describe('parseConfig', () => {
     assert.equal(config.leadBoundary.searchNudgeAt, 3);
   });
 
+  it('reads changes.sources as known source ids, every source by default, and refuses an unknown one', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.changes, { sources: [] });
+    assert.deepEqual(parseConfig({ ...ROSTER, changes: { sources: ['git', 'notes', 'git'] } }).config.changes.sources, ['git', 'notes']);
+    const { config, issues } = parseConfig({ ...ROSTER, changes: { sources: ['git', 'jira'] } });
+    assert.deepEqual(paths(issues), ['changes.sources[1]']);
+    assert.match(issues[0]?.message ?? '', /one of notes, register, git/);
+    assert.deepEqual(config.changes.sources, ['git']);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, changes: { sources: 'auto' } }).issues), ['changes.sources']);
+  });
+
   it('reads exec.path as absolute folders, empty by default, and refuses one against the cwd or holding a PATH separator', () => {
     assert.deepEqual(parseConfig(ROSTER).config.exec, { path: [] });
     const folders = ['C:/tools', 'D:\\bin', '/usr/bin', '\\tools'];

@@ -80,6 +80,7 @@ const CHILD_TAKES: Readonly<Record<Exclude<keyof KitConfig, keyof typeof REWORKE
   contextFiles: 'copy',
   lock: 'copy',
   exec: 'copy',
+  changes: 'copy',
   pushGuard: 'copy',
   packageGuard: 'copy',
   commitGuard: 'copy',
