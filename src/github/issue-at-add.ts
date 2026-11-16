@@ -28,7 +28,7 @@ export interface AddIssueAsk {
   readonly priority: number;
 }
 
-/** No issue, the local ref to write with the task, or the issue to open once it is written. */
+/** No issue, the local ref to write with the task, or the issue to open before it is written, its ref pointing there. */
 export type AddIssuePlan =
   | { readonly kind: 'none' }
   | { readonly kind: 'local'; readonly ref: string }

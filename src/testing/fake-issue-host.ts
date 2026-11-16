@@ -32,6 +32,7 @@ export class FakeIssueHost implements IssueHost {
   readonly calls: HostCall[] = [];
   private unreachableFor: string | undefined;
   private opened = 0;
+  private openFailure: string | undefined;
   private commentEnd: HostEnd = { kind: 'done' };
   private closeEnd: HostEnd = { kind: 'done' };
   private bodyEnd: HostEnd = { kind: 'done' };
@@ -162,6 +163,12 @@ export class FakeIssueHost implements IssueHost {
     return this;
   }
 
+  /** From now on, opening an issue fails for `reason` and opens nothing. */
+  failsOpen(reason: string): this {
+    this.openFailure = reason;
+    return this;
+  }
+
   /** From now on, a close fails for `reason`. */
   failsClose(reason: string): this {
     this.closeEnd = { kind: 'failed', reason };
@@ -235,6 +242,9 @@ export class FakeIssueHost implements IssueHost {
 
   open(draft: IssueDraft): Promise<HostOpen> {
     this.calls.push({ kind: 'open', draft });
+    if (this.openFailure !== undefined) {
+      return Promise.resolve({ kind: 'failed', reason: this.openFailure });
+    }
     this.opened += 1;
     return Promise.resolve({ kind: 'opened', target: { repo: draft.repo, number: this.opened } });
   }

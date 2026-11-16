@@ -82,24 +82,45 @@ describe('teamrig add with its issue', () => {
     assert.equal(tasksOf(kit).get('T1')?.ref, null);
   });
 
-  it('keeps the task and says how to give it its issue when GitHub fails', async () => {
+  it('writes no task when GitHub fails, so nothing is left without its issue', async () => {
     const kit = new CliHarness(OPEN_TEAM);
     const gh = new FakeGh();
     const credentials = new FakeCredentials().failsOn('teamrig-gh-acme', 'the keyring is locked');
     const result = await kit.run([...TASK, ...ISSUE, '--issue-repo', 'acme/web'], { ...AS_LEAD, gh, credentials });
     assert.equal(result.code, EXIT.failed);
-    assert.match(result.stdout.at(-1) ?? '', /^FAILED T1's issue: .*the keyring is locked.*; T1 is written with no issue; open it with teamrig issue migrate, or point its ref at one with teamrig update T1 --ref$/u);
+    assert.match(result.stdout.at(-1) ?? '', /^FAILED the new task's issue: .*the keyring is locked.*; nothing is written$/u);
     assert.deepEqual(gh.ran, []);
-    assert.equal(tasksOf(kit).get('T1')?.ref, null);
+    assert.equal(tasksOf(kit).size, 0);
   });
 
-  it('opens nothing with GitHub off on the machine, and keeps the task', async () => {
+  it('writes no task when opening the issue fails', async () => {
+    const kit = new CliHarness(AT_ADD_TEAM);
+    const gh = new FakeGh().failsCreate('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Server Error (HTTP 502)\n' });
+    const result = await kit.run([...TASK, ...ISSUE], { ...AS_LEAD, gh, credentials: withToken() });
+    assert.equal(result.code, EXIT.failed, [...result.stdout, ...result.stderr].join('\n'));
+    assert.match(result.stdout.at(-1) ?? '', /^FAILED the new task's issue: .*; nothing is written$/u);
+    assert.equal(tasksOf(kit).size, 0);
+  });
+
+  it('refuses with GitHub off on the machine, opening nothing and writing no task', async () => {
     const kit = new CliHarness(AT_ADD_TEAM);
     const gh = new FakeGh();
     const result = await kit.run([...TASK, ...ISSUE], { env: { TEAMRIG_SESSION: 'lead', TEAMRIG_GITHUB: 'off' }, gh });
-    assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
-    assert.match(result.stdout.at(-1) ?? '', /^OFF TEAMRIG_GITHUB=off turns GitHub off on this machine; T1 is written with no issue/u);
+    assert.equal(result.code, EXIT.refused, [...result.stdout, ...result.stderr].join('\n'));
+    assert.match([...result.stdout, ...result.stderr].join('\n'), /TEAMRIG_GITHUB=off turns GitHub off on this machine, so the new task's issue cannot open and nothing is written/u);
     assert.deepEqual(gh.ran, []);
+    assert.equal(tasksOf(kit).size, 0);
+  });
+
+  it('refuses a task tracked already before its issue opens', async () => {
+    const kit = new CliHarness(AT_ADD_TEAM);
+    const gh = new FakeGh().holds('acme/web', []);
+    const first = await kit.run([...TASK, ...ISSUE], { ...AS_LEAD, gh, credentials: withToken() });
+    assert.equal(first.code, EXIT.ok, [...first.stdout, ...first.stderr].join('\n'));
+    const again = await kit.run([...TASK, ...ISSUE], { ...AS_LEAD, gh, credentials: withToken() });
+    assert.equal(again.code, EXIT.refused, [...again.stdout, ...again.stderr].join('\n'));
+    assert.match([...again.stdout, ...again.stderr].join('\n'), /T1 already tracks this/u);
+    assert.equal(gh.ran.filter((request) => request.args.includes('POST')).length, 1);
     assert.equal(tasksOf(kit).size, 1);
   });
 
