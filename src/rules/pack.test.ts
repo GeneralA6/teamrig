@@ -115,6 +115,11 @@ describe('renderCorePack', () => {
     assert.deepEqual(over, [], `every wording fits ${CORE_PACK_MAX_CHARS}`);
   });
 
+  it('has rule 11 send a security hole only to private reporting, its fix naming the hardening (T3098)', () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(pack, /^11\. .* Report a security hole only privately \(SECURITY\.md\); fixes name the hardening, never the attack\.$/m);
+  });
+
   it("has breaking a named caller wait for its answer, silence being no consent, and the proof load that caller", () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
@@ -132,14 +137,14 @@ describe('renderCorePack', () => {
 
   it('has a new task carry a plain-words description, naming the register keys once while any demand is on', () => {
     const on = renderCorePack(testConfig({ register: { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(on, /else by the receiver, with a plain description of what and why; only the owning session sets its status \(`teamrig set`\) \[register\]\. /);
+    assert.match(on, /else by the receiver, plainly saying what and why; only the owning session sets its status \(`teamrig set`\) \[register\]\. /);
     const off = renderCorePack(
       testConfig({ register: { requireDescription: false, requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] } }),
       COMMAND,
       'win32',
       RULES_CLOCK,
     );
-    assert.match(off, /else by the receiver, with a plain description of what and why; only the owning session sets its status \(`teamrig set`\)\. /);
+    assert.match(off, /else by the receiver, plainly saying what and why; only the owning session sets its status \(`teamrig set`\)\. /);
     assert.doesNotMatch(off, /\[register/);
   });
 
@@ -206,7 +211,7 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^11\. A hand-run change or delete of stored data needs the owner's OK after counts or a preview\. Code that writes data/m);
     assert.match(pack, /a parity run explaining each differing row; archive history and audit data before any TTL\. A hand step for the human/);
-    assert.match(pack, /Never print secrets; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
+    assert.match(pack, /Never print secrets; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\. Report a security hole/);
   });
 
   it('hands the human a hand step only as a file the security reviewer audited, pinned by its sha256', () => {
@@ -292,9 +297,9 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack, /node_modules|worktree remove/);
   });
 
-  it('has a comment say why plainly and name no path outside the repo (T1869)', () => {
+  it('has a comment say why and name no path outside the repo (T1869)', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'linux', RULES_CLOCK);
-    assert.match(pack, /^16\. .* Comments say why plainly, no path outside the repo, and change with their code or go; verify/m);
+    assert.match(pack, /^16\. .* Comments say why, no path outside the repo, and change with their code or go; verify/m);
   });
 
   it('tags a stopgap with the task that replaces it, in the form check reads', () => {

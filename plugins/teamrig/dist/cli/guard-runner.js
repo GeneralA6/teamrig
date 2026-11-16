@@ -49,6 +49,12 @@ export function judgeGuard(hook, outcome) {
             return blocked(hook, `crashed (${causeText(outcome.cause)})`, UPDATE_FIX);
         case 'timed-out':
             return blocked(hook, `gave no answer within ${outcome.limitMs / 1000} s`, SLOW_FIX);
+        case 'not-a-hook':
+            return {
+                exitCode: 2,
+                stdout: '',
+                stderr: `teamrig blocked this run: the guard entry runs only \`hook <name>\`, never ${JSON.stringify(outcome.argv.join(' ').slice(0, QUOTE_CHARS))}; run other commands through \`teamrig\`.\n`,
+            };
         case 'answered':
             break;
     }
@@ -69,11 +75,41 @@ export function judgeGuard(hook, outcome) {
     return { exitCode: 0, stdout: `${text}\n`, stderr: '' };
 }
 /**
- * Runs the guard `hook <name>` that `argv` names: loads the CLI with `load`, runs it with its stdout kept back, and
+ * The hooks hooks.json runs through the guard entry, and so the only names it takes (guard-hooks.test.ts holds the two
+ * equal): any other hook would run through an entry no guard expects it in (T3069).
+ */
+export const GUARD_HOOKS = new Set([
+    'push-guard',
+    'package-guard',
+    'secret-guard',
+    'db-write-guard',
+    'exec-guard',
+    'pass-record-guard',
+    'service-role-guard',
+    'cold-send',
+    'helper-gate',
+    'picker-guard',
+]);
+/**
+ * Whether `argv` is `hook <name>` for a guard hook and nothing else. The guard entry loads the whole CLI, so any other
+ * words would run a CLI command no guard reads as one (`node <plugin>/dist/cli/guard-main.js roles grant ...`, T3069).
+ */
+export function isHookArgv(argv) {
+    const [group, name] = argv;
+    return argv.length === 2 && group === 'hook' && name !== undefined && GUARD_HOOKS.has(name);
+}
+/**
+ * Runs the guard `hook <name>` that `argv` names, and blocks any other argv before it loads anything: loads the CLI with `load`, runs it with its stdout kept back, and
  * tells Claude Code the verdict. The first outcome decides; once the answer is out, the process may finish its work
  * until the limit, then ends with the verdict's code, so Claude Code's timeout never drops a given answer.
  */
 export async function runGuard(argv, script, load, host, limitMs = GUARD_LIMIT_MS) {
+    if (!isHookArgv(argv)) {
+        const refused = judgeGuard('hook', { kind: 'not-a-hook', argv });
+        host.writeError(refused.stderr);
+        host.exit(refused.exitCode);
+        return;
+    }
     const hook = argv[1] ?? 'hook';
     let verdict;
     const settle = (outcome) => {

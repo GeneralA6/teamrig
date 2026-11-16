@@ -1,6 +1,6 @@
 import { isNonNegativeInteger, isRecord } from "../core/guards.js";
 import { parseUtcDay } from "../core/time.js";
-import { EXEC_VALUED, NPM_VALUED, runnerCallOf } from "../package-guard/runners.js";
+import { NPM_VALUED, runnerCallOf } from "../package-guard/runners.js";
 import { GIT_VALUED, shellRunsOf } from "./run-work.js";
 /**
  * The rule misses a transcript shows, counted per day next to the loop patterns (`MISS_FIELDS`). Each one
@@ -77,9 +77,6 @@ function isHeavyStep(run) {
     }
     if (run.name === 'node') {
         return words.includes('--test');
-    }
-    if (run.name === 'npx') {
-        return HEAVY_PROGRAMS.has(afterOptions(words, EXEC_VALUED)[0] ?? '');
     }
     if (!PACKAGE_MANAGERS.has(run.name)) {
         return false;

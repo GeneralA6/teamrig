@@ -3,6 +3,7 @@ import type { ItemType } from '../register/events.ts';
 import type { CoreRuleKey } from '../rules/keys.ts';
 import type { AdmissionMode } from '../delivery/admission.ts';
 import type { NeedKind } from '../tabs/need-kind.ts';
+import type { ServiceCommand } from '../permissions/service-commands.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
 export const CONFIG_VERSION = 8;
@@ -672,12 +673,16 @@ export interface GithubConfig {
   readonly sessions: Readonly<Record<string, string>>;
   /** How many days back closed issues are read, to finish the tasks they were imported as. */
   readonly closedDays: number;
-  /** How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to `issue sync --yes`. */
-  readonly everyMinutes: number;
+  /**
+   * How often `issue watch` asks GitHub whether a listed repository changed, in seconds (a conditional read, free
+   * when nothing changed), syncing only when one did; 0 runs no watch and leaves the sync to `issue sync --yes`.
+   */
+  readonly probeSeconds: number;
   /**
    * Whether the automatic sync also sends the status push (`issue sync --push --yes`), so each issue a task holds
-   * shows the task's status without a session running it. It sends labels only: a close waits for a session's
-   * `issue sync --push --yes` (security verdict F1 on T2876). Off by default: read the push's dry run first.
+   * shows the task's status without a session running it. It sends labels and assignees only: a close waits
+   * for a session's `issue sync --push --yes` (security verdict F1 on T2876).
+   * Off by default: read the push's dry run first.
    */
   readonly statusPush: boolean;
   /**
@@ -691,6 +696,20 @@ export interface GithubConfig {
    * their TF-IDF word vectors (src/issues/similar.ts). Higher lists fewer, closer candidates.
    */
   readonly similarThreshold: number;
+}
+
+/**
+ * One service role (T2984): the teamrig commands it lets run past every permission check for the sessions that hold
+ * it. Written by `teamrig roles grant` and `revoke`, which the owner runs.
+ */
+export interface ServiceRoleConfig {
+  /**
+   * The sessions of this team that hold it, by id, or `team` for every session of the team, which only a role whose
+   * every command checks its own caller may name (TEAM_HELD_COMMANDS).
+   */
+  readonly holders: readonly string[] | 'team';
+  /** The commands it holds, by name from teamrig's fixed table (permissions/service-commands.ts); never free text. */
+  readonly commands: readonly ServiceCommand[];
 }
 
 /** The small-commits rule: one logical change per commit, and a reason line on any commit over the bounds. */
@@ -1645,6 +1664,8 @@ export interface KitConfig {
   readonly wake: WakeConfig;
   readonly tests: TestsConfig;
   readonly github: GithubConfig;
+  /** Each service role by name: the teamrig commands it holds and the sessions that hold it (T2984). */
+  readonly serviceRoles: Readonly<Record<string, ServiceRoleConfig>>;
   readonly alerts: AlertsConfig;
   readonly decisions: DecisionsConfig;
   /**

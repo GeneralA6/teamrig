@@ -1,4 +1,5 @@
-import { launch, programName, staticWord, type Launch } from '../push-guard/launchers.ts';
+import { launch, programName, staticWord, type Assignment, type Launch } from '../push-guard/launchers.ts';
+import { packagedStartOf } from './packaged.ts';
 import { Location } from '../push-guard/location.ts';
 import { redirectsInput, stdinUse } from '../push-guard/stdin.ts';
 import { parseShell, type Redirection, type ShellCommand, type ShellDialect, type ShellWord } from '../push-guard/tokenizer.ts';
@@ -30,6 +31,11 @@ export interface ProgramRun {
   readonly piped: boolean;
   /** True when `teamrig queue` or `teamrig test` starts it, at any depth, so it runs under the host lock. */
   readonly runner: boolean;
+  /**
+   * The program word of the outermost package runner or version manager that starts it (`npx` in
+   * `npx bash -c "teamrig ..."`), whose own folders lead its PATH; undefined when the line's own shell starts it.
+   */
+  readonly packageRunner: ShellWord | undefined;
   /** Set when the command that starts it pipes its output on: `echo "$T" | docker login --password-stdin`. */
   readonly pipe: PipeOut | undefined;
   /** True when a PowerShell assignment takes its output: `$x = Get-Content f`. */
@@ -120,6 +126,11 @@ export interface LineRuns {
   readonly opaque: OpaqueRun[];
   /** The dialect of the script holding each shell that takes its commands from a feed the walker cannot read: `x | bash`. */
   readonly fedShells: ShellDialect[];
+  /**
+   * Each shell a package runner hands a command line to that the line names (`--script-shell`, `npm_config_script_shell`,
+   * `ComSpec`) and the walker cannot read, so no reading of the line is sure to be the one it runs.
+   */
+  readonly foreignShells: ShellWord[];
 }
 
 export interface ProgramsContext {
@@ -129,8 +140,18 @@ export interface ProgramsContext {
   readonly dialect: ShellDialect;
 }
 
+/** Who starts a script or a command, besides the shell that reads it. */
+interface Scope {
+  /** True when `teamrig queue` or `teamrig test` starts it, at any depth. */
+  readonly runner: boolean;
+  /** The outermost package runner or version manager that starts it; see {@link ProgramRun.packageRunner}. */
+  readonly packageRunner: ShellWord | undefined;
+}
+
 /** The outlet of the line's own commands: the screen. */
 const SCREEN: Outlet = { pipe: undefined, substitution: undefined };
+/** The scope of the line's own commands: its shell starts them. */
+const TOP: Scope = { runner: false, packageRunner: undefined };
 
 /** Nested scripts deeper than this are not read, as in the push guard. */
 const MAX_SCRIPT_DEPTH = 8;
@@ -139,8 +160,8 @@ const PIPE_END = /(?:^|[^|])\|&?[\n(]*$/;
 
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command: string, context: ProgramsContext): LineRuns {
-  const runs: LineRuns = { programs: [], bare: [], opaque: [], fedShells: [] };
-  visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN, false);
+  const runs: LineRuns = { programs: [], bare: [], opaque: [], fedShells: [], foreignShells: [] };
+  visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, TOP, runs, SCREEN, false);
   return runs;
 }
 
@@ -151,10 +172,10 @@ export function programsOf(command: string, context: ProgramsContext): ProgramRu
 
 /**
  * Visits each command of a script; a plain `cat` hands its stdin down a pipe, so `cat <<EOF | bash` runs the body.
- * `runner` is true when a teamrig runner started the script; `outlet` takes the output of its commands that send it nowhere else;
+ * `scope` says who started the script; `outlet` takes the output of its commands that send it nowhere else;
  * `fed` is true when the command that started it has a fed stdin, which its own commands inherit.
  */
-function visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number, runner: boolean, runs: LineRuns, outlet: Outlet, fed: boolean): void {
+function visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number, scope: Scope, runs: LineRuns, outlet: Outlet, fed: boolean): void {
   if (depth > MAX_SCRIPT_DEPTH) {
     return;
   }
@@ -193,7 +214,7 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
     }
     location.enter(command.subshells);
     const inlet: Inlet = { fromPipe: pipeIn !== undefined, text: stdin, fed: pipeIn !== undefined || stdin !== undefined || (fed && command.nesting === 0) };
-    const visited = visitCommand(command, inlet, { pipe, substitution }, dialect, location, depth, runner, runs);
+    const visited = visitCommand(command, inlet, { pipe, substitution }, dialect, location, depth, scope, runs);
     if (pipeIn !== undefined) {
       pipeIn.into = visited?.run;
     }
@@ -222,7 +243,7 @@ function visitCommand(
   dialect: ShellDialect,
   location: Location,
   depth: number,
-  runner: boolean,
+  scope: Scope,
   runs: LineRuns,
 ): Visited | undefined {
   if (location.apply(command.words, dialect)) {
@@ -232,7 +253,7 @@ function visitCommand(
   if (launched.kind === 'script') {
     const inner = location.child();
     launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));
-    visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet, inlet.fed);
+    visitScript(launched.script, launched.dialect, inner, depth + 1, { ...scope, runner: scope.runner || launched.runner }, runs, outlet, inlet.fed);
     if (launched.sameShell) {
       location.adopt(inner);
     }
@@ -248,12 +269,14 @@ function visitCommand(
       redirections: command.redirections,
       stdin: inlet.text,
       piped: inlet.fromPipe,
-      runner: runner || launched.runner,
+      runner: scope.runner || launched.runner,
+      packageRunner: scope.packageRunner,
       pipe: outlet.pipe,
       captured: launched.captured,
       substitution: outlet.substitution,
     };
     runs.programs.push(run);
+    visitPackaged(run, launched.env, command, inlet, outlet, inner, depth, runs);
     return { launched, run, bare: undefined };
   } else if (launched.kind === 'opaque' && launched.command !== undefined) {
     runs.opaque.push({ ...launched.command, dialect });
@@ -265,6 +288,29 @@ function visitCommand(
     return { launched, run: undefined, bare };
   }
   return { launched, run: undefined, bare: undefined };
+}
+
+/**
+ * Visits what a package runner or a version manager starts besides itself (T3069), one script level deeper, in the
+ * folder, stdin and outlet of the run that starts it: the words as a command of their own, a shell mode's line as a
+ * script, in every dialect it may run in. Each run it finds names the outermost runner in `packageRunner`; a shell
+ * the line names that the walker cannot read is kept in `foreignShells`.
+ */
+function visitPackaged(run: ProgramRun, env: readonly Assignment[], command: ShellCommand, inlet: Inlet, outlet: Outlet, location: Location, depth: number, runs: LineRuns): void {
+  const starts = depth < MAX_SCRIPT_DEPTH ? packagedStartOf(run.name, run.args, env) : [];
+  const scope: Scope = { runner: run.runner, packageRunner: run.packageRunner ?? run.program };
+  for (const start of starts) {
+    switch (start.kind) {
+      case 'words':
+        visitCommand({ ...command, words: start.words }, inlet, outlet, run.dialect, location.child(), depth + 1, scope, runs);
+        break;
+      case 'script':
+        visitScript(start.script, start.dialect, location.child(), depth + 1, scope, runs, outlet, inlet.fed);
+        break;
+      case 'foreign-shell':
+        runs.foreignShells.push(start.shell);
+    }
+  }
 }
 
 /** PowerShell: opens `group` at each `(` of the terminator, and closes one at each `)`. */

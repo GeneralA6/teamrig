@@ -144,9 +144,12 @@ describe('guard-main, on the real CLI', () => {
     assert.match(ended.stdout, /"permissionDecision":"deny"/);
   });
 
-  it('blocks a hook the CLI does not know, which it answers with a usage exit', async () => {
-    const ended = await inTempHome(['hook', 'no-such-guard'], FORCE_PUSH);
-    assert.equal(ended.status, 2);
-    assert.match(ended.stderr, /its no-such-guard guard ended with exit 64/);
+  it('blocks a hook that is no guard before it loads the CLI, an unknown one or a plain hook (T3069)', async () => {
+    for (const name of ['no-such-guard', 'slash-command']) {
+      const ended = await inTempHome(['hook', name], FORCE_PUSH);
+      assert.equal(ended.status, 2, name);
+      assert.equal(ended.stdout, '', name);
+      assert.match(ended.stderr, /the guard entry runs only `hook <name>`/, name);
+    }
   });
 });

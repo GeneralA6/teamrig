@@ -7,7 +7,7 @@ import { noPositionals } from "../args.js";
 import { hookLogOf } from "../hook-logs.js";
 import { EXIT } from "../runtime.js";
 import { guardLoadOf } from "./hook-guard-load.js";
-import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from "./hook-guard-outputs.js";
+import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from "./hook-guard-outputs.js";
 import { envSession, parseJson } from "./hook-input.js";
 import { callRouteOf } from "./hook-route-context.js";
 /**
@@ -29,6 +29,7 @@ async function routeAllowOutputOf(runtime, payload, deps) {
         packageGuardOutputOf(runtime, guard, payload),
         execGuardOutputOf(runtime, guard, payload),
         dbWriteGuardOutputOf(runtime, guard, payload),
+        serviceRoleGuardOutputOf(runtime, guard, payload),
     ]);
     if (!guardsPassed([...answers, secretGuardOutputOf(runtime, guard, payload), passRecordGuardOutput(payload)])) {
         return '';

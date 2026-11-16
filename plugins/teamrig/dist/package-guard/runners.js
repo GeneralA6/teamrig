@@ -4,16 +4,16 @@ const NO_FLAGS = new Set();
 /** A word only known when the line runs, for an option whose value is missing. */
 const UNKNOWN_WORD = { text: '', dynamic: true };
 /** npx's, npm exec's and bunx's options that take a value, so the word after one is not the command. */
-export const EXEC_VALUED = new Set(['-p', '--package', '-c', '--call', '--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig']);
+export const EXEC_VALUED = new Set(['-p', '--package', '-c', '--call', '--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--script-shell']);
 /** npx's and npm exec's options that make it run an installed bin or fail, never fetch. */
 const NPX_NO_FETCH = new Set(['--no', '--no-install']);
 /** npm's options before its subcommand that take a value. */
-export const NPM_VALUED = new Set(['--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--loglevel']);
+export const NPM_VALUED = new Set(['--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--loglevel', '--script-shell']);
 /** npm init's options that take a value, so the word after one is not the initializer. */
 const NPM_INIT_VALUED = new Set([...NPM_VALUED, '--scope', '--init-author-name', '--init-author-email', '--init-author-url', '--init-license', '--init-version', '--init-module']);
 export const PNPM_VALUED = new Set(['-C', '--dir', '-F', '--filter']);
 /** The options of pnpm dlx and yarn dlx that take a value. */
-const DLX_VALUED = new Set(['-p', '--package', '--allow-build']);
+export const DLX_VALUED = new Set(['-p', '--package', '--allow-build']);
 export const YARN_VALUED = new Set(['--cwd']);
 export const BUN_VALUED = new Set(['--cwd', '-c', '--config']);
 /** A command word that names a file to run, not a package: `./tool.js`, `../x`, `/opt/x`, `~/x`, `C:\x`. */
@@ -21,7 +21,7 @@ export const FILE_PATH = /^(?:\.{1,2}(?:[\\/]|$)|[\\/~]|[A-Za-z]:[\\/])/;
 /** A package spec other than a bare name: `name@1.2.3`, `@scope/name`, `github:user/repo`, `user/repo`. */
 const PACKAGE_SPEC = /[@:/\\]/;
 /** Reads leading options; `--` ends them, and a word only known when the line runs is the first that is not one. */
-function readOptions(args, valued) {
+export function readOptions(args, valued) {
     const flags = new Set();
     const values = new Map();
     let index = 0;

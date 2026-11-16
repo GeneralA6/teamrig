@@ -1,12 +1,12 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers twenty-eight Claude Code hooks, one row each below however many events a hook runs on, and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work), [the update notice](#the-mod-the-update-notice)). Each runs
+The plugin's `hooks/hooks.json` registers twenty-nine Claude Code hooks, one row each below however many events a hook runs on, and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work), [the update notice](#the-mod-the-update-notice)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tool-end` 5); the `PreToolUse` guards that can refuse a call run `node <plugin>/dist/cli/guard-main.js hook <name>`, which blocks the call when the guard [cannot answer](#a-guard-that-cannot-answer). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent, but `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)) and `hook missing-cli` still answers a shell that [no longer finds the bare command](#after-a-shell-call-the-cli-by-its-path).
 
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
-| `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are, and records the session's Claude Code process (`state/sessions/<id>.json`); while the session runs in another Claude Code it keeps that record and tells this second one, and the user, to stop; a Claude Code of the same conversation is no second one and gets no stop: one the session started, a forked worker (`--fork-session --resume` of the recorded session or transcript, where a `/clear` may run) and the background job the tab handed its conversation to (`/bg`, `claude --bg`) |
+| `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are, starts the team's `issue watch` when none runs, and records the session's Claude Code process (`state/sessions/<id>.json`); while the session runs in another Claude Code it keeps that record and tells this second one, and the user, to stop; a Claude Code of the same conversation is no second one and gets no stop: one the session started, a forked worker (`--fork-session --resume` of the recorded session or transcript, where a `/clear` may run) and the background job the tab handed its conversation to (`/bg`, `claude --bg`) |
 | `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Stops a prompt that holds a secret and cleans it out of Claude Code's prompt history ([Each prompt](#each-prompt)); cancels a waiting automatic restart; shows new inbox lines; shows a leader the [register changes in its tree](#each-prompt-the-leader-digest) since its last prompt; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
@@ -17,6 +17,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PostToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-redact` | Replaces each secret a call's result holds before Claude and the transcript see it, and tells the session which kinds it held and the task it filed to rotate each ([the secret redactor](#after-a-tool-call-the-secret-redactor)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, any `exec` call through a client that is no install of the plugin, or one changed after its build, every `owner note` or `owner next`, which act as the owner, and a shell fed its commands from a pipe ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
+| `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook service-role-guard` | Asks the owner before a session's `teamrig roles grant` or `revoke`, and refuses a session's own write of `serviceRoles` in the team config ([the service-role guard](#before-a-write-or-a-shell-command-the-service-role-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `Bash` | `hook route-allow` | With `prompts.hookAsks: refuse` and `prompts.routeAllow` on, lets a line that runs one of the session's own jobs (`teamrig merge`, `deploy`, `exec request`, `worktree remove`, a `git commit` with its hooks) run with no permission check, once every teamrig guard passed it ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `AskUserQuestion` and `Bash` | `hook picker-guard` | With `pickerGuard.enabled` (on unless a team sets it false), refuses the question picker to every session and helper, to the lead in and outside the owner's daily meeting, to a sub-team's lead, and to a session in its own meeting with the owner, with the reason to decide it if it is the session's own, else record it on its task and go on, and a session's Bash `cd` compound Claude Code would hold on a permission prompt, quoting its form to rerun ([the picker guard](#before-a-question-the-picker-guard)) |
@@ -33,7 +34,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | The mod, every 15 s in each tab | `hook meeting-panel` | While the owner's meeting is open, shows its cards in a pane beside the root team lead's chat, in sections (on the table, up next, decided), each with a one-line summary and a decided one with its decision ([the meeting's agenda panel](#the-mod-the-meetings-agenda-panel)) |
 | The mod, a minute after a tab starts and every 10 minutes, and when an install changes `installed_plugins.json` | `hook update-check`, `hook update-dismiss`, `hook update-apply` | Tells, in a band above the prompt, of a newer teamrig or teamrig-pane than the one installed, and runs the band's Update or Dismiss ([the update notice](#the-mod-the-update-notice)) |
 | `PreCompact` (a compaction Claude Code runs on its own) | `hook pre-compact` | While the session's handover is asked for or written, holds the compaction under `refresh.compactCeilingTokens`, where a managed mod keeps the plugin's mod from holding it ([the hold within a turn](#the-mod-the-refresh-within-a-turn)) |
-| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), once to [a hand step typed into its reply](#end-of-a-turn-a-hand-step-typed-into-the-reply), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `issue sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), once to [a hand step typed into its reply](#end-of-a-turn-a-hand-step-typed-into-the-reply), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) to the session's `launch` entry; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; starts the team's `issue watch` hidden in the background when none runs; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SubagentStop` (a helper about to hand back) | `hook subagent-stop` | Sends the helper back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit) |
 | `SessionEnd` (a tab closes) | `hook effort-writeback` | Writes [an `/effort` the user typed](#end-of-a-turn-a-typed-effort-becomes-the-launch-effort) with no turn after it to the session's `launch` entry |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
@@ -87,7 +88,7 @@ The injected context holds:
    keeps showing its session; only a failure gives a note, and the tab's first `inbox read` then binds it.
 5. **The team's own `rules.md`**, when it exists. In a sub-team, the `rules.md` of each team above comes first, the
    root's first, headed `Team <id>'s rules (a team above yours; they win over a lower team's)`. The files share one
-   budget of 2,330 characters, in that order: one that does not fit comes as a pointer to it, with the room that was
+   budget of 2,254 characters, in that order: one that does not fit comes as a pointer to it, with the room that was
    left, and `teamrig doctor` names it. Where one of them, a CLAUDE.md, a rules file, a skill, memory or a hook's
    text conflicts with the core rules, the core rules win, except the local rules the team kept (`teamrig rules
    keep`), which the core rules list under `Kept local rules`: in a sub-team, those of each team above first, root
@@ -283,7 +284,12 @@ current name in any case only binds the tab and renames nothing. If the `.teamri
 ## Before a shell command: the push guard
 
 Before Claude runs a Bash or PowerShell command, the guard reads it (on Windows a Bash line also as bash receives
-it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)) and decides:
+it, see [the read-only allow](#before-a-shell-command-the-read-only-allow)), with what each shell, wrapper, package
+runner or version manager on it starts (`bash -c "..."`, `npx -c "..."`, `pnpm exec sh -c "..."`, `volta run git
+push`), and decides. The line a package runner hands its shell (`npx -c`, `pnpm exec -c`, the first operand of
+`yarn exec` and `bun exec`) is read as bash, cmd and PowerShell each read it, since `--script-shell`,
+`npm_config_script_shell`, an `.npmrc` or `ComSpec` may pick any of them; one the line hands a shell it names that
+the guard cannot read (`--script-shell=node`, or a variable) is asked about. The guard:
 
 - **Runs as usual**: no `git push` in it, a `--dry-run`, or a push that updates no protected branch
   (`main` and `master` by default [pushGuard.protectedBranches]; an empty list guards nothing, mirrors included).
@@ -485,7 +491,7 @@ person decide those.
 Auto mode can refuse a call before any prompt, and a refusal it makes is a dead end no `PermissionRequest` answer
 reaches. So with asks off, `hook route-allow` (since 0.268.0) lets five of those routes run before any permission
 check, at `PreToolUse`: `teamrig merge`, `teamrig deploy`, `teamrig exec request`, `teamrig worktree remove` and the
-`git commit`, as plain as above. It answers only once the push, package, secret, db-write, exec and pass-record guards
+`git commit`, as plain as above. It answers only once the push, package, secret, db-write, exec, pass-record and service-role guards
 all passed the same call: a guard that asks or refuses answers instead. Its log line, in `state/prompt-answers.jsonl`, names the
 route, never the command (a commit message is free text). `prompts.routeAllow: off` takes this allow away without a
 release; no config adds a route. With asks on it never answers.
@@ -735,7 +741,17 @@ so it cannot see, and lets through:
 A [privileged command](commands.md#privileged-commands) runs only after a reviewer approves it, and the CLI takes
 the reviewer from `--session` as given, while one allow rule lets every `teamrig` command run unasked. Before Claude
 runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the push guard does) and finds each
-`exec` command, run as `teamrig` or as `node <plugin>/dist/cli/main.js`. It refuses:
+`exec` command, however the line starts teamrig: as `teamrig`, as one of its entry scripts (`dist/cli/main.js`, or
+`dist/cli/guard-main.js` beside it, with or without the extension) through `node` or any other script host (`tsx`,
+`bun`, `npx tsx`), through a package runner or a version manager (`npx`, `npm exec`, `pnpm exec`, `pnpm dlx`, `yarn`,
+`bunx`, `corepack`, `volta run`, `fnm exec`, `nvm exec`), the line it hands a shell (`npx -c "..."`,
+`pnpm exec sh -c "..."`, `yarn exec "..."`) included and read as bash, cmd and PowerShell each read it (a line that
+names a shell the guard cannot read for it, `--script-shell=node` or a variable, is refused: leave the runner its
+own shell, or run the commands directly), or as any other program whose later words start an `exec` or `owner` command
+(`node x.js exec approve ...`, `./copy owner next ...`), since a copy or another name may be the CLI. A line that
+hands the literal words `exec approve` to another program (`echo exec approve R1`) is refused for that too; quote
+them (`echo "exec approve R1"`). A command word only known when it runs counts only after teamrig's own name, so
+`kubectl exec "$POD"` passes. It refuses:
 
 - **a review as another**: `exec approve`, `refuse` or `escalate` that names no `--session`, names it twice, names
   a session the team does not have, or one that is not the tab's own. `--session` wins over `$TEAMRIG_SESSION` in
@@ -752,10 +768,13 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
   (Git Bash's `/c/x` too, and a relative one from the folder the line has moved to), else the first `teamrig` the
   shell's PATH search finds (Bash: `~/bin` first; cmd: its folder first; PowerShell: `.ps1` and the `PATHEXT`
   names). A bare `teamrig` it finds nowhere is the plugin bin the Bash tool appends to PATH last. The reason names
-  the file and the plugin's own client; a `teamrig` found on PATH is to be taken off it.
-- **a program known only when it runs**: `$T exec approve ...`, `node "$SCRIPT" exec run ...` or a relative client
-  path from a folder only known when the line runs, whenever the words after it are an `exec` command, as no
-  file can be checked; write the program out. `$DOCKER exec ctr ls` is not one.
+  the file and the plugin's own client; a `teamrig` found on PATH is to be taken off it. An `exec` command through a
+  package runner or a version manager is refused too, as it puts folders of its own first on PATH and may find or
+  fetch a teamrig other than this install.
+- **a program known only when it runs**: `$T exec approve ...`, `node "$SCRIPT" exec run ...`, a package runner's
+  `npx "$P" exec ...` or a relative client path from a folder only known when the line runs, whenever the words
+  after it are an `exec` command, as no file can be checked; write the program out. `$DOCKER exec ctr ls` is not
+  one.
 - **a changed client**: any `exec` command while the files (`bin`, `dist`, `hooks`; not their test files) of the install
   it starts differ from the SHA-256 list its build wrote (`dist/integrity.json`), or that list is missing, since an approved
   command runs inside that client. Each install a line starts is checked once; the reason names up to five changed
@@ -764,6 +783,12 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
   [owner next](commands.md#teamrig-owner-next)), whatever client starts it, `$T owner next ...` too: it writes as
   the owner whoever runs it. The owner runs it in their own terminal, or types `/teamrig owner next T<n>` in a tab,
   which [the mod](#the-mod-the-teamrig-command) runs as a write only when the person types it.
+- **a settings writer's write**: `automode install` or `uninstall`, `permissions trim`, `statusline install`,
+  `setup restore`, `config migrate` or `restore install` with `--yes` (or a word only known when the line runs
+  after the command), whatever client starts it: each changes Claude Code's settings, the team config's format or
+  what runs at login, permissions only the owner changes. The CLI refuses the same `--yes` wherever `$CLAUDECODE`
+  is set. Its preview, without `--yes`, runs; the owner types `/teamrig permissions trim --yes` in a tab, or runs it
+  in their own terminal.
 - **a shell fed from a pipe**: a shell on the line that takes its commands from a pipe (`echo ... | bash`,
   `... | iex`, `x | bash -c bash`), whatever feeds it, as the pipe can carry a review the line never shows. Run the
   commands directly, or hand the shell a heredoc, which the guard reads as written. A shell with no pipe into it
@@ -809,6 +834,32 @@ It has no setting, and a missing or broken config keeps it on. It reads only the
 line starts (`node write-record.js`), a path built when the line runs, or a write by a program that is not a Claude
 tool: while sessions and the runner share one account, it stops a slip, not a determined session.
 
+## Before a write or a shell command: the service-role guard
+
+A service role [serviceRoles] lets its holders run a few teamrig commands for an outside service past every
+permission check, so who holds one is a permission, the owner's to give. Before Claude runs a Bash or PowerShell
+call, `hook service-role-guard` asks the owner when the line runs `teamrig roles grant` or `teamrig roles revoke`,
+by any client (`teamrig`, node and teamrig's entry, a package runner or a version manager and the shell line it
+starts, any program whose later words are `roles grant` or `roles revoke`, a program only known when the line runs,
+or a `roles` command only known when it runs), whatever `--yes` says; with asks off it refuses instead, with the note to record the step
+as waiting for the owner. The owner runs a grant from their own terminal, or types `/teamrig roles grant ...` in a
+tab. The route allow never lets one through, as it answers only once every guard passed.
+
+It also refuses a session's own write of an owner-gated key of the team config, each a permission or an owner gate:
+`serviceRoles`, `roles`, `ownerGates`, `securityGates`, `register.ownerSource`, `prompts`, `readonlyShell`, `exec`,
+`alerts`, `github.owners`, `delivery.repos` (each repository's merge, deploy and check commands), `delivery.passEnv`, `permissions` and the
+guards (`pushGuard`, `secretGuard`, `packageGuard`, `dbWriteGuard`, `commitGuard`). It refuses a Write, Edit or
+MultiEdit of any team's config (a path ending in `teams/<team>/config.json`, the session's own and every other
+team's, in any spelling: a Git Bash `/c/` drive is read as `C:`) whose result changes one (the guard applies the edit to that file as it is now and compares
+each key, a key the file lacks reading as unset), or that it cannot work out (text not found, a notebook edit), and a shell line naming the team config file (`teams/<team>/config.json`, or
+`config.json` with `.teamrig` or `$TEAMRIG_HOME` on the line or the line running in the kit home), its reads too,
+since a shell line's writes cannot be told from its reads. An edit of the config's other keys stays open, and so
+does the Read tool. The reason names the keys the call changes: "teamrig config guard: this Edit changes roles, exec in the team config (...). Its owner-gated keys (...) are permissions or owner gates, the owner's to change: a service role's holders with `teamrig roles grant` or `revoke`, which ask the owner, the rest in the owner's own editor. ..."
+
+It has no setting, and a broken config keeps it on: the file is found and read again at each call. Like the
+pass-record guard it reads only the call, so it cannot see a script the line starts that writes the file: while
+sessions and the owner share one account, it stops a slip, not a determined session.
+
 ## Before a shell command: the read-only allow
 
 Claude Code asks before a shell line its settings do not allow, reads included, and a settings rule matches only a
@@ -843,8 +894,8 @@ and lets it run without a prompt when every command in it, substitutions and loo
 It only ever allows: a line it cannot prove reads prints nothing, and Claude Code's own permission check decides,
 as without the hook; so it does outside a team, with a missing or broken config, or on any error. Claude Code ranks
 one hook's `deny` over another's `ask` over an `allow`, and its settings' deny and ask rules still apply under an
-allow, so the push and db-write guards' questions and the package, secret and pass-record guards' refusals always
-win. It never allows a line
+allow, so the push, db-write and service-role guards' questions and the package, secret, pass-record and service-role
+guards' refusals always win. It never allows a line
 that prints or holds a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
 `secretGuard.secretReads` or `secretGuard.writes` is `allow`. The hook reads the session's team
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. On Windows, Claude Code's
@@ -1723,7 +1774,7 @@ turn as it was.
 
 Claude Code lets a tool call through when a `PreToolUse` command hook ends with any exit code but 0 or 2, or
 outlives its timeout, so a guard that breaks would stop guarding with no sign. The guards that can refuse a call
-(`push-guard`, `package-guard`, `secret-guard`, `db-write-guard`, `exec-guard`, `pass-record-guard`, `cold-send`,
+(`push-guard`, `package-guard`, `secret-guard`, `db-write-guard`, `exec-guard`, `pass-record-guard`, `service-role-guard`, `cold-send`,
 `helper-gate` and
 `picker-guard`) therefore run through `dist/cli/guard-main.js`, a runner that loads the CLI itself on a worker
 thread and blocks the call (exit 2) when the guard:
@@ -1734,6 +1785,10 @@ thread and blocks the call (exit 2) when the guard:
   lets the call through. This holds for a guard stuck in work that never waits, such as an endless loop: the guard
   runs on its own thread, so the runner's clock keeps running;
 - ends with an exit code but 0 or 2, or prints something other than its one JSON answer.
+
+The runner runs nothing but a hook: its words must be exactly `hook <name>`, and any other (`guard-main.js owner
+next ...`, `guard-main.js exec approve ...`) exits 2, saying "teamrig blocked this run", before the CLI loads, so the
+guard entry is no second way into the CLI's commands.
 
 The model then reads `teamrig blocked this call: its <hook> guard <what went wrong>, and a guard that cannot answer
 must not let a call through. Fix: ...` ([errors](errors.md#a-blocked-tool-call)). So a broken install blocks every

@@ -118,8 +118,8 @@ teamrig budget setup --session lead --over ask-lead --quiet <HH:MM-HH:MM> --quie
 
 After a yes, run the same line with `--yes`. A `NOTE no status line reading yet` line means the hooks cannot see the
 week's use: offer to run `teamrig statusline install`, which keeps a status line they already have (the guide's
-[requirements](../teamrig-guide/requirements.md#the-status-line-optional)). Show its preview, and after a yes run
-it with `--yes`; when Claude may not change its own settings, the user types `! teamrig statusline install --yes`.
+[requirements](../teamrig-guide/requirements.md#the-status-line-optional)). Show its preview; it changes the user's settings, so after a yes
+the user types `/teamrig statusline install --yes` (Claude Code refuses its `--yes` from Claude and from a `!` line).
 If the user skips this step, say they can ask you to turn it on later.
 
 When another root team (one under no other team) already runs on this Claude account, ask the user, in the same
@@ -169,7 +169,7 @@ it the other way, so settle each one with the user now, and again whenever they 
    text is no longer there: `teamrig rules forget <n> --session lead --yes`.
 7. Step 3's scan had a `SETTINGS` finding of allow rules that approve a whole tool or program: run
    `teamrig permissions trim` and show the user its preview. A permissions change is theirs to make, so after a yes
-   they type `! teamrig permissions trim --yes`; it backs up each file it rewrites first.
+   they type `/teamrig permissions trim --yes`; it backs up each file it rewrites first.
 
 ## 8. Close the setup task, then tell the user, in three short lines
 

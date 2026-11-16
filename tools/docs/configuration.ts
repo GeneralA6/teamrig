@@ -26,7 +26,7 @@ const DEF_REF = /^#\/\$defs\/([A-Za-z][A-Za-z0-9]*)$/;
 const KEYWORDS: ReadonlySet<string> = new Set([
   '$schema', '$id', 'title', 'description', 'type', 'required', 'properties', '$defs', '$ref', 'anyOf', 'enum', 'default',
   'minimum', 'maximum', 'minLength', 'maxLength', 'pattern', 'items', 'minItems', 'maxItems', 'uniqueItems',
-  'additionalProperties', 'propertyNames',
+  'additionalProperties', 'propertyNames', 'maxProperties',
 ]);
 
 /** An object that lists keys, drawn as one section. */
@@ -173,7 +173,8 @@ function objectText(node: JsonRecord, path: string, context: Context): string {
   // A key is always a string, so a key schema that names no type (only a pattern, say) is a string one.
   const keys = recordField(node, 'propertyNames');
   const keyText = keys === undefined ? 'string' : typeText({ type: 'string', ...keys }, `${path} keys`, context);
-  return `map from ${keyText} to ${typeText(value, `${path}.*`, context)}`;
+  const map = withLimits('map', [rangeText(undefined, numberField(node, 'maxProperties'), 'key')]);
+  return `${map} from ${keyText} to ${typeText(value, `${path}.*`, context)}`;
 }
 
 function arrayText(node: JsonRecord, path: string, context: Context): string {

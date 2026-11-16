@@ -44,6 +44,7 @@ describe('renderConfigReference', () => {
         list: { type: 'array', minItems: 1, maxItems: 8, uniqueItems: true, items: { type: 'string' } },
         bare: { type: 'array' },
         map: { type: 'object', propertyNames: { pattern: '^[a-z]+$' }, additionalProperties: { type: 'integer' } },
+        capped: { type: 'object', maxProperties: 4, additionalProperties: { type: 'integer' } },
         free: { type: 'object' },
       },
     });
@@ -59,6 +60,7 @@ describe('renderConfigReference', () => {
       '| `list` | array (1 to 8 items, unique) of string |  |  |',
       '| `bare` | array |  |  |',
       '| `map` | map from string (matching `^[a-z]+$`) to integer |  |  |',
+      '| `capped` | map (at most 4 keys) from string to integer |  |  |',
       '| `free` | object |  |  |',
     ]);
     assert.deepEqual(headings(page), ['Configuration reference', 'Top level']);

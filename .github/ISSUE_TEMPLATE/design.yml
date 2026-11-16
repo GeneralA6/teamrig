@@ -1,0 +1,36 @@
+name: Design
+description: Talk about how something should work, before anyone builds it. Not work to take until it is agreed.
+title: "<area>: <the question>"
+labels: [design]
+body:
+  - type: markdown
+    attributes:
+      value: "A design issue is for talk: anyone, and the agent working for them, may comment with their reasons. No one claims it, and no code or pull request comes, until the maintainer marks it agreed. Never post a secret, token, key, private path, host name, e-mail address or private log here. A security hole goes through a [private report](https://github.com/GeneralA6/teamrig/security/advisories/new), never an issue."
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What to decide, in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What exists today, and why it needs a decision now.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: The ways you see, each with what it costs and what it gives up.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The option you would pick, and why.
+    validations:
+      required: false

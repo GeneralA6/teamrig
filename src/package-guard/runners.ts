@@ -27,16 +27,16 @@ const NO_FLAGS: ReadonlySet<string> = new Set();
 const UNKNOWN_WORD: ShellWord = { text: '', dynamic: true };
 
 /** npx's, npm exec's and bunx's options that take a value, so the word after one is not the command. */
-export const EXEC_VALUED: ReadonlySet<string> = new Set(['-p', '--package', '-c', '--call', '--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig']);
+export const EXEC_VALUED: ReadonlySet<string> = new Set(['-p', '--package', '-c', '--call', '--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--script-shell']);
 /** npx's and npm exec's options that make it run an installed bin or fail, never fetch. */
 const NPX_NO_FETCH: ReadonlySet<string> = new Set(['--no', '--no-install']);
 /** npm's options before its subcommand that take a value. */
-export const NPM_VALUED: ReadonlySet<string> = new Set(['--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--loglevel']);
+export const NPM_VALUED: ReadonlySet<string> = new Set(['--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--loglevel', '--script-shell']);
 /** npm init's options that take a value, so the word after one is not the initializer. */
 const NPM_INIT_VALUED: ReadonlySet<string> = new Set([...NPM_VALUED, '--scope', '--init-author-name', '--init-author-email', '--init-author-url', '--init-license', '--init-version', '--init-module']);
 export const PNPM_VALUED: ReadonlySet<string> = new Set(['-C', '--dir', '-F', '--filter']);
 /** The options of pnpm dlx and yarn dlx that take a value. */
-const DLX_VALUED: ReadonlySet<string> = new Set(['-p', '--package', '--allow-build']);
+export const DLX_VALUED: ReadonlySet<string> = new Set(['-p', '--package', '--allow-build']);
 export const YARN_VALUED: ReadonlySet<string> = new Set(['--cwd']);
 export const BUN_VALUED: ReadonlySet<string> = new Set(['--cwd', '-c', '--config']);
 
@@ -46,7 +46,7 @@ export const FILE_PATH = /^(?:\.{1,2}(?:[\\/]|$)|[\\/~]|[A-Za-z]:[\\/])/;
 const PACKAGE_SPEC = /[@:/\\]/;
 
 /** A runner's leading options, read up to the first word that is not one. */
-interface Options {
+export interface Options {
   /** Every option given, by name (`--package` for `--package=x`). */
   readonly flags: ReadonlySet<string>;
   /** The value of each valued option given. */
@@ -58,7 +58,7 @@ interface Options {
 }
 
 /** Reads leading options; `--` ends them, and a word only known when the line runs is the first that is not one. */
-function readOptions(args: readonly ShellWord[], valued: ReadonlySet<string>): Options {
+export function readOptions(args: readonly ShellWord[], valued: ReadonlySet<string>): Options {
   const flags = new Set<string>();
   const values = new Map<string, ShellWord>();
   let index = 0;

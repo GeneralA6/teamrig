@@ -221,8 +221,12 @@ WORKTREE line.`));
 });
 
 describe('sessionStartContext: long notes within the context cap (T1376)', () => {
-  /** A parent team's rules file the size of a real one: past the cap it was the part a session lost first. */
-  const ROOT_RULES: TeamRules = { ancestor: 'root', path: '/kit/teams/root/rules.md', text: '- Root rule.\n'.repeat(179).trim() };
+  /** A parent team's rules file as large as its room holds: past the cap it was the part a session lost first. */
+  const ROOT_RULES: TeamRules = {
+    ancestor: 'root',
+    path: '/kit/teams/root/rules.md',
+    text: '- Root rule.\n'.repeat(Math.floor(TEAM_RULES_MAX_CHARS / '- Root rule.\n'.length)).trim(),
+  };
   const ROOT_HEADING = "\n\n# Team root's rules (a team above yours; they win over a lower team's)\n";
   const note = (head: string, length: number): CuttableNote => ({ text: `${head}${'t'.repeat(length - head.length)}`, pointer: `${head} pointer.` });
   /** The room `fitContext` leaves the long notes: the cap less the context with each at its pointer. */

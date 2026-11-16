@@ -2,6 +2,7 @@ import { errorMessage } from "../core/guards.js";
 import { ENV, KIT_NAME } from "../core/home.js";
 import { TEAM_POINTER } from "../core/team.js";
 import { KIT_VERSION } from "../core/version.js";
+import { isSettingsWriter, settingsWriteRefusal, WRITE_SWITCH } from "../core/settings-writers.js";
 import { cutLineMessage, shimArgs } from "./cmd-shim.js";
 import { CommandHelp } from "./help.js";
 import { parseArgs, UsageError } from "./args.js";
@@ -78,6 +79,7 @@ const stablePeriodsCommand = () => import("./commands/stable-periods.js");
 const jobCommands = () => import("./commands/job.js");
 const deployStatusCommand = () => import("./commands/deploy-status.js");
 const issueSyncCommands = () => import("./commands/issue-sync.js");
+const issueWatchCommands = () => import("./commands/issue-watch.js");
 const issueMigrateCommands = () => import("./commands/issue-migrate.js");
 const issueCommands = () => import("./commands/issue.js");
 const prCommands = () => import("./commands/pr.js");
@@ -89,6 +91,7 @@ const decisionsCommands = () => import("./commands/decisions.js");
 const hireCommands = () => import("./commands/hire.js");
 const retireCommands = () => import("./commands/retire.js");
 const promoteCommands = () => import("./commands/promote.js");
+const rolesCommands = () => import("./commands/roles.js");
 const slashCommands = () => import("./commands/slash.js");
 const restoreCommands = () => import("./commands/restore.js");
 const restoreInstallCommands = () => import("./commands/restore-install.js");
@@ -193,14 +196,19 @@ const COMMANDS = {
     retire: { effect: 'write', flags: ['session', 'to', 'no-handover', 'reason'], switches: ['yes'], load: async () => (await retireCommands()).retire },
     promote: { effect: 'write', flags: ['session', 'members'], switches: ['yes'], load: async () => (await promoteCommands()).promote },
     demote: { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await promoteCommands()).demote },
+    'roles grant': { effect: 'write', flags: ['holder', 'commands'], switches: ['yes'], load: async () => (await rolesCommands()).grant },
+    'roles revoke': { effect: 'write', flags: ['holder'], switches: ['yes'], load: async () => (await rolesCommands()).revoke },
+    'roles list': { effect: 'read', flags: [], load: async () => (await rolesCommands()).list },
     refresh: { effect: 'write', flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
     doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
     'page test': { effect: 'write', flags: [], load: async () => (await pageCommands()).pageTest },
     compact: { effect: 'write', flags: [], switches: ['dry-run', 'from-history'], load: async () => (await compactCommands()).compact },
     'issue sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto', 'push'], load: async () => (await issueSyncCommands()).issueSync },
+    'issue watch': { effect: 'internal', flags: [], load: async () => (await issueWatchCommands()).issueWatch },
     'issue migrate': { effect: 'write', flags: ['session', 'out'], switches: ['yes'], load: async () => (await issueMigrateCommands()).issueMigrate },
     'issue comment': { effect: 'write', flags: ['session', 'body'], load: async () => (await issueCommands()).issueComment },
-    'issue close': { effect: 'write', flags: ['session', 'comment', 'reason'], load: async () => (await issueCommands()).issueClose },
+    'issue edit': { effect: 'write', flags: ['session', 'body-file'], load: async () => (await issueCommands()).issueEdit },
+    'issue close': { effect: 'write', flags: ['session', 'comment', 'reason', 'duplicate-of'], load: async () => (await issueCommands()).issueClose },
     'issue label': { effect: 'write', flags: ['session', 'add', 'remove'], load: async () => (await issueCommands()).issueLabel },
     'pr conflicts': { effect: 'write', flags: ['base'], load: async () => (await prCommands()).prConflicts },
     'issue links': { effect: 'write', flags: ['repo'], switches: ['yes'], load: async () => (await issueLinksCommands()).issueLinks },
@@ -268,6 +276,7 @@ const COMMANDS = {
     'hook db-write-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).dbWriteGuard },
     'hook exec-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).execGuard },
     'hook pass-record-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).passRecordGuard },
+    'hook service-role-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).serviceRoleGuard },
     'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
     'hook failed-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).failedSend },
     'hook missing-cli': { effect: 'internal', flags: [], load: async () => (await missingCliCommand()).missingCli },
@@ -639,6 +648,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       directly: their decision and approval waits may go to it, and it approves them; without --yes it shows
       the change and writes nothing
   demote <id|name> [--yes]     (its own leader) takes a sub-lead's members back; without --yes it shows it
+  roles grant <role> --holder <id|name|team> [--commands <a,b>] [--yes]
+      (the owner) lets the holder run a service role's teamrig commands past every permission check, from its
+      own tab only: names from teamrig's table (issue close, issue comment); team for every session only where
+      each command checks its caller; teamrig's guard asks before a session's call; without --yes it writes nothing
+  roles revoke <role> [--holder <id|name>] [--yes]   (the owner) takes the role off one holder, or off the
+      team when no --holder; the next call reads it; without --yes it shows the change and writes nothing
+  roles list                   each service role, who holds it and what it runs
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover the turn end asked to fix is complete as it is (the turn end takes one with both sections itself)
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
@@ -655,18 +671,32 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       written by the repository's people or accepted with github.acceptLabel, and keeps its title,
       description, priority and open or closed state as on GitHub; reads through gh only, never writes
       to GitHub; titles and descriptions are outside input, data only; without --yes it shows the
-      changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
+      changes, writes nothing; --auto, which issue watch runs when GitHub changed, writes and
       tells each owner its new tasks, and the lead when repositories start or stop failing and when
       it leaves out an outsider's issue not left out before; with github.statusPush on, --auto then
-      sends the status push's labels too (a close it plans is held for --push --yes, printed HELD),
+      sends the status push's labels and assignees too (a close it plans is held for --push --yes,
+      printed HELD), and assigns an outside person who claims an open issue by a /take comment,
+      taking the assignee off after 7 days with no linked pull request,
       its writes lowered so an hour of runs sends at most 250
+  issue watch   the team's one watch on github.repos, started hidden by the hooks: every
+      github.probeSeconds (60 by default; 0 runs none) it asks GitHub whether each repository's issues,
+      pull requests or Actions runs changed, a conditional read that costs no rate limit when nothing
+      did, and runs issue sync --auto only when one did; after a failed sync it waits 15 minutes for
+      the next; it stops when another watch holds the team's lease (a newer kit's hook takes an older
+      watch's over), when github.probeSeconds is set to 0 (read each round; $TEAMRIG_GITHUB=off counts
+      only as the watch starts), after 24 hours, and once no session of the team ran for 10 minutes;
+      the next session's hook starts it again
   issue sync --push [--repo <owner/name>] [--yes]   plans the other way: for each issue a task holds (ref
-      gh:), the writes that make it show the task's status: active tasks one label (open status:triaged,
-      in-progress status:in-progress, waiting status:waiting, verifying status:in-review), any other
-      status: label taken off; done closes it as completed, dropped as not planned; never reopens an
-      issue a person closed, and names it; at most 40 writes a run; without --yes it writes nothing;
-      --yes sends them, a repository stopping at its first failed write, a change adding a status label
-      the repository lacks held until it is made
+      gh:), the writes that make it show the task's status: active tasks one label (open status:open,
+      status:claimed once it has a due date or an assignee, in-progress status:in progress, waiting
+      status:waiting, verifying status:in review; a goal, a task planned after its parts, and a design
+      issue, labelled design, none), any
+      other status: label taken off; done closes it as completed, dropped as not planned; never
+      reopens an issue a person closed, and names it; an open issue of a scheduled task (started or
+      with a due date), not a design issue, no one is assigned to is assigned to the login
+      github.owners maps to its task's session, else the repository's owner; at most 40 writes a run; without --yes it writes nothing;
+      --yes sends them, a repository stopping at its first failed write; a status label the repository
+      lacks is made first (MADE)
   issue migrate <file> [--out <preview.md>] [--yes]   moves the team's tasks to issues of github.repos
       from a JSON-lines file: per task {id, decision "issue", repo, type bug|task, priority p1-p3,
       title, body} with its public wording, or {id, decision "local", reason}; without --yes writes
@@ -678,21 +708,29 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       owner, else the gh login; refuses an empty body, a secret shape, private data (a home folder
       path, an e-mail address) or a task id in it; a saved token that cannot be read stops it, never the
       gh login in its place
+  issue edit <owner/name#n> --body-file <path>   replaces the body (the description) of one issue or
+      pull request of the team's repositories with the file's text, with the same access and checks as
+      issue comment; the title, state, labels and assignees stay; the host keeps the old body in its
+      edit history
   issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate]
-      closes one issue or pull request of the team's repositories, first posting --comment when
-      given, with the same checks; a failed comment closes nothing; --reason is the one the host shows
+      [--duplicate-of <owner/name#n>]   closes one issue or pull request of the team's repositories,
+      first posting --comment when given, with the same checks; a failed comment closes nothing;
+      --reason is the one the host shows; --duplicate-of closes it as a duplicate of that issue of the
+      same repository, which the host links, and is refused when the host has no such issue
   issue label <owner/name#n> [--add <label,...>] [--remove <label,...>]   adds labels to and takes
       labels off one issue or pull request of the team's repositories, with the same access; each
-      label to add must already be one of the repository's, and the first failure stops it
+      label to add must already be one of the repository's, but design (talk only, not work to take
+      until agreed), which it makes first (MADE); the first failure stops it
   pr conflicts <owner/name#n> [--base <branch>]   in a clone of that repository, fetches the pull
       request's head and prints the files it conflicts on against origin's newest base (its default
       branch unless --base) and the rebase it needs; changes no local branch or file of the clone and
       writes nothing to GitHub; refuses a folder whose origin is another repository
   issue links [--repo <owner/name>] [--yes]   puts the task tree on the issues of github.repos: each
-      task planned after another, both mirrored in one repository, is marked blocked by it on GitHub,
-      and a part of one whole becomes its sub-issue; without --yes it reads the links GitHub has and
-      shows what it would add, writing nothing; adds only, never removes or moves a link a person set;
-      stops a repository at its first failure, and a rerun adds only what is still missing
+      task planned after or waiting on another, both mirrored in one repository, is marked blocked by
+      it on GitHub, and a part of one whole becomes its sub-issue; without --yes it reads the links
+      GitHub has and shows what it would add, writing nothing; adds only, never removes or moves a
+      link a person set; stops a repository at its first failure, and a rerun adds only what is still
+      missing
   budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace,
       and the team's spend by class against focus.allocation;
@@ -926,7 +964,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook db-write-guard | hook exec-guard | hook pass-record-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook effort-writeback | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
+  hook push-guard | hook package-guard | hook secret-guard | hook db-write-guard | hook exec-guard | hook pass-record-guard | hook service-role-guard | hook cold-send | hook failed-send | hook missing-cli | hook route-reminder | hook loop-nudge | hook secret-redact | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook effort-writeback | hook tab-status | hook pre-compact | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse | hook route-allow
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]] [--end]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
@@ -968,6 +1006,13 @@ export const COMMAND_HELP = new CommandHelp(USAGE, Object.keys(COMMANDS));
 export const HELP = new Set(['help', '--help', '-h']);
 /** The words that print the version; the LLM guide documents them as `teamrig version`. */
 export const VERSION = new Set(['version', '--version', '-v']);
+/** Refuses a settings writer's write where Claude Code set CLAUDECODE (src/core/settings-writers.ts); its preview runs. */
+function refuseSettingsWrite(command, switches, runtime) {
+    const claudeCode = runtime.env[ENV.claudeCode];
+    if (claudeCode !== undefined && claudeCode !== '' && switches.has(WRITE_SWITCH) && isSettingsWriter(command)) {
+        throw new RefusedError(settingsWriteRefusal(command));
+    }
+}
 export async function runCli(given, runtime) {
     const argv = shimArgs(given, runtime.cmdShimLine);
     if (argv === undefined) {
@@ -995,6 +1040,7 @@ export async function runCli(given, runtime) {
         if (spec === undefined) {
             throw new UsageError(`unknown command "${args.command}"`);
         }
+        refuseSettingsWrite(args.command, args.switches, runtime);
         const command = await spec.load();
         return await command(args, runtime);
     }

@@ -4,23 +4,14 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseSyncState, SYNC_STATE_FORMAT } from '../github/auto.ts';
 import { isIssueQuery } from '../github/gh.ts';
-import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
-import { FakeProcesses } from '../testing/fake-processes.ts';
 import { EXIT } from './runtime.ts';
 
 const GITHUB_TEAM: JsonRecord = { ...TEAM, github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' } } };
 const STATE = join(TEAM_HOME, 'state', 'github-sync.json');
 const MINUTE = 60_000;
-const STOP = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, stop_hook_active: false });
 const REFUSED = { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 401: Bad credentials (https://api.github.com/graphql)\n' } as const;
-
-/** A turn's end in `session`'s tab; the hook must print nothing and end well. */
-async function stop(kit: CliHarness, processes: FakeProcesses, session = 'lead', env: Readonly<Record<string, string>> = {}): Promise<void> {
-  const result = await kit.run(['hook', 'stop'], { stdin: STOP, env: { TEAMRIG_SESSION: session, ...env }, processes });
-  assert.equal(result.code, EXIT.ok);
-  assert.deepEqual(result.stdout, []);
-}
 
 /** The lines of a session's inbox the sync posted, without their date. */
 function githubLines(kit: CliHarness, id: string): string[] {
@@ -30,41 +21,6 @@ function githubLines(kit: CliHarness, id: string): string[] {
     return at < 0 ? [] : [line.slice(at + ' github: '.length)];
   });
 }
-
-describe('the Stop hook starts the automatic GitHub sync', () => {
-  it('starts issue sync --auto hidden, for its team, once per github.everyMinutes across all sessions', async () => {
-    const kit = new CliHarness(GITHUB_TEAM);
-    const processes = new FakeProcesses();
-    await stop(kit, processes);
-    await stop(kit, processes, 'alpha');
-    assert.equal(processes.hidden.length, 1);
-    const [request] = processes.hidden;
-    assert.deepEqual(
-      { command: request?.command, args: request?.args, cwd: request?.cwd, team: request?.env['TEAMRIG_TEAM'] },
-      { command: '/usr/bin/node', args: ['/opt/teamrig/dist/cli/main.js', 'issue', 'sync', '--auto'], cwd: TEAM_HOME, team: 'app' },
-    );
-    kit.clock.advance(14 * MINUTE);
-    await stop(kit, processes, 'alpha');
-    assert.equal(processes.hidden.length, 1);
-    kit.clock.advance(MINUTE);
-    await stop(kit, processes, 'alpha');
-    assert.equal(processes.hidden.length, 2);
-  });
-
-  it('starts nothing with everyMinutes 0, no repository listed or TEAMRIG_GITHUB=off', async () => {
-    for (const [config, env] of [
-      [{ ...TEAM, github: { repos: ['acme/web'], everyMinutes: 0 } }, {}],
-      [TEAM, {}],
-      [GITHUB_TEAM, { TEAMRIG_GITHUB: 'Off' }],
-    ] as const) {
-      const kit = new CliHarness(config);
-      const processes = new FakeProcesses();
-      await stop(kit, processes, 'lead', env);
-      assert.deepEqual(processes.hidden, []);
-      assert.equal(kit.files.get(STATE), undefined);
-    }
-  });
-});
 
 describe('teamrig issue sync --auto', () => {
   it("writes, tells each owner its new tasks, and tells the lead a failing repository once and its recovery", async () => {
@@ -114,13 +70,10 @@ describe('teamrig issue sync --auto', () => {
     assert.deepEqual(parseSyncState(kit.files.get(STATE) ?? '')?.leftOut, new Map([['acme/web', [9, 10]], ['acme/api', [3]]]));
   });
 
-  it('never overwrites a state file a newer teamrig wrote: the hook starts no sync and --auto fails', async () => {
+  it('never overwrites a state file a newer teamrig wrote: --auto fails', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
     const newer = `{"v":${SYNC_STATE_FORMAT + 1},"startedAt":1,"failing":[],"later":true}\n`;
     await kit.files.write(STATE, newer);
-    const processes = new FakeProcesses();
-    await stop(kit, processes);
-    assert.deepEqual(processes.hidden, []);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh: new FakeGh().holds('acme/web', []).holds('acme/api', []) });
     assert.notEqual(result.code, EXIT.ok);
     assert.match([...result.stdout, ...result.stderr].join('\n'), new RegExp(`holds format v${SYNC_STATE_FORMAT + 1} records`));
@@ -139,28 +92,33 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
   /** The GitHub calls a run made besides its issue lists: label reads and writes. */
   const writes = (gh: FakeGh): string[] => gh.ran.filter((request) => !isIssueQuery(request.args)).map((request) => request.args.join(' '));
 
-  it('after the import, labels each issue a task holds with its status, at most autoPushWrites(everyMinutes) a run', async () => {
-    const kit = new CliHarness(pushTeam({ statusPush: true, everyMinutes: 5 }));
+  it('after the import, labels each issue a task holds with its status, making a missing status label, at most autoPushWrites(probeSeconds) a run', async () => {
+    const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 300 }));
     const gh = new FakeGh()
       .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', assignees: ['octocat'] }), ghIssue('acme/web', 8, { title: 'Add search' })])
       .holds('acme/api', [])
-      .hasLabels('acme/web', ['status:triaged']);
+      .hasLabels('acme/web', ['status:open']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
+    // #7 is assigned to a person, so it is claimed; #8's task is open and unscheduled, so it stays open to anyone,
+    // unassigned (T3021). The repository has no status:claimed yet, so the push makes it first.
     assert.deepEqual(writes(gh), [
-      'api repos/acme/web/labels/status%3Atriaged',
-      'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:triaged',
-      'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:triaged',
+      'api repos/acme/web/labels/status%3Aclaimed',
+      'api repos/acme/web/labels/status%3Aopen',
+      'api repos/acme/web/labels -X POST -f name=status:claimed -f color=1d76db -f description=Taken: its assignee plans to work on it',
+      'api repos/acme/web/issues/7/labels -X POST -f labels[]=status:claimed',
+      'api repos/acme/web/issues/8/labels -X POST -f labels[]=status:open',
     ]);
-    assert.ok(result.stdout.includes('PUSHED 2 change(s), 2 write(s); at most 20 a run, the rest planned again on the next'), result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('PUSHED 2 change(s), 3 write(s); at most 20 a run, the rest planned again on the next'), result.stdout.join('\n'));
     const wrote = result.stdout.find((line) => line.startsWith('WROTE ')) ?? '';
     assert.ok(!wrote.includes('GitHub was only read'), wrote);
   });
 
   it('shares the run writes across the repositories, in their order, leaving the rest for the next run', async () => {
-    const kit = new CliHarness(pushTeam({ statusPush: true, everyMinutes: 1 }));
-    const three = (repo: string): JsonRecord[] => [1, 2, 3].map((number) => ghIssue(repo, number, { title: `Work ${number}` }));
-    const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:triaged']).hasLabels('acme/api', ['status:triaged']);
+    const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 60 }));
+    // Assigned already, so each change is one label write.
+    const three = (repo: string): JsonRecord[] => [1, 2, 3].map((number) => ghIssue(repo, number, { title: `Work ${number}`, assignees: ['octocat'] }));
+    const gh = new FakeGh().holds('acme/web', three('acme/web')).holds('acme/api', three('acme/api')).hasLabels('acme/web', ['status:claimed']).hasLabels('acme/api', ['status:claimed']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(
@@ -174,16 +132,16 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
   });
 
   it('sends no close: a dropped team task holding an open issue is held and printed, its labels left too', async () => {
-    const kit = new CliHarness(pushTeam({ statusPush: true, everyMinutes: 5 }));
+    const kit = new CliHarness(pushTeam({ statusPush: true, probeSeconds: 300 }));
     const asLead = { env: { TEAMRIG_SESSION: 'lead' } };
     const added = await kit.run(['add', '--title', 'Fix login', '--description', 'Work tracked on an issue.', '--priority', 'p2', '--ref', 'gh:acme/web#7'], asLead);
     assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
     const dropped = await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'not planned'], asLead);
     assert.equal(dropped.code, EXIT.ok, [...dropped.stdout, ...dropped.stderr].join('\n'));
     const gh = new FakeGh()
-      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', labels: ['status:triaged'] })])
+      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', labels: ['status:open'] })])
       .holds('acme/api', [])
-      .hasLabels('acme/web', ['status:triaged']);
+      .hasLabels('acme/web', ['status:open']);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
     assert.deepEqual(writes(gh), []);
@@ -191,7 +149,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
       result.stdout.filter((line) => /^(PUSH|HELD|PUSHED) /u.test(line)),
       [
         "PUSH acme/web: 0 to change, 0 unchanged, 1 close(s) held for a session's push",
-        "HELD acme/web#7 T1 dropped: close as not-planned, take off status:triaged; the automatic push sends labels only: a session's teamrig issue sync --push --yes sends the close",
+        "HELD acme/web#7 T1 dropped: close as not-planned, take off status:open; the automatic push never closes: a session's teamrig issue sync --push --yes sends the close",
         'PUSH acme/api: 0 to change, 0 unchanged',
         'PUSHED 0 change(s), 0 write(s); at most 20 a run, the rest planned again on the next',
       ],
@@ -199,7 +157,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
   });
 
   it('sends nothing to GitHub when github.statusPush is off, as by default', async () => {
-    const kit = new CliHarness(pushTeam({ everyMinutes: 5 }));
+    const kit = new CliHarness(pushTeam({ probeSeconds: 300 }));
     const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login' })]).holds('acme/api', []);
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.ok, [...result.stdout, ...result.stderr].join('\n'));
@@ -212,7 +170,7 @@ describe('teamrig issue sync --auto with github.statusPush (T2876)', () => {
     const gh = new FakeGh()
       .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login' })])
       .answers('acme/api', REFUSED)
-      .hasLabels('acme/web', ['status:triaged'])
+      .hasLabels('acme/web', ['status:open'])
       .failsWrite({ end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
     const result = await kit.run(['issue', 'sync', '--auto'], { gh });
     assert.equal(result.code, EXIT.failed, [...result.stdout, ...result.stderr].join('\n'));

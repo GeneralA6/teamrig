@@ -31,6 +31,15 @@ describe('the shipped queries', () => {
     }
   });
 
+  it("ask for each comment's time and author, never its text", () => {
+    for (const query of [OPEN_ISSUES_QUERY, CLOSED_ISSUES_QUERY]) {
+      const from = query.slice(query.indexOf('comments(last:'));
+      const comments = from.slice(0, from.indexOf('} }') + 3);
+      assert.ok(comments.includes('createdAt authorAssociation author { __typename login }'), comments);
+      assert.doesNotMatch(comments, /\bbody/);
+    }
+  });
+
   it('read every issue with its id, parent and blockers for the links, and write nothing', () => {
     assert.match(ISSUE_LINKS_QUERY, /^query\(/);
     assert.doesNotMatch(ISSUE_LINKS_QUERY, /mutation/i);

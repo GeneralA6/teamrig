@@ -4,28 +4,50 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  assigneeReadArgs,
   blockedByAddArgs,
+  COMMENTS_PAGE,
+  commentsReadArgs,
+  GhOutputCapError,
   GhRefusedError,
   isAllowedGh,
+  isAssigneeRead,
+  isCommentsRead,
+  isIssueAssign,
+  isIssueBodyEdit,
   isIssueClose,
   isIssueComment,
   isIssueCreate,
   isIssueQuery,
+  isIssueRead,
+  isIssueUnassign,
   isLabelAdd,
+  isLabelCreate,
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
+  isWatchProbe,
+  issueAssignArgs,
+  issueBodyArgs,
   issueCloseArgs,
   issueCommentArgs,
   issueCreateArgs,
   issueLabelAddArgs,
   issueLabelRemoveArgs,
+  issueReadArgs,
+  issueUnassignArgs,
+  isUserRead,
+  labelCreateArgs,
   labelReadArgs,
   nodeGhRunner,
   subIssueAddArgs,
+  WATCH_PATHS,
+  watchProbeArgs,
+  userReadArgs,
   type IssueNumber,
 } from './gh.ts';
 import type { IssueDraft } from '../issues/host.ts';
+import { MANAGED_LABEL_SPECS } from '../issues/managed-labels.ts';
 import { CLOSED_ISSUES_QUERY, closedPageArgs, OPEN_ISSUES_QUERY, openPageArgs } from './queries.ts';
 
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-gh-'));
@@ -202,6 +224,246 @@ describe('isIssueClose', () => {
   });
 });
 
+describe('isIssueBodyEdit', () => {
+  const EDIT = issueBodyArgs(ISSUE, 'New spec: $(x) @file | y');
+
+  it('takes the command line issueBodyArgs builds, the body a raw field that stays text', () => {
+    assert.deepEqual(EDIT, ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=New spec: $(x) @file | y']);
+    assert.equal(isIssueBodyEdit(EDIT), true);
+    assert.equal(isAllowedGh(EDIT), true);
+  });
+
+  it('refuses any field beside the body, another method, flag or path, and a typed field', () => {
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=b', '-f', 'title=t'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'title=t', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=b', '-f', 'state=open'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=b', '-f', 'assignees[]=someone'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'body=b', '-f', 'milestone=1'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'title=t'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-F', 'body=@secret.txt'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '--input', 'body.json'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'POST', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PUT', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/7/comments', '-X', 'PATCH', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues/comments/7', '-X', 'PATCH', '-f', 'body=b'],
+      ['api', 'repos/acme/web/pulls/7', '-X', 'PATCH', '-f', 'body=b'],
+      ['api', 'repos/acme/../issues/7', '-X', 'PATCH', '-f', 'body=b'],
+      ['api', 'repos/acme/web/issues', '-X', 'PATCH', '-f', 'body=b'],
+    ]) {
+      assert.equal(isIssueBodyEdit(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it('is never taken for a close or a comment, nor they for a body edit', () => {
+    assert.ok([READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b'), issueCloseArgs(ISSUE, 'completed')].every((args) => !isIssueBodyEdit(args)));
+    assert.ok(!isIssueClose(EDIT) && !isIssueComment(EDIT) && !isIssueCreate(EDIT) && !isIssueQuery(EDIT));
+  });
+});
+
+describe('the duplicate close and the issue read', () => {
+  const DUPLICATE = issueCloseArgs(ISSUE, 'duplicate');
+
+  it('names the original by its id, as a typed field, only with the duplicate reason', () => {
+    const args = issueCloseArgs(ISSUE, 'duplicate', 4242);
+    assert.deepEqual(args, ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-f', 'state=closed', '-f', 'state_reason=duplicate', '-F', 'duplicate_issue_id=4242']);
+    assert.equal(isIssueClose(args), true);
+    assert.equal(isAllowedGh(args), true);
+    assert.deepEqual(issueCloseArgs(ISSUE, 'completed', 4242), issueCloseArgs(ISSUE, 'completed'));
+  });
+
+  it('refuses the id with another reason or none, sent as text, not digits, out of range, or any other typed field', () => {
+    for (const args of [
+      [...issueCloseArgs(ISSUE, 'completed'), '-F', 'duplicate_issue_id=4242'],
+      [...issueCloseArgs(ISSUE), '-F', 'duplicate_issue_id=4242'],
+      [...DUPLICATE, '-f', 'duplicate_issue_id=4242'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=@file'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=0'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=-1'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=12a'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id='],
+      [...DUPLICATE, '-F', `duplicate_issue_id=${'9'.repeat(17)}`],
+      [...DUPLICATE, '-F', 'state=open'],
+      [...DUPLICATE, '-F', 'duplicate_issue_id=1', '-F', 'duplicate_issue_id=2'],
+      [...DUPLICATE, '-F'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH', '-F', 'duplicate_issue_id=1'],
+    ]) {
+      assert.equal(isIssueClose(args), false, args.slice(4).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(4).join(' '));
+    }
+  });
+
+  it('reads one issue with GET and nothing more', () => {
+    const read = issueReadArgs(ISSUE);
+    assert.deepEqual(read, ['api', 'repos/acme/web/issues/7', '-X', 'GET']);
+    assert.equal(isIssueRead(read), true);
+    assert.equal(isAllowedGh(read), true);
+    for (const args of [
+      [...read, '-f', 'state=closed'],
+      [...read, '-F', 'title=t'],
+      [...read, '--hostname', 'example.com'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'PATCH'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/comments', '-X', 'GET'],
+      ['api', 'repos/acme/web/issues', '-X', 'GET'],
+      ['api', 'repos/acme/web/issues/x', '-X', 'GET'],
+    ]) {
+      assert.equal(isIssueRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it("reads one bounded page of an issue's comments since a time, and nothing more", () => {
+    const read = commentsReadArgs(ISSUE, '2030-01-01T09:00:00.000Z');
+    assert.deepEqual(read, ['api', 'repos/acme/web/issues/7/comments', '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', `per_page=${String(COMMENTS_PAGE)}`]);
+    assert.equal(isCommentsRead(read), true);
+    assert.equal(isAllowedGh(read), true);
+    const path = 'repos/acme/web/issues/7/comments';
+    for (const args of [
+      ['api', path, '-X', 'GET'],
+      ['api', path, '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z'],
+      ['api', path, '-X', 'GET', '-f', 'since=yesterday', '-f', 'per_page=30'],
+      ['api', path, '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=100'],
+      ['api', path, '-X', 'GET', '-f', 'per_page=30', '-f', 'since=2030-01-01T09:00:00.000Z'],
+      [...read, '-f', 'page=2'],
+      [...read, '--paginate'],
+      ['api', path, '-X', 'GET', '-F', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=30'],
+      ['api', path, '-X', 'POST', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=30'],
+      ['api', 'repos/acme/web/issues/7/labels', '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=30'],
+      ['api', 'repos/acme/web/issues/comments', '-X', 'GET', '-f', 'since=2030-01-01T09:00:00.000Z', '-f', 'per_page=30'],
+    ]) {
+      assert.equal(isCommentsRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+    assert.ok(!isIssueComment(read) && !isIssueRead(read) && !isLabelRead(read));
+  });
+
+  it('is never taken for a close, a comment or a label call, nor they for a read', () => {
+    const read = issueReadArgs(ISSUE);
+    assert.ok(!isIssueClose(read) && !isIssueComment(read) && !isIssueCreate(read) && !isIssueQuery(read) && !isLabelRead(read));
+    for (const args of [READ, DUPLICATE, issueCommentArgs(ISSUE, 'b'), labelReadArgs('acme/web', 'p1'), issueCreateArgs(DRAFT)]) {
+      assert.equal(isIssueRead(args), false, args[1]);
+    }
+  });
+});
+
+describe('the managed label create (T2999, T3096)', () => {
+  const [OPEN_LABEL] = MANAGED_LABEL_SPECS;
+
+  it('takes the create of each of the push\'s own status labels and design', () => {
+    assert.deepEqual(MANAGED_LABEL_SPECS.map((label) => label.name).slice(-2), ['status:in review', 'design']);
+    for (const label of MANAGED_LABEL_SPECS) {
+      const args = labelCreateArgs('acme/web', label);
+      assert.deepEqual(args, ['api', 'repos/acme/web/labels', '-X', 'POST', '-f', `name=${label.name}`, '-f', `color=${label.color}`, '-f', `description=${label.description}`]);
+      assert.ok(isLabelCreate(args) && isAllowedGh(args), label.name);
+    }
+  });
+
+  it('refuses any other label, colour, description, method, field order, flag or path', () => {
+    assert.ok(OPEN_LABEL !== undefined);
+    const good = labelCreateArgs('acme/web', OPEN_LABEL);
+    for (const args of [
+      labelCreateArgs('acme/web', { ...OPEN_LABEL, name: 'bug' }),
+      labelCreateArgs('acme/web', { ...OPEN_LABEL, color: '000000' }),
+      labelCreateArgs('acme/web', { ...OPEN_LABEL, description: 'x' }),
+      labelCreateArgs('acme/..', OPEN_LABEL),
+      labelCreateArgs('acme', OPEN_LABEL),
+      good.map((arg) => (arg === 'POST' ? 'PATCH' : arg)),
+      good.map((arg) => (arg === 'POST' ? 'DELETE' : arg)),
+      good.map((arg) => (arg === '-f' ? '-F' : arg)),
+      [...good, '-f', 'new_name=x'],
+      [...good.slice(0, 4), ...good.slice(6), ...good.slice(4, 6)],
+      good.map((arg, at) => (at === 1 ? 'repos/acme/web/labels/status%3Aopen' : arg)),
+      ['api', 'repos/acme/web/labels', '-X', 'POST', '--input', 'labels.json'],
+    ]) {
+      assert.equal(isLabelCreate(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+});
+
+describe('the assignee calls (T2999)', () => {
+  it('takes a user read, and refuses one with a method, a field or a path past the user', () => {
+    assert.deepEqual(userReadArgs('OctoCat'), ['api', 'users/OctoCat']);
+    assert.ok(isUserRead(userReadArgs('OctoCat')) && isAllowedGh(userReadArgs('OctoCat')));
+    for (const args of [
+      ['api', 'users/octocat', '-X', 'GET'],
+      ['api', 'users/octocat', '-X', 'PATCH', '-f', 'name=x'],
+      ['api', 'users/octocat', '--jq', '.email'],
+      ['api', 'users/octocat/repos'],
+      ['api', 'users/'],
+      ['api', 'users/-octocat'],
+      ['api', 'users/octo--cat'],
+      ['api', 'users/../user'],
+      ['api', 'users/octocat?per_page=1'],
+      ['api', 'user'],
+      ['api', '/users/octocat'],
+    ]) {
+      assert.equal(isUserRead(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  const ASSIGN = issueAssignArgs(ISSUE, ['octocat', 'mona-lisa']);
+
+  it('takes the command lines issueAssignArgs and assigneeReadArgs build', () => {
+    assert.deepEqual(ASSIGN, ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'assignees[]=octocat', '-f', 'assignees[]=mona-lisa']);
+    assert.deepEqual(assigneeReadArgs('acme/web', 'octocat'), ['api', 'repos/acme/web/assignees/octocat']);
+    assert.ok(isIssueAssign(ASSIGN) && isAssigneeRead(assigneeReadArgs('acme/web', 'octocat')));
+    assert.ok(isAllowedGh(ASSIGN) && isAllowedGh(assigneeReadArgs('acme/web', 'octocat')));
+  });
+
+  it('takes the one-login removal issueUnassignArgs builds, and refuses two logins, none, another field, flag or shape', () => {
+    const unassign = issueUnassignArgs(ISSUE, 'octocat');
+    assert.deepEqual(unassign, ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat']);
+    assert.ok(isIssueUnassign(unassign) && isAllowedGh(unassign) && !isIssueAssign(unassign));
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat', '-f', 'assignees[]=mona'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'labels[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-F', 'assignees[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=../x'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat', '--paginate'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'PUT', '-f', 'assignees[]=octocat'],
+      ['api', 'repos/acme/web/issues/7', '-X', 'DELETE', '-f', 'assignees[]=octocat'],
+    ]) {
+      assert.equal(isIssueUnassign(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+  });
+
+  it('refuses a removal, another field or flag, a login of another shape, and a read with a method', () => {
+    assert.equal(isIssueAssign(['api', 'repos/acme/web/issues/7/assignees', '-X', 'DELETE', '-f', 'assignees[]=octocat']), false);
+    for (const args of [
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'labels[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-F', 'assignees[]=octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'assignees[]=-octocat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'assignees[]=octo--cat'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', 'assignees[]=../x'],
+      ['api', 'repos/acme/web/issues/7/assignees', '-X', 'POST', '-f', `assignees[]=${'a'.repeat(40)}`],
+      ['api', 'repos/acme/web/issues/7', '-X', 'POST', '-f', 'assignees[]=octocat'],
+      ['api', 'repos/acme/../assignees', '-X', 'POST', '-f', 'assignees[]=octocat'],
+    ]) {
+      assert.equal(isIssueAssign(args), false, args.slice(1).join(' '));
+      assert.equal(isAllowedGh(args), false, args.slice(1).join(' '));
+    }
+    for (const args of [
+      ['api', 'repos/acme/web/assignees/octocat', '-X', 'GET'],
+      ['api', 'repos/acme/web/assignees/octocat', '-X', 'DELETE'],
+      ['api', 'repos/acme/web/assignees/..'],
+      ['api', 'repos/acme/web/assignees/octo%2Fcat'],
+      ['api', 'repos/acme/web/assignees'],
+      ['api', 'repos/../web/assignees/octocat'],
+    ]) {
+      assert.equal(isAssigneeRead(args), false, args.slice(1).join(' '));
+    }
+  });
+});
+
 describe('the label calls', () => {
   const ADD = issueLabelAddArgs(ISSUE, ['type: bug', 'p1']);
   const REMOVE = issueLabelRemoveArgs(ISSUE, 'needs triage');
@@ -328,6 +590,52 @@ describe('isLinkAdd', () => {
   });
 });
 
+describe('isWatchProbe', () => {
+  const TAG = 'W/"50b22ce0798d5266d68ab18f566208f054bace28abff5bdb55246daea34bb6d5"';
+
+  it('takes each of the two probe paths of a repository, with no tag or one entity tag, strong or weak', () => {
+    for (const path of WATCH_PATHS) {
+      for (const tag of [undefined, TAG, '"abc"']) {
+        const args = watchProbeArgs('acme/web.site', path, tag);
+        assert.ok(isWatchProbe(args), args.join(' '));
+        assert.ok(isAllowedGh(args), args.join(' '));
+      }
+    }
+    assert.deepEqual(watchProbeArgs('acme/web', 'actions/runs?per_page=5', '"t"'), ['api', '-i', '-H', 'If-None-Match: "t"', 'repos/acme/web/actions/runs?per_page=5']);
+  });
+
+  it('refuses another path, method, field, header or flag, and a tag that could add a header line', () => {
+    for (const args of [
+      ['api', '-i', 'repos/acme/web/issues?state=all&sort=updated&per_page=100'],
+      ['api', '-i', 'repos/acme/web/issues'],
+      ['api', '-i', 'repos/acme/../issues?state=all&sort=updated&per_page=1'],
+      ['api', '-i', 'repos/acme/web/x/issues?state=all&sort=updated&per_page=1'],
+      ['api', '-i', 'repos/acme/web/actions/runs?per_page=5', '-X', 'POST'],
+      ['api', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '--paginate', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', 'Authorization: token x', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', 'If-None-Match: "a"\r\nX-Evil: 1', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', 'If-None-Match: "a b"', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', 'If-None-Match: *', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-H', `If-None-Match: "${'a'.repeat(201)}"`, 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', '-f', 'x=1', 'repos/acme/web/actions/runs?per_page=5'],
+      ['api', '-i', 'repos/acme/web/actions/runs?per_page=5', '--hostname', 'example.com'],
+      ['api', '-i', 'graphql'],
+    ]) {
+      assert.equal(isWatchProbe(args), false, args.join(' '));
+      assert.equal(isAllowedGh(args), false, args.join(' '));
+    }
+  });
+
+  it('is never taken for a query or a write, nor they for a probe', () => {
+    const probe = watchProbeArgs('acme/web', 'issues?state=all&sort=updated&per_page=1', TAG);
+    assert.ok(!isIssueQuery(probe) && !isIssueCreate(probe) && !isIssueComment(probe) && !isIssueClose(probe) && !isLabelAdd(probe) && !isLabelRemove(probe) && !isLabelRead(probe) && !isLinkAdd(probe));
+    for (const args of [READ, issueCreateArgs(DRAFT), issueCommentArgs(ISSUE, 'b'), issueCloseArgs(ISSUE, 'duplicate'), labelReadArgs('acme/web', 'p1'), subIssueAddArgs(ISSUE, 12), blockedByAddArgs(ISSUE, 12)]) {
+      assert.equal(isWatchProbe(args), false, args[1]);
+    }
+  });
+});
+
 describe('nodeGhRunner', () => {
   it('passes each argument as a list item, never through a shell, and tells gh not to prompt', async () => {
     const gh = script('echo-args.mjs', 'process.stdout.write(JSON.stringify([process.argv.slice(2), process.env.GH_PROMPT_DISABLED]));');
@@ -345,7 +653,7 @@ describe('nodeGhRunner', () => {
     }
     await assert.rejects(
       nodeGhRunner(process.execPath, [gh]).run({ args: ['issue', 'close', '7'], env: ENV }),
-      /teamrig only runs gh for its shipped issue queries and to open, comment on, label, close or link an issue: it refuses gh issue close with these arguments/,
+      /teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, edit the body of, label, assign, close or link an issue: it refuses gh issue close with these arguments/,
     );
     assert.equal(existsSync(marker), false);
   });
@@ -372,5 +680,19 @@ describe('nodeGhRunner', () => {
     const gh = script('hang.mjs', 'setTimeout(() => {}, 30_000);');
     const result = await nodeGhRunner(process.execPath, [gh], 300).run({ args: READ, env: ENV });
     assert.equal(result.end.kind, 'signal');
+  });
+
+  it('stops a run that prints more than its cap, stderr counted too, and rejects with nothing it printed', async () => {
+    const flood = script('flood.mjs', "process.stderr.write('e'.repeat(600)); const line = 'x'.repeat(1024); const write = () => { while (process.stdout.write(line)); process.stdout.once('drain', write); }; write();");
+    await assert.rejects(nodeGhRunner(process.execPath, [flood], 30_000, 4096).run({ args: READ, env: ENV }), GhOutputCapError);
+    const fits = script('fits.mjs', "process.stdout.write('o'.repeat(3000)); process.stderr.write('e'.repeat(1000));");
+    const result = await nodeGhRunner(process.execPath, [fits], 30_000, 4096).run({ args: READ, env: ENV });
+    assert.deepEqual([result.stdout.length, result.stderr.length], [3000, 1000]);
+  });
+
+  it('reads a character split across two writes whole', async () => {
+    const gh = script('split.mjs', "const bytes = Buffer.from('é'); process.stdout.write(bytes.subarray(0, 1)); setTimeout(() => process.stdout.write(bytes.subarray(1)), 50);");
+    const result = await nodeGhRunner(process.execPath, [gh]).run({ args: READ, env: ENV });
+    assert.equal(result.stdout, 'é');
   });
 });

@@ -2,7 +2,9 @@
  * Issue links from the task tree. The register has no parent field: a whole is planned after its parts (`update T9
  * --after T10,T11`), so each `after` edge between two tasks whose refs are issues of one repository becomes links on
  * the host. Every edge makes the whole blocked by the part; a part with one whole also becomes its sub-issue, since
- * an issue has one parent at most. Links are only ever added: one a person set on the host stays.
+ * an issue has one parent at most. A started task cannot take an `after` edge, so it waits on a task instead
+ * (`set --waits task:T10`): that wait makes it blocked by the other task's issue too, but never its parent, since a
+ * task waited on is a blocker, not a part. Links are only ever added: one a person set on the host stays.
  */
 import { ISSUE_REF_PREFIX } from "../register/model.js";
 import { parseIssueTarget } from "./host.js";
@@ -10,9 +12,14 @@ import { parseIssueTarget } from "./host.js";
 export function refTarget(task) {
     return task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) ? parseIssueTarget(task.ref.slice(ISSUE_REF_PREFIX.length)) : undefined;
 }
+/** The ids `task` is planned after, each asking for a sub-issue, then those it waits on and is not planned after. */
+function partsOf(task) {
+    const waited = task.waits.flatMap((reason) => (reason.kind === 'task' && !task.after.includes(reason.id) ? [reason.id] : []));
+    return [...task.after.map((id) => ({ id, sub: true })), ...[...new Set(waited)].map((id) => ({ id, sub: false }))];
+}
 /**
- * The links the tasks' `after` edges ask for on `repo` (`owner/name`, lowercase) that `issues`, the host's read of
- * it, does not have yet. A dropped task makes no link: its plan no longer holds.
+ * The links the tasks' `after` edges and task waits ask for on `repo` (`owner/name`, lowercase) that `issues`, the
+ * host's read of it, does not have yet. A dropped task makes no link: its plan no longer holds.
  */
 export function planLinks(tasks, repo, issues) {
     const edges = [];
@@ -22,14 +29,14 @@ export function planLinks(tasks, repo, issues) {
         if (whole.status === 'dropped' || wholeTarget?.repo !== repo) {
             continue;
         }
-        for (const id of whole.after) {
+        for (const { id, sub } of partsOf(whole)) {
             const part = tasks.get(id);
             const partTarget = part === undefined || part.status === 'dropped' ? undefined : refTarget(part);
             if (partTarget === undefined) {
                 continue;
             }
             if (partTarget.repo === repo) {
-                edges.push({ whole: wholeTarget, part: partTarget });
+                edges.push({ whole: wholeTarget, part: partTarget, sub });
             }
             else {
                 otherRepo += 1;
@@ -38,7 +45,7 @@ export function planLinks(tasks, repo, issues) {
     }
     const byNumber = new Map(issues.map((issue) => [issue.number, issue]));
     const wholesOf = new Map();
-    for (const edge of edges) {
+    for (const edge of edges.filter((each) => each.sub)) {
         wholesOf.set(edge.part.number, (wholesOf.get(edge.part.number) ?? 0) + 1);
     }
     const writes = [];
@@ -58,6 +65,9 @@ export function planLinks(tasks, repo, issues) {
         }
         else {
             writes.push({ kind: 'blocked-by', target: edge.whole, blocker: edge.part, blockerId: part.hostId });
+        }
+        if (!edge.sub) {
+            continue;
         }
         if ((wholesOf.get(part.number) ?? 0) > 1) {
             manyWholes += 1;

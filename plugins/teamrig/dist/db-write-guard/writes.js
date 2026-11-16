@@ -19,13 +19,10 @@ const BUILT_IN_PROGRAMS = [
     { name: 'sqlite3', reads: 'sql-database-file' },
 ];
 const NODE_RUNTIMES = new Set(['node', 'tsx', 'ts-node']);
-const PACKAGE_RUNNERS = new Set(['npx', 'pnpx']);
 const ECHOES = new Set(['echo', 'printf', 'write-output', 'write']);
 const FILE_PRINTERS = new Set(['cat', 'type', 'get-content', 'gc']);
 /** A file name's extension: a document shell runs a word ending in one as a script (`fix.js`), when it is no option or address. */
 const FILE_EXTENSION = /\.[A-Za-z0-9]+$/;
-/** npx options that take the next word as their value. */
-const RUNNER_VALUED = new Set(['-p', '--package', '-c', '--call', '-w', '--workspace']);
 /** Options of node, tsx and ts-node that take the next word as their value. */
 const NODE_VALUED = new Set([
     '-r', '--require', '--import', '--loader', '--experimental-loader', '-C', '--conditions', '--input-type', '--title',
@@ -95,7 +92,7 @@ async function writesOfRun(run, runs, context, scan) {
         const elsewhere = { readText: async () => undefined, elsewhere: true, inherited: input };
         return writesOfLine(remote.line, { ...context, cwd: undefined, dialect: remote.dialect }, elsewhere);
     }
-    const call = unwrapRunner({ name: run.name, args: run.args });
+    const call = { name: run.name, args: run.args };
     const read = (path) => readAt(run.dir, path, context.home, scan.readText);
     const write = (program, writes, entrypoint = false) => writes.length === 0 ? [] : [{ program, writes, entrypoint, elsewhere: scan.elsewhere }];
     const shape = shapeOf(call.name, context.rules.programs);
@@ -176,15 +173,6 @@ async function readAll(paths, read) {
         }
     }
     return texts;
-}
-/** The program a package runner starts (`npx tsx fix.ts`, `npx -y tsx fix.ts`), or the call itself. */
-function unwrapRunner(call) {
-    if (!PACKAGE_RUNNERS.has(call.name)) {
-        return call;
-    }
-    const at = skipOptions(call.args.map((arg) => arg.text), 0, RUNNER_VALUED);
-    const program = call.args[at];
-    return program === undefined || program.dynamic ? call : { name: programName(program.text), args: call.args.slice(at + 1) };
 }
 /** The writes a key-value client makes: the command it runs, a Lua script it evaluates, or the commands it reads on stdin. */
 async function keyValueWrites(texts, input, read) {

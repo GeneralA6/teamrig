@@ -4,6 +4,9 @@
 ## Why
 <!-- The reason: the bug it fixes or what it makes possible. -->
 
+## Reach
+<!-- All users (the plugin: a command, a config key, a hook, a plugin skill), teamrig development (dev skills, tools/, CI) or one team, and why: see CONTRIBUTING.md, Where a change lives. -->
+
 ## Changes
 <!-- The parts it touches, one line each. -->
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { parseArgs, UsageError } from '../cli/args.ts';
 import { COMMAND_EFFECTS, COMMAND_TABLE } from '../cli/run.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { settingsWriteRefusal } from '../core/settings-writers.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
 import { ClientInstalls } from '../exec/client-launch.ts';
 import { EXEC_COMMANDS, execGuardOutput, OWNER_COMMANDS, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
@@ -172,13 +173,17 @@ describe('execGuardOutput', () => {
     ]) {
       const found = await verdict(payload, quiet);
       assert.equal(found?.decision, 'deny', JSON.stringify(payload));
-      assert.equal(
+      // A function's own words may start the CLI too, so `f exec approve ... --session owner` adds its review's reason (T3069).
+      assert.ok(
+        found?.reason.startsWith(
+          'teamrig exec guard: a teamrig call here has a word only known when it runs (a variable or a substitution), so the guard cannot tell whether it reviews a request, or as whom; write the words out.',
+        ),
         found?.reason,
-        'teamrig exec guard: a teamrig call here has a word only known when it runs (a variable or a substitution), so the guard cannot tell whether it reviews a request, or as whom; write the words out.',
       );
     }
-    assert.equal(quiet.reads(), 0);
-    assert.equal(quiet.checks(), 0);
+    // Only the two calls of a function f, read as a possible CLI that reviews as the owner (T3069), read the tab and check f.
+    assert.equal(quiet.reads(), 2);
+    assert.equal(quiet.checks(), 2);
     for (const line of ['teamrig list --session "$S"', 'teamrig show "$T"', '$G list', 'git "$G" status', 'npm "$X" test', 'docker "$C" exec ctr ls', 'node "$S" list']) {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
@@ -307,12 +312,14 @@ describe('execGuardOutput', () => {
       ['$T exec "$ACTION" R1', '\\$T'],
       ['node $SCRIPT exec run R1', '\\$SCRIPT'],
       ['node "$KIT/dist/cli/main.js" exec status R1', '\\$KIT/dist/cli/main\\.js'],
+      ['npx "$P" exec status R1', '\\$P'],
+      ['pnpm dlx --silent $P exec approve R1', '\\$P'],
     ] as const) {
       const found = await verdict(bash(line), quiet);
       assert.equal(found?.decision, 'deny', line);
       assert.match(found?.reason ?? '', new RegExp(`here starts a program only known when it runs \\(${word}\\), so the guard cannot tell which client runs it; write it out`), line);
     }
-    for (const line of ['$DOCKER exec ctr ls', '$T list', '$T exec', 'node $SCRIPT build', 'node $SCRIPT exec']) {
+    for (const line of ['$DOCKER exec ctr ls', '$T list', '$T exec', 'node $SCRIPT build', 'node $SCRIPT exec', 'npx "$P" build', 'npm run "$S"']) {
       assert.equal(await verdict(bash(line), quiet), undefined, line);
     }
     assert.equal(quiet.checks(), 0);
@@ -395,6 +402,187 @@ describe('execGuardOutput', () => {
     }
   });
 
+  it('refuses every settings writer run with --yes from a tool call, whatever its client, without reading the tab or checking a client (T3083)', async () => {
+    const quiet = env();
+    for (const [payload, command] of [
+      [bash('teamrig permissions trim --yes'), 'permissions trim'],
+      [bash('teamrig permissions trim --all --yes'), 'permissions trim'],
+      [bash('teamrig automode install --yes'), 'automode install'],
+      [bash('teamrig automode uninstall --yes'), 'automode uninstall'],
+      [bash('git status && teamrig statusline install --yes'), 'statusline install'],
+      [bash('teamrig setup restore --yes --remove-new'), 'setup restore'],
+      [bash('teamrig config migrate --yes'), 'config migrate'],
+      [bash('teamrig restore install --yes'), 'restore install'],
+      [bash("bash -c 'teamrig automode install --yes'"), 'automode install'],
+      [bash(`node ${INSTALL}/dist/cli/main.js permissions trim --yes`), 'permissions trim'],
+      [powershell('teamrig.cmd statusline install --yes'), 'statusline install'],
+      [bash('teamrig permissions trim "$FLAG"'), 'permissions trim'],
+      [bash('teamrig automode "$WHAT" --yes'), 'automode'],
+      [bash('$T permissions trim --yes'), 'permissions trim'],
+      [bash('$T --verbose permissions trim --yes'), 'permissions trim'],
+      [bash('echo teamrig permissions trim --yes'), 'permissions trim'],
+      [bash('node $SCRIPT automode install --yes'), 'automode install'],
+    ] as const) {
+      const found = await verdict(payload, quiet);
+      assert.equal(found?.decision, 'deny', JSON.stringify(payload));
+      assert.equal(found?.reason, `teamrig exec guard: ${settingsWriteRefusal(command)}`, JSON.stringify(payload));
+    }
+    assert.equal(quiet.reads(), 0);
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it("leaves a settings writer's preview, and the commands beside the writers, to the normal flow", async () => {
+    const quiet = env();
+    for (const line of [
+      'teamrig permissions trim',
+      'teamrig permissions trim --all',
+      'teamrig statusline install',
+      'teamrig automode status',
+      'teamrig config get roles',
+      'teamrig config validate',
+      'teamrig setup backup',
+      '$T permissions trim',
+      'echo "teamrig permissions trim --yes"',
+    ]) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+  });
+
+  it('reads teamrig started through its guard entry, any script host or a package runner as the CLI (T3069)', async () => {
+    const quiet = env();
+    for (const line of [
+      `node ${INSTALL}/dist/cli/guard-main.js owner next T1`,
+      'npx tsx src/cli/main.ts owner next T1',
+      'tsx src/cli/main.ts owner next T1',
+      'bun src/cli/main.ts owner next T1',
+      'npx teamrig owner next T1',
+      'npx --yes teamrig@latest owner next T1',
+      'pnpm exec teamrig owner next T1',
+      'pnpm dlx teamrig owner next T1',
+      'yarn teamrig owner next T1',
+      'bunx teamrig owner next T1',
+      'npm exec -- teamrig owner next T1',
+    ]) {
+      assert.equal((await verdict(bash(line), quiet))?.decision, 'deny', line);
+    }
+    const runner = await verdict(bash('npx teamrig exec status R1'), quiet);
+    assert.equal(runner?.decision, 'deny');
+    assert.match(runner?.reason ?? '', /runs through a package runner \(npx\)/);
+    for (const line of ['npx tsc --noEmit', 'npm run check', 'pnpm exec teamrig list', 'yarn add teamrig', 'git log -- src/cli/main.ts']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+  });
+
+  it('refuses teamrig that a package runner or a version manager starts, in a shell it starts too, as its PATH finds it (T3069)', async () => {
+    const quiet = env();
+    for (const [line, runner] of [
+      ['npx -c "teamrig exec approve R1 --session alpha"', 'npx'],
+      ['npx --call="teamrig exec approve R1 --session alpha"', 'npx'],
+      ['npm exec -c "teamrig exec status R1"', 'npm'],
+      ['npm x --call "teamrig exec status R1"', 'npm'],
+      ['npx bash -c "teamrig exec approve R1 --session alpha"', 'npx'],
+      ['C:/nodejs/npx.cmd sh -c "teamrig exec status R1"', 'C:/nodejs/npx\\.cmd'],
+      ['pnpm exec sh -c "teamrig exec status R1"', 'pnpm'],
+      ['pnpm exec -c teamrig exec status R1', 'pnpm'],
+      ['pnpm dlx -c "teamrig exec status R1"', 'pnpm'],
+      ['pnpx --shell-mode "teamrig exec status R1"', 'pnpx'],
+      ['yarn exec bash -c "teamrig exec status R1"', 'yarn'],
+      ['yarn run bash -c "teamrig exec status R1"', 'yarn'],
+      ['pnpm sh -c "teamrig exec status R1"', 'pnpm'],
+      ['bunx bash -c "teamrig exec status R1"', 'bunx'],
+      ['corepack npx teamrig exec status R1', 'corepack'],
+      ['corepack pnpm@9 exec sh -c "teamrig exec status R1"', 'corepack'],
+      ['volta run --node 20 teamrig exec status R1', 'volta'],
+      ['fnm exec --using 20 teamrig exec status R1', 'fnm'],
+      ['nvm exec 20 teamrig exec status R1', 'nvm'],
+    ] as const) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', new RegExp(`runs through a package runner \\(${runner}\\), which may find or fetch a teamrig other than`), line);
+    }
+    assert.equal((await verdict(bash('npx -c "teamrig owner next T1"'), quiet))?.decision, 'deny');
+    assert.equal((await verdict(powershell('npx.cmd -c "teamrig exec status R1"'), quiet))?.decision, 'deny');
+    for (const line of ['npx -c "tsc --noEmit"', 'npx bash -c "teamrig list"', 'volta run node -v', 'nvm exec 20 node -v', 'pnpm sh -c "npm test"']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it("reads a package runner's shell line in every shell the line or an .npmrc may pick for it", async () => {
+    const quiet = env();
+    for (const line of [
+      `npx --script-shell=bash -c "teamrig e''xec approve R1 --session alpha"`,
+      `npm_config_script_shell=bash npx -c "teamrig e''xec approve R1 --session alpha"`,
+      `npm --script-shell bash exec -c "teamrig e''xec status R1"`,
+      'npx -c "teamrig e^xec approve R1 --session alpha"',
+      `pnpm exec -c "teamrig e''xec status R1"`,
+      'yarn exec "teamrig exec status R1"',
+      'bun exec "teamrig exec status R1"',
+    ]) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', /runs through a package runner/, line);
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('refuses a package runner whose shell line goes to a shell the line names that the guard cannot read', async () => {
+    const quiet = env();
+    for (const line of ['npx --script-shell=node -c "x"', 'npm_config_script_shell=python3 npx -c "x"', 'ComSpec=C:/tools/run.exe npm exec -c "x"', 'npx --script-shell "$S" -c "x"']) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', /hands its command line to a shell the line names/, line);
+    }
+    for (const line of ['npx --script-shell=bash -c "tsc --noEmit"', 'ComSpec=C:/Windows/System32/cmd.exe npx -c "tsc"', 'npx --script-shell=pwsh -c "tsc"']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('reads an entry script named without its extension, or with a module one, as the CLI (T3069)', async () => {
+    const quiet = env();
+    for (const line of [
+      `node ${INSTALL}/dist/cli/main owner next T1`,
+      `node ${INSTALL}/dist/cli/guard-main owner next T1`,
+      `node ${INSTALL}/dist/cli/main.mjs owner next T1`,
+      `node ${INSTALL}/dist/cli/main.cjs owner next T1`,
+    ]) {
+      assert.equal((await verdict(bash(line), quiet))?.decision, 'deny', line);
+    }
+    // Even as the tab itself: the file named is no entry the install hashed (CLIENT_ENTRIES), so it is refused.
+    for (const session of ['bravo', 'alpha']) {
+      const review = await verdict(bash(`node ${INSTALL}/dist/cli/main exec approve R1 --session ${session}`), quiet);
+      assert.equal(review?.decision, 'deny', session);
+      assert.match(review?.reason ?? '', /dist\\cli\\main, no install of the teamrig plugin/, session);
+    }
+    assert.equal(await verdict(bash(`node ${INSTALL}/dist/cli/main.js exec approve R1 --session alpha`), quiet), undefined);
+    assert.equal(await verdict(bash('git log -- src/cli/main'), quiet), undefined);
+  });
+
+  it('reads any program whose later words start a guarded command as the CLI, whatever it is named (T3069)', async () => {
+    const quiet = env();
+    for (const line of [
+      'node C:/tmp/x.js exec approve R1 --session alpha',
+      './x exec approve R1 --session alpha',
+      'python run.py exec status R1',
+      '$K x exec approve R1 --session alpha',
+    ]) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', /no install of the teamrig plugin|only known when it runs/, line);
+    }
+    const fetched = await verdict(bash('npx git+https://x/teamrig.git exec status R1'), quiet);
+    assert.match(fetched?.reason ?? '', /runs through a package runner \(npx\)/);
+    for (const line of ['node C:/tmp/x.js owner next T1', './x owner note T1 --text x']) {
+      assert.match((await verdict(bash(line), quiet))?.reason ?? '', /acts as the owner/, line);
+    }
+    assert.match((await verdict(powershell('& C:/tmp/x.ps1 exec approve R1 --session alpha'), quiet))?.reason ?? '', /no install of the teamrig plugin/);
+    // A subcommand known only when it runs counts only after teamrig's own name, so other programs' exec stays theirs.
+    for (const line of ['kubectl exec "$POD" -- ls', 'docker compose exec "$S" sh', 'kubectl exec pod -- ls', 'npm exec "$X"', 'echo hi', 'git grep "exec approve"']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+  });
+
   it('knows every teamrig owner command the CLI has, so a call through an unknown program reads as one', () => {
     const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('owner ')).map((name) => name.slice('owner '.length));
     assert.deepEqual([...OWNER_COMMANDS].sort(), commands.sort());
@@ -413,21 +601,29 @@ describe('execGuardOutput: a Bash line on Windows (T2319)', () => {
     const review = "teamrig exec guard: `teamrig exec approve` names --session bravo, but this tab is alpha's";
     const fed = 'teamrig exec guard: a shell here reads its commands from a pipe';
     for (const [line, reason] of [
-      [hiddenSeparator('teamrig owner note T1 --text x'), owner],
       [hiddenBacktick('teamrig owner note T1 --text x'), owner],
-      [hiddenSeparator('teamrig exec approve R1 --session bravo'), review],
       [hiddenBacktick('teamrig exec approve R1 --session bravo'), review],
-      [`echo teamrig owner next T1 ${bs(3)}| bash`, fed],
     ] as const) {
       const found = await verdict(bash(line), windows());
       assert.equal(found?.decision, 'deny', line);
       assert.ok(found?.reason.startsWith(reason), `${line}: ${found?.reason ?? ''}`);
       assert.equal(await verdict(bash(line)), undefined, `off Windows bash runs the line as written: ${line}`);
     }
+    // As written, echo takes the words of these as its own, which the guard reads as a possible CLI too (T3069).
+    for (const [line, reason] of [
+      [hiddenSeparator('teamrig owner note T1 --text x'), owner],
+      [hiddenSeparator('teamrig exec approve R1 --session bravo'), review],
+      [`echo teamrig owner next T1 ${bs(3)}| bash`, fed],
+    ] as const) {
+      const found = await verdict(bash(line), windows());
+      assert.equal(found?.decision, 'deny', line);
+      // The guard joins its reasons after one prefix, so each reason is found by what follows it.
+      assert.ok(found?.reason.includes(reason.replace('teamrig exec guard: ', '')), `${line}: ${found?.reason ?? ''}`);
+    }
   });
 
   it('leaves a line whose readings run no guarded call, or review only as the tab, and checks its client and reads the tab once', async () => {
-    for (const line of [`grep 'a${bs(4)}b' f`, hiddenSeparator('git status'), hiddenSeparator('teamrig exec approve R1 --session alpha')]) {
+    for (const line of [`grep 'a${bs(4)}b' f`, hiddenSeparator('git status'), hiddenBacktick('teamrig exec approve R1 --session alpha')]) {
       assert.equal(await verdict(bash(line), windows()), undefined, line);
     }
     const quiet = windows();

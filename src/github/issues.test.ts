@@ -2,9 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { commentNode, FakeGh, ghIssue, labeledEvent, renamedEvent } from '../testing/fake-gh.ts';
-import { isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
+import { GhOutputCapError, isIssueQuery, type GhRequest, type GhResult, type GhRunner } from './gh.ts';
 import type { HostIssue } from '../issues/issue.ts';
-import { issuePageArgs, listIssues, parseIssuePage, plainLine, type IssueListRequest } from './issues.ts';
+import { issuePageArgs, listIssues, parseIssuePage, plainLine, readCommentsIn, startFailureText, type IssueListRequest } from './issues.ts';
 import { closedPageArgs, openPageArgs } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -41,6 +41,7 @@ function readIssue(number: number, overrides: Partial<HostIssue> = {}): HostIssu
     renamedAt: undefined,
     createdAt: undefined,
     comments: [],
+    linkedPulls: 0,
     ...overrides,
   };
 }
@@ -80,11 +81,18 @@ describe('issuePageArgs', () => {
 });
 
 describe('listIssues', () => {
-  it('reads when an issue was opened and when each comment was posted, by what kind of author, never its text or login', async () => {
+  it('reads when an issue was opened and when each comment was posted and by whom, never its text', async () => {
     const gh = new FakeGh().holds('acme/web', [
       ghIssue('acme/web', 7, {
         createdAt: '2030-01-01T08:00:00Z',
-        comments: [commentNode('2030-01-01T09:00:00Z', 'MEMBER'), commentNode('2030-01-01T10:00:00Z', 'NONE', 'Bot'), { createdAt: 'not a time', authorAssociation: 'NONE', author: null }, { createdAt: '2030-01-01T11:00:00Z', author: null }],
+        linkedPulls: 2,
+        comments: [
+          commentNode('2030-01-01T09:00:00Z', 'MEMBER', 'User', { login: 'maintainer', body: 'Thanks, looking.' }),
+          commentNode('2030-01-01T10:00:00Z', 'NONE', 'Bot'),
+          { createdAt: 'not a time', authorAssociation: 'NONE', author: null },
+          { createdAt: '2030-01-01T11:00:00Z', author: null },
+          commentNode('2030-01-01T12:00:00Z', 'NONE', 'User', { login: 'ada', body: "Nice idea.\nI'll take this one" }),
+        ],
       }),
     ]);
     const list = await listIssues(gh, LOGIN, OPEN);
@@ -92,13 +100,21 @@ describe('listIssues', () => {
     assert.deepEqual(list.kind === 'listed' ? list.issues : [], [
       readIssue(7, {
         createdAt: '2030-01-01T08:00:00Z',
+        linkedPulls: 2,
         comments: [
-          { at: '2030-01-01T09:00:00Z', authorAssociation: 'MEMBER', authorKind: 'User' },
-          { at: '2030-01-01T10:00:00Z', authorAssociation: 'NONE', authorKind: 'Bot' },
-          { at: '2030-01-01T11:00:00Z', authorAssociation: '', authorKind: '' },
+          { at: '2030-01-01T09:00:00Z', login: 'maintainer', authorAssociation: 'MEMBER', authorKind: 'User' },
+          { at: '2030-01-01T10:00:00Z', login: '', authorAssociation: 'NONE', authorKind: 'Bot' },
+          { at: '2030-01-01T11:00:00Z', login: '', authorAssociation: '', authorKind: '' },
+          { at: '2030-01-01T12:00:00Z', login: 'ada', authorAssociation: 'NONE', authorKind: 'User' },
         ],
       }),
     ]);
+  });
+
+  it('reads no pull request link from an issue GitHub gives no count for', async () => {
+    const node = { ...ghIssue('acme/web', 7), closedByPullRequestsReferences: { totalCount: 'many' } };
+    const list = await listIssues(new FakeGh().holds('acme/web', [node]), LOGIN, OPEN);
+    assert.deepEqual(list.kind === 'listed' ? list.issues.map((issue) => issue.linkedPulls) : [], [0]);
   });
 
   it('reads the issues of one state, with who wrote, labelled and renamed each, through a read only', async () => {
@@ -349,5 +365,35 @@ describe('parseIssuePage', () => {
 describe('plainLine', () => {
   it('turns control and format characters into spaces, so outside text stays one plain line', () => {
     assert.equal(plainLine('  Fix\u001b[2J the‮ login\r\nnow\t '), 'Fix [2J the login now');
+  });
+});
+
+describe('readCommentsIn', () => {
+  it("reads each comment's time, author and claim match from REST's list, and keeps no text", () => {
+    const stdout = JSON.stringify([
+      { created_at: '2030-01-01T09:00:00Z', author_association: 'MEMBER', user: { login: 'maintainer', type: 'User' }, body: 'Thanks, looking.' },
+      { created_at: '2030-01-01T10:00:00Z', author_association: 'NONE', user: null, body: '/take' },
+      { created_at: 'not a time', author_association: 'NONE', user: { login: 'eve', type: 'User' }, body: '/take' },
+      'x',
+      { created_at: '2030-01-01T12:00:00Z', author_association: 'NONE', user: { login: 'ada', type: 'User' }, body: "Nice idea.\nI'll take this one" },
+    ]);
+    assert.deepEqual(readCommentsIn(stdout), [
+      { at: '2030-01-01T09:00:00Z', login: 'maintainer', authorAssociation: 'MEMBER', authorKind: 'User', claims: false },
+      { at: '2030-01-01T10:00:00Z', login: '', authorAssociation: 'NONE', authorKind: '', claims: true },
+      { at: '2030-01-01T12:00:00Z', login: 'ada', authorAssociation: 'NONE', authorKind: 'User', claims: true },
+    ]);
+  });
+
+  it('reads no list from text that is not a JSON list', () => {
+    for (const stdout of ['', 'not json', '{"message":"Not Found"}']) {
+      assert.equal(readCommentsIn(stdout), undefined, stdout);
+    }
+  });
+});
+
+describe('startFailureText', () => {
+  it('says gh was stopped for its output, not that it could not start', () => {
+    assert.equal(startFailureText(new GhOutputCapError(4096)), 'gh printed more than 4096 bytes, so teamrig stopped it and used none of it');
+    assert.equal(startFailureText(new Error('spawn EPERM')), 'gh could not start: spawn EPERM');
   });
 });
