@@ -1270,10 +1270,13 @@ the session that answers it gets one unwoken inbox line from `github` (a `REMIND
 shows the lead GH-LATE. A preview times nothing.
 Pull requests: each run also reads every open pull request of each repository, and those changed since the last
 `--auto` read, and compares them with what that read kept. The news is a pull request opened, merged or closed
-unmerged, or one that starts to conflict with its base, to fail its checks, or gets approved or changes requested;
-each is told once, never again while it lasts, and the first read of a repository only marks what is there. It goes
-to the owner of the task the pull request's branch names (`t<id>-...`) when an author inside the repository pushed
-that branch to the repository itself, else to `[github.watcher]` (unset: the lead). A run by hand prints a
+unmerged, or one that starts to conflict with its base, to fail its checks, or gets approved or changes requested,
+and with [github.activity] on one whose checks pass after failing or running; each is told once, never again while
+it lasts, and the first read of a repository only marks what is there. It goes to the owner of the task the pull
+request's branch names (`t<id>-...`) when an author inside the repository pushed that branch to the repository
+itself, else to `[github.watcher]` (unset: the lead). With [github.activity] on, an unwoken copy also goes to the owner
+of the task holding the pull request or a same-repository issue it closes, and to each session following it
+(`teamrig follow`). A run by hand prints a
 `PULL NEWS <session>` line per session and keeps nothing; `--auto` posts it. Titles are outside input, quoted as data.
 A repository whose pull requests cannot be read gets a `FAILED <repo> pull requests:` line and exit 1; its issues still
 sync. Reading them needs Pull requests: Read-only on the token.
@@ -1286,7 +1289,7 @@ Flags:
   naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
   when every repository reads again, and one when it leaves out an outsider's issue it did not leave out before (by
   ref only, at most ten named), and one to each session with pull request news (at most eight pull requests named;
-  it also wakes the session for a conflict or failing checks on its own pull request, a `t<id>-` branch by the
+  it also wakes the session for a conflict, failing checks or changes requested on its own pull request, a `t<id>-` branch by the
   repository's owner or a login in `github.owners`, or an outsider's new pull request, when `wake.enabled`). When its own pull request's checks start failing, it reads the
   end of each failed job's log (at most 5 a run) into `state/github-ci/<owner>-<name>-<number>.md` and the line names
   the job, its failed step and that file. An open issue labelled `security` wakes the session it routes to and pages
@@ -1295,7 +1298,11 @@ Flags:
   since its last `--auto` read (the first read only starts the scan) and sends each new `@` mention of a login in
   `github.owners` to one session: the task owner of the item, else its area owner, else the login's session, else
   `github.watcher`, with the link and up to 300 characters around it, quoted; it wakes that session at most once per
-  item every 30 minutes. A read cut short (over 10 pages of 100 posts per list, or the reviews of 20 pull requests)
+  item every 30 minutes. With [github.activity] on (the default) it also tells the task's owner, and each session
+  following the item, every other new comment, review comment and review on it, in one line per session (a question
+  wakes the owner, in the same 30-minute gap), and each close, reopen and label put on or taken off an issue, in one
+  line that never wakes: a close of a task already done or dropped, teamrig's own labels and a label put on by a login
+  in `github.owners` are not told, and the first read of an issue only marks it. A read cut short (over 10 pages of 100 posts per list, or the reviews of 20 pull requests)
   is told to the watcher and goes on from the cut next run; a failed one fails the repository and keeps its scan. A
   run without `--auto` reads no posts. It reads every
   repository, so it refuses `--repo`. With `github.statusPush` on it
@@ -1627,8 +1634,8 @@ WROTE 2 link(s) on GitHub; the task list was only read
 Follows an issue or pull request of `github.repos`, named `owner/name#n` (its ref `gh:owner/name#n` works too), for
 the calling session. With [github.activity] on, the automatic sync then tells the session the item's new comments,
 reviews, review comments, CI results, labels, closes and merges, as it tells a task's owner those of the item its
-task holds: what asks the session to act (changes requested, a failed check, a question, a mention) wakes it, the
-rest are quiet inbox lines. It reads nothing more from GitHub. A session follows at most [github.followMax] items
+task holds, in quiet inbox lines that never wake it: only the task's owner is woken, for a question, a mention, or
+changes requested, a conflict or a failed check on its own pull request. It reads nothing more from GitHub. A session follows at most [github.followMax] items
 (20 by default). Refused while `github.activity` is off or `github.followMax` is 0, past that cap, and for a
 repository outside `github.repos`, which the sync never reads. Following an item again only says so. Exit 0, 2 when
 refused, 64 for an item not named `owner/name#n`.
