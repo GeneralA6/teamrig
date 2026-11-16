@@ -13,4 +13,7 @@ logo and icon option uses only these two, plus transparent; the options differ i
   either page. All four reach a contrast of 3:1 or more on GitHub's light (`#ffffff`) and dark (`#0d1117`)
   backgrounds: gray 4.55 / 4.16 and 3.08 / 6.15, purple 4.61 / 4.11 and 3.35 / 5.64 (light value, then dark value;
   each on white / on dark).
+- `preview-light.svg` and `preview-dark.svg` draw the icon and logo on GitHub's light (`#ffffff`) and dark
+  (`#0d1117`) page colors, with the light or dark values fixed. Those two backgrounds are preview only, not brand
+  colors.
 - `icon-mono.svg` uses neither: every fill and stroke is `currentColor`, for one-color places.
