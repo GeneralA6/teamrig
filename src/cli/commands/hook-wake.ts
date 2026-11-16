@@ -2,7 +2,7 @@ import { activeBurst, activeRush, type Rush } from '../../budget/burst.ts';
 import { parseLedger } from '../../delivery/ledger.ts';
 import { liveRunsOf } from '../../delivery/detached-runs.ts';
 import { deliveryPlaces, detachedDirOf } from '../../delivery/places.ts';
-import { decideRushPoke, queuedTasksOf, rushPokePrompt, rushPokeToast, stepRunningFor, type PokeInput } from '../../wake/rush-poke.ts';
+import { changedSincePoke, decideRushPoke, pokeMarkOf, queuedTasksOf, rushPokePrompt, rushPokeToast, stepRunningFor, type PokeInput, type PokeMark, type PokeNow } from '../../wake/rush-poke.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { claudeProjectsDir, lastWriteOf } from '../../budget/discover.ts';
 import { autoRestartOf } from '../../config/refresh.ts';
@@ -220,14 +220,18 @@ async function restartHoldsWake(runtime: CliRuntime, store: RefreshStore, rearm:
  * back for work armed in its place (`fresh`), or when to check again (null: no time set) and what else to watch for a
  * change (`waitAnswer`'s `also`).
  */
-type PokeCheck = Extract<CheckVerdict, { kind: 'poke' }> | { readonly kind: 'none' } | { readonly kind: 'later'; readonly at: number };
+type PokeCheck =
+  | (Extract<CheckVerdict, { kind: 'poke' }> & { readonly mark: PokeMark })
+  | { readonly kind: 'none' }
+  | { readonly kind: 'later'; readonly at: number };
 
 /**
  * The rush poke (src/wake/rush-poke.ts), checked when nothing else wakes the tab: only in a rush that lists the
  * session, never for the lead (it talks with the owner, and a poke would cut into that). The ledger, a large file, is
  * read only once a poke is due: a queued step of the session running now puts the poke off by one idle span, since
  * the step's end posts a line that wakes the tab anyway. The detached runs are read then too: a task one of them is for
- * is not poked for (T3168).
+ * is not poked for (T3168). After a poke, another comes only once something changed for the session since
+ * (`changedSincePoke`, T3407), the inbox read for that too only once a poke is due.
  */
 async function pokeOf(
   runtime: CliRuntime,
@@ -253,6 +257,15 @@ async function pokeOf(
   if (due.kind !== 'poke') {
     return due;
   }
+  const seen: PokeNow = {
+    session: id,
+    lines: ((await inboxDepsOf(runtime, kit.paths).inboxes.lines(id)) ?? []).length,
+    startable,
+    own: [...tasks.values()].filter((task) => task.owner === id),
+  };
+  if (state.settled.poke !== undefined && !changedSincePoke(state.settled.pokeMark, state.settled.poke, seen)) {
+    return { kind: 'none' };
+  }
   const runs = await liveRunsOf({ files: runtime.files, alive: (pid) => runtime.sessionProcesses.alive(pid) }, detachedDirOf(config.delivery, kit.paths), kit.paths.team);
   const queued = queuedTasksOf(runs, id);
   const verdict = queued.size === 0 ? due : decideRushPoke({ ...pokeInput, queued });
@@ -266,7 +279,7 @@ async function pokeOf(
   if (stepRunningFor(ledger, id, now, config.delivery.queue.maxRunMinutes * MINUTE_MS)) {
     return { kind: 'later', at: now + idleMs };
   }
-  return { kind: 'poke', rush, task: verdict.task, idleMs: verdict.idleMs, lastTurnAt };
+  return { kind: 'poke', rush, task: verdict.task, idleMs: verdict.idleMs, lastTurnAt, mark: pokeMarkOf(seen) };
 }
 
 type CheckVerdict =
@@ -440,7 +453,7 @@ async function decide(
       await store.write(id, day.state);
       return { kind: 'fresh' };
     }
-    await store.write(id, poke.kind === 'poke' ? { ...day.state, settled: { ...day.state.settled, poke: now } } : day.state);
+    await store.write(id, poke.kind === 'poke' ? { ...day.state, settled: { ...day.state.settled, poke: now, pokeMark: poke.mark } } : day.state);
     if (poke.kind === 'poke') {
       return poke;
     }

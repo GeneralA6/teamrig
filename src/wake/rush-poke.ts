@@ -71,6 +71,50 @@ export function decideRushPoke(input: PokeInput): PokeVerdict {
   return now < dueAt ? { kind: 'later', at: dueAt } : { kind: 'poke', task, idleMs: now - lastTurnAt };
 }
 
+/** What a session had at its last poke, kept with that poke (`SettledMoments.pokeMark`), so a later check sees what changed. */
+export interface PokeMark {
+  /** The lines in its inbox. */
+  readonly lines: number;
+  /** The ids of the tasks it could start. */
+  readonly startable: readonly string[];
+}
+
+/** What a check sees of the session now, weighed against its last poke's mark. */
+export interface PokeNow {
+  readonly session: string;
+  /** The lines in its inbox. */
+  readonly lines: number;
+  /** The tasks it can start now (`startableTasks`). */
+  readonly startable: readonly Task[];
+  /** The tasks it owns. */
+  readonly own: readonly Task[];
+}
+
+/** The mark a poke keeps: what the session had when it was poked. */
+export function pokeMarkOf(now: PokeNow): PokeMark {
+  return { lines: now.lines, startable: now.startable.map((task) => task.id) };
+}
+
+/**
+ * Whether something changed for the session since its last poke at `pokedAt`: a line posted to its inbox (a queued
+ * run's end posts one), a register event on one of its tasks by anyone else (a new task, a handover, an answer, an
+ * approval), or a task it can start that it could not then (a time wait or an `after` cleared). Its own note or
+ * status write is no change. A session that answered a poke with "nothing can move" and left its task open was poked
+ * again every idle span, a full wake each time, for the same state (T3407). With no mark (a poke kept before marks
+ * were), anything counts as a change, as before.
+ */
+export function changedSincePoke(mark: PokeMark | undefined, pokedAt: number, now: PokeNow): boolean {
+  if (mark === undefined) {
+    return true;
+  }
+  const before = new Set(mark.startable);
+  return (
+    now.lines !== mark.lines ||
+    now.own.some((task) => task.updatedBy !== now.session && Date.parse(task.updatedAt) > pokedAt) ||
+    now.startable.some((task) => !before.has(task.id))
+  );
+}
+
 /**
  * True when a queued step of the session holds the host now: its start is in the ledger with no end, started within
  * `maxRunMs` (a step is killed by then, so an older open start is one whose process died without its end). A step
@@ -116,7 +160,7 @@ export function rushPokePrompt(session: string, rush: Rush, task: Task, idleMs: 
   return [
     `Rush on ${rush.goal}: this tab sat idle ${minutesText(idleMs)} with work left and no queued step of its own running.`,
     `Start or continue ${task.id} (${task.title}) now, or your top task if another comes first; a run still waiting in the queue is no reason to wait.`,
-    `If nothing can move, write why in its note (\`${KIT_NAME} set ${task.id} --session ${session} --status <status> --note "..."\`). This poke costs ${costText(cost)}.`,
+    `If nothing can move, set it waiting with its reason (\`${KIT_NAME} set ${task.id} --session ${session} --status waiting --waits <reason> --note "..."\`): no poke comes again until something changes for you. This poke costs ${costText(cost)}.`,
   ].join(' ');
 }
 

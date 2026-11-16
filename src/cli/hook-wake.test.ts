@@ -697,6 +697,29 @@ describe('hook wake-check rush poke (T2865)', () => {
     assert.deepEqual(answerOf(await check(kit, turnAt(again))), waitTill(again + 5 * MINUTE), 'a new turn opens a new stretch');
   });
 
+  it('pokes a tab that answered a poke with no change no more, however many idle spans pass, and once more after a change (T3407)', async () => {
+    const kit = await rushingAlpha();
+    const poke = /"toast":"teamrig poked this tab \(rush on PROD/;
+    assert.match((await check(kit, turnAt(kit.clock.now() - 30 * MINUTE))).stdout[0] ?? '', poke);
+    const answered = kit.clock.now() + MINUTE;
+    kit.clock.advance(MINUTE);
+    const posted = await kit.run(['set', 'T1', '--session', 'alpha', '--status', 'in-progress', '--note', 'nothing can move yet']);
+    assert.equal(posted.code, EXIT.ok, posted.stderr.join('\n'));
+    for (const span of [6, 30, 90]) {
+      kit.clock.advance(span * MINUTE);
+      assert.deepEqual(answerOf(await check(kit, turnAt(answered))), waitTill(null), `no change, ${span} min on`);
+    }
+    assert.equal((await logLines(kit)).length, 1);
+    assert.equal((await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'the route is open now', '--session', 'bravo'])).code, EXIT.ok);
+    assert.match((await check(kit, turnAt(answered))).stdout[0] ?? '', poke, 'a new inbox line re-arms one poke');
+    const second = kit.clock.now() + MINUTE;
+    kit.clock.advance(10 * MINUTE);
+    assert.deepEqual(answerOf(await check(kit, turnAt(second))), waitTill(null), 'and only one');
+    const lead = await kit.run(['add', '--title', 'Check the page', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
+    assert.equal(lead.code, EXIT.ok, lead.stderr.join('\n'));
+    assert.match((await check(kit, turnAt(second))).stdout[0] ?? '', poke, 'a task handed by another session re-arms one poke');
+  });
+
   it('pokes no one outside a rush, in a burst that is no rush, nor the lead', async () => {
     const surplus = await teamWithAlphaTab();
     await hand(surplus, 'Ship the page', 'p2');

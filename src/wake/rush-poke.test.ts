@@ -4,7 +4,7 @@ import type { Rush } from '../budget/burst.ts';
 import { RUN_RECORD_FORMAT, type DetachedRunRecord } from '../delivery/detached-runs.ts';
 import type { LedgerRecord } from '../delivery/ledger.ts';
 import { testTask } from '../testing/task.ts';
-import { decideRushPoke, queuedTasksOf, rushPokePrompt, rushPokeToast, stepRunningFor, type PokeInput } from './rush-poke.ts';
+import { changedSincePoke, decideRushPoke, pokeMarkOf, queuedTasksOf, rushPokePrompt, rushPokeToast, stepRunningFor, type PokeInput, type PokeNow } from './rush-poke.ts';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -113,12 +113,45 @@ describe('stepRunningFor', () => {
   });
 });
 
+describe('changedSincePoke (T3407)', () => {
+  const POKED_AT = NOW - 30 * MINUTE;
+  const before = new Date(POKED_AT - MINUTE).toISOString();
+  const after = new Date(POKED_AT + MINUTE).toISOString();
+  const held = testTask({ id: 'T1', owner: 'alpha', updatedAt: before, updatedBy: 'lead' });
+  const seen = (over: Partial<PokeNow> = {}): PokeNow => ({ session: 'alpha', lines: 3, startable: [held], own: [held], ...over });
+  const mark = pokeMarkOf(seen());
+
+  it('marks the inbox lines and the tasks the session could start at the poke', () => {
+    assert.deepEqual(mark, { lines: 3, startable: ['T1'] });
+  });
+
+  it('sees no change for the same state, nor for the session writing its own note or status since', () => {
+    assert.equal(changedSincePoke(mark, POKED_AT, seen()), false);
+    const noted = testTask({ id: 'T1', owner: 'alpha', updatedAt: after, updatedBy: 'alpha', note: 'nothing can move' });
+    assert.equal(changedSincePoke(mark, POKED_AT, seen({ startable: [noted], own: [noted] })), false);
+    assert.equal(changedSincePoke(mark, POKED_AT, seen({ startable: [] })), false, 'a task it can no longer start is no news');
+  });
+
+  it('sees a new inbox line, an event on its task by anyone else, and a task it could not start then', () => {
+    assert.equal(changedSincePoke(mark, POKED_AT, seen({ lines: 4 })), true);
+    const answered = testTask({ id: 'T1', owner: 'alpha', updatedAt: after, updatedBy: 'lead' });
+    assert.equal(changedSincePoke(mark, POKED_AT, seen({ own: [answered] })), true);
+    const handed = testTask({ id: 'T2', owner: 'alpha', updatedAt: before, updatedBy: 'alpha' });
+    assert.equal(changedSincePoke(mark, POKED_AT, seen({ startable: [held, handed] })), true);
+  });
+
+  it('counts anything as a change after a poke kept with no mark, as before marks', () => {
+    assert.equal(changedSincePoke(undefined, POKED_AT, seen()), true);
+  });
+});
+
 describe('poke text', () => {
   it('names the rush, the idle span, the task and the cost in the prompt and the toast', () => {
     const prompt = rushPokePrompt('alpha', RUSH, ON_GOAL, 12 * MINUTE, COST);
     assert.match(prompt, /^Rush on PROD: this tab sat idle 12 min with work left/);
     assert.match(prompt, /Start or continue T2 \(Add a health check\) now/);
-    assert.match(prompt, /teamrig set T2 --session alpha/);
+    assert.match(prompt, /teamrig set T2 --session alpha --status waiting --waits <reason>/);
+    assert.match(prompt, /no poke comes again until something changes for you/);
     assert.match(rushPokeToast(RUSH, ON_GOAL, 12 * MINUTE, COST), /^teamrig poked this tab \(rush on PROD, idle 12 min\): T2 \(/);
   });
 });

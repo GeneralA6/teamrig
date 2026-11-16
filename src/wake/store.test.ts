@@ -11,7 +11,7 @@ const FULL: WakeState = {
   known: ['T1', 'T2'],
   pending: { since: 1_900_000_000_000, ids: ['T2'] },
   lastWakeAt: 1_899_999_000_000,
-  settled: { dayStart: 1_899_990_000_000, burst: 1_899_980_000_000, poke: 1_899_970_000_000 },
+  settled: { dayStart: 1_899_990_000_000, burst: 1_899_980_000_000, poke: 1_899_970_000_000, pokeMark: { lines: 4, startable: ['T1'] } },
 };
 const BARE: WakeState = { tab: 'tab-2', known: [], pending: undefined, lastWakeAt: undefined, settled: NO_SETTLED_MOMENTS };
 
@@ -42,6 +42,9 @@ describe('WakeStore', () => {
       '{"v":1,"tab":"t","known":[],"settled":{"dayStart":"x"}}',
       '{"v":1,"tab":"t","known":[],"settled":{"burst":null}}',
       '{"v":1,"tab":"t","known":[],"settled":{"poke":"x"}}',
+      '{"v":1,"tab":"t","known":[],"settled":{"poke":1,"pokeMark":[]}}',
+      '{"v":1,"tab":"t","known":[],"settled":{"poke":1,"pokeMark":{"lines":"4","startable":[]}}}',
+      '{"v":1,"tab":"t","known":[],"settled":{"poke":1,"pokeMark":{"lines":4,"startable":"T1"}}}',
     ];
     for (const text of damaged) {
       assert.equal(parseWakeState(text), undefined, text);
@@ -55,6 +58,14 @@ describe('WakeStore', () => {
     const dayOnly: WakeState = { ...BARE, settled: { dayStart: 5, burst: undefined, poke: undefined } };
     assert.equal(formatWakeState(dayOnly), '{"v":1,"tab":"tab-2","known":[],"settled":{"dayStart":5}}\n');
     assert.deepEqual(parseWakeState(formatWakeState(dayOnly)), dayOnly);
+  });
+
+  it("reads a poke kept before marks as a poke with no mark, and keeps a poke's mark (T3407)", () => {
+    const before = parseWakeState('{"v":1,"tab":"t","known":[],"settled":{"poke":7}}');
+    assert.deepEqual(before?.settled, { dayStart: undefined, burst: undefined, poke: 7 });
+    const marked: WakeState = { ...BARE, settled: { dayStart: undefined, burst: undefined, poke: 7, pokeMark: { lines: 2, startable: ['T1', 'T3'] } } };
+    assert.equal(formatWakeState(marked), '{"v":1,"tab":"tab-2","known":[],"settled":{"poke":7,"pokeMark":{"lines":2,"startable":["T1","T3"]}}}\n');
+    assert.deepEqual(parseWakeState(formatWakeState(marked)), marked);
   });
 });
 

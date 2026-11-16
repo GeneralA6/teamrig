@@ -10,6 +10,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { isCold } from '../hooks/cold-send.ts';
 import { answerTo } from '../register/approval.ts';
 import { waitsLetGoOn } from '../register/can-move.ts';
+import type { PokeMark } from './rush-poke.ts';
 import { taskNumber, type Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';
 import { wouldPark, type ParkRules } from '../register/park.ts';
@@ -173,6 +174,12 @@ export interface SettledMoments {
    * poked again. Kept across tabs too: a /clear's first turn is newer, which opens a new stretch all the same.
    */
   readonly poke: number | undefined;
+  /**
+   * What the session had at that poke: another comes only once something changed for it since (`changedSincePoke`).
+   * Absent: a poke kept before marks were, which a change of any kind follows. Added within format 1: a reader that
+   * knows only `poke` skips it.
+   */
+  readonly pokeMark?: PokeMark;
 }
 
 export const NO_SETTLED_MOMENTS: SettledMoments = { dayStart: undefined, burst: undefined, poke: undefined };
