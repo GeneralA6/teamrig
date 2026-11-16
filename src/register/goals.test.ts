@@ -22,8 +22,30 @@ import {
   type GoalRecord,
   type GoalSet,
   type GoalSetInput,
+  type GoalSliceRecord,
   type KeyResultCap,
 } from './goals.ts';
+
+const sliceRecord = (over: Partial<GoalSliceRecord> = {}): GoalSliceRecord => ({
+  type: 'goal-slice',
+  at: '2030-01-09T10:00:00.000Z',
+  by: 'lead',
+  tag: 'A1',
+  slice: 1,
+  title: 'Pane reads slices',
+  owner: 'tr-pane',
+  ship: '2030-01-15',
+  proof: 'the pane shows A1:1 live',
+  tasks: ['T10', 'T11'],
+  size: null,
+  proven: null,
+  note: 'first slice',
+  ...over,
+});
+
+/** A later slice record naming only what `over` changes. */
+const sliceChange = (over: Partial<GoalSliceRecord>): GoalSliceRecord =>
+  sliceRecord({ at: '2030-01-12T10:00:00.000Z', title: null, owner: null, ship: null, proof: null, tasks: null, note: 'changed', ...over });
 
 const add = (over: Partial<GoalAdd> = {}): GoalAdd => ({
   type: 'goal-add',
@@ -104,6 +126,31 @@ describe('parseGoalRecord', () => {
     assert.deepEqual(lineOf(noRank), { kind: 'record', record: rank({ rank: null }) });
   });
 
+  it('reads a slice record as written, a whole first one and a later one naming only its proof (T2203)', () => {
+    assert.deepEqual(lineOf(goalRecordJson(sliceRecord({ size: 12.5 }))), { kind: 'record', record: sliceRecord({ size: 12.5 }) });
+    const proven = sliceChange({ by: 'tr-pane', proven: 'pane build 0.9 shows A1:1' });
+    assert.deepEqual(lineOf(goalRecordJson(proven)), { kind: 'record', record: proven });
+  });
+
+  it('says why a slice record cannot be read (T2203)', () => {
+    const json = goalRecordJson(sliceRecord());
+    const cases: readonly (readonly [JsonRecord, string])[] = [
+      [{ ...json, slice: 0 }, 'slice 0 is not a whole number from 1'],
+      [{ ...json, note: ' ' }, 'note is not text'],
+      [{ ...json, title: '' }, 'title, proof or proven is not text'],
+      [{ ...json, proven: 3 }, 'title, proof or proven is not text'],
+      [{ ...json, owner: 'no such session!' }, 'owner is not a session'],
+      [{ ...json, ship: '2030-02-30' }, 'ship is not a day'],
+      [{ ...json, tasks: ['T10', 'ten'] }, 'tasks is not a list of task ids'],
+      [{ ...json, tasks: 'T10' }, 'tasks is not a list of task ids'],
+      [{ ...json, size: 0 }, 'size is not above 0 and at most 100'],
+      [{ ...json, size: 101 }, 'size is not above 0 and at most 100'],
+    ];
+    for (const [record, reason] of cases) {
+      assert.deepEqual(lineOf(record), { kind: 'unreadable', reason });
+    }
+  });
+
   it('counts a record of a newer format without reading it', () => {
     assert.deepEqual(lineOf({ ...goalRecordJson(add()), v: GOAL_RECORD_VERSION + 1, title: 3 }), { kind: 'newer' });
   });
@@ -148,8 +195,13 @@ describe('goalRecordJson', () => {
     assert.deepEqual(goalRecordJson(rank({ rank: null })), { v: 2, type: 'goal-rank', at: rank().at, by: 'lead', tag: 'A1', rank: null });
   });
 
+  it('writes a slice record as format 4 with the fields it keeps left out, so an older teamrig counts it as newer (T2203)', () => {
+    assert.equal(GOAL_RECORD_VERSION, 4);
+    assert.deepEqual(goalRecordJson(sliceChange({ proven: 'shown live' })), { v: 4, type: 'goal-slice', at: '2030-01-12T10:00:00.000Z', by: 'lead', tag: 'A1', slice: 1, proven: 'shown live', note: 'changed' });
+    assert.deepEqual(Object.keys(goalRecordJson(sliceRecord({ size: 5 }))), ['v', 'type', 'at', 'by', 'tag', 'slice', 'title', 'owner', 'ship', 'proof', 'tasks', 'size', 'note']);
+  });
+
   it('writes a set naming a slice as format 3, so a teamrig that would drop the slice refuses to write beside it (T2453)', () => {
-    assert.equal(GOAL_RECORD_VERSION, 3);
     assert.deepEqual(goalRecordJson(set({ target: null, slice: 2 })), { v: 3, type: 'goal-set', at: set().at, by: 'lead', tag: 'A1', note: set().note, slice: 2 });
     assert.equal('slice' in goalRecordJson(set()), false);
   });
@@ -186,6 +238,7 @@ describe('foldGoals', () => {
       ],
       rank: null,
       slice: null,
+      slices: [],
     });
   });
 
@@ -202,6 +255,68 @@ describe('foldGoals', () => {
     const { goals } = foldGoals([add(), set({ target: null, slice: 1 }), set({ target: null, slice: 2 }), set({ target: '2030-02-14' })]);
     assert.equal(goals.get('A1')?.slice, 2);
     assert.equal(goals.get('A1')?.target, '2030-02-14');
+  });
+
+  it('folds slice records: a whole first one adds the slice, a later one changes what it names, in number order (T2203)', () => {
+    const { goals, ignored } = foldGoals([
+      add(),
+      sliceRecord({ slice: 2, title: 'Second', tasks: ['T12'] }),
+      sliceRecord(),
+      sliceChange({ tasks: ['T10'], size: 8 }),
+      sliceChange({ slice: 3 }),
+      sliceRecord({ tag: 'B1' }),
+    ]);
+    assert.equal(ignored, 2);
+    const slices = goals.get('A1')?.slices ?? [];
+    assert.deepEqual(
+      slices.map((slice) => slice.number),
+      [1, 2],
+    );
+    assert.deepEqual(slices[0], {
+      number: 1,
+      title: 'Pane reads slices',
+      owner: 'tr-pane',
+      ship: '2030-01-15',
+      proof: 'the pane shows A1:1 live',
+      tasks: ['T10'],
+      size: 8,
+      proven: null,
+      slips: [],
+      addedAt: '2030-01-09T10:00:00.000Z',
+      addedBy: 'lead',
+    });
+  });
+
+  it('keeps a ship day move as a slip with its note, and the first proof only (T2203)', () => {
+    const { goals } = foldGoals([
+      add(),
+      sliceRecord(),
+      sliceChange({ ship: '2030-01-17', note: 'review slipped' }),
+      sliceChange({ ship: '2030-01-17', title: 'Same day' }),
+      sliceChange({ by: 'tr-pane', proven: 'first evidence' }),
+      sliceChange({ at: '2030-01-20T10:00:00.000Z', proven: 'second evidence' }),
+    ]);
+    const slice = goals.get('A1')?.slices[0];
+    assert.deepEqual(slice?.slips, [{ at: '2030-01-12T10:00:00.000Z', by: 'lead', from: '2030-01-15', to: '2030-01-17', note: 'review slipped' }]);
+    assert.equal(slice?.title, 'Same day');
+    assert.deepEqual(slice?.proven, { at: '2030-01-12T10:00:00.000Z', by: 'tr-pane', evidence: 'first evidence' });
+  });
+
+  it('still reads the goals of every older format beside slice records (T2203)', () => {
+    const text = textOf([
+      goalRecordJson(add()),
+      goalRecordJson(set()),
+      goalRecordJson(rank({ rank: 2 })),
+      goalRecordJson(set({ target: null, slice: 1 })),
+      goalRecordJson(sliceRecord()),
+    ]);
+    const read = readGoals(text);
+    const goal = read.goals.get('A1');
+    assert.deepEqual(
+      [goal?.target, goal?.rank, goal?.slice, goal?.slices.length],
+      ['2030-02-07', 2, 1, 1],
+    );
+    assert.deepEqual({ unreadable: read.unreadable, newer: read.newer, ignored: read.ignored }, { unreadable: 0, newer: 0, ignored: 0 });
   });
 
   it('leaves the title, target and slips to a rank record', () => {
