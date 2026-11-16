@@ -112,7 +112,7 @@ describe('parseMigrateRows', () => {
     /** Built at runtime so no private-shaped literal sits in the source. */
     const mail = ['dana', '@', 'acme.io'].join('');
     const error = refused(issueLine({ body: `Ask ${mail} first.` }));
-    assert.equal(error, "line 1: T1: the issue's title or body holds private data (e-mail address): take it out, as a post may be read by anyone");
+    assert.equal(error, "line 1: T1's title or body holds private data (e-mail address): take it out, as a post may be read by anyone");
     assert.ok(!error.includes(mail));
   });
 
