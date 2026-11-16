@@ -1921,6 +1921,93 @@ describe('HostLock ship slot (T2727)', () => {
   });
 });
 
+describe('HostLock setting a share aside while its step waits on a remote service (T3336)', () => {
+  const AWAY = `${PATH}.away`;
+  const MERGE: LineRequest = { ...REQUEST, kind: 'merge' };
+  const SHIP: LineRequest = { ...REQUEST, kind: 'ship' };
+
+  /** A merge that took the ship slot at 10:00 as share `t1` of this process, under pipeline rules. */
+  async function merging(): Promise<World> {
+    const at = world({}, undefined, undefined, PIPELINE);
+    const taking = await at.lock.acquire('alpha', 'heavy: merge', 0, 30_000, () => undefined, { request: MERGE });
+    assert.equal(taking.kind, 'taken');
+    return at;
+  }
+
+  /** The share file `t1` holds, read back; undefined when there is none. */
+  function shareIn(files: MemoryFiles, dir: string): unknown {
+    const text = files.get(`${dir}/t1.json`);
+    return text === undefined ? undefined : JSON.parse(text);
+  }
+
+  it('frees the ship slot for the next ship while the merge waits, keeping its share to be taken back', async () => {
+    const { files, clock, lock } = await merging();
+    const held = shareIn(files, SHARED);
+    const aside = await lock.setAside('t1');
+    assert.ok(aside.kind === 'aside');
+    assert.deepEqual([aside.share.id, aside.share.request?.kind, await files.list(SHARED), shareIn(files, AWAY)], ['t1', 'merge', [], held]);
+    const ship = await lockOver(files, clock, OTHER, clock.sleep, PIPELINE).acquire('bravo', 'heavy: ship', 0, 30_000, () => undefined, { request: SHIP });
+    assert.equal(ship.kind, 'taken');
+  });
+
+  it("takes the share back under its id and its step's process, at its first place in line, ahead of a step that joined later", async () => {
+    const { files, clock } = await merging();
+    const asking = lockOver(files, clock, OTHER, clock.sleep, PIPELINE);
+    const aside = await asking.setAside('t1');
+    assert.ok(aside.kind === 'aside');
+    clock.advance(20 * 60_000);
+    const [later, text] = ticket(waiterOf('2030-01-08T10:10:00.000Z', { request: { ...MERGE, needMb: 0, heavy: true, exclusive: false } }));
+    await files.write(later, text);
+    const back = await asking.takeBack('t1', 0, 30_000, () => undefined);
+    assert.equal(back.kind, 'taken');
+    assert.deepEqual(
+      [shareIn(files, SHARED), shareIn(files, AWAY)],
+      [{ ...aside.share, pid: ME, acquiredAt: '2030-01-08T10:20:00.000Z', expiresAt: '2030-01-08T12:50:00.000Z' }, undefined],
+      'its id, its process, what it asked and its MB; taken now',
+    );
+  });
+
+  it('waits in line for the slot when a ship took it meanwhile, keeping the share aside when its wait runs out', async () => {
+    const { files, clock, lock } = await merging();
+    await lock.setAside('t1');
+    const ship = await lockOver(files, clock, OTHER, clock.sleep, PIPELINE).acquire('bravo', 'heavy: ship', 0, 30_000, () => undefined, { request: SHIP });
+    assert.equal(ship.kind, 'taken');
+    const back = await lock.takeBack('t1', 0, 30_000, () => undefined);
+    assert.equal(back.kind === 'busy' ? back.holder.kind : back.kind, 'shipSlot');
+    assert.notEqual(files.get(`${AWAY}/t1.json`), undefined);
+  });
+
+  it("opens a new charge for the taken-back share, which the end marked as it stepped away does not close", async () => {
+    const { files, clock, lock } = await merging();
+    clock.advance(30 * 60_000);
+    await lock.setAside('t1');
+    clock.advance(10 * 60_000);
+    assert.equal((await lock.takeBack('t1', 0, 30_000, () => undefined)).kind, 'taken');
+    clock.advance(60_000);
+    assert.equal((await lock.acquire('bravo', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST })).kind, 'taken');
+    // 30 minutes run where 5 were charged at 25%: 20 + 100; its new taking's 5 minutes: 140; bravo's: 160.
+    assert.deepEqual(turnsIn(files), {
+      v: 1,
+      floor: 140,
+      classes: { Maintenance: 160 },
+      open: [maintenance('t1', '2030-01-08T10:40:00.000Z'), maintenance('t2', '2030-01-08T10:41:00.000Z')],
+    });
+  });
+
+  it('keeps a step holding the whole host, and finds nothing to set aside or take back for an unknown id or a gone step', async () => {
+    const whole = world({}, undefined, undefined, PIPELINE);
+    const taking = await whole.lock.acquire('alpha', 'heavy: merge', 0, 30_000, () => undefined, { request: MERGE, exclusive: true });
+    assert.ok(taking.kind === 'taken');
+    assert.deepEqual(await whole.lock.setAside('t1'), { kind: 'whole', lock: taking.lock });
+    assert.notEqual(whole.files.get(PATH), undefined);
+    assert.deepEqual([await whole.lock.setAside('nope'), await whole.lock.takeBack('nope', 0, 30_000, () => undefined), await whole.lock.takeBack('../x', 0, 30_000, () => undefined)], [{ kind: 'none' }, { kind: 'none' }, { kind: 'none' }]);
+    const { files, running, lock } = await merging();
+    await lock.setAside('t1');
+    running.delete(ME);
+    assert.deepEqual([await lock.takeBack('t1', 0, 30_000, () => undefined), files.get(`${AWAY}/t1.json`)], [{ kind: 'none' }, undefined]);
+  });
+});
+
 describe('HostLock CPU room for a second heavy step (T2700)', () => {
   const busyCpuText = 'host CPU 10% idle, 25% needed (delivery.queue.heavyIdleCpuPct) beside 1 heavy step: po (heavy: build) since 2030-01-08 09:50 UTC';
 

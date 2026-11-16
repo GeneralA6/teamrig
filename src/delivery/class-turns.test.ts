@@ -136,6 +136,15 @@ describe('class turns: settling at the end', () => {
     assert.deepEqual(turnsOf(after), { Roadmap: 10, Maintenance: 10 });
   });
 
+  it('never closes a charge with an end marked before it opened, an earlier taking under the same id (T3336)', () => {
+    const later = { ...step('t1', 'Roadmap', 50, 5), at: new Date(AT_MS + 30 * MINUTE_MS).toISOString() };
+    const before = new Map([['t1', AT_MS + 20 * MINUTE_MS]]);
+    const kept = settle(state(0, { Roadmap: 10 }, [later]), before, new Set(['t1']));
+    assert.deepEqual(kept.open, [later]);
+    assert.deepEqual(turnsOf(kept), { Roadmap: 10 });
+    assert.deepEqual(settle(state(0, { Roadmap: 10 }, [later]), before, new Set()).open, [], 'dropped once its step is gone, as with no end');
+  });
+
   it('gives two classes at 50/50 even turns when one runs a 60-minute step beside twelve 5-minute steps of the other', () => {
     let turns = charge(EMPTY_TURNS, step('a', 'Roadmap', 50, 5), ['Roadmap', 'Maintenance']);
     for (let index = 0; index < 12; index += 1) {

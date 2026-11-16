@@ -129,7 +129,9 @@ export function settle(state: TurnsState, ended: ReadonlyMap<string, number>, ru
   const classes = new Map(state.classes);
   const open = state.open.filter((charge) => {
     const endedAt = ended.get(charge.ticket);
-    if (endedAt === undefined) {
+    // An end marked before the charge opened is an earlier taking's under the same id: a step that set its share
+    // aside (HostLock.setAside) and took it back. It closes that taking's charge, never this one.
+    if (endedAt === undefined || endedAt < Date.parse(charge.at)) {
       return running.has(charge.ticket);
     }
     const ran = Math.max(0, endedAt - Date.parse(charge.at)) / MINUTE_MS;

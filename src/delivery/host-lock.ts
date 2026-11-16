@@ -175,13 +175,37 @@ export interface StepNeed {
  * as a merge or a deploy does; it wins over a small need), and what it works for (`request`), which its ticket and
  * share carry. `arrivedAt` (epoch ms, never past now) is when the step first joined the line, for a run that took a
  * step over after its launching shell ended (T2304): its ticket keeps that place instead of going to the end.
+ * `back` is a step taking back the share it set aside ({@link HostLock.takeBack}).
  */
 export interface StepAsk {
   readonly need?: StepNeed;
   readonly exclusive?: boolean;
   readonly request?: LineRequest;
   readonly arrivedAt?: number;
+  readonly back?: StepBack;
 }
+
+/**
+ * The share a step set aside while it waited on a remote service, as it takes it back: its ticket and its share carry
+ * the share's `id`, so the step keeps one identity (`$TEAMRIG_HOST_LOCK`) and its end releases it; the share names
+ * `pid`, the step's own process, as the process asking ends once it is back.
+ */
+export interface StepBack {
+  readonly id: string;
+  readonly pid: number;
+}
+
+/**
+ * What setting a share aside did: `aside`, its share released and kept to be taken back; `whole`, kept, as its step
+ * holds the whole host (the lock file: `--exclusive`, or `serial` mode); `none`, as no live share or lock has the id.
+ */
+export type SetAside =
+  | { readonly kind: 'aside'; readonly share: HostShare }
+  | { readonly kind: 'whole'; readonly lock: HostLockInfo }
+  | { readonly kind: 'none' };
+
+/** What taking a share back did: the lock's taking in line, or `none` when no share with the id was set aside by a live step. */
+export type TakeBack = Taking | { readonly kind: 'none' };
 
 /**
  * How a share was let in: the host's free memory then (when the lock has a memory gate), the steps already sharing it,
@@ -789,6 +813,7 @@ export class HostLock {
   private readonly admit: AdmitFile;
   private readonly turns: string;
   private readonly ended: string;
+  private readonly away: string;
   private readonly ttlMs: number;
   private readonly ports: HostLockPorts;
 
@@ -796,6 +821,7 @@ export class HostLock {
     this.path = path;
     this.queue = `${path}.queue`;
     this.shared = `${path}.shared`;
+    this.away = `${path}.away`;
     this.admit = new AdmitFile(`${path}.admit`, ports);
     this.turns = `${path}.turns.json`;
     this.ended = `${path}.ended`;
@@ -808,14 +834,17 @@ export class HostLock {
    * removed and the lock taken, for a waiter that has seen it so long enough. It does not look at the line.
    */
   async tryTake(session: string, purpose: string, removeUnknown: boolean = false): Promise<Look> {
-    return this.take(session, purpose, removeUnknown, undefined);
+    return this.take(session, purpose, removeUnknown, undefined, this.ports.pid);
   }
 
-  /** {@link tryTake}, the lock carrying `id` when given (a waiter's ticket id), else a new one each attempt. */
-  private async take(session: string, purpose: string, removeUnknown: boolean, id: string | undefined): Promise<Look> {
+  /**
+   * {@link tryTake}, the lock carrying `id` when given (a waiter's ticket id), else a new one each attempt, and naming
+   * `pid` as its holder's process.
+   */
+  private async take(session: string, purpose: string, removeUnknown: boolean, id: string | undefined, pid: number): Promise<Look> {
     let mayRemoveUnknown = removeUnknown;
     for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-      const lock = this.newLock(session, purpose, id ?? this.ports.newId());
+      const lock = this.newLock(session, purpose, id ?? this.ports.newId(), pid);
       if (await this.ports.files.createExclusive(this.path, stored(lock))) {
         return { kind: 'taken', lock };
       }
@@ -863,7 +892,7 @@ export class HostLock {
    */
   async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, ask: StepAsk = {}, stop?: AbortSignal): Promise<Taking> {
     const patience = new Patience(this.ports.clock.now(), maxWaitMs);
-    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask, await this.rulesNow()), ask.arrivedAt);
+    const ticket = await this.joinLine(session, purpose, patience.deadline, this.ticketRequestOf(ask, await this.rulesNow()), ask.arrivedAt, ask.back?.id);
     const reports = new WaitReports(onWait, this.ports.zone);
     try {
       const waited = await this.waitInLine(ticket, patience, pollMs, reports, ask, stop);
@@ -876,19 +905,81 @@ export class HostLock {
 
   /**
    * Releases a lock or share this step took; false when it is no longer the holder (it expired and another step took
-   * it). Its end is marked first while its class's charge is open ({@link markEnded}).
+   * it). Its end is marked first while its class's charge is open ({@link markEnded}). A share set aside
+   * ({@link setAside}) is dropped, its end marked as it stepped away.
    */
   async release(lock: HostLockInfo): Promise<boolean> {
-    await this.markEnded(lock.id);
-    if (await this.removeAt(this.path, (text) => parseLock(text)?.id === lock.id)) {
+    const name = `${lock.id}.json`;
+    if (SHARE_NAME.test(name) && (await this.ports.files.remove(join(this.away, name)))) {
       return true;
     }
-    const share = await this.shareWith(lock.id);
+    return this.dropHeld(lock.id);
+  }
+
+  /** Marks the end of the step holding `id` and removes its lock file or share; false when it holds neither. */
+  private async dropHeld(id: string): Promise<boolean> {
+    await this.markEnded(id);
+    if (await this.removeAt(this.path, (text) => parseLock(text)?.id === id)) {
+      return true;
+    }
+    const share = await this.shareWith(id);
     if (share === undefined) {
       return false;
     }
     await this.ports.files.remove(share.path);
     return true;
+  }
+
+  /**
+   * Sets aside the share `id` while its step only waits on a remote service, such as a merge waiting on a pull
+   * request's checks (`teamrig step-away`): the share is released, so the ship slot, its heavy place and its MB go to
+   * the next step in line, and kept in `<lock>.away/<id>.json` for {@link takeBack}. Its end is marked as a release's
+   * is, so its class is charged the minutes it ran. A step holding the whole host keeps it: the lock file is the only
+   * guard of a team whose own deploy tool takes it, and the shares it let end are not waiting to come back.
+   */
+  async setAside(id: string): Promise<SetAside> {
+    const found = await this.shareWith(id);
+    if (found === undefined || this.isStale(found.share)) {
+      const seen = await this.read();
+      return seen.kind === 'held' && seen.info.id === id && !this.isStale(seen.info) ? { kind: 'whole', lock: seen.info } : { kind: 'none' };
+    }
+    // Not release(): it would take the away file just written for a share already set aside, and drop that instead.
+    await this.ports.files.write(join(this.away, `${id}.json`), stored(found.share));
+    await this.dropHeld(id);
+    return { kind: 'aside', share: found.share };
+  }
+
+  /**
+   * Takes back in its turn the share `id` set aside ({@link setAside}), for the local work its step goes on with (a
+   * re-run once main moved): it waits in line as the step it was, at the place of its first taking, asking what it
+   * asked, and its share names the step's process again. `none` when no live step set a share aside with the id; the
+   * kept share then goes. Its new taking opens a new charge for its class under the same id, which the end marked as
+   * it stepped away does not close ({@link settle}).
+   */
+  async takeBack(id: string, maxWaitMs: number, pollMs: number, onWait: Tell, stop?: AbortSignal): Promise<TakeBack> {
+    const { files } = this.ports;
+    const name = `${id}.json`;
+    if (!SHARE_NAME.test(name)) {
+      return { kind: 'none' };
+    }
+    const path = join(this.away, name);
+    const text = await files.read(path);
+    const share = text === undefined ? undefined : parseShare(text);
+    if (share === undefined || share.id !== id || !this.ports.alive(share.pid)) {
+      await files.remove(path);
+      return { kind: 'none' };
+    }
+    const ask: StepAsk = {
+      need: { shares: share.heavy !== true, reserveMb: share.reserveMb },
+      ...(share.request === undefined ? {} : { request: share.request }),
+      arrivedAt: Date.parse(share.acquiredAt),
+      back: { id, pid: share.pid },
+    };
+    const taking = await this.acquire(share.session, share.purpose, maxWaitMs, pollMs, onWait, ask, stop);
+    if (taking.kind === 'taken') {
+      await files.remove(path);
+    }
+    return taking;
   }
 
   /**
@@ -1047,7 +1138,9 @@ export class HostLock {
   /** One look in its turn behind the waiters `ahead`: the lock for a step that takes the whole host ({@link takeInTurn}), else a share of it ({@link shareInTurn}). */
   private async inTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, ask: StepAsk, rules: AdmissionRules | undefined): Promise<Look> {
     const hold = this.holdOf(ask, rules);
-    return hold.kind === 'whole' ? this.takeInTurn(waiter, ahead, removeUnknown, ask.need) : this.shareInTurn(waiter, ahead, removeUnknown, ask.need, hold);
+    // A step taking back its share is held by its own process, not the command that asks for it (StepBack).
+    const pid = ask.back?.pid ?? this.ports.pid;
+    return hold.kind === 'whole' ? this.takeInTurn(waiter, ahead, removeUnknown, ask.need, pid) : this.shareInTurn(waiter, ahead, removeUnknown, ask.need, hold, pid);
   }
 
   /** The rules the line is ordered by as the team's config reads now ({@link HostLockPorts.admission}); none for a lock with no rules. */
@@ -1266,7 +1359,7 @@ export class HostLock {
    * its ticket's id, holding its need's MB ({@link heldMbOf}), once the memory gate finds room for it beside the steps
    * already sharing it (at once with no gate); a stale lock is left for the next step that takes the lock.
    */
-  private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined, hold: Exclude<Hold, { kind: 'whole' }>): Promise<Look> {
+  private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined, hold: Exclude<Hold, { kind: 'whole' }>, pid: number): Promise<Look> {
     const seen = await this.read();
     if (seen.kind === 'held' && !this.isStale(seen.info)) {
       return { kind: 'busy', holder: await this.heldBy(seen.info) };
@@ -1314,7 +1407,7 @@ export class HostLock {
       return { kind: 'busy', holder: { ...look, shares: others } };
     }
     const share: HostShare = {
-      ...this.newLock(waiter.session, waiter.purpose, waiter.id),
+      ...this.newLock(waiter.session, waiter.purpose, waiter.id, pid),
       reserveMb: this.heldMbOf(need),
       ...(heavy ? { heavy: true } : {}),
       ...(waiter.request === undefined ? {} : { request: waiter.request }),
@@ -1389,7 +1482,7 @@ export class HostLock {
    * joining the line to releasing the lock; the steps still sharing the host (small or heavy) count as holding their
    * MB, as the step that took the lock waits for them to end.
    */
-  private async takeInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined): Promise<Look> {
+  private async takeInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, need: StepNeed | undefined, pid: number): Promise<Look> {
     const seen = await this.read();
     if (seen.kind === 'held' && !this.isStale(seen.info)) {
       return { kind: 'busy', holder: await this.heldBy(seen.info) };
@@ -1406,7 +1499,7 @@ export class HostLock {
     if (look !== undefined && look.kind !== 'room') {
       return { kind: 'busy', holder: { ...look, shares } };
     }
-    return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.id);
+    return this.take(waiter.session, waiter.purpose, removeUnknown, waiter.id, pid);
   }
 
   /**
@@ -1426,10 +1519,10 @@ export class HostLock {
    * Writes this step's ticket in line, its wait running out at `deadline`, saying what it asks when it names a `request`:
    * at the end, or at its first arrival `arrivedAt` when it joins again (never later than now).
    */
-  private async joinLine(session: string, purpose: string, deadline: number, request: TicketRequest | undefined, arrivedAt?: number): Promise<OwnTicket> {
+  private async joinLine(session: string, purpose: string, deadline: number, request: TicketRequest | undefined, arrivedAt?: number, id?: string): Promise<OwnTicket> {
     const now = Math.min(arrivedAt ?? this.ports.clock.now(), this.ports.clock.now());
     const waiter: LockWaiter = {
-      id: this.ports.newId(),
+      id: id ?? this.ports.newId(),
       pid: this.ports.pid,
       session,
       purpose,
@@ -1507,11 +1600,11 @@ export class HostLock {
     return Date.parse(entry.expiresAt) <= this.ports.clock.now() || !this.ports.alive(entry.pid);
   }
 
-  private newLock(session: string, purpose: string, id: string): HostLockInfo {
+  private newLock(session: string, purpose: string, id: string, pid: number): HostLockInfo {
     const now = this.ports.clock.now();
     return {
       id,
-      pid: this.ports.pid,
+      pid,
       session,
       purpose,
       kit: KIT_VERSION,
