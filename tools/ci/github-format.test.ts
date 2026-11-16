@@ -3,27 +3,10 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { DEFAULT_GITHUB } from '../../src/config/defaults.ts';
 import { DESIGN_LABEL_SPEC } from '../../src/issues/design-label.ts';
-import { formInputs, formLabels, ISSUE_FORMS, LABEL_DESCRIPTION_MAX, parseLabels, PULL_SECTIONS, sectionsOf } from './github-format.ts';
+import { parseLabelFile } from '../../src/issues/label-file.ts';
+import { formInputs, formLabels, ISSUE_FORMS, PULL_SECTIONS, sectionsOf } from './github-format.ts';
 
 const read = (path: string): string => readFileSync(new URL(`../../.github/${path}`, import.meta.url), 'utf8');
-
-describe('parseLabels', () => {
-  const one = (label: Record<string, unknown>): string => JSON.stringify({ labels: [label] });
-
-  it('reads each label', () => {
-    assert.deepEqual(parseLabels(one({ name: 'bug', color: 'd73a4a', description: 'Type: a bug' })), [{ name: 'bug', color: 'd73a4a', description: 'Type: a bug' }]);
-  });
-
-  it('refuses a missing list, a malformed label, an over-long description and a name listed twice in any case', () => {
-    assert.throws(() => parseLabels('[]'), /expected \{ "labels"/);
-    assert.throws(() => parseLabels(one({ name: 'bug', color: '#d73a4a', description: 'x' })), /six-digit lowercase hex color/);
-    assert.throws(() => parseLabels(one({ name: ' ', color: 'd73a4a', description: 'x' })), /needs a name/);
-    assert.throws(() => parseLabels(one({ name: 'bug', color: 'd73a4a' })), /needs a name/);
-    assert.throws(() => parseLabels(one({ name: 'bug', color: 'd73a4a', description: 'x'.repeat(LABEL_DESCRIPTION_MAX + 1) })), /over 100 characters/);
-    const twice = { labels: [{ name: 'Bug', color: 'd73a4a', description: '' }, { name: 'bug', color: 'd73a4a', description: '' }] };
-    assert.throws(() => parseLabels(JSON.stringify(twice)), /bug is listed twice/);
-  });
-});
 
 describe('formInputs and formLabels', () => {
   it('reads the inputs, skipping markdown, and the labels line', () => {
@@ -58,7 +41,7 @@ describe('formInputs and formLabels', () => {
 });
 
 describe('.github issue forms, labels and pull request template', () => {
-  const labels = parseLabels(read('labels.json'));
+  const labels = parseLabelFile(read('labels.json'));
   const names = new Set(labels.map((label) => label.name));
   const forms = readdirSync(new URL('../../.github/ISSUE_TEMPLATE/', import.meta.url)).filter((file) => file !== 'config.yml');
 
