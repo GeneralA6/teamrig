@@ -29,7 +29,12 @@ function readRecord(path: string): JsonRecord {
 
 describe('release.yml', () => {
   it('runs by hand only, until pull requests stop raising the version themselves', () => {
-    assert.match(workflow, /^on:\n(?: {2}#.*\n)*? {2}workflow_dispatch:\n\n/m);
+    assert.match(workflow, /^on:\n(?: {2}#.*\n)*? {2}workflow_dispatch:\n {4}inputs:\n {6}main-as-is:\n(?: {8}.+\n)+\n/m);
+    assert.doesNotMatch(workflow, /^ {2}push:$/m);
+  });
+
+  it("can publish main as it stands, for the first release, never by default", () => {
+    assert.match(workflow, /^ {6}main-as-is:\n {8}description: .+\n {8}type: boolean\n {8}default: false\n/m);
   });
 
   it('runs one release at a time and never cancels one half-way', () => {
@@ -43,7 +48,7 @@ describe('release.yml', () => {
 
   it('keeps the release pull request on main, with only the writes it needs', () => {
     const text = job('release-please');
-    assert.match(text, /^ {4}if: \$\{\{ !github\.event\.repository\.private && github\.ref == 'refs\/heads\/main' \}\}$/m);
+    assert.match(text, /^ {4}if: \$\{\{ !github\.event\.repository\.private && github\.ref == 'refs\/heads\/main' && !inputs\.main-as-is \}\}$/m);
     assert.deepEqual(permissionsOf(text), ['actions: write', 'contents: write', 'pull-requests: write']);
     assert.match(text, /^ {10}config-file: release-please-config\.json\n {10}manifest-file: \.release-please-manifest\.json$/m);
   });
@@ -55,18 +60,29 @@ describe('release.yml', () => {
   it('builds with the read-only token, and no package script runs at install', () => {
     const text = job('build');
     assert.deepEqual(permissionsOf(text), []);
-    assert.match(text, /^ {4}if: \$\{\{ needs\.release-please\.outputs\.release_created == 'true' \}\}$/m);
+    assert.match(
+      text,
+      /^ {4}if: \$\{\{ always\(\) && !github\.event\.repository\.private && github\.ref == 'refs\/heads\/main' && \(needs\.release-please\.outputs\.release_created == 'true' \|\| \(inputs\.main-as-is && needs\.release-please\.result == 'skipped'\)\) \}\}$/m,
+    );
+    assert.match(text, /^ {10}ref: \$\{\{ needs\.release-please\.outputs\.sha \|\| github\.sha \}\}$/m);
     assert.match(text, /^ {6}- run: npm ci --ignore-scripts$/m);
     assert.match(text, /^ {6}- run: npm run build$/m);
     assert.match(text, /^ {10}persist-credentials: false$/m);
   });
 
-  it('publishes with a contents write only, running no npm package, from the commit release-please tagged', () => {
+  it("takes the version from the built commit's plugin.json, refusing one release-please did not cut", () => {
+    const text = job('build');
+    assert.match(text, /^ {6}- id: version\n {8}run: node tools\/release\/version-cli\.ts --expect "\$EXPECTED" >> "\$GITHUB_OUTPUT"\n {8}env:\n {10}EXPECTED: \$\{\{ needs\.release-please\.outputs\.version \}\}\n/m);
+    assert.match(text, /^ {6}version: \$\{\{ steps\.version\.outputs\.version \}\}\n {6}sha: \$\{\{ steps\.version\.outputs\.sha \}\}\n/m);
+  });
+
+  it('publishes with a contents write only, running no npm package, the commit and version the build took', () => {
     const text = job('publish');
     assert.deepEqual(permissionsOf(text), ['contents: write']);
-    assert.match(text, /^ {4}needs: \[release-please, build\]$/m);
+    assert.match(text, /^ {4}needs: build\n {4}if: \$\{\{ always\(\) && needs\.build\.result == 'success' \}\}$/m);
+    assert.match(text, /^ {10}VERSION: \$\{\{ needs\.build\.outputs\.version \}\}\n {10}SOURCE: \$\{\{ needs\.build\.outputs\.sha \}\}$/m);
     assert.doesNotMatch(text, /^ {6}- run: .*\bnp[mx]\b/m);
-    assert.match(text, /^ {10}ref: \$\{\{ needs\.release-please\.outputs\.sha \}\}$/m);
+    assert.match(text, /^ {10}ref: \$\{\{ needs\.build\.outputs\.sha \}\}$/m);
     assert.match(text, /^ {6}- run: node tools\/release\/publish-cli\.ts --version "\$VERSION" --source "\$SOURCE"$/m);
   });
 

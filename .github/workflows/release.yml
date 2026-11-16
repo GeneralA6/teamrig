@@ -4,6 +4,11 @@ on:
   # Run by hand only until pull requests stop raising the version themselves: with both, the release pull request
   # would raise from a version main already passed. The cutover adds the push to main here (T3346).
   workflow_dispatch:
+    inputs:
+      main-as-is:
+        description: Publish main's commit at the version its plugin.json holds, without a release pull request (the first release)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,7 +26,7 @@ jobs:
     # (release-please-config.json) and writes the notes from the commits since the last release; a person reviews
     # and merges it, as any pull request. Once it merged, the next run tags main's commit teamrig-v<version>,
     # publishes the notes as a GitHub release, and the jobs below build and publish the plugin.
-    if: ${{ !github.event.repository.private && github.ref == 'refs/heads/main' }}
+    if: ${{ !github.event.repository.private && github.ref == 'refs/heads/main' && !inputs.main-as-is }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # A job's permissions replace the workflow's: contents to tag and commit the raise, pull-requests to open the
@@ -53,18 +58,27 @@ jobs:
   build:
     name: build the plugin
     # Runs the build's npm packages with a read-only token, so no package code ever holds the token that pushes.
+    # It builds the commit release-please just tagged, or, on a run by hand with main-as-is, main's own commit; the
+    # version is the one that commit's plugin.json holds, which the release pull request raised.
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ always() && !github.event.repository.private && github.ref == 'refs/heads/main' && (needs.release-please.outputs.release_created == 'true' || (inputs.main-as-is && needs.release-please.result == 'skipped')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          ref: ${{ needs.release-please.outputs.sha }}
+          ref: ${{ needs.release-please.outputs.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
+      - id: version
+        run: node tools/release/version-cli.ts --expect "$EXPECTED" >> "$GITHUB_OUTPUT"
+        env:
+          EXPECTED: ${{ needs.release-please.outputs.version }}
       - run: npm ci --ignore-scripts
       - run: npm run build
       # Runs the launcher and every hook from the dist, as an installed plugin runs them.
@@ -80,7 +94,8 @@ jobs:
     name: publish to the release branch
     # The marketplace entry installs from the release branch: main's released commit with the dist built above on
     # top, tagged v<version> (tools/release/publish.ts). It runs no npm package, only the repo's own reviewed code.
-    needs: [release-please, build]
+    needs: build
+    if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -88,7 +103,7 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          ref: ${{ needs.release-please.outputs.sha }}
+          ref: ${{ needs.build.outputs.sha }}
           fetch-depth: 0
       - run: rm -rf plugins/teamrig/dist
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -100,8 +115,8 @@ jobs:
           node-version: 22
       - run: node tools/release/publish-cli.ts --version "$VERSION" --source "$SOURCE"
         env:
-          VERSION: ${{ needs.release-please.outputs.version }}
-          SOURCE: ${{ needs.release-please.outputs.sha }}
+          VERSION: ${{ needs.build.outputs.version }}
+          SOURCE: ${{ needs.build.outputs.sha }}
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
