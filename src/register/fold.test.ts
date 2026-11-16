@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { TEST_CARD } from '../testing/card.ts';
 import type { DecisionCard } from './card.ts';
 import { EVENT_VERSION, type ApprovalVerdict, type RegisterEvent, type TaskFields } from './events.ts';
-import { foldEvents, RegisterFold, type Task } from './fold.ts';
+import { droppedApproval, foldEvents, RegisterFold, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
 import type { ProblemReview } from './review.ts';
 import type { WaitReason } from './waits.ts';
@@ -476,6 +476,26 @@ describe("foldEvents: the lead's answer to an approval (T684)", () => {
       assert.equal(taskAfter([...asked, answered(11, 'declined', 'no tests'), status(12, 'waiting', [lead, blocker])]).answer, null);
       assert.equal(taskAfter([...approved, status(12, 'in-progress'), status(13, 'waiting', [lead, blocker])]).answer, null);
       assert.equal(taskAfter([...approved, status(12, 'verifying', [lead, blocker])]).answer, null);
+    });
+  });
+
+  describe('droppedApproval: the approval a status change clears before its step ends (T3207)', () => {
+    const lead: WaitReason = { kind: 'approval', who: 'lead' };
+    const task = taskAfter([...asked, answered(11, 'approved')]);
+
+    it('names the approval a set clears that neither ends the step nor holds it', () => {
+      for (const [next, waits] of [['in-progress', []], ['open', []], ['waiting', [lead]], ['waiting', [{ kind: 'task', id: 'T7' }]]] as const) {
+        assert.deepEqual(droppedApproval(task, next, waits), task.answer, `${next} ${JSON.stringify(waits)}`);
+      }
+    });
+
+    it('is null for a set that ends the step or keeps the approval, and for a task with no approval', () => {
+      for (const next of ['verifying', 'done', 'dropped'] as const) {
+        assert.equal(droppedApproval(task, next, []), null, next);
+      }
+      assert.equal(droppedApproval(task, 'waiting', [lead, { kind: 'task', id: 'T7' }]), null);
+      assert.equal(droppedApproval(taskAfter(asked), 'in-progress', []), null);
+      assert.equal(droppedApproval(taskAfter([...asked, answered(11, 'declined', 'no tests')]), 'in-progress', []), null);
     });
   });
 });
