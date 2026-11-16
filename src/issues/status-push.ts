@@ -433,6 +433,11 @@ export function onePushPlan(repo: string, change: IssueChange): PushPlan {
   return { repo, changes: [change], deferred: [], heldCloses: [], unchanged: 0, closedActive: [], keptOpen: [], unlisted: [], shared: [], openPulls: [], wantsViewer: false };
 }
 
+/** The task speaking for `target`, as the push picks it (holders), or undefined when none holds it or none speaks for it. */
+export function holderOf(target: IssueTarget, tasks: Iterable<Task>): Task | undefined {
+  return holders(target.repo, tasks).speakers.get(target.number);
+}
+
 /**
  * The tasks holding each issue number of `repo`: in `speakers`, the one task speaking for it, else the first one the
  * import added; in `shared`, the ids of an issue two or more active team tasks hold, which none speaks for.

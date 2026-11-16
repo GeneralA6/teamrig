@@ -5,33 +5,143 @@ import type { KitConfig } from '../../config/types.ts';
 import { issueRef } from '../../github/map.ts';
 import { assignIssue, loginRefusal, MAX_ASSIGN_LOGINS } from '../../issues/assign.ts';
 import { CLOSE_REASONS, hostKindOf, parseIssueTarget, targetText, type CloseReason, type HostKind, type IssueHost, type IssueTarget } from '../../issues/host.ts';
+import { checkReply, sendReply, type FollowUp, type ReplyWrite } from '../../issues/reply.ts';
 import { issueDoc, mirroredIssues, similarIssues } from '../../issues/similar.ts';
+import { holderOf, sessionLogins } from '../../issues/status-push.ts';
 import { editIssueBody, labelIssue, labelRefusal, postRefusal, writeIssue, type IssueWrite } from '../../issues/write.ts';
+import type { Task } from '../../register/fold.ts';
 import { ISSUE_REF_PREFIX } from '../../register/model.ts';
 import { RegisterPolicy } from '../../register/policy.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
-import { onePositional, requiredFlag, type ParsedArgs } from '../args.ts';
+import { onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { hostOf } from '../issue-hosts.ts';
 import { sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { GITHUB_OFF, githubOff } from './issue-sync-auto.ts';
+import { set } from './register.ts';
 import { openTeam } from './register-team.ts';
 
 /**
- * `issue comment <owner/name#n> --body <text>` (T2660): posts one comment on an issue or pull request of the team's
- * repositories, through the host whose config list names the repository (issues/host.ts; GitHub, github.repos, is
- * the only one so far). The caller must be on the team; the body may not be empty, carry a secret shape or name a
- * task id. Exit 1 when the host failed, else 0.
+ * `issue reply <owner/name#n> --body-file <path> [--status <status>] [--pr <n>] [--followup <title>
+ * [--followup-body-file <path>]] [--assign <login,...>]` (T3169, replacing `issue comment`): a maintainer's reply that
+ * takes the thread's state with its words, so a thread never says more than it shows (#922 read "Picking this up"
+ * while still status:open, unassigned, its pull request unlinked). Through the host whose config list names the
+ * repository (issues/host.ts; GitHub, github.repos, is the only one so far), with the checks every write has: the
+ * caller on the team, no empty text, secret shape, private data or task id in what is posted.
+ *
+ * All reads come first and a refusal writes nothing: the thread, the `--pr` (an open pull request of the repository),
+ * each `--assign` login. Then `--status` sets the task holding the issue through `teamrig set` (its own gates, and
+ * `--note`, `--evidence`, `--skill`, `--followups`, `--waits`, `--proof` passed to it), and the reply sends the issue's
+ * status from the register, the assignees, the pull request's link, the follow-up issue, and the comment last
+ * (issues/reply.ts). On a pull request (no status of its own) it refuses `--status` and `--pr` and needs labels on
+ * it. Exit 1 when the host failed, else 0.
  */
-export async function issueComment(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+export async function issueReply(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const target = targetOf(args);
-  return writeOn(args, runtime, { target, comment: requiredFlag(args.flags, 'body'), close: false }, '--body');
+  const pull = pullOf(args.flags.get('pr'));
+  const assign = labelsOf(args.flags.get('assign'), '--assign');
+  const status = args.flags.get('status');
+  const passed = SET_FLAGS.filter((name) => args.flags.has(name));
+  if (status === undefined && passed.length > 0) {
+    throw new RefusedError(`--${passed.join(', --')} go to the task with --status: give the status the reply sets`);
+  }
+  const checked = await checkedRepo(args, runtime, target.repo);
+  const body = await bodyFileOf(requiredFlag(args.flags, 'body-file'), runtime, checked.config);
+  const followup = await followupOf(args.flags, runtime, checked.config);
+  const scanner = new SecretScanner(checked.config.register.secretPatterns);
+  const followupRefused = followup === undefined ? undefined : (postRefusal('--followup', followup.title, scanner) ?? (followup.body === '' ? undefined : postRefusal('--followup-body-file', followup.body, scanner)));
+  if (followupRefused !== undefined) {
+    throw new RefusedError(followupRefused);
+  }
+  const host = hostAfter(checked, runtime, { flag: '--body-file', text: body });
+  if (host === undefined) {
+    return EXIT.ok;
+  }
+  const say = (line: string): void => runtime.out.stdout(line);
+  const write: ReplyWrite = { target, body, assign, ...(pull === undefined ? {} : { pull }), ...(followup === undefined ? {} : { followup }) };
+  const check = await checkReply(host, write, say);
+  if (check.kind === 'refused') {
+    throw new RefusedError(`${check.reason}; nothing was written`);
+  }
+  const logins = sessionLogins(checked.config.github.owners);
+  if (check.reads.issue.pull) {
+    if (status !== undefined) {
+      throw new RefusedError(`${targetText(target)} is a pull request, which shows no status of its own: --status sets the issue it answers; nothing was written`);
+    }
+    return (await sendReply(host, write, check.reads, undefined, logins, say)) ? EXIT.ok : EXIT.failed;
+  }
+  const before = await holdingTask(runtime, target);
+  if (status !== undefined) {
+    const wanted = TASK_STATUS_OF_LABEL[status] ?? status;
+    if (wanted !== before.status || passed.length > 0) {
+      const setExit = await set({ command: 'set', positionals: [before.id], flags: setFlagsOf(args.flags, wanted, passed), switches: new Set(), rest: [], help: false }, runtime);
+      if (setExit !== EXIT.ok) {
+        say(`STOPPED ${targetText(target)}: ${before.id} was not set, so nothing was written to the thread`);
+        return setExit;
+      }
+    }
+  }
+  // Read again after the set: the status the thread shows is the one the register now holds.
+  return (await sendReply(host, write, check.reads, await holdingTask(runtime, target), logins, say)) ? EXIT.ok : EXIT.failed;
+}
+
+/** The `teamrig set` flags `issue reply` passes on with `--status`. */
+const SET_FLAGS = ['note', 'evidence', 'skill', 'followups', 'waits', 'proof'] as const;
+
+/** The task status each status label word names, for `--status` given as the thread shows it. */
+const TASK_STATUS_OF_LABEL: Readonly<Partial<Record<string, string>>> = { 'in review': 'verifying', 'in progress': 'in-progress', claimed: 'open' };
+
+/** The flags of the `teamrig set` a reply runs: the status, the caller and each passed flag given. */
+function setFlagsOf(flags: Flags, status: string, passed: readonly string[]): Flags {
+  const out = new Map<string, string>([['status', status]]);
+  for (const name of [...passed, 'session']) {
+    const value = flags.get(name);
+    if (value !== undefined) {
+      out.set(name, value);
+    }
+  }
+  return out;
+}
+
+/** The pull request number `--pr` gives, or undefined without it; refused when it is no number. */
+function pullOf(text: string | undefined): number | undefined {
+  if (text === undefined) {
+    return undefined;
+  }
+  const number = /^#?([1-9][0-9]*)$/u.exec(text.trim())?.[1];
+  if (number === undefined) {
+    throw new RefusedError(`--pr ${text} is no pull request number: give the number of the pull request that answers the issue, such as --pr 1272`);
+  }
+  return Number(number);
+}
+
+/** The follow-up `--followup` names, its body from `--followup-body-file` (empty without it); refused when the body file comes alone. */
+async function followupOf(flags: Flags, runtime: CliRuntime, config: KitConfig): Promise<FollowUp | undefined> {
+  const title = flags.get('followup');
+  const bodyFile = flags.get('followup-body-file');
+  if (title === undefined) {
+    if (bodyFile !== undefined) {
+      throw new RefusedError('--followup-body-file is the body of the --followup issue: give its title with --followup');
+    }
+    return undefined;
+  }
+  return { title: title.trim(), body: bodyFile === undefined ? '' : await bodyFileOf(bodyFile, runtime, config) };
+}
+
+/** The task holding the issue `target` as the status push picks it, refused when none does (the sync adds one). */
+async function holdingTask(runtime: CliRuntime, target: IssueTarget): Promise<Task> {
+  const team = await openTeam(runtime, 'read');
+  const task = holderOf(target, (await team.register.snapshot()).state.tasks.values());
+  if (task === undefined) {
+    throw new RefusedError(`no task holds ${targetText(target)}, so the reply has no status to show: run teamrig issue sync, or add the task with --ref gh:${targetText(target)}; nothing was written`);
+  }
+  return task;
 }
 
 /**
  * `issue edit <owner/name#n> --body-file <path>` (T3021): replaces the body (the description) of one issue or pull
- * request of the team's repositories with the text of a file, through the same host and checks as `issue comment`;
+ * request of the team's repositories with the text of a file, through the same host and checks as `issue reply`;
  * the title, state, labels and assignees stay. A file is the input, as a full description runs to many lines a shell
  * argument would mangle; a byte-order mark an editor put at its start is dropped. Exit 1 when the host failed, else 0.
  */
@@ -70,7 +180,7 @@ const BYTE_ORDER_MARK = '﻿';
 /**
  * `issue close <owner/name#n> [--comment <text>] [--reason completed|not-planned|duplicate] [--duplicate-of
  * <owner/name#n>]` (T2660, T2679, T2999): closes one issue or pull request of the team's repositories, first posting
- * `--comment` when given, through the same host and checks as `issue comment`; `--reason` is the one the host
+ * `--comment` when given, through the same host and checks as `issue reply`; `--reason` is the one the host
  * shows. `--duplicate-of` closes it as a duplicate of another issue of the same repository, which the host links.
  * A failed comment closes nothing. Exit 1 when the host failed, else 0.
  */
