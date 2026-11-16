@@ -8,6 +8,7 @@ import {
   type HostIssueId,
   type HostJobLog,
   type HostLabel,
+  type HostLabelFile,
   type HostLinks,
   type HostList,
   type HostOpen,
@@ -23,6 +24,7 @@ import {
 } from '../issues/host.ts';
 import type { IssueState } from '../issues/issue.ts';
 import type { HostPosts } from '../issues/post.ts';
+import { LABEL_FILE, parseLabelFile } from '../issues/label-file.ts';
 import { exitText } from '../open/processes.ts';
 import type { Env } from '../core/home.ts';
 import {
@@ -42,6 +44,7 @@ import {
   labelReadArgs,
   isLogin,
   labelCreateArgs,
+  labelFileReadArgs,
   subIssueAddArgs,
   WATCH_PATHS,
   watchProbeArgs,
@@ -249,6 +252,24 @@ export class GitHubIssueHost implements IssueHost {
   async labelExists(repo: string, label: string): Promise<HostLabel> {
     const read = await this.read(repo, labelReadArgs(repo, label), `the label ${JSON.stringify(label)} of ${repo}`);
     return read.kind === 'found' ? { kind: 'found' } : read;
+  }
+
+  /**
+   * Reads the repository's label file raw, as it stands on the default branch: read with the labels it names; missing
+   * on Not Found (no such file, or a repository the access cannot see); failed with gh's line, or with what is wrong in
+   * the file. The runner allows the create of a label this read named, and of no other beside teamrig's own (gh.ts).
+   */
+  async labelFile(repo: string): Promise<HostLabelFile> {
+    const what = `${LABEL_FILE} of ${repo}`;
+    const read = await this.read(repo, labelFileReadArgs(repo), what);
+    if (read.kind !== 'found') {
+      return read;
+    }
+    try {
+      return { kind: 'read', labels: parseLabelFile(read.stdout) };
+    } catch (error) {
+      return { kind: 'failed', reason: plainLine(`the ${what} does not parse: ${error instanceof Error ? error.message : String(error)}`) };
+    }
   }
 
   /**

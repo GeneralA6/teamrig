@@ -1,4 +1,4 @@
-import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostJobLog, HostLabel, HostLinks, HostList, HostOpen, HostPulls, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
+import type { CloseReason, HostAssignee, HostComments, HostEnd, HostIssueId, HostJobLog, HostLabel, HostLabelFile, HostLinks, HostList, HostOpen, HostPulls, HostReach, HostUse, HostWatch, IssueDraft, IssueHost, IssueTarget, LabelSpec, WatchMarks } from '../issues/host.ts';
 import type { LinkedIssue } from '../issues/issue.ts';
 import type { HostPost, HostPosts } from '../issues/post.ts';
 import type { HostPull } from '../issues/pull.ts';
@@ -41,6 +41,9 @@ export class FakeIssueHost implements IssueHost {
   private readonly removeEnds = new Map<string, HostEnd>();
   private labelReadFailure: string | undefined;
   private readonly labels = new Set<string>();
+  private readonly labelFiles = new Map<string, HostLabelFile>();
+  /** The repositories whose label file was read, in order. */
+  readonly labelFileReads: string[] = [];
   private linkEnd: HostEnd = { kind: 'done' };
   private readonly linked = new Map<string, HostLinks>();
   private idRead: HostIssueId | undefined;
@@ -83,6 +86,12 @@ export class FakeIssueHost implements IssueHost {
   /** From now on, every repository has these labels. */
   hasLabels(...labels: string[]): this {
     labels.forEach((label) => this.labels.add(label));
+    return this;
+  }
+
+  /** From now on, a read of `repo`'s label file gives `file`; a repository a test gave none has no label file. */
+  holdsLabelFile(repo: string, file: HostLabelFile): this {
+    this.labelFiles.set(repo, file);
     return this;
   }
 
@@ -273,6 +282,11 @@ export class FakeIssueHost implements IssueHost {
       return Promise.resolve({ kind: 'failed', reason: this.labelReadFailure });
     }
     return Promise.resolve({ kind: this.labels.has(label) ? 'found' : 'missing' });
+  }
+
+  labelFile(repo: string): Promise<HostLabelFile> {
+    this.labelFileReads.push(repo);
+    return Promise.resolve(this.labelFiles.get(repo) ?? { kind: 'missing' });
   }
 
   /** Records the make; once it is done, every repository has the label. */

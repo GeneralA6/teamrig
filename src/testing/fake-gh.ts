@@ -13,7 +13,9 @@ import {
   isIssueRead,
   isJobLogRead,
   isLabelAdd,
+  isFileLabelCreate,
   isLabelCreate,
+  isLabelFileRead,
   isLabelRead,
   isLabelRemove,
   isLinkAdd,
@@ -21,6 +23,8 @@ import {
   isReviewRead,
   isWatchProbe,
   MENTION_PAGE_SIZE,
+  LabelFileReads,
+  labelFileRepoOf,
   WATCH_PATHS,
   type GhRequest,
   type GhResult,
@@ -289,6 +293,9 @@ export class FakeGh implements GhRunner {
   private failure: Error | undefined;
   private writeFailure: GhResult | undefined;
   private readonly labels = new Map<string, readonly string[]>();
+  private readonly labelFiles = new Map<string, string>();
+  /** What each label file read named, as the real runner keeps it, so a create of a label it named is taken. */
+  private readonly fileReads = new LabelFileReads();
   private readonly unassignable = new Map<string, readonly string[]>();
   private readonly spellings = new Map<string, string>();
   private userAnswer: GhResult | undefined;
@@ -379,6 +386,12 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
+  /** From now on, a raw read of `repo`'s label file prints `text`; a repository a test gave none answers Not Found. */
+  holdsLabelFile(repo: string, text: string): this {
+    this.labelFiles.set(repo, text);
+    return this;
+  }
+
   /** From now on, these logins may not be assigned in `repo` (a read of them is Not Found); every other login may. */
   cannotAssign(repo: string, logins: readonly string[]): this {
     this.unassignable.set(repo, logins);
@@ -447,6 +460,14 @@ export class FakeGh implements GhRunner {
       return this.labelRead(request.args[1] ?? '');
     }
     if (isLabelCreate(request.args)) {
+      return this.writeFailure ?? this.labelCreate(request.args);
+    }
+    if (isLabelFileRead(request.args)) {
+      const result = this.labelFileRead(labelFileRepoOf(request.args) ?? '');
+      this.fileReads.note(request.args, result);
+      return result;
+    }
+    if (isFileLabelCreate(request.args, this.fileReads.of)) {
       return this.writeFailure ?? this.labelCreate(request.args);
     }
     if (isAssigneeRead(request.args)) {
@@ -566,6 +587,16 @@ export class FakeGh implements GhRunner {
       return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ name: decodeURIComponent(label) }), stderr: '' };
     }
     return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
+  }
+
+  /** A label file read as GitHub answers it raw: what a test set for the repository, else the file it holds, else Not Found. */
+  private labelFileRead(repo: string): GhResult {
+    const canned = this.canned.get(repo);
+    if (canned !== undefined) {
+      return canned;
+    }
+    const text = this.labelFiles.get(repo);
+    return text === undefined ? { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' } : { end: { kind: 'exited', code: 0 }, stdout: text, stderr: '' };
   }
 
   /** A label made as GitHub makes it: the repository has it from now on, and the answer is the new label. */
