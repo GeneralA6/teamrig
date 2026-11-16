@@ -900,7 +900,8 @@ with no permission check when all of these hold:
 - **a ship runs only the holder's own work**: `<shipTool>` is the `shipTool` [delivery.repos.shipTool] of a delivery
   repository, a tracked file of a checkout of that repository with no change at all whose HEAD makes the default
   branch's tree as of the last fetch, so what runs is main's current code, never a past main's (`teamrig queue`
-  checks it again as the step is queued and at its start); the worktree is a linked worktree of
+  checks it again as the step is queued and at its start, when a later main with the same tool code runs too); the
+  worktree is a linked worktree of
   the same repository inside its worktree folder, on a task branch (`t<id>-...`, never a protected branch) whose task
   the session owns, `--task` names that task when given, and the plan and note sit in that task's files folder;
 - **the tab is the holder's**: every inbox mark this Claude Code session ever wrote names one session, it is on the

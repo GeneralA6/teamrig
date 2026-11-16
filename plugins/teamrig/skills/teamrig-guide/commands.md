@@ -4899,10 +4899,15 @@ both ends (`queueFreeMb`, `endFreeMb`). Exit 0 when the command passed, 1 when i
 and once more after the wait (`REFUSED the pipeline is frozen until 2030-01-08 14:00 IST by po (PC down; F2); ...
 teamrig pipeline unfreeze F2`), and while the freezes file is unreadable. A step whose command names a delivery
 repository's `shipTool` is REFUSED unless the tool is a tracked file of a checkout with no change whose HEAD makes
-the default branch's tree as of the last fetch, looked at as it is queued and once more after the wait, when the
-checkout must still be at that commit or at the newest main (`REFUSED the ship tool ... is not origin/main's current
-code in a checkout with no change: run git -C <checkout> fetch -q origin && git -C <checkout> checkout -q --detach
-origin/main, then queue the step again`). A git read of that checkout that got no answer (git did not start, was
+the default branch's tree as of the last fetch, looked at as it is queued and once more after the wait. After the
+wait the checkout must still be at that commit or at the newest main, or at a later commit of main's history where no
+file the tool runs changed: the tool, every file it reaches through its relative imports, and the data files it opens
+beside itself (`new URL('./repos.json', import.meta.url)`). So a ship that waited while main moved on still runs when
+the tool's own code is the same. A closure that cannot be read whole (a file missing, an import outside the checkout,
+more than 2000 files) runs only at the queued commit or the newest main (`REFUSED the ship tool ... is not
+origin/main's current code in a checkout with no change: run git -C <checkout> fetch -q origin && git -C <checkout>
+checkout -q --detach origin/main, then queue the step again`), and the refusal of a changed tool names its changed
+files (`REFUSED the ship tool ... changed from <commit> while the step waited (tools/ship/repos.ts) and is not ...`). A git read of that checkout that got no answer (git did not start, was
 stopped, or died starting, as under a burst of new processes) says nothing of the tool: as the step is queued it pins
 no commit, so only the newest main runs, and the check reads again up to 4 times, 15 s apart, before it is REFUSED
 naming the read and git's error (`REFUSED could not read the checkout of the ship tool ..., so the step did not run:
