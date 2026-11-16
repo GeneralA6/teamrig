@@ -3,7 +3,7 @@ import { COMMIT_LOG_FORMAT, parseCommitLog } from "./commit-size.js";
 /** One git run's stdout; any failure (no repository, an unknown ref, no git on PATH) reads as undefined. */
 function runGit(dir, args) {
     try {
-        return execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000, maxBuffer: 16 * 1024 * 1024 });
+        return execFileSync('git', args, { cwd: dir, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000, maxBuffer: 16 * 1024 * 1024 });
     }
     catch {
         return undefined;
@@ -17,7 +17,7 @@ function readGit(dir, args) {
 /** One config value as git in `dir` reads it: git exits 1 for a key that is not set, and fails otherwise for no git or no folder. */
 function readConfig(dir, key) {
     try {
-        const value = execFileSync('git', ['config', '--get', key], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 });
+        const value = execFileSync('git', ['config', '--get', key], { cwd: dir, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 });
         return { kind: 'set', value: value.replace(/\r?\n$/, '') };
     }
     catch (error) {

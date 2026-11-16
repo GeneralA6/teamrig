@@ -38,7 +38,7 @@ function tagChain(run, dir, sha) {
  */
 export function gitSecrets(env) {
     const run = (dir, args, timeout) => {
-        const result = spawnSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, env, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT });
+        const result = spawnSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: dir, windowsHide: true, env, encoding: 'utf8', timeout, maxBuffer: MAX_OUTPUT });
         return result.status === 0 ? result.stdout : undefined;
     };
     return {

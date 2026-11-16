@@ -31,7 +31,7 @@ ${FIND_TEAMRIG_CLI}
 const main = teamrigCli();
 const run = main === undefined
   ? undefined
-  : spawnSync(process.execPath, [main, 'statusline', ...(pass ? ['--pass'] : [])], { input, encoding: 'utf8' });
+  : spawnSync(process.execPath, [main, 'statusline', ...(pass ? ['--pass'] : [])], { input, encoding: 'utf8', windowsHide: true });
 if (run?.stderr) process.stderr.write(run.stderr);
 if (run !== undefined && run.status === 0) {
   process.stdout.write(run.stdout);

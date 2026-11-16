@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 /** One git run's stdout; any failure (no repository, no commit, no git on PATH) reads as undefined. */
 function runGit(dir, args) {
     try {
-        return execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+        return execFileSync('git', args, { cwd: dir, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
     }
     catch {
         return undefined;
