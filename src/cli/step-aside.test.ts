@@ -63,6 +63,37 @@ describe('teamrig step-away and step-back', () => {
     assert.deepEqual([back.code, back.stdout], [0, ['NONE no host share of m1 is set aside: the step holds what it held']]);
   });
 
+  it('waits in line to take the share back, giving up when its wait runs out and stopping when withdrawn, the share kept aside', async () => {
+    const HOLDER = 7001;
+    const held: HostLockInfo = { id: 'h1', pid: HOLDER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+    const busy = (): FakeSessionProcesses => running().add({ pid: HOLDER, parentPid: 1, name: 'node', commandLine: 'node cli.ts queue' });
+    const setUp = async (kit: CliHarness): Promise<void> => {
+      await kit.files.write(LOCK, JSON.stringify(held));
+      await kit.files.write(join(AWAY, 'm1.json'), JSON.stringify(MERGE));
+    };
+
+    const timed = new CliHarness({ ...TEAM, delivery: { queue: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    await setUp(timed);
+    const gaveUp = await timed.run(['step-back'], { sessionProcesses: busy(), env: UNDER });
+    assert.equal(gaveUp.code, 1);
+    assert.match(gaveUp.stdout[0] ?? '', /waiting to take back its host share: po \(heavy: build\)/);
+    assert.match(gaveUp.stdout.at(-1) ?? '', /^GAVE UP host lock still held by po \(heavy: build\)/);
+    assert.deepEqual(await timed.files.list(AWAY), ['m1.json'], 'the share stays aside for a later step-back');
+
+    const withdrawn = new CliHarness(TEAM);
+    await setUp(withdrawn);
+    const queue = `${LOCK}.queue`;
+    const sleep = async (ms: number): Promise<void> => {
+      await withdrawn.clock.sleep(ms);
+      for (const name of await withdrawn.files.list(queue)) {
+        await withdrawn.files.remove(join(queue, name));
+      }
+    };
+    const stopped = await withdrawn.run(['step-back'], { sessionProcesses: busy(), env: UNDER, sleep });
+    assert.deepEqual([stopped.code, stopped.stdout.at(-1)], [1, "WITHDRAWN from the host lock's line (teamrig withdraw): its host share stays set aside"]);
+    assert.deepEqual(await withdrawn.files.list(AWAY), ['m1.json']);
+  });
+
   it('is refused outside a queued step', async () => {
     const kit = new CliHarness(TEAM);
     for (const command of ['step-away', 'step-back']) {

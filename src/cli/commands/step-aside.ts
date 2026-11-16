@@ -38,7 +38,7 @@ async function openLock(runtime: CliRuntime): Promise<Opened> {
  * `teamrig step-away`: run by a queued step while it only waits on a remote service (a merge waiting on its pull
  * request's checks), it sets the step's host share aside, so the ship slot, its heavy place and its MB go to the next
  * step in line; `teamrig step-back` takes them back in turn. Exit 0 set aside; 1 when the step holds the whole host
- * (the lock file), which it keeps, or holds nothing; 2 refused outside a queued step.
+ * (the lock file), which it keeps, or holds nothing; 64 (usage) refused outside a queued step.
  */
 export async function stepAway(_args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = heldIdOf(runtime, 'step-away');
@@ -60,7 +60,8 @@ export async function stepAway(_args: ParsedArgs, runtime: CliRuntime): Promise<
 /**
  * `teamrig step-back`: takes back in its turn the host share its queued step set aside (`teamrig step-away`), at the
  * place of its first taking, waiting as `teamrig queue` does and printing each new reason once. Exit 0 taken back, or
- * nothing set aside; 1 when its wait ran out or it was withdrawn (`teamrig withdraw`); 2 refused outside a queued step.
+ * nothing set aside; 1 when its wait ran out or it was withdrawn (`teamrig withdraw`); 64 (usage) refused outside a
+ * queued step.
  */
 export async function stepBack(_args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = heldIdOf(runtime, 'step-back');
