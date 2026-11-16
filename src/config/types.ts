@@ -4,6 +4,7 @@ import type { CoreRuleKey } from '../rules/keys.ts';
 import type { AdmissionMode } from '../delivery/admission.ts';
 import type { NeedKind } from '../tabs/need-kind.ts';
 import type { ServiceCommand } from '../permissions/service-commands.ts';
+import type { ChangeSourceId } from '../changes/ids.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
 export const CONFIG_VERSION = 8;
@@ -217,6 +218,12 @@ export interface LockConfig {
   readonly ttlMs: number;
   readonly pollMs: number;
   readonly waitMs: number;
+}
+
+/** Where `teamrig changes` reads what changed in the project (src/changes/). */
+export interface ChangesConfig {
+  /** The change sources to read, in the order their entries win; empty: every source that applies to the project. */
+  readonly sources: readonly ChangeSourceId[];
 }
 
 /** Privileged commands a reviewer approved, run by `teamrig exec` (src/exec/). */
@@ -1796,6 +1803,7 @@ export interface KitConfig {
   readonly contextFiles: ContextFilesConfig;
   readonly lock: LockConfig;
   readonly exec: ExecConfig;
+  readonly changes: ChangesConfig;
   readonly pushGuard: PushGuardConfig;
   readonly packageGuard: PackageGuardConfig;
   readonly commitGuard: CommitGuardConfig;
