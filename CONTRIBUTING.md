@@ -171,13 +171,6 @@ matrix.
   and `npm run check`) fails a commit over 400 changed non-test lines or 15 non-test files whose message has
   no `Large-commit: <reason>` line: the push guard's rule at its defaults, so a pull request meets it too.
 - Nothing is pushed to `main` directly, and release tags are set only by the maintainer.
-- Installs take the version in `plugins/teamrig/.claude-plugin/plugin.json`, not the newest commit:
-  `claude plugin update` moves an install only when that version rises. So a change to anything under
-  `plugins/teamrig/` (the dist included, so every change to `src/`) raises it, as MAJOR.MINOR.PATCH:
-  while it is 0.x, the minor for a new feature or a change that breaks how people use it, the patch
-  for a fix. The `plugin version gate` (`tools/ci/plugin-version-cli.ts`, run by the local gate and `npm run check`)
-  fails a pull request that does not, and one that gives the marketplace entry a version of its own,
-  which Claude Code ignores. How users update: [Updating the plugin](docs/how-it-works.md#updating-the-plugin).
 
 ## Issues
 Each issue becomes a task teamrig tracks, so an issue carries the task's fields. Open one through a form: a blank issue
@@ -226,13 +219,6 @@ join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.m
 - **Your commit e-mail**: the `Signed-off-by:` line carries your commit e-mail, and the scrub refuses an e-mail
   address in a commit message unless it is one of GitHub's no-reply addresses. Before your first commit, set the
   no-reply address GitHub shows under Settings, Emails: `git config user.email <id>+<user>@users.noreply.github.com`.
-- **A version clash**: when `main` moves on with a version raise of its own, the maintainer's merge
-  (`tools/ship/merge.ts`) catches the pull request up: it drops its version and dist commits, replays its other
-  commits on `main`, raises the version again above `main`'s with the same commit message and rebuilds the dist. The
-  review holds while the work's diff stays the same. It works only when the raise and the dist each sit in a commit
-  of their own; a commit that mixes them with work, a conflict, or work that writes the raised version down (a doc's
-  "since 0.4.0") is rebased by hand: take `main`'s side of `plugin.json`, `src/core/version.ts` and the dist, raise
-  the version above it again and rebuild the dist (`npm run build`), each in its own commit as before.
 - **A flaky test leg**: the merge re-runs a test leg listed `flaky` in `tools/ship/repos.json` once when only it
   failed, and reads the checks once more after a GitHub server error or timeout; a second failure stops the merge.
 - **Review**: a code owner (`.github/CODEOWNERS`: the maintainer) reviews the code and approves the last push, and a
