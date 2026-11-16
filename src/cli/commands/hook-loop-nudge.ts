@@ -1,4 +1,5 @@
 import { toolUseFrom, type ToolUse } from '../../budget/line.ts';
+import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../../core/guards.ts';
 import { leadNudgeLine, leadWorkOf, taskOwnersOf } from '../../hooks/lead-boundary.ts';
@@ -10,6 +11,7 @@ import { JsonlEventLog } from '../../register/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, rosterOf, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { meterTabMidTurn } from './hook-budget.ts';
 import { loadTree } from '../tree.ts';
 import { parseJson, sessionTeam, teamSessionOf, turnLeadPathsOf } from './hook-input.ts';
 
@@ -20,13 +22,17 @@ function currentToolOf(payload: JsonRecord): ToolUse | undefined {
   return id === undefined || name === undefined ? undefined : toolUseFrom(id, name, recordField(payload, 'tool_input'));
 }
 
-/** This tab is the team's lead and the lead boundary is on; a failed lookup counts as another session. */
-async function isLeadTab(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord): Promise<boolean> {
-  if (!config.leadBoundary.enabled) {
-    return false;
+/**
+ * The team session of this tab, looked up only when the budget or the lead boundary needs it; undefined for a tab
+ * that is none of the team's.
+ */
+async function tabSessionOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: JsonRecord): Promise<{ roster: Roster; id: string } | undefined> {
+  if (!config.budget.enabled && !config.leadBoundary.enabled) {
+    return undefined;
   }
   const roster = await rosterOf(runtime, kit, config);
-  return (await teamSessionOf(runtime, kit, roster, sessionIdOf(payload))) === config.roles.lead;
+  const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+  return id === undefined ? undefined : { roster, id };
 }
 
 /** The sessions that own the tasks the turn's prompt names, read from the register's working set; none when it names none. */
@@ -67,8 +73,14 @@ async function loopNudgeLines(payload: unknown, runtime: CliRuntime): Promise<re
     return [];
   }
   const { config } = kit.load;
+  const tab = await tabSessionOf(runtime, kit, config, payload).catch(() => undefined);
+  if (tab !== undefined) {
+    // Apart from the nudges: a failed meter run leaves them, and the next call or the Stop hook meters again.
+    await meterTabMidTurn(runtime, { kit, config, ...tab }, transcript).catch(() => false);
+  }
   const at = config.loops.chainNudgeAt;
-  const lead = await isLeadTab(runtime, kit, config, payload).catch(() => false);
+  // A failed lookup counts as another session.
+  const lead = config.leadBoundary.enabled && tab?.id === config.roles.lead;
   const text = at > 0 || lead ? await runtime.files.readTail(transcript, TRANSCRIPT_TAIL_BYTES) : undefined;
   if (text === undefined) {
     return [];
@@ -86,7 +98,8 @@ async function loopNudgeLines(payload: unknown, runtime: CliRuntime): Promise<re
  * tab it also hands the lead one line at its first edit outside its own files, its first test or build,
  * its first research and its `leadBoundary.searchNudgeAt`-th code search (lead-boundary.ts). A helper's calls (the payload
  * has `agent_id`) are skipped, since both count the main thread only. Outside a loaded team, with both
- * off or on any error it prints nothing.
+ * off or on any error it prints nothing. On a session's tab with the budget on it also meters the tab once its
+ * transcript has grown `MID_TURN_METER_BYTES` past the stored cursor (T3298), printing nothing for that.
  */
 export async function loopNudge(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
