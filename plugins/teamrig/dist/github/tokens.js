@@ -1,11 +1,21 @@
 /**
- * The store holds an owner's credential but could not read it, such as a locked keyring. The command stops: the gh
- * login may reach far more than the saved key does, so it never stands in for a key that is there.
+ * The owner's saved key cannot be used, so the command stops for that owner. The gh login never stands in for it:
+ * that login may reach far more repositories, with far more rights, than the key the team saved for the owner.
  */
-export class TokenReadError extends Error {
+export class NoAccessError extends Error {
+}
+/** The store holds an owner's credential but could not read it, such as a locked keyring. */
+export class TokenReadError extends NoAccessError {
     name = 'TokenReadError';
     constructor(credential, label, reason, save) {
         super(`could not read ${credential} from ${label}: ${reason}; unlock the store and rerun, or save the key again with: ${save}`);
+    }
+}
+/** No key is saved for the owner. */
+export class TokenMissingError extends NoAccessError {
+    name = 'TokenMissingError';
+    constructor(owner, credential, label, save) {
+        super(`no token for ${owner} is saved as ${credential} in ${label}; teamrig reaches a repository only with its owner's saved token, never the gh login: save one with: ${save}`);
     }
 }
 /** The prefix of the credential that holds an owner's token: `teamrig-gh-<owner>`, the owner in lowercase. */
@@ -26,9 +36,8 @@ export function tokenName(owner) {
 /**
  * The access to each repository, reading the store once per owner. A fine-grained GitHub token reaches the
  * repositories of one owner only, so a team that reads a personal account's and an organisation's
- * repositories saves one token for each, by name: no config names them. An owner with no saved token is
- * reached through the gh login; a token the store holds but could not read gives a TokenReadError, which stops
- * the command: never the gh login in its place.
+ * repositories saves one token for each, by name: no config names them. An owner with no saved token, or one
+ * the store could not read, gives a NoAccessError, which stops the command for that owner.
  */
 export class RepoTokens {
     store;
@@ -38,19 +47,19 @@ export class RepoTokens {
         this.store = store;
         this.env = env;
     }
-    /** The access to `repo`, or, when the store holds its owner's key but could not read it, the error that stops the command. */
+    /** The access to `repo` through its owner's saved token, or the error that stops the command when there is none to use. */
     async accessFor(repo) {
         const owner = repoOwner(repo);
         const credential = tokenName(owner);
-        const login = { via: 'login', env: this.env, owner, credential, save: this.store.saveCommand(credential) };
+        const save = this.store.saveCommand(credential);
         const read = await this.readOnce(credential);
         switch (read.kind) {
             case 'found':
-                return { ...login, via: 'token', env: { ...this.env, GH_TOKEN: read.secret } };
+                return { env: { ...this.env, GH_TOKEN: read.secret }, owner, credential, save };
             case 'missing':
-                return login;
+                return new TokenMissingError(owner, credential, this.store.label, save);
             case 'failed':
-                return new TokenReadError(credential, this.store.label, read.reason, login.save);
+                return new TokenReadError(credential, this.store.label, read.reason, save);
         }
     }
     readOnce(credential) {

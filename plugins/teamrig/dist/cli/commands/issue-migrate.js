@@ -19,7 +19,7 @@ export const SHOWN_UNROWED = 20;
  * file of JSON-lines rows (github/migrate.ts), each a task's public wording or the reason it stays local. Without
  * `--yes` it writes nothing but the `--out` preview, a page with every issue in full for a reviewer. `--yes` opens
  * each planned issue through the issue host port (issues/host.ts; on GitHub with the token saved for the repository's
- * owner, else, when none is saved, the gh login; a saved token the store could not read stops the run), then points
+ * owner, never the gh login; no saved token, or one the store could not read, stops the run), then points
  * the task's ref at it as `update <id> --ref` by the caller would, so the sync adds no second
  * task for it; a ref that is no issue gives way, named in the update's note. It stops at the first failure, and a rerun skips each task already holding its issue. Exit 1 when
  * gh failed, 2 when the register refused a ref, else 0.
