@@ -62,6 +62,18 @@ describe('--session and --team on every command (#654)', () => {
     assert.deepEqual(result, { code: EXIT.refused, stdout: ['REFUSED teamrig who runs for this folder\'s team (app) only; --team web names another team'], stderr: [] });
   });
 
+  it('with no team here, refuses any --team and leaves --session to the command', async () => {
+    const kit = new CliHarness(TEAM, null);
+    const team = await kit.run(['who', '--team', 'app']);
+    assert.deepEqual(team.stdout, ['REFUSED teamrig who runs for the team of this folder, and none is found here; --team app names another team']);
+    assert.deepEqual(await kit.run(['who', '--session', 'nobody']), await kit.run(['who']));
+  });
+
+  it('leaves --session to the command when the team config does not load', async () => {
+    const kit = new CliHarness('{ not json');
+    assert.deepEqual(await kit.run(['config', 'validate', '--session', 'nobody']), await kit.run(['config', 'validate']));
+  });
+
   it('says so in the usage, the guide and the commands page', () => {
     const line = 'every command takes --session <id|name> and --team <team>';
     assert.ok(USAGE.includes(line), 'usage');
