@@ -424,6 +424,27 @@ describe('Register on a rotated log', () => {
   });
 });
 
+describe('Register.judgeAdd', () => {
+  const TASK = { title: 'Ship login', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 } as const;
+
+  it('allows the task add would write, writing nothing and taking no lock', async () => {
+    const { files, mutex, register } = setup();
+    const judged = await register.judgeAdd('lead', TASK);
+    assert.ok(judged.ok, errorOf(judged));
+    assert.deepEqual([judged.value.title, judged.value.owner], ['Ship login', 'alpha']);
+    assert.equal(mutex.runs, 0);
+    assert.equal(files.get(LOG), undefined);
+  });
+
+  it('refuses what add refuses: a caller off the roster, a bad field, a task tracked already', async () => {
+    const { register } = setup();
+    assert.match(errorOf(await register.judgeAdd('charlie', TASK)), /charlie/);
+    assert.match(errorOf(await register.judgeAdd('lead', { ...TASK, priority: 9 })), /priority p9/);
+    written(await register.add('lead', TASK));
+    assert.match(errorOf(await register.judgeAdd('lead', TASK)), /T1 already tracks this/);
+  });
+});
+
 describe('Register.addFromTeam', () => {
   it('writes the task as the asker, who is on no roster here, and lands it with the owner asked', async () => {
     const { files, register } = setup();

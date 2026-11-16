@@ -143,6 +143,19 @@ export class Register {
     return { snapshot, elsewhere: needsElsewhere(snapshot.state.tasks) ? await this.elsewhere() : NO_TASKS_ELSEWHERE };
   }
 
+  /**
+   * Whether `add` would write this task now, writing nothing: for an add that does a step off the register first,
+   * opening its GitHub issue, and must leave nothing behind when the task would be refused. The add judges again under
+   * the lock, so a write between the two is still refused there.
+   */
+  judgeAdd(caller: string, input: AddInput): Promise<Verdict<TaskFields>> {
+    return this.asCaller(caller, async () => {
+      const goalTags = await this.goalTagsFor(input.goals);
+      const { snapshot, elsewhere } = await this.snapshotWithElsewhere();
+      return this.deps.policy.add(input, snapshot.state, elsewhere, goalTags);
+    });
+  }
+
   add(caller: string, input: AddInput): Promise<Verdict<WriteResult>> {
     return this.asCaller(caller, async () => {
       const goalTags = await this.goalTagsFor(input.goals);
