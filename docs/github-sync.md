@@ -336,8 +336,9 @@ teamrig issue migrate rows.jsonl --yes               # opens the issues
 ## Commenting on, labelling and closing
 
 `teamrig issue comment` posts one comment on an issue or pull request, `teamrig issue label` adds and takes off its
-labels (it makes the `design` label first where the repository lacks it, with a `MADE` line; any other label must
-already be there), and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
+labels (where the repository lacks it, it makes first, with a `MADE` line, the `design` label or a label the
+repository's `.github/labels.json` defines, with that file's colour and description; any other label must already
+be there), and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
 unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only);
 `--duplicate-of` closes it as a duplicate of another issue of the same repository, which GitHub links as the
 original. `teamrig issue edit` replaces the body (the description) with the text of a file, so a spec of many lines
@@ -541,9 +542,11 @@ again.
   (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only, a duplicate's also with the
   original's `duplicate_issue_id`, digits only) and the read of that original (`.../issues/<number> -X GET`, no
   field), the status push's read of whether one login may be assigned (`repos/<owner>/<name>/assignees/<login>`)
-  and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), the create of a label
-  teamrig makes (`repos/<owner>/<name>/labels -X POST` with the name, colour and description of one of the five
-  status labels or `design`, word for word), and
+  and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), the read of the
+  repository's label file (`repos/<owner>/<name>/contents/.github/labels.json` with the raw media type, nothing
+  else), the create of a label teamrig makes (`repos/<owner>/<name>/labels -X POST` with the name, colour and
+  description of one of the five status labels or `design`, word for word) or of one that file named when the same
+  run read it, word for word, and
   `teamrig issue links`'s one link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST`
   with one issue id only). No link is ever removed.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
