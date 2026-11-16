@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { TEAMRIG_VERSION_FILES, bumpKindOf, bumped, compareVersions, formatVersion, parseVersion, versionIn, versionMention, withVersion } from './version-bump.ts';
+import { TEAMRIG_RELEASE_STAMPS, TEAMRIG_VERSION_FILES, bumpKindOf, bumped, compareVersions, formatVersion, parseVersion, shipsInVersions, versionIn, versionMention, withVersion } from './version-bump.ts';
 
 const v = parseVersion;
 const [pluginJson, kitVersion] = TEAMRIG_VERSION_FILES;
@@ -54,4 +54,13 @@ test('finds a version written alone, never inside a longer one', () => {
   assert.ok(!mention.test(['0.88.1', '4'].join('.')));
   assert.ok(!mention.test('0x88x1'));
   assert.equal('0.88.1 and 0.88.1'.replace(versionMention('0.88.1', 'g'), '0.89.1'), '0.89.1 and 0.89.1');
+});
+
+test('a change ships in its head\'s version when it raises it, else in one of the next releases after its base (T3419)', () => {
+  assert.deepEqual(shipsInVersions(v('0.454.0'), v('0.455.0')), ['0.455.0']);
+  assert.deepEqual(shipsInVersions(v('0.454.2'), v('0.454.2')), ['0.454.3', '0.455.0', '1.0.0']);
+});
+
+test('teamrig\'s release stamp is read against the kit version', () => {
+  assert.deepEqual(TEAMRIG_RELEASE_STAMPS.map((stamp) => [stamp.path, stamp.shipsIn.path]), [['src/config/migrate.ts', kitVersion?.path]]);
 });

@@ -5,7 +5,7 @@ import { mergeStandingOf, tabCallerOf, type MergeStanding } from '../../src/cli/
 import { ENV, type Env } from '../../src/core/home.ts';
 import { approvedTaskOf } from '../../src/register/approval.ts';
 import { branchTaskOf } from '../../src/worktree/owner.ts';
-import type { VersionFile } from './version-bump.ts';
+import { shipsInVersions, versionIn, type ReleaseStamp, type Version, type VersionFile } from './version-bump.ts';
 
 /**
  * Whether a merge may go ahead (T2788, security verdict on T2763): refused with why; the caller's own say (a root
@@ -142,13 +142,14 @@ export type GitText = (args: readonly string[]) => string;
  * - `versionFiles`: files of which the ship rewrites only the version token, hashed with that token masked, so a
  *   version raise drops out while any other edit (code in version.ts, a hooks key in plugin.json) counts as work;
  * - `releaseStamps`: files in which a line the change adds may carry the version it ships in, such as a new config
- *   migration's `firstRelease`, hashed with that token masked on the added lines only (T3419), so the stamp set again
- *   with a raise on a newer main keeps the approval while an edit to an existing stamp counts as work.
+ *   migration's `firstRelease`, hashed with that token masked on the added lines only, and only where it is the
+ *   version the change ships in (T3419), so the stamp set again with a raise on a newer main keeps the approval, while
+ *   a stamp of any other version, or an edit to an existing stamp, counts as work.
  */
 export interface ShipWrites {
   readonly generated: readonly string[];
   readonly versionFiles: readonly VersionFile[];
-  readonly releaseStamps: readonly VersionFile[];
+  readonly releaseStamps: readonly ReleaseStamp[];
 }
 
 /**
@@ -156,7 +157,7 @@ export interface ShipWrites {
  * knows (`known`), beside the release stamps a change may carry (`stamps`). Throws on a file that is neither a folder
  * nor a known version file: leaving it out of the hash would let any edit to it ship on an earlier approval.
  */
-export function shipWritesOf(regenerated: readonly string[], known: readonly VersionFile[], stamps: readonly VersionFile[]): ShipWrites {
+export function shipWritesOf(regenerated: readonly string[], known: readonly VersionFile[], stamps: readonly ReleaseStamp[]): ShipWrites {
   const generated: string[] = [];
   const versionFiles: VersionFile[] = [];
   for (const path of regenerated) {
@@ -183,22 +184,41 @@ const DIFF_OPTIONS = ['--no-renames', '--no-color', '--no-ext-diff', '--text', '
  */
 export function changePatch(git: GitText, rev: string, mainRef: string, writes: ShipWrites): string {
   const from = git(['merge-base', rev, mainRef]).trim();
-  return diffHash(git(['diff', '--unified=0', ...DIFF_OPTIONS, from, rev, '--', '.', ...excludedOf(writes.generated)]), writes);
+  return diffHash(git(['diff', '--unified=0', ...DIFF_OPTIONS, from, rev, '--', '.', ...excludedOf(writes.generated)]), writes, shipsInAt(git, from, rev));
 }
 
 const excludedOf = (generated: readonly string[]): string[] => generated.map((path) => `:(exclude)${path}`);
+
+/** The versions a change may ship in, by a release stamp's version file: what a stamp the change adds is masked as. */
+type ShipsIn = (stamp: ReleaseStamp) => readonly string[];
+
+/**
+ * The versions a change from `from` to `rev` ships in (`shipsInVersions`), each stamp's version file read at both only
+ * once a diff touches a stamp file, and once per file.
+ */
+function shipsInAt(git: GitText, from: string, rev: string): ShipsIn {
+  const read = new Map<string, readonly string[]>();
+  return (stamp) => {
+    const known = read.get(stamp.shipsIn.path);
+    if (known !== undefined) return known;
+    const at = (ref: string): Version => versionIn(git(['cat-file', 'blob', `${ref}:${stamp.shipsIn.path}`]), stamp.shipsIn);
+    const versions = shipsInVersions(at(from), at(rev));
+    read.set(stamp.shipsIn.path, versions);
+    return versions;
+  };
+}
 
 /**
  * A diff's sections, each version file's masked (`maskedSection`) and each release stamp file's added stamps
  * (`stampedSection`); a version-only change leaves no line.
  */
-function normalizedOf(diff: string, writes: ShipWrites): string[] {
-  const fileOf = (files: readonly VersionFile[], section: readonly string[]): VersionFile | undefined => files.find((one) => section[0] === `diff --git a/${one.path} b/${one.path}`);
+function normalizedOf(diff: string, writes: ShipWrites, shipsIn: ShipsIn): string[] {
+  const fileOf = <File extends VersionFile>(files: readonly File[], section: readonly string[]): File | undefined => files.find((one) => section[0] === `diff --git a/${one.path} b/${one.path}`);
   return sectionsOf(diff.split('\n')).flatMap((section) => {
     const file = fileOf(writes.versionFiles, section);
     if (file !== undefined) return maskedSection(section, file);
     const stamp = fileOf(writes.releaseStamps, section);
-    return stamp === undefined ? section : stampedSection(section, stamp);
+    return stamp === undefined ? section : stampedSection(section, stamp, shipsIn(stamp));
   });
 }
 
@@ -206,8 +226,8 @@ function normalizedOf(diff: string, writes: ShipWrites): string[] {
  * The sha256 of a diff with its blob ids and hunk positions dropped, so moving the lines it changes keeps it, and
  * each version file's version token masked.
  */
-function diffHash(diff: string, writes: ShipWrites): string {
-  const normalized = normalizedOf(diff, writes)
+function diffHash(diff: string, writes: ShipWrites, shipsIn: ShipsIn): string {
+  const normalized = normalizedOf(diff, writes, shipsIn)
     .filter((line) => !line.startsWith('index '))
     .map((line) => (line.startsWith('@@') ? '@@' : line))
     .join('\n');
@@ -244,15 +264,19 @@ function maskedSection(section: readonly string[], file: VersionFile): string[] 
   return kept.length === 0 ? [] : [...masked.slice(0, first), ...kept.flat()];
 }
 
-/** A line with each version token of `file` in it masked. */
-function maskedLine(line: string, file: VersionFile): string {
+/** A line with each version token of `file` in it masked, or only each one of `versions` when it names them. */
+function maskedLine(line: string, file: VersionFile, versions?: readonly string[]): string {
   const token = new RegExp(file.pattern.source, `${file.pattern.flags.replace('g', '')}g`);
-  return line.replace(token, (_match, before: string, _version: string, after: string) => `${before}<version>${after}`);
+  return line.replace(token, (match: string, before: string, version: string, after: string) => (versions === undefined || versions.includes(version) ? `${before}<version>${after}` : match));
 }
 
-/** A release stamp file's diff section with the stamp masked on each line the change adds, and on no other. */
-function stampedSection(section: readonly string[], file: VersionFile): string[] {
-  return section.map((line) => (line.startsWith('+') && !line.startsWith('+++') ? maskedLine(line, file) : line));
+/**
+ * A release stamp file's diff section with the stamp masked on each line the change adds, and on no other, and only
+ * where it is a version the change ships in (`versions`): a stamp set to any other version is hashed as it is, so it
+ * counts as work (T3419).
+ */
+function stampedSection(section: readonly string[], file: ReleaseStamp, versions: readonly string[]): string[] {
+  return section.map((line) => (line.startsWith('+') && !line.startsWith('+++') ? maskedLine(line, file, versions) : line));
 }
 
 /** Whether a hunk's removed lines are its added lines, in order. */
@@ -284,13 +308,14 @@ export interface WorkCommit {
  */
 export function workCommitsOf(git: GitText, rev: string, mainRef: string, writes: ShipWrites): WorkCommit[] {
   const rows = git(['rev-list', '--reverse', '--parents', rev, `^${mainRef}`]).split('\n').filter((row) => row.trim() !== '');
+  const shipsIn = shipsInAt(git, git(['merge-base', rev, mainRef]).trim(), rev);
   return rows.flatMap((row): WorkCommit[] => {
     const [sha = '', ...parents] = row.trim().split(' ');
     const subject = (): string => git(['log', '-1', '--format=%s', sha]).trim();
     if (parents.length > 1) return [{ sha, subject: subject(), merge: true, patch: '' }];
     const diff = git(['diff-tree', '-p', '-r', '--root', '--no-commit-id', '--unified=3', ...DIFF_OPTIONS, sha, '--', '.', ...excludedOf(writes.generated)]);
-    const changes = normalizedOf(diff, writes).some((line) => line.trim() !== '');
-    return changes ? [{ sha, subject: subject(), merge: false, patch: diffHash(diff, writes) }] : [];
+    const changes = normalizedOf(diff, writes, shipsIn).some((line) => line.trim() !== '');
+    return changes ? [{ sha, subject: subject(), merge: false, patch: diffHash(diff, writes, shipsIn) }] : [];
   });
 }
 

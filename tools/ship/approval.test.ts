@@ -292,6 +292,42 @@ describe('changePatch: the fingerprint of what a branch changes over main', () =
     assert.notEqual(patch(), patch(approved), 'a line beside the stamp');
   });
 
+  it('keeps the fingerprint of a head whose raise is not committed yet, its stamp the next release, made again on a newer main (T3419)', () => {
+    commitFiles('config: migration 2', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.2.0')}` });
+    const approved = repo.git('rev-parse', 'HEAD').trim();
+    repo.git('checkout', '-q', 'main');
+    raise('0.2.0');
+    repo.git('checkout', '-q', '-b', 't1-again');
+    commitFiles('core: a', { 'src/a.ts': lines(1, 20).replace('line 15\n', 'line fifteen\n'), 'src/new.ts': 'new\n' });
+    commitFiles('config: migration 2', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.3.0')}` });
+    raise('0.3.0');
+    assert.equal(patch(), patch(approved));
+    assert.deepEqual(workChanges(workCommitsOf(git, approved, 'main', WRITES), workCommitsOf(git, 'HEAD', 'main', WRITES)), []);
+  });
+
+  it('moves the fingerprint and the patch id on an added stamp of a version the change does not ship in (T3419)', () => {
+    const approved = stampedAgain();
+    repo.git('checkout', '-q', '-b', 't1-high', 'HEAD~2');
+    commitFiles('config: migration 2', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.9.0')}` });
+    raise('0.3.0');
+    assert.notEqual(patch(), patch(approved), 'a stamp above the raise');
+    assert.notDeepEqual(workChanges(workCommitsOf(git, approved, 'main', WRITES), workCommitsOf(git, 'HEAD', 'main', WRITES)), []);
+    repo.git('checkout', '-q', '-b', 't1-unraised', 'HEAD~2');
+    const next = commitFiles('config: migration 2', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.3.0')}` });
+    repo.git('checkout', '-q', '-b', 't1-far', 'HEAD~1');
+    const far = commitFiles('config: migration 2', { [MIGRATE_TS]: `${migration(1, '0.1.0')}${migration(2, '0.5.0')}` });
+    assert.notEqual(patch(far), patch(next), 'a head with no raise committed, stamped past the next release');
+  });
+
+  it('gives an existing stamp edited to two different versions two fingerprints (T3419)', () => {
+    stampedAgain();
+    const head = repo.git('rev-parse', 'HEAD').trim();
+    const shipped = commitFiles('config: restamp 1', { [MIGRATE_TS]: `${migration(1, '0.3.0')}${migration(2, '0.3.0')}` });
+    repo.git('checkout', '-q', '-b', 't1-other', head);
+    const other = commitFiles('config: restamp 1', { [MIGRATE_TS]: `${migration(1, '0.4.0')}${migration(2, '0.3.0')}` });
+    assert.notEqual(patch(other), patch(shipped));
+  });
+
   it('reads the change from the merge base, so commits main gains after the fork never count', () => {
     const approved = patch();
     repo.git('checkout', '-q', 'main');

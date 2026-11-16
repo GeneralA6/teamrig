@@ -51,18 +51,37 @@ export interface VersionFile {
   readonly pattern: RegExp;
 }
 
+/** A version a change stamps beside its raise, which must be the version the change ships in. */
+export interface ReleaseStamp extends VersionFile {
+  /** The version file holding the version the change ships in, which a stamp the change adds is read against. */
+  readonly shipsIn: VersionFile;
+}
+
+const TEAMRIG_KIT_VERSION: VersionFile = { path: 'src/core/version.ts', pattern: /(KIT_VERSION = ')(\d+\.\d+\.\d+)(')/ };
+
 /** teamrig's two version places, which a test in the repo holds equal (SKILL.md, version bump). */
 export const TEAMRIG_VERSION_FILES: readonly VersionFile[] = [
   { path: 'plugins/teamrig/.claude-plugin/plugin.json', pattern: /("version":\s*")(\d+\.\d+\.\d+)(")/ },
-  { path: 'src/core/version.ts', pattern: /(KIT_VERSION = ')(\d+\.\d+\.\d+)(')/ },
+  TEAMRIG_KIT_VERSION,
 ];
 
 /**
  * The release stamps a change carries beside the version raise: a config migration's first release
- * (`firstRelease` in src/config/migrate.ts), set to the version the change ships in, so it follows each raise the ship
- * sets again on a newer main (T3419).
+ * (`firstRelease` in src/config/migrate.ts), set to the version the change ships in (the kit's), so it follows each
+ * raise the ship sets again on a newer main (T3419).
  */
-export const TEAMRIG_RELEASE_STAMPS: readonly VersionFile[] = [{ path: 'src/config/migrate.ts', pattern: /(firstRelease: ')(\d+\.\d+\.\d+)(')/ }];
+export const TEAMRIG_RELEASE_STAMPS: readonly ReleaseStamp[] = [{ path: 'src/config/migrate.ts', pattern: /(firstRelease: ')(\d+\.\d+\.\d+)(')/, shipsIn: TEAMRIG_KIT_VERSION }];
+
+/**
+ * The versions a change may ship in, from its version at its merge base and at its head (T3419): the head's when the
+ * change raises it, else each next release after the base's, as a change whose raise the ship has yet to commit (a
+ * review run leaves it uncommitted) ships in one of them.
+ */
+export function shipsInVersions(base: Version, head: Version): readonly string[] {
+  if (compareVersions(head, base) !== 0) return [formatVersion(head)];
+  const kinds: readonly BumpKind[] = ['patch', 'minor', 'major'];
+  return kinds.map((kind) => formatVersion(bumped(base, kind)));
+}
 
 export function versionIn(text: string, file: VersionFile): Version {
   const found = file.pattern.exec(text)?.[2];
