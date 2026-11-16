@@ -1728,7 +1728,11 @@ wakes a tab of a session in the rush, other than the lead, that has sat idle `[r
 default) since its last turn with a task of its own it can go on with (open or in progress, not waiting). The prompt
 reads `Rush on PROD: this tab sat idle 5 min with work left ... Start or continue T12 (...) now`, naming the session's
 top task of the goal, else its top task; the toast says the tab was poked, with the rush's goal, the idle minutes and the task, and
-the wake log marks the line `poke`. A tab gets one poke per idle stretch: none again until it has a new turn. While a
+the wake log marks the line `poke`. A tab gets one poke per idle stretch: none again until it has a new turn. After a
+poke, another comes only once something changed for the session since: a line posted to its inbox (a queued run's end
+posts one), a register event on one of its tasks by another session (a new task, a handover, an answer), or a task it
+can start that it could not then. Its own note or status write is no change, so a session that answers "nothing can
+move" is left alone; the prompt says to set the task `waiting` with its reason (`--waits`). While a
 queued step of the session runs (`teamrig queue`), the poke waits for it to end; a step only waiting in line counts as
 idle. A task that a queued run of the session is for (the task id its label names), waiting or running, is passed over:
 the poke names the next task with work left, or none, since that run's end line wakes the tab anyway. A shell the tab
