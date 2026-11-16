@@ -233,6 +233,7 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 | [Every check flag](plugins/teamrig/skills/teamrig-guide/tasks.md#check-flags) | Each flag `teamrig check` raises on a task, a hire or a skill: when, and what to do about it |
 | [Set up a team by hand](docs/setup-by-hand.md) | The two small files a team needs, if you'd rather not ask the lead |
 | [GitHub sync](docs/github-sync.md) | GitHub issues in the task list: repositories, tokens and each failure's fix |
+| [Issues and pull requests](docs/issues-and-pull-requests.md) | Reporting a fault, asking for a feature or sending a fix, for people and their AI tools |
 | [llms.txt](llms.txt) | teamrig explained for language models: point your AI assistant at it |
 | [Contributing](CONTRIBUTING.md) | How teamrig is built: `npm ci` sets the git hooks, every change lands through a reviewed pull request (from a fork for outside contributors), tests, sign-off and the local gate |
 
