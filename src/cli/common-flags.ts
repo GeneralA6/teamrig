@@ -10,14 +10,12 @@ import { RefusedError, type CliRuntime } from './runtime.ts';
  * names a session of the folder's team (by id, current or former name), and runs for that team only, so a `--team`
  * naming another is refused with one line. With no team found here a `--session` is not checked: there is no roster to
  * check it against, and the command reports the missing team itself when it needs one. A config that does not load
- * leaves the check to the command too, so `doctor` and `config validate` still run on a broken one.
+ * leaves the check to the command too, so `doctor` and `config validate` still run on a broken one. `runCli` calls it
+ * only when one of the two is given to a command that does not declare it.
  */
 export async function checkCommonFlags(command: string, declared: readonly string[], args: ParsedArgs, runtime: CliRuntime): Promise<void> {
   const session = declared.includes('session') ? undefined : args.flags.get('session');
   const team = declared.includes('team') ? undefined : args.flags.get('team');
-  if (session === undefined && team === undefined) {
-    return;
-  }
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
   const own = found.kind === 'team' ? found.team : undefined;
   if (team !== undefined && team !== own) {
