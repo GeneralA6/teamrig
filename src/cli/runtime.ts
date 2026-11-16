@@ -25,6 +25,7 @@ import type { RestorePorts } from '../restore/ports.ts';
 import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
+import type { ChangeGit } from '../changes/source.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import type { SecretsGit } from '../secret-guard/secrets-git.ts';
 import type { PointerGit } from '../setup/pointer-ignore.ts';
@@ -102,6 +103,8 @@ export interface CliRuntime {
   readonly trees: TreeState;
   /** The git steps `teamrig merge` takes. */
   readonly mergeGit: MergeGit;
+  /** The project history `teamrig changes` reads: commits in a range and the release index, read-only. */
+  readonly changeGit: ChangeGit;
   /** The git steps `teamrig pr conflicts` takes: a pull request's head fetched and merged in the object store alone. */
   readonly pulls: PullGit;
   /** The programs `teamrig deploy` runs, its checks, afterPull hooks and deploy command: no shell, each with a time limit. */
