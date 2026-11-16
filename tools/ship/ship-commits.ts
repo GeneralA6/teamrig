@@ -269,8 +269,8 @@ async function shipOnce(args: ShipArgs, written: readonly Chunk[], deps: ShipDep
   }
   deps.log(deps.git(['log', '--oneline', `${args.base}..HEAD`]));
   if (!verdict.passed) {
-    // The plugin version gate fails once another ship merged the same raise meanwhile (T2725); a run on the moved
-    // main sets the raise again, and a failure of the change's own fails that run too.
+    // A check can fail on what another ship merged meanwhile, such as the same version raise in teamrig-pane's
+    // plugin version gate (T2725); a run on the moved main tells, and a failure of the change's own fails it too.
     const move = args.merge ? deps.mainMove() : null;
     if (move === null) throw new Error(`REFUSED ${verdict.reason}`);
     deps.log(`\nlocal checks: ${verdict.reason}, and ${move.reason}`);

@@ -140,7 +140,10 @@ describe('release-please-config.json', () => {
     assert.match(stringField(config, 'bootstrap-sha') ?? '', /^[0-9a-f]{40}$/);
   });
 
-  it('holds the version the next release raises from in its manifest', () => {
-    assert.match(stringField(readRecord('.release-please-manifest.json'), '.') ?? '', /^\d+\.\d+\.\d+$/);
+  it("holds main's version in its manifest, the one plugin.json and version.ts hold: only a release pull request raises it", () => {
+    const released = stringField(readRecord('.release-please-manifest.json'), '.') ?? '';
+    assert.match(released, /^\d+\.\d+\.\d+$/);
+    assert.equal(stringField(readRecord('plugins/teamrig/.claude-plugin/plugin.json'), 'version'), released, 'plugin.json');
+    assert.match(read('src/core/version.ts'), new RegExp(`^export const KIT_VERSION = '${released.replaceAll('.', '\\.')}';`, 'm'), 'version.ts');
   });
 });

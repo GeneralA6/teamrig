@@ -133,11 +133,10 @@ test('the shipped repos.json still lists every job a teamrig pull request runs, 
   assert.equal(teamrig.checks.length, jobs.length + tests.length);
 });
 
-test('both plugin repos wait for the plugin version gate, so a plugin change cannot merge without a version raise', () => {
-  for (const slug of ['GeneralA6/teamrig', 'GeneralA6/teamrig-pane']) {
-    const profile = profileFor(readProfiles(), slug);
-    assert.ok(profile.checks.includes('plugin version gate'), slug);
-  }
+test('teamrig-pane waits for its plugin version gate; teamrig has none, as its release pull request raises the version', () => {
+  const profiles = readProfiles();
+  assert.ok(profileFor(profiles, 'GeneralA6/teamrig-pane').checks.includes('plugin version gate'));
+  assert.ok(!profileFor(profiles, 'GeneralA6/teamrig').checks.includes('plugin version gate'));
 });
 
 test('both repos keep their own local CI runner, which a ship runs before it pushes', () => {
