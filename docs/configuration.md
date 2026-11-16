@@ -759,7 +759,7 @@ How teamrig open starts a session in a new terminal tab.
 | `terminal` | one of `"auto"`, `"tmux"`, `"windows-terminal"`, `"macos-terminal"`, `"gnome-terminal"`, `"konsole"`, `"x-terminal-emulator"`, `"print"` | `"auto"` | The terminal to open the tab in. auto takes tmux inside tmux, else Windows Terminal on Windows, Terminal on macOS, or the first of gnome-terminal, konsole and x-terminal-emulator on Linux; print opens nothing and prints the command to run. teamrig open --terminal wins over it. |
 | `teamWindow` | boolean | `false` | Opens each tab of the team's sessions (teamrig open, a meeting start, a refresh restart, the idle pass's reopen and a restore after a reboot) in a Windows Terminal window of the team's own, named teamrig-\<team>, made when none is open, so each team's tabs stay apart from other teams'. Off opens them in the most recent window. Other terminals open as before. |
 | `headroom` | [object](#openheadroom) |  | The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over floorMb with the session and the tabs still loading counted, and the commit charge within commitMaxPct. One tab is admitted at a time on the host, for every team. The lead opens whatever the room. |
-| `idle` | [object](#openidle) |  | The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the delivery owner are never closed. |
+| `idle` | [object](#openidle) |  | The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The delivery owner is never closed, nor the leads open.idle.leaders keeps. |
 
 ## `open.headroom`
 
@@ -775,12 +775,14 @@ The room teamrig open and teamrig hire --yes need on the host before they add a 
 
 ## `open.idle`
 
-The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The lead and the delivery owner are never closed.
+The idle pass: it would close a session the wake check would not wake once it has been quiet open.headroom.closeIdleMinutes, and reopen it when the wake check would wake it. The delivery owner is never closed, nor the leads open.idle.leaders keeps.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `mode` | one of `"off"`, `"dry-run"`, `"on"` | `"on"` | off runs no pass; dry-run runs it and logs each close or reopen it would make, with its reason, and makes none; on, the default, also starts each of those closes and reopens, hidden, and logs its outcome. |
-| `keepOpen` | array of [session name](#shared-types) | `[]` | Sessions the idle pass and teamrig close never close for being quiet, on top of the lead and the delivery owner. |
+| `keepOpen` | array of [session name](#shared-types) | `[]` | Sessions the idle pass and teamrig close never close for being quiet, on top of the delivery owner and the leads open.idle.leaders keeps. |
+| `leaders` | one of `"root"`, `"all"` | `"root"` | Which leads are never closed for being quiet. root, the default: only the lead of the tree's root team (one with no team.parent); a child team's lead and a sub-lead close like any session once no task of theirs can start, nothing waits on them (an approval or decision they have not given, an open meeting they are in, an urgent line) and no session they lead runs, and reopen on the same triggers as any closed session. all: every team's lead stays open, as before. |
+| `reopenUnreadLines` | integer (0 to 1000) | `10` | How many inbox lines a session the idle pass closed has not seen (neither read nor shown at a prompt) reopen it, though none of them is urgent, unless its budget's rest holds it; 0 never reopens it for them. A lead or sub-lead reopens on it like any session. |
 
 ## `statusLine`
 

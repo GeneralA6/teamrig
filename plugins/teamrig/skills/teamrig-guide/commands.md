@@ -2154,9 +2154,10 @@ With `--pass` it prints, in the roster's order, what an idle pass would do, and 
 session [teamrig close](#teamrig-close) would close (quiet `open.headroom.closeIdleMinutes` or more, nothing it can
 start under the wake priority its budget leaves it, no [urgent line](hooks.md#urgent-lines) waiting to wake it),
 `KEEP` one it keeps open and why, `REOPEN` a session teamrig closed that the wake check would now wake (urgent lines
-posted for it, work handed to it since its close, or the day's start with work it can start), `LATER` such a session
+posted for it, work handed to it since its close, or, unless its budget rests it, [open.idle.reopenUnreadLines] (10)
+inbox lines it has not seen, or the day's start with work it can start), `LATER` such a session
 this pass leaves for the next (one reopen a pass, urgent lines first, the oldest first, then the most urgent top task,
-and only on a settled plugin install with room on the host), `CLOSED` one teamrig closed with nothing it can start,
+then a pile of unseen lines, and only on a settled plugin install with room on the host), `CLOSED` one teamrig closed with nothing it can start,
 and `AWAY` one not running that teamrig did not close; then a `PASS` total. A session whose project folder
 (`launch.<id>.project`, else `team.project`, else the folder holding the team's pointer) is no folder holds only
 itself: running, it is `KEEP`, closed, its reopen `LATER`, the refusal its why; the pass goes on for the rest. A tab
@@ -2207,8 +2208,10 @@ PASS 3 session(s): 0 to close, 1 to reopen, 0 to reopen later, 1 kept open, 0 cl
 
 Ends an idle session's Claude Code and its tab to free the host, and logs it in `state/session-log.jsonl`, so
 [teamrig open](#teamrig-open) goes on in that Claude Code session later (`teamrig close <id|name>`; the lead only).
-It refuses the lead, the delivery owner and a session listed in `open.idle.keepOpen`, one in the owner's open booked
-meeting (started, under 4 hours, neither ended nor dropped: the owner talks to its tab), a session not running, one
+It refuses the lead of the tree's root team (every team's lead with [open.idle.leaders] `all`), the delivery owner and a
+session listed in `open.idle.keepOpen`, one in the owner's open booked
+meeting (started, under 4 hours, neither ended nor dropped: the owner talks to its tab), a lead or sub-lead that a
+live task's approval or decision waits on (the team's lead for the owner's too) or one of whose sessions runs, a session not running, one
 with work it can start or a time wait of its own ending within 30 minutes, one quiet under
 `open.headroom.closeIdleMinutes` (60) since its transcript's last entry of the person or the model (a slash command,
 an away summary or a file change with no entry is no activity), in a turn, at a tool call (running, or waiting on a permission or an answer), waiting on a decision it put to the
