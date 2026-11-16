@@ -20,6 +20,7 @@ import {
   writeTextFile,
 } from './local-gate.ts';
 import { parsePassRecord, passRecordPath } from '../../src/push-guard/pass-record.ts';
+import { shortRecordPath } from './check-scope.ts';
 
 const TREE = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -304,5 +305,48 @@ describe('machineDeps', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('the short scope (T3414)', () => {
+  const SHORT_PATH = shortRecordPath(ROOT, '.git', TREE);
+  const OTHER_SHORT_PATH = shortRecordPath(ROOT, '.git', OTHER_TREE);
+
+  it('records a short proof apart from the pass record, so a full proof runs the checks again', async () => {
+    const { deps, out, files } = fixture();
+    assert.deepEqual(await proveHead(CHECKS, deps, 'short'), { passed: true });
+    assert.deepEqual(out.at(-1), `short checks: 2 passed on tree aaaaaaa, recorded in ${SHORT_PATH}`);
+    assert.deepEqual([...files.keys()], [SHORT_PATH]);
+    assert.equal(parsePassRecord(files.get(PATH), TREE), undefined);
+
+    const full = fixture({ files: { [SHORT_PATH]: record(TREE) } });
+    assert.deepEqual(await proveHead(CHECKS, full.deps), { passed: true });
+    assert.deepEqual(full.runs, ['lint', 'test']);
+    assert.ok(full.files.has(PATH));
+  });
+
+  it('reuses a short record or a full pass, and runs nothing', async () => {
+    for (const path of [SHORT_PATH, PATH]) {
+      const { deps, out, runs } = fixture({ files: { [path]: record(TREE, OTHER) } });
+      assert.deepEqual(await proveHead(CHECKS, deps, 'short'), { passed: true });
+      assert.deepEqual(runs, [], path);
+      assert.deepEqual(out, ['short checks: passed earlier on tree aaaaaaa (commit ccccccc, 2026-10-15T10:00:00.000Z, 2 check(s))']);
+    }
+  });
+
+  it('passes a pushed commit on its short record only for a short push, and proves the checkout short', async () => {
+    const files = { [OTHER_SHORT_PATH]: record(OTHER_TREE) };
+    const git = { [`rev-parse ${OTHER}^{tree}`]: [OTHER_TREE] };
+    const update: PushUpdate = { localRef: 'refs/heads/topic', localSha: OTHER, remoteRef: 'refs/heads/topic' };
+    const short = fixture({ git, files });
+    assert.deepEqual(await provePush([update], CHECKS, short.deps, 'short'), { passed: true });
+    assert.deepEqual(short.out, ['short checks: refs/heads/topic (tree ddddddd) passed earlier (2026-10-15T10:00:00.000Z, 2 check(s))']);
+
+    const full = fixture({ git, files });
+    assert.equal((await provePush([update], CHECKS, full.deps)).passed, false, 'a short record proves no full push');
+
+    const head = fixture({ git: { [`rev-parse ${HEAD}^{tree}`]: [TREE] } });
+    assert.deepEqual(await provePush([{ ...update, localSha: HEAD }], CHECKS, head.deps, 'short'), { passed: true });
+    assert.deepEqual([...head.files.keys()], [SHORT_PATH]);
   });
 });

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { isRecord } from '../lib/guards.ts';
-import { DEFAULT_BASE, localChecks } from './local-checks.ts';
+import { DEFAULT_BASE, changedSpecs, localChecks, shortChecks } from './local-checks.ts';
 
 const read = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
@@ -55,5 +55,38 @@ describe('localChecks', () => {
     assert.deepEqual(localChecks('upstream/main').find((check) => check.name === 'DCO')?.argv, ['node', 'tools/dco/cli.ts', '--range', 'upstream/main..HEAD']);
     assert.equal(new Set(checks.map((check) => check.name)).size, checks.length);
     assert.ok(argvs.every((argv) => !argv.includes('--github')));
+  });
+});
+
+describe('shortChecks (T3414)', () => {
+  it('runs the scrub, the DCO sign-off and the typecheck of the full list, then the given specs, and no suite or build', () => {
+    const full = new Map(localChecks('upstream/main').map((check) => [check.name, check]));
+    const checks = shortChecks('upstream/main', ['src/a.test.ts', 'tools/b.test.ts']);
+    assert.deepEqual(
+      checks.map((check) => check.name),
+      ['scrub: tree', 'scrub: commits', 'DCO', 'typecheck', 'changed specs'],
+    );
+    for (const check of checks.slice(0, 4)) assert.deepEqual(check, full.get(check.name), check.name);
+    assert.deepEqual(checks.at(-1)?.argv, ['node', '--test', 'src/a.test.ts', 'tools/b.test.ts']);
+  });
+
+  it('leaves the specs out when no changed file has one', () => {
+    assert.deepEqual(
+      shortChecks(DEFAULT_BASE, []).map((check) => check.name),
+      ['scrub: tree', 'scrub: commits', 'DCO', 'typecheck'],
+    );
+  });
+});
+
+describe('changedSpecs (T3414)', () => {
+  const tree = new Set(['src/a.test.ts', 'tools/ship/repos.test.ts', 'src/c.test.ts']);
+  const exists = (path: string): boolean => tree.has(path);
+
+  it("takes a changed spec and the spec beside any other changed file, each once, sorted", () => {
+    assert.deepEqual(changedSpecs(['src/c.ts', 'src/a.ts', 'src/a.test.ts', 'tools/ship/repos.json'], exists), ['src/a.test.ts', 'src/c.test.ts', 'tools/ship/repos.test.ts']);
+  });
+
+  it('takes no spec for a file with none beside it, a deleted spec, or a name with no extension', () => {
+    assert.deepEqual(changedSpecs(['src/b.ts', 'src/gone.test.ts', '.githooks/pre-push', 'docs/a.md', 'dir.v2/name'], exists), []);
   });
 });

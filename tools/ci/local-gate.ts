@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { readTextIfPresent } from '../lib/files.ts';
 import { createGit, type Git } from '../lib/git.ts';
-import { parsePassRecord, passRecordPath, type PassRecord } from '../../src/push-guard/pass-record.ts';
+import { parsePassRecord, type PassRecord } from '../../src/push-guard/pass-record.ts';
+import { type CheckScope, recordPathOf, recordPathsFor } from './check-scope.ts';
 import { protectedPushRefusal } from './protected-refs.ts';
 
 /**
@@ -12,7 +13,8 @@ import { protectedPushRefusal } from './protected-refs.ts';
  * tree is checked once. The record (src/push-guard/pass-record.ts) lives at `<git common dir>/local-ci/<tree sha>.json`,
  * so every worktree of the clone shares it, and is written only when every check passed on a clean checkout the
  * checks left as they found it. The pre-push hook and `tools/ci/local.ts` read it first; any tool that proves a tree
- * the same way may write it.
+ * the same way may write it. A short proof (check-scope.ts) runs fewer checks and keeps its record apart, in
+ * `local-ci/short/`, which only another short proof reads.
  */
 
 /** One check: a CI job or step, as a command run from the repo root. */
@@ -63,24 +65,34 @@ async function gitLine(git: Git, args: readonly string[]): Promise<string> {
   return (await git.text(args)).trim();
 }
 
-async function recordFile(deps: GateDeps, tree: string): Promise<string> {
-  return passRecordPath(deps.root, await gitLine(deps.git, ['rev-parse', '--git-common-dir']), tree);
+/** What a proof of each scope prints its lines as. */
+const LABEL: Readonly<Record<CheckScope, string>> = { full: 'local checks', short: 'short checks' };
+
+const commonDirOf = (deps: GateDeps): Promise<string> => gitLine(deps.git, ['rev-parse', '--git-common-dir']);
+
+/** The first record that proves `tree` for the scope (check-scope.ts), or undefined. */
+function earlierPass(deps: GateDeps, scope: CheckScope, commonDir: string, tree: string): PassRecord | undefined {
+  for (const path of recordPathsFor(scope, deps.root, commonDir, tree)) {
+    const record = parsePassRecord(deps.readText(path), tree);
+    if (record !== undefined) return record;
+  }
+  return undefined;
 }
 
 /**
- * Proves the tree checked out in the repo root: refuses uncommitted changes, reuses the tree's pass record,
- * else runs every check in order, stopping at the first failure with its output, refuses when the checks
- * changed the checkout, and records the pass.
+ * Proves the tree checked out in the repo root: refuses uncommitted changes, reuses a record that proves the tree for
+ * the scope, else runs every check in order, stopping at the first failure with its output, refuses when the checks
+ * changed the checkout, and records the pass where the scope keeps it (check-scope.ts).
  */
-export async function proveHead(checks: readonly LocalCheck[], deps: GateDeps): Promise<Verdict> {
+export async function proveHead(checks: readonly LocalCheck[], deps: GateDeps, scope: CheckScope = 'full'): Promise<Verdict> {
   const status = await deps.git.text(['status', '--porcelain']);
   if (status.trim() !== '') return { passed: false, reason: `the checkout has uncommitted changes (${firstLines(status.trim())}): commit or stash them, the checks prove a committed tree` };
   const tree = await gitLine(deps.git, ['rev-parse', 'HEAD^{tree}']);
   const commit = await gitLine(deps.git, ['rev-parse', 'HEAD']);
-  const path = await recordFile(deps, tree);
-  const earlier = parsePassRecord(deps.readText(path), tree);
+  const commonDir = await commonDirOf(deps);
+  const earlier = earlierPass(deps, scope, commonDir, tree);
   if (earlier !== undefined) {
-    deps.out(`local checks: passed earlier on tree ${short(tree)} (commit ${short(earlier.commit)}, ${earlier.passedAt}, ${earlier.checks.length} check(s))`);
+    deps.out(`${LABEL[scope]}: passed earlier on tree ${short(tree)} (commit ${short(earlier.commit)}, ${earlier.passedAt}, ${earlier.checks.length} check(s))`);
     return PASSED;
   }
   if (checks.length === 0) return { passed: false, reason: 'no checks are listed: nothing would prove the tree' };
@@ -102,8 +114,9 @@ export async function proveHead(checks: readonly LocalCheck[], deps: GateDeps): 
     return { passed: false, reason: `the checks left the checkout changed (${what}): a generated file differs from the committed one, commit it and push again` };
   }
   const record: PassRecord = { tree, commit, checks: checks.map((check) => check.name), passedAt: deps.now().toISOString(), node: deps.node };
+  const path = recordPathOf(scope, deps.root, commonDir, tree);
   deps.writeText(path, `${JSON.stringify(record, null, 2)}\n`);
-  deps.out(`local checks: ${checks.length} passed on tree ${short(tree)}, recorded in ${path}`);
+  deps.out(`${LABEL[scope]}: ${checks.length} passed on tree ${short(tree)}, recorded in ${path}`);
   return PASSED;
 }
 
@@ -132,10 +145,10 @@ export function parsePushUpdates(text: string): PushUpdate[] {
 
 /**
  * Refuses a push that updates or deletes a protected branch (protected-refs.ts), then proves each commit it sends:
- * a deletion sends none; a commit whose tree has a pass record passes; the commit checked out runs the checks; any
- * other commit is refused, since the checks run on the checkout.
+ * a deletion sends none; a commit whose tree has a record proving it for the scope passes; the commit checked out runs
+ * the checks; any other commit is refused, since the checks run on the checkout.
  */
-export async function provePush(updates: readonly PushUpdate[], checks: readonly LocalCheck[], deps: GateDeps): Promise<Verdict> {
+export async function provePush(updates: readonly PushUpdate[], checks: readonly LocalCheck[], deps: GateDeps, scope: CheckScope = 'full'): Promise<Verdict> {
   if (updates.length === 0) {
     deps.out('local checks: nothing to push');
     return PASSED;
@@ -149,15 +162,15 @@ export async function provePush(updates: readonly PushUpdate[], checks: readonly
       continue;
     }
     const tree = await gitLine(deps.git, ['rev-parse', `${update.localSha}^{tree}`]);
-    const earlier = parsePassRecord(deps.readText(await recordFile(deps, tree)), tree);
+    const earlier = earlierPass(deps, scope, await commonDirOf(deps), tree);
     if (earlier !== undefined) {
-      deps.out(`local checks: ${update.localRef} (tree ${short(tree)}) passed earlier (${earlier.passedAt}, ${earlier.checks.length} check(s))`);
+      deps.out(`${LABEL[scope]}: ${update.localRef} (tree ${short(tree)}) passed earlier (${earlier.passedAt}, ${earlier.checks.length} check(s))`);
       continue;
     }
     if (update.localSha !== head) {
       return { passed: false, reason: `${update.localRef} is at ${short(update.localSha)}, but the checkout has ${short(head)} and the checks run on the checkout: check out ${update.localRef} and push again` };
     }
-    const verdict = await proveHead(checks, deps);
+    const verdict = await proveHead(checks, deps, scope);
     if (!verdict.passed) return verdict;
   }
   return PASSED;
