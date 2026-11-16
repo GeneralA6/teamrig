@@ -14,7 +14,7 @@ const MAX_SCRIPT_DEPTH = 8;
 const PIPE_END = /(?:^|[^|])\|&?[\n(]*$/;
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command, context) {
-    const runs = { programs: [], bare: [], opaque: [], fedShells: [], foreignShells: [] };
+    const runs = { programs: [], bare: [], opaque: [], fedShells: [], foreignShells: [], envEdits: [] };
     visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, TOP, runs, SCREEN, false);
     return runs;
 }
@@ -93,6 +93,9 @@ function visitCommand(command, inlet, outlet, dialect, location, depth, scope, r
         return undefined;
     }
     const launched = launch(command.words, dialect, inlet.text);
+    if (launched.edits.set.length > 0 || launched.edits.unset.length > 0 || launched.edits.emptied) {
+        runs.envEdits.push(launched.edits);
+    }
     if (launched.kind === 'script') {
         const inner = location.child();
         launched.chdirs.forEach((chdir) => inner.moveTo(chdir, dialect));

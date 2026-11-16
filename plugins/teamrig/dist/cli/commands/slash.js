@@ -4,6 +4,7 @@ import { sessionIdOf } from "../../inbox/inbox.js";
 import { planSlash, SESSION_FLAG, sessionReads, withSession } from "../../slash/plan.js";
 import { joinWords, splitWords } from "../../slash/words.js";
 import { noPositionals } from "../args.js";
+import { underClaudeCode } from "../claude-code-env.js";
 import { openKit, rosterOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
@@ -69,6 +70,11 @@ function notThePerson(argv, origin) {
 export function slashCommand(deps) {
     return async (args, runtime) => {
         noPositionals(args);
+        // Its stdin says who typed the line, and whoever runs it writes that stdin, so only the mod runs it (T3081). The
+        // mod runs it without CLAUDECODE; a tool call, a script and a hook have it.
+        if (underClaudeCode(runtime)) {
+            throw new RefusedError(`${KIT_NAME} hook slash-command answers /${KIT_NAME} typed in a tab and runs only from the ${KIT_NAME} mod; ${ENV.claudeCode} is set, so Claude Code started this run (a tool call, a script it runs or a hook). Type /${KIT_NAME} <command> in the tab instead.`);
+        }
         const payload = parseJson(await runtime.readStdin());
         const input = slashInputOf(payload);
         const words = splitWords(input.args);

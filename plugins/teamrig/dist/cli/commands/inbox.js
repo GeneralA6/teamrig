@@ -9,7 +9,7 @@ import { SecretScanner } from "../../core/secrets.js";
 import { groupIds, parseTo, taskGroupOf, treeLeadsOf } from "../../inbox/groups.js";
 import { formatRead, formatStatus, inboxLineOf, inboxStatus, lineOnClock, postLines, readInbox } from "../../inbox/inbox.js";
 import { lineHash } from "../../inbox/line-hash.js";
-import { CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
+import { boundElsewhereOf, CLAUDE_SESSION_ID, RECEIVER_TABS, tabsOf } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
 import { routeReminderOf } from "../../inbox/route.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
@@ -17,6 +17,7 @@ import { WAKE_AT_ONCE, WAKE_NOW, wakeByOf, wakeRefusal, wakesLine } from "../../
 import { WakeAsks } from "../../wake/asks.js";
 import { wakeCost } from "../../wake/decide.js";
 import { noPositionals, requiredFlag, UsageError } from "../args.js";
+import { underClaudeCode } from "../claude-code-env.js";
 import { hookLogOf } from "../hook-logs.js";
 import { callerOf, instantOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
@@ -37,18 +38,35 @@ function claudeSessionOf(env) {
     const id = env[ENV.claudeSession];
     return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }
+/** Why a tool call's `inbox read` may not make its tab, the `bound` session, the `area` session. */
+export function rebindRefusal(bound, area) {
+    return (`${KIT_NAME} inbox read --session ${area} would make this tab, the ${bound} session, the ${area} session: a tab keeps the session it was bound to, ` +
+        `which the guards read as who runs a command, so a tool call, a script or a hook (${ENV.claudeCode} is set) cannot move it. Read ${bound}'s inbox here; ` +
+        `to move the tab, the person types /${KIT_NAME} inbox read --session ${area} in it, or ${area} runs in its own tab.`);
+}
 /**
  * `inbox read`: prints the caller's unread lines, but those the prompt hook showed this Claude Code
  * session, and marks them all read; then, when the caller holds verifying tasks, its verify queue in one line.
+ * Where Claude Code set CLAUDECODE, it refuses to move a tab already bound to another session of the roster.
  */
 export async function read(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
-    const area = sessionIdOf(await rosterOf(runtime, kit, config), caller);
+    const roster = await rosterOf(runtime, kit, config);
+    const area = sessionIdOf(roster, caller);
+    const claudeSession = claudeSessionOf(runtime.env);
+    const deps = inboxDepsOf(runtime, kit.paths);
+    // Bind once (T3081): the person may move a tab, by /teamrig or in a terminal; a tool call, a script or a hook may not.
+    if (underClaudeCode(runtime)) {
+        const bound = boundElsewhereOf((await deps.marks.read()).marks, claudeSession, area, (id) => roster.ids.includes(id));
+        if (bound !== undefined) {
+            throw new RefusedError(rebindRefusal(bound, area));
+        }
+    }
     const now = new Date(runtime.clock.now());
-    const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
+    const result = await readInbox(deps, { area, claudeSession, now });
     const zone = teamZone(config, runtime);
     result.lines.forEach((line) => runtime.out.stdout(lineOnClock(line, zone)));
     runtime.out.stdout(formatRead(result));

@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
 import { splitEnvString } from "./program-split.js";
 import { assignedWords, isExpressionHead, parseShell } from "./tokenizer.js";
+/** PowerShell: an assignment target in the env drive, `$env:NAME` or `${env:NAME}`, naming the variable. */
+const ENV_TARGET = /^\$(?:\{env:([^}]+)\}|env:([A-Za-z0-9_]+))/i;
 const WRAPPERS = new Map([
     ['command', { inspect: ['-v', '-V'] }],
     ['builtin', {}],
@@ -16,7 +18,17 @@ const WRAPPERS = new Map([
     ['time', { valued: ['-o', '-f', '--output', '--format'] }],
     ['nice', { valued: ['-n', '--adjustment'] }],
     ['ionice', { valued: ['-c', '-n', '-p', '-P', '-u', '--class', '--classdata', '--pid', '--pgid', '--uid'] }],
-    ['env', { valued: ['-u', '--unset', '-a', '--argv0'], chdir: ['-C', '--chdir'], split: ['-S', '--split-string'], assignments: true }],
+    [
+        'env',
+        {
+            valued: ['-u', '--unset', '-a', '--argv0'],
+            chdir: ['-C', '--chdir'],
+            split: ['-S', '--split-string'],
+            assignments: true,
+            unset: ['-u', '--unset'],
+            emptyEnv: ['-i', '--ignore-environment', '-'],
+        },
+    ],
     [
         'sudo',
         {
@@ -125,6 +137,15 @@ function joinWords(words, quote) {
  */
 class LaunchReader {
     env = [];
+    /** The variables a wrapper removes from the environment (`env -u NAME`). */
+    unsets = [];
+    /** True once a wrapper empties the environment (`env -i`). */
+    emptied = false;
+    /**
+     * The variables a PowerShell assignment sets in the shell's own environment (`$env:NAME = ...`): every later command
+     * of the shell gets them, but not the program on its right side, which only feeds the value.
+     */
+    shellSets = [];
     chdirs = [];
     dialect;
     /** What the command reads on stdin from the line itself: a heredoc's body or a here-string. */
@@ -139,6 +160,10 @@ class LaunchReader {
     constructor(dialect, stdin) {
         this.dialect = dialect;
         this.stdin = stdin;
+    }
+    /** What the command read so far changes in the environment of what it starts, or of the shell's later commands. */
+    edits() {
+        return { set: [...this.env, ...this.shellSets], unset: this.unsets, emptied: this.emptied };
     }
     read(words) {
         let rest = words;
@@ -205,6 +230,11 @@ class LaunchReader {
         if (right === undefined) {
             return NOTHING;
         }
+        const variable = ENV_TARGET.exec(head.text.replace(/^(?:\[[^\]]+\])+/, ''));
+        const name = variable?.[1] ?? variable?.[2];
+        if (name !== undefined) {
+            this.shellSets.push({ name, value: right[0] ?? staticWord('') });
+        }
         this.captured = true;
         return { kind: 'next', words: right };
     }
@@ -266,6 +296,10 @@ class LaunchReader {
                 index += 1;
                 break;
             }
+            if (has(spec.emptyEnv, text)) {
+                this.emptied = true;
+                continue;
+            }
             let option;
             let value;
             if (/^--[^-]/.test(text)) {
@@ -281,6 +315,7 @@ class LaunchReader {
                     if (has(spec.inspect, short)) {
                         return NOTHING;
                     }
+                    this.emptied ||= has(spec.emptyEnv, short);
                     if (takesValue(short)) {
                         option = short;
                         value = at + 1 < text.length ? { text: text.slice(at + 1), dynamic: word.dynamic } : args[(index += 1)];
@@ -304,6 +339,9 @@ class LaunchReader {
             }
             if (option !== undefined && value !== undefined && has(spec.chdir, option)) {
                 this.chdirs.push(value);
+            }
+            if (option !== undefined && value !== undefined && has(spec.unset, option)) {
+                this.unsets.push(value);
             }
             if (option !== undefined && value !== undefined && has(spec.split, option)) {
                 if (value.dynamic) {
@@ -569,7 +607,12 @@ function startProcessParameter(text) {
     const found = [...START_PROCESS_PARAMETERS].filter(([name, aliases]) => name === option || aliases.includes(option) || (option.length >= 3 && name.startsWith(option)));
     return found.length === 1 ? found[0]?.[0] : undefined;
 }
-/** What one simple command starts, given what it reads on stdin from the line, if anything; see {@link LaunchReader}. */
+/**
+ * What one simple command starts, given what it reads on stdin from the line, if anything (see {@link LaunchReader}),
+ * and what it changes in the environment of what it starts, whatever that is.
+ */
 export function launch(words, dialect, stdin) {
-    return new LaunchReader(dialect, stdin).read(words);
+    const reader = new LaunchReader(dialect, stdin);
+    const launched = reader.read(words);
+    return { ...launched, edits: reader.edits() };
 }

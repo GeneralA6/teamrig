@@ -95,6 +95,7 @@ export function refreshedIn(states, pid, now) {
  * Binds a tab /clear started to the session that refreshed in its Claude Code process: /clear keeps the
  * process but gives the tab a new Claude Code session, which no mark names, and its title may name no
  * session. Bound only when exactly one session refreshed there; the mark repeats the area's read position.
+ * A tab a mark already names keeps it (bind once, T3081): the Claude Code session comes from the hook's stdin.
  */
 export async function bindByProcess(deps, claudeSession, now) {
     const sessions = await deps.refreshedHere();
@@ -102,7 +103,10 @@ export async function bindByProcess(deps, claudeSession, now) {
     if (sessions.length !== 1 || only === undefined) {
         return undefined;
     }
-    const { byArea } = indexMarks((await deps.marks.read()).marks);
+    const { byArea, areaBySession } = indexMarks((await deps.marks.read()).marks);
+    if (areaBySession.has(claudeSession)) {
+        return undefined;
+    }
     const mark = bindMarkOf(byArea.get(only), only, claudeSession, now);
     await deps.marks.append(mark);
     return { id: only, mark };

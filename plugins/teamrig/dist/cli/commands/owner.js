@@ -1,6 +1,7 @@
 import { formatAddress } from "../../core/address.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { onePositional } from "../args.js";
+import { underClaudeCode } from "../claude-code-env.js";
 import { taskRefOf } from "../inputs.js";
 import { findTeam, openKit } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -23,8 +24,7 @@ const BUTTON = { note: 'Note', next: 'Next', wake: 'Wake' };
  * passes: every session runs as the same OS user as the owner.
  */
 export function refuseUnderClaudeCode(runtime, command) {
-    const set = runtime.env[ENV.claudeCode];
-    if (set !== undefined && set !== '') {
+    if (underClaudeCode(runtime)) {
         throw new RefusedError(`${KIT_NAME} owner ${command} acts as the owner, so it is refused where Claude Code runs it (${ENV.claudeCode} is set: an agent's tool call, a script it runs or a hook); the owner presses ${BUTTON[command]} in the pane or types /${KIT_NAME} owner ${command} in a tab`);
     }
 }

@@ -52,6 +52,19 @@ export function lastClaudeSessionOf(marks, area) {
     const mark = [...marks].reverse().find((found) => found.area === area && found.claudeSession !== null && bound.get(found.claudeSession) === area);
     return mark?.claudeSession ?? undefined;
 }
+/**
+ * The session a read as `area` must not move the tab off (T3081): the area the tab `claudeSession` is
+ * bound to, when that is another area still on the roster (`onRoster`). The guards take a tab's session from its
+ * newest mark, so a tool call's read binds the tab only once. Undefined when
+ * the read binds nothing new: no Claude Code session, a tab bound to no area or to `area`, or to one that left.
+ */
+export function boundElsewhereOf(marks, claudeSession, area, onRoster) {
+    if (claudeSession === null) {
+        return undefined;
+    }
+    const bound = indexMarks(marks).areaBySession.get(claudeSession);
+    return bound !== undefined && bound !== area && onRoster(bound) ? bound : undefined;
+}
 /** The newest mark wins, both for an area's read position and for a session's area. */
 export function indexMarks(marks) {
     const byArea = new Map();

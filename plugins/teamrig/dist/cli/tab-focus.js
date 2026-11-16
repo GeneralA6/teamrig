@@ -1,6 +1,6 @@
-import { ENV } from "../core/home.js";
 import { MeetingSchedule, meetingsOnOf } from "../meeting/schedule.js";
 import { MeetingStore, phaseOf } from "../meeting/state.js";
+import { underClaudeCode } from "./claude-code-env.js";
 import { loadTree } from "./tree.js";
 /**
  * Whether a tab a command opens takes the focus (T2510): only when the human typed the command, which Claude Code's
@@ -9,8 +9,7 @@ import { loadTree } from "./tree.js";
  * out of the meeting.
  */
 export async function tabFocusOf(runtime) {
-    const claudeCode = runtime.env[ENV.claudeCode];
-    if (claudeCode !== undefined && claudeCode !== '') {
+    if (underClaudeCode(runtime)) {
         return 'keep';
     }
     const { teams } = await loadTree(runtime);
