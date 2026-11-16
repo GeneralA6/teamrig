@@ -6,7 +6,7 @@
  */
 import { isRecord } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
-import { isInsider } from "./trust.js";
+import { isInsideAuthor } from "./trust.js";
 /** The kinds of thread, each with its own answer target. */
 export const THREAD_KINDS = ['security', 'bug', 'pull', 'comment', 'feature'];
 const HOUR_MS = 3_600_000;
@@ -73,7 +73,7 @@ export function issueThread(issue, ref, owner, held) {
     }
     const opening = issue.createdAt === undefined || issue.authorKind === BOT ? [] : [{ at: issue.createdAt, association: issue.authorAssociation }];
     const comments = issue.comments.filter((comment) => comment.authorKind !== BOT).map((comment) => ({ at: comment.at, association: comment.authorAssociation }));
-    const posts = [...opening, ...comments].map((post) => ({ at: Date.parse(post.at), ours: isInsider(post.association) }));
+    const posts = [...opening, ...comments].map((post) => ({ at: Date.parse(post.at), ours: isInsideAuthor(post.association) }));
     return { repo: issue.repo, ref, kind: issueKind(issue.labels, held), owner, posts };
 }
 /** An app's or a workflow's account kind: its posts are no one's answer and no one's ask. */

@@ -4,6 +4,22 @@
  * deleted author) waits for the accept label.
  */
 const TRUSTED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+/** Whether an author tie, as GitHub names it, is one inside the repository: its owner, a member or a collaborator. */
+export function isInsideAuthor(association) {
+    return TRUSTED_ASSOCIATIONS.has(association.toUpperCase());
+}
+/** The team's own logins (`OurLogins`); the config keeps `github.owners`' keys in lowercase already. */
+export function ourLogins(github) {
+    return new Set(Object.keys(github.owners).map((login) => login.toLowerCase()));
+}
+/**
+ * Whether a pull request's author is one of the team's own: the repository's owner, or a login in `ours`. An inside
+ * tie alone is not enough (security pass T3030 C9): a collaborator or a member the team never named can push a
+ * `t<id>-...` branch, and its news would then reach that task's session as the session's own.
+ */
+export function isOurAuthor(association, author, ours) {
+    return association.toUpperCase() === 'OWNER' || (author !== '' && ours.has(author.toLowerCase()));
+}
 /** The account kind of a person on GitHub; a `Bot` (an app or a workflow) or an `Organization` never accepts. */
 const PERSON = 'User';
 /** Whether an author of this tie to the repository is one of us: its owner, an organization member or a collaborator. */
@@ -17,7 +33,7 @@ export function isInsider(association) {
  * (the person who accepted read the older text), until someone adds the label again.
  */
 export function issueTrust(issue, acceptLabel) {
-    if (isInsider(issue.authorAssociation)) {
+    if (isInsideAuthor(issue.authorAssociation)) {
         return 'trusted';
     }
     if (!issue.labels.some((label) => sameLabel(label, acceptLabel))) {

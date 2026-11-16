@@ -3,8 +3,8 @@ import { endOf } from "../test-run/shell.js";
 import { MANAGED_LABEL_SPECS } from "../issues/managed-labels.js";
 import { QUERY_VARIABLES, RAW_FIELD } from "./queries.js";
 /**
- * The kinds of `gh` command line teamrig runs: a page of a shipped issue query (the import and the links read, which
- * never write to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), one
+ * The kinds of `gh` command line teamrig runs: a page of a shipped query (the issue import, the links read and the
+ * pull request monitor, which never write to GitHub), the creation of one issue (issue migrate, which opens an issue for a team task), one
  * comment on or the close of one issue or pull request (issue comment and issue close, a close with or without its
  * reason), its body replaced (issue edit), its labels: the read of one label of a repository, labels added to one
  * issue, one label taken off it (issue label), the read of one issue, for the id a duplicate close names (issue close
@@ -12,9 +12,10 @@ import { QUERY_VARIABLES, RAW_FIELD } from "./queries.js";
  * in, and the read of whether one login may be assigned (the status push), one login taken off one issue's
  * assignees (a claim the sync made that ran out), the creation of one of the labels teamrig makes (the status push
  * and issue label), one sub-issue or blocked-by link added (issue links), and `issue watch`'s two probes,
- * conditional reads that tell whether a repository changed (isWatchProbe). The runner refuses any other command line
- * before it starts: no title or state edit besides the close, no reopen, removal of more than one assignee at once,
- * label create but teamrig's own, label edit or delete, link removal, merge or branch delete.
+ * conditional reads that tell whether a repository changed (isWatchProbe), and the read of one failed Actions job's
+ * log (the pull request monitor names its failed step). The runner refuses any other command line before it starts:
+ * no title or state edit besides the close, no reopen, removal of more than one assignee at once, label create but
+ * teamrig's own, label edit or delete, link removal, merge, branch delete, run rerun or cancel, or log download.
  *
  * isIssueQuery is true for `gh api graphql -f query=<a text of queries.ts> -f <variable>=<value> ...` and nothing more: the query
  * word for word, each variable one it declares and given once, every field raw (`-f`). Any other flag (`-F`,
@@ -392,6 +393,27 @@ function rawPairs(args) {
     }
     return pairs;
 }
+/** The command line that reads the failed steps' log of one Actions job of `repo`, the job named by its id. */
+export function jobLogArgs(repo, jobId) {
+    return ['run', 'view', '--job', String(jobId), '--log-failed', '--repo', repo];
+}
+/** An Actions job's id: a positive whole number, never a flag or a path. */
+const JOB_ID = /^[1-9][0-9]{0,15}$/;
+/**
+ * True for `gh run view --job <id> --log-failed --repo <owner>/<name>` and nothing more: the failed steps' log of one
+ * job printed, a read. Any other flag (`--web`, `--exit-status`, `--log`), order or subcommand (`rerun`, `cancel`,
+ * `download`) is refused, so the run cannot change a run, open a browser or write a file.
+ */
+export function isJobLogRead(args) {
+    return (args.length === 7 &&
+        args[0] === 'run' &&
+        args[1] === 'view' &&
+        args[2] === '--job' &&
+        JOB_ID.test(args[3] ?? '') &&
+        args[4] === '--log-failed' &&
+        args[5] === '--repo' &&
+        REPO_NAME.test(args[6] ?? ''));
+}
 /** How long one `gh` run may take before it is stopped: a page of a hundred issues takes seconds. */
 export const GH_TIMEOUT_MS = 60_000;
 /**
@@ -446,11 +468,11 @@ export function isLinkAdd(args) {
         field.slice(0, equals) === key &&
         HOST_ID.test(field.slice(equals + 1)));
 }
-/** A command line the runner will not start: none of a shipped issue query's page, a watch probe, one issue's creation, comment, body, labels, close or link. */
+/** A command line the runner will not start: none of a shipped query's page, a watch probe, one issue's creation, comment, body, labels, close or link, or a failed job's log. */
 export class GhRefusedError extends Error {
     name = 'GhRefusedError';
     constructor(args) {
-        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, and to open, read, comment on, edit the body of, label, assign, close or link an issue: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
+        super(`teamrig only runs gh for its shipped issue queries, its two watch probes, to open, read, comment on, edit the body of, label, assign, close or link an issue, and to read a failed job's log: it refuses gh ${args.slice(0, 2).join(' ')} with these arguments`);
     }
 }
 /** True for each command line the runner starts. */
@@ -471,7 +493,8 @@ export function isAllowedGh(args) {
         isUserRead(args) ||
         isLabelCreate(args) ||
         isLinkAdd(args) ||
-        isWatchProbe(args));
+        isWatchProbe(args) ||
+        isJobLogRead(args));
 }
 /**
  * The real runner: `spawn` with no shell, so an issue title or a repository name can never become a

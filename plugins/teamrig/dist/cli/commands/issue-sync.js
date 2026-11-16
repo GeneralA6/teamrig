@@ -1,8 +1,12 @@
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { addedTasks } from "../../github/auto.js";
-import { importRules } from "../../github/map.js";
+import { importRules, issueOwner, issueRef } from "../../github/map.js";
 import { importedTasks, linkedRefs, planSync } from "../../github/plan.js";
+import { withCiExcerpts } from "../../github/ci-excerpt.js";
+import { securityIssues } from "../../github/security-alert.js";
+import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient } from "../../github/pull-news.js";
+import { ourLogins } from "../../github/trust.js";
 import { applySteps, closedSince } from "../../github/sync.js";
 import { autoPushWrites, sessionLogins } from "../../issues/status-push.js";
 import { priorityText } from "../../register/model.js";
@@ -15,7 +19,7 @@ import { teamRegister } from "../team-register.js";
 import { claimBudget, recordClaims } from "./issue-claim.js";
 import { recordClocks, repoThreads } from "./issue-clock.js";
 import { issuePush, pushEndLine, pushRepos } from "./issue-push.js";
-import { GITHUB_OFF, githubOff, reportAutoSync } from "./issue-sync-auto.js";
+import { GITHUB_OFF, githubOff, readSyncState, reportAutoSync } from "./issue-sync-auto.js";
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
 /** The left-out issue numbers a repository's LEFT OUT line names; the rest are counted. */
@@ -30,8 +34,11 @@ export const SHOWN_LEFT_OUT = 20;
  * shows what it would write and writes nothing. Either way a LEFT OUT line names, by number only, the open
  * issues of a repository that the trust rule kept out (github/trust.ts). `--auto`, which the watch runs when GitHub changed (issue-watch.ts), writes as
  * `--yes` does and tells each owner's inbox its new tasks, and the lead's when the failing repositories change or
- * an issue is newly left out. Exit 1 when a repository could not be read (its tasks stay
- * as they are), 2 when the register refused a step, else 0.
+ * an issue is newly left out. Each repository's pull requests are read too and compared with what the last
+ * `--auto` read of them (pull-news.ts): a PULL NEWS line per session names what happened since, but only `--auto`
+ * keeps what it read and tells each session's inbox, so a run by hand changes nothing there. Exit 1 when a
+ * repository could not be read (its tasks stay as they are, and its pull request watch), 2 when the register
+ * refused a step, else 0.
  */
 export async function issueSync(args, runtime) {
     noPositionals(args);
@@ -69,6 +76,10 @@ export async function issueSync(args, runtime) {
     const failures = [];
     const leftOut = new Map();
     const unread = new Set();
+    const watched = (await readSyncState(runtime, kit))?.pulls ?? new Map();
+    const pulls = new Map();
+    const pullNews = [];
+    const security = new Map();
     let written = 0;
     /** The open threads of the repositories read, for the response clock, and those repositories. */
     const threads = [];
@@ -96,27 +107,54 @@ export async function issueSync(args, runtime) {
         }
         read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
         const tasks = [...(await register.snapshot()).state.tasks.values()];
-        const plan = planSync(read.issues, importedTasks(tasks), rules, linkedRefs(tasks));
+        const imported = importedTasks(tasks);
+        const plan = planSync(read.issues, imported, rules, linkedRefs(tasks));
+        // A security issue goes to its task's owner, else where the import would route it; an outsider's left-out report too.
+        security.set(repo, securityIssues(read.issues, (issue) => imported.get(issueRef(issue.repo, issue.number))?.owner ?? issueOwner(issue, rules)));
         leftOut.set(repo, plan.leftOut);
         const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
-        if (!write) {
+        let end = 'ok';
+        if (write) {
+            const outcomes = await applySteps(register, plan.steps);
+            // Against the tasks as written, so an issue the import just took is held by its new task.
+            threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
+            clocked.add(repo);
+            claimRead.set(repo, read.issues);
+            [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
+            written += outcomes.filter((outcome) => outcome.result.ok).length;
+            added.push(...addedTasks(outcomes));
+            const refused = refusedReason(outcomes);
+            if (refused !== undefined) {
+                failures.push({ repo, reason: refused });
+                end = 'refused';
+            }
+        }
+        else {
             [...previewLines(repo, plan), ...leftOutText].forEach(say);
-            ends.push('ok');
+        }
+        const watch = await readPulls(host, repo, watched.get(repo));
+        watch.lines.forEach(say);
+        if (watch.kind === 'failed') {
+            if (end === 'ok') {
+                failures.push({ repo, reason: watch.reason });
+            }
+            ends.push('failed');
             continue;
         }
-        const outcomes = await applySteps(register, plan.steps);
-        // Against the tasks as written, so an issue the import just took is held by its new task.
-        threads.push(...repoThreads(read.issues, [...(await register.snapshot()).state.tasks.values()], rules));
-        clocked.add(repo);
-        claimRead.set(repo, read.issues);
-        [...resultLines(repo, plan, outcomes), ...leftOutText].forEach(say);
-        written += outcomes.filter((outcome) => outcome.result.ok).length;
-        added.push(...addedTasks(outcomes));
-        const refused = refusedReason(outcomes);
-        if (refused !== undefined) {
-            failures.push({ repo, reason: refused });
-        }
-        ends.push(refused === undefined ? 'ok' : 'refused');
+        pulls.set(repo, watch.after);
+        pullNews.push(...watch.events);
+        ends.push(end);
+    }
+    const owners = new Map([...(await register.snapshot()).state.tasks.values()].map((task) => [task.id, task.owner]));
+    const watcher = config.github.watcher ?? config.roles.lead;
+    // Only --auto tells the news, so only it reads the failed jobs' logs for it and writes their excerpts.
+    const ours = ourLogins(config.github);
+    const ci = auto ? await withCiExcerpts({ host, files: runtime.files, dir: kit.paths.githubCi, now: new Date(runtime.clock.now()).toISOString(), ours }, pullNews) : { events: pullNews, lines: [] };
+    ci.lines.forEach(say);
+    const news = eventsByRecipient(ci.events, (pull) => pullRecipient(pull, ours, (task) => owners.get(task), watcher));
+    for (const [to, events] of news) {
+        const { text, wake } = pullNewsText(events, ours);
+        say(`PULL NEWS ${to}${wake ? ' (wakes)' : ''}: ${text}`);
     }
     if (write) {
         (await recordClocks(runtime, kit, config, clocked, threads)).forEach(say);
@@ -149,12 +187,28 @@ export async function issueSync(args, runtime) {
         }
     }
     if (auto) {
-        (await reportAutoSync(runtime, kit, config, { added, failures, leftOut })).forEach(say);
+        (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security })).forEach(say);
+    }
+    else if (news.size > 0) {
+        say(`NOTE only ${KIT_NAME} issue sync --auto tells the pull request news and keeps what it read, so the next run names it again`);
     }
     say(write
         ? `WROTE ${written} change(s) to the task list as ${GITHUB_ACTOR}${pushing ? '' : '; GitHub was only read'}`
         : `PREVIEW nothing was written; ${KIT_NAME} issue sync --yes writes the above as ${GITHUB_ACTOR}`);
     return ends.includes('failed') ? EXIT.failed : ends.includes('refused') ? EXIT.refused : EXIT.ok;
+}
+/**
+ * Reads `repo`'s pull requests and compares them with `before`, the watch the last `--auto` run kept (pull-news.ts).
+ * The first read of a repository only marks, so the news starts with the next one.
+ */
+async function readPulls(host, repo, before) {
+    const read = await host.pulls(repo, before?.cursor);
+    if (read.kind === 'failed') {
+        const reason = `pull requests: ${read.reason}`;
+        return { kind: 'failed', reason, lines: [`FAILED ${repo} ${reason}; what was last read of them stays`] };
+    }
+    const step = pullEvents(before, read.open, read.changed);
+    return { kind: 'read', after: step.after, events: step.events, lines: read.notes.map((note) => `NOTE ${repo}: ${note}`) };
 }
 /** Why the task list refused some of a repository's steps: how many, and the first one's error; undefined when none was. */
 function refusedReason(outcomes) {

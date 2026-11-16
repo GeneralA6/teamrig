@@ -1,6 +1,6 @@
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { HOST_ID } from "./gh.js";
-import { failureText, nodesOf, plainLine, startFailureText } from "./issues.js";
+import { ISSUE_READ, nodesOf, plainLine, runRead } from "./issues.js";
 import { linksPageArgs } from "./queries.js";
 /**
  * The most issues a links read takes before it stops asking for pages. Unlike the import, it reads closed issues
@@ -42,17 +42,8 @@ export async function listLinks(gh, access, repo, limit = LINKED_ISSUE_LIMIT) {
     return { kind: 'listed', issues, notes };
 }
 async function readLinksPage(gh, access, repo, args) {
-    let result;
-    try {
-        result = await gh.run({ args, env: access.env });
-    }
-    catch (error) {
-        return { kind: 'failed', reason: startFailureText(error) };
-    }
-    if (result.end.kind !== 'exited' || result.end.code !== 0) {
-        return { kind: 'failed', reason: failureText(repo, result, access) };
-    }
-    return parseLinksPage(result.stdout, repo);
+    const ran = await runRead(gh, access, repo, args, ISSUE_READ);
+    return ran.kind === 'failed' ? ran : parseLinksPage(ran.stdout, repo);
 }
 /**
  * One page as `gh api graphql` prints the links query (`data.repository.issues`). An issue whose id, parent or any

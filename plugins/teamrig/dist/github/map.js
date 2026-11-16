@@ -15,6 +15,7 @@ export function importRules(config) {
         maxTitle: config.register.maxTitle,
         priorities: config.register.priorities.map((level) => level.id),
         owners: new Map(Object.entries(config.github.owners)),
+        areaOwners: new Map(Object.entries(config.github.areaOwners)),
         repoSessions: new Map(Object.entries(config.github.sessions)),
         lead: config.roles.lead,
         secrets: new SecretScanner(config.register.secretPatterns),
@@ -81,13 +82,20 @@ export function issuePriority(labels, priorities) {
     return priorities.includes(ISSUE_PRIORITY) ? ISSUE_PRIORITY : (priorities.at(-1) ?? ISSUE_PRIORITY);
 }
 /**
- * Who an issue's task goes to: the session of its first assignee `github.owners` lists, in GitHub's order;
- * else its repository's session in `github.sessions`; else the lead.
+ * Who an issue's task goes to: the session of its first assignee `github.owners` lists, in GitHub's order; else
+ * the session of the first label in `github.areaOwners` the issue carries, in the config's order (a person's pick
+ * beats the area); else its repository's session in `github.sessions`; else the lead.
  */
 export function issueOwner(issue, rules) {
     for (const login of issue.assignees) {
         const session = rules.owners.get(login.toLowerCase());
         if (session !== undefined) {
+            return session;
+        }
+    }
+    const labels = new Set(issue.labels.map((label) => label.toLowerCase()));
+    for (const [label, session] of rules.areaOwners) {
+        if (labels.has(label)) {
             return session;
         }
     }
