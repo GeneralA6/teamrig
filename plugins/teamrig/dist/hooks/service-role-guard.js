@@ -9,9 +9,9 @@ import { holdBackOutput, refusalOutput } from "./permission.js";
  * `revoke` therefore always asks the owner, whatever `--yes` says (refused when asks are off), and the route allow
  * never lets one through, as it allows only what every guard passed. A session's own write of an owner-gated key
  * (OWNER_GATED_KEYS: `serviceRoles`, the roles, the guards and allow rules, the commands teamrig runs; T3083)
- * is refused: a file tool whose result changes one in the team config, or cannot be read, and a shell line
- * naming the team config file at all, since a shell line's writes cannot be told from its reads (the Read tool stays
- * open). The config's other keys stay a session's to edit. Like
+ * is refused: a file tool whose result changes one in any team's config, or cannot be read, by any spelling that
+ * reaches the file (T2984), and a shell line naming a team config file at all, since a shell line's writes cannot be
+ * told from its reads (the Read tool stays open). The config's other keys stay a session's to edit. Like
  * the pass-record guard it reads only the call: a script the session writes and starts still reaches the file, as
  * sessions and the owner share one account (stopgap T791). A teamrig call whose subcommand is only known when it runs,
  * and a shell fed by a pipe, are the exec guard's to refuse.
@@ -52,20 +52,51 @@ const FILE_WRITERS = new Map([
     ['NotebookEdit', 'notebook_path'],
 ]);
 const SHELLS = new Set(['Bash', 'PowerShell']);
-/** A team config path in a line: `teams/<team>/config.json`, any slash, a glob or variable as the team too. */
-const TEAM_CONFIG_TAIL = /teams[\\/]+[^\s\\/'"]+[\\/]+config\.json(?![\w.-])/i;
-/** `config.json` as a file name of its own: not `tsconfig.json` or `config.json5`. */
-const CONFIG_FILE_WORD = /(?<![\w.-])config\.json(?![\w.-])/i;
+/**
+ * A team config path in a line: `teams/<team>/config.json`, any slash, a glob or variable as the team too, its 8.3
+ * short name (`CONFIG~1.JSO`) and the trailing dots Windows drops (`config.json.`) included.
+ */
+const TEAM_CONFIG_TAIL = /teams[\\/]+[^\s\\/'"]+[\\/]+config(?:\.json|~\d+\.jso)(?![\w-]|\.+[\w-])/i;
+/** `config.json` as a file name of its own (its short name too): not `tsconfig.json`, `config.json5` or `config.json.bak`. */
+const CONFIG_FILE_WORD = /(?<![\w.-])config(?:\.json|~\d+\.jso)(?![\w-]|\.+[\w-])/i;
 /** A line reaching into the kit home: its folder, or the variable that moves it. */
 const KIT_HOME_WORD = /(?<![\w-])\.teamrig(?![\w-])|TEAMRIG_HOME/i;
+/** A team config's file name, or its 8.3 short name (`CONFIG~1.JSO`), as a path's last segment. */
+const CONFIG_NAME = /^config(?:\.json|~\d+\.jso)$/i;
 /** True when the words run `roles grant` or `roles revoke`, or a `roles` command only known when it runs. */
 function startsRoleChange(words) {
     const [group, action] = words;
     return group !== undefined && !group.dynamic && group.text === 'roles' && action !== undefined && (action.dynamic || ROLE_CHANGES.has(action.text));
 }
-/** A path as the platform compares it: absolute against the folder, one slash, any case on Windows. */
+/**
+ * A path as the platform compares it: absolute against the folder, one slash, any case on Windows, where each
+ * segment also drops the trailing dots and spaces Windows ignores (`config.json.` opens `config.json`).
+ */
 function samePathKey(path, cwd, platform) {
-    return platform === 'win32' ? win32.resolve(cwd, path).replaceAll('\\', '/').toLowerCase() : posix.resolve(cwd, path);
+    if (platform !== 'win32') {
+        return posix.resolve(cwd, path);
+    }
+    const segments = win32.resolve(cwd, path).replaceAll('\\', '/').toLowerCase().split('/');
+    return segments.map((segment, index) => (index === 0 ? segment : segment.replace(/[. ]+$/, ''))).join('/');
+}
+/** A path's last segment, past a leading drive (`C:config.json` names `config.json`). */
+function lastSegmentOf(path) {
+    const undriven = path.replace(/^[a-z]:/i, '');
+    return undriven.slice(Math.max(undriven.lastIndexOf('/'), undriven.lastIndexOf('\\')) + 1);
+}
+/** How a Windows path reaches a file past its plain spelling, or undefined for a plain one. */
+function aliasFormOf(path) {
+    if (/^[\\/]{2}[?.][\\/]/.test(path)) {
+        return 'a device path';
+    }
+    if (/^[\\/]{2}[^\\/]/.test(path)) {
+        return 'a network share path';
+    }
+    return lastSegmentOf(path).includes(':') ? 'an alternate data stream' : undefined;
+}
+/** The file name Windows opens for a path: its last segment with a stream cut and trailing dots and spaces dropped. */
+function openedNameOf(path) {
+    return (lastSegmentOf(path).split(':')[0] ?? '').replace(/[. ]+$/, '');
 }
 /** The kit home a team config sits in: `<home>/teams/<team>/config.json`. */
 function kitHomeOf(configPath, platform) {
@@ -74,21 +105,30 @@ function kitHomeOf(configPath, platform) {
 }
 /** A Git Bash drive path's head, `/c/`, which Windows tools read as the drive `c:/`. */
 const MSYS_DRIVE = /^\/([a-z])(?=\/)/i;
-/** A team config by its tail, `teams/<team>/config.json`, on a path in its compare form (one slash kind). */
-const TEAM_CONFIG_FILE = /(?:^|\/)teams\/+[^/]+\/+config\.json$/i;
 /**
- * The absolute path of the team config a file tool's path names, or undefined for another file (T3083). Any team's
- * config counts, not only the session's own, as each team's guards read their own; it is told by the same tail the
- * shell check uses, so the kit home's spelling (a Git Bash `/c/` drive, a `\\?\` long path) cannot hide it, and a
- * session with no team config of its own is still held to it.
+ * A team config by its tail, `teams/<team>/config.json`, on a path in its compare form (one slash kind). Its 8.3 short
+ * name (`CONFIG~1.JSO`) counts too: Windows opens the config by it, and the real path gives it back unchanged.
  */
-function teamConfigTarget(target, cwd, platform, configPath) {
-    const native = platform === 'win32' ? target.replace(MSYS_DRIVE, '$1:') : target;
-    const key = samePathKey(native, cwd, platform);
-    if (configPath !== undefined && key === samePathKey(configPath, cwd, platform)) {
-        return configPath;
+const TEAM_CONFIG_FILE = /(?:^|\/)teams\/+[^/]+\/+config(?:\.json|~\d+\.jso)$/i;
+/**
+ * The absolute path of the team config a file tool's path names, or undefined for another file. Any team's config
+ * counts, not only the session's own, as each team's guards read their own (T3083). It is told by the same tail the
+ * shell check uses, so the kit home's spelling (a Git Bash `/c/` drive, a `\\?\` long path) cannot hide it and a
+ * session with no team config of its own is still held to it; then by its real path, so a link to one is one too
+ * (T2984).
+ */
+async function teamConfigOf(path, cwd, env) {
+    const native = env.platform === 'win32' ? path.replace(MSYS_DRIVE, '$1:') : path;
+    const key = samePathKey(native, cwd, env.platform);
+    if (env.configPath !== undefined && key === samePathKey(env.configPath, cwd, env.platform)) {
+        return env.configPath;
     }
-    return TEAM_CONFIG_FILE.test(key) ? (platform === 'win32' ? win32 : posix).resolve(cwd, native) : undefined;
+    const absolute = (env.platform === 'win32' ? win32 : posix).resolve(cwd, native);
+    if (TEAM_CONFIG_FILE.test(key)) {
+        return absolute;
+    }
+    const real = await env.canonical(absolute);
+    return real !== undefined && TEAM_CONFIG_FILE.test(samePathKey(real, cwd, env.platform)) ? real : undefined;
 }
 /** The config text as JSON, or undefined when there is none or it is no JSON object. */
 function configOf(text) {
@@ -175,8 +215,9 @@ function namesTeamConfig(command, cwd, env, configPath) {
 }
 const ROLE_CHANGE_ASK = 'teamrig service-role guard: `teamrig roles grant` and `revoke` change who may run a service role\'s commands past ' +
     'every permission check, a permission only the owner gives, so teamrig asks the owner at each session\'s call, ' +
-    'whatever --yes says. Owner: allow it only if you asked for this change. A session does not retry it or route ' +
-    'around it: the lead puts the change to the owner, who runs it from their own terminal or prompt.';
+    'whatever --yes says. Owner: allow it only if you asked for this change; a grant first shows what its commands ' +
+    'reach, pull requests and outside authors included. A session does not retry it or route around it: the lead puts ' +
+    'the change to the owner, who runs it from their own terminal or prompt.';
 function editRefusalOf(reach) {
     return (`teamrig config guard: ${reach}. Its owner-gated keys (${OWNER_GATED_KEYS.map((keyPath) => keyPath.join('.')).join(', ')}) ` +
         'are permissions or owner gates, the owner\'s to change: a service role\'s holders with `teamrig roles grant` or ' +
@@ -201,7 +242,11 @@ export async function serviceRoleGuardOutput(payload, env) {
         if (path === undefined) {
             return '';
         }
-        const configFile = teamConfigTarget(path, cwd, env.platform, env.configPath);
+        const alias = env.platform === 'win32' ? aliasFormOf(path) : undefined;
+        if (alias !== undefined && CONFIG_NAME.test(openedNameOf(path))) {
+            return refusalOutput(editRefusalOf(`this ${tool} names a config.json through ${alias} (${path}), a spelling the guard cannot hold to one file`));
+        }
+        const configFile = await teamConfigOf(path, cwd, env);
         if (configFile === undefined) {
             return '';
         }

@@ -1,5 +1,5 @@
 import { describeRole, granted, revoked } from "../../config/service-role-edits.js";
-import { isServiceCommand, SERVICE_COMMANDS } from "../../permissions/service-commands.js";
+import { isServiceCommand, SERVICE_COMMAND_REACH, SERVICE_COMMANDS } from "../../permissions/service-commands.js";
 import { noPositionals, onePositional, UsageError } from "../args.js";
 import { listOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, configLockOf, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
@@ -43,13 +43,18 @@ async function changeRoles(args, runtime, name, change) {
         }
         const next = withRoles(file, planned.value);
         checkedNextConfig(next);
-        const what = describeRole(name, planned.value[name]);
+        const role = planned.value[name];
+        const what = describeRole(name, role);
+        // A grant shows what its commands reach, pull requests included, so the owner says yes to that (T2984).
+        const reach = change.verb === 'grant' && role !== undefined ? role.commands.map((command) => `REACH ${command}: ${SERVICE_COMMAND_REACH[command]}`) : [];
         if (!args.switches.has('yes')) {
             runtime.out.stdout(`PREVIEW roles ${change.verb} ${what}; nothing written (add --yes to write)`);
+            reach.forEach((line) => runtime.out.stdout(line));
             return EXIT.ok;
         }
         const backup = await writer.write(next, change.backupName);
         runtime.out.stdout(`${change.verb === 'grant' ? 'GRANTED' : 'REVOKED'} ${what}; the old config is at ${backup}`);
+        reach.forEach((line) => runtime.out.stdout(line));
         return EXIT.ok;
     });
 }

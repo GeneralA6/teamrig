@@ -1471,6 +1471,7 @@ function parsePrompts(read, raw) {
     return {
         hookAsks: isHookAsks(asks) ? asks : DEFAULT_PROMPTS.hookAsks,
         routeAllow: isRouteAllow(routeAllow) ? routeAllow : DEFAULT_PROMPTS.routeAllow,
+        serviceRoleDailyCap: read.integer(raw, 'serviceRoleDailyCap', 'prompts', DEFAULT_PROMPTS.serviceRoleDailyCap, CONFIG_LIMITS.serviceRoleDailyCap),
     };
 }
 const isShellPrefix = (value) => PREFIX_PATTERN.test(value) ? undefined : 'expected words of letters, digits and _ @ . / : = + -, one space apart, the first naming a program';

@@ -95,7 +95,7 @@ export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'], pushT
 export const DEFAULT_PACKAGE_GUARD = { adHocRunners: 'deny', installs: 'deny', cooldownDays: 14 };
 /** Refused by default: the hooks are the repository's own checks, and a session that skips them ships what they would catch. */
 export const DEFAULT_COMMIT_GUARD = { skipHooks: 'deny' };
-export const DEFAULT_PROMPTS = { hookAsks: 'ask', routeAllow: 'on' };
+export const DEFAULT_PROMPTS = { hookAsks: 'ask', routeAllow: 'on', serviceRoleDailyCap: 10 };
 /** Refused by default: a secret printed into a session lands in its transcript and every later prompt (T660, 10-19). */
 export const DEFAULT_SECRET_GUARD = { secretReads: 'deny', writes: 'deny', paths: [], envNames: [], commands: [], redact: true };
 /**

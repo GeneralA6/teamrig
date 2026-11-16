@@ -182,17 +182,17 @@ export function execGuardOutputOf(runtime, guard, payload) {
 }
 /**
  * The service-role guard's answer (T2984): an ask before a session's `roles grant` or `revoke`, a refusal of its own
- * write of `serviceRoles`. The config path comes from the kit even when its config cannot be loaded, so a broken
- * config is no way around it; the file is read again at each call.
+ * write of `serviceRoles` in any team's config. The config path comes from the kit even when its config cannot be
+ * loaded, so a broken config is no way around it; the file is read again at each call.
  */
 export function serviceRoleGuardOutputOf(runtime, guard, payload) {
-    const configPath = guard.kit?.load.path;
     return serviceRoleGuardOutput(payload, {
         cwd: runtime.cwd,
         home: runtime.userHome,
         hookAsks: hookAsksOf(guard.load),
         platform: runtime.platform,
-        configPath,
+        configPath: guard.kit?.load.path,
         readConfig: (path) => runtime.files.read(path),
+        canonical: (path) => runtime.worktrees.files.canonical(path),
     });
 }
