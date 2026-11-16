@@ -1,4 +1,4 @@
-import { basename } from 'node:path';
+import { basename, posix } from 'node:path';
 import { WEB_FETCH_TOOL, type ToolUse } from '../budget/line.ts';
 import { kindOf } from '../budget/patterns.ts';
 import { runWorkOf, SHELL_DIALECTS } from '../budget/run-work.ts';
@@ -30,12 +30,45 @@ const HAND_OFF =
   'The lead hands such work to the owning session (a register task), a helper or a hired worker, and keeps to deciding and briefing [leadBoundary].';
 
 /** A path or command with forward slashes, the home spellings (`~`, `$HOME`, `$env:USERPROFILE`) and Git Bash drives (`/c/`) written out, in lower case. */
-function normalized(text: string, home: string): string {
+function spelled(text: string, home: string): string {
   return text
     .replace(/\\+/g, '/')
     .replace(/\$\{?HOME\}?|\$env:USERPROFILE|~(?=\/|$)/gi, () => home)
     .replace(/(^|[\s"'=])\/([a-z])\//gi, (_match: string, before: string, drive: string) => `${before}${drive}:/`)
     .toLowerCase();
+}
+
+/**
+ * A path with `.` and `..` resolved, so the hook places the folder the path reaches and not the ones it names on the
+ * way (GeneralA6/teamrig#1278).
+ */
+function normalized(path: string, home: string): string {
+  const text = spelled(path, home);
+  return text === '' ? '' : posix.normalize(text);
+}
+
+/**
+ * One word of a command with its `.` and `..` resolved, when it is a path: a word with a `/` that is no URL
+ * (`scheme://`), whose spelling a shell hands over as written. The value of an `=` word follows the same rule, so
+ * `--dir=../x` steps through its own path only.
+ */
+function resolvedWord(word: string): string {
+  const assignment = word.indexOf('=');
+  const split = assignment > 0 && !word.slice(0, assignment).includes('/');
+  const value = split ? word.slice(assignment + 1) : word;
+  if (!value.includes('/') || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+    return word;
+  }
+  return `${split ? word.slice(0, assignment + 1) : ''}${posix.normalize(value)}`;
+}
+
+/**
+ * A command with each path word's `.` and `..` resolved and its spelling kept otherwise (GeneralA6/teamrig#1278): a
+ * `..` steps through its own word's path only, never through the word before it, and a URL is no path to step
+ * through.
+ */
+export function commandNormalized(command: string, home: string): string {
+  return spelled(command, home).replace(/[^\s"'`;|&()<>]+/g, (word) => resolvedWord(word));
 }
 
 /** The lead's own files and folders (board, notes, agenda, memory): editing or searching them is its job. */
@@ -64,7 +97,7 @@ export class OwnPaths {
 
   /** The shell command names one of the lead's own files or folders. */
   named(command: string): boolean {
-    const text = normalized(command, this.home);
+    const text = commandNormalized(command, this.home);
     return this.mentioned.some((pattern) => pattern.test(text));
   }
 }
@@ -236,7 +269,7 @@ export class TeamFolders {
 
   /** The research a shell search is, from the first path in the team's or a sub-team's folder it names that is research. */
   researchNamed(command: string): TeamResearch | undefined {
-    for (const match of normalized(command, this.home).matchAll(this.mentioned)) {
+    for (const match of commandNormalized(command, this.home).matchAll(this.mentioned)) {
       const research = this.researchOf(match[0]);
       if (research !== undefined) {
         return research;
