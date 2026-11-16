@@ -59,6 +59,27 @@ describe('planLinks', () => {
     }
   });
 
+  it('plans one link per issue pair when two tasks hold one issue, so no add repeats one GitHub has taken (T3352)', () => {
+    const plan = planLinks(
+      tasks(mirrored('T9', 9, { after: ['T10', 'T11'] }), mirrored('T10', 10), mirrored('T11', 10), mirrored('T8', 9, { waits: [{ kind: 'task', id: 'T10' }] })),
+      REPO,
+      [issue(9), issue(10)],
+    );
+    assert.deepEqual(plan.writes, [
+      { kind: 'blocked-by', target: { repo: REPO, number: 9 }, blocker: { repo: REPO, number: 10 }, blockerId: 1010 },
+      { kind: 'sub-issue', parent: { repo: REPO, number: 9 }, child: { repo: REPO, number: 10 }, childId: 1010 },
+    ]);
+    assert.equal(plan.manyWholes, 0);
+    const present = planLinks(tasks(mirrored('T9', 9, { after: ['T10', 'T11'] }), mirrored('T10', 10), mirrored('T11', 10)), REPO, [issue(9, { blockedBy: [10] }), issue(10, { parent: { repo: REPO, number: 9 } })]);
+    assert.deepEqual([present.writes, present.present], [[], 2]);
+  });
+
+  it('links no issue to itself when a task is planned after another task of the same issue', () => {
+    const plan = planLinks(tasks(mirrored('T9', 9, { after: ['T10'] }), mirrored('T10', 9)), REPO, [issue(9)]);
+    assert.deepEqual(plan.writes, []);
+    assert.deepEqual([plan.present, plan.otherParent, plan.manyWholes, plan.otherRepo, plan.missing], [0, 0, 0, 0, 0]);
+  });
+
   it('gives a part of two wholes no parent, only a blocker on each', () => {
     const plan = planLinks(tasks(mirrored('T8', 8, { after: ['T10'] }), mirrored('T9', 9, { after: ['T10'] }), mirrored('T10', 10)), REPO, [issue(8), issue(9), issue(10)]);
     assert.deepEqual(
