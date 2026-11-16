@@ -16,11 +16,16 @@ import { closableText, idleFactsOf, idleVerdictOf, type Closable, type IdleFacts
 import type { Kit } from './kit.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 import { installStateOf, settleWaitText } from './settled-install.ts';
+import { unseenLinesOf } from '../inbox/inbox.ts';
+import { inboxDepsOf } from './commands/inbox.ts';
 
 /** A session the budget neither holds nor puts in quiet hours. */
 const AWAKE: WakeRest = { held: false, quiet: false };
 
-/** Why a closed session reopens: urgent lines posted to it, work handed to it since its close, or the day's start. */
+/**
+ * Why a closed session reopens: urgent lines posted to it, work handed to it since its close, a pile of inbox lines it
+ * has not seen, or the day's start.
+ */
 type Reopening = Exclude<ReopenVerdict, { readonly kind: 'stay' }>;
 
 /** What a pass does with one session of the team; a close or a reopen in the folder the pass read it in (`project`). */
@@ -65,7 +70,7 @@ async function folderOrRefusalOf(folderOf: SessionFolderOf, id: string): Promise
   }
 }
 
-/** The pass's pick: urgent lines first, the oldest first, then the most urgent top task. */
+/** The pass's pick: urgent lines first, the oldest first, then the most urgent top task, then a pile of unseen lines. */
 function byReopenOrder(a: ReopenWish, b: ReopenWish): number {
   if (a.reopening.kind === 'asked') {
     return b.reopening.kind === 'asked' ? a.reopening.at - b.reopening.at : -1;
@@ -73,7 +78,10 @@ function byReopenOrder(a: ReopenWish, b: ReopenWish): number {
   if (b.reopening.kind === 'asked') {
     return 1;
   }
-  return a.top === undefined || b.top === undefined ? 0 : byUrgency(a.top, b.top);
+  if (a.top === undefined || b.top === undefined) {
+    return Number(a.top === undefined) - Number(b.top === undefined);
+  }
+  return byUrgency(a.top, b.top);
 }
 
 /** One session judged alone: what it does, or, for one it would reopen, its wish, before the pass picks one reopen. */
@@ -135,7 +143,11 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
     return { kind: 'away', id };
   }
   const asks = facts.asks.get(id) ?? [];
-  const input: ReopenInput = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStart: (await dayStartFor(runtime, { kit, config }, id, now)).at, now, zone };
+  const { reopenUnreadLines } = config.open.idle;
+  // The inbox is read only when a pile can reopen it.
+  const unseenLines = reopenUnreadLines === 0 ? 0 : (await unseenLinesOf(inboxDepsOf(runtime, kit.paths), id)).size;
+  const dayStart = (await dayStartFor(runtime, { kit, config }, id, now)).at;
+  const input: ReopenInput = { tasks, elsewhere, session: id, asks, closedAt: Date.parse(closed.at), ...awake, parking: parkRulesOf(config), dayStart, unseenLines, reopenUnreadLines, now, zone };
   const asAwake = reopenVerdict(input);
   if (asAwake.kind === 'asked') {
     return wishOf(folderOf, id, asAwake, undefined);
@@ -144,6 +156,9 @@ export async function judgeSession(runtime: CliRuntime, kit: Kit, config: KitCon
   // Never asked here: a session with asks reopened for them above.
   if (reopening.kind === 'stay' || reopening.kind === 'asked') {
     return { kind: 'closed', id };
+  }
+  if (reopening.kind === 'piled') {
+    return wishOf(folderOf, id, reopening, undefined);
   }
   const [top] = reopening.tasks;
   return top === undefined ? { kind: 'closed', id } : wishOf(folderOf, id, reopening, top);
@@ -210,6 +225,8 @@ export function reopeningText(reopening: Reopening, zone: TimeZone): string {
       return urgentLinesText(reopening.asks);
     case 'handed':
       return `work handed to it since its close: ${idsText(reopening.tasks)}`;
+    case 'piled':
+      return `${reopening.lines} inbox lines it has not seen, open.idle.reopenUnreadLines being ${reopening.threshold}`;
     case 'day-start':
       return `the day's start at ${zone.clock(new Date(reopening.at))}, with work it can start: ${idsText(reopening.tasks)}`;
   }

@@ -150,14 +150,22 @@ export interface ReopenInput {
    * `wake.dayStartUtc`); undefined: none today.
    */
   readonly dayStart: number | undefined;
+  /** How many of its inbox lines it has not seen: neither read nor shown at a prompt (`unseenLinesOf`). */
+  readonly unseenLines: number;
+  /** How many unseen lines reopen it (`open.idle.reopenUnreadLines`); 0: none do. */
+  readonly reopenUnreadLines: number;
   readonly now: number;
   readonly zone: TimeZone;
 }
 
-/** Whether a closed session reopens now, and for which urgent lines (`at`: the oldest one's post) or tasks, most urgent first. */
+/**
+ * Whether a closed session reopens now, and for which urgent lines (`at`: the oldest one's post), tasks, most urgent
+ * first, or pile of unseen inbox lines (`lines`, past `threshold`).
+ */
 export type ReopenVerdict =
   | { readonly kind: 'asked'; readonly asks: readonly WakeAsk[]; readonly at: number }
   | { readonly kind: 'handed'; readonly tasks: readonly Task[] }
+  | { readonly kind: 'piled'; readonly lines: number; readonly threshold: number }
   | { readonly kind: 'day-start'; readonly at: number; readonly tasks: readonly Task[] }
   | { readonly kind: 'stay' };
 
@@ -165,8 +173,10 @@ export type ReopenVerdict =
  * Whether a session teamrig closed reopens now, as the wake check would wake its open tab: for urgent lines posted to
  * it, whatever its rest and at once (each is urgent by its sender's choice, and a pass's closes post theirs together),
  * else for work it can start within `maxPriority` that someone else or the clock changed since it last touched it
- * (`isNews`, so work it saw before the close does not reopen it), else for a day start after its close when it has any
- * work it can start and does not rest (quiet hours, held by its budget). Else it stays closed.
+ * (`isNews`, so work it saw before the close does not reopen it). While it does not rest (quiet hours, held by its
+ * budget), else for `reopenUnreadLines` inbox lines or more it has not seen, none urgent, which a lead's or a busy
+ * peer's inbox gathers while it sleeps (T3387), else for a day start after its close when it has any work it can
+ * start. Else it stays closed.
  */
 export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   const { tasks, elsewhere, session, now, zone, parking } = input;
@@ -177,8 +187,15 @@ export function reopenVerdict(input: ReopenInput): ReopenVerdict {
   if (handed.length > 0) {
     return { kind: 'handed', tasks: handed };
   }
+  if (input.rest.quiet || input.rest.held) {
+    return { kind: 'stay' };
+  }
+  const threshold = input.reopenUnreadLines;
+  if (threshold > 0 && input.unseenLines >= threshold) {
+    return { kind: 'piled', lines: input.unseenLines, threshold };
+  }
   const { dayStart } = input;
-  if (dayStart === undefined || dayStart > now || dayStart <= input.closedAt || input.rest.quiet || input.rest.held) {
+  if (dayStart === undefined || dayStart > now || dayStart <= input.closedAt) {
     return { kind: 'stay' };
   }
   const startable = startableTasks(tasks, elsewhere, session, now, zone, parking);

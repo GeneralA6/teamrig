@@ -196,6 +196,34 @@ describe('teamrig sessions --pass', () => {
     assert.match((await team.kit.run(['sessions', '--pass'], team.options)).stdout[1] ?? '', /^CLOSE app-alpha \(session alpha\)/);
   });
 
+  it("reopens a closed child team's lead on the triggers any session reopens on: a waking line, a timed wake-up (T3387)", async () => {
+    const options = { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]) };
+    const woken = await closedTeam(CHILD_LEAD);
+    assertOk(await woken.run(['inbox', 'add', '--to', 'alpha', '--text', 'the build broke', '--wake', 'now', '--session', 'bravo']));
+    const asked = await woken.run(['sessions', '--pass'], options);
+    assertOk(asked);
+    assert.equal(asked.stdout[1], 'REOPEN app-alpha (session alpha): an urgent line from bravo');
+
+    const timed = await closedTeam(CHILD_LEAD);
+    assertOk(await timed.run(['inbox', 'add', '--to', 'alpha', '--text', 'the release notes', '--wake-by', '10:30', '--session', 'bravo']));
+    assert.equal((await timed.run(['sessions', '--pass'], options)).stdout[1], 'CLOSED app-alpha (session alpha): nothing it can start');
+    timed.clock.advance(31 * MINUTE_MS);
+    assert.equal((await timed.run(['sessions', '--pass'], options)).stdout[1], 'REOPEN app-alpha (session alpha): an urgent line from bravo');
+  });
+
+  it('reopens a closed session, a child lead alike, for open.idle.reopenUnreadLines inbox lines it has not seen, none urgent (T3387)', async () => {
+    const options = { probe: new FakePathProbe({ folders: [APP] }), memory: new FakeHostMemory().lists([]) };
+    for (const config of [TEAM, CHILD_LEAD]) {
+      const kit = await closedTeam({ ...config, open: { idle: { reopenUnreadLines: 3 } } });
+      for (const text of ['the api is ready', 'new icons']) {
+        assertOk(await kit.run(['inbox', 'add', '--to', 'alpha', '--text', text, '--session', 'bravo']));
+      }
+      assert.equal((await kit.run(['sessions', '--pass'], options)).stdout[1], 'CLOSED app-alpha (session alpha): nothing it can start', 'two lines are no pile');
+      assertOk(await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'the docs moved', '--session', 'bravo']));
+      assert.equal((await kit.run(['sessions', '--pass'], options)).stdout[1], 'REOPEN app-alpha (session alpha): 3 inbox lines it has not seen, open.idle.reopenUnreadLines being 3');
+    }
+  });
+
   it("reads a running session's transcript in its own launch.<id>.project folder", async () => {
     const own = resolve('/', 'work', 'alpha');
     const team = await runningTeam({ ...TEAM, launch: { alpha: { project: own } } }, own);

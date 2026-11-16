@@ -56,6 +56,8 @@ function reopen(overrides: Partial<ReopenInput>): ReopenVerdict {
     parking: TEST_PARKING,
     rest: AWAKE,
     dayStart: undefined,
+    unseenLines: 0,
+    reopenUnreadLines: 10,
     now: NOW,
     zone: UTC,
     ...overrides,
@@ -63,7 +65,7 @@ function reopen(overrides: Partial<ReopenInput>): ReopenVerdict {
 }
 
 function idsOf(verdict: ReopenVerdict): readonly string[] {
-  return verdict.kind === 'stay' || verdict.kind === 'asked' ? [] : verdict.tasks.map((task) => task.id);
+  return verdict.kind === 'handed' || verdict.kind === 'day-start' ? verdict.tasks.map((task) => task.id) : [];
 }
 
 describe('tabActivityOf', () => {
@@ -212,5 +214,22 @@ describe('reopenVerdict', () => {
     assert.deepEqual(reopen({ tasks: tasksOf(testTask({ status: 'done', ownerSeenAt: SEEN })), ...morning }), { kind: 'stay' });
     assert.deepEqual(reopen({ ...morning }), { kind: 'stay' });
     assert.deepEqual(reopen({ tasks: work, ...morning, dayStart: NOW + HOUR }), { kind: 'stay' }, 'a start the schedule set later today, not reached yet');
+  });
+
+  it('reopens for a pile of inbox lines it has not seen, from the threshold, after news and before a day start (T3387)', () => {
+    assert.deepEqual(reopen({ unseenLines: 9 }), { kind: 'stay' });
+    assert.deepEqual(reopen({ unseenLines: 10 }), { kind: 'piled', lines: 10, threshold: 10 });
+    assert.deepEqual(reopen({ unseenLines: 3, reopenUnreadLines: 3 }), { kind: 'piled', lines: 3, threshold: 3 });
+    assert.equal(reopen({ unseenLines: 10, tasks: tasksOf(testTask()) }).kind, 'handed', 'news comes first');
+    const morning = { tasks: tasksOf(testTask({ ownerSeenAt: SEEN })), dayStart: Date.parse('2030-01-08T06:00:00.000Z'), closedAt: Date.parse('2030-01-08T05:00:00.000Z') };
+    assert.equal(reopen({ unseenLines: 10, ...morning }).kind, 'piled');
+  });
+
+  it('stays closed for a pile while the threshold is 0 or it rests, an urgent line still reopening it (T3387)', () => {
+    assert.deepEqual(reopen({ unseenLines: 500, reopenUnreadLines: 0 }), { kind: 'stay' });
+    assert.deepEqual(reopen({ unseenLines: 500, rest: { held: false, quiet: true } }), { kind: 'stay' });
+    assert.deepEqual(reopen({ unseenLines: 500, rest: { held: true, quiet: false } }), { kind: 'stay' });
+    const ask = { from: 'bravo', text: 'the build broke', at: NOW };
+    assert.equal(reopen({ unseenLines: 500, asks: [ask], rest: { held: true, quiet: true } }).kind, 'asked');
   });
 });
