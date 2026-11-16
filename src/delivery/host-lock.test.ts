@@ -2024,6 +2024,24 @@ describe('HostLock setting a share aside while its step waits on a remote servic
     assert.equal((await lock.setAside('t1')).kind, 'aside');
   });
 
+  it("removes a share set aside once its step's process is gone, at the next step's look, and keeps one whose step runs (T3409)", async () => {
+    const { files, lock } = await merging();
+    const kept = shareIn(files, SHARED);
+    assert.ok(isRecord(kept));
+    await lock.setAside('t1');
+    const step = async (session: string): Promise<void> => {
+      const taking = await lock.acquire(session, 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+      assert.ok(taking.kind === 'taken');
+      await lock.release(taking.lock);
+    };
+    await step('bravo');
+    assert.deepEqual(shareIn(files, AWAY), kept, 'its step still runs');
+    const killed = { ...kept, pid: 7777 };
+    await files.write(`${AWAY}/t1.json`, JSON.stringify(killed));
+    await step('charlie');
+    assert.deepEqual(await files.list(AWAY), [], 'its step was killed while it waited, so it never releases it');
+  });
+
   it("takes the share back under its id and its step's process, at its first place in line, ahead of a step that joined later", async () => {
     const { files, clock } = await merging();
     const asking = lockOver(files, clock, OTHER, clock.sleep, PIPELINE);

@@ -1535,7 +1535,10 @@ export class HostLock {
     return found;
   }
 
-  /** The live shares, oldest first; a share whose process is gone, that expired or that cannot be read is removed (shares are written whole). */
+  /**
+   * The live shares, oldest first; a share whose process is gone, that expired or that cannot be read is removed (shares
+   * are written whole), and so is a share set aside whose step's process is gone ({@link dropGoneAway}).
+   */
   private async liveShares(): Promise<HostShare[]> {
     const live: HostShare[] = [];
     for (const { path, share } of await this.shareFiles()) {
@@ -1545,7 +1548,25 @@ export class HostLock {
         live.push(share);
       }
     }
+    await this.dropGoneAway();
     return live.sort(byAcquiredAt);
+  }
+
+  /**
+   * Removes each share set aside whose step's process is gone, or that cannot be read: a step killed while it waited
+   * never releases it, and only its own step would take it back ({@link takeBack} removes it by the same rule). Its
+   * expiry is not looked at, as a merge may wait on its checks past the time its share was taken for.
+   */
+  private async dropGoneAway(): Promise<void> {
+    const { files } = this.ports;
+    for (const name of (await files.list(this.away)).filter((entry) => SHARE_NAME.test(entry))) {
+      const path = join(this.away, name);
+      const text = await files.read(path);
+      const share = text === undefined ? undefined : parseShare(text);
+      if (text !== undefined && (share === undefined || !this.ports.alive(share.pid))) {
+        await files.remove(path);
+      }
+    }
   }
 
   /** The share the taking with `id` wrote, and its file; undefined when there is none or the id is no file name. */
