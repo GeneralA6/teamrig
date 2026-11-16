@@ -1,7 +1,7 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGit, GitError, gitSyncIn } from './git.ts';
@@ -54,7 +54,9 @@ describe('gitSyncIn', () => {
   repo.git('commit', '-q', '-m', 'a');
   // Git sends a hook's stdout to its own stderr: 2 MiB of it stands for the local gate the pre-push hook runs.
   const node = process.execPath.replaceAll('\\', '/');
-  repo.write('.git/hooks/pre-push', `#!/bin/sh\n"${node}" -e "process.stdout.write('x'.repeat(2 * 1024 * 1024))"\n`);
+  const hook = repo.write('.git/hooks/pre-push', `#!/bin/sh\n"${node}" -e "process.stdout.write('x'.repeat(2 * 1024 * 1024))"\n`);
+  // Git on Linux and macOS skips a hook without the execute bit, and its push would then print nothing.
+  chmodSync(hook, 0o755);
 
   it('pushes through a pre-push hook that prints past the default 1 MiB, where a default buffer ends in ENOBUFS (T3012)', () => {
     assert.throws(
