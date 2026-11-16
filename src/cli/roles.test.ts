@@ -48,6 +48,14 @@ describe('roles grant, revoke and list', () => {
     assert.deepEqual(ok(await kit.run(['roles', 'list'])).stdout, ['github: held by alpha, bravo; runs issue close']);
   });
 
+  it('loads a version 8 config whose role holds issue comment as issue close, and revokes it (T3169)', async () => {
+    const kit = new CliHarness({ ...TEAM, configVersion: 8, serviceRoles: { github: { holders: ['alpha', 'bravo'], commands: ['issue close', 'issue comment'] } } });
+    assert.deepEqual(ok(await kit.run(['roles', 'list'])).stdout, ['github: held by alpha, bravo; runs issue close']);
+    const one = ok(await kit.run(['roles', 'revoke', 'github', '--holder', 'alpha', '--yes']));
+    assert.match(one.stdout.join('\n'), /REVOKED github: held by bravo; runs issue close; the old config is at /);
+    assert.deepEqual(rolesOf(kit), { github: { holders: ['bravo'], commands: ['issue close'] } });
+  });
+
   it('revokes one holder, then the whole role, dropping serviceRoles once empty', async () => {
     const kit = new CliHarness({ ...TEAM, serviceRoles: { github: { holders: ['alpha', 'bravo'], commands: ['issue close'] } } });
     const one = ok(await kit.run(['roles', 'revoke', 'github', '--holder', 'alpha', '--yes']));

@@ -6,6 +6,7 @@ import {
   DROP_FIXED_DAILY_BUDGETS,
   DROP_HIRE_CAP,
   DROP_IDLE_RETIRE,
+  DROP_ROLE_COMMENT,
   HIRE_CAP_DROPPED,
   IDLE_RETIRE_DROPPED,
   migrateConfig,
@@ -390,6 +391,54 @@ describe('the shipped migrations', () => {
       assert.deepEqual(RENAME_TO_DELIVERY.apply(config), { config, changes: [] }, JSON.stringify(config));
     }
     assert.equal(RENAME_TO_DELIVERY.from, 7);
+  });
+
+  it('v8 to v9 takes issue comment off each service role, drops a role left with none, and keeps every other key (T3169)', () => {
+    const raw: JsonRecord = {
+      configVersion: 8,
+      serviceRoles: {
+        github: { holders: ['bravo'], commands: ['issue close', 'issue comment'] },
+        talk: { holders: 'team', commands: ['issue comment'] },
+        ship: { holders: ['alpha'], commands: ['queue ship'] },
+      },
+      custom: true,
+    };
+    assert.deepEqual(migrateConfig(raw, 9), {
+      kind: 'migrated',
+      fromVersion: 8,
+      version: 9,
+      config: { configVersion: 9, serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] }, ship: { holders: ['alpha'], commands: ['queue ship'] } }, custom: true },
+      changes: [
+        'v8→v9: serviceRoles.github.commands: issue comment taken off, as a reply goes through teamrig issue reply',
+        'v8→v9: serviceRoles.talk dropped: it held only issue comment, and a reply goes through teamrig issue reply',
+      ],
+      firstRelease: DROP_ROLE_COMMENT.firstRelease,
+    });
+    assert.deepEqual(raw['serviceRoles'], {
+      github: { holders: ['bravo'], commands: ['issue close', 'issue comment'] },
+      talk: { holders: 'team', commands: ['issue comment'] },
+      ship: { holders: ['alpha'], commands: ['queue ship'] },
+    }, 'the input is not mutated');
+  });
+
+  it('v8 to v9 drops serviceRoles once no role is left, as roles revoke leaves it', () => {
+    assert.deepEqual(DROP_ROLE_COMMENT.apply({ serviceRoles: { talk: { holders: ['bravo'], commands: ['issue comment'] } }, custom: 1 }), {
+      config: { custom: 1 },
+      changes: ['serviceRoles.talk dropped: it held only issue comment, and a reply goes through teamrig issue reply'],
+    });
+  });
+
+  it('v8 to v9 changes nothing but the version where no role holds issue comment, a damaged entry left for the parse to flag', () => {
+    const configs: JsonRecord[] = [
+      {},
+      { serviceRoles: 'not an object' },
+      { serviceRoles: { github: { holders: ['bravo'], commands: ['issue close'] } } },
+      { serviceRoles: { github: 'odd', other: { holders: ['bravo'], commands: 'issue comment' } } },
+    ];
+    for (const config of configs) {
+      assert.deepEqual(DROP_ROLE_COMMENT.apply(config), { config, changes: [] }, JSON.stringify(config));
+    }
+    assert.equal(DROP_ROLE_COMMENT.from, 8);
   });
 
   it('a version-1 file reaches the current version through every step', () => {

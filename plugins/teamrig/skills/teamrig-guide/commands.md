@@ -2333,7 +2333,7 @@ DRY RUN nothing is written
 TEAM front under shop: lead web (shop-web); sessions web (shop-web), ui (shop-ui)
 WOULD CREATE /home/you/.teamrig/teams/front/config.json:
 {
-  "configVersion": 8,
+  "configVersion": 9,
   "team": {
     "id": "front",
     "parent": "shop"

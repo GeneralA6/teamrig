@@ -37,9 +37,9 @@ describe('loadConfig', () => {
   });
 
   it('reads a newer file best-effort and marks it', async () => {
-    const files = new MemoryFiles({ [CONFIG]: JSON.stringify({ ...ROSTER, configVersion: 9 }) });
+    const files = new MemoryFiles({ [CONFIG]: JSON.stringify({ ...ROSTER, configVersion: CONFIG_VERSION + 1 }) });
     const load = await loadConfig(files, CONFIG);
-    assert.equal(load.status === 'loaded' && load.newerVersion, 9);
+    assert.equal(load.status === 'loaded' && load.newerVersion, CONFIG_VERSION + 1);
     assert.equal(load.status === 'loaded' && load.config.roles.lead, 'alpha');
   });
 
