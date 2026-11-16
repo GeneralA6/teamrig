@@ -7777,7 +7777,7 @@ teamrig help
 Output: the usage, starting:
 
 ```text
-teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
+teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION; every command takes --session <id|name> and --team <team>)
 ```
 
 ### teamrig version
