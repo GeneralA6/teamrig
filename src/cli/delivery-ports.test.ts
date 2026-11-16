@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FREEZES_LOCK_TTL_MS } from '../delivery/freeze-store.ts';
-import type { HostLockInfo, Taking } from '../delivery/host-lock.ts';
+import type { HostLockInfo, StepAsk, Taking } from '../delivery/host-lock.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHostCpu } from '../testing/fake-host-cpu.ts';
@@ -16,7 +16,7 @@ import { admissionRulesOf, freezesLockOf, hostLockOf, teamAdmissionOf } from './
 import type { CliRuntime } from './runtime.ts';
 
 const PATH = '/kit/host.lock';
-const QUEUE = { lockTtlMinutes: 150, memoryFloorMb: 4096, heavyReserveMb: 4096, admission: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 1, maxHeavyParallel: 2, heavyIdleCpuPct: 25 } as const;
+const QUEUE = { lockTtlMinutes: 150, memoryFloorMb: 4096, heavyReserveMb: 4096, admission: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 1, maxHeavyParallel: 2, maxSmallParallel: 4, heavyIdleCpuPct: 25 } as const;
 const HEADROOM = { commitMaxPct: 92 };
 const FOCUS = { defaultClass: 'Improvements' };
 const PID = 4242;
@@ -26,8 +26,11 @@ function lockOf(runtime: Parameters<typeof hostLockOf>[0], queue: Pick<QueueConf
   return hostLockOf(runtime, PATH, queue, HEADROOM, fixedAdmission(admissionRulesOf(queue, FOCUS)), TimeZone.UTC);
 }
 
-/** A small step's ask: to share the host with 100 MB held for it. */
-const SMALL = { need: { shares: true, reserveMb: 100 } };
+/**
+ * A small step's ask as `teamrig queue --small` makes it: to share the host with 100 MB held for it, naming its line
+ * request, which is what puts its ticket in the small lane (a ticket naming none waits in the heavy one).
+ */
+const SMALL: StepAsk = { need: { shares: true, reserveMb: 100 }, request: { kind: 'test', task: 'T7', priority: 1, class: 'Improvements', classPct: 25 } };
 
 /**
  * The CLI's ports over files in memory at `clock`'s time (10:00 by default), on a host with `memory` and `cpu` (idle by
@@ -72,14 +75,23 @@ describe('hostLockOf (T2210)', () => {
   /** This process, alive, so the share its first small step takes stays live. */
   const running = (): FakeSessionProcesses => new FakeSessionProcesses().add({ pid: PID, parentPid: 1, name: 'node', commandLine: 'node cli.ts queue' });
 
-  it('orders the line by delivery.queue.admission: in pipeline mode a session running perSessionRunning steps waits on its cap', async () => {
+  it('orders the line by delivery.queue.admission: in pipeline mode a session running perSessionRunning heavy steps waits on its cap', async () => {
     const lock = lockOf(runtimeOf(new FakeHostMemory(16_000), running()), QUEUE);
-    const first = heldLock(await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, SMALL));
+    const first = heldLock(await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined));
 
-    const second = await lock.acquire('alpha', 'heavy: lint', 0, 30_000, () => undefined, SMALL);
+    const second = await lock.acquire('alpha', 'heavy: build web', 0, 30_000, () => undefined);
 
     assert.equal(second.kind, 'busy');
     assert.deepEqual(second.kind === 'busy' ? second.holder : undefined, { kind: 'sessionCap', cap: 1, running: [first] });
+  });
+
+  it('caps no small step of a session at its heavy cap, a small step holding no place in it (T3286)', async () => {
+    const lock = lockOf(runtimeOf(new FakeHostMemory(16_000), running()), QUEUE);
+    heldLock(await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined));
+
+    const small = await lock.acquire('alpha', 'heavy: lint', 0, 30_000, () => undefined, SMALL);
+
+    assert.equal(small.kind, 'taken');
   });
 
   it('caps no session in serial mode, the line in arrival order as before', async () => {

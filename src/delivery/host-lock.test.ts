@@ -1273,7 +1273,7 @@ describe("HostLock tickets and shares: what the step asks (T2210)", () => {
 });
 
 /** Admission in `pipeline` mode, as the config defaults set it: 15 minutes a priority step and a memory pass, two steps a session. */
-const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, defaultClass: 'Improvements' };
+const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, maxSmallParallel: 4, defaultClass: 'Improvements' };
 
 const ADMIT = `${PATH}.admit`;
 
@@ -1282,9 +1282,9 @@ function bravoAt(priority: number): [string, string] {
   return ticket(waiterOf('2030-01-08T09:59:00.000Z', { request: { ...REQUEST, priority, needMb: 0, heavy: true, exclusive: false } }));
 }
 
-/** Two small steps of `session` sharing the host since 09:50 and 09:55. */
+/** Two heavy steps of `session` sharing the host since 09:50 and 09:55: a session cap counts heavy steps only (T3286). */
 function sharesOf(session: string): HostShare[] {
-  return [shareOf({ id: 's1', session }), shareOf({ id: 's2', session, acquiredAt: '2030-01-08T09:55:00.000Z' })];
+  return [heavyOf({ id: 's1', session }), heavyOf({ id: 's2', session, acquiredAt: '2030-01-08T09:55:00.000Z' })];
 }
 
 describe('HostLock admission (T2210)', () => {
@@ -1320,17 +1320,16 @@ describe('HostLock admission (T2210)', () => {
     });
   }
 
-  it("passes an earlier waiter whose session runs its cap of steps, and shares the host beside them; serial rules keep it waiting", async () => {
+  it("passes an earlier waiter whose session runs its cap of heavy steps, and shares the host beside them; serial rules keep it waiting", async () => {
     const running = sharesOf('bravo');
     const initial = Object.fromEntries([...running.map((share) => shareFile(share)), bravoAt(1)]);
     const results: unknown[] = [];
-    for (const admission of [PIPELINE, { ...PIPELINE, mode: 'serial' } as const]) {
-      const { lock } = world(initial, undefined, new FakeHostMemory(10_240), admission);
-      const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: { ...REQUEST, priority: 3 } });
-      results.push(taking.kind === 'busy' ? taking.holder.kind : taking);
+    for (const admission of [{ ...PIPELINE, maxHeavyParallel: 3 }, { ...PIPELINE, mode: 'serial' } as const]) {
+      const { lock } = world(initial, undefined, undefined, admission);
+      const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: { ...REQUEST, priority: 3 } });
+      results.push(taking.kind === 'busy' ? taking.holder.kind : taking.kind === 'taken' ? taking.sharing : taking.kind);
     }
-    const share = shareOf({ id: 't1', pid: ME, session: 'alpha', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', request: { ...REQUEST, priority: 3, needMb: 2048, heavy: false, exclusive: false } });
-    assert.deepEqual(results, [{ kind: 'taken', lock: share, sharing: { freeMb: 10_240, others: running, heavy: false } }, 'queued']);
+    assert.deepEqual(results, [{ others: running, heavy: true }, 'queued']);
   });
 
   describe('a later step that fits and an earlier heavy one waiting on memory (T2757)', () => {
@@ -1338,12 +1337,20 @@ describe('HostLock admission (T2210)', () => {
     const memoryWaiter = (since: string): [string, string] =>
       ticket(waiterOf('2030-01-08T08:00:00.000Z', { request: { ...REQUEST, priority: 1, needMb: 6144, heavy: true, exclusive: false }, waitingOn: { reason: 'memory', text: 'memory short', since } }));
     const charlie = shareOf({ id: 'c1', session: 'charlie' });
-    /** What alpha's small p3 step gets with 10 240 MB free: room for the floor, charlie's share and its own. */
-    const smallStep = async (initial: Readonly<Record<string, string>>, admission: AdmissionRules): Promise<string> => {
+    /**
+     * What alpha's heavy p3 step gets with 10 240 MB free: room for the floor, charlie's small share and its own; a
+     * small one (`need`) waits in a line of its own (T3286).
+     */
+    const smallStep = async (initial: Readonly<Record<string, string>>, admission: AdmissionRules, need?: StepNeed): Promise<string> => {
       const { lock } = world(initial, undefined, new FakeHostMemory(10_240), admission);
-      const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: { ...REQUEST, priority: 3 } });
+      const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { ...(need === undefined ? {} : { need }), request: { ...REQUEST, priority: 3 } });
       return taking.kind === 'busy' ? (taking.holder.kind === 'queued' ? `queued behind ${taking.holder.first.id}` : taking.holder.kind) : taking.kind;
     };
+
+    it('never holds a small step behind it, however long it waited beside a running share (T3286)', async () => {
+      const initial = Object.fromEntries([shareFile(charlie), memoryWaiter('2030-01-08T08:00:00.000Z')]);
+      assert.equal(await smallStep(initial, PIPELINE, SMALL), 'taken');
+    });
 
     it('passes it while no queued step runs, however long it waited', async () => {
       assert.equal(await smallStep(Object.fromEntries([memoryWaiter('2030-01-08T08:00:00.000Z')]), PIPELINE), 'taken');
@@ -1366,7 +1373,7 @@ describe('HostLock admission (T2210)', () => {
     });
   });
 
-  it('waits while its own session runs its cap of steps, the lock its holder takes counted, naming them', async () => {
+  it('waits while its own session runs its cap of heavy steps, the lock its holder takes counted, naming them', async () => {
     const shares = sharesOf('alpha');
     const holder = infoOf({ session: 'alpha' });
     const [first] = shares;
@@ -1375,7 +1382,7 @@ describe('HostLock admission (T2210)', () => {
     const told: string[] = [];
     for (const initial of [Object.fromEntries(shares.map((share) => shareFile(share))), Object.fromEntries([[PATH, heldBy({ session: 'alpha' })], shareFile(first)])]) {
       const { files, lock } = world(initial, undefined, new FakeHostMemory(16_000), PIPELINE);
-      const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, (wait, ahead) => told.push(waitText(wait, ahead, TimeZone.UTC)), { need: SMALL, request: REQUEST });
+      const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, (wait, ahead) => told.push(waitText(wait, ahead, TimeZone.UTC)), { request: REQUEST });
       results.push(taking, (await files.list(SHARED)).length, await lineOf(files));
     }
     assert.deepEqual(results, [
@@ -1387,8 +1394,8 @@ describe('HostLock admission (T2210)', () => {
       [],
     ]);
     assert.deepEqual(told, [
-      '2 steps of its session running, its cap 2: alpha (heavy: specs) since 2030-01-08 09:50 UTC, alpha (heavy: specs) since 2030-01-08 09:55 UTC',
-      '2 steps of its session running, its cap 2: alpha (heavy: build) since 2030-01-08 09:50 UTC, alpha (heavy: specs) since 2030-01-08 09:50 UTC',
+      '2 steps of its session running, its cap 2: alpha (heavy: build) since 2030-01-08 09:50 UTC, alpha (heavy: build) since 2030-01-08 09:55 UTC',
+      '2 steps of its session running, its cap 2: alpha (heavy: build) since 2030-01-08 09:50 UTC, alpha (heavy: build) since 2030-01-08 09:50 UTC',
     ]);
   });
 
@@ -1403,11 +1410,11 @@ describe('HostLock admission (T2210)', () => {
       new FakeHostMemory(16_000),
       PIPELINE,
     );
-    await lock.acquire('alpha', 'heavy: specs', 2_000, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    await lock.acquire('alpha', 'heavy: build', 2_000, 30_000, () => undefined, { request: REQUEST });
     assert.deepEqual(seen, [
       {
         reason: 'session',
-        text: '2 steps of its session running, its cap 2: alpha (heavy: specs) since 2030-01-08 11:50 IST, alpha (heavy: specs) since 2030-01-08 11:55 IST',
+        text: '2 steps of its session running, its cap 2: alpha (heavy: build) since 2030-01-08 11:50 IST, alpha (heavy: build) since 2030-01-08 11:55 IST',
         since: '2030-01-08T10:00:00.000Z',
       },
     ]);
@@ -1415,9 +1422,9 @@ describe('HostLock admission (T2210)', () => {
 
   it('sets no cap at perSessionRunning 0: a session sharing the host twice shares it a third time', async () => {
     const shares = sharesOf('alpha');
-    const { lock } = world(Object.fromEntries(shares.map((share) => shareFile(share))), undefined, new FakeHostMemory(16_000), { ...PIPELINE, perSessionRunning: 0 });
-    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
-    assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 16_000, others: shares, heavy: false });
+    const { lock } = world(Object.fromEntries(shares.map((share) => shareFile(share))), undefined, undefined, { ...PIPELINE, perSessionRunning: 0, maxHeavyParallel: 3 });
+    const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: REQUEST });
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { others: shares, heavy: true });
   });
 
   it("waits while another live step's claim holds the admit file, taking nothing and leaving the claim", async () => {
@@ -1775,6 +1782,85 @@ describe('HostLock heavy shares (T2210)', () => {
       [holderText(capped, TimeZone.UTC), busyText(capped, TimeZone.UTC), waitText(capped, 1, TimeZone.UTC)],
       [cappedText, `heavy cap still reached: ${cappedText}`, `${cappedText}; 1 ahead in line`],
     );
+  });
+});
+
+describe('HostLock small and heavy lines (T3286)', () => {
+  /** Bravo's ticket, in line since 09:59, its step small or heavy as its ticket says. */
+  const waitingAhead = (small: boolean): [string, string] =>
+    ticket(waiterOf('2030-01-08T09:59:00.000Z', { request: { ...REQUEST, needMb: small ? 2048 : 4096, heavy: !small, exclusive: false } }));
+  const smallShares = [shareOf({ id: 's1' }), shareOf({ id: 's2', session: 'web', acquiredAt: '2030-01-08T09:58:00.000Z' })];
+
+  it('lets a small step share the host while a heavy step ahead of it waits on the heavy cap', async () => {
+    const files = Object.fromEntries([shareFile(heavyOf({ id: 'h1' })), shareFile(WEB_HEAVY), waitingAhead(false)]);
+    const { lock } = world(files, undefined, undefined, PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing?.heavy : taking, false);
+  });
+
+  it('lets a heavy step take its turn while a small step ahead of it waits, as the small line holds no heavy step', async () => {
+    const { lock } = world(Object.fromEntries([waitingAhead(true)]), undefined, undefined, PIPELINE);
+    const taking = await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: REQUEST });
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing?.heavy : taking, true);
+  });
+
+  it('keeps a small step behind a small step ahead of it, and one line in serial mode', async () => {
+    for (const [admission, small] of [
+      [PIPELINE, true],
+      [{ ...PIPELINE, mode: 'serial' }, false],
+    ] as const) {
+      const { lock } = world(Object.fromEntries([waitingAhead(small)]), undefined, undefined, admission);
+      const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+      assert.deepEqual(taking.kind === 'busy' ? taking.holder.kind : taking.kind, 'queued', admission.mode);
+    }
+  });
+
+  it('keeps a small step waiting while maxSmallParallel small steps share the host, naming them on its ticket, and lets it in when one ends', async () => {
+    const [first, second] = smallShares;
+    assert.ok(first !== undefined && second !== undefined);
+    const seen: (WaitingOn | undefined)[] = [];
+    const { lock } = world(
+      Object.fromEntries([...smallShares.map((share) => shareFile(share)), shareFile(WEB_HEAVY)]),
+      (time, store) => async (ms) => {
+        seen.push(await waitingOnOf(store, time));
+        await time.sleep(ms);
+        await store.remove(shareFile(first)[0]);
+      },
+      undefined,
+      { ...PIPELINE, maxSmallParallel: 2 },
+    );
+    const told: string[] = [];
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)), { need: SMALL, request: REQUEST });
+    const cap = '2 small steps running, the cap 2 (delivery.queue.maxSmallParallel): po (heavy: specs) since 2030-01-08 09:50 UTC, web (heavy: specs) since 2030-01-08 09:58 UTC';
+    assert.deepEqual(told, [cap]);
+    assert.deepEqual(seen.map((waitingOn) => waitingOn?.reason), ['smallCap']);
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { others: [WEB_HEAVY, second], heavy: false }, 'the heavy share counts toward no small cap');
+  });
+
+  it('refuses a small step at the small cap when its wait runs out, writing no share', async () => {
+    const { files, lock } = world(Object.fromEntries(smallShares.map((share) => shareFile(share))), undefined, undefined, { ...PIPELINE, maxSmallParallel: 2 });
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    assert.deepEqual([taking, await files.list(SHARED)], [{ kind: 'busy', holder: { kind: 'smallCap', cap: 2, running: smallShares } }, ['s1.json', 's2.json']]);
+    assert.match(taking.kind === 'busy' ? busyText(taking.holder, TimeZone.UTC) : '', /^small cap still reached: 2 small steps running, the cap 2 /);
+  });
+
+  it('caps no small step in serial mode', async () => {
+    const { lock } = world(Object.fromEntries(smallShares.map((share) => shareFile(share))), undefined, undefined, { ...PIPELINE, mode: 'serial', maxSmallParallel: 1 });
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    assert.equal(taking.kind, 'taken');
+  });
+
+  it("counts only a session's heavy steps toward its cap, and holds none of its small steps on it", async () => {
+    const alphaSmall = [shareOf({ id: 's1', session: 'alpha' }), shareOf({ id: 's2', session: 'alpha' })];
+    const heavyStep = world(Object.fromEntries(alphaSmall.map((share) => shareFile(share))), undefined, undefined, PIPELINE);
+    const heavy = await heavyStep.lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: REQUEST });
+    const alphaHeavy = [heavyOf({ id: 'h1', session: 'alpha' }), heavyOf({ id: 'h2', session: 'alpha' })];
+    const smallStep = world(Object.fromEntries(alphaHeavy.map((share) => shareFile(share))), undefined, undefined, { ...PIPELINE, maxHeavyParallel: 3 });
+    const small = await smallStep.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, { need: SMALL, request: REQUEST });
+    const capped = world(Object.fromEntries([...alphaHeavy, ...alphaSmall].map((share) => shareFile(share))), undefined, undefined, { ...PIPELINE, maxHeavyParallel: 3 });
+    const third = await capped.lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined, { request: REQUEST });
+    assert.deepEqual([heavy.kind, small.kind], ['taken', 'taken']);
+    assert.deepEqual(third, { kind: 'busy', holder: { kind: 'sessionCap', cap: 2, running: alphaHeavy } }, 'its small steps are not named among its running');
   });
 });
 

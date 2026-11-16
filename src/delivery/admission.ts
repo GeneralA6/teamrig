@@ -25,10 +25,15 @@ export interface AdmissionRules {
    * this many minutes of that wait while some do; 0 passes no one ({@link placeInLine}).
    */
   readonly memoryPassMinutes: number;
-  /** A session with this many steps running (the lock or a share) waits for one to end, and later steps pass it; 0 caps nothing. */
+  /**
+   * A session with this many heavy steps running (the lock or a heavy share) waits for one to end, and later steps pass
+   * it; its small steps are neither counted nor held, as they wait in their own line; 0 caps nothing.
+   */
   readonly perSessionRunning: number;
   /** In pipeline mode, how many heavy steps share the host at once, memory allowing; serial mode runs one at a time. */
   readonly maxHeavyParallel: number;
+  /** In pipeline mode, how many small steps share the host at once, memory allowing (T3286). */
+  readonly maxSmallParallel: number;
   /** The class a ticket that names none counts as: an older kit's, or one written without a request. */
   readonly defaultClass: string;
 }
@@ -72,7 +77,8 @@ export interface InLine {
   readonly waiter: {
     readonly session: string;
     readonly arrivedAt: string;
-    readonly request?: Pick<LineRequest, 'priority' | 'class'> & Partial<Pick<LineRequest, 'kind'>>;
+    /** Its line request, and whether its step is heavy (`heavy`, which its ticket says; left out, the step counts as heavy). */
+    readonly request?: Pick<LineRequest, 'priority' | 'class'> & Partial<Pick<LineRequest, 'kind'>> & { readonly heavy?: boolean };
     /** What its last look found it waiting on, and since when; left out before its first look. */
     readonly waitingOn?: { readonly reason: WaitCause; readonly since: string };
   };
@@ -81,6 +87,24 @@ export interface InLine {
 /** The class a waiter counts in: the one its request names, else the rules' `defaultClass` (an older kit's ticket, or one written without a request). */
 export function classOf(waiter: InLine['waiter'], rules: Pick<AdmissionRules, 'defaultClass'>): string {
   return waiter.request?.class ?? rules.defaultClass;
+}
+
+/**
+ * The two lines of `pipeline` admission (T3286): small steps (`teamrig queue --small`, a lint or a spec run of a minute
+ * or two) and the rest, the heavy steps and those that take the whole host. A small step waits only behind small ones,
+ * so a long heavy line never holds a lint for hours.
+ */
+export type Lane = 'small' | 'heavy';
+
+/** The line a waiter waits in: small when its ticket says its step is not heavy; a ticket naming no request (an older kit's, or one with none) waits in the heavy line, as all did before T3286. */
+export function laneOf(waiter: InLine['waiter']): Lane {
+  return waiter.request?.heavy === false ? 'small' : 'heavy';
+}
+
+/** A step running now as admission counts it: its session, and whether it is a small step's share (T3286). */
+export interface RunningStep {
+  readonly session: string;
+  readonly small: boolean;
 }
 
 function byName(a: InLine, b: InLine): number {
@@ -171,28 +195,31 @@ function passesOnShipSlot(waiter: InLine['waiter'], mine: boolean): boolean {
 }
 
 /**
- * The place of the ticket named `name` in `order` (from {@link admissionOrder}) at `now`, given the steps each session
- * runs now (`running`); undefined when it is not in line. In `pipeline` mode three waiters are passed: one whose session
- * runs `perSessionRunning` steps, as it may not start anyway, one waiting on the host's memory while it may be
- * passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757), and one waiting on
- * the ship slot, by a step that does not take it ({@link passesOnShipSlot}, T2727). The first waiter
- * not passed is the one that may take its turn, and while it waits on the lock or memory, it holds every later one
- * back. A step that passes still waits on its own memory gate. `serial` passes no one.
+ * The place of the ticket named `name` in `order` (from {@link admissionOrder}) at `now`, given the steps running now
+ * (`running`); undefined when it is not in line. In `pipeline` mode a waiter stands only behind the waiters of its own
+ * lane ({@link laneOf}, T3286), and three of them are passed: one whose session runs `perSessionRunning` heavy steps,
+ * as it may not start anyway (a heavy-line cap: a small step is never held on it), one waiting on the host's memory
+ * while it may be passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757),
+ * and one waiting on the ship slot, by a step that does not take it ({@link passesOnShipSlot}, T2727). The first waiter
+ * not passed is the one that may take its turn, and while it waits on the lock or memory, it holds every later one of
+ * its lane back. A step that passes still waits on its own memory gate. `serial` keeps one line and passes no one.
  */
-export function placeInLine<T extends InLine>(order: readonly T[], name: string, running: ReadonlyMap<string, number>, rules: AdmissionRules | undefined, now: number): Place<T> | undefined {
+export function placeInLine<T extends InLine>(order: readonly T[], name: string, running: readonly RunningStep[], rules: AdmissionRules | undefined, now: number): Place<T> | undefined {
   const index = order.findIndex((ticket) => ticket.name === name);
   const mine = order[index];
   if (mine === undefined) {
     return undefined;
   }
-  const before = order.slice(0, index);
   if (rules === undefined || rules.mode === 'serial') {
-    return { kind: 'inLine', ahead: before };
+    return { kind: 'inLine', ahead: order.slice(0, index) };
   }
-  const cap = rules.perSessionRunning;
-  const runs = (session: string): number => running.get(session) ?? 0;
+  const lane = laneOf(mine.waiter);
+  const before = order.slice(0, index).filter(({ waiter }) => laneOf(waiter) === lane);
+  const cap = lane === 'small' ? 0 : rules.perSessionRunning;
+  const runs = (session: string): number => running.filter((step) => !step.small && step.session === session).length;
   const capped = (session: string): boolean => cap > 0 && runs(session) >= cap;
-  const idle = [...running.values()].every((count) => count === 0);
+  // Idle means no queued step at all runs: a small step's end frees room too, so it counts here.
+  const idle = running.length === 0;
   const ships = takesShipSlot(mine.waiter.request?.kind);
   const ahead = before.filter(({ waiter }) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes) && !passesOnShipSlot(waiter, ships));
   const own = runs(mine.waiter.session);

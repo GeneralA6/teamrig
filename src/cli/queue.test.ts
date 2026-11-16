@@ -93,6 +93,11 @@ function ownShare(token: string, purpose: string): string {
   return JSON.stringify({ token, pid: OTHER, session: 'alpha', purpose, kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 });
 }
 
+/** A heavy step of alpha's own sharing the host under pipeline admission: as {@link ownShare}, marked heavy. */
+function ownHeavyShare(token: string, purpose: string): string {
+  return JSON.stringify({ token, pid: OTHER, session: 'alpha', purpose, kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048, heavy: true });
+}
+
 /** What else an earlier run recorded: its kind of work, and the host's free memory when it started and at its lowest. */
 type RanAlso = Partial<Pick<QueuedStepRecord, 'kind' | 'startFreeMb' | 'lowFreeMb'>>;
 
@@ -662,16 +667,13 @@ describe('teamrig queue --small', () => {
     assert.equal(stdout[0], `2030-01-08 10:00:02 UTC sharing the host: 1000 MB held for it (${ROOMY_FREE_MB} MB free, 1 other small step)`);
   });
 
-  it('waits under pipeline admission while its session runs 2 steps, the default cap, then refuses, recording its refusal (T2210)', async () => {
-    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { waitMinutes: 1, admission: 'pipeline' }, wait: { pollSeconds: 30 } } });
-    await kit.files.append(`${SHARED}/a1.json`, ownShare('a1', 'heavy: lint'));
-    await kit.files.append(`${SHARED}/a2.json`, ownShare('a2', 'heavy: build'));
-    const result = await kit.run(SPECS, { steps, sessionProcesses: otherRuns() });
-    const capped = '2 steps of its session running, its cap 2: alpha (heavy: lint) since 2030-01-08 09:50 UTC, alpha (heavy: build) since 2030-01-08 09:50 UTC';
-    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${capped}`, `REFUSED session cap still reached: ${capped}`], stderr: [] });
-    const lastWait = { cause: 'session', text: `waiting to share the host: ${capped}` } as const;
-    const refusal = refused(SPECS_STEP, ROOMY_FREE_MB, { endedAt: '2030-01-08T10:01:00.000Z', outcome: 'timedOut', reason: `session cap still reached: ${capped}`, waits: { session: MINUTE }, lastWait });
-    assert.deepEqual([steps.ran, ledgerOf(kit)], [[], [refusal]]);
+  it('shares the host under pipeline admission beside its session\'s 2 heavy steps, its cap holding no small step (T3286)', async () => {
+    const { kit, steps } = harness({ ...TEAM, delivery: { queue: { admission: 'pipeline' } } });
+    await kit.files.append(`${SHARED}/a1.json`, ownHeavyShare('a1', 'heavy: build'));
+    await kit.files.append(`${SHARED}/a2.json`, ownHeavyShare('a2', 'heavy: build web'));
+    steps.ends(0, MINUTE);
+    const { stdout } = await kit.run(SPECS, { steps, sessionProcesses: otherRuns() });
+    assert.equal(stdout[0], `2030-01-08 10:00:02 UTC sharing the host: 2048 MB held for it (${ROOMY_FREE_MB} MB free, 0 other small steps, 2 heavy steps)`);
   });
 
   it('shares the host beside its session\'s 2 running steps with delivery.queue.admission serial (T2210)', async () => {

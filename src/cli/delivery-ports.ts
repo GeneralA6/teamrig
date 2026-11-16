@@ -54,7 +54,7 @@ export function hostLockOf(
 }
 
 /** The `delivery.queue` keys that order the host lock's line. */
-type AdmissionQueue = Pick<QueueConfig, 'admission' | 'agingMinutes' | 'memoryPassMinutes' | 'perSessionRunning' | 'maxHeavyParallel'>;
+type AdmissionQueue = Pick<QueueConfig, 'admission' | 'agingMinutes' | 'memoryPassMinutes' | 'perSessionRunning' | 'maxHeavyParallel' | 'maxSmallParallel'>;
 
 /** The rules the host lock's line is ordered by: `delivery.queue.admission` and its keys, a ticket naming no class counting as `focus.defaultClass`. */
 export function admissionRulesOf(queue: AdmissionQueue, focus: Pick<FocusConfig, 'defaultClass'>): AdmissionRules {
@@ -64,6 +64,7 @@ export function admissionRulesOf(queue: AdmissionQueue, focus: Pick<FocusConfig,
     memoryPassMinutes: queue.memoryPassMinutes,
     perSessionRunning: queue.perSessionRunning,
     maxHeavyParallel: queue.maxHeavyParallel,
+    maxSmallParallel: queue.maxSmallParallel,
     defaultClass: focus.defaultClass,
   };
 }

@@ -56,6 +56,7 @@ describe('causeOfLockWait', () => {
       [{ kind: 'commit', usedMb: 60_000, limitMb: 64_000, maxPct: 90, reserveMb: 6000, shares: [] }, 'commit'],
       [{ kind: 'sessionCap', cap: 2, running: [INFO] }, 'session'],
       [{ kind: 'heavyCap', cap: 2, running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'heavyCap'],
+      [{ kind: 'smallCap', cap: 4, running: [{ ...INFO, reserveMb: 2048 }] }, 'smallCap'],
       [{ kind: 'cpu', idlePct: 10, needPct: 25, running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'cpu'],
       [{ kind: 'shipSlot', running: [{ ...INFO, reserveMb: 4096, heavy: true }] }, 'shipSlot'],
       [{ kind: 'admitting' }, 'line'],

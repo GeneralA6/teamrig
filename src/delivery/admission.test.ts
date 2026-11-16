@@ -1,16 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { admissionOrder, agedPriority, isAdmissionMode, placeInLine, UNNAMED_PRIORITY, type AdmissionRules, type InLine } from './admission.ts';
+import { admissionOrder, agedPriority, isAdmissionMode, laneOf, placeInLine, UNNAMED_PRIORITY, type AdmissionRules, type InLine, type RunningStep } from './admission.ts';
 import type { StepKind } from './process-request.ts';
 import type { WaitCause } from './wait-cause.ts';
 
 const MINUTE = 60_000;
 const NOW = Date.parse('2026-11-08T12:00:00.000Z');
 
-const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, defaultClass: 'Improvements' };
+const PIPELINE: AdmissionRules = { mode: 'pipeline', agingMinutes: 15, memoryPassMinutes: 15, perSessionRunning: 2, maxHeavyParallel: 2, maxSmallParallel: 4, defaultClass: 'Improvements' };
 const SERIAL: AdmissionRules = { ...PIPELINE, mode: 'serial' };
 
 const NO_TURNS: ReadonlyMap<string, number> = new Map();
+
+/** The steps running now: `counts` heavy steps of each session, then `small` small steps of each. */
+function runs(counts: Readonly<Record<string, number>>, small: Readonly<Record<string, number>> = {}): RunningStep[] {
+  const steps = (by: Readonly<Record<string, number>>, isSmall: boolean): RunningStep[] => Object.entries(by).flatMap(([session, count]) => Array.from({ length: count }, () => ({ session, small: isSmall })));
+  return [...steps(counts, false), ...steps(small, true)];
+}
 
 interface Asked {
   readonly session?: string;
@@ -19,6 +25,8 @@ interface Asked {
   readonly class?: string;
   /** Its step's kind, on its request; a request is made for it with the default class when no class is given. */
   readonly kind?: StepKind;
+  /** Whether its step is small (`--small`), on its request: true puts it in the small line, false in the heavy one. */
+  readonly small?: boolean;
   /** What its last look found it waiting on, for this many minutes before NOW. */
   readonly waitingOn?: { readonly reason: WaitCause; readonly forMinutes: number };
 }
@@ -26,9 +34,14 @@ interface Asked {
 /** A ticket that arrived `waitedMinutes` before NOW, its name in arrival order like the line's; a request only when a class or kind is given. */
 function ticket(id: string, asked: Asked = {}): InLine {
   const arrived = NOW - (asked.waitedMinutes ?? 0) * MINUTE;
-  const asks = asked.class !== undefined || asked.kind !== undefined;
+  const asks = asked.class !== undefined || asked.kind !== undefined || asked.small !== undefined;
   const request = asks
-    ? { class: asked.class ?? PIPELINE.defaultClass, ...(asked.priority === undefined ? {} : { priority: asked.priority }), ...(asked.kind === undefined ? {} : { kind: asked.kind }) }
+    ? {
+        class: asked.class ?? PIPELINE.defaultClass,
+        ...(asked.priority === undefined ? {} : { priority: asked.priority }),
+        ...(asked.kind === undefined ? {} : { kind: asked.kind }),
+        ...(asked.small === undefined ? {} : { heavy: !asked.small }),
+      }
     : undefined;
   const waitingOn = asked.waitingOn === undefined ? undefined : { reason: asked.waitingOn.reason, since: new Date(NOW - asked.waitingOn.forMinutes * MINUTE).toISOString() };
   return {
@@ -133,22 +146,28 @@ describe('placeInLine', () => {
   const order = [ticket('first', { session: 'alpha', waitedMinutes: 3 }), ticket('second', { session: 'beta', waitedMinutes: 2 }), ticket('third', { session: 'bravo', waitedMinutes: 1 })];
 
   it('names every waiter ordered before it as ahead while no session is at its cap', () => {
-    assert.deepEqual(idsOf(placeInLine(order, order[2]?.name ?? '', new Map([['alpha', 1]]), PIPELINE, NOW)?.ahead ?? []), ['first', 'second']);
+    assert.deepEqual(idsOf(placeInLine(order, order[2]?.name ?? '', runs({ alpha: 1 }), PIPELINE, NOW)?.ahead ?? []), ['first', 'second']);
   });
 
   it('passes a waiter whose session runs perSessionRunning steps', () => {
-    const place = placeInLine(order, order[2]?.name ?? '', new Map([['alpha', 2]]), PIPELINE, NOW);
+    const place = placeInLine(order, order[2]?.name ?? '', runs({ alpha: 2 }), PIPELINE, NOW);
     assert.equal(place?.kind, 'inLine');
     assert.deepEqual(idsOf(place?.ahead ?? []), ['second']);
   });
 
   it('waits on its own session cap, with the running count, while it passes no one', () => {
-    const place = placeInLine(order, order[1]?.name ?? '', new Map([['beta', 3]]), PIPELINE, NOW);
+    const place = placeInLine(order, order[1]?.name ?? '', runs({ beta: 3 }), PIPELINE, NOW);
     assert.deepEqual(place === undefined ? undefined : { ...place, ahead: idsOf(place.ahead) }, { kind: 'sessionCap', ahead: ['first'], running: 3, cap: 2 });
   });
 
+  it('counts only heavy steps toward a session cap (T3286)', () => {
+    const place = placeInLine(order, order[1]?.name ?? '', runs({ beta: 1 }, { beta: 5 }), PIPELINE, NOW);
+    assert.equal(place?.kind, 'inLine');
+    assert.deepEqual(idsOf(place?.ahead ?? []), ['first']);
+  });
+
   it('caps no session in serial mode, without rules, or with perSessionRunning 0', () => {
-    const running = new Map([['alpha', 5], ['bravo', 5]]);
+    const running = runs({ alpha: 5, bravo: 5 });
     for (const rules of [SERIAL, undefined, { ...PIPELINE, perSessionRunning: 0 }]) {
       const place = placeInLine(order, order[2]?.name ?? '', running, rules, NOW);
       assert.equal(place?.kind, 'inLine');
@@ -157,17 +176,58 @@ describe('placeInLine', () => {
   });
 
   it('is undefined for a ticket not in line', () => {
-    assert.equal(placeInLine(order, 'gone.json', new Map(), PIPELINE, NOW), undefined);
+    assert.equal(placeInLine(order, 'gone.json', [], PIPELINE, NOW), undefined);
+  });
+
+  describe('the small and the heavy line (T3286)', () => {
+    const line = [
+      ticket('heavy-1', { session: 'alpha', waitedMinutes: 300, small: false }),
+      ticket('old-kit', { session: 'alpha', waitedMinutes: 200 }),
+      ticket('small-1', { session: 'beta', waitedMinutes: 100, small: true }),
+      ticket('heavy-2', { session: 'gamma', waitedMinutes: 50, small: false }),
+      ticket('small-2', { session: 'beta', waitedMinutes: 1, small: true }),
+    ];
+    const placeOf = (id: string, running: readonly RunningStep[], rules: AdmissionRules | undefined): { kind: string; ahead: string[] } | undefined => {
+      const place = placeInLine(line, line.find((entry) => idsOf([entry])[0] === id)?.name ?? '', running, rules, NOW);
+      return place === undefined ? undefined : { kind: place.kind, ahead: idsOf(place.ahead) };
+    };
+
+    it('puts a small step only behind the small steps ahead of it, however many heavy ones wait', () => {
+      assert.deepEqual(placeOf('small-1', [], PIPELINE), { kind: 'inLine', ahead: [] });
+      assert.deepEqual(placeOf('small-2', [], PIPELINE), { kind: 'inLine', ahead: ['small-1'] });
+    });
+
+    it('puts a heavy step only behind the heavy steps ahead of it, a ticket naming no request among them', () => {
+      assert.deepEqual(placeOf('heavy-2', [], PIPELINE), { kind: 'inLine', ahead: ['heavy-1', 'old-kit'] });
+    });
+
+    it('never holds a small step on its session cap, as the cap counts heavy steps', () => {
+      assert.deepEqual(placeOf('small-2', runs({ beta: 2 }, { beta: 3 }), PIPELINE), { kind: 'inLine', ahead: ['small-1'] });
+    });
+
+    it('keeps one line in arrival order in serial mode and without rules', () => {
+      for (const rules of [SERIAL, undefined]) {
+        assert.deepEqual(placeOf('small-1', [], rules), { kind: 'inLine', ahead: ['heavy-1', 'old-kit'] });
+      }
+    });
+
+    it('reads a ticket as small only when its request says its step is not heavy', () => {
+      assert.deepEqual(line.map(({ waiter }) => laneOf(waiter)), ['heavy', 'heavy', 'small', 'heavy', 'small']);
+    });
   });
 
   describe('a waiter on the host memory (T2757)', () => {
-    const behind = (waitingOn: Asked['waitingOn']): InLine[] => [ticket('heavy', { session: 'alpha', waitedMinutes: 90, ...(waitingOn === undefined ? {} : { waitingOn }) }), ticket('small', { session: 'beta', waitedMinutes: 1 })];
-    const aheadOf = (line: readonly InLine[], running: ReadonlyMap<string, number>, rules: AdmissionRules | undefined): string[] => idsOf(placeInLine(line, line[1]?.name ?? '', running, rules, NOW)?.ahead ?? []);
-    const SHARE_RUNS = new Map([['charlie', 1]]);
+    const behind = (waitingOn: Asked['waitingOn']): InLine[] => [ticket('heavy', { session: 'alpha', waitedMinutes: 90, ...(waitingOn === undefined ? {} : { waitingOn }) }), ticket('later', { session: 'beta', waitedMinutes: 1 })];
+    const aheadOf = (line: readonly InLine[], running: readonly RunningStep[], rules: AdmissionRules | undefined): string[] => idsOf(placeInLine(line, line[1]?.name ?? '', running, rules, NOW)?.ahead ?? []);
+    const SHARE_RUNS = runs({ charlie: 1 });
 
     it('is passed whatever its wait while no queued step runs, as only memory outside the queue holds it', () => {
-      assert.deepEqual(aheadOf(behind({ reason: 'memory', forMinutes: 600 }), new Map(), PIPELINE), []);
-      assert.deepEqual(aheadOf(behind({ reason: 'commit', forMinutes: 600 }), new Map([['charlie', 0]]), PIPELINE), []);
+      assert.deepEqual(aheadOf(behind({ reason: 'memory', forMinutes: 600 }), [], PIPELINE), []);
+      assert.deepEqual(aheadOf(behind({ reason: 'commit', forMinutes: 600 }), runs({ charlie: 0 }), PIPELINE), []);
+    });
+
+    it('counts a small step running as a queued step whose end frees room, so a long memory wait holds the line (T3286)', () => {
+      assert.deepEqual(aheadOf(behind({ reason: 'memory', forMinutes: 15 }), runs({}, { charlie: 1 }), PIPELINE), ['heavy']);
     });
 
     it('is passed while queued steps run, for its first memoryPassMinutes of the wait', () => {
@@ -182,14 +242,14 @@ describe('placeInLine', () => {
 
     it('is never passed while it waits on anything else, or before its first look', () => {
       for (const reason of ['lock', 'line', 'draining', 'cpu', 'heavyCap', 'session'] as const) {
-        assert.deepEqual(aheadOf(behind({ reason, forMinutes: 0 }), new Map(), PIPELINE), ['heavy'], reason);
+        assert.deepEqual(aheadOf(behind({ reason, forMinutes: 0 }), [], PIPELINE), ['heavy'], reason);
       }
-      assert.deepEqual(aheadOf(behind(undefined), new Map(), PIPELINE), ['heavy']);
+      assert.deepEqual(aheadOf(behind(undefined), [], PIPELINE), ['heavy']);
     });
 
     it('is never passed with memoryPassMinutes 0, in serial mode or without rules', () => {
       for (const rules of [{ ...PIPELINE, memoryPassMinutes: 0 }, SERIAL, undefined]) {
-        assert.deepEqual(aheadOf(behind({ reason: 'memory', forMinutes: 0 }), new Map(), rules), ['heavy']);
+        assert.deepEqual(aheadOf(behind({ reason: 'memory', forMinutes: 0 }), [], rules), ['heavy']);
       }
     });
 
@@ -199,7 +259,7 @@ describe('placeInLine', () => {
 
     it('still leaves a step whose own session is at its cap waiting on that cap', () => {
       const line = behind({ reason: 'memory', forMinutes: 0 });
-      const place = placeInLine(line, line[1]?.name ?? '', new Map([['beta', 2]]), PIPELINE, NOW);
+      const place = placeInLine(line, line[1]?.name ?? '', runs({ beta: 2 }), PIPELINE, NOW);
       assert.deepEqual(place === undefined ? undefined : { ...place, ahead: idsOf(place.ahead) }, { kind: 'sessionCap', ahead: [], running: 2, cap: 2 });
     });
   });
@@ -209,7 +269,7 @@ describe('placeInLine', () => {
       ticket('ship', { session: 'alpha', waitedMinutes: 30, kind: 'ship', waitingOn: { reason, forMinutes: 20 } }),
       ticket('later', { session: 'beta', waitedMinutes: 1, ...(kind === undefined ? {} : { kind }) }),
     ];
-    const aheadOf = (line: readonly InLine[], rules: AdmissionRules | undefined): string[] => idsOf(placeInLine(line, line[1]?.name ?? '', new Map([['charlie', 1]]), rules, NOW)?.ahead ?? []);
+    const aheadOf = (line: readonly InLine[], rules: AdmissionRules | undefined): string[] => idsOf(placeInLine(line, line[1]?.name ?? '', runs({ charlie: 1 }), rules, NOW)?.ahead ?? []);
 
     it('is passed by a step that holds no ship slot, or names no kind, as the slot keeps it out whatever ends', () => {
       assert.deepEqual(aheadOf(behind('build'), PIPELINE), []);

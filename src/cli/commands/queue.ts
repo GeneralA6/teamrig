@@ -540,7 +540,8 @@ interface Step {
  * waits in its turn until the host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small
  * steps sharing the host (`hostLockOf`'s memory gate): its need learned from its past runs or declared with
  * `--memory-mb` (`needOf`), at least `heavyReserveMb` for a heavy step. With `--small` (a spec run, a lint) the step
- * shares the host with other small steps, holding its need or `smallReserveMb`; a heavy step shares it too under
+ * shares the host with other small steps, holding its need or `smallReserveMb`, in a line of its own under `pipeline`
+ * (never behind a heavy step) and at most `maxSmallParallel` at once; a heavy step shares it too under
  * `pipeline` admission, at most `maxHeavyParallel` at once and joining another only while `heavyIdleCpuPct` of the
  * host's CPU is idle (`hostLockOf`'s CPU gate), and takes the lock, waiting for every share to end, under
  * `serial` or with `--exclusive`. A small step is killed after `smallMaxRunMinutes` instead, and its `--max-minutes`
