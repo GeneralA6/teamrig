@@ -254,14 +254,15 @@ const STEP_ENDS: readonly TaskStatus[] = ['verifying', 'done', 'dropped'];
 /**
  * The approval a status change would clear before its step ends (T3207): a set that only records progress, such as
  * in-progress with a note once the approved merge is queued, clears the approval as any new status does, and the merge
- * is then refused. Null when the task holds no approval, the status ends its step, or it keeps the answer (`keptAnswer`).
+ * is then refused. Null when the task holds no approval, the status ends its step, or it keeps the answer (`keptAnswer`,
+ * which reads the set's note for a head the approval does not name).
  */
-export function droppedApproval(task: Task, status: TaskStatus, waits: readonly WaitReason[]): ApprovalAnswer | null {
+export function droppedApproval(task: Task, status: TaskStatus, waits: readonly WaitReason[], note: string | null): ApprovalAnswer | null {
   const { answer } = task;
   if (answer === null || answer.verdict !== 'approved' || STEP_ENDS.includes(status)) {
     return null;
   }
-  return keptAnswer(task, status, waits) === null ? answer : null;
+  return keptAnswer(task, status, waits, note) === null ? answer : null;
 }
 
 function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }>): Task {
