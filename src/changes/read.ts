@@ -59,13 +59,17 @@ export function compareVersions(a: string, b: string): number {
   return aPre === undefined ? 1 : bPre === undefined ? -1 : aPre.localeCompare(bPre);
 }
 
-/** A typed `--since` or `--until`: a version (`0.447.0`, `v0.447.0`) or a day (`2026-11-16`) or a time. */
-export function parsePoint(text: string): ChangePoint | undefined {
+/**
+ * A typed `--since` or `--until`: a version (`0.447.0`, `v0.447.0`), else a time `instantOf` reads, which knows the
+ * reader's zone; kept as an ISO time, so every source compares it alike.
+ */
+export function parsePoint(text: string, instantOf: (text: string) => Date | undefined): ChangePoint | undefined {
   const version = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$/.exec(text.trim())?.[1];
   if (version !== undefined) {
     return { kind: 'version', version };
   }
-  return /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(text.trim()) ? { kind: 'date', at: text.trim() } : undefined;
+  const at = instantOf(text.trim());
+  return at === undefined ? undefined : { kind: 'date', at: at.toISOString() };
 }
 
 /** A point by the release index: a version is its release's commit and time; a time has no version or commit. */

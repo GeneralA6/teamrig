@@ -44,12 +44,12 @@ describe('compareVersions and parsePoint', () => {
     assert.equal(compareVersions('1.2.3', '1.2.3'), 0);
   });
 
-  it('reads a version, a day or a time, and nothing else', () => {
-    assert.deepEqual(parsePoint('v0.447.0'), { kind: 'version', version: '0.447.0' });
-    assert.deepEqual(parsePoint('2026-11-16'), { kind: 'date', at: '2026-11-16' });
-    assert.deepEqual(parsePoint('2026-11-16T22:00:00Z'), { kind: 'date', at: '2026-11-16T22:00:00Z' });
-    assert.equal(parsePoint('last week'), undefined);
-    assert.equal(parsePoint('0.447'), undefined);
+  it('reads a version, else a time by the reader it is given, as an ISO time', () => {
+    const instantOf = (text: string) => (text === 'yesterday' ? new Date('2026-11-15T22:00:00Z') : undefined);
+    assert.deepEqual(parsePoint('v0.447.0', instantOf), { kind: 'version', version: '0.447.0' });
+    assert.deepEqual(parsePoint(' yesterday ', instantOf), { kind: 'date', at: '2026-11-15T22:00:00.000Z' });
+    assert.equal(parsePoint('last week', instantOf), undefined);
+    assert.equal(parsePoint('0.447', instantOf), undefined);
   });
 });
 

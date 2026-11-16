@@ -1,5 +1,6 @@
 import type { CliRuntime } from '../cli/runtime.ts';
 import { FakeCheckout } from './fake-checkout.ts';
+import { FakeChangeGit } from './fake-change-git.ts';
 import { FakeCredentials, TEST_OWNERS } from './fake-credentials.ts';
 import { FakeExecSpawner } from './fake-exec-spawner.ts';
 import { FakeWebhook } from './fake-webhook.ts';
@@ -20,7 +21,7 @@ import { noWorktrees } from './fake-worktrees.ts';
 import { quietRestore } from './fake-restore.ts';
 
 /** The parts of a CLI run that reach outside the kit: git, the commit log, stdin and the operating system. */
-export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'pulls' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'cpu' | 'starters' | 'newId'>;
+export type OutsideWorld = Pick<CliRuntime, 'git' | 'pointerGit' | 'commitLog' | 'secretsGit' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'pluginStore' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'mergeGit' | 'pulls' | 'changeGit' | 'trees' | 'hooks' | 'packageRegistry' | 'exec' | 'webhook' | 'steps' | 'memory' | 'cpu' | 'starters' | 'newId'>;
 
 /**
  * The MB free on a quiet host: over the default floor plus a heavy step's reserve, so no step waits on the memory
@@ -60,6 +61,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     restore: quietRestore(),
     mergeGit: new FakeMergeGit(),
     pulls: new FakePullGit(),
+    changeGit: new FakeChangeGit(),
     trees: { checked: () => ({ kind: 'none' }) },
     hooks: new FakeHooks(),
     packageRegistry: new FakePackageRegistry(),
