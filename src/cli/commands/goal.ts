@@ -3,16 +3,17 @@ import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
+import { sliceLabel, type GoalSliceInput } from '../../register/goal-slices.ts';
 import { GoalStore, type GoalWrite, type GoalWriter } from '../../register/goal-store.ts';
-import { FIRST_GOAL_RANK, FIRST_SLICE, GOAL_TAG, isGoalDay, isGoalRank, isSlice, MAX_GOAL_RANK, NO_GOAL, type Goal, type GoalsRead } from '../../register/goals.ts';
+import { FIRST_GOAL_RANK, FIRST_SLICE, GOAL_TAG, isGoalDay, isGoalRank, isSlice, MAX_GOAL_RANK, NO_GOAL, type Goal, type GoalsRead, type Slice } from '../../register/goals.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { fileLockOf } from '../file-locks.ts';
-import { callerOf } from '../inputs.ts';
+import { callerOf, listOf, sizeOf, taskIdOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
- * `goal add|set|rank|list|show` (T1730, rank T2083): the team's goal records, each a tag, a title and a
+ * `goal add|set|rank|slice|list|show` (T1730, rank T2083, slice T2203): the team's goal records, each a tag, a title and a
  * planned window from its start to its target day, every move of that target with the note saying why (a slip), and
  * its rank, 1 first, which goal-first ranking gives the tasks serving it.
  * Only the team's lead adds, changes or ranks one, under the goals lock (register/goal-store.ts); any session reads them.
@@ -80,11 +81,11 @@ function rankArgOf(text: string): number | null {
   return rank;
 }
 
-/** `--slice <n>`: the goal's open slice (T2453), a whole number from 1. */
-function sliceArgOf(text: string): number {
+/** A slice's number, a whole number from 1, as `what` names it: `--slice` is the goal's open one (T2453). */
+function sliceArgOf(text: string, what = '--slice'): number {
   const slice = /^\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!isSlice(slice)) {
-    throw new UsageError(`--slice "${text}" is not a whole number from ${FIRST_SLICE}`);
+    throw new UsageError(`${what} "${text}" is not a whole number from ${FIRST_SLICE}`);
   }
   return slice;
 }
@@ -120,12 +121,13 @@ function slipsText(goal: Goal): string {
   return count === 0 ? '' : `, ${count} slip${count === 1 ? '' : 's'}`;
 }
 
-/** One goal as a list line: its tag, window, slips, parent, rank and open slice, then its title. */
+/** One goal as a list line: its tag, window, slips, parent, rank, open slice and slice records, then its title. */
 export function goalLine(goal: Goal): string {
+  const slices = goal.slices.length === 0 ? '' : `, ${goal.slices.length} slice record${goal.slices.length === 1 ? '' : 's'}`;
   const parent = goal.parent === null ? '' : `, part of ${goal.parent}`;
   const rank = goal.rank === null ? '' : `, rank ${goal.rank}`;
   const slice = goal.slice === null ? '' : `, slice ${goal.slice}`;
-  return `${goal.tag} ${goal.start} to ${goal.target}${slipsText(goal)}${parent}${rank}${slice} | ${goal.title}`;
+  return `${goal.tag} ${goal.start} to ${goal.target}${slipsText(goal)}${parent}${rank}${slice}${slices} | ${goal.title}`;
 }
 
 /**
@@ -233,6 +235,62 @@ export async function goalSet(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   return written(runtime, gk, 'SET', await gk.store.set(input, writer));
 }
 
+/** One slice as a line: its label, title, owner, ship day, tasks, size, then its proof and whether it is proven. */
+export function sliceLine(tag: string, slice: Slice): string {
+  const size = slice.size === null ? '' : `, size ${slice.size}%`;
+  const proven = slice.proven === null ? 'not proven' : `proven by ${slice.proven.by}: ${slice.proven.evidence}`;
+  return `${sliceLabel(tag, slice.number)} ${slice.title} | owner ${slice.owner}, ships ${slice.ship}, tasks ${slice.tasks.join(',')}${size} | proof: ${slice.proof} | ${proven}`;
+}
+
+/** An optional text flag of `goal slice`: null when it is not given. */
+function optionalLine(args: ParsedArgs, flag: string, max: number, secrets: SecretScanner): string | null {
+  const text = args.flags.get(flag);
+  return text === undefined ? null : lineOf(flag, text, max, secrets);
+}
+
+/**
+ * `goal slice <tag> <n> [--title "<title>"] [--owner <session>] [--ship <YYYY-MM-DD>] [--proof "<live proof>"]
+ * [--tasks T1,T2] [--size <pct>] [--proven "<evidence>"] --note "<why>"` (T2203): the lead adds a shippable slice of a
+ * goal, naming all but its size and evidence, or changes it; a ship day move is a slip kept with its note. Its owner
+ * may record --proven alone, once the live proof exists.
+ */
+export async function goalSlice(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const [tag, number, extra] = args.positionals;
+  if (tag === undefined || number === undefined) {
+    throw new UsageError(`${args.command} needs <goal tag> <slice number>`);
+  }
+  if (extra !== undefined) {
+    throw new UsageError(`unexpected "${extra}"`);
+  }
+  const gk = await goalsKit(runtime, 'write');
+  const by = sessionIdOf(gk.roster, callerOf(args.flags, runtime.env));
+  const secrets = new SecretScanner(gk.config.register.secretPatterns);
+  const { maxTitle, maxText } = gk.config.register;
+  const owner = args.flags.get('owner');
+  const ship = args.flags.get('ship');
+  const tasks = args.flags.get('tasks');
+  const size = args.flags.get('size');
+  const input: GoalSliceInput = {
+    tag: checkedTag(tag),
+    slice: sliceArgOf(number, 'slice'),
+    title: optionalLine(args, 'title', maxTitle, secrets),
+    owner: owner === undefined ? null : sessionIdOf(gk.roster, owner),
+    ship: ship === undefined ? null : dayOf('ship', ship),
+    proof: optionalLine(args, 'proof', maxText, secrets),
+    tasks: tasks === undefined ? null : listOf('--tasks', tasks).map(taskIdOf),
+    size: size === undefined ? null : sizeOf(size),
+    proven: optionalLine(args, 'proven', maxText, secrets),
+    note: lineOf('note', requiredFlag(args.flags, 'note'), maxText, secrets),
+  };
+  const write = await gk.store.slice(input, { by, at: new Date(gk.now).toISOString() }, gk.roster.holderOf('lead'));
+  if (write.kind === 'refused') {
+    throw new RefusedError(write.reason);
+  }
+  const slice = (await gk.store.read()).goals.get(input.tag)?.slices.find((each) => each.number === input.slice);
+  runtime.out.stdout(`SLICE ${slice === undefined ? sliceLabel(input.tag, input.slice) : sliceLine(input.tag, slice)}`);
+  return EXIT.ok;
+}
+
 /** `goal list`: the team's goals, the ranked ones first, then the rest as a tree, one line each. */
 export async function goalList(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -249,7 +307,7 @@ export async function goalList(args: ParsedArgs, runtime: CliRuntime): Promise<E
   return EXIT.ok;
 }
 
-/** `goal show <tag>`: one goal, who added it and when, its parts, and each move of its target with the note saying why. */
+/** `goal show <tag>`: one goal, who added it and when, its parts, each move of its target with the note saying why, and its slices. */
 export async function goalShow(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const tag = tagOf(args);
   const gk = await goalsKit(runtime, 'read');
@@ -277,5 +335,10 @@ export function goalShowLines(goal: Goal, goals: ReadonlyMap<string, Goal>, zone
     ...(parts.length === 0 ? [] : [`  parts ${parts.join(', ')}`]),
     `  SLIPS ${goal.slips.length}`,
     ...goal.slips.map((slip) => `    ${zone.weekdayMinute(new Date(slip.at))} ${slip.by}: ${slip.from} -> ${slip.to} | ${slip.note}`),
+    ...(goal.slices.length === 0 ? [] : [`  SLICES ${goal.slices.length}`]),
+    ...goal.slices.flatMap((slice) => [
+      `    ${sliceLine(goal.tag, slice)}`,
+      ...slice.slips.map((slip) => `      ${zone.weekdayMinute(new Date(slip.at))} ${slip.by}: ships ${slip.from} -> ${slip.to} | ${slip.note}`),
+    ]),
   ];
 }
