@@ -4816,7 +4816,11 @@ repository's `shipTool` is REFUSED unless the tool is a tracked file of a checko
 the default branch's tree as of the last fetch, looked at as it is queued and once more after the wait, when the
 checkout must still be at that commit or at the newest main (`REFUSED the ship tool ... is not origin/main's current
 code in a checkout with no change: run git -C <checkout> fetch -q origin && git -C <checkout> checkout -q --detach
-origin/main, then queue the step again`).
+origin/main, then queue the step again`). A git read of that checkout that got no answer (git did not start, was
+stopped, or died starting, as under a burst of new processes) says nothing of the tool: as the step is queued it pins
+no commit, so only the newest main runs, and the check reads again up to 4 times, 15 s apart, before it is REFUSED
+naming the read and git's error (`REFUSED could not read the checkout of the ship tool ..., so the step did not run:
+git rev-parse ... did not answer: ...`), never as a changed tool.
 
 The lock is `host.lock` in the kit home, one for every team on the host, unless `delivery.queue.lockPath` names
 another. It lasts `delivery.queue.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
