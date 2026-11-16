@@ -61,13 +61,20 @@ export function testPageText(team, clock) {
  * Posts one test page through the page webhook `team`'s alerts name, the same way a login expiry's page goes:
  * `ok` once it is posted, `problem` with why not, `none` when no team up the tree names one.
  */
-export async function sendTestPage(runtime, team) {
+export function sendTestPage(runtime, team) {
+    return sendOwnerPage(runtime, team, (zone) => testPageText(team, zone.clock(new Date(runtime.clock.now()))));
+}
+/**
+ * Posts one page to the owner through the page webhook `team`'s alerts name, its line written on the tab's own team's
+ * clock by `textOf`: `ok` once it is posted, `problem` with why not, `none` when no team up the tree names one.
+ */
+export async function sendOwnerPage(runtime, team, textOf) {
     const found = await pageSourceOf(runtime, team);
     if (found === undefined) {
         return { status: 'none' };
     }
     const { source, zone } = found;
-    const problem = await sendLoginPage({ source, text: testPageText(team, zone.clock(new Date(runtime.clock.now()))) }, runtime);
+    const problem = await sendLoginPage({ source, text: textOf(zone) }, runtime);
     return problem === undefined ? { status: 'ok', source } : { status: 'problem', source, problem };
 }
 /** The webhook URL a source names, else why there is none, in words that hold neither the URL nor the file's path. */

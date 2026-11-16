@@ -171,6 +171,7 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         tabs: join(state, 'tabs'),
         needsYouSent: join(state, 'needs-you-sent.json'),
         needsYouLock: join(state, 'needs-you.lock'),
+        promptHoldsPaged: join(state, 'prompt-holds-paged.json'),
         sessionLog: join(state, 'session-log.jsonl'),
         secretIncidents: join(state, 'secret-incidents.jsonl'),
         secretIncidentsLock: join(state, 'secret-incidents.lock'),
