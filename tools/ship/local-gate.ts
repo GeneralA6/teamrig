@@ -1,7 +1,8 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { parsePassRecord, passRecordPath, type PassRecord } from '../../src/push-guard/pass-record.ts';
+import { parsePassRecord, type PassRecord } from '../../src/push-guard/pass-record.ts';
+import { type CheckScope, recordPathOf, recordPathsFor } from '../ci/check-scope.ts';
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 
 /**
@@ -9,7 +10,8 @@ import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } 
  * per tree. The proof is the tree's pass record (src/push-guard/pass-record.ts), written only when the runner
  * passed on a clean checkout and left it as it found it. ship (after its commits), merge (a repo whose gate is
  * local) and the repos' pre-push hook read it first, so a tree is checked once, not at each step. The runner
- * writes the same record itself, naming each check.
+ * writes the same record itself, naming each check. A --merge run on a repo whose main requires CI and whose entry
+ * says `"mergeChecks": "changed"` proves the tree short instead (tools/ci/check-scope.ts), its record kept apart.
  */
 
 /** One local check: a command spawned without a shell from the repo dir, where a leading `node` is this node; exit 0 is a pass. */
@@ -48,11 +50,17 @@ const seconds = (ms: number): string => `${Math.round(ms / 1000)}s`;
 /** The record the file at `path` holds for `tree`, or undefined. */
 const recordAt = (deps: GateDeps, path: string, tree: string): PassRecord | undefined => parsePassRecord(deps.readText(path) ?? undefined, tree);
 
-/** The check that proves a tree: the repo's own runner, when repos.json names one and the tree holds it. */
-export function runnerCheck(dir: string, checks: LocalChecks, exists: GateDeps['exists']): LocalCheck | null {
+/**
+ * The check that proves a tree: the repo's own runner, when repos.json names one and the tree holds it. A short
+ * proof runs it with `--short`, which a repo whose entry says `"mergeChecks": "changed"` has its runner take.
+ */
+export function runnerCheck(dir: string, checks: LocalChecks, exists: GateDeps['exists'], scope: CheckScope = 'full'): LocalCheck | null {
   if (checks.runner === null || !exists(join(dir, checks.runner))) return null;
-  return { name: `runner ${checks.runner}`, run: ['node', checks.runner] };
+  return scope === 'full' ? { name: `runner ${checks.runner}`, run: ['node', checks.runner] } : { name: `runner ${checks.runner} --short`, run: ['node', checks.runner, '--short'] };
 }
+
+/** What a proof of each scope prints its lines as. */
+const LABEL: Readonly<Record<CheckScope, string>> = { full: 'local checks', short: 'short checks' };
 
 const noRunner = (dir: string, runner: string | null): string =>
   runner === null
@@ -65,22 +73,24 @@ const firstLines = (status: string): string => {
 };
 
 /**
- * Proves the repo dir's checked-out tree: its pass record when one exists, else a run of the repo's runner
- * (whose full output is logged when it fails), then a record when the runner wrote none.
+ * Proves the repo dir's checked-out tree for the scope (tools/ci/check-scope.ts): a record that proves it when one
+ * exists, else a run of the repo's runner (whose full output is logged when it fails, and for a short proof when it
+ * passes too, naming the checks and specs it ran), then a record where the scope keeps it when the runner wrote none.
  */
-export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps): GateVerdict {
+export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps, scope: CheckScope = 'full'): GateVerdict {
   const status = deps.git('status', '--porcelain');
   if (status !== '') return { passed: false, reason: `${dir} has uncommitted changes (${firstLines(status)}): commit or stash them, the checks prove only a committed tree` };
   const tree = deps.git('rev-parse', 'HEAD^{tree}');
   const commit = deps.git('rev-parse', 'HEAD');
-  const path = passRecordPath(dir, deps.git('rev-parse', '--git-common-dir'), tree);
-  const earlier = recordAt(deps, path, tree);
-  if (earlier !== undefined) {
-    deps.log(`local checks: passed earlier on tree ${short(tree)} (commit ${short(earlier.commit)}, ${earlier.passedAt}, ${earlier.checks.length} check(s)), skipped`);
-    return { passed: true, tree, record: path, reused: true };
+  const commonDir = deps.git('rev-parse', '--git-common-dir');
+  for (const earlierPath of recordPathsFor(scope, dir, commonDir, tree)) {
+    const earlier = recordAt(deps, earlierPath, tree);
+    if (earlier === undefined) continue;
+    deps.log(`${LABEL[scope]}: passed earlier on tree ${short(tree)} (commit ${short(earlier.commit)}, ${earlier.passedAt}, ${earlier.checks.length} check(s)), skipped`);
+    return { passed: true, tree, record: earlierPath, reused: true };
   }
 
-  const check = runnerCheck(dir, checks, deps.exists);
+  const check = runnerCheck(dir, checks, deps.exists, scope);
   if (check === null) return { passed: false, reason: noRunner(dir, checks.runner) };
   const result = deps.run(check);
   if (result.status !== 0) {
@@ -88,7 +98,9 @@ export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps): Gat
     deps.log(result.output.trimEnd());
     return { passed: false, reason: `${check.name} failed on tree ${short(tree)}` };
   }
+  if (scope === 'short') deps.log(result.output.trimEnd());
   deps.log(`pass: ${check.name} (${seconds(result.ms)})`);
+  const path = recordPathOf(scope, dir, commonDir, tree);
 
   const statusAfter = deps.git('status', '--porcelain');
   const treeAfter = deps.git('rev-parse', 'HEAD^{tree}');
@@ -100,7 +112,7 @@ export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps): Gat
     const record: PassRecord = { tree, commit, checks: [check.name], passedAt: deps.now().toISOString(), node: process.version };
     deps.writeText(path, `${JSON.stringify(record, null, 2)}\n`);
   }
-  deps.log(`local checks: 1 passed on tree ${short(tree)}, recorded in ${path}`);
+  deps.log(`${LABEL[scope]}: 1 passed on tree ${short(tree)}, recorded in ${path}`);
   return { passed: true, tree, record: path, reused: false };
 }
 

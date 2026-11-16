@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { parsePassRecord } from '../../src/push-guard/pass-record.ts';
 import { type CheckCommandDeps, type CheckRun, type GateDeps, checkCommand, commandOf, proveTree, realGateDeps, runnerCheck } from './local-gate.ts';
+import { shortRecordPath } from '../ci/check-scope.ts';
 import { type LocalChecks, parseProfiles } from './repos.ts';
 
 /** Absolute on every OS: a 'C:/repo' is relative on POSIX, where resolve() puts the working folder in front of it. */
@@ -13,6 +14,8 @@ const DIR = resolve('/repo');
 const TREE = 'tree000aaa';
 const COMMIT = 'commit0bbb';
 const RECORD = join(DIR, '.git', 'local-ci', `${TREE}.json`);
+/** Where a short proof keeps its record, apart from the pass record (its layout is held by tools/ci/check-scope.test.ts). */
+const SHORT_RECORD = shortRecordPath(DIR, join(DIR, '.git'), TREE);
 const CHECKS: LocalChecks = { runner: 'tools/ci/local.ts' };
 const RUNNER = 'runner tools/ci/local.ts';
 const VALID = (tree = TREE): string => JSON.stringify({ tree, commit: COMMIT, checks: ['lint'], passedAt: '2026-10-15T09:00:00.000Z', node: 'v22.19.0' });
@@ -24,6 +27,8 @@ interface GateFixture {
   trees?: readonly [string, string];
   /** What the record file holds before the runner, then after it (a runner writes its own). */
   records?: readonly [string | null, string | null];
+  /** What the short record file holds; none unless given. */
+  short?: string;
   /** Whether the tree holds the runner; it does unless false. */
   runner?: boolean;
   /** Exit codes by check name; 0 when not listed. */
@@ -46,7 +51,7 @@ function fakeGate(fixture: GateFixture = {}): { deps: GateDeps; runs: string[]; 
       throw new Error(`unexpected git ${key}`);
     },
     exists: path => fixture.runner !== false && path === join(DIR, 'tools/ci/local.ts'),
-    readText: path => (path === RECORD ? pick(fixture.records ?? [null, null], 'record') : null),
+    readText: path => (path === RECORD ? pick(fixture.records ?? [null, null], 'record') : path === SHORT_RECORD ? (fixture.short ?? null) : null),
     writeText: (path, text) => written.push([path, text]),
     run: (check): CheckRun => {
       runs.push(check.name);
@@ -205,4 +210,27 @@ test('ship.ts check with the real deps reads the shipped repos.json and the dir\
   const consoleError = t.mock.method(console, 'error', () => undefined);
   assert.equal(checkCommand([dir]), 1);
   assert.match(String(consoleError.mock.calls[0]?.arguments[0]), /no check list for Owner\/not-listed/);
+});
+
+test('a short proof runs the runner with --short, logs what it ran, and records apart from the pass record (T3414)', () => {
+  const { deps, runs, written, log } = fakeGate();
+  const verdict = proveTree(DIR, CHECKS, deps, 'short');
+  assert.deepEqual(verdict, { passed: true, tree: TREE, record: SHORT_RECORD, reused: false });
+  assert.deepEqual(runs, [`${RUNNER} --short`]);
+  assert.deepEqual(log, [`${RUNNER} --short says hi`, `pass: ${RUNNER} --short (2s)`, `short checks: 1 passed on tree ${TREE.slice(0, 7)}, recorded in ${SHORT_RECORD}`]);
+  assert.deepEqual(written.map(([path]) => path), [SHORT_RECORD]);
+  assert.deepEqual(runnerCheck(DIR, CHECKS, () => true, 'short'), { name: `${RUNNER} --short`, run: ['node', 'tools/ci/local.ts', '--short'] });
+});
+
+test('a short proof takes a full pass or a short record; a full proof never takes a short record (T3414)', () => {
+  const fixtures: GateFixture[] = [{ short: VALID() }, { records: [VALID(), VALID()] }];
+  for (const fixture of fixtures) {
+    const { deps, runs } = fakeGate(fixture);
+    const verdict = proveTree(DIR, CHECKS, deps, 'short');
+    assert.equal(verdict.passed && verdict.reused, true);
+    assert.deepEqual(runs, []);
+  }
+  const full = fakeGate({ short: VALID() });
+  assert.deepEqual(proveTree(DIR, CHECKS, full.deps), { passed: true, tree: TREE, record: RECORD, reused: false });
+  assert.deepEqual(full.runs, [RUNNER]);
 });
