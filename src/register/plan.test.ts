@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testRanking } from '../testing/ranking.ts';
 import { testTask } from '../testing/task.ts';
+import { foldGoals, type GoalRecord, type GoalSliceRecord } from './goals.ts';
 import { renderPlan } from './plan.ts';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
@@ -108,5 +109,66 @@ describe("renderPlan in the team's zone", () => {
   it('stamps the plan there, zone-marked', () => {
     const text = renderPlan([testTask({ id: 'T1', week: WEEK })], WEEK, NOW, JERUSALEM, { ranking: testRanking() });
     assert.ok(text.includes('From the task register at 2030-01-07 10:00 IST.'), text);
+  });
+});
+
+describe('renderPlan by slice (T2203)', () => {
+  const add = (tag: string): GoalRecord => ({ type: 'goal-add', at: '2030-01-01T10:00:00.000Z', by: 'lead', tag, title: `Goal ${tag}`, start: '2030-01-01', target: '2030-01-31', parent: null });
+  const slice = (over: Partial<GoalSliceRecord>): GoalSliceRecord => ({
+    type: 'goal-slice',
+    at: '2030-01-02T10:00:00.000Z',
+    by: 'lead',
+    tag: 'A1',
+    slice: 1,
+    title: 'Pane reads slices',
+    owner: 'tr-pane',
+    ship: '2030-01-06',
+    proof: 'the pane shows it',
+    tasks: ['T1'],
+    size: null,
+    proven: null,
+    note: 'planned',
+    ...over,
+  });
+
+  it('heads the week by slice in goal rank order, then the rest by band, naming late and outside tasks', () => {
+    const goals = foldGoals([
+      add('A1'),
+      add('B1'),
+      { type: 'goal-rank', at: '2030-01-02T10:00:00.000Z', by: 'lead', tag: 'B1', rank: 1 },
+      slice({ tasks: ['T1', 'T9'] }),
+      slice({ slice: 2, title: 'Shipped', tasks: ['T5'], ship: '2030-01-03' }),
+      slice({ slice: 2, at: '2030-01-03T10:00:00.000Z', title: null, owner: null, ship: null, proof: null, tasks: null, proven: 'live on 0.9' }),
+      slice({ tag: 'B1', title: 'Board', owner: 'tr-board', ship: '2030-01-09', tasks: ['T2'], size: 4 }),
+    ]).goals;
+    const tasks = [testTask({ id: 'T1', week: WEEK }), testTask({ id: 'T2', week: WEEK }), testTask({ id: 'T3', week: WEEK })];
+    const plan = renderPlan(tasks, WEEK, NOW, TimeZone.UTC, { ranking: testRanking(), bySlice: goals });
+    assert.ok(
+      plan.includes(
+        [
+          '## Slices',
+          '',
+          '### B1:1 Board (tr-board · ships 2030-01-09 · size 4% · proof: the pane shows it · not proven yet)',
+          '',
+          '- [ ] **T2** Add a health check (Improvements · score 3.33 · alpha · from lead)',
+          '',
+          '### A1:1 Pane reads slices (tr-pane · ships 2030-01-06 · proof: the pane shows it · **late**, not proven)',
+          '',
+          '- [ ] **T1** Add a health check (Improvements · score 3.33 · alpha · from lead)',
+          "- not in this week's plan: T9",
+          '',
+          '## Other work',
+          '',
+          '- [ ] **T3** ',
+        ].join('\n'),
+      ),
+      plan,
+    );
+    assert.doesNotMatch(plan, /Shipped/);
+  });
+
+  it('says so when the goals hold no slice records', () => {
+    const plan = renderPlan([testTask({ id: 'T1', week: WEEK })], WEEK, NOW, TimeZone.UTC, { ranking: testRanking(), bySlice: foldGoals([add('A1')]).goals });
+    assert.ok(plan.includes('## Slices\n\nNo slice records: the lead adds one with goal slice.\n\n## Other work\n\n- [ ] **T1** '), plan);
   });
 });
