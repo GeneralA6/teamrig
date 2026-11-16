@@ -318,6 +318,7 @@ checkpoint; a session may run it for itself.
 | `URGENT` | an open `p0` task (teamrig's own level for urgent work, above every configured one) free to start (every task it comes after finished); with a due, the detail names the lead's deadline burst (`burst start deadline --task <id> --by <its due> ...`) | The owner parks the task in hand and starts it now; the lead may run the burst to pay for finishing it by its due. |
 | `OVERDUE` | the effective due time has passed: its own, or the earlier due of an active task that needs it (the detail names it: `due 10-14, from T9`) | The owner finishes it or says what blocks it; the lead re-dates it (`update --due`) or tells the human. |
 | `VERIFY-OVERDUE` | a `verifying` task's due time, the date to verify it by, has passed | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
+| `SLICE-LATE` | a slice of one of the team's goals (`goal slice`) is past its ship day with no proof recorded; raised on its first active task in plan order, else its first task the register holds | The slice's owner records the proof once it shows (`goal slice <tag> <n> --proven "<evidence>"`), or the lead moves its ship day (`--ship`, a slip kept with its note). |
 | `LOOP` | active tasks need each other in a circle (`T2 -> T5 -> T2`), planned after or waiting on one another, as an older teamrig could write; raised on the lowest-numbered one | None of them can finish: the owner makes the step its own task (the flag prints the command), or the lead re-plans it (`update --after`). |
 | `VERIFY-BLOCKS` | a `verifying` task another active task needs: planned after it (`--after`) or waiting on it (`--waits task:`) | The owner proves it (`done` with the proof) or reopens it (`in-progress`), so the work on it can start. |
 | `READY` | a `waiting` task whose every reason has cleared, or a `verifying` task whose proof waits all have: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself); or a task decided, the owner's answer recorded with `update --decided`, whose waits left have cleared | The owner goes on: `set --status in-progress`, or the next status; for a verifying one, checks the proof now; for a decided one, acts on the answer `show <id>` prints. |
@@ -386,7 +387,9 @@ week's plan when it is tagged with that week: `add --week 2026-10-12` or `update
 (`--week none` takes it out). The current week is the newest tagged week that has started.
 
 The lead plans: it tags the tasks the team will do this week, then prints the plan with `teamrig plan`, grouped
-by band with each task's class, score, owner, due date and source. `check` compares active tasks against the current week.
+by band with each task's class, score, owner, due date and source; `plan --by-slice` puts the week's tasks under
+the slices of the team's goals first (`goal slice`), each with its owner, ship day and proof. `check` compares
+active tasks against the current week.
 Only the lead and the task's owner may change a task's week.
 
 ## Skills
