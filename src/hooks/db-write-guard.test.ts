@@ -23,7 +23,7 @@ const TEAM: Pick<DbWriteGuardConfig, 'programs' | 'nodeClients'> = {
 };
 
 function env(overrides: Partial<DbWriteGuardEnv> = {}): DbWriteGuardEnv {
-  return { ...DEFAULT_DB_WRITE_GUARD, ...TEAM, cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), hookAsks: 'ask', platform: 'linux', ...overrides };
+  return { ...DEFAULT_DB_WRITE_GUARD, ...TEAM, cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), platform: 'linux', ...overrides };
 }
 
 function payload(command: string, extra: Readonly<Record<string, string>> = {}): unknown {
@@ -43,11 +43,11 @@ function verdictOf(output: string): { readonly decision: string | undefined; rea
 }
 
 describe('dbWriteGuardOutput', () => {
-  it('asks about a hand-run write, naming it and the count to show the owner first', async () => {
+  it('refuses a hand-run write, naming it, the count to show the owner first and the route (T3356)', async () => {
     const verdict = verdictOf(await dbWriteGuardOutput(payload(`docsh app --eval 'db.orders.deleteMany({})'`), env()));
-    assert.equal(verdict?.decision, 'ask');
-    assert.equal(verdict?.reason, dbWriteReason([{ program: 'docsh', writes: ['deleteMany'], entrypoint: false, elsewhere: false }]));
-    assert.match(verdict?.reason ?? '', /docsh runs deleteMany\. First run a count or find .* \[dbWriteGuard\.writes\]$/);
+    assert.equal(verdict?.decision, 'deny');
+    assert.equal(verdict?.reason, `${dbWriteReason([{ program: 'docsh', writes: ['deleteMany'], entrypoint: false, elsewhere: false }])} ${ASK_REFUSED_NOTE}`);
+    assert.match(verdict?.reason ?? '', /docsh runs deleteMany\. First run a count or find .* \[dbWriteGuard\.writes\] /);
   });
 
   it('asks about a built-in SQL client with no team config, and lets a program the team never named run', async () => {
@@ -62,11 +62,11 @@ describe('dbWriteGuardOutput', () => {
     }
   });
 
-  it('refuses when the team set deny, stays quiet when it set allow, and refuses an ask when asks are off', async () => {
+  it('refuses when the team set deny, stays quiet when it set allow, and refuses an ask with the note on what to do (T3356)', async () => {
     const command = payload('kvcli FLUSHALL');
     assert.equal(verdictOf(await dbWriteGuardOutput(command, env({ writes: 'deny' })))?.decision, 'deny');
     assert.equal(await dbWriteGuardOutput(command, env({ writes: 'allow' })), '');
-    const refused = verdictOf(await dbWriteGuardOutput(command, env({ hookAsks: 'refuse' })));
+    const refused = verdictOf(await dbWriteGuardOutput(command, env({})));
     assert.equal(refused?.decision, 'deny');
     assert.ok(refused?.reason?.endsWith(` ${ASK_REFUSED_NOTE}`));
   });
@@ -75,7 +75,7 @@ describe('dbWriteGuardOutput', () => {
     const entrypoints = [{ path: 'scripts/backfill.ts', applyFlags: ['--apply'] }];
     assert.equal(await dbWriteGuardOutput(payload('npx tsx scripts/backfill.ts'), env({ entrypoints })), '');
     const verdict = verdictOf(await dbWriteGuardOutput(payload('npx tsx scripts/backfill.ts --apply'), env({ entrypoints })));
-    assert.equal(verdict?.decision, 'ask');
+    assert.equal(verdict?.decision, 'deny');
     assert.match(verdict?.reason ?? '', /runs with --apply\. First run it without its apply flag \(its dry run\)/);
   });
 
@@ -128,7 +128,7 @@ describe('dbWriteGuardOutput: a Bash line on Windows', () => {
   it('asks about a write that bash runs behind what the line as written escapes', async () => {
     for (const line of [hiddenSeparator("psql -c 'DELETE FROM orders'"), hiddenBacktick('kvcli FLUSHALL')]) {
       const verdict = verdictOf(await dbWriteGuardOutput(payload(line), windows()));
-      assert.equal(verdict?.decision, 'ask', line);
+      assert.equal(verdict?.decision, 'deny', line);
       assert.match(verdict?.reason ?? '', /(psql runs DELETE|kvcli runs FLUSHALL)\. First/, line);
       assert.equal(await dbWriteGuardOutput(payload(line), env()), '', `off Windows bash runs the line as written: ${line}`);
     }
@@ -137,7 +137,7 @@ describe('dbWriteGuardOutput: a Bash line on Windows', () => {
   it('names a write both readings make once, and leaves a line whose readings write nothing', async () => {
     const line = `kvcli FLUSHALL; ${hiddenSeparator("psql -c 'DELETE FROM orders'")}`;
     const verdict = verdictOf(await dbWriteGuardOutput(payload(line), windows()));
-    assert.equal(verdict?.reason, dbWriteReason([write('kvcli', 'FLUSHALL'), write('psql', 'DELETE')]));
+    assert.equal(verdict?.reason, `${dbWriteReason([write('kvcli', 'FLUSHALL'), write('psql', 'DELETE')])} ${ASK_REFUSED_NOTE}`);
     for (const benign of [`grep 'a${bs(4)}b' f`, hiddenSeparator('kvcli GET cache:x')]) {
       assert.equal(await dbWriteGuardOutput(payload(benign), windows()), '', benign);
     }

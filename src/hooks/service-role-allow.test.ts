@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ServiceRoleConfig } from '../config/types.ts';
-import { isRecord, recordField, stringField } from '../core/guards.ts';
+import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
+import { ASK_REFUSED_NOTE } from './permission.ts';
 import { ROLE_CAP_WINDOW_MS, roleAllowOutput, roleAllowRecord, roleAllowsSince, roleCapOutput, roleHolding } from './service-role-allow.ts';
 
 const ROLES: Readonly<Record<string, ServiceRoleConfig>> = {
@@ -12,10 +13,14 @@ const ROLES: Readonly<Record<string, ServiceRoleConfig>> = {
   ship: { holders: 'team', commands: ['queue ship', 'queue merge'] },
 };
 
-function decisionOf(output: string): string | undefined {
+function recordOf(output: string): JsonRecord {
   const parsed: unknown = JSON.parse(output);
   assert.ok(isRecord(parsed));
-  return stringField(recordField(parsed, 'hookSpecificOutput') ?? {}, 'permissionDecision');
+  return parsed;
+}
+
+function decisionOf(output: string): string | undefined {
+  return stringField(recordField(recordOf(output), 'hookSpecificOutput') ?? {}, 'permissionDecision');
 }
 
 describe('service-role allow: who holds what', () => {
@@ -74,9 +79,13 @@ describe('service-role allow: the daily cap and the log', () => {
     });
   });
 
-  it('allows a call naming its role, and asks past the cap, refusing when asks are off', () => {
+  it('allows a call naming its role, and refuses past the cap, saying when it runs again and the route (T3356)', () => {
     assert.equal(decisionOf(roleAllowOutput('github', call)), 'allow');
-    assert.equal(decisionOf(roleCapOutput('github', 10, 'ask')), 'ask');
-    assert.equal(decisionOf(roleCapOutput('github', 10, 'refuse')), 'deny');
+    const capped = roleCapOutput('github', 10);
+    assert.equal(decisionOf(capped), 'deny');
+    const reason = stringField(recordField(recordOf(capped), 'hookSpecificOutput') ?? {}, 'permissionDecisionReason') ?? '';
+    assert.match(reason, /ran its 10 calls .* is refused\. The role runs again once its oldest call of the window is 24 hours old/);
+    assert.ok(reason.endsWith(` ${ASK_REFUSED_NOTE}`), reason);
+    assert.doesNotMatch(reason, /Owner: allow/);
   });
 });

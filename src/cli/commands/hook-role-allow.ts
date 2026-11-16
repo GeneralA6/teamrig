@@ -58,7 +58,7 @@ export async function roleAllowOutputOf(runtime: CliRuntime, kit: Kit, payload: 
   const now = runtime.clock.now();
   const cap = config.prompts.serviceRoleDailyCap;
   if (isIssueCommand(call.command) && roleAllowsSince((await log.read()) ?? '', role, now - ROLE_CAP_WINDOW_MS) >= cap) {
-    return roleCapOutput(role, cap, config.prompts.hookAsks);
+    return roleCapOutput(role, cap);
   }
   const acted = { command: call.command, target };
   await log.append(toJsonlLine(roleAllowRecord({ at: new Date(now), session: holder, claudeSession, role, call: acted })));

@@ -30,7 +30,6 @@ function env(overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv {
     tree: new FakeWorktreeFiles(),
     registry: new FakePackageRegistry(PACKAGES),
     clock: new FakeClock('2026-10-20T12:00:00Z'),
-    hookAsks: 'ask',
     platform: 'linux',
     ...overrides,
   };
@@ -61,14 +60,14 @@ describe('packageGuardOutput', () => {
   });
 
   it('asks instead when the team set ask, and stays quiet when it set allow', async () => {
-    assert.equal(verdictOf(await packageGuardOutput(payload('pnpm dlx cowsay'), env({ adHocRunners: 'ask' })))?.decision, 'ask');
+    assert.equal(verdictOf(await packageGuardOutput(payload('pnpm dlx cowsay'), env({ adHocRunners: 'ask' })))?.decision, 'deny');
     assert.equal(await packageGuardOutput(payload('pnpm dlx cowsay'), env({ adHocRunners: 'allow' })), '');
   });
 
-  it('refuses what it would ask about when asks are off, saying what to do instead', async () => {
-    const verdict = verdictOf(await packageGuardOutput(payload('pnpm dlx cowsay'), env({ adHocRunners: 'ask', hookAsks: 'refuse' })));
+  it('refuses what it would ask about, saying what to do instead (T3356)', async () => {
+    const verdict = verdictOf(await packageGuardOutput(payload('pnpm dlx cowsay'), env({ adHocRunners: 'ask' })));
     assert.deepEqual(verdict, { decision: 'deny', reason: `${adHocReason(['pnpm dlx cowsay'])} ${ASK_REFUSED_NOTE}` });
-    assert.equal(verdictOf(await packageGuardOutput(payload('npx eslint .'), env({ hookAsks: 'refuse' })))?.reason, adHocReason(['npx eslint']));
+    assert.equal(verdictOf(await packageGuardOutput(payload('npx eslint .'), env({})))?.reason, adHocReason(['npx eslint']));
   });
 
   it("judges from the payload's folder and shell, and the env folder when the payload names none", async () => {
@@ -122,7 +121,7 @@ describe('packageGuardOutput', () => {
   });
 
   it('asks about an unvetted install when the team set ask, and lets it through without asking the registry when it set allow', async () => {
-    assert.equal(verdictOf(await packageGuardOutput(payload('npm i typescript'), env({ installs: 'ask' })))?.decision, 'ask');
+    assert.equal(verdictOf(await packageGuardOutput(payload('npm i typescript'), env({ installs: 'ask' })))?.decision, 'deny');
     const registry = new FakePackageRegistry(PACKAGES);
     assert.equal(await packageGuardOutput(payload('npm i typescript'), env({ installs: 'allow', registry })), '');
     assert.deepEqual(registry.docsAsked, []);
@@ -132,7 +131,7 @@ describe('packageGuardOutput', () => {
     const line = payload('npx eslint . && npm i typescript');
     const denied = verdictOf(await packageGuardOutput(line, env({ adHocRunners: 'ask' })));
     assert.deepEqual(denied, { decision: 'deny', reason: `${adHocReason(['npx eslint'])} ${installReason([YOUNG_TYPESCRIPT], 14)}` });
-    assert.equal(verdictOf(await packageGuardOutput(line, env({ adHocRunners: 'ask', installs: 'ask' })))?.decision, 'ask');
+    assert.equal(verdictOf(await packageGuardOutput(line, env({ adHocRunners: 'ask', installs: 'ask' })))?.decision, 'deny');
   });
 
   it('refuses an install from the lockfile in a folder whose node_modules links to another, whatever the config says', async () => {

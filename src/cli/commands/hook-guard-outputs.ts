@@ -7,7 +7,6 @@ import { ClientInstalls, ShellPathSearch } from '../../exec/client-launch.ts';
 import { dbWriteGuardOf, dbWriteGuardOutput } from '../../hooks/db-write-guard.ts';
 import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
 import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
-import { hookAsksOf } from '../../hooks/permission.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf, type PushClearance } from '../../hooks/push-guard.ts';
 import { secretGuardOf, secretGuardOutput, secretPatternsOf } from '../../hooks/secret-guard.ts';
 import { serviceRoleGuardOutput } from '../../hooks/service-role-guard.ts';
@@ -96,7 +95,6 @@ export function pushGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload
     commits: commitsOf(load),
     commitLog: runtime.commitLog,
     skipHooks: skipHooksOf(load),
-    hookAsks: hookAsksOf(load),
     clearance: () => pushClearanceOf(runtime, kit, payload),
     platform: runtime.platform,
   });
@@ -116,7 +114,6 @@ export function packageGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payl
     tree: runtime.worktrees.files,
     registry: runtime.packageRegistry,
     clock: runtime.clock,
-    hookAsks: hookAsksOf(guard.load),
     platform: runtime.platform,
   });
 }
@@ -131,7 +128,6 @@ export function dbWriteGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payl
     cwd: runtime.cwd,
     home: runtime.userHome,
     files: runtime.files,
-    hookAsks: hookAsksOf(guard.load),
     platform: runtime.platform,
   });
 }
@@ -144,7 +140,6 @@ export function secretGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, paylo
     rules: secretRulesOf(config, runtime.userHome, runtime.platform, secretPatternsOf(guard.load)),
     secretReads: config.secretReads,
     writes: config.writes,
-    hookAsks: hookAsksOf(guard.load),
     platform: runtime.platform,
   });
 }
@@ -182,7 +177,6 @@ export function execGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, payload
   return execGuardOutput(payload, {
     cwd: runtime.cwd,
     home: runtime.userHome,
-    hookAsks: hookAsksOf(guard.load),
     identity: () => tabIdentityOf(runtime, guard.kit, payload),
     installs: new ClientInstalls(clientRootOf(runtime.self.script), runtime.platform),
     search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
@@ -200,7 +194,6 @@ export function serviceRoleGuardOutputOf(runtime: CliRuntime, guard: GuardLoad, 
   return serviceRoleGuardOutput(payload, {
     cwd: runtime.cwd,
     home: runtime.userHome,
-    hookAsks: hookAsksOf(guard.load),
     platform: runtime.platform,
     configPath: guard.kit?.load.path,
     readConfig: (path) => runtime.files.read(path),

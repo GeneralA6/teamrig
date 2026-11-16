@@ -677,9 +677,9 @@ describe('runCli: inboxes', () => {
 });
 
 describe('runCli: hook push-guard', () => {
-  it('asks before a push to a protected branch and refuses a force-push of one', async () => {
+  it('refuses a push to a protected branch with the route, and a force-push of one (T3356)', async () => {
     const kit = new CliHarness();
-    assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main') })), 'ask');
+    assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main') })), 'deny');
     assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push --force origin main') })), 'deny');
     assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin dev') })), undefined);
   });
@@ -687,14 +687,14 @@ describe('runCli: hook push-guard', () => {
   it('takes the protected branches from the team config', async () => {
     const kit = new CliHarness({ ...TEAM, pushGuard: { protectedBranches: ['release'] } });
     assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main') })), undefined);
-    assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin release') })), 'ask');
+    assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin release') })), 'deny');
   });
 
   it('keeps the default branches when the config is missing or unreadable', async () => {
     for (const kit of [new CliHarness(null), new CliHarness('{ not json')]) {
       const result = await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main') });
       assert.equal(result.code, EXIT.ok);
-      assert.equal(decisionOf(result), 'ask');
+      assert.equal(decisionOf(result), 'deny');
     }
   });
 
@@ -750,7 +750,7 @@ describe('runCli: hook push-guard', () => {
   it('refuses a commit that skips the hooks, or asks or lets it run as the team config says, refusing on a broken config', async () => {
     const commit = bash('git commit --no-verify -m fix');
     assert.equal(decisionOf(await new CliHarness().run(['hook', 'push-guard'], { stdin: commit })), 'deny');
-    assert.equal(decisionOf(await new CliHarness({ ...TEAM, commitGuard: { skipHooks: 'ask' } }).run(['hook', 'push-guard'], { stdin: commit })), 'ask');
+    assert.equal(decisionOf(await new CliHarness({ ...TEAM, commitGuard: { skipHooks: 'ask' } }).run(['hook', 'push-guard'], { stdin: commit })), 'deny');
     assert.deepEqual((await new CliHarness({ ...TEAM, commitGuard: { skipHooks: 'allow' } }).run(['hook', 'push-guard'], { stdin: commit })).stdout, []);
     for (const kit of [new CliHarness(null), new CliHarness('{ not json')]) {
       assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: commit })), 'deny');
@@ -824,7 +824,7 @@ describe('runCli: hook secret-guard', () => {
   });
 
   it("asks or lets it run as the team config says, adds the team's own files, and refuses when the config is missing or unreadable", async () => {
-    assert.equal(decisionOf(await new CliHarness({ ...TEAM, secretGuard: { secretReads: 'ask' } }).run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'ask');
+    assert.equal(decisionOf(await new CliHarness({ ...TEAM, secretGuard: { secretReads: 'ask' } }).run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'deny');
     const asksOff = new CliHarness({ ...TEAM, secretGuard: { secretReads: 'ask' }, prompts: { hookAsks: 'refuse' } });
     assert.equal(decisionOf(await asksOff.run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'deny');
     const allows = new CliHarness({ ...TEAM, secretGuard: { secretReads: 'allow' } });
@@ -914,7 +914,7 @@ describe('runCli: hook service-role-guard', () => {
   const edit = (old_string: string, new_string: string): string => JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: CONFIG_PATH, old_string, new_string }, cwd: APP });
 
   it('asks before a roles grant, refuses asks-off, and refuses an edit adding serviceRoles, on a broken config too', async () => {
-    assert.equal(decisionOf(await new CliHarness().run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles grant github --holder alpha --yes') })), 'ask');
+    assert.equal(decisionOf(await new CliHarness().run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles grant github --holder alpha --yes') })), 'deny');
     const off = new CliHarness({ ...TEAM, prompts: { hookAsks: 'refuse' } });
     assert.equal(decisionOf(await off.run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles revoke github --yes') })), 'deny');
     const kit = new CliHarness();
@@ -936,9 +936,9 @@ describe('runCli: hook service-role-guard', () => {
 describe('runCli: hook db-write-guard', () => {
   const remove = bash('psql -c "DELETE FROM orders"');
 
-  it('asks about a hand-run database write and lets a read run', async () => {
+  it('refuses a hand-run database write with the route and lets a read run (T3356)', async () => {
     const kit = new CliHarness();
-    assert.equal(decisionOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })), 'ask');
+    assert.equal(decisionOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })), 'deny');
     assert.match(reasonOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })) ?? '', /psql runs DELETE/);
     assert.deepEqual((await kit.run(['hook', 'db-write-guard'], { stdin: bash('psql -c "SELECT 1"') })).stdout, []);
   });
@@ -950,9 +950,9 @@ describe('runCli: hook db-write-guard', () => {
     assert.equal(decisionOf(asksOff), 'deny');
     assert.ok(reasonOf(asksOff)?.endsWith(` ${ASK_REFUSED_NOTE}`));
     const entrypoints = new CliHarness({ ...TEAM, dbWriteGuard: { entrypoints: [{ path: 'scripts/backfill.ts', applyFlags: ['--apply'] }] } });
-    assert.equal(decisionOf(await entrypoints.run(['hook', 'db-write-guard'], { stdin: bash('node scripts/backfill.ts --apply') })), 'ask');
+    assert.equal(decisionOf(await entrypoints.run(['hook', 'db-write-guard'], { stdin: bash('node scripts/backfill.ts --apply') })), 'deny');
     for (const kit of [new CliHarness(null), new CliHarness('{ not json')]) {
-      assert.equal(decisionOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })), 'ask');
+      assert.equal(decisionOf(await kit.run(['hook', 'db-write-guard'], { stdin: remove })), 'deny');
     }
   });
 
@@ -972,7 +972,7 @@ describe('runCli: hook package-guard', () => {
 
   it('asks or lets it run as the team config says, and refuses when the config or the pointer is missing, unreadable or cannot be opened', async () => {
     const asks = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'ask' } });
-    assert.equal(decisionOf(await asks.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') })), 'ask');
+    assert.equal(decisionOf(await asks.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') })), 'deny');
     const allows = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'allow' } });
     assert.deepEqual((await allows.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') })).stdout, []);
     const refuses = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'ask' }, prompts: { hookAsks: 'refuse' } });
@@ -1091,12 +1091,12 @@ describe('runCli: which team', () => {
   it("finds a hook's team from the payload's folder, not where the hook process started", async () => {
     const kit = new CliHarness({ ...TEAM, pushGuard: { protectedBranches: ['release'] } });
     const result = await kit.run(['hook', 'push-guard'], { cwd: ELSEWHERE, stdin: bash('git push origin release') });
-    assert.equal(decisionOf(result), 'ask');
+    assert.equal(decisionOf(result), 'deny');
   });
 
   it('still guards the default branches on a broken pointer', async () => {
     const kit = new CliHarness(TEAM, '{"team": "../app"}');
-    assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main') })), 'ask');
+    assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main') })), 'deny');
     assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push --force origin main') })), 'deny');
   });
 

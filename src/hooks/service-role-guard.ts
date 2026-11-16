@@ -1,5 +1,4 @@
 import { posix, win32 } from 'node:path';
-import type { HookAsks } from '../config/types.ts';
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import type { ProgramsContext } from '../package-guard/programs.ts';
@@ -77,7 +76,6 @@ export interface ServiceRoleGuardEnv {
   /** The folder the call runs in when the payload names none. */
   readonly cwd: string;
   readonly home: string;
-  readonly hookAsks: HookAsks;
   readonly platform: NodeJS.Platform;
   /** The team config file, or undefined when the hook found no team config to keep; its kit home holds every team's. */
   readonly configPath: string | undefined;
@@ -268,10 +266,9 @@ function namesTeamConfig(command: string, cwd: string, env: ServiceRoleGuardEnv,
 
 const ROLE_CHANGE_ASK =
   'teamrig service-role guard: `teamrig roles grant` and `revoke` change who may run a service role\'s commands past ' +
-  'every permission check, a permission only the owner gives, so teamrig asks the owner at each session\'s call, ' +
-  'whatever --yes says. Owner: allow it only if you asked for this change; a grant first shows what its commands ' +
-  'reach, pull requests and outside authors included. A session does not retry it or route around it: the lead puts ' +
-  'the change to the owner, who runs it from their own terminal or prompt.';
+  'every permission check, a permission only the owner gives, so teamrig refuses it at every session\'s call, ' +
+  'whatever --yes says. The owner runs it from their own terminal, where a grant first shows what its commands ' +
+  'reach, pull requests and outside authors included; a session puts the change to its lead.';
 
 function editRefusalOf(reach: string): string {
   return (
@@ -327,5 +324,5 @@ export async function serviceRoleGuardOutput(payload: unknown, env: ServiceRoleG
       const launch = teamrigLaunchOf(run, startsRoleChange);
       return launch !== undefined && startsRoleChange(launch.words);
     }) || runs.opaque.some((run) => opaqueGuardedWords(run, startsRoleChange) !== undefined);
-  return changes ? holdBackOutput('ask', ROLE_CHANGE_ASK, env.hookAsks) : '';
+  return changes ? holdBackOutput('ask', ROLE_CHANGE_ASK) : '';
 }

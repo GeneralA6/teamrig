@@ -38,7 +38,6 @@ function env(
   return {
     cwd: 'C:/w',
     home: 'C:/u',
-    hookAsks: 'ask',
     identity: () => {
       reads += 1;
       return Promise.resolve(identity);
@@ -196,11 +195,6 @@ describe('execGuardOutput', () => {
     const found = await verdict(bash('teamrig exec approve R1 --session alpha'), env({ kind: 'unbound', why: 'this tab is not bound to a session of the team' }));
     assert.equal(found?.decision, 'deny');
     assert.match(found?.reason ?? '', /reviews a request, and this tab is not bound to a session of the team, so the guard cannot tell who reviews\.$/);
-  });
-
-  it('refuses under asks off too, as a refusal is never a question', async () => {
-    const asksOff = { ...env(), hookAsks: 'refuse' as const };
-    assert.equal((await verdict(bash('teamrig exec approve R1 --session bravo'), asksOff))?.decision, 'deny');
   });
 
   it('reads the tab’s session only for a line that reviews', async () => {

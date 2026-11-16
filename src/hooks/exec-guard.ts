@@ -1,4 +1,3 @@
-import type { HookAsks } from '../config/types.ts';
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
@@ -112,7 +111,6 @@ export interface ExecGuardEnv {
   /** The folder to read the line from when the payload names none. */
   readonly cwd: string;
   readonly home: string;
-  readonly hookAsks: HookAsks;
   readonly identity: () => Promise<TabIdentity>;
   /** The installs a call may start: the hook's own, and the other versions beside it in the plugin cache. */
   readonly installs: ClientInstalls;
@@ -676,5 +674,5 @@ export async function execGuardOutput(payload: unknown, env: ExecGuardEnv): Prom
     reasons.push(...reviews.map((call) => reviewRefusalOf(call, identity)).filter((reason) => reason !== undefined));
     reasons.push(...checkedBinds.map((call) => bindRefusalOf(call, identity, steered)).filter((reason) => reason !== undefined));
   }
-  return reasons.length === 0 ? '' : holdBackOutput('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`, env.hookAsks);
+  return reasons.length === 0 ? '' : holdBackOutput('deny', `teamrig exec guard: ${[...new Set(reasons)].join(' ')}`);
 }

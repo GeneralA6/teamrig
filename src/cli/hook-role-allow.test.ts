@@ -110,11 +110,11 @@ describe('hook route-allow: service roles', () => {
     assert.deepEqual(await answersOf(kit), []);
   });
 
-  it('asks the owner once the role ran its daily cap, refusing when asks are off, and counts a rolling day (C6)', async () => {
+  it('refuses once the role ran its daily cap, and counts a rolling day (C6, T3356)', async () => {
     const kit = await boundKit({ prompts: { serviceRoleDailyCap: 2 } });
     assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'allow');
     assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'allow');
-    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'ask');
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'deny');
     assert.equal((await answersOf(kit)).length, 2);
     kit.clock.advance(24 * 60 * 60 * 1000 + 1);
     assert.equal(decisionOf(await kit.run(HOOK, { stdin: call(CLOSE), env: ALPHA })), 'allow');

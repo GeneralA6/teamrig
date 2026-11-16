@@ -185,11 +185,11 @@ describe('the budget in the hooks', () => {
     assert.ok(next.stdout.some((line) => line.includes('T7 is yours')), next.stdout.join('\n'));
   });
 
-  it('asks before a helper launch past budget with overAction ask, and lets it go with ask-lead', async () => {
+  it('refuses a helper launch past budget with overAction ask, and lets it go with ask-lead (T3356)', async () => {
     const asked = await world({ overAction: 'ask' }, 10_000_000, 30);
     await meterLead(asked);
     const gate = await asked.hook('helper-gate', ALPHA_TAB, AGENT);
-    assert.equal(decisionOf(gate), 'ask');
+    assert.equal(decisionOf(gate), 'deny');
     assert.match(gate.stdout[0] ?? '', /alpha is past its daily budget/);
     assert.equal(contextOf(gate), helperLaunchReminder(1));
     const relaxed = await world({}, 10_000_000, 30);

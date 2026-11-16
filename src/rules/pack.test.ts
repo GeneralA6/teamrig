@@ -242,7 +242,7 @@ describe('renderCorePack', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND, 'win32', RULES_CLOCK);
     const keys = String.raw`\[pushGuard\]`;
     const routed = ' A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed off.';
-    assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
+    assert.match(pack({}), new RegExp(String.raw`^15\. Every push to main, master is refused ${keys}\.${routed}$`, 'm'));
     assert.match(
       pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),
       new RegExp(String.raw`^15\. Pushes to release go unasked; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'),
@@ -268,7 +268,7 @@ describe('renderCorePack', () => {
   it('tells the session to record a refused route for the owner, not report it to the lead, when hook asks are off', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard, prompts: { hookAsks: 'refuse' } }), COMMAND, 'win32', RULES_CLOCK);
     const waits = ' A refused or blocked route waits on approval:owner; take your next task, never route around it or hand it off.';
-    assert.match(pack({}), new RegExp(String.raw`^15\. Every push to main, master is refused \[pushGuard, prompts\.hookAsks\]\.${waits}$`, 'm'));
+    assert.match(pack({}), new RegExp(String.raw`^15\. Every push to main, master is refused \[pushGuard\]\.${waits}$`, 'm'));
     assert.match(pack({ pushToProtected: 'allow' }), new RegExp(String.raw`^15\. Pushes to main, master go unasked; force-pushing or deleting them is refused \[pushGuard\]\.${waits}$`, 'm'));
     assert.doesNotMatch(pack({}), /reported to the lead/);
   });
@@ -277,9 +277,9 @@ describe('renderCorePack', () => {
     const pushTo = (protectedBranches: readonly string[]) =>
       renderCorePack(testConfig({ pushGuard: { protectedBranches: [...protectedBranches] } }), COMMAND, 'win32', RULES_CLOCK);
     const atLimit = ['x'.repeat(59), 'y'.repeat(59)];
-    assert.match(pushTo(atLimit), new RegExp(`Pushes to ${atLimit.join(', ')} ask the human`));
-    assert.match(pushTo(['x'.repeat(59), 'y'.repeat(60)]), new RegExp(`Pushes to ${'x'.repeat(59)} and 1 more ask the human`));
-    assert.match(pushTo(filled(CONFIG_LIMITS.protectedBranches, 'b')), new RegExp(`Pushes to ${'b'.repeat(64)} and 7 more ask`));
+    assert.match(pushTo(atLimit), new RegExp(`Every push to ${atLimit.join(', ')} is refused`));
+    assert.match(pushTo(['x'.repeat(59), 'y'.repeat(60)]), new RegExp(`Every push to ${'x'.repeat(59)} and 1 more is refused`));
+    assert.match(pushTo(filled(CONFIG_LIMITS.protectedBranches, 'b')), new RegExp(`Every push to ${'b'.repeat(64)} and 7 more is refused`));
   });
 
   it('keeps every edit in a worktree, in every repo, and names the command that removes one safely', () => {

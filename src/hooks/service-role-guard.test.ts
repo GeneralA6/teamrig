@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import type { HookAsks } from '../config/types.ts';
 import { changedGatedKeys, OWNER_GATED_KEYS, serviceRoleGuardOutput, type ServiceRoleGuardEnv } from './service-role-guard.ts';
 
 const CONFIG = 'C:/u/.teamrig/teams/shop/config.json';
@@ -35,7 +34,6 @@ const REAL: Readonly<Record<string, string>> = {
 };
 
 interface GuardOptions {
-  readonly asks?: HookAsks;
   readonly configPath?: string | undefined;
   readonly text?: string | undefined;
   readonly platform?: NodeJS.Platform;
@@ -48,7 +46,6 @@ function env(options: GuardOptions = {}): ServiceRoleGuardEnv {
   return {
     cwd: 'C:/w',
     home: 'C:/u',
-    hookAsks: options.asks ?? 'ask',
     platform: options.platform ?? 'win32',
     configPath: 'configPath' in options ? options.configPath : CONFIG,
     readConfig: (path) => {
@@ -80,7 +77,7 @@ async function decide(payload: JsonRecord, guardEnv: ServiceRoleGuardEnv = env()
 }
 
 describe('service-role guard: roles grant and revoke', () => {
-  it('asks the owner for a grant or revoke through any client, whatever --yes says', async () => {
+  it('refuses a grant or revoke through any client, whatever --yes says', async () => {
     const lines = [
       'teamrig roles grant github --holder alpha --commands "issue close" --yes',
       'teamrig roles revoke github --yes',
@@ -109,18 +106,20 @@ describe('service-role guard: roles grant and revoke', () => {
       'echo roles grant',
     ];
     for (const command of lines) {
-      assert.equal(await decide(call('Bash', { command })), 'ask', command);
+      assert.equal(await decide(call('Bash', { command })), 'deny', command);
     }
-    assert.equal(await decide(call('PowerShell', { command: "teamrig roles grant github --holder alpha --commands 'issue close' --yes" })), 'ask');
+    assert.equal(await decide(call('PowerShell', { command: "teamrig roles grant github --holder alpha --commands 'issue close' --yes" })), 'deny');
     const output = decisionOf(await serviceRoleGuardOutput(call('Bash', { command: lines[0] ?? '' }), env()));
     assert.match(output?.reason ?? '', /a permission only the owner gives/);
     assert.match(output?.reason ?? '', /a grant first shows what its commands reach, pull requests and outside authors included/, 'T2984');
   });
 
-  it('refuses it with the note to wait for the owner when asks are off', async () => {
-    const output = decisionOf(await serviceRoleGuardOutput(call('Bash', { command: 'teamrig roles grant github --holder alpha --yes' }), env({ asks: 'refuse' })));
+  it('refuses it with the route: the owner runs it from their own terminal, never at a prompt in a session (T3356)', async () => {
+    const output = decisionOf(await serviceRoleGuardOutput(call('Bash', { command: 'teamrig roles grant github --holder alpha --yes' }), env()));
     assert.equal(output?.decision, 'deny');
+    assert.match(output?.reason ?? '', /The owner runs it from their own terminal.*a session puts the change to its lead\./);
     assert.match(output?.reason ?? '', /approval:owner/);
+    assert.doesNotMatch(output?.reason ?? '', /Owner: allow|or prompt/);
   });
 
   it('leaves roles list, other teamrig commands and other programs alone', async () => {
@@ -261,7 +260,7 @@ describe('config guard: every owner-gated key (T3083)', () => {
     serviceRoles: ROLES,
     roles: { lead: 'lead', securityReviewer: 'sec' },
     register: { ownerSource: 'owner', staleDays: 3 },
-    prompts: { hookAsks: 'ask', routeAllow: { enabled: false } },
+    prompts: { routeAllow: { enabled: false } },
     readonlyShell: { allowPrefixes: ['git status'] },
     exec: { webhookEnv: 'HOOK_URL' },
     github: { owners: { octo: 'alpha' }, everyMinutes: 30 },

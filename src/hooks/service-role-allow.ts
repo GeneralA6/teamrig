@@ -1,4 +1,4 @@
-import type { HookAsks, ServiceRoleConfig } from '../config/types.ts';
+import type { ServiceRoleConfig } from '../config/types.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseJsonl } from '../core/jsonl.ts';
 import { isIssueCommand, TEAM_HELD_COMMANDS, type ServiceCommand } from '../permissions/service-commands.ts';
@@ -86,13 +86,11 @@ export function roleAllowOutput(role: string, call: RoleTarget): string {
   });
 }
 
-/** The hook's stdout once the role ran its cap in 24 hours: an ask of the owner, a refusal when asks are off. */
-export function roleCapOutput(role: string, cap: number, asks: HookAsks): string {
+/** The hook's stdout once the role ran its cap in 24 hours: a refusal, saying when the role runs again. */
+export function roleCapOutput(role: string, cap: number): string {
   return holdBackOutput(
     'ask',
     `teamrig: the service role ${role} ran its ${cap} calls of the last 24 hours (prompts.serviceRoleDailyCap), so this ` +
-      'one asks the owner. Owner: allow it only if this many calls of the role are what you expect; a session does not ' +
-      'retry it or route around it, it tells its lead.',
-    asks,
+      'one is refused. The role runs again once its oldest call of the window is 24 hours old; only the owner raises the cap.',
   );
 }

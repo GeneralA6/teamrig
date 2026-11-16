@@ -1,6 +1,6 @@
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import type { HookAsks, SecretGuardConfig, SecretReads, SecretWrites } from '../config/types.ts';
+import type { SecretGuardConfig, SecretReads, SecretWrites } from '../config/types.ts';
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { resolveDir } from '../push-guard/location.ts';
@@ -29,7 +29,6 @@ export interface SecretGuardEnv {
   readonly secretReads: SecretReads;
   /** What a call whose command line or written text holds a secret gets. */
   readonly writes: SecretWrites;
-  readonly hookAsks: HookAsks;
   /** The host's platform: on Windows a Bash line is read as written and as bash receives it (core/bash-tool-readings.ts). */
   readonly platform: NodeJS.Platform;
 }
@@ -224,5 +223,5 @@ export function secretGuardOutput(payload: unknown, env: SecretGuardEnv): string
     return '';
   }
   const decision = findings.some((finding) => actionOf(finding, env) === 'deny') ? 'deny' : 'ask';
-  return holdBackOutput(decision, secretReason(findings), env.hookAsks);
+  return holdBackOutput(decision, secretReason(findings));
 }
