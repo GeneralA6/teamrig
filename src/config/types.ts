@@ -994,10 +994,11 @@ export interface QueueConfig {
   /**
    * How the host lock's line is ordered: `pipeline` lets the most urgent step in first (a p0 step at once, then by class
    * turn, priority raised by agingMinutes waited, and arrival), with at most perSessionRunning steps of one session
-   * running and maxHeavyParallel heavy steps sharing the host at once, and is the default; `serial` keeps the line in
-   * arrival order with no cap and one heavy step at a time, for a team whose own deploy tool takes the lock file
-   * without first waiting for the shares to end. A step in line reads this key and the four after it again at each
-   * look, so an edit reaches the steps already waiting.
+   * running and maxHeavyParallel heavy steps sharing the host at once, small steps in a line of their own with at most
+   * maxSmallParallel of them at once, and is the default; `serial` keeps one line in arrival order with no cap and one
+   * heavy step at a time, for a team whose own deploy tool takes the lock file without first waiting for the shares to
+   * end. A step in line reads this key and the five after it again at each look, so an edit reaches the steps already
+   * waiting.
    */
   readonly admission: AdmissionMode;
   /** In `pipeline` admission, a waiting step's priority rises one level per this many minutes waited, never to p0; 0 ages nothing. */
@@ -1009,7 +1010,10 @@ export interface QueueConfig {
    * so that the room they free goes to it; 0 passes no one.
    */
   readonly memoryPassMinutes: number;
-  /** In `pipeline` admission, a session with this many steps running (the host lock or a share of the host) waits for one to end, and later steps pass it; 0 caps nothing. */
+  /**
+   * In `pipeline` admission, a session with this many heavy steps running (the host lock or a heavy share of the host)
+   * waits for one to end, and later steps pass it; its small steps are not counted or held; 0 caps nothing.
+   */
   readonly perSessionRunning: number;
   /**
    * In `pipeline` admission, at most this many heavy queued steps share the host at once, each let in only while the
@@ -1017,6 +1021,12 @@ export interface QueueConfig {
    * waiting for every share to end.
    */
   readonly maxHeavyParallel: number;
+  /**
+   * In `pipeline` admission, small queued steps (`teamrig queue --small`) wait in a line of their own, never behind a
+   * heavy step, and at most this many share the host at once, each let in only while the memory gate has room for its
+   * need (smallReserveMb when none is learned or declared); a merge or a deploy holding the whole host still keeps them out.
+   */
+  readonly maxSmallParallel: number;
   /**
    * In `pipeline` admission, a heavy queued step joins another heavy one already sharing the host only while at least
    * this % of the host's CPU time is idle (read over 2 seconds), as two test runs fanned out over every core slow each

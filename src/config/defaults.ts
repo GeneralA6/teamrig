@@ -425,6 +425,7 @@ export const DEFAULT_QUEUE: QueueConfig = {
   memoryPassMinutes: 15,
   perSessionRunning: 2,
   maxHeavyParallel: 2,
+  maxSmallParallel: 4,
   heavyIdleCpuPct: 25,
 };
 
