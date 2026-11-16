@@ -1,11 +1,14 @@
-import { targetText, type CloseReason, type HostAssignee, type HostComments, type HostEnd, type HostIssueId, type HostIssueLabels, type HostJobLog, type HostLabel, type HostLabelFile, type HostLinks, type HostList, type HostOpen, type HostPulls, type HostReach, type HostUse, type HostViewer, type HostWatch, type IssueDraft, type IssueHost, type IssueTarget, type LabelSpec, type WatchMarks } from '../issues/host.ts';
+import { targetText, type CloseReason, type HostAssignee, type HostComments, type HostEnd, type HostIssueId, type HostIssueLabels, type HostJobLog, type HostLabel, type HostLabelFile, type HostLinks, type HostList, type HostOpen, type HostPulls, type HostReach, type HostThread, type HostUse, type HostViewer, type HostWatch, type IssueDraft, type IssueHost, type IssueTarget, type LabelSpec, type WatchMarks } from '../issues/host.ts';
 import type { FieldValue, HostField, HostFieldRead, IssueFields } from '../issues/fields.ts';
-import type { LinkedIssue } from '../issues/issue.ts';
+import type { IssueThread, LinkedIssue } from '../issues/issue.ts';
 import type { HostPost, HostPosts } from '../issues/post.ts';
 import type { HostPull } from '../issues/pull.ts';
 
 /** The login a fake host's access, and FakeGh's token, belong to until a test says otherwise: the account the sync runs as. */
 export const FAKE_VIEWER = 'sync-bot';
+
+/** An issue as the fake reads one a test did not give: open, with no labels, assignees or body. */
+const BLANK_THREAD: IssueThread = { state: 'open', labels: [], assignees: [], pull: false, body: '' };
 
 /** What each use does, as the fake's access line words it. */
 const USE_VERB: Readonly<Record<HostUse, string>> = { read: 'reads', open: 'opens issues', write: 'writes' };
@@ -88,6 +91,8 @@ export class FakeIssueHost implements IssueHost {
     };
     return this;
   }
+  private readonly threads = new Map<number, IssueThread>();
+  private threadRead: HostThread | undefined;
 
   /** From now on, taking an assignee off fails for `reason`. */
   failsUnassign(reason: string): this {
@@ -335,6 +340,23 @@ export class FakeIssueHost implements IssueHost {
 
   issueId(target: IssueTarget): Promise<HostIssueId> {
     return Promise.resolve(this.idRead ?? { kind: 'found', id: 1000 + target.number });
+  }
+
+  /** From now on, a read of `number` in any repository gives `thread`. */
+  holdsThread(number: number, thread: Partial<IssueThread>): this {
+    this.threads.set(number, { ...BLANK_THREAD, ...thread });
+    return this;
+  }
+
+  /** From now on, every read of an issue or pull request ends as `end`. */
+  readsThread(end: HostThread): this {
+    this.threadRead = end;
+    return this;
+  }
+
+  /** The thread a test gave the number, else an open issue with no labels, assignees or body. */
+  thread(target: IssueTarget): Promise<HostThread> {
+    return Promise.resolve(this.threadRead ?? { kind: 'read', thread: this.threads.get(target.number) ?? BLANK_THREAD });
   }
 
   labelExists(_repo: string, label: string): Promise<HostLabel> {

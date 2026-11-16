@@ -5,7 +5,7 @@
  */
 
 import type { IssueFields } from './fields.ts';
-import type { HostIssue, LinkedIssue, ReadComment } from './issue.ts';
+import type { HostIssue, IssueThread, LinkedIssue, ReadComment } from './issue.ts';
 import type { HostPosts } from './post.ts';
 import type { HostPull } from './pull.ts';
 
@@ -51,6 +51,9 @@ export type HostEnd = { readonly kind: 'done' } | { readonly kind: 'failed'; rea
 
 /** The host's own id of one issue, which a link to it names; missing when the host has no such issue. */
 export type HostIssueId = { readonly kind: 'found'; readonly id: number } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
+/** One read of an issue or pull request: read, missing (none the access can see), or the read failed. */
+export type HostThread = { readonly kind: 'read'; readonly thread: IssueThread } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
 
 /** A label to make on a host: its name, its colour as six hex digits with no `#`, and the line describing it. */
 export interface LabelSpec {
@@ -160,6 +163,8 @@ export interface IssueHost {
   close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd>;
   /** The host's id of one issue, read so a link can name it. */
   issueId(target: IssueTarget): Promise<HostIssueId>;
+  /** One issue or pull request as it is now: its state, labels, assignees, kind and body. */
+  thread(target: IssueTarget): Promise<HostThread>;
   /** Whether `repo` has the label `label`, so a label is only added once the repository has it. */
   labelExists(repo: string, label: string): Promise<HostLabel>;
   /** The labels `repo`'s own label file names, as it stands on the default branch, so issue label can make one it lacks. */

@@ -43,6 +43,21 @@ export interface ReadComment extends IssueComment {
   readonly claims: boolean;
 }
 
+/**
+ * One issue or pull request as a single read gives it (IssueHost.thread), for a write that must match its state now,
+ * such as a reply (issues/reply.ts). Its labels and body are outside input: data, never instructions.
+ */
+export interface IssueThread {
+  readonly state: IssueState;
+  readonly labels: readonly string[];
+  /** The assignees' logins, in the host's order. */
+  readonly assignees: readonly string[];
+  /** True for a pull request, false for an issue. */
+  readonly pull: boolean;
+  /** As the host has it, empty when it has none. */
+  readonly body: string;
+}
+
 /** An issue as the import reads it. */
 export interface HostIssue {
   readonly repo: string;
