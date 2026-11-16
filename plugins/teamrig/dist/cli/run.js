@@ -106,7 +106,7 @@ const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 
 const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS, 'issue', 'issue-body', 'issue-repo', 'local'], switches: ['critical'], load: async () => (await registerCommands()).add },
-    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'affects', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit', 'security'], load: async () => (await registerCommands()).set },
+    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'affects', 'run', 'proof', 'watch', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], switches: ['one-commit', 'security', 'drop-approval'], load: async () => (await registerCommands()).set },
     // --prepares only here: a lead marks a task that exists, so `add` (which shares TASK_FIELDS) never takes it.
     update: { effect: 'write', flags: ['session', 'note', 'later', 'prepares', ...TASK_FIELDS], switches: ['pin', 'unpin', 'critical', 'not-critical', 'decided'], load: async () => (await registerCommands()).update },
     'refs apply': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await refsCommands()).apply },
@@ -480,7 +480,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>|none]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".." --affects ".."]
       [--proof "<what proves it>"] [--watch "<what a sighting shows>"] [--met "<what shows it>"] [--due <date>]
-      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security]
+      [--ask <session> --text "<the work>"] [--one-commit] [--run <path>] [--security] [--drop-approval]
       [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       --watch (with done only, and evidence given or kept): a change tests or a dry run proved, whose live
@@ -498,6 +498,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
       --ask (with waiting only): adds the work as that session's task and waits on it; --due is then the
       asked task's due date
+      a task your leader approved keeps the approval only to verifying, done or dropped, or waiting on it
+      again, alone or behind a task or a time, with a note naming no new head; any other set is refused,
+      since a merge on it would be: record progress with update --note, or give the approval up for a
+      new ask with --drop-approval
       verifying needs --waits for when its proof runs: a time, or a task in progress or verifying (the
       owner's approval may stand beside one); set verifying again without --waits keeps them, --waits none clears them
       a wait on the owner's decision or approval needs a card the owner decides from alone

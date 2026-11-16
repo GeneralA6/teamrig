@@ -42,7 +42,7 @@ import { readWideAllow, teamSettingsScope } from "../allow-scope.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { handStepPin, readRunFiles } from "../hand-step-file.js";
 import { KitTreeGoals } from "../tree-goals.js";
-import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, withSecurityCard } from "../inputs.js";
+import { addInputOf, callerOf, changesOf, criticalOf, deadlineOf, dropApprovalOf, listFilterOf, NONE, oneCommitOf, pinOf, setInputOf, taskIdOf, taskRefOf, weekOf, withSecurityCard } from "../inputs.js";
 import { findTeam, openKit, pastOrPresentIdOf, projectFolder, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { fiveHourWarnings } from "../five-hour-check.js";
@@ -458,7 +458,7 @@ export async function set(args, runtime) {
     const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
     const { config, paths, register, roster } = team;
     const by = sessionIdOf(roster, caller);
-    const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, withSecurityCard(typed.status, args.switches)), ...oneCommitOf(args.switches), ...(await runOf(args.flags, runtime)) });
+    const input = await withSpentClasses(runtime, team, { ...statusInputIds(team, withSecurityCard(typed.status, args.switches)), ...oneCommitOf(args.switches), ...dropApprovalOf(args.switches), ...(await runOf(args.flags, runtime)) });
     if (typed.ask !== null) {
         return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
     }

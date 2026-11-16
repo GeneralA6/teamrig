@@ -119,6 +119,21 @@ function keptAnswer(task, status, waits, note) {
     const added = waits.filter((reason) => !task.waits.some((held) => sameWait(held, reason)));
     return holds && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
 }
+/** The statuses that end the step an approval was for: the change merged and waits on its proof, landed, or was given up. */
+const STEP_ENDS = ['verifying', 'done', 'dropped'];
+/**
+ * The approval a status change would clear before its step ends (T3207): a set that only records progress, such as
+ * in-progress with a note once the approved merge is queued, clears the approval as any new status does, and the merge
+ * is then refused. Null when the task holds no approval, the status ends its step, or it keeps the answer (`keptAnswer`,
+ * which reads the set's note for a head the approval does not name).
+ */
+export function droppedApproval(task, status, waits, note) {
+    const { answer } = task;
+    if (answer === null || answer.verdict !== 'approved' || STEP_ENDS.includes(status)) {
+        return null;
+    }
+    return keptAnswer(task, status, waits, note) === null ? answer : null;
+}
 function withStatus(task, event) {
     const waits = WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [];
     const answer = keptAnswer(task, event.status, waits, event.note);
