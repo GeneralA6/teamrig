@@ -3,7 +3,8 @@ import { parseIssueTarget, targetText } from "../issues/host.js";
 import { readable } from "../slash/plan.js";
 import { matchesKit } from "./route-kit.js";
 import { plainWordsOf } from "./route-line.js";
-import { isServiceCommand } from "./service-commands.js";
+import { isIssueCommand } from "./service-commands.js";
+import { shipCallOf } from "./ship-role-call.js";
 /**
  * The call shapes a service role lets run (T2984, design 1): each table command as the CLI's own parser reads it, with
  * typed slots and no wildcard. `teamrig issue close <owner/name#n> [--comment "<text>"]` and `teamrig issue comment
@@ -12,9 +13,10 @@ import { isServiceCommand } from "./service-commands.js";
  * target and a comment need, so this reader masks exactly those parts first, after proving them literal to bash: the
  * target word as `owner/name#n` (a `#` inside a word starts no comment), and each double-quoted text holding no `"`,
  * `\`, `$`, backtick or control character (bash expands nothing in it). A line with a single quote or a backslash
- * outside such a text is no role call: the mask could not tell where bash's quotes end.
+ * outside such a text is no role call: the mask could not tell where bash's quotes end. A queued ship or merge is read
+ * in the ship tool's own shape (ship-role-call.ts), through the same mask.
  */
-/** The shape of each table command; a new table entry adds its shape here, with a security review. */
+/** The shape of each issue command; a new table entry adds its shape here, with a security review. */
 const SHAPES = {
     'issue close': { commands: ['issue close'], options: ['session', 'comment'], positionals: 'one' },
     'issue comment': { commands: ['issue comment'], options: ['session', 'body'], positionals: 'one' },
@@ -61,7 +63,13 @@ export async function roleCallOf(line, context) {
     const scanned = roleScanTextOf(line);
     const words = scanned === undefined ? undefined : plainWordsOf(line, scanned);
     const parsed = words === undefined ? undefined : readable(words.slice(1), context.cli);
-    if (words === undefined || parsed === undefined || !isServiceCommand(parsed.command)) {
+    const [program] = words ?? [];
+    if (program !== undefined && parsed?.command === 'queue') {
+        const ship = await shipCallOf(program, parsed, context);
+        const session = parsed.flags.get('session');
+        return ship === undefined || session === undefined ? undefined : { command: ship.merges ? 'queue merge' : 'queue ship', target: ship.worktree, session, ship };
+    }
+    if (words === undefined || parsed === undefined || !isIssueCommand(parsed.command)) {
         return undefined;
     }
     const command = parsed.command;

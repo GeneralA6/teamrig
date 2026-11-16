@@ -117,7 +117,7 @@ function isPushOption(word) {
     return letters.length > 0 && letters.every((letter) => PUSH_FLAGS.has(letter));
 }
 /** The task of a plain task branch (`t<id>-...`, `feat/t<id>-...`) that is no protected branch, whatever its case; else undefined. */
-function taskBranchOf(branch, protectedBranches) {
+export function taskBranchOf(branch, protectedBranches) {
     const plain = BRANCH_NAME.test(branch) && !branch.includes('..') && !branch.toLowerCase().startsWith('refs/') && branch.toLowerCase() !== 'head';
     const unprotected = !protectedBranches.some((name) => name.toLowerCase() === branch.toLowerCase());
     return plain && unprotected ? branchTaskOf(branch) : undefined;

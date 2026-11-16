@@ -1,13 +1,6 @@
 import { parseJsonl } from "../core/jsonl.js";
-import { TEAM_HELD_COMMANDS } from "../permissions/service-commands.js";
+import { isIssueCommand, TEAM_HELD_COMMANDS } from "../permissions/service-commands.js";
 import { holdBackOutput } from "./permission.js";
-/**
- * The service-role allow (T2984, the owner's option A): a session holding a role runs the role's teamrig commands with no
- * permission check, so a job the owner gave it (closing the GitHub issue a fix landed for) never stalls on a prompt.
- * It answers only for the tab bound to the holder (C1), only once every guard passed the call, and only up to
- * `prompts.serviceRoleDailyCap` calls a role in 24 hours, then it asks the owner (C6). Its log line names the role,
- * command and issue, never the text (C7); `prompts.routeAllow: off` takes it away.
- */
 /** The rolling window the daily cap counts over. */
 export const ROLE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** True when the role gives `command` to `holder`: a holder it names, or every session for a command that checks its own caller. */
@@ -26,16 +19,16 @@ export function roleHolding(roles, command, holder) {
         return role !== undefined && holds(role, command, holder);
     });
 }
-/** How many calls the role's allow let run at or after `sinceMs`, by the prompt-answers log's text. */
+/** How many closes and comments the role's allow let run at or after `sinceMs`, by the prompt-answers log's text; a ship counts toward no cap. */
 export function roleAllowsSince(log, role, sinceMs) {
     return parseJsonl(log).records.filter(({ record }) => {
         const at = record['at'];
-        return record['answer'] === 'role' && record['role'] === role && typeof at === 'string' && Date.parse(at) >= sinceMs;
+        return record['answer'] === 'role' && record['role'] === role && isIssueCommand(record['command']) && typeof at === 'string' && Date.parse(at) >= sinceMs;
     }).length;
 }
 /**
  * One line of the team's prompt-answers log for a role's allow, beside the route allows: the role, the table command and
- * the issue it acts on, never the comment's text (C7).
+ * the issue or branch it acts on, never the comment's text (C7).
  */
 export function roleAllowRecord(facts) {
     return {
@@ -51,7 +44,7 @@ export function roleAllowRecord(facts) {
         target: facts.call.target,
     };
 }
-/** The hook's stdout for a role's call: an allow naming the role, the command and the issue. */
+/** The hook's stdout for a role's call: an allow naming the role, the command and the issue or branch. */
 export function roleAllowOutput(role, call) {
     return JSON.stringify({
         hookSpecificOutput: {

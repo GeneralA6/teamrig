@@ -15,7 +15,7 @@ export const KIT_SHAPES = {
     register: { commands: REGISTER_COMMANDS, options: undefined, positionals: 'any' },
 };
 /** A path from the root of a drive or of the file system, as bash or Windows writes it. */
-const ABSOLUTE = /^(?:\/|[A-Za-z]:[\\/])/;
+export const ABSOLUTE = /^(?:\/|[A-Za-z]:[\\/])/;
 /** True when `words` run `shape` through this install's own teamrig. */
 export async function matchesKit(shape, words, context) {
     const [program, ...argv] = words;
