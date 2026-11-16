@@ -1,4 +1,5 @@
 import { withAudit } from "./hand-step.js";
+import { namesUnapprovedCommit } from "./head-sha.js";
 import { WAIT_STATUSES } from "./model.js";
 import { namesNewWait, sameWait } from "./waits.js";
 /** The numeric part of a task id (`T12` → 12). */
@@ -101,24 +102,26 @@ function created(id, fields, at, by) {
     };
 }
 /**
- * The answer a status keeps (T2117): an approval, when the task stays waiting, names the approved wait again and adds
- * only waits on another task or a time. That holds the approved change behind them, so it is no new ask, and `check`
- * flags the task READY once they clear, which is the owner's wake to merge. Any other status, the same waits restated
- * (a new ask, T2089), a new decision or approval wait, or a declined answer clears it.
+ * The answer a status keeps: an approval, when the task stays waiting, names the approved wait again, adds only waits
+ * on another task or a time (T2117), and its note names no commit the approval's note does not (T3044). A hold behind
+ * other work keeps it, and `check` flags the task READY once that clears, the owner's wake to merge; so does the same
+ * wait set again to log a step, say a merge a classifier refused, which used to drop the approval of an unchanged head.
+ * A note naming another head is a new ask: `ship.ts merge` reads the approved head from the answer's note, so a new
+ * head always needs a new approval. Any other status, a new decision or approval wait, or a declined answer clears it.
  */
-function keptAnswer(task, status, waits) {
+function keptAnswer(task, status, waits, note) {
     const { answer } = task;
-    if (answer === null || answer.verdict !== 'approved' || status !== 'waiting' || task.status !== 'waiting') {
+    if (answer === null || answer.verdict !== 'approved' || status !== 'waiting' || task.status !== 'waiting' || namesUnapprovedCommit(note, answer.note)) {
         return null;
     }
     const approved = { kind: 'approval', who: answer.by };
     const holds = [task.waits, waits].every((each) => each.some((reason) => sameWait(reason, approved)));
     const added = waits.filter((reason) => !task.waits.some((held) => sameWait(held, reason)));
-    return holds && added.length > 0 && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
+    return holds && added.every((reason) => reason.kind === 'task' || reason.kind === 'time') ? answer : null;
 }
 function withStatus(task, event) {
     const waits = WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [];
-    const answer = keptAnswer(task, event.status, waits);
+    const answer = keptAnswer(task, event.status, waits, event.note);
     return {
         ...task,
         status: event.status,
