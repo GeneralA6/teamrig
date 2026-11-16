@@ -27,11 +27,45 @@ export interface GitRun {
   readonly status: number | null;
   readonly stdout: string;
   readonly stderr: string;
+  /**
+   * Why git gave no answer of its own (T3368), as {@link unansweredOf} reads it; undefined when git ran and exited by
+   * itself, whatever its code, since git's own "no" (1, 128) is an answer.
+   */
+  readonly unanswered?: string;
+}
+
+/** The highest code a program's own exit gives; Windows reports a process that died starting as an NTSTATUS above it. */
+const HIGHEST_EXIT_CODE = 255;
+
+/** How a spawned git ended, as `spawnSync` reports it. */
+export interface GitEnd {
+  readonly error?: Error;
+  readonly status: number | null;
+  readonly signal: NodeJS.Signals | null;
+}
+
+/**
+ * Why git gave no answer of its own, or undefined when it ran and exited by itself (T3368): it did not start, it was
+ * stopped (by the query timeout too), or it ended with a code no program's own exit gives, such as 0xC0000142 when
+ * Windows cannot start one more process under load. A reader must never take such a run for git's "no".
+ */
+export function unansweredOf(end: GitEnd): string | undefined {
+  if (end.error !== undefined) {
+    return end.error.message;
+  }
+  if (end.status === null) {
+    return `stopped by ${end.signal ?? 'a signal'}`;
+  }
+  if (end.status < 0 || end.status > HIGHEST_EXIT_CODE) {
+    return `ended with 0x${(end.status >>> 0).toString(16).toUpperCase()}, as a process that died starting does`;
+  }
+  return undefined;
 }
 
 export function runGit(dir: string, args: readonly string[], timeout: number = QUERY_TIMEOUT_MS): GitRun {
   const result = spawnSync('git', args, { cwd: dir, env: gitEnvironment(process.env), encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 });
-  return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+  const unanswered = unansweredOf(result);
+  return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '', ...(unanswered === undefined ? {} : { unanswered }) };
 }
 
 /** A query's stdout when git exits 0, else undefined. */
