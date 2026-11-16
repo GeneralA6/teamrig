@@ -32,9 +32,14 @@ describe('heldPrompts', () => {
 });
 
 describe('promptWords', () => {
-  it('names the tool and the first plain words, at most three', () => {
-    assert.equal(promptWords('Bash: git status --short', SCANNER), 'Bash git status');
-    assert.equal(promptWords('Bash: npm run check now', SCANNER), 'Bash npm run check');
+  it('names the tool and the program, the first word of its detail', () => {
+    assert.equal(promptWords('Bash: git status --short', SCANNER), 'Bash git');
+    assert.equal(promptWords('Bash: npm run check now', SCANNER), 'Bash npm');
+  });
+
+  it('drops a short lowercase secret in the words after the program, where an argument sits (T2963)', () => {
+    assert.equal(promptWords('Bash: mysql hunter2pass now', SCANNER), 'Bash mysql');
+    assert.equal(promptWords(`Bash: unlock ${'c0ffee'.repeat(3)}`, SCANNER), 'Bash unlock');
   });
 
   it('stops at the first word that may hold a path, an address or a value', () => {
@@ -50,15 +55,15 @@ describe('promptWords', () => {
     assert.equal(promptWords('Bash: login Xk9vQ2 now', SCANNER), 'Bash login');
   });
 
-  it('names the tool alone when the words match a secret shape the team configured', () => {
-    assert.equal(promptWords('Bash: login hunter2 now', new SecretScanner(['hunter2'])), 'Bash');
+  it('names the tool alone when the program word matches a secret shape the team configured', () => {
+    assert.equal(promptWords('Bash: hunter2 now', new SecretScanner(['hunter2'])), 'Bash');
   });
 });
 
 describe('promptHoldText', () => {
-  it('names the tab, the time on its clock, the minutes held and the first words', () => {
+  it('names the tab, the time on its clock, the minutes held and the program', () => {
     const text = promptHoldText('app/bravo', HELD, () => '12:00 IST', SCANNER, SINCE + 12 * 60_000);
-    assert.equal(text, 'app/bravo holds on a permission prompt since 12:00 IST (12 min): Bash git status; answer it in that tab');
+    assert.equal(text, 'app/bravo holds on a permission prompt since 12:00 IST (12 min): Bash git; answer it in that tab');
   });
 });
 

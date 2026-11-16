@@ -35,7 +35,7 @@ describe('pagePromptHolds (T2927)', () => {
     const webhook = new FakeWebhook();
     assert.deepEqual(await pageOnce(kit, webhook), []);
     assert.deepEqual(webhook.posts, [
-      { url: HOOK_URL, content: 'app/bravo holds on a permission prompt since 09:45 UTC (15 min): Bash git push origin; answer it in that tab' },
+      { url: HOOK_URL, content: 'app/bravo holds on a permission prompt since 09:45 UTC (15 min): Bash git; answer it in that tab' },
     ]);
     assert.deepEqual(await pageOnce(kit, webhook), []);
     assert.equal(webhook.posts.length, 1, 'the second pass pages the same hold no more');
@@ -68,7 +68,7 @@ describe('pagePromptHolds (T2927)', () => {
     assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
     assert.deepEqual(
       result.stdout.filter((line) => line.includes('PROMPT-HELD')).map((line) => line.trim()),
-      ['from the prompt-hold check of the tab files: PROMPT-HELD app/bravo holds on a permission prompt since 09:45 UTC (15 min): Bash git push origin; answer it in that tab'],
+      ['from the prompt-hold check of the tab files: PROMPT-HELD app/bravo holds on a permission prompt since 09:45 UTC (15 min): Bash git; answer it in that tab'],
     );
   });
 });
