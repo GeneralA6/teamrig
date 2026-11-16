@@ -21,6 +21,7 @@ export const FLAG_KINDS = [
   'URGENT',
   'OVERDUE',
   'VERIFY-OVERDUE',
+  'SLICE-LATE',
   'LOOP',
   'VERIFY-BLOCKS',
   'READY',
