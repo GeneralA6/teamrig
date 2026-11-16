@@ -4900,11 +4900,14 @@ and once more after the wait (`REFUSED the pipeline is frozen until 2030-01-08 1
 teamrig pipeline unfreeze F2`), and while the freezes file is unreadable. A step whose command names a delivery
 repository's `shipTool` is REFUSED unless the tool is a tracked file of a checkout with no change whose HEAD makes
 the default branch's tree as of the last fetch, looked at as it is queued and once more after the wait. After the
-wait the checkout must still be at that commit or at the newest main, or at a later commit of main's history where no
-file the tool runs changed: the tool, every file it reaches through its relative imports, and the data files it opens
-beside itself (`new URL('./repos.json', import.meta.url)`). So a ship that waited while main moved on still runs when
-the tool's own code is the same. A closure that cannot be read whole (a file missing, an import outside the checkout,
-more than 2000 files) runs only at the queued commit or the newest main (`REFUSED the ship tool ... is not
+wait the checkout must still be at that commit or at the newest main, or at a commit of main's history after it where
+no file the tool runs at either commit changed: the tool; the files its roots file beside it names as data
+(`<tool>.roots.json`, such as `tools/ship/ship.roots.json` holding `{"roots": ["src/cli/main.ts", "package.json"]}`:
+a CLI it spawns by a joined path, the package files that set how its modules load), and that file itself; every file
+those reach through their relative imports, read from the code and never from a comment or a string; and the data
+files they open beside themselves (`new URL('./repos.json', import.meta.url)`). So a ship that waited while main moved
+on still runs when the tool's own code is the same. A closure that cannot be read whole (a file missing, an import
+outside the checkout, a roots file that is not that JSON or names a path outside the checkout, more than 2000 files) runs only at the queued commit or the newest main (`REFUSED the ship tool ... is not
 origin/main's current code in a checkout with no change: run git -C <checkout> fetch -q origin && git -C <checkout>
 checkout -q --detach origin/main, then queue the step again`), and the refusal of a changed tool names its changed
 files (`REFUSED the ship tool ... changed from <commit> while the step waited (tools/ship/repos.ts) and is not ...`). A git read of that checkout that got no answer (git did not start, was
