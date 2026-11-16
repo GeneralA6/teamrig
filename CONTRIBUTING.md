@@ -235,11 +235,14 @@ join; agents follow [`dev-design-issue`](.claude/skills/dev-design-issue/SKILL.m
   new push dismisses an approval given before it. A change to the git hooks, CI, the scrub or teamrig's guards
   (`.githooks/`, `.github/`, `tools/scrub/`, `tools/ci/`, `src/hooks/`, `src/push-guard/`, `src/secret-guard/`,
   `src/package-guard/`, `src/permissions/`) also gets a security review.
-- **Rules on `main`**: `.github/rulesets/` holds the repository's two rulesets for `main`, imported under Settings,
+- **Rules on `main`**: `.github/rulesets/` holds the repository's rulesets, the two for `main` and the two for releases, imported under Settings,
   Rules, Rulesets. `main` lets no one push, force-push or delete it and takes a change only through a pull request,
   rebase-merged once its `every check passed` check passed on the newest `main`; `main review` asks a code owner
   to approve the last push, which only the maintainer's own pull requests skip. `tools/ci/rulesets.test.ts` holds
   them to `ci.yml` and `.github/CODEOWNERS`.
+- **Rules on releases**: `release` lets no one delete or force-push the `release` branch, and `release tags` lets no
+  one delete or move a `v<version>` or `teamrig-v<version>` tag. Neither has a bypass actor: the release workflow
+  only fast-forwards the branch and only creates tags.
 
 ## Scrub checks
 Two checks keep private data out of the history:
