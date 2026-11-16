@@ -8,6 +8,6 @@
       "exclude": []
     }
   },
-  "rules": [{ "type": "deletion" }, { "type": "non_fast_forward" }],
-  "bypass_actors": []
+  "rules": [{ "type": "creation" }, { "type": "update" }, { "type": "deletion" }, { "type": "non_fast_forward" }],
+  "bypass_actors": [{ "actor_id": null, "actor_type": "DeployKey", "bypass_mode": "always" }]
 }

@@ -76,9 +76,9 @@ describe('release.yml', () => {
     assert.match(text, /^ {6}version: \$\{\{ steps\.version\.outputs\.version \}\}\n {6}sha: \$\{\{ steps\.version\.outputs\.sha \}\}\n/m);
   });
 
-  it('publishes with a contents write only, running no npm package, the commit and version the build took', () => {
+  it('publishes with a read-only token, running no npm package, the commit and version the build took', () => {
     const text = job('publish');
-    assert.deepEqual(permissionsOf(text), ['contents: write']);
+    assert.deepEqual(permissionsOf(text), ['contents: read']);
     assert.match(text, /^ {4}needs: build\n {4}if: \$\{\{ always\(\) && needs\.build\.result == 'success' \}\}$/m);
     assert.match(text, /^ {10}VERSION: \$\{\{ needs\.build\.outputs\.version \}\}\n {10}SOURCE: \$\{\{ needs\.build\.outputs\.sha \}\}$/m);
     assert.doesNotMatch(text, /^ {6}- run: .*\bnp[mx]\b/m);
@@ -86,7 +86,14 @@ describe('release.yml', () => {
     assert.match(text, /^ {6}- run: node tools\/release\/publish-cli\.ts --version "\$VERSION" --source "\$SOURCE"$/m);
   });
 
-  it('keeps the push token only in the publish job: every other checkout drops it', () => {
+  it("pushes with the release environment's deploy key, the one actor the release rulesets let through", () => {
+    const text = job('publish');
+    assert.match(text, /^ {4}environment: release$/m);
+    assert.match(text, /^ {10}ssh-key: \$\{\{ secrets\.RELEASE_DEPLOY_KEY \}\}$/m);
+    for (const [id, other] of jobs) if (id !== 'publish') assert.doesNotMatch(other, /secrets\.|environment:/, id);
+  });
+
+  it('keeps the push key only in the publish job: every other checkout drops its credentials', () => {
     for (const [id, text] of jobs) {
       if (id === 'publish') continue;
       const checkouts = text.match(/uses: actions\/checkout@/g)?.length ?? 0;

@@ -1,0 +1,13 @@
+{
+  "name": "release-please tags",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/tags/teamrig-v*"],
+      "exclude": []
+    }
+  },
+  "rules": [{ "type": "update" }, { "type": "deletion" }, { "type": "non_fast_forward" }],
+  "bypass_actors": []
+}
