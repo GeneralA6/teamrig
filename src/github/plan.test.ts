@@ -4,7 +4,7 @@ import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import type { HostIssue, LabelEvent } from '../issues/issue.ts';
 import { importRules, type ImportRules } from './map.ts';
-import { closedNote, importedTasks, latestIssues, linkedRefs, planSync } from './plan.ts';
+import { closedNote, importedTasks, latestIssues, linkedRefs, planSync, refHolders } from './plan.ts';
 
 const RULES: ImportRules = importRules(testConfig({ github: { repos: ['acme/web'], owners: { octocat: 'bravo' } } }));
 
@@ -56,6 +56,19 @@ describe('importedTasks', () => {
     const first = imported('T1', 1);
     const tasks = [first, imported('T2', 1), testTask({ id: 'T3', ref: 'gh:acme/web#3' }), imported('T4', 4, { ref: null })];
     assert.deepEqual([...importedTasks(tasks)], [['gh:acme/web#1', first]]);
+  });
+});
+
+describe('refHolders', () => {
+  it('holds each ref by its import task, else by the first team task linking to it, and skips other refs', () => {
+    const importTask = imported('T1', 1);
+    const shadow = testTask({ id: 'T2', ref: 'gh:acme/web#1' });
+    const linked = testTask({ id: 'T3', ref: 'gh:acme/web#3', status: 'done' });
+    const tasks = [shadow, importTask, linked, testTask({ id: 'T4', ref: 'gh:acme/web#3' }), testTask({ id: 'T5', ref: 'https://example.test/design' }), testTask({ id: 'T6', ref: null })];
+    assert.deepEqual([...refHolders(tasks)], [
+      ['gh:acme/web#1', importTask],
+      ['gh:acme/web#3', linked],
+    ]);
   });
 });
 

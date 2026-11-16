@@ -2,7 +2,7 @@ import { ENV, KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
 import { importRules, issueOwner, issueRef } from '../../github/map.ts';
-import { importedTasks, linkedRefs, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
+import { importedTasks, linkedRefs, planSync, refHolders, type SyncPlan, type SyncStep } from '../../github/plan.ts';
 import { withCiExcerpts } from '../../github/ci-excerpt.ts';
 import {
   firstMentionWatch,
@@ -173,7 +173,8 @@ export async function issueSync(args: ParsedArgs, runtime: CliRuntime): Promise<
     pulls.set(repo, watch.after);
     pullNews.push(...watch.events);
     if (auto) {
-      const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => imported.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
+      const holders = refHolders(tasks);
+      const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => holders.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
       const scan = await readMentions(host, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing });
       scan.lines.forEach(say);
       if (scan.kind === 'failed') {

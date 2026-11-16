@@ -255,6 +255,17 @@ describe('teamrig issue sync --auto, mentions of our users (T3070)', () => {
     assert.deepEqual(githubLines(kit, 'bravo'), []);
   });
 
+  it("routes a mention on an issue a team task links to (not one the import added) to that task's owner", async () => {
+    const kit = new CliHarness(MENTION_TEAM);
+    const added = await kit.run(['add', '--title', 'Ship the login fix', '--description', 'Tracked on its issue.', '--priority', 'p2', '--owner', 'alpha', '--ref', 'gh:acme/web#9'], { env: { TEAMRIG_SESSION: 'lead' } });
+    assert.equal(added.code, EXIT.ok, [...added.stdout, ...added.stderr].join('\n'));
+    const ask = restComment('acme/web', 9, 1, { author: 'visitor', body: '@octocat is this ready?', updatedAt: '2030-01-08T10:20:00Z' });
+    await run(kit, new FakeGh().holds('acme/web', []));
+    await run(kit, new FakeGh().holds('acme/web', []).holdsPosts('acme/web', 'issues/comments', [ask]));
+    assert.match(githubLines(kit, 'alpha').at(-1) ?? '', /^GitHub gh:acme\/web#9 mentions @octocat: /);
+    assert.deepEqual(githubLines(kit, 'bravo'), []);
+  });
+
   it("fails the run on a refused posts read, keeping the repository's watch, so the next run still routes what was written meanwhile", async () => {
     const kit = new CliHarness(MENTION_TEAM);
     const ask = restComment('acme/web', 9, 1, { author: 'visitor', body: '@octocat could you look?', updatedAt: '2030-01-08T10:20:00Z' });
