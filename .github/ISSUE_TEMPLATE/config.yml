@@ -3,3 +3,6 @@ contact_links:
   - name: Report a security problem
     url: https://github.com/GeneralA6/teamrig/security/advisories/new
     about: A vulnerability goes through a private advisory, never a public issue.
+  - name: How to report and contribute
+    url: https://github.com/GeneralA6/teamrig/blob/main/docs/issues-and-pull-requests.md
+    about: What teamrig takes, the issue forms, pull requests, and the rules for AI tools.
