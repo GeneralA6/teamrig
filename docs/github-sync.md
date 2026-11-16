@@ -6,14 +6,14 @@ becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its titl
 priority and open or closed state follow GitHub on every run. The sync never goes the other way: it never creates,
 edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The
 writes are all run by hand: `teamrig issue migrate` moves tasks you choose to new issues, once
-([Moving your tasks to issues](#moving-your-tasks-to-issues)), `teamrig issue comment`, `teamrig issue label`
-and `teamrig issue close` answer, label or close one issue or pull request
-([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
+([Moving your tasks to issues](#moving-your-tasks-to-issues)), `teamrig issue comment`, `teamrig issue label`,
+`teamrig issue edit` and `teamrig issue close` answer, label, rewrite the description of or close one issue or pull
+request ([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
 task tree on the issues ([Linking issues as the task tree](#linking-issues-as-the-task-tree)). GitHub is the
 only host teamrig writes to so far.
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
-write. After that it runs on its own every 15 minutes while your sessions work, and reminds you of an issue waiting
+write. After that it runs on its own within a minute of a change on GitHub while your sessions work, and reminds you of an issue waiting
 long for your answer ([Answer times](#answer-times)).
 
 ## 1. List the repositories
@@ -26,7 +26,7 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
   "sessions": { "acme/web": "web", "acme/api": "api", "globex/site": "web" },
   "owners": { "octocat": "api" },
   "closedDays": 14,
-  "everyMinutes": 15
+  "probeSeconds": 60
 }
 ```
 
@@ -36,7 +36,7 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
 | `sessions` | Optional. The session that owns each repository's issues, so each session sees the issues of its own repositories. One session can own several. |
 | `owners` | Optional. A GitHub login to a session: an issue assigned to that login goes to that session, whatever its repository. |
 | `closedDays` | How many days back closed issues are read, to finish their tasks. Default 14. |
-| `everyMinutes` | How often it runs on its own, in minutes (0 to 1440). Default 15; 0 leaves it to `teamrig issue sync --yes`. |
+| `probeSeconds` | How often it asks GitHub whether a repository changed, in seconds: 0, or 30 to 3600. Default 60; 0 leaves the sync to `teamrig issue sync --yes`. |
 | `acceptLabel` | Optional. The label that lets an issue by someone outside the repository become a task ([below](#whose-issues-become-tasks)). Default `teamrig`. |
 
 Who owns a new issue's task: the session of its first assignee listed in `owners`; else its repository's session in
@@ -83,7 +83,7 @@ Give the token only what the commands you run need:
 | --- | --- |
 | `teamrig issue sync` | **Issues: Read-only** |
 | `teamrig issue migrate` | **Issues: Read and write** |
-| `teamrig issue comment`, `teamrig issue label`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels and state are written through its issue) |
+| `teamrig issue comment`, `teamrig issue label`, `teamrig issue edit`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels, description and state are written through its issue) |
 | `teamrig issue links` | **Issues: Read-only** for the preview, **Issues: Read and write** with `--yes` |
 
 ### Why one token per owner
@@ -149,10 +149,20 @@ acme/web` reads one repository only.
 
 ## Then it runs on its own
 
-Once the repositories are listed, nobody needs to run it. When a session of the team ends a turn, its Stop hook
-checks whether `everyMinutes` (15) have passed since the last sync; if so, it starts `teamrig issue sync --auto` hidden
-in the background, once for the whole team, and the turn goes on as usual. Nothing keeps running between syncs, so
-while every session is idle nothing is read; the next turn that ends catches up.
+Once the repositories are listed, nobody needs to run it. When a session of the team starts or ends a turn, its hook
+makes sure the team's one `teamrig issue watch` runs, starting it hidden in the background when none does. Every
+`probeSeconds` (60) the watch asks GitHub whether each repository's issues, pull requests or Actions runs changed. It
+sends the answer it got last time, so GitHub answers "not modified" when nothing changed, and that answer does not
+count against the rate limit. Only when something changed does it run `teamrig issue sync --auto`, so a new issue
+reaches its owner within about a minute while an idle repository costs nothing.
+
+- After a sync that failed, the next waits 15 minutes; a repository the watch cannot ask is synced every 15 minutes, so
+  its failure still reaches the lead.
+- The watch stops 10 minutes after the team's last session closed; the next session to start brings it back.
+- It also stops after 24 hours, and the next hook starts a fresh one, so it never runs old code for long.
+- One runs per team: it holds `state/github-watch.json` with its process id and kit version, and a second one
+  started by mistake stops at once. After an update, the first hook of the new kit takes the lease over and starts
+  the new code; the old watch stops at its next round.
 
 - Each session with new tasks gets one inbox line, for example
   `github: GitHub sync added 1 task(s) for you: T42 gh:acme/web#7 "Fix the login redirect"`.
@@ -189,14 +199,17 @@ follow-up does not restart the wait. The target depends on the issue:
 The clocks live in `state/github-clocks.json` in the team's folder. Reading them costs no GitHub call: `check` reads
 what the last sync kept.
 
-`"everyMinutes": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
+`"probeSeconds": 0` turns the automatic sync off, and stops a running watch at its next round. `TEAMRIG_GITHUB=off`
+turns every sync off on one machine, but only for a watch started after it is set: a running watch keeps the
+environment it started with, so set `probeSeconds` to 0 to stop it.
 `teamrig issue sync --yes` still works at any time.
 
 ## Moving your tasks to issues
 
 To move a team's task list to GitHub, say before a repository goes public, `teamrig issue migrate` opens one issue per
 task you choose. Issues are public on a public repository, so you write each one's wording yourself, in a row file
-of JSON lines:
+of JSON lines. The [write-issue skill](../plugins/teamrig/skills/write-issue/SKILL.md) has the steps for a body a
+contributor can take alone: what binds the work, the sections, sub-issues for a goal, labels, and the read-back.
 
 ```text
 {"id": "T12", "decision": "issue", "repo": "acme/web", "type": "bug", "priority": "p1", "title": "Login redirect loops", "body": "After a sign-in the page redirects back to the login form."}
@@ -228,15 +241,20 @@ teamrig issue migrate rows.jsonl --yes               # opens the issues
 ## Commenting on, labelling and closing
 
 `teamrig issue comment` posts one comment on an issue or pull request, `teamrig issue label` adds and takes off its
-labels, and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
-unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only).
-Each names its target as `owner/name#number`:
+labels (it makes the `design` label first where the repository lacks it, with a `MADE` line; any other label must
+already be there), and `teamrig issue close` closes one, first posting its `--comment` when given; a pull request closes
+unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only);
+`--duplicate-of` closes it as a duplicate of another issue of the same repository, which GitHub links as the
+original. `teamrig issue edit` replaces the body (the description) with the text of a file, so a spec of many lines
+keeps its shape; the title, state and labels stay, and GitHub keeps the old body in the edit history. Each names its
+target as `owner/name#number`:
 
 ```sh
 teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."
 teamrig issue label acme/web#7 --add "type: bug,p1" --remove "needs triage"
+teamrig issue edit acme/web#7 --body-file spec.md
 teamrig issue close acme/web#12 --comment "Merged as #14 with your commits credited. Thank you!"
-teamrig issue close acme/web#15 --reason duplicate --comment "Same as #7."
+teamrig issue close acme/web#15 --duplicate-of acme/web#7
 ```
 
 ```text
@@ -249,7 +267,7 @@ CLOSED acme/web#12
 - **Checked text.** An empty text, one past 65,536 characters, one that looks like it holds a secret, one that holds
   private data (a path inside a home folder, an e-mail address, an IPv4 address or an internal host name, the shapes
   teamrig's own commits are scrubbed for), or one that names a task id (`T12`: link issues by `#number`) is refused,
-  and nothing is posted.
+  and nothing is posted; the same holds for the file `teamrig issue edit` reads.
 - **Nothing half done.** When the comment fails, nothing is closed. When the close fails after the comment was
   posted, the `FAILED` line says so: rerun `teamrig issue close` without `--comment`, so the comment is not posted
   twice.
@@ -291,34 +309,76 @@ changes and writes.
 
 ```text
 ACCESS acme: read with the token saved as teamrig-gh-acme
-PUSH acme/web: 2 to change, 4 unchanged, 1 closed on the host while the task is active
-LABEL acme/web#7 T41 in-progress: add status:in-progress, take off status:triaged
-CLOSE acme/web#9 T42 done: close as completed, take off status:in-review
+PUSH acme/web: 3 to change, 3 unchanged, 1 closed on the host while the task is active
+LABEL acme/web#7 T41 in-progress: add status:in progress, take off status:open
+CLOSE acme/web#9 T42 done: close as completed, take off status:in review
+LABEL acme/web#11 T43 open: add status:claimed, take off status:open, assign acme
 KEPT acme/web#5 T30 open: closed on the host (not_planned) while the task is active; the push never reopens an issue, so set the task to match or reopen the issue
-PREVIEW nothing was written; a push would send 4 write(s) now, at most 40 a run, and plan the rest again on the next
+PREVIEW nothing was written; a push would send 7 write(s) now, at most 40 a run, and plan the rest again on the next
 ```
 
-- **One status label.** `open` shows `status:triaged`, `in-progress` `status:in-progress`, `waiting`
-  `status:waiting`, `verifying` `status:in-review`; any other `status:` label comes off. Done closes the issue as
-  completed, dropped as not planned.
+- **One status label.** An `open` task no one scheduled shows `status:open`: open to anyone, no one assigned. Once
+  it has a due date, or a person assigned the issue, it shows `status:claimed`. `in-progress` shows
+  `status:in progress`, `waiting` `status:waiting`, `verifying` `status:in review`; any other `status:` label comes
+  off. A goal, a task planned after its parts, shows none: its parts' issues carry theirs. Done closes the issue as
+  completed, dropped as not planned. A repository that lacks one of these labels gets it made first, with a
+  `MADE` line: these five and `design` are the only labels teamrig ever makes, and the push makes its five only with
+  `--yes` or the automatic push.
+- **A design issue shows none.** An issue labelled `design` is talk about how something should work, not work to
+  take until it is agreed: the push takes every `status:` label off it and assigns it to no one, whatever its task's
+  status. Done or dropped still closes it.
 - **Planned against GitHub as it is.** The plan compares each task with its issue as listed now, so a label someone
   changed by hand is set back, and a run that stopped half way is planned again whole.
 - **A person's close stands.** An issue closed while its task is active is never reopened: a `KEPT` line names it.
+- **Someone answers for it.** An open issue of a scheduled task (started, or with a due date), not a design issue,
+  no one is assigned to gets an assignee: the login `github.owners` maps to the task's owning session, else the account that owns the
+  repository (sessions are not GitHub users). An issue a person assigned keeps its assignees; the push takes none off. Each login is read first: one the repository may
+  not assign (not a person with access to it) gets an `UNASSIGNED` line and its issues keep their label changes, as
+  GitHub would drop it silently and every run would send it again.
 - **Within GitHub's limit.** At most 40 writes a run, half GitHub's 80 a minute, shared by every repository in
   `github.repos` order; the rest waits for the next run.
 - **On its own, once you turn it on.** With `"statusPush": true` in the team config's `github` block, the
   [automatic sync](#then-it-runs-on-its-own) sends the push after each import, so no session runs it. Each run then
-  sends fewer writes when the sync runs often, so an hour of runs sends at most 250, half GitHub's 500 an hour (every
-  15 minutes: 40 a run; every 5: 20). It sends labels only: a close is the one write a person reads as a decision,
+  sends fewer writes when the sync can run often, so an hour of runs sends at most 250, half GitHub's 500 an hour
+  (probing every 60 seconds: 4 a run; every 300: 20). Its own label writes read as a change, so a longer list drains
+  a run per probe. It sends labels and assignees only: a close is the one write a person reads as a decision,
   so the automatic push prints it as a `HELD` line and leaves it to a session's `teamrig issue sync --push --yes`.
   A failed write is told to the lead's inbox like a repository that cannot be read. It is off by default: read `teamrig issue sync --push` first, and give the token **Issues: Read and write**.
+
+### Claims: a contributor takes an issue by a comment
+
+With the push on, the automatic sync also lets a contributor take an open issue themselves. A comment whose line
+starts with `/take`, "I'll take", "I'm working on" or "I can take" (not quoted, not in a code block) claims an issue
+that has no assignee, is neither a `design` nor a `security` issue, and is the repository's own or accepted (an
+outsider's issue waits for the accept label first, as it does to become a task). The sync then assigns the
+commenter, swaps `status:open` for `status:claimed`, and replies once with the rule:
+
+- **Seven days to link a pull request.** A claim with no pull request linked to the issue after seven days ends: the
+  sync takes that assignee off, puts `status:open` back and says so on the issue. A linked pull request keeps the
+  claim.
+- **Only its own claims.** The sync takes off only an assignee it made by a claim, kept in
+  `state/github-claims.json`; an assignee a person set is never taken off, and a claim handed to someone else or
+  closed is forgotten.
+- **People, outside the repository, one at a time.** Apps, organizations and the repository's own members and
+  collaborators do not claim by comment (a member assigns); one login holds one claim per repository.
+- **Five a day.** At most five claims a day per repository, so throwaway accounts cannot tie up every issue; past
+  that a claim waits for a person to assign it.
+- **Only new comments.** Each run reads only the comments posted since the previous run started, so a comment
+  from before the push was turned on claims nothing.
+- **Ten issues a run.** The issue list carries no comment text, so a run reads the new comments (the first 30) of
+  at most ten issues whose new comments could claim, oldest first; the rest are printed `HELD` and read on the next
+  run, as is an issue whose read failed. A claim past an issue's first 30 new comments waits for a person to assign.
+- **Within the run's writes.** A claim's writes (assign, labels, reply) count in the same writes per run as the
+  status push, and come first; a claim past them is printed `HELD` and made on the next run. A run whose share of
+  the hour is less than one claim's 5 writes (4 at the default `probeSeconds` of 60) may still send one whole claim:
+  at most five claims a day per repository keep that small.
 
 ## Linking issues as the task tree
 
 `teamrig issue links` puts the task tree on the issues of `github.repos`. A task planned after another (`--after`),
-both mirrored in one repository, makes its issue blocked by the other's on GitHub. A whole is planned after its
-parts, so a part planned before exactly one whole becomes that whole's sub-issue as well. Without `--yes` it reads
-the links GitHub has and shows what it would add:
+or waiting on it (`--waits task:T10`), both mirrored in one repository, makes its issue blocked by the other's on
+GitHub. A whole is planned after its parts, so a part planned before exactly one whole becomes that whole's sub-issue
+as well. Without `--yes` it reads the links GitHub has and shows what it would add:
 
 ```sh
 teamrig issue links
@@ -364,16 +424,23 @@ again.
 
 - **Read-only sync.** The sync runs only the issue queries teamrig ships, word for word, through `gh api graphql`, so
   a token with **Issues: Read-only** is all it needs. Of an issue's newest 20 comments it reads only when each was
-  posted, its author's tie to the repository and whether that author is a bot: never their text or login. Any other
-  `gh` command or query is refused in code, except
+  posted, its author's login, tie to the repository and whether that author is a bot: never their text. Only with
+  the push on, a claim reads the text of an issue's comments posted since the last run (`.../issues/<number>/comments
+  -X GET` with `since` and `per_page=30` only, one page), for at most ten issues a run, to find a claim line, and
+  keeps no text. Any other `gh` command or query is refused in code, except
   the writes, each run by hand on a repository in `github.repos`: `teamrig issue migrate`'s create of one issue
   (`gh api repos/<owner>/<name>/issues -X POST` with its title, body and labels only), `teamrig issue comment`'s
   one comment (`.../issues/<number>/comments -X POST` with its body only), `teamrig issue label`'s read of one label
   (`repos/<owner>/<name>/labels/<label>`), add (`.../issues/<number>/labels -X POST` with its labels only) and take
   off (`.../issues/<number>/labels/<label> -X DELETE`), `teamrig issue close`'s close
-  (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only), and `teamrig issue links`'s one
-  link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST` with one issue id only). No link
-  is ever removed.
+  (`.../issues/<number> -X PATCH` with `state=closed` and its `state_reason` only, a duplicate's also with the
+  original's `duplicate_issue_id`, digits only) and the read of that original (`.../issues/<number> -X GET`, no
+  field), the status push's read of whether one login may be assigned (`repos/<owner>/<name>/assignees/<login>`)
+  and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), the create of a label
+  teamrig makes (`repos/<owner>/<name>/labels -X POST` with the name, colour and description of one of the five
+  status labels or `design`, word for word), and
+  `teamrig issue links`'s one link (`.../issues/<number>/sub_issues` or `.../dependencies/blocked_by`, `-X POST`
+  with one issue id only). No link is ever removed.
 - **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
   is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
   that one run.

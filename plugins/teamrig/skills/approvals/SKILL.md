@@ -33,6 +33,9 @@ Approve only when every line holds:
   advisories checked.
 - The time: before the team's queue cutoff [delivery.schedule.queueCutoffUtc] when the change needs a
   build or a test run, and outside any no-merge window in the team's rules.
+- Its reach is stated and fits where it lives: work any team using the tool would need goes into the shared tool,
+  with what differs per team in a config key, not into one team's rules or a session's skill. The note or pull request
+  says the reach; a narrow reach on generic work, decline asking to move it.
 - Nothing owner-gated inside [ownerGates]: destructive data operations, permissions, budget, resource changes,
   product or design decisions.
 
@@ -41,7 +44,9 @@ Approve only when every line holds:
 - Approve: `teamrig approve T<n> --session <lead> --note "<what you checked>"`. Its owner gets an inbox line, which
   wakes it, to push or merge now, then set the task's next status; `check` flags it `READY` until then. Name the head
   you checked by its full sha in the note: a merge tool that reads approvals clears only a head the note names, so a
-  later push needs a new approval.
+  later push needs a new approval, unless the tool checks the later head is a rebase of the named one that keeps
+  every commit's patch (`git range-diff` all `=`), its rebuilt dist and version numbers aside: any other edit to a
+  version file counts.
 - Decline what fails a line: `teamrig approve T<n> --session <lead> --decline --note "<the line it fails, and the
   fix>"`. Its owner gets an inbox line to fix that and ask again.
 - Owner-gated content: decline with a note that says so ("owner-gated: <what>; ask the owner with a card"), so its

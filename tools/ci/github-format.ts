@@ -26,10 +26,11 @@ export const ISSUE_FORMS: Readonly<Record<string, IssueForm>> = {
   bug: { label: 'bug', sections: [required('What happened'), required('What was expected'), required('Steps'), required('Version'), required('OS')] },
   task: { label: 'task', sections: [required('What'), required('Why'), required('Done when')] },
   feature: { label: 'feature', sections: [required('Problem'), required('Proposal'), { name: 'Alternatives', required: false }] },
+  design: { label: 'design', sections: [required('Question'), required('Context'), required('Options'), { name: 'Proposal', required: false }] },
 };
 
 /** The pull request template's `## ` sections, in order. */
-export const PULL_SECTIONS: readonly string[] = ['What', 'Why', 'Changes', 'Old-code proof', 'Tests', 'Issue', 'Checklist'];
+export const PULL_SECTIONS: readonly string[] = ['What', 'Why', 'Reach', 'Changes', 'Old-code proof', 'Tests', 'Issue', 'Checklist'];
 
 /** A label as GitHub stores it. */
 export interface RepoLabel {

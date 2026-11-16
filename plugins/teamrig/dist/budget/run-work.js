@@ -1,5 +1,5 @@
 import { runsOf } from "../package-guard/programs.js";
-import { EXEC_VALUED, NPM_VALUED } from "../package-guard/runners.js";
+import { NPM_VALUED } from "../package-guard/runners.js";
 import { programName } from "../push-guard/launchers.js";
 /** The shells whose calls start programs, by tool name. */
 export const SHELL_DIALECTS = new Map([
@@ -231,10 +231,6 @@ export function runWorkOf(run) {
             return 'edit';
         case 'npm':
             return npmWork(run.args);
-        case 'npx': {
-            const bin = firstOperand(run.args, EXEC_VALUED);
-            return bin === undefined || bin.word.dynamic ? undefined : checkWork(programName(bin.word.text), run.args.slice(bin.index + 1));
-        }
         case 'node':
             return nodeWork(run.args, run.stdin);
         case 'teamrig': {

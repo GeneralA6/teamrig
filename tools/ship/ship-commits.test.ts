@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { MergeClearance } from './approval.ts';
+import type { MergeClearance, WorkCommit } from './approval.ts';
 import type { GateVerdict } from './local-gate.ts';
 import type { MainMove, MergeExit } from './merge.ts';
 import { DIST, parseNumstat, SHIP_ATTEMPTS, shipCommits, weighDist, type ShipDeps } from './ship-commits.ts';
@@ -32,6 +32,10 @@ interface FakeOptions {
   readonly clearance?: MergeClearance;
   /** What each fingerprint of the change finds, in turn; the last one repeats; the same one by default. */
   readonly patches?: readonly string[];
+  /** The work commits each rev carries, by rev; none by default. */
+  readonly work?: Readonly<Record<string, readonly WorkCommit[]>>;
+  /** The git call, its args joined with spaces, that fails like git with no such commit. */
+  readonly gitFails?: string;
 }
 
 interface Fake {
@@ -61,6 +65,7 @@ function fake(options: FakeOptions = {}): Fake {
     git: (args) => {
       const joined = args.join(' ');
       events.push(`git ${joined}`);
+      if (joined === options.gitFails) throw new Error(`git ${joined} failed`);
       const answer = options.answers?.[joined] ?? BRANCH_ANSWERS[joined];
       if (answer !== undefined) return answer;
       return args[0] === 'diff' ? (options.numstat ?? '') : 'abc1234 core: a\n';
@@ -100,6 +105,10 @@ function fake(options: FakeOptions = {}): Fake {
       events.push(`patch ${rev}`);
       const found = options.patches ?? [];
       return found[patches++] ?? found.at(-1) ?? 'patch0';
+    },
+    workOf: (rev) => {
+      events.push(`work ${rev}`);
+      return options.work?.[rev] ?? [];
     },
   };
   return { deps, events, logs };
@@ -218,10 +227,56 @@ test('with --merge, clears the merge of the branch at its head and fingerprints 
     'git rev-parse --abbrev-ref HEAD',
     'git rev-parse HEAD',
     `clear t827-ship-tool ${HEAD_SHA} 5efae2e91`,
-    'patch HEAD',
+    `patch ${HEAD_SHA}`,
     'take back 2 chunk(s) since origin/main',
   ]);
   assert.ok(logs.includes('merge of t827-ship-tool 5efae2e91: approved by lead'));
+  assert.ok(!events.some((event) => event.startsWith('work ')), 'the approved head itself needs no work compare');
+});
+
+/** The approved head a rebase left behind, and its work commits; the rebased HEAD_SHA carries the same by default. */
+const APPROVED_SHA = '61854f9e15a3393c82640073cd7e69c12c3dd435';
+const workOf = (sha: string, subject: string, patch: string): WorkCommit => ({ sha, subject, merge: false, patch });
+const APPROVED_WORK = [workOf(APPROVED_SHA, 'ship: a', 'pa'), workOf('7777777777', 'docs: a', 'pd')];
+const rebased = (headWork: readonly WorkCommit[]): FakeOptions => ({
+  answers: { 'rev-parse --verify --quiet 61854f9e1^{commit}': `${APPROVED_SHA}\n` },
+  work: { [APPROVED_SHA]: APPROVED_WORK, [HEAD_SHA]: headWork },
+});
+
+test('with --merge on a rebase of the approved head, the same work commits patch for patch clear the approved head, no new approval (T2913)', async () => {
+  const { deps, events, logs } = fake(rebased([workOf(HEAD_SHA, 'ship: a', 'pa'), workOf('8888888888', 'docs: a', 'pd')]));
+  assert.equal(await shipCommits({ ...ARGS, merge: true, approved: '61854f9e1' }, CHUNKS, deps), 0);
+  assert.deepEqual(events.slice(0, 8), [
+    'git rev-parse --abbrev-ref HEAD',
+    'git rev-parse HEAD',
+    'git rev-parse --verify --quiet 61854f9e1^{commit}',
+    `work ${APPROVED_SHA}`,
+    `work ${HEAD_SHA}`,
+    `clear t827-ship-tool ${APPROVED_SHA} 61854f9e1`,
+    `patch ${APPROVED_SHA}`,
+    'take back 2 chunk(s) since origin/main',
+  ]);
+  assert.ok(logs.includes("head 5efae2e91 carries the approved 61854f9e1's 2 work commit(s), patch for patch"));
+  assert.ok(logs.includes('merge of t827-ship-tool 61854f9e1: approved by lead'));
+  assert.deepEqual(events.slice(-2), ['push', 'merge t827-ship-tool']);
+});
+
+test('with --merge on a head whose work commits differ from the approved head, each change is named and nothing is cleared or changed (T2913)', async () => {
+  const changed = fake(rebased([workOf(HEAD_SHA, 'ship: a', 'pa2'), workOf('8888888888', 'docs: a', 'pd'), workOf('9999999999', 'core: b', 'pb')]));
+  await assert.rejects(
+    shipCommits({ ...ARGS, merge: true, approved: '61854f9e1' }, CHUNKS, changed.deps),
+    /^Error: REFUSED the head 5efae2e91 is not the approved 61854f9e1 rebased: changed 61854f9e1 "ship: a", now 5efae2e91; added 999999999 "core: b"\. Ship it without --merge/,
+  );
+  assert.ok(!changed.events.some((event) => event.startsWith('clear ') || event.startsWith('take back')));
+
+  const dropped = fake(rebased([workOf(HEAD_SHA, 'ship: a', 'pa')]));
+  await assert.rejects(shipCommits({ ...ARGS, merge: true, approved: '61854f9e1' }, CHUNKS, dropped.deps), /: dropped 777777777 "docs: a"\./);
+});
+
+test('with --merge, an --approved that is neither the head nor a commit here is refused before anything changes (T2913)', async () => {
+  const { deps, events } = fake({ gitFails: 'rev-parse --verify --quiet 61854f9e1^{commit}' });
+  await assert.rejects(shipCommits({ ...ARGS, merge: true, approved: '61854f9e1' }, CHUNKS, deps), /^Error: REFUSED --approved 61854f9e1 is not the branch head 5efae2e91, nor a commit here to compare its work with$/);
+  assert.equal(events.at(-1), 'git rev-parse --verify --quiet 61854f9e1^{commit}');
 });
 
 test('a refused clearance throws REFUSED before any take back, commit or push', async () => {
@@ -242,7 +297,7 @@ test('a change that differs from the approved one by the push is refused before 
   const { deps, events } = fake({ patches: ['p1', 'p2'] });
   await assert.rejects(shipCommits({ ...ARGS, merge: true }, CHUNKS, deps), /^Error: REFUSED the change differs from the approved head 5efae2e91 outside the version files and dist/);
   assert.ok(!events.includes('push'));
-  assert.deepEqual(events.filter((event) => event.startsWith('patch ')), ['patch HEAD', 'patch HEAD']);
+  assert.deepEqual(events.filter((event) => event.startsWith('patch ')), [`patch ${HEAD_SHA}`, 'patch HEAD']);
 });
 
 test('without --merge, nothing is cleared or fingerprinted', async () => {

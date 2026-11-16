@@ -5,6 +5,9 @@ description: Add a key to the teamrig team config, from its type and default to 
 
 # Add a config key
 
+A config key is how a need that differs per team stays generic (CONTRIBUTING.md, Where a change lives): give it a
+default that suits a team that never set it, so every user gets the feature without one team's values.
+
 1. `src/config/types.ts`: the field on its block's interface, `readonly`.
 2. `src/config/defaults.ts`: its default, on the block's `DEFAULT_*` constant.
 3. `src/config/limits.ts`: its bounds in `CONFIG_LIMITS`, for a number or a list with a size cap.

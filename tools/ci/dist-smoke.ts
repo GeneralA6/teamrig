@@ -102,7 +102,7 @@ const SMOKE_TOKEN = ['gh', 'p_', 'a1'.repeat(18)].join('');
 /**
  * One payload per hook the plugin runs, by its command (one event can run several), run inside team
  * `smoke`, which has no config: session start and a helper's start say so, the push guard still refuses a force-push of
- * main, the package guard refuses an npx of a tool not installed, the secret guard refuses a read of .env, the db-write guard asks about a hand-run SQL delete, the exec guard refuses a review it cannot tie to a session, the cold-send hook lets a message go, the failed-send hook stays quiet, the missing-cli hook answers a shell that did not find the bare command, the route reminder, the loop nudge and the reminder stay quiet, the secret redactor gives a Bash result back without the token it held, the Stop and
+ * main, the package guard refuses an npx of a tool not installed, the secret guard refuses a read of .env, the db-write guard asks about a hand-run SQL delete, the exec guard refuses a review it cannot tie to a session, the service-role guard asks before a role grant, the cold-send hook lets a message go, the failed-send hook stays quiet, the missing-cli hook answers a shell that did not find the bare command, the route reminder, the loop nudge and the reminder stay quiet, the secret redactor gives a Bash result back without the token it held, the Stop and
  * SubagentStop hooks print nothing (any output there would block the turn), the refresh wake wakes nothing, and the
  * restore tracker prints nothing, and so do tab status, the compaction hold, the read-only allow and the picker guard,
  * all off without a config.
@@ -131,6 +131,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   'hook exec-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'teamrig exec approve R1' } },
     check: denies('a review that names no --session'),
+  },
+  'hook service-role-guard': {
+    payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'teamrig roles grant github --session smoke' } },
+    check: asks('a role grant'),
   },
   'hook pass-record-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Write', tool_input: { file_path: '.git/local-ci/abc.json', content: '{}' } },

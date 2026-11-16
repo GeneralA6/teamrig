@@ -1,5 +1,28 @@
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
-import { isIssueClose, isIssueComment, isIssueCreate, isLabelAdd, isLabelRead, isLabelRemove, isLinkAdd, type GhRequest, type GhResult, type GhRunner } from '../github/gh.ts';
+import {
+  isAssigneeRead,
+  isCommentsRead,
+  COMMENTS_PAGE,
+  isUserRead,
+  isIssueAssign,
+  isIssueUnassign,
+  isIssueBodyEdit,
+  isIssueClose,
+  isIssueComment,
+  isIssueCreate,
+  isIssueRead,
+  isLabelAdd,
+  isLabelCreate,
+  isLabelRead,
+  isLabelRemove,
+  isLinkAdd,
+  isWatchProbe,
+  WATCH_PATHS,
+  type GhRequest,
+  type GhResult,
+  type GhRunner,
+  type WatchPath,
+} from '../github/gh.ts';
 import { nodesOf } from '../github/issues.ts';
 import { CLOSED_ISSUES_QUERY, ISSUE_LINKS_QUERY, ISSUE_PAGE_SIZE, OPEN_ISSUES_QUERY, RAW_FIELD } from '../github/queries.ts';
 
@@ -29,6 +52,8 @@ export interface IssueSpec {
   readonly comments?: readonly JsonRecord[];
   /** GitHub's own id for it, which a link write names; 1000 plus its number unless set. */
   readonly hostId?: number;
+  /** The open pull requests that close it; none unless set. */
+  readonly linkedPulls?: number;
   /** Its parent issue; none unless set. */
   readonly parent?: IssueAt;
   /** The issues it is blocked by, in this repository or another. */
@@ -73,6 +98,7 @@ export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): Jso
     parent: spec.parent === undefined ? null : issueNode(spec.parent),
     blockedBy: { nodes: (spec.blockedBy ?? []).map(issueNode) },
     comments: { nodes: spec.comments ?? [] },
+    closedByPullRequestsReferences: { totalCount: spec.linkedPulls ?? 0 },
   };
 }
 
@@ -81,9 +107,12 @@ export function labeledEvent(label: string, actor: string, at: string, kind = 'U
   return { __typename: 'LabeledEvent', createdAt: at, actor: { __typename: kind, login: actor }, label: { name: label } };
 }
 
-/** A comment as the issue queries read it: posted at `at` by an author of `association` and account `kind`. */
-export function commentNode(at: string, association: string, kind = 'User'): JsonRecord {
-  return { createdAt: at, authorAssociation: association, author: { __typename: kind } };
+/**
+ * A comment as the issue queries read it: posted at `at` by an author of `association` and account `kind`, with the
+ * login and text given (none and empty unless set).
+ */
+export function commentNode(at: string, association: string, kind = 'User', text: { readonly login?: string; readonly body?: string } = {}): JsonRecord {
+  return { createdAt: at, authorAssociation: association, author: { __typename: kind, ...(text.login === undefined ? {} : { login: text.login }) }, body: text.body ?? '' };
 }
 
 /** A timeline item: the issue's title was changed at `at`. */
@@ -133,7 +162,14 @@ export class FakeGh implements GhRunner {
   private failure: Error | undefined;
   private writeFailure: GhResult | undefined;
   private readonly labels = new Map<string, readonly string[]>();
+  private readonly unassignable = new Map<string, readonly string[]>();
+  private readonly spellings = new Map<string, string>();
+  private userAnswer: GhResult | undefined;
+  private commentsAnswer: GhResult | undefined;
   private pageSize = ISSUE_PAGE_SIZE;
+  /** How often each `<repo> <probe path>` changed: its entity tag is `W/"v<count>"`. */
+  private readonly versions = new Map<string, number>();
+  private readonly probeFailures = new Map<string, GhResult>();
 
   /** From now on, `repo` holds these issues (as ghIssue builds them). */
   holds(repo: string, issues: readonly JsonRecord[]): this {
@@ -171,10 +207,57 @@ export class FakeGh implements GhRunner {
     return this;
   }
 
-  /** From now on, a comment on, the close of, a label added to or taken off, or a link added to an issue ends as given. */
+  /** From now on, these logins may not be assigned in `repo` (a read of them is Not Found); every other login may. */
+  cannotAssign(repo: string, logins: readonly string[]): this {
+    this.unassignable.set(repo, logins);
+    return this;
+  }
+
+  /**
+   * From now on, GitHub spells each of these logins as given: a user read in any case prints it so, and an assignee
+   * read matches it only in that case, as GitHub's does. A login not given is spelled as a read names it.
+   */
+  spells(...logins: string[]): this {
+    logins.forEach((login) => this.spellings.set(login.toLowerCase(), login));
+    return this;
+  }
+
+  /** From now on, every read of an issue's new comments ends as given. */
+  answersCommentsRead(result: GhResult): this {
+    this.commentsAnswer = result;
+    return this;
+  }
+
+  /** From now on, every user read ends as given. */
+  answersUserRead(result: GhResult): this {
+    this.userAnswer = result;
+    return this;
+  }
+
+  /** From now on, a comment on, a body edit or the close of, a label added to or taken off, an assignee or a link added to an issue, and a label made, end as given. */
   failsWrite(result: GhResult): this {
     this.writeFailure = result;
     return this;
+  }
+
+  /** From now on, the watch probes of `repo` (all, or the one `path`) see a change they were not told of yet. */
+  changes(repo: string, path?: WatchPath): this {
+    for (const probe of path === undefined ? WATCH_PATHS : [path]) {
+      const key = `${repo} ${probe}`;
+      this.versions.set(key, (this.versions.get(key) ?? 1) + 1);
+    }
+    return this;
+  }
+
+  /** From now on, every watch probe of `repo` ends as given. */
+  failsProbe(repo: string, result: GhResult): this {
+    this.probeFailures.set(repo, result);
+    return this;
+  }
+
+  /** The watch probes run so far, each as the repository and path it read. */
+  probes(): string[] {
+    return this.ran.filter((request) => isWatchProbe(request.args)).map((request) => (request.args[request.args.length - 1] ?? '').slice('repos/'.length));
   }
 
   async run(request: GhRequest): Promise<GhResult> {
@@ -182,13 +265,31 @@ export class FakeGh implements GhRunner {
     if (this.failure !== undefined) {
       throw this.failure;
     }
+    if (isWatchProbe(request.args)) {
+      return this.probe(request.args);
+    }
     if (isIssueCreate(request.args)) {
       return this.create(request.args);
     }
     if (isLabelRead(request.args)) {
       return this.labelRead(request.args[1] ?? '');
     }
-    if (isIssueComment(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args)) {
+    if (isLabelCreate(request.args)) {
+      return this.writeFailure ?? this.labelCreate(request.args);
+    }
+    if (isAssigneeRead(request.args)) {
+      return this.assigneeRead(request.args[1] ?? '');
+    }
+    if (isUserRead(request.args)) {
+      return this.userRead(request.args[1] ?? '');
+    }
+    if (isCommentsRead(request.args)) {
+      return this.commentsAnswer ?? this.commentsRead(request.args);
+    }
+    if (isIssueRead(request.args)) {
+      return this.issueRead(request.args[1] ?? '');
+    }
+    if (isIssueComment(request.args) || isIssueBodyEdit(request.args) || isIssueClose(request.args) || isLabelAdd(request.args) || isLabelRemove(request.args) || isIssueAssign(request.args) || isIssueUnassign(request.args)) {
       return this.writeFailure ?? { end: { kind: 'exited', code: 0 }, stdout: '{}', stderr: '' };
     }
     if (isLinkAdd(request.args)) {
@@ -222,6 +323,28 @@ export class FakeGh implements GhRunner {
     return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ data: { repository: { issues: { pageInfo, nodes } } } }), stderr: '' };
   }
 
+  /**
+   * A probe as `gh api -i` prints GitHub's answer: 304, gh exiting 1, when the tag sent is the current one, else 200
+   * with the current tag; a repository it holds nothing for answers 404.
+   */
+  private probe(args: readonly string[]): GhResult {
+    const target = (args[args.length - 1] ?? '').slice('repos/'.length);
+    const path = WATCH_PATHS.find((probe) => target.endsWith(`/${probe}`)) ?? '';
+    const repo = target.slice(0, target.length - path.length - 1);
+    const failure = this.probeFailures.get(repo);
+    if (failure !== undefined) {
+      return failure;
+    }
+    if (!this.issues.has(repo)) {
+      return { end: { kind: 'exited', code: 1 }, stdout: 'HTTP/2.0 404 Not Found\r\n\r\n{"message":"Not Found"}', stderr: 'gh: Not Found (HTTP 404)\n' };
+    }
+    const tag = `W/"v${this.versions.get(`${repo} ${path}`) ?? 1}"`;
+    if (args[3] === `If-None-Match: ${tag}`) {
+      return { end: { kind: 'exited', code: 1 }, stdout: `HTTP/2.0 304 Not Modified\r\nEtag: ${tag.slice(2)}\r\n\r\n`, stderr: 'gh: HTTP 304\n' };
+    }
+    return { end: { kind: 'exited', code: 0 }, stdout: `HTTP/2.0 200 OK\r\nEtag: ${tag}\r\n\r\n[]`, stderr: '' };
+  }
+
   /** A label read as GitHub answers it: what a test set for the repository, else the label when the repository has it, else Not Found. */
   private labelRead(path: string): GhResult {
     const [, owner = '', name = '', , label = ''] = path.split('/');
@@ -233,6 +356,78 @@ export class FakeGh implements GhRunner {
       return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ name: decodeURIComponent(label) }), stderr: '' };
     }
     return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
+  }
+
+  /** A label made as GitHub makes it: the repository has it from now on, and the answer is the new label. */
+  private labelCreate(args: readonly string[]): GhResult {
+    const repo = (args[1] ?? '').slice('repos/'.length, -'/labels'.length);
+    const name = (args[5] ?? '').slice('name='.length);
+    this.labels.set(repo, [...(this.labels.get(repo) ?? []), name]);
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ name }), stderr: '' };
+  }
+
+  /** A user read as GitHub answers it: the user with its login as GitHub spells it, whatever case the path names. */
+  private userRead(path: string): GhResult {
+    if (this.userAnswer !== undefined) {
+      return this.userAnswer;
+    }
+    const login = path.slice('users/'.length);
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ login: this.spellings.get(login.toLowerCase()) ?? login, type: 'User' }), stderr: '' };
+  }
+
+  /**
+   * An assignee read as GitHub answers it: what a test set for the repository, else 204 unless the login may not be
+   * assigned there or is not in the case GitHub spells it.
+   */
+  private assigneeRead(path: string): GhResult {
+    const [, owner = '', name = '', , login = ''] = path.split('/');
+    const canned = this.canned.get(`${owner}/${name}`);
+    if (canned !== undefined) {
+      return canned;
+    }
+    const spelled = this.spellings.get(login.toLowerCase()) ?? login;
+    return spelled !== login || (this.unassignable.get(`${owner}/${name}`) ?? []).includes(login)
+      ? { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' }
+      : { end: { kind: 'exited', code: 0 }, stdout: '', stderr: '' };
+  }
+
+  /**
+   * An issue read as GitHub's REST API answers it: what a test set for the repository, else the issue's number and
+   * its id, 1000 + the number, when the repository holds it, else Not Found.
+   */
+  /**
+   * A read of one issue's new comments as GitHub's REST API answers it: the comments the issue holds posted at or
+   * after the read's time, oldest first and at most one page, in REST's shape; Not Found for an issue it does not hold.
+   */
+  private commentsRead(args: readonly string[]): GhResult {
+    const [, owner = '', name = '', , number = ''] = (args[1] ?? '').split('/');
+    const canned = this.canned.get(`${owner}/${name}`);
+    if (canned !== undefined) {
+      return canned;
+    }
+    const issue = (this.issues.get(`${owner}/${name}`) ?? []).find((held) => String(held['number']) === number);
+    if (issue === undefined) {
+      return { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
+    }
+    const since = Date.parse(fieldOf(args, 'since') ?? '');
+    const comments = nodesOf(issue['comments'])
+      .filter((comment) => Date.parse(stringField(comment, 'createdAt') ?? '') >= since)
+      .sort((a, b) => Date.parse(stringField(a, 'createdAt') ?? '') - Date.parse(stringField(b, 'createdAt') ?? ''))
+      .slice(0, COMMENTS_PAGE)
+      .map(restComment);
+    return { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify(comments), stderr: '' };
+  }
+
+  private issueRead(path: string): GhResult {
+    const [, owner = '', name = '', , number = ''] = path.split('/');
+    const canned = this.canned.get(`${owner}/${name}`);
+    if (canned !== undefined) {
+      return canned;
+    }
+    const held = (this.issues.get(`${owner}/${name}`) ?? []).some((issue) => String(issue['number']) === number);
+    return held
+      ? { end: { kind: 'exited', code: 0 }, stdout: JSON.stringify({ id: 1000 + Number(number), number: Number(number) }), stderr: '' }
+      : { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' };
   }
 
   /**
@@ -306,3 +501,14 @@ const LINK_WRITE = /^repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/(sub_issues|dependenc
 
 /** How a label field of an issue create starts. */
 const LABEL_PREFIX = 'labels[]=';
+
+/** A comment node of the issue queries' shape, as GitHub's REST API spells it. */
+function restComment(comment: JsonRecord): JsonRecord {
+  const author = recordField(comment, 'author');
+  return {
+    created_at: comment['createdAt'] ?? null,
+    author_association: comment['authorAssociation'] ?? null,
+    user: author === undefined ? null : { login: author['login'] ?? null, type: author['__typename'] ?? null },
+    body: comment['body'] ?? '',
+  };
+}

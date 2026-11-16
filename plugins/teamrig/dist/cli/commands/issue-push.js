@@ -3,7 +3,7 @@ import { SecretScanner } from "../../core/secrets.js";
 import { closedSince } from "../../github/sync.js";
 import { targetText } from "../../issues/host.js";
 import { applyPush } from "../../issues/push-apply.js";
-import { changeLine, changeWrites, planPush, SESSION_PUSH } from "../../issues/status-push.js";
+import { changeLine, changeWrites, planPush, SESSION_PUSH, sessionLogins } from "../../issues/status-push.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { noPositionals } from "../args.js";
 import { callerOf } from "../inputs.js";
@@ -53,6 +53,7 @@ export async function issuePush(args, runtime) {
         tasks: async () => (await team.register.snapshot()).state.tasks.values(),
         send,
         limits: SESSION_PUSH,
+        logins: sessionLogins(config.github.owners),
         told: new Set(),
     }, say);
     say(pushEndLine(send, totals, SESSION_PUSH.writesPerRun));
@@ -86,7 +87,7 @@ export async function pushRepos(run, say) {
             continue;
         }
         read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
-        const plan = planPush(repo, read.issues, await run.tasks(), { writesPerRun: left, closes: run.limits.closes });
+        const plan = planPush(repo, read.issues, await run.tasks(), { writesPerRun: left, closes: run.limits.closes }, run.logins);
         planLines(plan).forEach(say);
         const planned = plan.changes.reduce((sum, change) => sum + changeWrites(change), 0);
         left -= planned;
@@ -124,7 +125,7 @@ export function planLines(plan) {
     return [
         `PUSH ${plan.repo}: ${counts.join(', ')}`,
         ...(more > 0 ? [...changes.slice(0, SHOWN_CHANGES), `... and ${more} more`] : changes),
-        ...plan.heldCloses.map((held) => `${changeLine(held).replace(/^CLOSE/u, 'HELD')}; the automatic push sends labels only: a session's teamrig issue sync --push --yes sends the close`),
+        ...plan.heldCloses.map((held) => `${changeLine(held).replace(/^CLOSE/u, 'HELD')}; the automatic push never closes: a session's teamrig issue sync --push --yes sends the close`),
         ...plan.closedActive.map((closed) => `KEPT ${targetText(closed.target)} ${closed.task} ${closed.status}: closed on the host${closed.stateReason === '' ? '' : ` (${closed.stateReason.toLowerCase()})`} while the task is active; the push never reopens an issue, so set the task to match or reopen the issue`),
         ...plan.unlisted.map((held) => `UNLISTED ${targetText(held.target)} ${held.task} ${held.status}: not open on the host (closed before github.closedDays, or gone) while the task is active; the push never reopens an issue`),
     ];

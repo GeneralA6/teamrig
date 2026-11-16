@@ -4,11 +4,9 @@ import { fieldPaths } from '../testing/field-paths.ts';
 import {
   addedLines,
   addedTasks,
-  claimState,
   failureNews,
   finishState,
   formatSyncState,
-  isDue,
   leftOutNews,
   parseSyncState,
   SYNC_STATE_FORMAT,
@@ -64,25 +62,9 @@ describe('the sync state file', () => {
   });
 });
 
-describe('isDue', () => {
-  const state: SyncState = { startedAt: NOW, finishedAt: undefined, failing: [], leftOut: NONE };
-
-  it('starts the first sync, then the next once everyMinutes passed since the last start, finished or not', () => {
-    assert.equal(isDue(undefined, NOW, 15), true);
-    assert.equal(isDue(state, NOW + 14 * MINUTE, 15), false);
-    assert.equal(isDue(state, NOW + 15 * MINUTE, 15), true);
-  });
-
-  it('never starts one at 0 minutes, and a start dated ahead of now does not hold the next one off', () => {
-    assert.equal(isDue(undefined, NOW, 0), false);
-    assert.equal(isDue(state, NOW - MINUTE, 15), true);
-  });
-
-  it('claims the interval keeping the last failures and left-out issues, and a finish keeps the claimed start', () => {
-    const leftOut = new Map([['acme/web', [9]]]);
-    const before: SyncState = { startedAt: NOW - 20 * MINUTE, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut };
-    const claimed = claimState(before, NOW);
-    assert.deepEqual(claimed, { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut });
+describe('finishState', () => {
+  it('records the finish and the failures, keeping the recorded start', () => {
+    const claimed: SyncState = { startedAt: NOW, finishedAt: NOW - 19 * MINUTE, failing: ['acme/api'], leftOut: new Map([['acme/web', [9]]]) };
     assert.deepEqual(finishState(claimed, NOW + MINUTE, [], NONE), { startedAt: NOW, finishedAt: NOW + MINUTE, failing: [], leftOut: NONE });
     assert.deepEqual(finishState(undefined, NOW, [{ repo: 'acme/web', reason: 'gone' }], NONE), { startedAt: NOW, finishedAt: NOW, failing: ['acme/web'], leftOut: NONE });
   });

@@ -3,7 +3,7 @@ import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { cut } from "../register/views.js";
 import { issueRef } from "./map.js";
 /**
- * The automatic GitHub sync's decisions, kept pure: when the hooks start the next one (`isDue`), what the
+ * The automatic GitHub sync's decisions, kept pure (`issue watch` decides when one runs, github/watch.ts): what the
  * owners hear about the tasks it added (`addedLines`), what the lead hears about the repositories it
  * could not read (`failureNews`, only when that set changes, so a lasting failure is told once) and about the
  * outsiders' issues it left out (`leftOutNews`, only for a number not left out before).
@@ -15,7 +15,6 @@ import { issueRef } from "./map.js";
 export const SYNC_STATE_FORMAT = 2;
 /** The older format this code still reads. */
 const NO_LEFT_OUT_FORMAT = 1;
-const MINUTE_MS = 60_000;
 /** The new tasks one inbox line names; the rest are counted. */
 const NAMED_TASKS = 5;
 /** The new left-out issues the lead's line names; the rest are counted. */
@@ -66,21 +65,6 @@ export function formatSyncState(state) {
 }
 function isTime(value) {
     return typeof value === 'number' && Number.isFinite(value);
-}
-/**
- * Whether a hook starts a sync now: `everyMinutes` have passed since the last start, finished or not, so a
- * run that died is retried at the next interval. A start dated ahead of now (the clock went back) does not
- * hold the next one off; 0 minutes never starts one.
- */
-export function isDue(state, now, everyMinutes) {
-    if (everyMinutes <= 0) {
-        return false;
-    }
-    return state === undefined || now < state.startedAt || now - state.startedAt >= everyMinutes * MINUTE_MS;
-}
-/** What a hook writes before it starts a sync, so no other hook starts one in the same interval. */
-export function claimState(state, now) {
-    return { startedAt: now, finishedAt: state?.finishedAt, failing: state?.failing ?? [], leftOut: state?.leftOut ?? new Map() };
 }
 /**
  * What a finished sync writes: its start as claimed (now, for a sync run by hand), the repositories that failed,

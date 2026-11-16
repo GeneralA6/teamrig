@@ -35,6 +35,7 @@ const KNOWN_GUARDS: readonly string[] = [
   'hooks/push-guard.ts',
   'hooks/readonly-shell.ts',
   'hooks/secret-guard.ts',
+  'hooks/service-role-guard.ts',
   'cli/commands/hook-route-context.ts',
 ];
 

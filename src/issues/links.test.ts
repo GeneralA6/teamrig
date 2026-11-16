@@ -79,6 +79,38 @@ describe('planLinks', () => {
     assert.deepEqual([plan.otherRepo, plan.missing], [1, 1]);
   });
 
+  it('makes a task blocked by each task it waits on, once, but never its parent', () => {
+    const waits = [
+      { kind: 'task', id: 'T10' },
+      { kind: 'task', id: 'T10' },
+      { kind: 'task', id: 'T11' },
+      { kind: 'approval', who: 'lead' },
+    ] as const;
+    const plan = planLinks(
+      tasks(mirrored('T9', 9, { status: 'waiting', waits, after: ['T11'] }), mirrored('T10', 10), mirrored('T11', 11), mirrored('T8', 8, { after: ['T10'] })),
+      REPO,
+      [issue(8), issue(9), issue(10), issue(11)],
+    );
+    assert.deepEqual(plan.writes, [
+      { kind: 'blocked-by', target: { repo: REPO, number: 9 }, blocker: { repo: REPO, number: 11 }, blockerId: 1011 },
+      { kind: 'sub-issue', parent: { repo: REPO, number: 9 }, child: { repo: REPO, number: 11 }, childId: 1011 },
+      { kind: 'blocked-by', target: { repo: REPO, number: 9 }, blocker: { repo: REPO, number: 10 }, blockerId: 1010 },
+      { kind: 'blocked-by', target: { repo: REPO, number: 8 }, blocker: { repo: REPO, number: 10 }, blockerId: 1010 },
+      { kind: 'sub-issue', parent: { repo: REPO, number: 8 }, child: { repo: REPO, number: 10 }, childId: 1010 },
+    ]);
+    assert.equal(plan.manyWholes, 0);
+  });
+
+  it('counts a wait on another repository\'s task, and adds no blocker the host already has', () => {
+    const plan = planLinks(
+      tasks(mirrored('T9', 9, { status: 'waiting', waits: [{ kind: 'task', id: 'T10' }, { kind: 'task', id: 'T11' }] }), testTask({ id: 'T10', ref: 'gh:acme/api#3' }), mirrored('T11', 11)),
+      REPO,
+      [issue(9, { blockedBy: [11] }), issue(11)],
+    );
+    assert.deepEqual(plan.writes, []);
+    assert.deepEqual([plan.present, plan.otherRepo], [1, 1]);
+  });
+
   it('makes no link from or to a dropped task, an unmirrored one, one not in the register or another repository', () => {
     const plan = planLinks(
       tasks(

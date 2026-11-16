@@ -270,6 +270,53 @@ describe('findGitInvocations: scripts and shells', () => {
     ]);
   });
 
+  it('reads the git a package runner or a version manager starts, in its folder and with its variables (T3069)', () => {
+    // A shell line is read once in each dialect its shell may read it in: bash, cmd and PowerShell.
+    const everyDialect = (found: string): string[] => [found, found, found];
+    expectInvocations([
+      ['npx -c "git push origin main"', everyDialect(`${CWD}|push|origin main`)],
+      ['npm exec --call "cd sub && git push"', everyDialect(`${SUB}|push|`)],
+      ['npx bash -c "git push origin main"', [`${CWD}|push|origin main`]],
+      ['pnpm exec sh -c "git push"', [`${CWD}|push|`]],
+      ['pnpm dlx -c git push origin main', everyDialect(`${CWD}|push|origin main`)],
+      ['yarn exec git push', [`${CWD}|push|`]],
+      ['bunx git push', [`${CWD}|push|`]],
+      ['corepack npx -c "git push"', everyDialect(`${CWD}|push|`)],
+      ['volta run --node 20 git push', [`${CWD}|push|`]],
+      ['fnm exec --using 20 git push', [`${CWD}|push|`]],
+      ['nvm exec 20 git push', [`${CWD}|push|`]],
+      ['env -C sub npx git push', [`${SUB}|push|`]],
+      ['GIT_CONFIG_COUNT=1 npx git push', [`${CWD}|push||cfg`]],
+      ['npm test', []],
+      ['npx tsc --noEmit', []],
+    ]);
+    const runTime = doubts('npx -c "$CMD"');
+    assert.ok(runTime.length > 0, runTime.join());
+    assert.ok(runTime.every((doubt) => doubt.startsWith('g:')), runTime.join());
+    expectDoubt(`${'npx '.repeat(9)}git push`, '!:package runners nest too deep to read');
+  });
+
+  it("reads a package runner's shell line in bash, cmd and PowerShell, as the line or an .npmrc may pick any of them", () => {
+    // bash and PowerShell both join p''ush into push; cmd keeps the quotes. Each distinct push is listed once.
+    const pushes = (command: string): string[] => [...new Set(invocations(command).filter((found) => found.includes('|push|')))];
+    assert.deepEqual(pushes(`npx --script-shell=bash -c "git p''ush origin main"`), [`${CWD}|push|origin main`]);
+    assert.deepEqual(pushes(`npm_config_script_shell=bash npx -c "git p''ush origin main"`), [`${CWD}|push|origin main`]);
+    assert.deepEqual(pushes(`npm --script-shell bash exec -c "git p''ush origin main"`), [`${CWD}|push|origin main`]);
+    assert.deepEqual(pushes('npx -c "git p^ush origin main"'), [`${CWD}|push|origin main`]);
+    assert.deepEqual(find('npx -c "git status"').readings, [{ start: 0, ends: [1, 2, 3] }]);
+    assert.deepEqual(find('npx git status').readings, []);
+  });
+
+  it('doubts a shell line a package runner hands to a shell the line names that the guard cannot read', () => {
+    expectDoubt('npx --script-shell=node -c "x"', '!:a package runner hands its command line to node, a shell the guard cannot read');
+    expectDoubt('npm_config_script_shell=python3 npx -c "x"', '!:a package runner hands its command line to python3, a shell the guard cannot read');
+    expectDoubt('ComSpec=C:/tools/run.exe npm exec -c "x"', '!:a package runner hands its command line to run, a shell the guard cannot read');
+    expectDoubt('npx --script-shell "$S" -c "x"', '!:a package runner hands its command line to a shell only known when it runs');
+    for (const command of ['npx --script-shell=bash -c "git status"', 'ComSpec=C:/Windows/System32/cmd.exe npx -c "git status"', 'npx --script-shell=pwsh -c "git status"']) {
+      assert.deepEqual(doubts(command), [], command);
+    }
+  });
+
   it('doubts what it cannot read', () => {
     expectDoubt('bash -c "$CMD"', 'g:the program it runs is only known when it runs');
     expectDoubt('pwsh -c "$CMD"', 'g:it hands PowerShell a command line built from bash variables');

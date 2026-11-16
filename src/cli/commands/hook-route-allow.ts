@@ -8,7 +8,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { guardLoadOf } from './hook-guard-load.ts';
-import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from './hook-guard-outputs.ts';
+import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from './hook-guard-outputs.ts';
 import { envSession, parseJson } from './hook-input.ts';
 import { callRouteOf } from './hook-route-context.ts';
 
@@ -39,6 +39,7 @@ async function routeAllowOutputOf(runtime: CliRuntime, payload: JsonRecord, deps
     packageGuardOutputOf(runtime, guard, payload),
     execGuardOutputOf(runtime, guard, payload),
     dbWriteGuardOutputOf(runtime, guard, payload),
+    serviceRoleGuardOutputOf(runtime, guard, payload),
   ]);
   if (!guardsPassed([...answers, secretGuardOutputOf(runtime, guard, payload), passRecordGuardOutput(payload)])) {
     return '';

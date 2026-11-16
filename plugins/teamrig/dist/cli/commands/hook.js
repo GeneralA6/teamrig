@@ -44,7 +44,7 @@ import { keptRulesAboveOf, readTeamRules } from "../team-rules.js";
 import { loadTree } from "../tree.js";
 import { bindAfterClear, bindHintOnce, bindNamedTab, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
-import { startAutoSync } from "./issue-sync-auto.js";
+import { ensureWatch } from "./issue-watch.js";
 import { leaderDigestText } from "./hook-leader-digest.js";
 import { closedSendHold } from "./hook-closed-send.js";
 import { coldSendHold } from "./hook-cold-send.js";
@@ -57,7 +57,7 @@ import { restartOrPark, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
 import { promptSecretBlock } from "./hook-prompt-secret.js";
 import { guardLoadOf, hookTeam } from "./hook-guard-load.js";
-import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf } from "./hook-guard-outputs.js";
+import { dbWriteGuardOutputOf, execGuardOutputOf, packageGuardOutputOf, pushGuardOutputOf, secretGuardOutputOf, serviceRoleGuardOutputOf } from "./hook-guard-outputs.js";
 import { checkHooklessTabs } from "./hook-hookless.js";
 import { dueFactsAt, inMeetingNow } from "./hook-refresh-mod.js";
 import { recordSessionStart } from "./hook-session-record.js";
@@ -135,6 +135,20 @@ export async function secretGuard(args, runtime) {
         return EXIT.ok;
     }
     const output = secretGuardOutputOf(runtime, guard, payload);
+    if (output !== '') {
+        runtime.out.stdout(output);
+    }
+    return EXIT.ok;
+}
+/** PreToolUse on Bash, PowerShell and the file-writing tools: asks the owner before a session's `roles grant` or `revoke`, and refuses its own write of `serviceRoles`. */
+export async function serviceRoleGuard(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    const guard = await guardLoadOf(payload, runtime);
+    if (guard === undefined) {
+        return EXIT.ok;
+    }
+    const output = await serviceRoleGuardOutputOf(runtime, guard, payload);
     if (output !== '') {
         runtime.out.stdout(output);
     }
@@ -769,7 +783,7 @@ async function stopOutputOf(runtime, payload) {
     const notices = await modelNoticesOf(runtime, { ...scope, config: effort.config }, payload).catch(() => []);
     const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
     const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id, teamZone(scope.config, runtime)).catch(() => []);
-    await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
+    await ensureWatch(runtime, scope.kit, scope.config).catch(() => undefined);
     const hookless = await checkHooklessTabs(runtime, scope.kit, scope.config).catch(() => []);
     const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
     const lines = [...effort.lines, ...notices, ...budget, ...verify, ...lead, ...hookless];
@@ -793,8 +807,8 @@ async function stopOutputOf(runtime, payload) {
  * day when the date to verify one of its verifying tasks by has come. Under `hiring.policy` `automatic` it asks a
  * hired session whose last open task closed, once, to write its handover and retire; after a `set` to waiting it sends the
  * session, once, to its work it can start that does not come after the waiting task (keep-working.ts),
- * never in quiet hours or past its daily budget. Once per `github.everyMinutes` for the whole
- * team it starts `issue sync --auto` hidden in the background (issue-sync-auto.ts), and every 10 minutes it tells the lead of
+ * never in quiet hours or past its daily budget. When no `issue watch` holds the team's lease it
+ * starts one hidden in the background (issue-watch.ts), and every 10 minutes it tells the lead of
  * a team tab that runs without its hooks (hook-hookless.ts). With tab status on, it also sets the
  * tab's title to the ready circle, or the working one while a helper runs, in any tab of the team (hook-tab-status.ts).
  * Each team session's reply is logged for the task pane (hook-turn-log.ts).
@@ -814,7 +828,7 @@ export async function stop(args, runtime) {
 }
 /**
  * SessionStart: the core rules from the team config, who the session is (after a refresh, its handover; after a
- * refresh or a compaction, its live tasks), and the team's rules.md. A compaction inside a helper fires it too,
+ * refresh or a compaction, its live tasks), and the team's rules.md. It starts the team's `issue watch` when none runs. A compaction inside a helper fires it too,
  * under the session's id: that start gets the helper's context (hook-helper-start.ts) and binds, renames and
  * refreshes nothing.
  */
@@ -865,6 +879,10 @@ export async function sessionStart(args, runtime) {
         now: new Date(runtime.clock.now()),
         command: KIT_NAME,
     });
+    if (kit.load.status === 'loaded') {
+        // A team whose sessions all stopped has no watch; the first to start brings it back, before any turn ends.
+        await ensureWatch(runtime, kit, kit.load.config).catch(() => undefined);
+    }
     runtime.out.stdout(sessionStartOutput(context, [parts.duplicateNote, parts.modelNote, parts.recordNote, parts.envBindNote, requirementsNote]));
     return EXIT.ok;
 }

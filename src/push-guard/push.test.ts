@@ -462,6 +462,15 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
+  it("forgets a branch change a package runner's shell line makes when its readings differ, as only one of them runs", () => {
+    expectRows([
+      // cmd reads ma^in as main, bash and PowerShell keep the caret: which branch HEAD names after it is not known.
+      ['npx -c "git checkout ma^in" && git push origin HEAD', 'ask', 'doubt'],
+      ['npx -c "git switch -c hotfix" && git push', 'allow'],
+      ['npx -c "git checkout main" && git push origin HEAD', 'ask'],
+    ]);
+  });
+
   it('reads the commands git itself runs', () => {
     expectRows([
       ["git submodule foreach 'git push origin main'", 'ask'],

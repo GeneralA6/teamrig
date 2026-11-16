@@ -15,9 +15,10 @@ export const RAW_FIELD = '-f';
 /** Comments kept per issue, newest last: enough to see who spoke last for the response clock (src/github/clock.ts). */
 export const COMMENTS_READ = 20;
 /**
- * One issue: what the task is made from, and who wrote it, labelled it and edited it, which decides trust; and when it
- * was opened and when each newest comment was posted by what kind of author, which runs the response clock. A comment's
- * text and author login are never read.
+ * One issue: what the task is made from, and who wrote it, labelled it and edited it, which decides trust; when it
+ * was opened and when each newest comment was posted by whom, which runs the response clock and points the claim
+ * pass at the issues to read; and how many open pull requests close it, which keeps a claim from running out. Never
+ * a comment's text: only the claim pass reads it, one bounded page per issue (gh.ts commentsReadArgs).
  */
 const ISSUE_FIELDS = `number title body state stateReason url createdAt updatedAt closedAt lastEditedAt authorAssociation
         author { __typename login }
@@ -26,7 +27,8 @@ const ISSUE_FIELDS = `number title body state stateReason url createdAt updatedA
         timelineItems(itemTypes: [LABELED_EVENT, RENAMED_TITLE_EVENT], last: ${TIMELINE_EVENTS}) {
           nodes { __typename ... on LabeledEvent { createdAt actor { __typename login } label { name } } ... on RenamedTitleEvent { createdAt } }
         }
-        comments(last: ${COMMENTS_READ}) { nodes { createdAt authorAssociation author { __typename } } }`;
+        comments(last: ${COMMENTS_READ}) { nodes { createdAt authorAssociation author { __typename login } } }
+        closedByPullRequestsReferences(first: 1) { totalCount }`;
 /** Every open issue, oldest first. */
 export const OPEN_ISSUES_QUERY = `query($owner: String!, $name: String!, $after: String) {
   repository(owner: $owner, name: $name) {

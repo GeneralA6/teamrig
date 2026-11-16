@@ -1,7 +1,8 @@
 import { errorCode, errorMessage, isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { exitText } from '../open/processes.ts';
-import { GH_TIMEOUT_MS, type GhResult, type GhRunner } from './gh.ts';
-import type { HostIssue, IssueComment, LabelEvent } from '../issues/issue.ts';
+import { GH_TIMEOUT_MS, GhOutputCapError, type GhResult, type GhRunner } from './gh.ts';
+import type { HostIssue, IssueComment, LabelEvent, ReadComment } from '../issues/issue.ts';
+import { isClaim } from '../issues/claim.ts';
 import { closedPageArgs, openPageArgs, type PageVariables } from './queries.ts';
 import type { RepoAccess } from './tokens.ts';
 
@@ -130,8 +131,11 @@ async function readPage(gh: GhRunner, access: RepoAccess, request: IssueListRequ
   return parseIssuePage(result.stdout, request);
 }
 
-/** Why gh did not start: most often it is not installed. */
+/** Why gh did not start (most often it is not installed), or why it was stopped for printing too much. */
 export function startFailureText(error: unknown): string {
+  if (error instanceof GhOutputCapError) {
+    return error.message;
+  }
   return errorCode(error) === 'ENOENT'
     ? 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com, then run gh auth login'
     : plainLine(`gh could not start: ${errorMessage(error)}`);
@@ -242,7 +246,14 @@ function issueOf(item: unknown, repo: string): HostIssue | null {
     renamedAt: latestRename(events),
     createdAt: timeField(item, 'createdAt'),
     comments: nodesOf(item['comments']).flatMap(commentOf),
+    linkedPulls: countOf(recordField(item, 'closedByPullRequestsReferences')),
   };
+}
+
+/** A connection's `totalCount`, 0 when GitHub gives none or not a count. */
+function countOf(connection: JsonRecord | undefined): number {
+  const count = connection?.['totalCount'];
+  return typeof count === 'number' && Number.isSafeInteger(count) && count > 0 ? count : 0;
 }
 
 /** A label event of the timeline, or nothing when the item is another kind or lacks its label or time. */
@@ -257,10 +268,11 @@ function labelEventOf(event: JsonRecord): LabelEvent[] {
   return [{ label: name, at, actor: loginOf(actor), actorKind: kindOf(actor) }];
 }
 
-/** A comment's time and author kind and tie, or nothing when it lacks its time; a deleted author reads as an empty kind. */
+/** A comment's time and author, or nothing when it lacks its time; a deleted author reads as an empty login and kind. */
 function commentOf(comment: JsonRecord): IssueComment[] {
   const at = timeField(comment, 'createdAt');
-  return at === undefined ? [] : [{ at, authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(recordField(comment, 'author')) }];
+  const author = recordField(comment, 'author');
+  return at === undefined ? [] : [{ at, login: loginOf(author), authorAssociation: stringField(comment, 'authorAssociation') ?? '', authorKind: kindOf(author) }];
 }
 
 /** The time of the newest change of title among the timeline events. */
@@ -299,5 +311,41 @@ function namesOf(connection: unknown, key: string): string[] {
   return nodesOf(connection).flatMap((item) => {
     const name = stringField(item, key);
     return name === undefined ? [] : [name];
+  });
+}
+
+/**
+ * The comments one REST read of an issue's comments printed (gh.ts commentsReadArgs), each with its text matched for
+ * a claim line and dropped, so no outsider's words leave this function; undefined when gh printed no list. A comment
+ * lacking its time is left out, and a deleted author reads as an empty login and kind.
+ */
+export function readCommentsIn(stdout: string): ReadComment[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) {
+    return undefined;
+  }
+  const items: readonly unknown[] = parsed;
+  return items.flatMap((item): ReadComment[] => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const at = timeField(item, 'created_at');
+    const user = recordField(item, 'user');
+    return at === undefined
+      ? []
+      : [
+          {
+            at,
+            login: user === undefined ? '' : (stringField(user, 'login') ?? ''),
+            authorAssociation: stringField(item, 'author_association') ?? '',
+            authorKind: user === undefined ? '' : (stringField(user, 'type') ?? ''),
+            claims: isClaim(stringField(item, 'body') ?? ''),
+          },
+        ];
   });
 }

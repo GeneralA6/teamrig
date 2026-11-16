@@ -1328,7 +1328,7 @@
       }
     },
     "github": {
-      "description": "The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md).",
+      "description": "The team's GitHub repositories. teamrig issue sync reads their issues into the register as tasks of source github, and never writes to GitHub; local tasks stay local. teamrig issue migrate, teamrig issue comment, teamrig issue label, teamrig issue edit and teamrig issue close, run by hand, write only to these repositories. Each owner's repositories are reached with the token saved as teamrig-gh-<owner> in the system's credential store, else the gh login; a saved token that cannot be read stops a write, never the gh login in its place (docs/github-sync.md).",
       "type": "object",
       "properties": {
         "repos": {
@@ -1369,15 +1369,15 @@
           "maximum": 365,
           "default": 14
         },
-        "everyMinutes": {
-          "description": "How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig issue sync --yes.",
+        "probeSeconds": {
+          "description": "How often teamrig issue watch asks GitHub whether a listed repository changed, in seconds: a conditional read that costs no rate limit when nothing changed, the sync running only when something did. One watch runs for the whole team, started by the hooks. 0 runs no watch and leaves the sync to teamrig issue sync --yes; otherwise at least 30. It replaced everyMinutes, which is reported until deleted.",
           "type": "integer",
           "minimum": 0,
-          "maximum": 1440,
-          "default": 15
+          "maximum": 3600,
+          "default": 60
         },
         "statusPush": {
-          "description": "Whether the automatic sync also sends the status push (teamrig issue sync --push --yes), so each issue a task holds shows the task's status without a session running it. It sends labels only: a close waits for a session's teamrig issue sync --push --yes. Off by default: read the push's dry run (teamrig issue sync --push) first.",
+          "description": "Whether the automatic sync also sends the status push (teamrig issue sync --push --yes), so each issue a task holds shows the task's status without a session running it, and assigns an outside person who claims an open issue by a /take comment, for 7 days unless a pull request links it. It sends labels, assignees and the claim replies only: a close waits for a session's teamrig issue sync --push --yes. Off by default: read the push's dry run (teamrig issue sync --push) first.",
           "type": "boolean",
           "default": false
         },
@@ -1397,6 +1397,34 @@
           "default": "teamrig"
         }
       }
+    },
+    "serviceRoles": {
+      "description": "Service roles, by name: each lets the sessions that hold it run a few teamrig commands for an outside service past every permission check, Claude Code's auto mode included, from their own tab only. Commands are names from teamrig's fixed table, never free text; an unknown name, a holder not on the team or a misspelt key fails the load. Written by teamrig roles grant and teamrig roles revoke, which the owner runs; a session's own edit of it is refused.",
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["holders", "commands"],
+        "additionalProperties": false,
+        "properties": {
+          "holders": {
+            "description": "The sessions of this team that hold the role, by id, or team for every session of it, which only a role whose every command checks its own caller may name.",
+            "anyOf": [
+              { "enum": ["team"] },
+              { "type": "array", "items": { "$ref": "#/$defs/sessionName" }, "minItems": 1, "uniqueItems": true }
+            ]
+          },
+          "commands": {
+            "description": "The commands the role holds: issue close (teamrig issue close on a repository of github.repos), issue comment (teamrig issue comment on one).",
+            "type": "array",
+            "items": { "enum": ["issue close", "issue comment"] },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        }
+      },
+      "default": {}
     },
     "alerts": {
       "description": "The alerting rule the core rules state, and where a page to the owner goes.",

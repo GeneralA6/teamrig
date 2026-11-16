@@ -1,28 +1,24 @@
 import { ENV } from "../../core/home.js";
 import { writableObject } from "../../core/jsonl.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { addedLines, claimState, failureNews, finishState, formatSyncState, isDue, leftOutNews, parseSyncState, SYNC_STATE_FORMAT, } from "../../github/auto.js";
+import { addedLines, failureNews, finishState, formatSyncState, leftOutNews, parseSyncState, SYNC_STATE_FORMAT, } from "../../github/auto.js";
 import { postLine } from "../../inbox/inbox.js";
 import { GITHUB_ACTOR } from "../../register/policy.js";
 import { inboxDepsOf } from "./inbox.js";
 import { fileLockOf } from "../file-locks.js";
 /**
- * The automatic GitHub sync: the Stop hook starts `issue sync --auto` hidden in the background once per
- * `github.everyMinutes` for the whole team, claimed under one lock, and that run tells each owner's inbox
- * the tasks it added, and the lead's when the failing repositories change or an outsider's issue is newly left
- * out. Nothing else keeps running.
+ * The automatic GitHub sync's report: `issue watch` (issue-watch.ts) runs `issue sync --auto` when GitHub changed,
+ * and that run tells each owner's inbox the tasks it added, and the lead's when the failing repositories change or an
+ * outsider's issue is newly left out.
  */
 /** `TEAMRIG_GITHUB=off` turns the import off on this machine, whatever the team config says. */
 export const GITHUB_OFF = 'off';
 export function githubOff(env) {
     return env[ENV.github]?.trim().toLowerCase() === GITHUB_OFF;
 }
-/** The lock around the sync state file; a hook does not wait for it, a finishing sync does. */
+/** The lock around the sync state file, held while a finishing sync records its end. */
 function stateLock(runtime, kit, config, waitMs) {
     return fileLockOf(runtime, kit.paths.githubSyncLock, { ...config.lock, waitMs });
-}
-async function readState(runtime, kit) {
-    return parseSyncState((await runtime.files.read(kit.paths.githubSync)) ?? '');
 }
 /**
  * The state before a write, under the lock. A file a newer teamrig wrote is refused (`NewerDataError`), so an older
@@ -32,39 +28,6 @@ async function writableState(runtime, kit) {
     const text = await runtime.files.read(kit.paths.githubSync);
     writableObject(kit.paths.githubSync, text, SYNC_STATE_FORMAT);
     return parseSyncState(text ?? '');
-}
-/**
- * The Stop hook's part: once `github.everyMinutes` passed since the last automatic sync, claims the next one
- * and starts `issue sync --auto` hidden, for the team the hook runs for, so the hook neither prints nor waits. A
- * turn end that is not due reads one small file; the claim is checked again under the lock, which a hook
- * never waits for (another session's hook holding it is claiming the same sync). A start that fails is
- * retried at the next interval.
- */
-export async function startAutoSync(runtime, kit, config) {
-    const { github } = config;
-    if (github.repos.length === 0 || github.everyMinutes === 0 || githubOff(runtime.env)) {
-        return;
-    }
-    const now = runtime.clock.now();
-    if (!isDue(await readState(runtime, kit), now, github.everyMinutes)) {
-        return;
-    }
-    const claimed = await stateLock(runtime, kit, config, 0).run(async () => {
-        const state = await writableState(runtime, kit);
-        if (!isDue(state, now, github.everyMinutes)) {
-            return false;
-        }
-        await runtime.files.write(kit.paths.githubSync, formatSyncState(claimState(state, now)));
-        return true;
-    });
-    if (claimed) {
-        await runtime.processes.startHidden({
-            command: runtime.self.node,
-            args: [runtime.self.script, 'issue', 'sync', '--auto'],
-            cwd: kit.paths.home,
-            env: { ...runtime.env, [ENV.team]: kit.paths.team },
-        });
-    }
 }
 /**
  * What `issue sync --auto` does once it has written: records its finish, failing repositories and left-out issues,

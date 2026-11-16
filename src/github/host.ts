@@ -3,31 +3,51 @@ import {
   targetText,
   type CloseReason,
   type HostEnd,
+  type HostAssignee,
+  type HostComments,
+  type HostIssueId,
   type HostLabel,
   type HostLinks,
   type HostList,
   type HostOpen,
   type HostReach,
   type HostUse,
+  type HostWatch,
   type IssueDraft,
   type IssueHost,
+  type LabelSpec,
   type IssueTarget,
+  type WatchMarks,
 } from '../issues/host.ts';
 import type { IssueState } from '../issues/issue.ts';
 import { exitText } from '../open/processes.ts';
+import type { Env } from '../core/home.ts';
 import {
+  assigneeReadArgs,
   blockedByAddArgs,
+  commentsReadArgs,
+  issueAssignArgs,
+  issueUnassignArgs,
+  issueBodyArgs,
   issueCloseArgs,
   issueCommentArgs,
   issueCreateArgs,
   issueLabelAddArgs,
   issueLabelRemoveArgs,
+  issueReadArgs,
   labelReadArgs,
+  isLogin,
+  labelCreateArgs,
   subIssueAddArgs,
+  WATCH_PATHS,
+  watchProbeArgs,
+  userReadArgs,
   type GhResult,
   type GhRunner,
+  type WatchPath,
 } from './gh.ts';
-import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, startFailureText, type IssueList } from './issues.ts';
+import { probeAnswerOf, type ProbeAnswer } from './probe.ts';
+import { ghFailureKind, ISSUE_LIMIT, listIssues, plainLine, readCommentsIn, startFailureText, type IssueList } from './issues.ts';
 import { listLinks } from './links.ts';
 import { createdNumber } from './migrate.ts';
 import { latestIssues } from './plan.ts';
@@ -119,8 +139,40 @@ export class GitHubIssueHost implements IssueHost {
     return this.write(target, issueCommentArgs(target, body), 'comment on');
   }
 
-  close(target: IssueTarget, reason?: CloseReason): Promise<HostEnd> {
-    return this.write(target, issueCloseArgs(target, reason), 'close');
+  editBody(target: IssueTarget, body: string): Promise<HostEnd> {
+    return this.write(target, issueBodyArgs(target, body), 'edit the body of');
+  }
+
+  close(target: IssueTarget, reason?: CloseReason, duplicateId?: number): Promise<HostEnd> {
+    return this.write(target, issueCloseArgs(target, reason, duplicateId), 'close');
+  }
+
+  /**
+   * Reads the one issue for its `id`: found with it, missing when GitHub answers Not Found (no such issue, or one the
+   * access cannot see), else failed with gh's own line, or when the answer holds no id.
+   */
+  async issueId(target: IssueTarget): Promise<HostIssueId> {
+    const shown = targetText(target);
+    const access = await this.tokens.accessFor(target.repo);
+    if (access instanceof TokenReadError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    let result: GhResult;
+    try {
+      result = await this.gh.run({ args: issueReadArgs(target), env: access.env });
+    } catch (error) {
+      return { kind: 'failed', reason: startFailureText(error) };
+    }
+    if (result.end.kind === 'signal') {
+      return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading ${shown}` };
+    }
+    if (result.end.code !== 0) {
+      return ghFailureKind(result.end.code, result.stderr) === 'not-visible'
+        ? { kind: 'missing' }
+        : { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read ${shown} ${exitText(result.end.code, result.stderr)}`)) };
+    }
+    const id = issueIdIn(result.stdout);
+    return id === undefined ? { kind: 'failed', reason: `gh printed no id for ${shown}` } : { kind: 'found', id };
   }
 
   /**
@@ -128,26 +180,94 @@ export class GitHubIssueHost implements IssueHost {
    * repository the access cannot see, which the add would fail on anyway), else failed with gh's own line.
    */
   async labelExists(repo: string, label: string): Promise<HostLabel> {
+    const read = await this.read(repo, labelReadArgs(repo, label), `the label ${JSON.stringify(label)} of ${repo}`);
+    return read.kind === 'found' ? { kind: 'found' } : read;
+  }
+
+  /**
+   * Reads one page of the issue's comments updated at or after `since`, oldest first (gh.ts commentsReadArgs), each
+   * with its text matched for a claim line and dropped. An issue GitHub no longer shows fails the read.
+   */
+  async newComments(target: IssueTarget, since: number): Promise<HostComments> {
+    const shown = `the new comments of ${targetText(target)}`;
+    const read = await this.read(target.repo, commentsReadArgs(target, new Date(since).toISOString()), shown);
+    if (read.kind === 'missing') {
+      return { kind: 'failed', reason: `GitHub shows no ${targetText(target)} to read ${shown} of` };
+    }
+    if (read.kind === 'failed') {
+      return read;
+    }
+    const comments = readCommentsIn(read.stdout);
+    return comments === undefined ? { kind: 'failed', reason: `gh printed no comment list for ${shown}` } : { kind: 'read', comments };
+  }
+
+  /**
+   * Reads whether the login may be assigned, as GitHub spells it. GitHub's assignee check matches a login's case
+   * exactly (`octocat` is Not Found where `OctoCat` is the user), while teamrig keeps logins in lowercase, so the user
+   * is read first for its login as GitHub keeps it. Found with that login when gh ends well; missing when GitHub answers
+   * Not Found (no such user, not a person with access, an organisation, or a repository the access cannot see); else
+   * failed with gh's own line.
+   */
+  async assigneeExists(repo: string, login: string): Promise<HostAssignee> {
+    const user = await this.read(repo, userReadArgs(login), `the GitHub user ${login}`);
+    if (user.kind !== 'found') {
+      return user;
+    }
+    const spelled = loginIn(user.stdout);
+    if (spelled === undefined || spelled.toLowerCase() !== login.toLowerCase()) {
+      return { kind: 'failed', reason: `gh printed no login ${login} for the GitHub user ${login}` };
+    }
+    const read = await this.read(repo, assigneeReadArgs(repo, spelled), `whether ${spelled} may be assigned in ${repo}`);
+    return read.kind === 'found' ? { kind: 'found', login: spelled } : read;
+  }
+
+  /** One read of `what` in `repo`: found with what gh printed when it ends well, missing on Not Found, else failed with gh's own line. */
+  private async read(repo: string, args: readonly string[], what: string): Promise<HostRead> {
     const access = await this.tokens.accessFor(repo);
     if (access instanceof TokenReadError) {
       return { kind: 'failed', reason: access.message };
     }
     let result: GhResult;
     try {
-      result = await this.gh.run({ args: labelReadArgs(repo, label), env: access.env });
+      result = await this.gh.run({ args, env: access.env });
     } catch (error) {
       return { kind: 'failed', reason: startFailureText(error) };
     }
     if (result.end.kind === 'signal') {
-      return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading the label ${JSON.stringify(label)} of ${repo}` };
+      return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while reading ${what}` };
     }
     if (result.end.code === 0) {
-      return { kind: 'found' };
+      return { kind: 'found', stdout: result.stdout };
     }
     if (ghFailureKind(result.end.code, result.stderr) === 'not-visible') {
       return { kind: 'missing' };
     }
-    return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read the label ${JSON.stringify(label)} of ${repo} ${exitText(result.end.code, result.stderr)}`)) };
+    return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to read ${what} ${exitText(result.end.code, result.stderr)}`)) };
+  }
+
+  /**
+   * Makes the label in the repository. A run stopped by a signal may still have made it, which the next run's read
+   * finds; a refused access says how to give it the write.
+   */
+  async createLabel(repo: string, label: LabelSpec): Promise<HostEnd> {
+    const shown = `the label ${JSON.stringify(label.name)} in ${repo}`;
+    const access = await this.tokens.accessFor(repo);
+    if (access instanceof TokenReadError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    let result: GhResult;
+    try {
+      result = await this.gh.run({ args: labelCreateArgs(repo, label), env: access.env });
+    } catch (error) {
+      return { kind: 'failed', reason: startFailureText(error) };
+    }
+    if (result.end.kind === 'signal') {
+      return { kind: 'failed', reason: `gh was stopped (${result.end.signal}) while making ${shown}` };
+    }
+    if (result.end.code !== 0) {
+      return { kind: 'failed', reason: this.scanner.redact(plainLine(`gh api to make ${shown} ${exitText(result.end.code, result.stderr)}`)) };
+    }
+    return { kind: 'done' };
   }
 
   addLabels(target: IssueTarget, labels: readonly string[]): Promise<HostEnd> {
@@ -172,6 +292,55 @@ export class GitHubIssueHost implements IssueHost {
 
   addBlockedBy(target: IssueTarget, blockerId: number): Promise<HostEnd> {
     return this.write(target, blockedByAddArgs(target, blockerId), 'add a blocker to');
+  }
+
+  assign(target: IssueTarget, logins: readonly string[]): Promise<HostEnd> {
+    return this.write(target, issueAssignArgs(target, logins), 'assign');
+  }
+
+  /**
+   * Probes each of WATCH_PATHS with the tag `marks` holds for it (gh.ts isWatchProbe), each mark keyed by its path.
+   * Changed when any answer changed, the new tags in the marks it gives (a path that failed keeps its old tag, so it
+   * reads as changed again later); failed when none changed and one failed, with that line, any secret shape
+   * redacted; else unchanged. GitHub answers an unchanged probe 304, which does not count against the rate limit.
+   */
+  async watch(repo: string, marks: WatchMarks): Promise<HostWatch> {
+    const access = await this.tokens.accessFor(repo);
+    if (access instanceof TokenReadError) {
+      return { kind: 'failed', reason: access.message };
+    }
+    const next = new Map(marks);
+    let changed = false;
+    let failure: string | undefined;
+    for (const path of WATCH_PATHS) {
+      const answer = await this.probe(repo, path, marks.get(path), access.env);
+      if (answer.kind === 'changed') {
+        changed = true;
+        if (answer.tag === undefined) {
+          next.delete(path);
+        } else {
+          next.set(path, answer.tag);
+        }
+      } else if (answer.kind === 'failed') {
+        failure ??= `${repo} ${path.slice(0, path.indexOf('?'))}: ${answer.reason}`;
+      }
+    }
+    if (changed) {
+      return { kind: 'changed', marks: next };
+    }
+    return failure === undefined ? { kind: 'unchanged' } : { kind: 'failed', reason: this.scanner.redact(failure) };
+  }
+
+  private async probe(repo: string, path: WatchPath, tag: string | undefined, env: Env): Promise<ProbeAnswer> {
+    try {
+      return probeAnswerOf(await this.gh.run({ args: watchProbeArgs(repo, path, tag), env }));
+    } catch (error) {
+      return { kind: 'failed', reason: startFailureText(error) };
+    }
+  }
+
+  unassign(target: IssueTarget, login: string): Promise<HostEnd> {
+    return this.write(target, issueUnassignArgs(target, login), `take ${login} off the assignees of`);
   }
 
   /** One write; `missing`, when given, says what a Not Found means for it in place of the issue not being there. */
@@ -224,4 +393,37 @@ export function writeFailureText(target: IssueTarget, what: string, code: number
     case undefined:
       return plainLine(`gh api to ${what} ${shown} ${exitText(code, stderr)}`);
   }
+}
+
+/** What one read gave: found with what gh printed, missing on Not Found, or failed with the reason. */
+type HostRead = { readonly kind: 'found'; readonly stdout: string } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly reason: string };
+
+/** The `login` of a user as `gh api users/<login>` prints it, when it has a login's shape; else undefined. */
+export function loginIn(stdout: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || !('login' in parsed)) {
+    return undefined;
+  }
+  const { login } = parsed;
+  return typeof login === 'string' && isLogin(login) ? login : undefined;
+}
+
+/** The `id` of an issue as GitHub's REST API prints it: a positive safe integer, else undefined. */
+export function issueIdIn(stdout: string): number | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || !('id' in parsed)) {
+    return undefined;
+  }
+  const { id } = parsed;
+  return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
