@@ -7,8 +7,8 @@ priority and open or closed state follow GitHub on every run. The sync never goe
 edits, comments on or closes anything on GitHub, and a task added with `teamrig add` stays on your machine. The
 writes are all run by hand: `teamrig issue migrate` moves tasks you choose to new issues, once
 ([Moving your tasks to issues](#moving-your-tasks-to-issues)), `teamrig issue comment`, `teamrig issue label`,
-`teamrig issue edit` and `teamrig issue close` answer, label, rewrite the description of or close one issue or pull
-request ([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
+`teamrig issue edit`, `teamrig issue assign` and `teamrig issue close` answer, label, rewrite the description of,
+assign or close one issue or pull request ([Commenting on, labelling and closing](#commenting-on-labelling-and-closing)), and `teamrig issue links` puts the
 task tree on the issues ([Linking issues as the task tree](#linking-issues-as-the-task-tree)). GitHub is the
 only host teamrig writes to so far. Each run also reads the repositories' pull requests and tells each session what
 happened to its own ([Pull request news](#pull-request-news)), tells it when someone on GitHub names one of your
@@ -83,7 +83,7 @@ Give the token only what the commands you run need:
 | --- | --- |
 | `teamrig issue sync` | **Issues: Read-only** and **Pull requests: Read-only** |
 | `teamrig issue migrate` | **Issues: Read and write** |
-| `teamrig issue comment`, `teamrig issue label`, `teamrig issue edit`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels, description and state are written through its issue) |
+| `teamrig issue comment`, `teamrig issue label`, `teamrig issue edit`, `teamrig issue assign`, `teamrig issue close` | **Issues: Read and write** and **Pull requests: Read and write** (a pull request's comments, labels, description, assignees and state are written through its issue) |
 | `teamrig issue links` | **Issues: Read-only** for the preview, **Issues: Read and write** with `--yes` |
 
 ### Why one token per owner
@@ -352,8 +352,11 @@ be there), and `teamrig issue close` closes one, first posting its `--comment` w
 unmerged. `--reason completed`, `not-planned` or `duplicate` says why it closed (GitHub keeps it on an issue only);
 `--duplicate-of` closes it as a duplicate of another issue of the same repository, which GitHub links as the
 original. `teamrig issue edit` replaces the body (the description) with the text of a file, so a spec of many lines
-keeps its shape; the title, state and labels stay, and GitHub keeps the old body in the edit history. Each names its
-target as `owner/name#number`.
+keeps its shape; the title, state and labels stay, and GitHub keeps the old body in the edit history. `teamrig issue
+assign` gives one to its takers, at most 3 logins added and taken off together: it reads the item's labels and
+refuses an add to a design issue, and reads each login as one GitHub may assign to that item (someone with access to
+the repository, or someone who took part in it, such as a commenter asking to take it), refusing one it would drop.
+Each names its target as `owner/name#number`.
 
 Each text teamrig posts (a comment, a close comment, a claim reply, a migrated issue, a replaced body) ends with a
 one-line footer, `Made with teamrig <version>` linking to the project, then a hidden `<!-- teamrig-stamp -->` marker.
@@ -365,6 +368,7 @@ is posted without it. A team that wants no footer sets `github.stamp` to false.
 teamrig issue comment acme/web#7 --body "Fixed in #9, thank you."
 teamrig issue label acme/web#7 --add "type: bug,p1" --remove "needs triage"
 teamrig issue edit acme/web#7 --body-file spec.md
+teamrig issue assign acme/web#7 --add octocat
 teamrig issue close acme/web#12 --comment "Merged as #14 with your commits credited. Thank you!"
 teamrig issue close acme/web#15 --duplicate-of acme/web#7
 ```
@@ -577,7 +581,10 @@ again.
   field), the status push's read of whether one login may be assigned (`repos/<owner>/<name>/assignees/<login>`)
   and its assign (`.../issues/<number>/assignees -X POST` with logins only, never a removal), its field and type
   writes (`.../issues/<number>/issue-field-values -X POST` with one field id and one value, `.../issues/<number>
-  -X PATCH` with `type` only), the read of the repository's label file
+  -X PATCH` with `type` only), `teamrig issue assign`'s read of one user (`users/<login>`), of whether that login
+  may be assigned to the one item (`.../issues/<number>/assignees/<login>`) and of the item's labels
+  (`.../issues/<number>`), its assign (as the push's) and its take off of one login (`.../issues/<number>/assignees
+  -X DELETE` with that login only), the read of the repository's label file
   (`repos/<owner>/<name>/contents/.github/labels.json` with the raw media type, nothing else), the create of a label
   teamrig makes (`repos/<owner>/<name>/labels -X POST` with the name, colour and description of one of the five
   status labels or `design`, word for word) or of one that file named when the same run read it, word for word, and

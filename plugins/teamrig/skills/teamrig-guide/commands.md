@@ -1679,6 +1679,38 @@ SIMILAR acme/web#31 (T412): 2 of 18 mirrored issues at or above 0.35 (github.sim
 0.41 acme/web#27 T405 Reset email never arrives
 ```
 
+### teamrig issue assign
+
+Gives one issue or pull request of the team's repositories to its takers, with the same access as `teamrig issue
+comment`: use it once someone says they take the item, such as a commenter asking for it. `--add` and `--remove` are
+comma-separated lists of GitHub logins (a leading `@` is dropped); give at least one, no login in both, and at most 3
+logins in all. Before any change it reads the item's labels and each login to add: an add to a design issue (one
+labelled `design`, talk not yet agreed) is refused, as no one takes design talk until it is agreed and the label
+comes off; and a login GitHub would drop is refused, as GitHub assigns only someone with access to the repository or
+someone who took part in the item (a comment counts). The logins to add go in one call, as GitHub spells them, then
+each login to remove comes off in turn; the first failure stops it, and a `FAILED` line after a change says what it
+already did. It prints `ASSIGNED <target>: <logins>` and `UNASSIGNED <target>: <login>`. Exit 1 when it failed, 2
+when refused, else 0.
+
+Flags:
+
+- `--session <id|name>`: the caller, a session of the team.
+- `--add <login,...>`: the logins to assign, each one GitHub may assign to the item.
+- `--remove <login,...>`: the logins to take off.
+
+Example:
+
+```sh
+teamrig issue assign acme/web#12 --add octocat
+```
+
+Output:
+
+```text
+ACCESS acme: writes with the token saved as teamrig-gh-acme
+ASSIGNED acme/web#12: octocat
+```
+
 ### teamrig pr conflicts
 
 Run in a clone of the pull request's repository, it fetches the pull request's head (a fork's too) and the newest
