@@ -83,11 +83,12 @@ describe('credentialReadFindings', () => {
     }
   });
 
-  // The clock covers only the patterns under test. Splitting the line into runs costs about ten times as much, so
-  // timing it too failed the bound on a loaded host while the patterns stayed fast (#929). One pattern without its `^`
-  // retries the lookahead at every start and takes about 40 s on this line, far past the bound.
+  // The clock covers only the patterns under test. Splitting the line into runs costs more than they do, so timing it
+  // too failed the bound on a loaded host while the patterns stayed fast (#929). The line repeats each program a store
+  // pattern starts with: a pattern without its `^` then retries its lookahead from every copy, which is quadratic and
+  // takes seconds on this line, past the bound; with the `^` each pattern looks once.
   it('reads a long line in time in proportion to it', () => {
-    const line = `gh ${'auth '.repeat(20_000)}x`;
+    const line = `gh ${'gh git git-credential-x security secret-tool cmdkey vaultcmd keyring '.repeat(10_000)}x`;
     const runs = runsOf(line, { cwd: 'C:/w', home: 'C:/u', dialect: 'bash' }).programs;
     const started = performance.now();
     assert.deepEqual(credentialReadFindings(line, runs), []);
