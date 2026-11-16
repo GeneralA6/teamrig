@@ -41,6 +41,15 @@ describe('planLinks', () => {
     assert.equal(changedIssues(plan), 1);
   });
 
+  it('makes no link between two tasks that hold the same issue, as GitHub refuses an issue linked to itself (#1386)', () => {
+    const plan = planLinks(tasks(mirrored('T9', 9, { after: ['T10', 'T11'] }), mirrored('T10', 9), mirrored('T11', 11)), REPO, [issue(9), issue(11)]);
+    assert.deepEqual(plan.writes, [
+      { kind: 'blocked-by', target: { repo: REPO, number: 9 }, blocker: { repo: REPO, number: 11 }, blockerId: 1011 },
+      { kind: 'sub-issue', parent: { repo: REPO, number: 9 }, child: { repo: REPO, number: 11 }, childId: 1011 },
+    ]);
+    assert.ok(plan.writes.every((write) => (write.kind === 'blocked-by' ? write.target.number !== write.blocker.number : write.parent.number !== write.child.number)));
+  });
+
   it('adds nothing the host already has, and counts it present', () => {
     const plan = planLinks(tasks(mirrored('T9', 9, { after: ['T10'] }), mirrored('T10', 10)), REPO, [issue(9, { blockedBy: [10] }), issue(10, { parent: { repo: REPO, number: 9 } })]);
     assert.deepEqual(plan.writes, []);
