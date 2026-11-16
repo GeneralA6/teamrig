@@ -164,7 +164,7 @@ const KEEPER = [
   "const say = (word) => process.stdout.write(JSON.stringify(word) + String.fromCharCode(10));",
   "const failed = (e) => say({ spawned: false, code: e.code, message: e.message });",
   'try {',
-  "const c = require('node:child_process').spawn(r.command, r.args, { stdio: ['ignore', 2, 2] });",
+  "const c = require('node:child_process').spawn(r.command, r.args, { stdio: ['ignore', 2, 2], windowsHide: true });",
   "c.once('spawn', () => say({ spawned: true }));",
   "c.once('error', failed);",
   "c.once('exit', (code) => process.exit(code ?? 1));",
