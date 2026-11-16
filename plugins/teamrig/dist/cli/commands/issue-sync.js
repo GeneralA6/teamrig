@@ -1,12 +1,15 @@
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
+import { activityRoutes } from "../../github/activity.js";
 import { addedTasks } from "../../github/auto.js";
+import { followersOf, parseFollows } from "../../github/follows.js";
+import { issueMarkStep } from "../../github/issue-marks.js";
 import { importRules, issueOwner, issueRef } from "../../github/map.js";
-import { importedTasks, linkedRefs, planSync } from "../../github/plan.js";
+import { importedTasks, linkedRefs, planSync, refHolders } from "../../github/plan.js";
 import { withCiExcerpts } from "../../github/ci-excerpt.js";
 import { firstMentionWatch, mentionItems, mentionReadSince, mentionStep, mentionTime, } from "../../github/mention-route.js";
 import { securityIssues } from "../../github/security-alert.js";
-import { eventsByRecipient, pullEvents, pullNewsText, pullRecipient } from "../../github/pull-news.js";
+import { eventsByRecipient, pullEvents, pullListeners, pullNewsText, pullRecipient } from "../../github/pull-news.js";
 import { ourLogins } from "../../github/trust.js";
 import { applySteps, closedSince } from "../../github/sync.js";
 import { autoPushWrites, sessionLogins } from "../../issues/status-push.js";
@@ -84,6 +87,12 @@ export async function issueSync(args, runtime) {
     const mentions = new Map();
     const mentionRoutes = [];
     const mentionCuts = new Map();
+    const activity = [];
+    const lastIssues = last?.issues ?? new Map();
+    const issueMarks = new Map();
+    const issueRoutes = [];
+    // Read once, without the lock: a follow made while this run reads is heard from the next run.
+    const followers = auto && config.github.activity ? followersOf(parseFollows((await runtime.files.read(kit.paths.githubFollows)) ?? '')) : new Map();
     const ours = ourLogins(config.github);
     const watcher = config.github.watcher ?? config.roles.lead;
     const routing = { ours, self: undefined, rules, watcher, secrets: new SecretScanner(config.register.secretPatterns) };
@@ -122,6 +131,15 @@ export async function issueSync(args, runtime) {
         // A security issue goes to its task's owner, else where the import would route it; an outsider's left-out report too.
         security.set(repo, securityIssues(read.issues, (issue) => imported.get(issueRef(issue.repo, issue.number))?.owner ?? issueOwner(issue, rules)));
         leftOut.set(repo, plan.leftOut);
+        // The tasks holding each ref before this run wrote, so a close that finishes a task now is news to its owner.
+        const holders = refHolders(tasks);
+        if (auto && config.github.activity) {
+            const audienceOf = (number) => issueAudience(holders.get(issueRef(repo, number)), followers.get(issueRef(repo, number)) ?? []);
+            const marked = issueMarkStep(repo, read.issues, lastIssues.get(repo) ?? new Map(), audienceOf, routing);
+            issueMarks.set(repo, marked.after);
+            issueRoutes.push(...marked.routes);
+            marked.routes.forEach((route) => say(`ISSUE NEWS ${route.to}: ${route.ref} ${route.changes.join(', ')}`));
+        }
         const leftOutText = leftOutLines(repo, plan.leftOut, rules.acceptLabel);
         let end = 'ok';
         if (write) {
@@ -154,8 +172,9 @@ export async function issueSync(args, runtime) {
         pulls.set(repo, watch.after);
         pullNews.push(...watch.events);
         if (auto) {
-            const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => imported.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
-            const scan = await readMentions(host, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing });
+            const items = mentionItems(repo, { issues: read.issues, pulls: watch.pulls }, { ofRef: (ref) => holders.get(ref)?.owner, ofTask: (id) => tasks.find((held) => held.id === id)?.owner }, ours);
+            const audienceOf = config.github.activity ? (number) => ({ owner: items(number).taskOwner, followers: followers.get(issueRef(repo, number)) ?? [] }) : undefined;
+            const scan = await readMentions(host, repo, scanned.get(repo), { readAt: mentionTime(runtime.clock.now()), cutoffMs: Date.parse(since), itemOf: items, routing, audienceOf });
             scan.lines.forEach(say);
             if (scan.kind === 'failed') {
                 if (end === 'ok') {
@@ -166,17 +185,28 @@ export async function issueSync(args, runtime) {
             }
             mentions.set(repo, scan.after);
             mentionRoutes.push(...scan.routes);
+            activity.push(...scan.activity);
             if (scan.cutAt !== undefined) {
                 mentionCuts.set(repo, scan.cutAt);
             }
         }
         ends.push(end);
     }
-    const owners = new Map([...(await register.snapshot()).state.tasks.values()].map((task) => [task.id, task.owner]));
+    const finalTasks = [...(await register.snapshot()).state.tasks.values()];
+    const owners = new Map(finalTasks.map((task) => [task.id, task.owner]));
+    const holders = refHolders(finalTasks);
     // Only --auto tells the news, so only it reads the failed jobs' logs for it and writes their excerpts.
     const ci = auto ? await withCiExcerpts({ host, files: runtime.files, dir: kit.paths.githubCi, now: new Date(runtime.clock.now()).toISOString(), ours }, pullNews) : { events: pullNews, lines: [] };
     ci.lines.forEach(say);
-    const news = eventsByRecipient(ci.events, (pull) => pullRecipient(pull, ours, (task) => owners.get(task), watcher));
+    // Checks turning green, and the copies for a linked task's owner and the followers, are activity (github.activity).
+    const heard = config.github.activity ? ci.events : ci.events.filter((event) => event.kind !== 'checks-passing');
+    const news = eventsByRecipient(heard, (pull) => {
+        const recipient = pullRecipient(pull, ours, (task) => owners.get(task), watcher);
+        const ref = issueRef(pull.repo, pull.number);
+        // The owners of the tasks holding it or an issue it closes: its own task's, or the one it fixes.
+        const linked = [pull.number, ...pull.closes].flatMap((number) => holders.get(issueRef(pull.repo, number))?.owner ?? []);
+        return config.github.activity ? pullListeners(recipient, linked, followers.get(ref) ?? []) : [{ to: recipient, followed: false }];
+    });
     for (const [to, events] of news) {
         const { text, wake } = pullNewsText(events, ours);
         say(`PULL NEWS ${to}${wake ? ' (wakes)' : ''}: ${text}`);
@@ -212,7 +242,7 @@ export async function issueSync(args, runtime) {
         }
     }
     if (auto) {
-        (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security, mentions, mentionRoutes, mentionCuts })).forEach(say);
+        (await reportAutoSync(runtime, kit, config, { added, failures, leftOut, pulls, pullNews: news, security, mentions, mentionRoutes, mentionCuts, activityRoutes: activity, issues: issueMarks, issueRoutes })).forEach(say);
     }
     else if (news.size > 0) {
         say(`NOTE only ${KIT_NAME} issue sync --auto tells the pull request news and keeps what it read, so the next run names it again`);
@@ -237,12 +267,14 @@ async function readPulls(host, repo, before) {
 }
 /**
  * Reads `repo`'s posts changed since `before`, the watch the last `--auto` run kept, and routes their new mentions
- * (mention-route.ts). A repository with no watch yet is not read: its scan starts at `readAt`, so the first run routes
- * nothing written before. A route prints without its excerpt, which only the routed session's inbox gets.
+ * (mention-route.ts) and, when `audienceOf` is given (github.activity), the rest of their new posts on an item a task
+ * holds or a session follows (activity.ts), from the same read. A repository with no watch yet is not read: its scan
+ * starts at `readAt`, so the first run routes nothing written before. A route prints without its excerpt, which only
+ * the routed session's inbox gets.
  */
 async function readMentions(host, repo, before, at) {
     if (before === undefined) {
-        return { kind: 'read', after: firstMentionWatch(at.readAt), routes: [], cutAt: undefined, lines: [`NOTE ${repo}: the mention scan starts now; the next run reads what was written since`] };
+        return { kind: 'read', after: firstMentionWatch(at.readAt), routes: [], activity: [], cutAt: undefined, lines: [`NOTE ${repo}: the mention scan starts now; the next run reads what was written since`] };
     }
     const read = await host.posts(repo, mentionReadSince(before, at.cutoffMs));
     if (read.kind === 'failed') {
@@ -250,14 +282,19 @@ async function readMentions(host, repo, before, at) {
         return { kind: 'failed', reason, lines: [`FAILED ${repo} ${reason}; the scan goes on from where it was`] };
     }
     const step = mentionStep(repo, before, read, at.readAt, at.itemOf, at.routing, at.cutoffMs);
+    // Against the marks before this read, so a post its mention marked just now is still new to its other sessions.
+    const activity = at.audienceOf === undefined ? { routes: [], marks: new Map() } : activityRoutes(repo, read.posts, before.seen, at.audienceOf, step.routes, at.routing);
     return {
         kind: 'read',
-        after: step.after,
+        // A mention's mark keeps its logins, so it wins over the plain mark of the same post.
+        after: { ...step.after, seen: new Map([...activity.marks, ...step.after.seen]) },
         routes: step.routes,
+        activity: activity.routes,
         cutAt: read.cutAt,
         lines: [
             ...read.notes.map((note) => `NOTE ${repo}: ${note}`),
             ...step.routes.map((route) => `MENTION ${route.to}: ${route.ref} names ${route.logins.map((login) => `@${login}`).join(', ')}, by ${route.author}`),
+            ...activity.routes.map((route) => `ACTIVITY ${route.to}${route.wake ? ' (wakes)' : ''}: ${route.ref} ${route.kind} by ${route.author}`),
             ...(read.cutAt === undefined ? [] : [`NOTE ${repo}: the mention read was cut off; it read through ${read.cutAt} and the next run goes on from there`]),
         ],
     };
@@ -321,4 +358,8 @@ export function stepLine(step, id) {
         case 'status':
             return `SET ${id} ${step.ref} ${step.input.status}: ${step.input.note ?? ''}`;
     }
+}
+/** Who hears of an issue's close, reopen and labels: the owner of the task holding it, finished once done or dropped, and its followers. */
+function issueAudience(task, followers) {
+    return { owner: task === undefined ? undefined : { to: task.owner, finished: task.status === 'done' || task.status === 'dropped' }, followers };
 }

@@ -156,6 +156,7 @@ export function teamPaths(kitHome, team, claudeDir, overrides = {}) {
         githubWatch: join(state, 'github-watch.json'),
         githubWatchLock: join(state, 'github-watch.lock'),
         githubClaims: join(state, 'github-claims.json'),
+        githubFollows: join(state, 'github-follows.json'),
         hookless: join(state, 'hookless.json'),
         hooklessLock: join(state, 'hookless.lock'),
         idlePass: join(state, 'idle-pass.json'),

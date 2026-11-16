@@ -13,18 +13,20 @@ import { pagedAfter } from "./security-alert.js";
  */
 /**
  * The format of the sync state file this code writes: 2 added `leftOut`, 3 `pulls`, 4 `paged`, 5 `mentions` and
- * `mentionWakes`. It reads format 1 as having left nothing out, formats 1 and 2 as having watched no pull request, so the
- * next read of each is a first read, formats 1 to 3 as having paged no security issue, so each one open pages once, and
- * formats 1 to 4 as having watched no mention, so each repository's scan starts at its next read; a file in another
+ * `mentionWakes`, 6 `issues`. It reads format 1 as having left nothing out, formats 1 and 2 as having watched no pull
+ * request, so the next read of each is a first read, formats 1 to 3 as having paged no security issue, so each one open
+ * pages once, formats 1 to 4 as having watched no mention, so each repository's scan starts at its next read, and
+ * formats 1 to 5 as having marked no issue, so each watched one is first seen at its next read; a file in another
  * format reads as no sync yet.
  */
-export const SYNC_STATE_FORMAT = 5;
+export const SYNC_STATE_FORMAT = 6;
 /** The older formats this code still reads. */
 const NO_LEFT_OUT_FORMAT = 1;
 const NO_PULLS_FORMAT = 2;
 const NO_PAGED_FORMAT = 3;
 const NO_MENTIONS_FORMAT = 4;
-const READ_FORMATS = [NO_LEFT_OUT_FORMAT, NO_PULLS_FORMAT, NO_PAGED_FORMAT, NO_MENTIONS_FORMAT, SYNC_STATE_FORMAT];
+const NO_ISSUE_MARKS_FORMAT = 5;
+const READ_FORMATS = [NO_LEFT_OUT_FORMAT, NO_PULLS_FORMAT, NO_PAGED_FORMAT, NO_MENTIONS_FORMAT, NO_ISSUE_MARKS_FORMAT, SYNC_STATE_FORMAT];
 /** The new tasks one inbox line names; the rest are counted. */
 const NAMED_TASKS = 5;
 /** The new left-out issues the lead's line names; the rest are counted. */
@@ -33,8 +35,8 @@ const NAMED_LEFT_OUT = 10;
 const TITLE_CHARS = 60;
 /**
  * The state file's content; undefined when it is damaged or from another format, which reads as no sync yet. A
- * format-1 file left nothing out, neither format 1 nor 2 watched a pull request, no format before 4 paged, and none
- * before 5 watched a mention.
+ * format-1 file left nothing out, neither format 1 nor 2 watched a pull request, no format before 4 paged, none
+ * before 5 watched a mention, and none before 6 marked an issue.
  */
 export function parseSyncState(text) {
     const record = parseObject(text.trim());
@@ -49,11 +51,13 @@ export function parseSyncState(text) {
     const repos = failing.filter((repo) => typeof repo === 'string');
     const leftOut = format === NO_LEFT_OUT_FORMAT ? new Map() : parseNumbers(record['leftOut']);
     const pulls = format === NO_LEFT_OUT_FORMAT || format === NO_PULLS_FORMAT ? new Map() : parsePulls(record['pulls']);
-    const paged = format === SYNC_STATE_FORMAT || format === NO_MENTIONS_FORMAT ? parseNumbers(record['paged']) : new Map();
-    const mentions = format === SYNC_STATE_FORMAT ? parseMentions(record['mentions']) : new Map();
-    const mentionWakes = format === SYNC_STATE_FORMAT ? parseWakes(record['mentionWakes']) : new Map();
-    return repos.length === failing.length && leftOut !== undefined && pulls !== undefined && paged !== undefined && mentions !== undefined && mentionWakes !== undefined
-        ? { startedAt, finishedAt, failing: repos, leftOut, pulls, paged, mentions, mentionWakes }
+    const scans = format === SYNC_STATE_FORMAT || format === NO_ISSUE_MARKS_FORMAT;
+    const paged = scans || format === NO_MENTIONS_FORMAT ? parseNumbers(record['paged']) : new Map();
+    const mentions = scans ? parseMentions(record['mentions']) : new Map();
+    const mentionWakes = scans ? parseWakes(record['mentionWakes']) : new Map();
+    const issues = format === SYNC_STATE_FORMAT ? parseIssueMarks(record['issues']) : new Map();
+    return repos.length === failing.length && leftOut !== undefined && pulls !== undefined && paged !== undefined && mentions !== undefined && mentionWakes !== undefined && issues !== undefined
+        ? { startedAt, finishedAt, failing: repos, leftOut, pulls, paged, mentions, mentionWakes, issues }
         : undefined;
 }
 /** The stored `pulls` object, which a file holds only once some repository's pull requests were read; undefined when damaged. */
@@ -133,10 +137,40 @@ function parseSeen(value) {
     }
     const updatedAt = stringField(value, 'updatedAt');
     const logins = value['logins'];
-    return updatedAt !== undefined && !Number.isNaN(Date.parse(updatedAt)) && isLogins(logins) ? { logins, updatedAt } : undefined;
+    return updatedAt !== undefined && !Number.isNaN(Date.parse(updatedAt)) && isStrings(logins) ? { logins, updatedAt } : undefined;
 }
-function isLogins(value) {
+function isStrings(value) {
     return Array.isArray(value) && value.every((login) => typeof login === 'string');
+}
+/** The stored `issues` object, by repository each watched issue's mark by its number; undefined when damaged. */
+function parseIssueMarks(value) {
+    if (value === undefined) {
+        return new Map();
+    }
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const entries = Object.entries(value);
+    const repos = new Map(entries.flatMap(([repo, marks]) => {
+        const parsed = parseRepoMarks(marks);
+        return parsed === undefined ? [] : [[repo, parsed]];
+    }));
+    return repos.size === entries.length ? repos : undefined;
+}
+function parseRepoMarks(value) {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const entries = Object.entries(value);
+    const marks = new Map(entries.flatMap(([key, mark]) => {
+        const number = Number(key);
+        if (!Number.isSafeInteger(number) || number < 1 || !isRecord(mark)) {
+            return [];
+        }
+        const { open, labels } = mark;
+        return typeof open === 'boolean' && isStrings(labels) ? [[number, { open, labels }]] : [];
+    }));
+    return marks.size === entries.length ? marks : undefined;
 }
 /** The stored `mentionWakes` object, by `<session> <ref>` the time it was woken; undefined when damaged. */
 function parseWakes(value) {
@@ -179,6 +213,7 @@ export function formatSyncState(state) {
         ...(state.paged.size === 0 ? {} : { paged: Object.fromEntries([...state.paged].map(([repo, numbers]) => [repo, [...numbers]])) }),
         ...(state.mentions.size === 0 ? {} : { mentions: Object.fromEntries([...state.mentions].map(([repo, watch]) => [repo, mentionRecord(watch)])) }),
         ...(state.mentionWakes.size === 0 ? {} : { mentionWakes: Object.fromEntries(state.mentionWakes) }),
+        ...(state.issues.size === 0 ? {} : { issues: Object.fromEntries([...state.issues].map(([repo, marks]) => [repo, Object.fromEntries([...marks].map(([number, mark]) => [number, { open: mark.open, labels: [...mark.labels] }]))])) }),
     });
 }
 function watchRecord(watch) {
@@ -197,13 +232,14 @@ function isTime(value) {
  * request watch, so what happened meanwhile is news once it reads; one that left nothing out is not kept, nor the
  * watch of a repository no longer synced. The paged numbers are kept for good, with those of the open security issues
  * this run found added (`pagedAfter`), so none pages twice. A repository whose posts it could not read keeps its mention
- * watch, so its scan goes on from there; `mentionWakes` are the wakes after this run's (`wakeRoutes`).
+ * watch, so its scan goes on from there, and its issue marks; `mentionWakes` are the wakes after this run's (`wakeRoutes`).
  */
 export function finishState(state, now, run, mentionWakes) {
     const failing = run.failures.map((failure) => failure.repo);
     const kept = [...(state?.leftOut ?? [])].filter(([repo]) => failing.includes(repo) && !run.leftOut.has(repo));
     const watched = [...(state?.pulls ?? [])].filter(([repo]) => failing.includes(repo) && !run.pulls.has(repo));
     const scanned = [...(state?.mentions ?? [])].filter(([repo]) => failing.includes(repo) && !run.mentions.has(repo));
+    const marked = [...(state?.issues ?? [])].filter(([repo]) => failing.includes(repo) && !run.issues.has(repo));
     return {
         startedAt: state?.startedAt ?? now,
         finishedAt: now,
@@ -213,6 +249,7 @@ export function finishState(state, now, run, mentionWakes) {
         paged: pagedAfter(state?.paged ?? new Map(), run.security),
         mentions: new Map([...run.mentions, ...scanned]),
         mentionWakes,
+        issues: new Map([...run.issues, ...marked]),
     };
 }
 /** The tasks the written steps added, each with the owner and title it was added with. */

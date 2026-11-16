@@ -60,8 +60,9 @@ export function mentionRoutes(repo, posts, itemOf, seen, routing) {
 /**
  * What routing needs of each issue or pull request of `repo`, from what this run read of them: an issue's labels, and
  * the owner of the task that tracks the issue (`ownerOfRef`) or that one of our authors' own `t<id>-` branch names
- * (`ownerOfTask`, pull-news.ts). An item this run did not read, such as an issue closed before `closedDays`, routes by
- * its task alone.
+ * (`ownerOfTask`, pull-news.ts), else of the first task tracking an issue the pull request closes, whatever its branch
+ * or author: that is the task's change. An item this run did not read, such as an issue closed before `closedDays`,
+ * routes by its task alone.
  */
 export function mentionItems(repo, read, owners, ours) {
     const labels = new Map(read.issues.map((issue) => [issue.number, issue.labels]));
@@ -69,9 +70,10 @@ export function mentionItems(repo, read, owners, ours) {
     return (number) => {
         const pull = pulls.get(number);
         const branchTask = pull === undefined ? undefined : ownBranchTask(pull, ours);
+        const closedOwner = () => (pull?.closes ?? []).map((closed) => owners.ofRef(issueRef(repo, closed))).find((owner) => owner !== undefined);
         return {
             labels: labels.get(number) ?? [],
-            taskOwner: owners.ofRef(issueRef(repo, number)) ?? (branchTask === undefined ? undefined : owners.ofTask(branchTask)),
+            taskOwner: owners.ofRef(issueRef(repo, number)) ?? (branchTask === undefined ? undefined : owners.ofTask(branchTask)) ?? closedOwner(),
         };
     };
 }
@@ -110,7 +112,7 @@ export function prunedSeen(seen, cutoffMs) {
 /**
  * Whether each route wakes its session: the first for a session and item since MENTION_WAKE_GAP_MINUTES does, later
  * ones go in unwoken. `lastWoken` maps `<session> <ref>` to the time it was last woken; the map after is returned,
- * holding only the wakes within the gap.
+ * holding only the wakes within the gap. A question told as activity (activity.ts) shares the gap with the mentions.
  */
 export function wakeRoutes(routes, lastWoken, nowMs) {
     const gapMs = MENTION_WAKE_GAP_MINUTES * 60_000;

@@ -25,6 +25,20 @@ export function importedTasks(tasks) {
     return byRef;
 }
 /**
+ * The task holding each issue or pull request ref: the task the import added for it, else the team's own task that
+ * links to it (linkedRefs), the first of a ref winning, so news of an item reaches the session working it however its
+ * task came to hold it.
+ */
+export function refHolders(tasks) {
+    const held = importedTasks(tasks);
+    for (const task of tasks) {
+        if (task.ref !== null && task.ref.startsWith(ISSUE_REF_PREFIX) && !held.has(task.ref)) {
+            held.set(task.ref, task);
+        }
+    }
+    return held;
+}
+/**
  * The refs of the team's own tasks that point at an issue: each issue the team opened for one of its tasks (gh
  * migrate) is tracked by that task, so the import must not add a second task for it. Its text, owner and status
  * stay the team's: the issue holds the public wording, the task the team's own.

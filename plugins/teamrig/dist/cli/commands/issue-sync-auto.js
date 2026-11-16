@@ -1,7 +1,9 @@
 import { ENV } from "../../core/home.js";
 import { writableObject } from "../../core/jsonl.js";
 import { SecretScanner } from "../../core/secrets.js";
+import { activityLine, routesBySession } from "../../github/activity.js";
 import { addedLines, failureNews, finishState, formatSyncState, leftOutNews, parseSyncState, SYNC_STATE_FORMAT, } from "../../github/auto.js";
+import { issueChangeLine, issueRoutesBySession } from "../../github/issue-marks.js";
 import { issueRef } from "../../github/map.js";
 import { mentionCutLine, mentionLine, wakeRoutes } from "../../github/mention-route.js";
 import { pullNewsText } from "../../github/pull-news.js";
@@ -47,15 +49,19 @@ async function writableState(runtime, kit) {
  * repositories changed (`failureNews`) and one when an outsider's issue was left out that was not before
  * (`leftOutNews`), and one to each session with pull request news (`pullNewsText`), which also wakes it when
  * the news needs a hand soon and the team has wake on, and one to the routed session for each mention of one of ours
- * (mention-route.ts), which wakes it at most once per item every MENTION_WAKE_GAP_MINUTES, and one to the watcher for a
+ * (mention-route.ts), which wakes it at most once per item every MENTION_WAKE_GAP_MINUTES, one to each session told
+ * the activity on a task's or a followed item (activity.ts), which wakes it for a question within the same gap, one to
+ * each session told a watched issue's close, reopen or labels (issue-marks.ts), never woken, and one to the watcher for a
  * repository whose posts it could not read through. It gives a line for each inbox line that was refused, such as an
  * issue title that matches a secret pattern.
  */
 export async function reportAutoSync(runtime, kit, config, run) {
     const now = runtime.clock.now();
+    const questions = run.activityRoutes.filter((route) => route.wake);
     const { before, after, wakes } = await stateLock(runtime, kit, config, config.lock.waitMs).run(async () => {
         const state = await writableState(runtime, kit);
-        const woken = wakeRoutes(run.mentionRoutes, state?.mentionWakes ?? new Map(), now);
+        // A question and a mention on the same item share its wake gap, so a busy thread wakes its owner once.
+        const woken = wakeRoutes([...run.mentionRoutes, ...questions], state?.mentionWakes ?? new Map(), now);
         const finished = finishState(state, now, run, woken.lastWoken);
         await runtime.files.write(kit.paths.githubSync, formatSyncState(finished));
         return { before: state, after: finished, wakes: woken.wakes };
@@ -73,6 +79,13 @@ export async function reportAutoSync(runtime, kit, config, run) {
     }
     // A mention is an ask addressed to one of ours, so it wakes; wakeRoutes holds a busy item to one wake per gap.
     run.mentionRoutes.forEach((route, index) => posts.push({ to: route.to, text: mentionLine(route), wake: wakes[index] ?? false }));
+    const wokenQuestions = new Set(questions.filter((_, index) => wakes[run.mentionRoutes.length + index] ?? false));
+    for (const [to, routes] of routesBySession(run.activityRoutes)) {
+        posts.push({ to, text: activityLine(routes), wake: routes.some((route) => wokenQuestions.has(route)) });
+    }
+    for (const [to, routes] of issueRoutesBySession(run.issueRoutes)) {
+        posts.push({ to, text: issueChangeLine(routes), wake: false });
+    }
     const watcher = config.github.watcher ?? config.roles.lead;
     for (const [repo, cutAt] of run.mentionCuts) {
         posts.push({ to: watcher, text: mentionCutLine(repo, cutAt), wake: false });
