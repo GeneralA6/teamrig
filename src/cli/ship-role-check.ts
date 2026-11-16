@@ -4,6 +4,7 @@ import type { DeliveryRepoConfig, KitConfig } from '../config/types.ts';
 import { taskFolder } from '../core/home.ts';
 import { isAtOrBelow, samePath } from '../core/paths.ts';
 import { teamPlace } from '../delivery/places.ts';
+import { takesShipSlot, type StepKind } from '../delivery/process-request.ts';
 import type { Sleep } from '../core/lock.ts';
 import { FALLBACK_BRANCH, ORIGIN, type GitRead, type MergeGit } from '../merge/git.ts';
 import { taskBranchOf } from '../permissions/route-git.ts';
@@ -137,11 +138,37 @@ function placeOfWord(word: string, cwd: string): string {
  * or a worktree on no task branch.
  */
 export function shipTaskOfWords(git: MergeGit, kit: Kit, config: KitConfig, words: readonly string[], cwd: string): string | undefined {
-  const at = words.findIndex((word) => shipRepoOf(kit, config, placeOfWord(word, cwd)) !== undefined);
-  const [first, second] = at < 0 ? [] : words.slice(at + 1);
+  const [first, second] = shipToolArgsOf(kit, config, words, cwd) ?? [];
   const worktree = first === 'merge' ? second : first;
   const branch = worktree === undefined ? undefined : git.checkoutOf(placeOfWord(worktree, cwd))?.branch;
   return branch === undefined ? undefined : taskBranchOf(branch, config.pushGuard.protectedBranches);
+}
+
+/** The words after the configured ship tool a step's words run; undefined when they run none. */
+function shipToolArgsOf(kit: Kit, config: KitConfig, words: readonly string[], cwd: string): readonly string[] | undefined {
+  const at = words.findIndex((word) => shipRepoOf(kit, config, placeOfWord(word, cwd)) !== undefined);
+  return at < 0 ? undefined : words.slice(at + 1);
+}
+
+/**
+ * Why a step that runs a configured ship tool may not run under `kind` (T3414); undefined when the kind fits it, or
+ * the step runs no ship tool. A run that merges (`--merge`, or the `merge` form) moves main, so it takes the host's
+ * one ship slot (process-request.ts); one that does not only commits and checks a worktree, so it is a test step,
+ * run beside the others while another ship holds the slot.
+ */
+export function shipKindRefusal(kit: Kit, config: KitConfig, words: readonly string[], cwd: string, kind: StepKind): string | undefined {
+  const args = shipToolArgsOf(kit, config, words, cwd);
+  if (args === undefined) {
+    return undefined;
+  }
+  const merges = args[0] === 'merge' || args.includes('--merge');
+  if (merges && !takesShipSlot(kind)) {
+    return `a ship tool run that merges moves main, so it holds the ship slot: queue it with --kind ship or --kind merge, not --kind ${kind}`;
+  }
+  if (!merges && takesShipSlot(kind)) {
+    return `a ship tool run without --merge moves no main branch, so it takes no ship slot: queue it with --kind test, not --kind ${kind}`;
+  }
+  return undefined;
 }
 
 /** A stale or changed ship tool's refusal: what it is not, and how to move its checkout to the newest main. */

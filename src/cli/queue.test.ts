@@ -1181,7 +1181,8 @@ describe('teamrig queue hands a waiting step over when its shell ended under a l
 const SHIP_TOOL = '/repo/ship/tools/ship/ship.ts';
 /** A team whose repo app names the ship tool its clean checkout /repo/ship holds, queued one step at a time. */
 const SHIPPING = { ...TEAM, delivery: { queue: { admission: 'serial' }, repos: { app: { mainCheckout: MAIN_CHECKOUT, shipTool: SHIP_TOOL } } } };
-const SHIP_STEP = ['queue', '--session', 'alpha', '--what', 'ship T1', '--kind', 'ship', '--', 'node', SHIP_TOOL, '/repo/app/.claude/worktrees/t1-cli', '/tasks/T1/plan.json'];
+/** A ship without --merge: a test step, as it moves no main branch (T3414). */
+const SHIP_STEP = ['queue', '--session', 'alpha', '--what', 'ship T1', '--kind', 'test', '--', 'node', SHIP_TOOL, '/repo/app/.claude/worktrees/t1-cli', '/tasks/T1/plan.json'];
 const MOVE = 'run git -C /repo/ship fetch -q origin && git -C /repo/ship checkout -q --detach origin/main, then queue the step again';
 const STALE = `the ship tool ${SHIP_TOOL} is not origin/main's current code in a checkout with no change: ${MOVE}`;
 
@@ -1292,6 +1293,37 @@ describe("teamrig queue runs a configured ship tool only from main's current cod
   });
 });
 
+describe('teamrig queue runs a ship tool only under a kind that fits it (T3414)', () => {
+  const REVIEW = SHIP_STEP.slice(9);
+  const queued = (kind: string, tool: readonly string[]): string[] => ['queue', '--session', 'alpha', '--what', 'ship T1', '--kind', kind, '--', 'node', SHIP_TOOL, ...tool];
+
+  it('refuses at once, running nothing, a ship without --merge under a kind that takes the ship slot', async () => {
+    for (const kind of ['ship', 'merge', 'deploy']) {
+      const { kit, steps } = harness(SHIPPING);
+      const result = await kit.run(queued(kind, REVIEW), { steps, mergeGit: shipGit() });
+      const reason = `a ship tool run without --merge moves no main branch, so it takes no ship slot: queue it with --kind test, not --kind ${kind}`;
+      assert.deepEqual([result.code, result.stdout, steps.ran], [EXIT.refused, [`REFUSED ${reason}`], []], kind);
+    }
+  });
+
+  it('refuses at once a merge, in either form, under a kind that takes no ship slot', async () => {
+    for (const tool of [[...REVIEW, '--merge'], ['merge', REVIEW[0] ?? '']]) {
+      const { kit, steps } = harness(SHIPPING);
+      const result = await kit.run(queued('test', tool), { steps, mergeGit: shipGit() });
+      const reason = 'a ship tool run that merges moves main, so it holds the ship slot: queue it with --kind ship or --kind merge, not --kind test';
+      assert.deepEqual([result.code, result.stdout, steps.ran], [EXIT.refused, [`REFUSED ${reason}`], []], tool.join(' '));
+    }
+  });
+
+  it('runs a merge under --kind ship or merge', async () => {
+    for (const kind of ['ship', 'merge']) {
+      const { kit, steps } = harness(SHIPPING);
+      const result = await kit.run(queued(kind, [...REVIEW, '--merge']), { steps, mergeGit: shipGit() });
+      assert.deepEqual([result.code, steps.ran.length], [EXIT.ok, 1], kind);
+    }
+  });
+});
+
 describe("teamrig queue gives a ship step the task its worktree's branch names (T3286)", () => {
   const WORKTREE = '/repo/app/.claude/worktrees/t1-cli';
   const PLAN = '/tasks/T1/plan.json';
@@ -1309,11 +1341,11 @@ describe("teamrig queue gives a ship step the task its worktree's branch names (
   }
 
   for (const [label, flags, tool, branch, task] of [
-    ['a ship whose line names no task', ['--kind', 'ship'], [WORKTREE, PLAN], 'feat/t1-cli', 'T1'],
+    ['a ship whose line names no task', ['--kind', 'test'], [WORKTREE, PLAN], 'feat/t1-cli', 'T1'],
     ['a merge in the merge form', ['--kind', 'merge'], ['merge', WORKTREE, '--approved', 'abc1234'], 'feat/t1-cli', 'T1'],
-    ['a ship whose --task names another, which wins', ['--kind', 'ship', '--task', 'T9'], [WORKTREE, PLAN], 'feat/t1-cli', 'T9'],
-    ['a worktree on no task branch, with none', ['--kind', 'ship'], [WORKTREE, PLAN], 'release-notes', undefined],
-    ['a worktree on a detached HEAD, with none', ['--kind', 'ship'], [WORKTREE, PLAN], undefined, undefined],
+    ['a ship whose --task names another, which wins', ['--kind', 'test', '--task', 'T9'], [WORKTREE, PLAN], 'feat/t1-cli', 'T9'],
+    ['a worktree on no task branch, with none', ['--kind', 'test'], [WORKTREE, PLAN], 'release-notes', undefined],
+    ['a worktree on a detached HEAD, with none', ['--kind', 'test'], [WORKTREE, PLAN], undefined, undefined],
   ] as const) {
     it(`records on its start and end records the task of ${label}`, async () => {
       const { kit, steps } = harness(SHIPPING);

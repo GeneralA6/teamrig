@@ -20,7 +20,7 @@ async function callOf(queue: string, rest: string, program = 'teamrig'): Promise
   return shipCallOf(program, parsed, CONTEXT);
 }
 
-const QUEUE = 'queue --detach --session alpha --what fix --task T7 --kind ship --max-minutes 45';
+const QUEUE = 'queue --detach --session alpha --what fix --task T7 --kind test --max-minutes 45';
 
 describe('ship role call: the tool line (T2984)', () => {
   it('reads a ship, a ship that merges, and the merge form, with the files each reads', () => {
@@ -74,17 +74,31 @@ describe('ship role call: the tool line (T2984)', () => {
 });
 
 describe('ship role call: the queue line (T2984)', () => {
-  it('reads a queued ship or merge through the own launcher', async () => {
+  it('reads a queued ship under --kind test, and a merge under --kind ship or merge, through the own launcher (T3414)', async () => {
     assert.deepEqual(await callOf(QUEUE, `node ${TOOL} ${WORKTREE} ${PLAN}`), { tool: TOOL, worktree: WORKTREE, files: [PLAN], task: 'T7', merges: false });
     assert.deepEqual(await callOf('queue --kind merge', `node ${TOOL} merge ${WORKTREE}`), { tool: TOOL, worktree: WORKTREE, files: [], task: undefined, merges: true });
+    assert.equal((await callOf('queue --kind ship', `node ${TOOL} ${WORKTREE} ${PLAN} --merge`)) !== undefined, true);
+  });
+
+  it('reads no ship under a kind that does not fit it: one without --merge under a slot kind, a merge under test (T3414)', async () => {
+    const misfits: readonly (readonly [string, string])[] = [
+      ['queue --kind ship', `node ${TOOL} ${WORKTREE} ${PLAN}`],
+      ['queue --kind merge', `node ${TOOL} ${WORKTREE} ${PLAN}`],
+      ['queue --kind test', `node ${TOOL} ${WORKTREE} ${PLAN} --merge`],
+      ['queue --kind test', `node ${TOOL} merge ${WORKTREE}`],
+      ['queue --kind build', `node ${TOOL} ${WORKTREE} ${PLAN}`],
+    ];
+    for (const [queue, rest] of misfits) {
+      assert.equal(await callOf(queue, rest), undefined, `${queue} -- ${rest}`);
+    }
   });
 
   it('reads no queue line without a ship kind, with another option, a positional or help, or through another launcher', async () => {
     const rest = `node ${TOOL} ${WORKTREE} ${PLAN}`;
-    for (const queue of ['queue --what fix', 'queue --kind test', 'queue --kind ship --exclusive', 'queue --kind ship --memory-mb 900', 'queue --kind ship --pre-push', 'queue --kind ship x']) {
+    for (const queue of ['queue --what fix', 'queue --kind lint', 'queue --kind test --exclusive', 'queue --kind test --memory-mb 900', 'queue --kind test --pre-push', 'queue --kind test x']) {
       assert.equal(await callOf(queue, rest), undefined, queue);
     }
-    assert.equal(await callOf('queue --kind ship', rest, './teamrig'), undefined);
+    assert.equal(await callOf('queue --kind test', rest, './teamrig'), undefined);
     const help = readable(['queue', '--kind', 'ship', '--help'], COMMAND_TABLE);
     assert.ok(help !== undefined);
     assert.equal(await shipCallOf('teamrig', help, CONTEXT), undefined);

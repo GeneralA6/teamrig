@@ -90,7 +90,7 @@ describe('service-role call: the shapes', () => {
 });
 
 describe('service-role call: a queued ship or merge (T2984)', () => {
-  const ship = `teamrig queue --kind ship --what "ship T1: the CLI" --task T1 --detach --max-minutes 45 --session alpha -- node ${SHIP_TOOL} /w/t1-cli /t/T1/plan.json`;
+  const ship = `teamrig queue --kind test --what "ship T1: the CLI" --task T1 --detach --max-minutes 45 --session alpha -- node ${SHIP_TOOL} /w/t1-cli /t/T1/plan.json`;
 
   it('reads a ship and a merge of the team ship tool, with the worktree as its target and the session the line names', async () => {
     assert.deepEqual(await roleCallOf(ship, CONTEXT), {
@@ -99,13 +99,13 @@ describe('service-role call: a queued ship or merge (T2984)', () => {
       session: 'alpha',
       ship: { tool: SHIP_TOOL, worktree: '/w/t1-cli', files: ['/t/T1/plan.json'], task: 'T1', merges: false },
     });
-    const merge = await toolRoleCallOf('Bash', `${ship} --merge --approved 0123abc --note-file /t/T1/pr.md`, 'win32', CONTEXT);
+    const merge = await toolRoleCallOf('Bash', `${ship.replace('--kind test', '--kind ship')} --merge --approved 0123abc --note-file /t/T1/pr.md`, 'win32', CONTEXT);
     assert.deepEqual(merge?.command, 'queue merge');
     assert.ok(merge !== undefined && 'ship' in merge && merge.ship.merges);
   });
 
-  it('reads no ship of another tool, joined to another command, or naming no --session (N1)', async () => {
-    for (const line of [ship.replace(SHIP_TOOL, '/repo/other.ts'), `${ship}; rm -rf x`, ship.replace('--kind ship', '--kind test'), ship.replace(' --session alpha', '')]) {
+  it('reads no ship of another tool, joined to another command, under a kind that does not fit it, or naming no --session (N1)', async () => {
+    for (const line of [ship.replace(SHIP_TOOL, '/repo/other.ts'), `${ship}; rm -rf x`, ship.replace('--kind test', '--kind ship'), `${ship} --merge --approved 0123abc`, ship.replace(' --session alpha', '')]) {
       assert.equal(await roleCallOf(line, CONTEXT), undefined, line);
     }
   });
