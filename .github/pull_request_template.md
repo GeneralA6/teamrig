@@ -1,3 +1,5 @@
+<!-- Read docs/issues-and-pull-requests.md and CONTRIBUTING.md first. -->
+
 ## What
 <!-- The behaviour this changes, in one or two plain lines. -->
 
