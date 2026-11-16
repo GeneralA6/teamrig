@@ -85,7 +85,7 @@ function shortList(items: readonly string[]): string {
 }
 
 /** What the push guard does, as the team's pushGuard config sets it. */
-function pushRule(pushGuard: PushGuardConfig, hookAsks: HookAsks): string {
+function pushRule(pushGuard: PushGuardConfig): string {
   const branches = shortList(pushGuard.protectedBranches);
   const keys = '[pushGuard]';
   if (branches === '') {
@@ -102,9 +102,8 @@ function pushRule(pushGuard: PushGuardConfig, hookAsks: HookAsks): string {
     case 'allow':
       return `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`;
     case 'ask':
-      return hookAsks === 'refuse'
-        ? `Every push to ${branches} is refused [pushGuard, prompts.hookAsks].`
-        : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
+      // A teamrig guard never asks a person (T3356), so `ask` refuses a normal push too, its reason naming the route.
+      return `Every push to ${branches} is refused ${keys}.`;
   }
 }
 
@@ -331,7 +330,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files, a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line` +
       { off: ' [commits].', warn: '; a push to a protected branch lists those without one [commits].', refuse: '; a push to a protected branch that sends one is refused [commits].' }[config.commits.gate],
     push:
-      `${pushRule(config.pushGuard, config.prompts.hookAsks)} ${refusedRouteRule(config.prompts.hookAsks)}`,
+      `${pushRule(config.pushGuard)} ${refusedRouteRule(config.prompts.hookAsks)}`,
     worktrees:
       'Edit in your own worktree and branch in each repo, never a main checkout.' +
       // Any other removal (`git worktree remove`, `rm -rf`, `Remove-Item -Recurse`) follows a node_modules junction

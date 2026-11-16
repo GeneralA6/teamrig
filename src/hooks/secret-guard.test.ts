@@ -12,7 +12,7 @@ const TOKEN = join('gh', 'p_', 'a1'.repeat(18));
 const PASSWORD = join('s3', 'cret', 'Value9');
 
 function env(overrides: Partial<SecretGuardEnv> = {}): SecretGuardEnv {
-  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', writes: 'deny', hookAsks: 'ask', platform: 'linux', ...overrides };
+  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', writes: 'deny', platform: 'linux', ...overrides };
 }
 
 function call(tool_name: string, tool_input: JsonRecord, extra: JsonRecord = {}): JsonRecord {
@@ -216,10 +216,10 @@ describe('secretGuardOutput', () => {
 
   it('asks instead when the team set ask, and prints nothing when it set allow', () => {
     const read = call('Read', { file_path: 'C:/w/.env' });
-    assert.equal(verdictOf(secretGuardOutput(read, env({ secretReads: 'ask' })))?.decision, 'ask');
+    assert.equal(verdictOf(secretGuardOutput(read, env({ secretReads: 'ask' })))?.decision, 'deny');
     assert.equal(secretGuardOutput(read, env({ secretReads: 'allow' })), '');
     const write = call('Write', { file_path: 'C:/w/src/a.ts', content: TOKEN });
-    assert.equal(verdictOf(secretGuardOutput(write, env({ writes: 'ask' })))?.decision, 'ask');
+    assert.equal(verdictOf(secretGuardOutput(write, env({ writes: 'ask' })))?.decision, 'deny');
     assert.equal(secretGuardOutput(write, env({ writes: 'allow' })), '');
   });
 
@@ -232,20 +232,20 @@ describe('secretGuardOutput', () => {
     assert.equal(denied?.decision, 'deny');
     assert.match(denied?.reason ?? '', /would print the content of \.env .*command line holds a secret as text \(GitHub token\).*\[secretGuard\.secretReads, secretGuard\.writes\]$/);
     const asked = verdictOf(secretGuardOutput(both, env({ secretReads: 'ask', writes: 'allow' })));
-    assert.equal(asked?.decision, 'ask');
-    assert.match(asked?.reason ?? '', /would print the content of \.env .*\[secretGuard\.secretReads\]$/);
+    assert.equal(asked?.decision, 'deny');
+    assert.match(asked?.reason ?? '', /would print the content of \.env .*\[secretGuard\.secretReads\] teamrig guards never ask a person/);
     assert.doesNotMatch(asked?.reason ?? '', /holds a secret as text/);
     assert.equal(secretGuardOutput(both, env({ secretReads: 'allow', writes: 'allow' })), '');
   });
 
-  it('refuses with the note on what to do instead of asking when asks are off, and keeps a refusal as it was', () => {
+  it('refuses what it would ask about with the note on what to do, and keeps a refusal as it was (T3356)', () => {
     const read = call('Read', { file_path: 'C:/w/.env' });
-    const refused = verdictOf(secretGuardOutput(read, env({ secretReads: 'ask', hookAsks: 'refuse' })));
+    const refused = verdictOf(secretGuardOutput(read, env({ secretReads: 'ask' })));
     assert.equal(refused?.decision, 'deny');
-    assert.match(refused?.reason ?? '', /would print the content of C:\/w\/\.env .*Asks are off \[prompts\.hookAsks\]/);
-    const denied = verdictOf(secretGuardOutput(read, env({ hookAsks: 'refuse' })));
+    assert.match(refused?.reason ?? '', /would print the content of C:\/w\/\.env .*teamrig guards never ask a person/);
+    const denied = verdictOf(secretGuardOutput(read, env({})));
     assert.equal(denied?.decision, 'deny');
-    assert.doesNotMatch(denied?.reason ?? '', /Asks are off/);
+    assert.doesNotMatch(denied?.reason ?? '', /never ask a person/);
   });
 
   it('prints nothing for a call that prints no secret, or input that is not a payload', () => {
@@ -329,7 +329,7 @@ describe('secretGuardOutput on a read of a saved credential (T2654)', () => {
   });
 
   it('asks or lets it run as secretGuard.secretReads says, whatever secretGuard.writes says', () => {
-    assert.equal(verdictOf(outputOf('Bash', 'gh auth token', { secretReads: 'ask' }))?.decision, 'ask');
+    assert.equal(verdictOf(outputOf('Bash', 'gh auth token', { secretReads: 'ask' }))?.decision, 'deny');
     assert.equal(outputOf('Bash', 'gh auth token', { secretReads: 'allow' }), '');
     assert.equal(verdictOf(outputOf('Bash', 'gh auth token', { writes: 'allow' }))?.decision, 'deny');
   });

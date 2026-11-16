@@ -1,6 +1,6 @@
 import { DEFAULT_COMMIT_GUARD, DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import type { CommitsConfig, HookAsks, PushToProtected, SkipHooks } from '../config/types.ts';
+import type { CommitsConfig, PushToProtected, SkipHooks } from '../config/types.ts';
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { describeLargeCommits, largeCommits, type CommitLog, type CommitStat, type LargeCommit } from '../push-guard/commit-size.ts';
@@ -34,7 +34,6 @@ export interface PushGuardEnv {
   /** What a git command run without the repository's hooks gets. */
   readonly skipHooks: SkipHooks;
   /** Whether a push the guard would ask about raises the prompt or is refused with what to do instead. */
-  readonly hookAsks: HookAsks;
   /** Under `pushToProtected: lead` or `gated`, what lets this session's normal push to a protected branch through; read only for such a push. */
   readonly clearance: () => Promise<PushClearance>;
   /** The host's platform: on Windows a Bash line is judged as written and as bash receives it (core/bash-tool-readings.ts). */
@@ -103,11 +102,6 @@ function largeCommitsIn(updates: readonly ProtectedUpdate[], env: PushGuardEnv):
   return largeCommits([...commits.values()], env.commits);
 }
 
-/** Ends the question about a normal push to a protected branch, naming the switch that stops it. */
-export const PUSH_TO_PROTECTED_HINT =
-  "To stop asking about normal pushes, set pushGuard.pushToProtected in the team's config.json to allow, to lead to have the lead approve them, " +
-  'or to gated to let teamrig merge take the changes that hold its gates.';
-
 /** The note shown when `pushToProtected: allow` lets a normal push to a protected branch through. */
 export function allowedPushNote(protectedBranches: readonly string[]): string {
   return `teamrig did not ask about this push to a protected branch (${protectedBranches.join(', ')}): pushGuard.pushToProtected is allow.`;
@@ -138,7 +132,7 @@ export function unclearedPushReason(clearance: Extract<PushClearance, { readonly
 /** Under `pushToProtected: lead` or `gated`: the note when the push is cleared, else a refusal, whatever `hookAsks` says. */
 function clearedPushOutput(clearance: PushClearance, listing: string, env: PushGuardEnv, choice: ClearedChoice): string {
   return clearance.kind === 'none'
-    ? holdBackOutput('deny', `${unclearedPushReason(clearance, env.protectedBranches, choice)}${listing}`, env.hookAsks)
+    ? holdBackOutput('deny', `${unclearedPushReason(clearance, env.protectedBranches, choice)}${listing}`)
     : JSON.stringify({ systemMessage: `${clearedPushNote(clearance, env.protectedBranches, choice)}${listing}` });
 }
 
@@ -215,7 +209,7 @@ export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Prom
   if (env.skipHooks !== 'allow') {
     const skips = readings.flatMap(({ found }) => hookSkips(found.invocations));
     if (skips.length > 0 && (env.skipHooks === 'deny' || verdict.decision !== 'deny')) {
-      return holdBackOutput(env.skipHooks, skipHooksReason(skips), env.hookAsks);
+      return holdBackOutput(env.skipHooks, skipHooksReason(skips));
     }
   }
   if (verdict.decision === 'allow' && verdict.protectedPush === undefined) {
@@ -224,7 +218,7 @@ export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Prom
   const large = verdict.decision === 'deny' ? [] : largeCommitsIn(verdict.updates, env);
   const listing = large.length === 0 ? '' : ` ${describeLargeCommits(large, env.commits)}`;
   if (large.length > 0 && env.commits.gate === 'refuse') {
-    return holdBackOutput('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`, env.hookAsks);
+    return holdBackOutput('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`);
   }
   if (verdict.decision === 'allow') {
     const choice = env.pushToProtected;
@@ -232,7 +226,5 @@ export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Prom
       ? clearedPushOutput(await env.clearance(), listing, env, choice)
       : JSON.stringify({ systemMessage: `${allowedPushNote(env.protectedBranches)}${listing}` });
   }
-  const asked = verdict.decision === 'ask' && verdict.protectedPush === 'normal' && env.hookAsks === 'ask';
-  const hint = asked ? ` ${PUSH_TO_PROTECTED_HINT}` : '';
-  return holdBackOutput(verdict.decision, `${stopReason(verdict, verdict.decision, env.protectedBranches)}${listing}${hint}`, env.hookAsks);
+  return holdBackOutput(verdict.decision, `${stopReason(verdict, verdict.decision, env.protectedBranches)}${listing}`);
 }

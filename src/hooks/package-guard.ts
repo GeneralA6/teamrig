@@ -1,6 +1,6 @@
 import { DEFAULT_PACKAGE_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import type { AdHocRunners, HookAsks, PackageGuardConfig, PackageInstalls } from '../config/types.ts';
+import type { AdHocRunners, PackageGuardConfig, PackageInstalls } from '../config/types.ts';
 import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
@@ -33,7 +33,6 @@ export interface PackageGuardEnv extends PackageGuardConfig {
   readonly registry: PackageRegistry;
   readonly clock: Clock;
   /** Whether a run the guard would ask about raises the prompt or is refused with what to do instead. */
-  readonly hookAsks: HookAsks;
   /** The host's platform: on Windows a Bash line is judged as written and as bash receives it (core/bash-tool-readings.ts). */
   readonly platform: NodeJS.Platform;
 }
@@ -172,5 +171,5 @@ export async function packageGuardOutput(payload: unknown, env: PackageGuardEnv)
     return '';
   }
   const decision = verdicts.some((verdict) => verdict.decision === 'deny') ? 'deny' : 'ask';
-  return holdBackOutput(decision, verdicts.map((verdict) => verdict.reason).join(' '), env.hookAsks);
+  return holdBackOutput(decision, verdicts.map((verdict) => verdict.reason).join(' '));
 }

@@ -101,7 +101,6 @@ describe('runCli: every output speaks in words, with no pictograph markers (T242
       'is the old tier spelling: write p2',
       'INBOX bravo, new in',
       'so it is not bound',
-      '"permissionDecision":"ask"',
       '"permissionDecision":"deny"',
       'Write your handover',
       'alpha: type /clear',
@@ -110,6 +109,8 @@ describe('runCli: every output speaks in words, with no pictograph markers (T242
       assert.ok(all.includes(words), `no output printed "${words}"`);
     }
     assert.ok(!printed.some((text) => text.includes(`(exit ${EXIT.failed})`)), all);
+    // T3356: no teamrig hook asks a person; a push to a protected branch is refused with its route.
+    assert.ok(!all.includes('"permissionDecision":"ask"'), all);
     for (const text of printed) {
       assert.doesNotMatch(text, PICTOGRAPH, text);
       for (const marker of OLD_MARKERS) {

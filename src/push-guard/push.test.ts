@@ -1008,11 +1008,11 @@ describe('decisionReason, leasedReason and doubtReason', () => {
     assert.match(decisionReason('ask', ['main']), /^This push updates a protected branch \(main\)/);
     assert.equal(
       leasedReason(['main', 'master']),
-      'This --force-with-lease push may rewrite the history of a protected branch (main, master) while other sessions may be working. Confirm, or push your own branch instead.',
+      'This --force-with-lease push may rewrite the history of a protected branch (main, master) while other sessions may be working. Push your own branch instead.',
     );
     assert.equal(
       doubtReason('its folder is only known when it runs', ['main', 'master']),
-      'The guard cannot tell whether this command pushes to a protected branch (main, master): its folder is only known when it runs. Confirm, or write the push out plainly.',
+      'The guard cannot tell whether this command pushes to a protected branch (main, master): its folder is only known when it runs. Write the push out plainly, a branch named and no command built at run time.',
     );
   });
 });
