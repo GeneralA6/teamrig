@@ -1,14 +1,15 @@
 import { numberField, stringField } from "../core/guards.js";
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
-import { MS_PER_MINUTE, MS_PER_WEEK } from "../core/time.js";
+import { MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from "../core/time.js";
 /**
  * The week's W per percent, learned from the meter (T531). Each time the status line's week use passes a whole
  * percent, the account's meter log, `<state>/usage/meter-log.jsonl` of the team that keeps the account's week files
  * (`accountHolderOf`, budget/account.ts), gets one account line (T1778): the use, the period and the W every team on
  * the account metered since its start, whichever team's hook saw the crossing. Every team reads the same lines
- * (`accountReadings`), so the account has one W per percent: a fit through 0 over the newest period that spans
- * `FIT_SPREAD_PTS` points (`fitRate`) stands in for the configured guess. Each line also keeps the use the fit before it
- * forecast for its W, so the forecast's error shows week by week. Instants are stored as ISO strings, like the burst log.
+ * (`accountReadings`), so the account has one W per percent: a fit through each period's start (`risesOf`) over the
+ * newest period that spans `FIT_SPREAD_PTS` points (`fitRate`) stands in for the configured guess. Each line also keeps
+ * the use the fit before it forecast for its W, so the forecast's error shows week by week. Instants are stored as ISO
+ * strings, like the burst log.
  */
 /**
  * The format of the meter log's records; a newer one is skipped on read and refuses a write. The optional `team`
@@ -46,6 +47,11 @@ export const FRESH_READING_MS = 10 * MS_PER_MINUTE;
 /** Periods whose start was seen: a weekly reset, or one the use's fall showed. A guessed start would teach the fit its own guess. */
 const SEEN_STARTS = ['week', 'reset'];
 /**
+ * How much shorter than a week a period may be and still count as a whole one (`startsInsideWeek`): a weekly period
+ * runs from one reset to the next, a week apart to the minute, while a reset inside the week starts hours or days in.
+ */
+const WHOLE_WEEK_SLACK_MS = MS_PER_HOUR;
+/**
  * The readings on the account's W scale, the one every team on it reads (T1778): its account lines. Before a period's
  * first one, the lines the keeper's team logged for itself (T1669) bridge: its outside store held every other team's
  * tabs then, so their W was about the account's. After it, a keeper line comes from a tab still on an older teamrig,
@@ -80,7 +86,7 @@ export function accountReadings(logged, keeper) {
  * the week's), or while the usage stores do not reach the period's start.
  */
 export function crossingOf(sight, fit) {
-    const { before, period, use, covered, w, now } = sight;
+    const { before, period, use, covered, w, readings, now } = sight;
     if (before === undefined || period === undefined || use === undefined || !covered || !SEEN_STARTS.includes(period.kind)) {
         return undefined;
     }
@@ -89,25 +95,54 @@ export function crossingOf(sight, fit) {
     if (!crossed || now - use.at > FRESH_READING_MS || use.usedPct > 100) {
         return undefined;
     }
-    return { at: use.at, usedPct: use.usedPct, start: period.start, end: period.end, w, forecastPct: fit === undefined ? undefined : w / fit.wPerPct };
+    return { at: use.at, usedPct: use.usedPct, start: period.start, end: period.end, w, forecastPct: fit === undefined ? undefined : forecastOf(readings, period, w, fit) };
 }
 function rms(misses) {
     return Math.sqrt(misses.reduce((sum, miss) => sum + miss * miss, 0) / misses.length);
 }
-/** W per percent through 0 over `readings` (least squares of W on the use), with its misses in points; undefined with no W. */
-function slopeOver(readings) {
-    const wByPct = readings.reduce((sum, reading) => sum + reading.w * reading.usedPct, 0);
-    const pctSquared = readings.reduce((sum, reading) => sum + reading.usedPct * reading.usedPct, 0);
+/**
+ * Whether the period from `start` to `end` started inside a week, at a reset the use fell at, rather than at the
+ * weekly reset. Such a reset drops the use to some percent, not to 0: one on 11-15 fell from 98% to about 69% (T3164).
+ */
+function startsInsideWeek({ start, end }) {
+    return end - start < MS_PER_WEEK - WHOLE_WEEK_SLACK_MS;
+}
+/**
+ * The use `fit` gives for `w` metered in `period`: where the period's use started (`startPointOf`) plus `w` at its rate.
+ * Undefined for a period that started inside the week with no reading yet to place that start: a forecast from 0% there
+ * missed by over 70 points at every reading (T3164).
+ */
+function forecastOf(readings, period, w, fit) {
+    const byW = readings.filter((reading) => reading.start === period.start).sort((a, b) => a.w - b.w);
+    return byW.length === 0 && startsInsideWeek(period) ? undefined : startPointOf(byW, fit.wPerPct).usedPct + w / fit.wPerPct;
+}
+/**
+ * One period's readings as rises over the point the fit runs through. A whole week starts at 0% and 0 W, so its
+ * readings stand as they are. A period that started inside a week has no reading at its start, where the use stood at
+ * whatever the reset left, so its rises are taken from its lowest reading. A fit through 0% over the period from 69%
+ * read 1.42M W per percent where the readings rose at about 11M, so every session read 8x over its budget (T3164).
+ */
+function risesOf(period) {
+    const [lowest] = [...period].sort((a, b) => a.usedPct - b.usedPct);
+    if (lowest === undefined || !startsInsideWeek(lowest)) {
+        return period;
+    }
+    return period.filter((reading) => reading !== lowest).map((reading) => ({ usedPct: reading.usedPct - lowest.usedPct, w: reading.w - lowest.w }));
+}
+/** W per percent through 0 over `rises` (least squares of W on the use), with its misses in points; undefined with no W. */
+function slopeOver(rises) {
+    const wByPct = rises.reduce((sum, rise) => sum + rise.w * rise.usedPct, 0);
+    const pctSquared = rises.reduce((sum, rise) => sum + rise.usedPct * rise.usedPct, 0);
     const wPerPct = wByPct / pctSquared;
     if (!(wPerPct > 0)) {
         return undefined;
     }
-    return { wPerPct, errorPts: rms(readings.map((reading) => reading.w / wPerPct - reading.usedPct)), readings: readings.length };
+    return { wPerPct, errorPts: rms(rises.map((rise) => rise.w / wPerPct - rise.usedPct)), readings: rises.length };
 }
-/** `slopeOver`, undefined while the readings span fewer than `FIT_SPREAD_PTS` points. */
-function fitOver(readings) {
-    const pcts = readings.map((reading) => reading.usedPct);
-    return pcts.length === 0 || Math.max(...pcts) - Math.min(...pcts) < FIT_SPREAD_PTS ? undefined : slopeOver(readings);
+/** `slopeOver` the rises of each of `periods` (`risesOf`), undefined while their readings span fewer than `FIT_SPREAD_PTS` points. */
+function fitOver(periods) {
+    const pcts = periods.flat().map((reading) => reading.usedPct);
+    return pcts.length === 0 || Math.max(...pcts) - Math.min(...pcts) < FIT_SPREAD_PTS ? undefined : slopeOver(periods.flatMap(risesOf));
 }
 /** One period's readings, oldest first, that added W: the first rises from the period's 0 W, and a repeated W says nothing of the rate. */
 function risingReadings(period) {
@@ -118,7 +153,8 @@ function risingReadings(period) {
  * It needs two readings: a frozen run collapses to one, and a first reading alone is noise at a high percent too.
  */
 function movedRate(period, older) {
-    const own = period.length >= 2 && period.some((reading) => reading.usedPct >= MOVED_RATE_MIN_PCT) ? slopeOver(period) : undefined;
+    const rises = risesOf(period);
+    const own = period.length >= 2 && rises.some((rise) => rise.usedPct >= MOVED_RATE_MIN_PCT) ? slopeOver(rises) : undefined;
     if (own === undefined) {
         return undefined;
     }
@@ -138,8 +174,8 @@ function movedRate(period, older) {
 export function fitRate(readings) {
     const newestFirst = [...new Set(readings.map((reading) => reading.start))].sort((a, b) => b - a);
     const periods = newestFirst.map((start) => risingReadings(readings.filter((reading) => reading.start === start)));
-    const fits = periods.map((period) => fitOver(period));
-    const fit = fits.find((found) => found !== undefined) ?? fitOver(periods.flat());
+    const fits = periods.map((period) => fitOver([period]));
+    const fit = fits.find((found) => found !== undefined) ?? fitOver(periods);
     const [newest] = periods;
     return newest === undefined || fit === undefined || fits[0] !== undefined ? fit : (movedRate(newest, fit) ?? fit);
 }
@@ -156,18 +192,29 @@ export function periodForecasts(readings) {
 export function calibrationOf(readings) {
     return { fit: fitRate(readings), periods: periodForecasts(readings) };
 }
-/** Every period's start: no use, no W. */
+/** A whole week's start: no use, no W. */
 const PERIOD_START_POINT = { usedPct: 0, w: 0 };
+/**
+ * Where the use stood at the start of a period, at 0 W, from its readings sorted by W: 0% for a whole week; for one
+ * that started inside a week, at whatever the reset left, its first reading less its W at `wPerPct` (T3164).
+ */
+function startPointOf(byW, wPerPct) {
+    const [first] = byW;
+    return first === undefined || !startsInsideWeek(first) ? PERIOD_START_POINT : { usedPct: Math.max(0, first.usedPct - first.w / wPerPct), w: 0 };
+}
 /**
  * The week's use when `w` had been metered since the start of the period from `start`, read from its meter readings:
  * between the two around `w`, on the line through them, so a point inside a bracket a percent wide leans little on a
- * rate; past the last, that reading plus the W since it at `wPerPct`. The period's start reads 0% at 0 W. Readings are
- * found by W, not time: the W metered since an instant is read from the usage stores now, as theirs was then.
+ * rate; past the last, that reading plus the W since it at `wPerPct`. The period's start reads where its use stood
+ * (`startPointOf`). Readings are found by W, not time: the W metered since an instant is read from the usage stores
+ * now, as theirs was then.
  */
 export function useAtW(readings, start, w, wPerPct) {
     const at = Math.max(0, w);
-    const points = [PERIOD_START_POINT, ...readings.filter((reading) => reading.start === start).sort((a, b) => a.w - b.w)];
-    const before = points.filter((point) => point.w <= at).at(-1) ?? PERIOD_START_POINT;
+    const byW = readings.filter((reading) => reading.start === start).sort((a, b) => a.w - b.w);
+    const startPoint = startPointOf(byW, wPerPct);
+    const points = [startPoint, ...byW];
+    const before = points.filter((point) => point.w <= at).at(-1) ?? startPoint;
     const next = points.find((point) => point.w > at);
     return next === undefined
         ? before.usedPct + (at - before.w) / wPerPct

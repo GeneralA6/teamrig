@@ -26,7 +26,7 @@ export async function teamWeekOf(files, week, input) {
     const wAtFull = period === undefined ? undefined : wAtFullOf(readings, period.start);
     const reading = readWeek({ ...input, period, calibration, readings, extra: { entries, wAtFull } });
     const w = period === undefined ? 0 : wSince(states, period.start, now);
-    const crossing = crossingOf({ before: move?.before, period, use: statusUse, covered: reading.covered, w, now }, calibration.fit);
+    const crossing = crossingOf({ before: move?.before, period, use: statusUse, covered: reading.covered, w, readings, now }, calibration.fit);
     const lines = crossing === undefined ? [] : [{ ...crossing, scope: ACCOUNT_SCOPE }];
     await log.appendAll(lines, now);
     return { ...reading, limits: limitSpansOf([...logged, ...lines]) };
