@@ -24,7 +24,7 @@ default that suits a team that never set it, so every user gets the feature with
    no program, moves no folder, and leaves the budget, the host's shared resources and every guard as they are.
    A key that is an owner gate also goes in `GATED_KEYS` (`src/config/settings.ts`) with its gate's name. The
    shipped-schema specs in `src/config/settings.test.ts` fail on a listed key that is not editable.
-9. Land it with `dev-ship-change`: the schema is under `plugins/teamrig/`, so the change raises the version.
+9. Land it with `dev-ship-change` as a `feat` commit: the release pull request raises the version.
 
 ## Traps
 
