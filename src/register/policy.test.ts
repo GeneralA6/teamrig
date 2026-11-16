@@ -2030,16 +2030,17 @@ describe('RegisterPolicy.setStatus: a set that would drop an approval (T3207)', 
     );
   });
 
-  it('refuses a restated approval wait, which asks anew, and names an approval whose note names no sha by who gave it', () => {
+  it('refuses a restated approval wait whose note names a new head, and names an approval whose note names no sha by who gave it', () => {
     const plain: Task = { ...approved, answer: { verdict: 'approved', by: 'lead', at: '2030-01-08T11:00:00.000Z', note: null } };
-    assert.match(error(policy.setStatus(plain, 'alpha', { status: 'waiting', note: 'new head', waits: [lead] }, CTX)), /^T1 holds lead's approval, and setting it waiting drops it/);
+    assert.match(error(policy.setStatus(plain, 'alpha', { status: 'waiting', note: 'new head 9f8e7d6c', waits: [lead] }, CTX)), /^T1 holds lead's approval, and setting it waiting drops it/);
   });
 
   it('lets through a set that ends the step, holds the approval behind a time, or gives it up with --drop-approval', () => {
     assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'verifying', note: 'merged', proof: 'the next run passes', waits: RUN_TONIGHT, followups: [] }, CTX)), 'allowed');
     assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'dropped', note: 'superseded' }, CTX)), 'allowed');
     assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'after the freeze', waits: [lead, later] }, CTX)), 'allowed');
-    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'new head', waits: [lead], dropApproval: true }, CTX)), 'allowed');
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'merge refused by a classifier, queued again', waits: [lead] }, CTX)), 'allowed');
+    assert.equal(error(policy.setStatus(approved, 'alpha', { status: 'waiting', note: 'new head 9f8e7d6c', waits: [lead], dropApproval: true }, CTX)), 'allowed');
   });
 
   it('refuses --drop-approval on a set that drops none, and holds a declined answer to nothing', () => {

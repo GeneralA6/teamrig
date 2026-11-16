@@ -1436,7 +1436,7 @@ const NOTE_SHA = /\b[0-9a-f]{7,40}\b/;
  * approval and its sha, and the two ways to record progress that keep it.
  */
 function approvalDropProblem(task: Task, input: StatusInput, waits: readonly WaitReason[]): string | null {
-  const answer = droppedApproval(task, input.status, waits);
+  const answer = droppedApproval(task, input.status, waits, input.note ?? null);
   if (answer === null) {
     return input.dropApproval === true ? `--drop-approval goes only with a set that drops ${task.id}'s approval, and it holds none this set drops` : null;
   }

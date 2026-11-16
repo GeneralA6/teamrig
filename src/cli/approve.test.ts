@@ -144,7 +144,7 @@ describe('runCli: a set after an approval (T3207)', () => {
     assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
     const checked = await kit.run(['check', '--all', '--session', 'alpha']);
     assert.match(checked.stdout.join('\n'), /READY \(lead approved it; push or merge it, then set its next status\) T1 /);
-    const reask = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'new head', '--drop-approval', '--session', 'alpha']);
+    const reask = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'new head 9f8e7d6c1', '--drop-approval', '--session', 'alpha']);
     assert.equal(reask.code, EXIT.ok, reask.stderr.join('\n'));
     const after = await kit.run(['check', '--all', '--session', 'alpha']);
     assert.doesNotMatch(after.stdout.join('\n'), /READY \(lead approved it/);
