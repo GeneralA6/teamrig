@@ -11,6 +11,21 @@ import { COMMAND_EFFECTS } from '../../src/cli/run.ts';
  */
 
 const FEATURES = readFileSync(fileURLToPath(new URL('../../docs/features.md', import.meta.url)), 'utf8');
+const CI = readFileSync(fileURLToPath(new URL('../../.github/workflows/ci.yml', import.meta.url)), 'utf8');
+
+/** How the features page names each runner of the test matrix. */
+const SYSTEMS: Readonly<Record<string, string>> = { 'ubuntu-latest': 'Linux', 'windows-latest': 'Windows', 'macos-latest': 'macOS' };
+
+/** The systems and Node versions of the CI `test` job's matrix, as its one-line lists give them. */
+function testMatrix(): { readonly os: readonly string[]; readonly node: readonly string[] } {
+  const job = CI.slice(CI.indexOf('\n  test:\n'));
+  const list = (key: string): string[] =>
+    (new RegExp(`\\n\\s+${key}: \\[([^\\]]*)\\]`).exec(job)?.[1] ?? '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item !== '');
+  return { os: list('os'), node: list('node') };
+}
 /** A command word: lower-case words joined by hyphens (`deploy-status`), none of them a regular-expression character. */
 const WORD = /^[a-z]+(-[a-z]+)*$/;
 
@@ -43,11 +58,16 @@ describe('docs/features.md', () => {
     assert.deepEqual(unnamed, [], 'docs/features.md names no row for these commands: add one where the feature belongs');
   });
 
-  // CI is paused (.github/workflows/ci.yml), so only the systems a proof ran on are named (T1175).
-  it('names the systems it is proven on, Windows and Linux, and macOS as untested', () => {
-    const row = FEATURES.split('\n').find((line) => line.startsWith('| **Windows and Linux** |')) ?? '';
-    assert.match(row, /on Linux the full test suite and a smoke run of the commands and hooks pass/);
-    assert.match(row, /macOS is untested/);
-    assert.doesNotMatch(FEATURES, /tested on all three/);
+  it("names each system and Node version of CI's test matrix, and that every merge waits on it (#1177)", () => {
+    const row = FEATURES.split('\n').find((line) => line.startsWith('| **Windows, macOS and Linux** |')) ?? '';
+    const matrix = testMatrix();
+    assert.ok(matrix.os.length > 0 && matrix.node.length > 0, 'the test job has a matrix');
+    for (const os of matrix.os) {
+      assert.ok(row.includes(SYSTEMS[os] ?? os), `${os}: ${row}`);
+    }
+    assert.ok(row.includes(`Node ${matrix.node.join(' and ')}`), row);
+    assert.match(row, /merges only when every check passed/);
+    assert.match(row, /proven on Windows only/);
+    assert.doesNotMatch(FEATURES, /macOS is untested/);
   });
 });
