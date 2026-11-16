@@ -10,7 +10,7 @@ import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { systemError } from '../testing/faulty-files.ts';
-import { MemoryFiles } from '../testing/memory-files.ts';
+import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import type { Files } from '../core/files.ts';
 import { FakeHostCpu } from '../testing/fake-host-cpu.ts';
 import { FakeHostMemory, noLoadingTabs } from '../testing/fake-host-memory.ts';
@@ -174,13 +174,14 @@ class PendingDelete extends MemoryFiles {
 
   constructor(initial: Readonly<Record<string, string>>, path: string, refusals: number, code = 'EPERM') {
     super(initial);
-    this.path = path;
+    this.path = normalisePath(path);
     this.refusals = refusals;
     this.code = code;
   }
 
   override async read(path: string): Promise<string | undefined> {
-    if (path !== this.path) {
+    // The lock joins its ticket paths with the platform's separator, as MemoryFiles compares them.
+    if (normalisePath(path) !== this.path) {
       return super.read(path);
     }
     if (this.refused < this.refusals) {
@@ -604,7 +605,8 @@ describe('HostLock.acquire in a moving line', () => {
     const [path, text] = ticket(waiterOf('2030-01-08T09:59:00.000Z'));
     const files = new PendingDelete({ [path]: text }, path, 3);
     const clock = new FakeClock('2030-01-08T10:00:00Z');
-    const taking = await lockOver(files, clock).acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
+    // Three refused looks 30 s apart end at 10:01:30, inside a two-minute wait; a refused look never moves the line.
+    const taking = await lockOver(files, clock).acquire('alpha', 'heavy: test', 120_000, 30_000, () => undefined);
     assert.equal(taking.kind, 'taken');
     assert.deepEqual([files.refused, clock.sleeps.length], [3, 3], 'each refused look waits one poll, taking no turn past the ticket');
   });
