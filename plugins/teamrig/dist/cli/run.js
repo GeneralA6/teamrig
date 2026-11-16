@@ -70,6 +70,7 @@ const setupScanCommand = () => import("./commands/setup-scan.js");
 const testCommand = () => import("./commands/test.js");
 const queueCommand = () => import("./commands/queue.js");
 const withdrawCommand = () => import("./commands/withdraw.js");
+const stepAsideCommands = () => import("./commands/step-aside.js");
 const pipelineCommand = () => import("./commands/pipeline.js");
 const mergeCommand = () => import("./commands/merge.js");
 const deployCommand = () => import("./commands/deploy.js");
@@ -260,6 +261,8 @@ const COMMANDS = {
     test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
     queue: { effect: 'write', flags: ['session', 'what', 'max-minutes', 'kind', 'task', 'memory-mb', 'detached-run', 'arrived-at'], switches: ['small', 'exclusive', 'pre-push', 'detach'], rest: true, load: async () => (await queueCommand()).queue },
     withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
+    'step-away': { effect: 'write', flags: [], load: async () => (await stepAsideCommands()).stepAway },
+    'step-back': { effect: 'write', flags: [], load: async () => (await stepAsideCommands()).stepBack },
     pipeline: { effect: 'read', flags: [], load: async () => (await pipelineCommand()).pipeline },
     'pipeline freeze': { effect: 'write', flags: ['session', 'from', 'to', 'reason', 'kinds'], load: async () => (await pipelineFreezeCommands()).pipelineFreeze },
     'pipeline unfreeze': { effect: 'write', flags: ['session'], load: async () => (await pipelineFreezeCommands()).pipelineUnfreeze },
@@ -901,7 +904,15 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
       $TEAMRIG_SESSION, else the session this Claude Code tab is bound to; REFUSED for another
       session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
-  pipeline                     the host's queued steps now, taking nothing: HOST (free memory, RAM,
+  step-away                    run inside a queued step while it only waits on a remote service (a
+      merge waiting on its pull request's checks): sets its host share aside, so the ship slot, its
+      heavy place and its MB go to the next step in line. AWAY exit 0; KEPT exit 1 for a step holding
+      the whole host (the lock file), which it keeps; NONE exit 1 when it holds nothing; refused
+      outside a queued step ($TEAMRIG_HOST_LOCK)
+  step-back                    takes back in its turn the host share its queued step set aside, at
+      the place of its first taking, waiting as queue does. BACK exit 0, or NONE when none is set
+      aside; GAVE UP or WITHDRAWN exit 1; refused outside a queued step
+  pipeline                    the host's queued steps now, taking nothing: HOST (free memory, RAM,
       the floor, the commit charge, the MB held for the steps sharing the host and for the tabs still
       loading, what the running steps' process trees use, the top memory holders), FROZEN (the pipeline
       freezes not yet ended, each marked when it holds now), RUNNING (the lock's holder and each step
