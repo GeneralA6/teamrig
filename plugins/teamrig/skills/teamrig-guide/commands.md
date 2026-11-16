@@ -6772,7 +6772,9 @@ After a read, edit, shell call or web lookup, once the turn's run of single-step
 default; 0 turns it off), hands the model one line asking it to batch, priced in context re-reads. On the lead's tab it also nudges the lead
 at the turn's first edit, first test or build, first research (a web lookup, or a search of another session's notes
 or a sub-team's folder, naming whom to ask) and `leadBoundary.searchNudgeAt`-th code search, and the Stop hook shows
-you what the lead did itself. See [Hooks and permissions](hooks.md#after-a-tool-call-the-loop-nudge) and
+you what the lead did itself. With `budget.enabled` on, it also counts a session's tab for the budget once its
+transcript has grown a megabyte past what was last counted, so a turn that runs long reaches the budget before its
+Stop. See [Hooks and permissions](hooks.md#after-a-tool-call-the-loop-nudge) and
 [the lead boundary](hooks.md#after-a-tool-call-the-lead-boundary).
 
 Flags: none.

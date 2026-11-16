@@ -1030,6 +1030,10 @@ When an edit and then its test ran in separate calls, the line says so. It comes
 counts 7 and stays quiet. Calls inside a helper are not counted; only the main thread's are. `teamrig budget
 --loops` counts the same patterns over the day.
 
+With `budget.enabled` on, the same hook also counts the tab's use for the [budget](#the-daily-budget-warnings-and-the-helper-gate) once its
+transcript has grown a megabyte past what was last counted, as the Stop hook does at a turn's end. A turn that runs
+for hours, with many calls and compactions, reaches the budget as it goes rather than only when it ends.
+
 ## After a failed send: the inbox line
 
 A send to a name no live session answers to (a remembered pipe, an old name, a session that has exited) does not
@@ -1635,7 +1639,9 @@ tokens out of your context than it uses.
 With `budget.enabled` on and the week's use known (from the [status line](commands.md#teamrig-statusline) or
 `budget.weeklyLimitW`), the hooks watch each session's use today against its daily budget. At a turn's end the
 Stop hook counts only this tab's new transcript lines and its subagents' (at most `budget.maxBytesPerHook` bytes)
-and reads every other session's use as last stored. Each line comes once, so most turns show none:
+and reads every other session's use as last stored. A turn that runs long is counted as it goes: after a read, edit
+or shell call, the [loop nudge hook](#after-a-tool-call-the-loop-nudge) counts the tab the same way once its
+transcript has grown a megabyte past what was last counted. Each line comes once, so most turns show none:
 
 - as the session passes each of `budget.warnAtPct` (80 and 100 by default) of its daily budget, then every 25
   points more: `Budget: shop-web has used 1.1% of the week today; its daily budget is 1.0%. The team has used 4.2%
