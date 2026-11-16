@@ -913,7 +913,7 @@ describe('runCli: hook pass-record-guard', () => {
 describe('runCli: hook service-role-guard', () => {
   const edit = (old_string: string, new_string: string): string => JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: CONFIG_PATH, old_string, new_string }, cwd: APP });
 
-  it('asks before a roles grant, refuses asks-off, and refuses an edit adding serviceRoles, on a broken config too', async () => {
+  it('refuses a roles grant or revoke with asks on or off (T3356), and an edit adding serviceRoles, on a broken config too', async () => {
     assert.equal(decisionOf(await new CliHarness().run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles grant github --holder alpha --yes') })), 'deny');
     const off = new CliHarness({ ...TEAM, prompts: { hookAsks: 'refuse' } });
     assert.equal(decisionOf(await off.run(['hook', 'service-role-guard'], { stdin: bash('teamrig roles revoke github --yes') })), 'deny');
