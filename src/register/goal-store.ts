@@ -1,6 +1,7 @@
 import type { Files } from '../core/files.ts';
 import { assertWritable, parseJsonl, toJsonlLine } from '../core/jsonl.ts';
 import type { Mutex } from '../core/lock.ts';
+import { goalSliceRefusal, type GoalSliceInput, type SliceWriter } from './goal-slices.ts';
 import {
   foldGoalLines,
   GOAL_RECORD_VERSION,
@@ -16,6 +17,7 @@ import {
   type GoalRecord,
   type GoalSet,
   type GoalSetInput,
+  type GoalSliceRecord,
   type GoalsRead,
   type KeyResultCap,
 } from './goals.ts';
@@ -83,6 +85,22 @@ export class GoalStore {
         return { kind: 'refused', reason };
       }
       const record: GoalRank = { type: 'goal-rank', ...writer, tag: input.tag, rank: input.rank };
+      return this.append(record);
+    });
+  }
+
+  /**
+   * Adds or changes one of a goal's slices (T2203), unless goalSliceRefusal refuses it for `lead`, the team's lead:
+   * only the lead writes one, but a slice's owner may record its proof.
+   */
+  async slice(input: GoalSliceInput, writer: GoalWriter, lead: string | undefined): Promise<GoalWrite> {
+    return this.mutex.run(async () => {
+      const by: SliceWriter = { by: writer.by, lead };
+      const reason = goalSliceRefusal(input, (await this.writable()).goals, by);
+      if (reason !== undefined) {
+        return { kind: 'refused', reason };
+      }
+      const record: GoalSliceRecord = { type: 'goal-slice', ...writer, ...input };
       return this.append(record);
     });
   }
