@@ -1,7 +1,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, open, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, open, readdir, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isTemporaryName, nodeFiles } from './files.ts';
@@ -101,6 +101,45 @@ describe('nodeFiles', () => {
     assert.deepEqual(await readdir(join(root, 'held')), ['host.lock']);
     if (process.platform === 'win32') {
       assert.equal(waits, holdFor);
+    }
+  });
+
+  it('reads a file removed while another process holds it open as missing once the holder closes it (T3201)', async () => {
+    const folder = join(root, 'pending');
+    const [ticket, tail, head] = ['ticket.json', 'tail.jsonl', 'head.txt'].map((name) => join(folder, name));
+    if (ticket === undefined || tail === undefined || head === undefined) {
+      throw new Error('three paths');
+    }
+    for (const path of [ticket, tail, head]) {
+      await files.write(path, 'x');
+    }
+    // On Windows a file removed while a handle holds it open stays, pending its delete, and every open of it is
+    // refused with EPERM until that handle closes; elsewhere the name is gone at once.
+    const holders = await Promise.all([ticket, tail, head].map((path) => open(path, 'r')));
+    let closed = false;
+    const closeHolders = async (): Promise<void> => {
+      if (!closed) {
+        closed = true;
+        await Promise.all(holders.map((holder) => holder.close()));
+      }
+    };
+    for (const path of [ticket, tail, head]) {
+      await unlink(path);
+    }
+    let waits = 0;
+    const reader = nodeFiles(async () => {
+      waits += 1;
+      await closeHolders();
+    });
+    try {
+      assert.equal(await reader.read(ticket), undefined);
+      assert.equal(await reader.readTail(tail, 10), undefined);
+      assert.equal(await reader.readHead(head, 10), undefined);
+    } finally {
+      await closeHolders();
+    }
+    if (process.platform === 'win32') {
+      assert.equal(waits, 1);
     }
   });
 
