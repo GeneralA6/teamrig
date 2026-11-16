@@ -135,6 +135,8 @@ export interface MergeRequest {
   sha: string;
   title: string;
   body: string;
+  /** Why `body` may not open a pull request (a section the repo asks for is missing); null when it may. A found one merges. */
+  unopenable: string | null;
 }
 
 /** What proves a pull request's head before it merges: the repo's gate. */
@@ -302,6 +304,7 @@ export async function mergeThroughPull(request: MergeRequest, gh: Gh, main: Main
   const unready = proof.before(sha);
   if (unready !== null) return { kind: 'refused', pull: null, reason: unready };
   const found = findOpenPull(gh, repo, head, base);
+  if (found === null && request.unopenable !== null) return { kind: 'refused', pull: null, reason: request.unopenable };
   const pull = found ?? openPull(gh, repo, head, base, request.title, request.body);
   log(`${found === null ? 'opened' : 'found'} pull request #${pull.number} ${pull.url}`);
   if (pull.headSha !== sha) return { kind: 'refused', pull, reason: `the pull request head ${pull.headSha.slice(0, 7)} is not ${head} ${sha.slice(0, 7)}: push ${head} first` };
@@ -446,6 +449,18 @@ function runOwnCli(args: readonly string[]): Promise<number> {
     child.on('error', () => settle(1));
     child.on('exit', code => settle(code ?? 1));
   });
+}
+
+/**
+ * Why a note may not open a pull request: the `## <name>` sections the repo's profile asks for that it lacks, with the
+ * way to add them; null when it holds each.
+ */
+export function missingSections(note: string | null, sections: readonly string[]): string | null {
+  const headings = new Set((note ?? '').split('\n').map(line => /^##\s+(.+?)\s*$/.exec(line)?.[1]).filter(name => name !== undefined));
+  const missing = sections.filter(name => !headings.has(name));
+  if (missing.length === 0) return null;
+  const named = missing.map(name => `## ${name}`).join(', ');
+  return `the pull request would lack ${named}, which this repo's template asks for: write it in a --note-file and ship again`;
 }
 
 /** What the command reaches outside itself, so a test can stand in for each. */
@@ -612,7 +627,7 @@ export async function mergeRun(args: MergeArgs, deps: MergeDeps, gate: MergeGate
       ? awayDuring(inTurn(ciProof(gh, repo, head, { names: profile.checks, summary: profile.summary, flaky: profile.flaky }, deps.waiter, { timeoutMs: args.timeoutMin * 60_000, intervalMs: args.intervalS * 1000 }), deps.turn), deps.share)
       : { proof: localProof(args.dir, profile.local, deps.gate), away: () => false };
   const result = await mergeThroughPull(
-    { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note) },
+    { repo, head, base: profile.main, sha, title: `Merge ${head} into ${profile.main}: ${subjects.length} commit(s)`, body: pullBody(subjects, note), unopenable: missingSections(note, profile.pullSections) },
     gh,
     mainBranchOf(git, profile.main),
     proof.proof,
