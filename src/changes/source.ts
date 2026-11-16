@@ -8,13 +8,12 @@
  * ones naming no matching file. A source never throws for a project it does not apply to: `detect` says false, and
  * a read that failed is `{ kind: 'failed' }`, so one broken source never hides the others' entries.
  *
- * The file lands as `src/changes/source.ts`. Adapters go in `src/changes/sources/<id>.ts`, each with
- * `<id>.test.ts` on fixture files through the fakes in `src/testing/` (MemoryFiles, FakeGh) and `FakeChangeGit`,
- * which lands with this file in `src/testing/fake-change-git.ts`.
+ * Adapters go in `src/changes/sources/<id>.ts`, each with `<id>.test.ts` on fixture files, its deps built by
+ * `changeDepsOf` (src/testing/fake-change-git.ts) over MemoryFiles, FakeGh and FakeChangeGit.
  */
 import type { Files } from '../core/files.ts';
 import type { GhRunner } from '../github/gh.ts';
-import type { RepoAccess } from '../github/tokens.ts';
+import type { NoAccessError, RepoAccess } from '../github/tokens.ts';
 
 /** Who an entry is for: `lead` shows only at the lead's start, `all` also goes to each session's inbox (T3425). */
 export type ChangeAudience = 'lead' | 'all';
@@ -53,7 +52,7 @@ export type ChangePoint = { readonly kind: 'version'; readonly version: string }
 
 /**
  * The read the core asks of a source. `since` and `until` arrive resolved to both a version and a time where the
- * core could (from the project's release index: git tags, or the source's own versions), so a source that reads
+ * core could (from the project's release index, `ChangeGit.releases`), so a source that reads
  * only by date still answers a `--since <version>` ask. `file` and `area` are passed only to a source whose
  * capabilities say it filters by them; otherwise they are undefined and the core filters.
  */
@@ -69,6 +68,8 @@ export interface ChangeQuery {
 export interface ResolvedPoint {
   readonly version: string | undefined;
   readonly at: string | undefined;
+  /** The release's commit, when the point is a release the project's history names: a range by commit is exact, one by time is not. */
+  readonly ref: string | undefined;
 }
 
 /** What a source can narrow by itself; the core does the rest. */
@@ -86,7 +87,9 @@ export interface ChangeSourceCapabilities {
 }
 
 export type ChangeRead =
-  | { readonly kind: 'read'; readonly entries: readonly ChangeEntry[] }
+  /** : each part it could not read (a file and line, a heading with no version), printed under the entries. */
+  /** `warnings`: each part it could not read (a file and line, a heading with no version), printed under the entries. */
+  | { readonly kind: 'read'; readonly entries: readonly ChangeEntry[]; readonly warnings: readonly string[] }
   | { readonly kind: 'failed'; readonly error: string };
 
 /** What a source may use; nothing else, so its specs run on fakes. GitHub goes only through teamrig's own key. */
@@ -96,20 +99,49 @@ export interface ChangeSourceDeps {
   /** GitHub reads, each run with the env `access` returns (`GH_TOKEN` set to the key teamrig saved for the owner). */
   readonly gh: GhRunner;
   /**
-   * The key for one repository ('owner/name'), never the gh login. It throws a `NoAccessError` when no key is
-   * saved or it cannot be read; the source returns that as `{ kind: 'failed' }`, naming the command that saves one.
+   * The key for one repository ('owner/name'), never the gh login. It is a `NoAccessError` when no key is
+   * saved or it cannot be read (`RepoTokens.accessFor`); the source returns its message as `{ kind: 'failed' }`, naming the command that saves one.
    */
-  access(repo: string): Promise<RepoAccess>;
+  access(repo: string): Promise<RepoAccess | NoAccessError>;
   /** The project's folder, absolute. */
   readonly project: string;
+  /** The team's register, when the project has a team: the tasks its commits name. */
+  readonly register: TaskReader | undefined;
+}
+
+/** The tasks of a team's register, read-only. */
+export interface TaskReader {
+  /** The tasks of these ids the register holds; an id it lacks is left out. */
+  tasks(ids: readonly string[]): Promise<readonly RegisterTask[]>;
+}
+
+/** What a change entry takes from a task. */
+export interface RegisterTask {
+  readonly id: string;
+  readonly title: string;
+  readonly type: 'task' | 'bug';
+  /** Its issue or pull request, as the register holds it ('gh:owner/name#12'); undefined when it has none. */
+  readonly ref: string | undefined;
 }
 
 /** The git reads a source may make, read-only, in the project's folder. */
 export interface ChangeGit {
   /** Commits in the range (a version as its tag, else a time), newest first; `paths` narrows to commits touching them. */
   log(project: string, range: { readonly since: ResolvedPoint; readonly until: ResolvedPoint | undefined; readonly paths: readonly string[] }): Promise<readonly GitCommit[]>;
-  /** The project's tags with the time each was made: the release index that resolves a version to a time. */
-  tags(project: string): Promise<readonly { readonly name: string; readonly at: string }[]>;
+  /**
+   * The project's releases, newest first: its version tags ('v1.2.3', '1.2.3'), and the commits on HEAD whose subject
+   * names a release ('plugin: version 0.447.0', 'chore(release): 1.2.3', 'Release v1.2.3') for a project that tags
+   * none; a tag wins over a commit naming the same version. The index that resolves a version to a commit and a time.
+   */
+  releases(project: string): Promise<readonly Release[]>;
+}
+
+export interface Release {
+  readonly version: string;
+  /** ISO 8601, UTC: the commit's time. */
+  readonly at: string;
+  /** The commit it was made from. */
+  readonly sha: string;
 }
 
 export interface GitCommit {
