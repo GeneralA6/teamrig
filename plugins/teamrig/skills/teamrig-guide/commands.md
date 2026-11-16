@@ -5510,7 +5510,8 @@ root, and case is ignored. A team entry adds to teamrig's list; none removes one
 change for its class; a `check` hit runs `reviewCheck` first and holds it only when the check flags it or breaks. A
 change with hits of both classes waits on security.
 
-The branch names its task as `t<n>-…`, a task of the session that merges it. A held change is REFUSED with the
+The branch names its task as `t<n>-…`, after any type folder (`feat/t<n>-…`, either case of `t`), a task of the
+session that merges it; `fix-t12-thing` names none. A held change is REFUSED with the
 hold's id, what it changes and the command that asks its reviewer:
 
 ```text

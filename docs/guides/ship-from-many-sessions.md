@@ -173,7 +173,7 @@ of these:
 
 Under `pushGuard.pushToProtected: gated`, `teamrig merge` checks five self-merge gates after the rebase, in order:
 
-- task: the branch is named `t<n>-…` after a live task (open, in progress, verifying or waiting) of the session
+- task: the branch is named `t<n>-…`, after any type folder (`feat/t<n>-…`), after a live task (open, in progress, verifying or waiting) of the session
   that merges it;
 - pass: the repo's own local runner wrote a pass record for the rebased tree (`<git common dir>/local-ci/<tree>.json`),
   so run the checks on the rebased branch first; `teamrig queue --pre-push` keeps its passes elsewhere and does not

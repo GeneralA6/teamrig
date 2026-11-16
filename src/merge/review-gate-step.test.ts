@@ -83,10 +83,12 @@ class Gate {
 }
 
 describe('taskOfBranch', () => {
-  it('reads the task a branch is named after, after any folder part', () => {
+  it('reads the task a branch is named after, after any folder part, as the worktree owner check does (GeneralA6/teamrig#1315)', () => {
     assert.equal(taskOfBranch('t828-self-merge-gate'), 'T828');
     assert.equal(taskOfBranch('feature/t9-gate'), 'T9');
-    for (const branch of ['gate', 'at9-gate', 't0-gate', 't9']) {
+    assert.equal(taskOfBranch('feat/T12-x'), 'T12', 'an upper-case t, as delivery.branches may name it');
+    assert.equal(taskOfBranch('t9'), 'T9', 'a branch that is the id alone');
+    for (const branch of ['gate', 'at9-gate', 'fix-t12-thing', 'fix/x-t12-thing']) {
       assert.equal(taskOfBranch(branch), undefined, branch);
     }
   });
@@ -353,6 +355,17 @@ describe('reviewGateVerdict: what it refuses outright', () => {
     assert.match(refusals[2] ?? '', /its task T11, which is bravo's/);
     for (const branch of ['gate-fix', 't10-gate', 't11-gate']) {
       assert.equal(await gate.holds.read(CHANGE.repo, branch), undefined);
+    }
+  });
+
+  it('holds fix-t12-thing as naming no task, and ties feat/t12-x and feat/T12-x to T12 (GeneralA6/teamrig#1315)', async () => {
+    const gate = new Gate(['package-lock.json']);
+    gate.tasks.set('T12', { owner: 'alpha', answer: null });
+    assert.match((await gate.run({ branch: 'fix-t12-thing' })) ?? '', /^fix-t12-thing changes .* the branch names none: name it t<n>-… after your task$/);
+    assert.equal(await gate.holds.read(CHANGE.repo, 'fix-t12-thing'), undefined);
+    for (const branch of ['feat/t12-x', 'feat/T12-x']) {
+      await gate.run({ branch });
+      assert.equal((await gate.holds.read(CHANGE.repo, branch))?.task, 'T12', branch);
     }
   });
 
