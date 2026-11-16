@@ -28,6 +28,10 @@ export function agedPriority(priority, waitedMs, agingMinutes) {
 export function classOf(waiter, rules) {
     return waiter.request?.class ?? rules.defaultClass;
 }
+/** The line a waiter waits in: small when its ticket says its step is not heavy; a ticket naming no request (an older kit's, or one with none) waits in the heavy line, as all did before T3286. */
+export function laneOf(waiter) {
+    return waiter.request?.heavy === false ? 'small' : 'heavy';
+}
 function byName(a, b) {
     if (a.name === b.name) {
         return 0;
@@ -95,13 +99,14 @@ function passesOnShipSlot(waiter, mine) {
     return !mine && waiter.waitingOn?.reason === 'shipSlot';
 }
 /**
- * The place of the ticket named `name` in `order` (from {@link admissionOrder}) at `now`, given the steps each session
- * runs now (`running`); undefined when it is not in line. In `pipeline` mode three waiters are passed: one whose session
- * runs `perSessionRunning` steps, as it may not start anyway, one waiting on the host's memory while it may be
- * passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757), and one waiting on
- * the ship slot, by a step that does not take it ({@link passesOnShipSlot}, T2727). The first waiter
- * not passed is the one that may take its turn, and while it waits on the lock or memory, it holds every later one
- * back. A step that passes still waits on its own memory gate. `serial` passes no one.
+ * The place of the ticket named `name` in `order` (from {@link admissionOrder}) at `now`, given the steps running now
+ * (`running`); undefined when it is not in line. In `pipeline` mode a waiter stands only behind the waiters of its own
+ * lane ({@link laneOf}, T3286), and three of them are passed: one whose session runs `perSessionRunning` heavy steps,
+ * as it may not start anyway (a heavy-line cap: a small step is never held on it), one waiting on the host's memory
+ * while it may be passed ({@link passesOnRoom}), as a step that fits need not wait behind one that does not (T2757),
+ * and one waiting on the ship slot, by a step that does not take it ({@link passesOnShipSlot}, T2727). The first waiter
+ * not passed is the one that may take its turn, and while it waits on the lock or memory, it holds every later one of
+ * its lane back. A step that passes still waits on its own memory gate. `serial` keeps one line and passes no one.
  */
 export function placeInLine(order, name, running, rules, now) {
     const index = order.findIndex((ticket) => ticket.name === name);
@@ -109,14 +114,16 @@ export function placeInLine(order, name, running, rules, now) {
     if (mine === undefined) {
         return undefined;
     }
-    const before = order.slice(0, index);
     if (rules === undefined || rules.mode === 'serial') {
-        return { kind: 'inLine', ahead: before };
+        return { kind: 'inLine', ahead: order.slice(0, index) };
     }
-    const cap = rules.perSessionRunning;
-    const runs = (session) => running.get(session) ?? 0;
+    const lane = laneOf(mine.waiter);
+    const before = order.slice(0, index).filter(({ waiter }) => laneOf(waiter) === lane);
+    const cap = lane === 'small' ? 0 : rules.perSessionRunning;
+    const runs = (session) => running.filter((step) => !step.small && step.session === session).length;
     const capped = (session) => cap > 0 && runs(session) >= cap;
-    const idle = [...running.values()].every((count) => count === 0);
+    // Idle means no queued step at all runs: a small step's end frees room too, so it counts here.
+    const idle = running.length === 0;
     const ships = takesShipSlot(mine.waiter.request?.kind);
     const ahead = before.filter(({ waiter }) => !capped(waiter.session) && !passesOnRoom(waiter, idle, now, rules.memoryPassMinutes) && !passesOnShipSlot(waiter, ships));
     const own = runs(mine.waiter.session);

@@ -960,6 +960,7 @@ function parseQueue(read, raw) {
         memoryPassMinutes: read.integer(raw, 'memoryPassMinutes', path, DEFAULT_QUEUE.memoryPassMinutes, CONFIG_LIMITS.queueMemoryPassMinutes),
         perSessionRunning: read.integer(raw, 'perSessionRunning', path, DEFAULT_QUEUE.perSessionRunning, CONFIG_LIMITS.queuePerSessionRunning),
         maxHeavyParallel: read.integer(raw, 'maxHeavyParallel', path, DEFAULT_QUEUE.maxHeavyParallel, CONFIG_LIMITS.queueMaxHeavyParallel),
+        maxSmallParallel: read.integer(raw, 'maxSmallParallel', path, DEFAULT_QUEUE.maxSmallParallel, CONFIG_LIMITS.queueMaxSmallParallel),
         heavyIdleCpuPct: read.integer(raw, 'heavyIdleCpuPct', path, DEFAULT_QUEUE.heavyIdleCpuPct, CONFIG_LIMITS.queueHeavyIdleCpuPct),
     };
 }

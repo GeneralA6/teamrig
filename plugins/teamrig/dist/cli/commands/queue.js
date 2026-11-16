@@ -26,7 +26,7 @@ import { openTeamKit, reloadTeamConfig, requireConfig, rosterOf, sessionIdOf, te
 import { parentLockOf } from "../parent-lock.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { rerunAdvice, stoppedWhileWaiting, unlessStopped, watchStarters } from "../stoppable.js";
-import { shipToolOfWords, shipToolPinOf, shipToolStartRefusal } from "../ship-role-check.js";
+import { shipTaskOfWords, shipToolOfWords, shipToolPinOf, shipToolStartRefusal } from "../ship-role-check.js";
 import { postUrgentLine } from "../urgent-line.js";
 import { envSession, markedSessionOf } from "./hook-input.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -90,6 +90,14 @@ function declaredMbOf(args) {
 /** What the step asks for besides its label, recorded on its start and refusal records. */
 function requestOf(args, words, what) {
     return processRequest(kindOf(args, words), taskOf(args, what));
+}
+/**
+ * `request`, given the task its ship tool ships (`shipped`) when neither `--task` nor its label names one (T3286): a
+ * ship line names none, so its ticket would take the default class and no priority. Read only for a step that queues.
+ */
+function withShipTask(request, shipped) {
+    const task = request.task ?? shipped();
+    return task === request.task ? request : processRequest(request.kind, task);
 }
 /** Why the step may not start now (the queue cutoff, a pipeline freeze on its kind, a moved ship tool), or undefined when it may. */
 async function startRefusal(runtime, gate) {
@@ -435,7 +443,8 @@ async function afterPrePush(runtime, prePush, what, code, waitedMs) {
  * waits in its turn until the host's free memory leaves `memoryFloorMb` besides the MB held for it and for the small
  * steps sharing the host (`hostLockOf`'s memory gate): its need learned from its past runs or declared with
  * `--memory-mb` (`needOf`), at least `heavyReserveMb` for a heavy step. With `--small` (a spec run, a lint) the step
- * shares the host with other small steps, holding its need or `smallReserveMb`; a heavy step shares it too under
+ * shares the host with other small steps, holding its need or `smallReserveMb`, in a line of its own under `pipeline`
+ * (never behind a heavy step) and at most `maxSmallParallel` at once; a heavy step shares it too under
  * `pipeline` admission, at most `maxHeavyParallel` at once and joining another only while `heavyIdleCpuPct` of the
  * host's CPU is idle (`hostLockOf`'s CPU gate), and takes the lock, waiting for every share to end, under
  * `serial` or with `--exclusive`. A small step is killed after `smallMaxRunMinutes` instead, and its `--max-minutes`
@@ -494,7 +503,8 @@ export async function queue(args, runtime) {
         await refuseUnstartable(runtime, gate);
         // The register is read only for a step that queues: a nested step or one refused at once records nothing.
         const register = new JsonlEventLog(runtime.files, kit.paths.events);
-        const line = await lineRequestOf(request, async (id) => (await register.read()).state.tasks.get(id), config.focus);
+        const shipped = withShipTask(request, () => shipTaskOfWords(runtime.mergeGit, kit, config, words, runtime.cwd));
+        const line = await lineRequestOf(shipped, async (id) => (await register.read()).state.tasks.get(id), config.focus);
         // Only the ticket carries the class for now: the ledger's start and refusal records keep the fields their readers take.
         const owner = { session, ...processRequest(line.kind, line.task, line.priority) };
         const waits = new WaitLog(runtime.clock, runtime.memory.freeMb());

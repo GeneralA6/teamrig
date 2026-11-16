@@ -39,6 +39,7 @@ export function admissionRulesOf(queue, focus) {
         memoryPassMinutes: queue.memoryPassMinutes,
         perSessionRunning: queue.perSessionRunning,
         maxHeavyParallel: queue.maxHeavyParallel,
+        maxSmallParallel: queue.maxSmallParallel,
         defaultClass: focus.defaultClass,
     };
 }

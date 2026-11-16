@@ -342,6 +342,7 @@ export const DEFAULT_QUEUE = {
     memoryPassMinutes: 15,
     perSessionRunning: 2,
     maxHeavyParallel: 2,
+    maxSmallParallel: 4,
     heavyIdleCpuPct: 25,
 };
 /** A waiting delivery step looks again every 30 seconds; a deploy step waits up to an hour for freezes and the host lock. */
