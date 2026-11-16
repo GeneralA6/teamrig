@@ -6,7 +6,7 @@ import type { CatchUp } from './catch-up.ts';
 import type { Gh, RequiredChecks } from './github.ts';
 import type { Credential } from './keychain.ts';
 import type { GateDeps } from './local-gate.ts';
-import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, realMergeDeps, runMerge, stepShareOf, waitForChecks } from './merge.ts';
+import { type MainBranch, type MergeArgs, type MergeDeps, type MergeRequest, type MergeResult, type Waiter, MERGE_ATTEMPTS, ciProof,mainBranchOf, mergeBranch, mergeCommand, mergeRun, mergeThroughPull, parseArgs, pullBody, realMergeDeps, runMerge, missingSections, stepShareOf, waitForChecks } from './merge.ts';
 import { parseProfiles } from './repos.ts';
 import { TempRepo } from '../lib/temp-repo.ts';
 
@@ -123,6 +123,7 @@ const request = (overrides: Partial<MergeRequest> = {}): MergeRequest => ({
   sha: SHA,
   title: 'Merge dev into main: 2 commit(s)',
   body: '- a\n- b',
+  unopenable: null,
   ...overrides,
 });
 
@@ -130,8 +131,8 @@ const POLLING = { timeoutMs: 10 * MINUTE, intervalMs: MINUTE };
 const CHECKS: RequiredChecks = { names: ['gates', 'test'], summary: null, flaky: [] };
 
 /** mergeThroughPull on the `ci` gate: checks gates and test on GitHub. */
-const mergeOnCi = (gh: Gh, main: MainBranch, log: (line: string) => void): Promise<MergeResult> =>
-  mergeThroughPull(request(), gh, main, ciProof(gh, REPO, HEAD, CHECKS, fakeWaiter(), POLLING), log);
+const mergeOnCi = (gh: Gh, main: MainBranch, log: (line: string) => void, unopenable: string | null = null): Promise<MergeResult> =>
+  mergeThroughPull(request({ unopenable }), gh, main, ciProof(gh, REPO, HEAD, CHECKS, fakeWaiter(), POLLING), log);
 
 const green: readonly JobState[] = [
   ['gates', 'completed', 'success'],
@@ -179,6 +180,25 @@ test('reuses an open pull request instead of opening a second one', async () => 
   assert.equal((await mergeOnCi(gh, fakeMain(), line => log.push(line))).kind, 'merged');
   assert.equal(writes.length, 1);
   assert.match(log[0] ?? '', /^found pull request #3/);
+});
+
+test('opens no pull request whose body lacks a section the repo asks for, but merges one already open', async () => {
+  const why = 'the pull request would lack ## Reach';
+  const fresh = fakeGitHub({ rounds: [green] });
+  const refused = await mergeOnCi(fresh.gh, fakeMain(), () => undefined, why);
+  assert.deepEqual(refused.kind === 'refused' ? refused.reason : refused, why);
+  assert.equal(fresh.writes.length, 0);
+  const open = fakeGitHub({ rounds: [green], openPullSha: SHA });
+  assert.equal((await mergeOnCi(open.gh, fakeMain(), () => undefined, why)).kind, 'merged');
+});
+
+test('names each ## section a note lacks of those the repo asks for', () => {
+  const lacking = (named: string): string => `the pull request would lack ${named}, which this repo's template asks for: write it in a --note-file and ship again`;
+  assert.equal(missingSections('## Reach\nall users\n', ['Reach']), null);
+  assert.equal(missingSections('##  Reach  \nall users', ['Reach']), null);
+  assert.equal(missingSections(null, []), null);
+  assert.equal(missingSections(null, ['Reach', 'Tests']), lacking('## Reach, ## Tests'));
+  assert.equal(missingSections('Reach: all users\n### Reach\n## Tests', ['Reach']), lacking('## Reach'));
 });
 
 test('refuses when the pull request head is not the sha that was pushed, before reading any check', async () => {
